@@ -3,8 +3,6 @@
 import { useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, SectionLabel } from "@/components/design-system/primitives";
-import { Icon } from "@/components/design-system/Icon";
-import { qcBtn } from "@/components/design-system/buttons";
 import { useRecalc } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
 import type { Loan } from "@/lib/types";
@@ -87,9 +85,6 @@ export function TermsTab({ loan }: { loan: Loan }) {
             ))}
           </div>
         )}
-        <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-          <button style={{ ...qcBtn(t), flex: 1, justifyContent: "center" }}><Icon name="bolt" size={13} /> Send term sheet</button>
-        </div>
       </Card>
     </div>
   );

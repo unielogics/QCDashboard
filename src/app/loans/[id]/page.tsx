@@ -19,6 +19,7 @@ import { UnderwritingTab } from "./tabs/UnderwritingTab";
 import { PropertyTab } from "./tabs/PropertyTab";
 import { WireClosingTab } from "./tabs/WireClosingTab";
 import { ActivityTab } from "./tabs/ActivityTab";
+import { DealWorkspaceTab } from "./tabs/DealWorkspaceTab";
 import { DealHealthPill } from "./components/DealHealthPill";
 import { ParticipantsCard } from "./components/ParticipantsCard";
 import { EmailDraftsCard } from "./components/EmailDraftsCard";
@@ -35,6 +36,7 @@ const TABS = [
   { id: "uw", label: "Underwriting", icon: "shield" as const },
   { id: "property", label: "Property", icon: "building2" as const },
   { id: "wire", label: "Wire & Closing", icon: "send" as const },
+  { id: "workspace", label: "Deal Workspace", icon: "ai" as const },
   { id: "thread", label: "Thread", icon: "chat" as const },
   { id: "activity", label: "Activity", icon: "audit" as const },
 ] as const;
@@ -210,6 +212,7 @@ export default function LoanDetailPage() {
       {tab === "uw" && <UnderwritingTab loan={loan} />}
       {tab === "property" && <PropertyTab loan={loan} canEdit={canTransitionStage} />}
       {tab === "wire" && <WireClosingTab loan={loan} />}
+      {tab === "workspace" && <DealWorkspaceTab loanId={loan.id} />}
       {tab === "thread" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <ParticipantsCard loanId={loan.id} />

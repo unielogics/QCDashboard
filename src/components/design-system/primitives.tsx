@@ -150,6 +150,74 @@ export function Sparkline({
   );
 }
 
+// — VerifiedBadge — petrol "Center of Truth" tint (port of design primitives.jsx)
+export function VerifiedBadge({ kind = "verified" }: { kind?: "verified" | "pending" | "flagged" }) {
+  const { t } = useTheme();
+  if (kind === "pending") {
+    return (
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "2px 7px",
+          borderRadius: 999,
+          background: t.warnBg,
+          color: t.warn,
+          fontSize: 10,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: 0.6,
+        }}
+      >
+        <span style={{ width: 5, height: 5, borderRadius: 999, background: t.warn }} />
+        Pending
+      </span>
+    );
+  }
+  if (kind === "flagged") {
+    return (
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "2px 7px",
+          borderRadius: 999,
+          background: t.dangerBg,
+          color: t.danger,
+          fontSize: 10,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: 0.6,
+        }}
+      >
+        Flagged
+      </span>
+    );
+  }
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "2px 7px",
+        borderRadius: 999,
+        background: t.petrolSoft,
+        color: t.petrol,
+        fontSize: 10,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: 0.6,
+      }}
+    >
+      <Icon name="shieldChk" size={9} stroke={2.5} />
+      Verified
+    </span>
+  );
+}
+
 // — Avatar —
 export function Avatar({
   label,
@@ -170,7 +238,7 @@ export function Avatar({
         height: size,
         borderRadius: size / 2,
         background: color ?? t.brand,
-        color: "#fff",
+        color: t.inverse,
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
@@ -315,7 +383,7 @@ export function TopButton({
             padding: "0 5px",
             borderRadius: 999,
             background: t.danger,
-            color: "#fff",
+            color: t.inverse,
             fontSize: 10,
             fontWeight: 700,
             display: "inline-flex",

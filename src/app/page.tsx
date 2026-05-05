@@ -1,27 +1,37 @@
 "use client";
 
-// Dashboard — operator overview. Layout matches design/screens/dashboard.jsx:
-// max-width 1400px centered, greeting + header action buttons, 4-column KPI
-// row, two-column body (Pipeline at a glance + Today), AI tasks + Top
-// exposures row. All KPIs sourced from /reports/dashboard so nothing is
-// hardcoded.
+// Dashboard — operator + borrower overview. Containers (top→bottom):
+//   1. Greeting + header buttons
+//   2. KPI row (4 tiles, /reports/dashboard)
+//   3. Today's Overdue panel
+//   4. Today's Market Rates (4 product cards — for all roles, ported from mobile)
+//   5. ProTermsCard (CLIENT role only — soft-pull lock/unlock)
+//   6. Pipeline at a glance + Today (operator: 5-stage counters; borrower/broker: top-3 loan cards)
+//   7. Portfolio Health (3 stat tiles — for all roles, ported from mobile)
+//   8. AI co-pilot + Top brokers (renamed from Top exposures, source swapped)
 
 import Link from "next/link";
+import { useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, KPI, Pill, SectionLabel, StageBadge } from "@/components/design-system/primitives";
+import { Card, KPI, Pill, SectionLabel, Sparkline, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import {
   useAITasks,
+  useBrokerLeaderboard,
+  useBrokers,
   useCalendar,
-  useClients,
   useCurrentUser,
   useDashboardReport,
+  useFredSeries,
   useLoans,
+  useMyCredit,
 } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
-import type { AITask, CalendarEvent, Loan } from "@/lib/types";
+import type { AITask, Broker, CalendarEvent, FredSeriesSummary, Loan } from "@/lib/types";
 import { Role } from "@/lib/enums.generated";
+import { CreditPullModal } from "@/components/CreditPullModal";
+import { RateDetailModal } from "@/components/RateDetailModal";
 
 const STAGE_KEYS = [
   "prequalified",
@@ -39,14 +49,10 @@ export default function DashboardPage() {
   const { data: loans = [] } = useLoans();
   const { data: tasks = [] } = useAITasks();
   const { data: events = [] } = useCalendar();
-  const { data: clients = [] } = useClients();
   const { data: report } = useDashboardReport();
 
-  // Greeting personalization: prefer the real user's first name, fall back to
-  // the Clerk-known email-prefix once /auth/me resolves, then to a soft default
-  // while the request is in flight (avoids a jarring "Hi there." flash).
   const firstName = (() => {
-    if (!user) return null; // hide the greeting entirely while loading
+    if (!user) return null;
     const n = (user.name ?? "").trim();
     if (n && n !== user.email) return n.split(" ")[0];
     if (user.email) return user.email.split("@")[0].split(".")[0];
@@ -69,6 +75,8 @@ export default function DashboardPage() {
     }));
 
   const isClient = user?.role === Role.CLIENT;
+  const isBroker = user?.role === Role.BROKER;
+  const showOperatorPipeline = !isClient && !isBroker;
 
   const datelineDate = today.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
   const datelineTime = today.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
@@ -156,6 +164,12 @@ export default function DashboardPage() {
 
       <TodaysOverduePanel tasks={tasks} events={events} loans={loans} />
 
+      {/* Today's Market Rates — for all roles (ported from mobile dashboard) */}
+      <TodaysMarketRates />
+
+      {/* Pro Terms Lock/Unlock — clients only */}
+      {isClient && <ProTermsCard userName={user?.name ?? ""} userEmail={user?.email ?? ""} />}
+
       {/* Pipeline at a glance + Today */}
       <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 20 }}>
         <Card pad={16}>
@@ -166,49 +180,55 @@ export default function DashboardPage() {
               </Link>
             }
           >
-            Pipeline at a glance
+            {showOperatorPipeline ? "Pipeline at a glance" : "Your loans"}
           </SectionLabel>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
-            {stageCounts.slice(0, 5).map((s, i) => (
-              <Link
-                key={s.stage}
-                href="/pipeline"
-                style={{
-                  background: t.surface2,
-                  border: `1px solid ${t.line}`,
-                  borderRadius: 10,
-                  padding: 12,
-                  textDecoration: "none",
-                }}
-              >
-                <div
+
+          {showOperatorPipeline ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
+              {stageCounts.slice(0, 5).map((s, i) => (
+                <Link
+                  key={s.stage}
+                  href="/pipeline"
                   style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: t.ink3,
-                    letterSpacing: 1,
-                    textTransform: "uppercase",
+                    background: t.surface2,
+                    border: `1px solid ${t.line}`,
+                    borderRadius: 10,
+                    padding: 12,
+                    textDecoration: "none",
                   }}
                 >
-                  {STAGE_LABELS[i]}
-                </div>
-                <div
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 700,
-                    color: t.ink,
-                    marginTop: 4,
-                    fontFeatureSettings: '"tnum"',
-                  }}
-                >
-                  {s.count}
-                </div>
-                <div style={{ fontSize: 11, color: t.ink3, marginTop: 2, fontFeatureSettings: '"tnum"' }}>
-                  {QC_FMT.short(Number(s.value))}
-                </div>
-              </Link>
-            ))}
-          </div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: t.ink3,
+                      letterSpacing: 1,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {STAGE_LABELS[i]}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 700,
+                      color: t.ink,
+                      marginTop: 4,
+                      fontFeatureSettings: '"tnum"',
+                    }}
+                  >
+                    {s.count}
+                  </div>
+                  <div style={{ fontSize: 11, color: t.ink3, marginTop: 2, fontFeatureSettings: '"tnum"' }}>
+                    {QC_FMT.short(Number(s.value))}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            // Borrower/broker variant — mobile-style top-3 loan cards
+            <BorrowerPipelineCards loans={loans} />
+          )}
 
           <div style={{ height: 16 }} />
           <div
@@ -366,7 +386,10 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* AI tasks + Top exposures */}
+      {/* Portfolio Health — for all roles (ported from mobile) */}
+      <PortfolioHealth loans={loans} />
+
+      {/* AI tasks + Top brokers */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         <Card pad={16}>
           <SectionLabel
@@ -414,71 +437,7 @@ export default function DashboardPage() {
           </div>
         </Card>
 
-        <Card pad={16}>
-          <SectionLabel
-            action={
-              <Link href="/clients" style={{ color: t.petrol, fontWeight: 700, fontSize: 12, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                Clients <Icon name="arrowR" size={12} />
-              </Link>
-            }
-          >
-            Top exposures
-          </SectionLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {[...clients]
-              .sort((a, b) => Number(b.funded_total) - Number(a.funded_total))
-              .slice(0, 5)
-              .map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/clients/${c.id}`}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "10px 6px",
-                    borderBottom: `1px solid ${t.line}`,
-                    textDecoration: "none",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 999,
-                      background: c.avatar_color ?? t.petrol,
-                      color: "#fff",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {c.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{c.name}</div>
-                    <div style={{ fontSize: 11, color: t.ink3 }}>
-                      {c.tier} · {c.funded_count} loans{c.fico ? ` · FICO ${c.fico}` : ""}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, fontFeatureSettings: '"tnum"' }}>
-                      {QC_FMT.short(Number(c.funded_total))}
-                    </div>
-                    <div style={{ fontSize: 10.5, color: t.ink3 }}>funded</div>
-                  </div>
-                </Link>
-              ))}
-            {clients.length === 0 && (
-              <div style={{ padding: 16, fontSize: 13, color: t.ink3, textAlign: "center" }}>
-                No clients yet.
-              </div>
-            )}
-          </div>
-        </Card>
+        <TopBrokersPanel />
       </div>
     </div>
   );
@@ -489,6 +448,496 @@ function isSameDay(a: Date, b: Date): boolean {
     a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
+  );
+}
+
+// ── Today's Market Rates ────────────────────────────────────────────────
+//
+// Driven by the FRED API (services/fred.py). Each product card maps to a
+// FRED series via PRODUCT_TO_SERIES below. The displayed rate is:
+//
+//     Estimated Interest Rate = Index (FRED) + Spread (lender_spreads)
+//
+// 7-day sparkline by default. Click a card → RateDetailModal with the
+// 30-day chart + super-admin spread editor.
+
+const PRODUCT_CARDS: Array<{ id: string; label: string; term: string; sub: string; series_id: string }> = [
+  { id: "ff", label: "Fix & Flip", term: "12 mo", sub: "90% LTC / 75% ARV", series_id: "DPRIME" },
+  { id: "gu", label: "Ground Up Construction", term: "18 mo", sub: "85% LTC / 70% LTFC", series_id: "DPRIME" },
+  { id: "dscr", label: "DSCR Rental", term: "30 yr", sub: "80% LTV", series_id: "DGS10" },
+  { id: "br", label: "Bridge", term: "24 mo", sub: "75% LTV", series_id: "SOFR" },
+];
+
+function TodaysMarketRates() {
+  const { t } = useTheme();
+  const { data: series = [], isLoading } = useFredSeries();
+  const [activeSeries, setActiveSeries] = useState<string | null>(null);
+
+  const seriesById = new Map(series.map((s) => [s.series_id, s] as const));
+  const lastUpdated = series
+    .map((s) => s.current_date)
+    .filter((d): d is string => !!d)
+    .sort()
+    .at(-1);
+
+  return (
+    <>
+      <Card pad={16}>
+        <SectionLabel
+          action={
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+              {lastUpdated && (
+                <span style={{ fontSize: 11, color: t.ink3 }}>
+                  FRED · updated {new Date(lastUpdated).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                </span>
+              )}
+              <Link
+                href="/rates"
+                style={{
+                  color: t.petrol,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                view all <Icon name="arrowR" size={12} />
+              </Link>
+            </div>
+          }
+        >
+          Today&apos;s market rates
+        </SectionLabel>
+
+        {isLoading && series.length === 0 && (
+          <div style={{ padding: 16, fontSize: 13, color: t.ink3 }}>Loading rates…</div>
+        )}
+
+        {!isLoading && series.length === 0 && (
+          <div style={{ padding: 14, fontSize: 12.5, color: t.warn, background: t.warnBg, borderRadius: 9 }}>
+            No FRED data yet. Super-admin: hit <code>POST /api/v1/admin/fred/refresh</code> or wait for the morning cron.
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+          {PRODUCT_CARDS.map((card) => {
+            const s = seriesById.get(card.series_id);
+            return (
+              <RateCard
+                key={card.id}
+                t={t}
+                card={card}
+                series={s}
+                onClick={() => setActiveSeries(card.series_id)}
+              />
+            );
+          })}
+        </div>
+      </Card>
+      <RateDetailModal
+        seriesId={activeSeries}
+        productLabel={PRODUCT_CARDS.find((c) => c.series_id === activeSeries)?.label ?? null}
+        onClose={() => setActiveSeries(null)}
+      />
+    </>
+  );
+}
+
+function RateCard({
+  t,
+  card,
+  series,
+  onClick,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  card: { id: string; label: string; term: string; sub: string; series_id: string };
+  series: FredSeriesSummary | undefined;
+  onClick: () => void;
+}) {
+  const hasData = !!series && series.current_value != null;
+  const estimated = series?.estimated_rate;
+  const indexValue = series?.current_value;
+  const spreadBps = series?.spread_bps ?? 0;
+  const delta = series?.delta_bps ?? null;
+  const deltaColor = delta == null ? t.ink3 : delta < 0 ? t.profit : delta > 0 ? t.danger : t.ink3;
+  const sparkValues = (series?.history_7d ?? [])
+    .map((h) => h.value)
+    .filter((v): v is number => v != null);
+
+  return (
+    <button
+      onClick={onClick}
+      aria-label={`${card.label} rate detail`}
+      style={{
+        all: "unset",
+        cursor: "pointer",
+        background: t.surface2,
+        border: `1px solid ${t.line}`,
+        borderRadius: 12,
+        padding: 14,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>
+          {card.label} <span style={{ color: t.ink3, fontWeight: 600 }}>· {card.term}</span>
+        </div>
+        <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>{card.sub}</div>
+      </div>
+      {sparkValues.length >= 2 ? (
+        <Sparkline data={sparkValues} color={t.spark} width={180} height={40} fill />
+      ) : (
+        <div style={{ height: 40, fontSize: 11, color: t.ink4, fontStyle: "italic", display: "flex", alignItems: "center" }}>
+          {hasData ? "Building 7-day history…" : "Awaiting first FRED pull"}
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        <div
+          style={{
+            fontSize: 24,
+            fontWeight: 800,
+            color: t.ink,
+            fontFeatureSettings: '"tnum"',
+            letterSpacing: -0.4,
+          }}
+        >
+          {estimated != null ? estimated.toFixed(3) : "—"}
+          <span style={{ fontSize: 13, fontWeight: 700, color: t.ink3 }}>%</span>
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 800,
+            color: deltaColor,
+            fontFeatureSettings: '"tnum"',
+          }}
+        >
+          {delta == null ? "—" : QC_FMT.bps(delta)}
+        </div>
+      </div>
+      <div style={{ fontSize: 10.5, color: t.ink3, fontFeatureSettings: '"tnum"', display: "flex", alignItems: "center", gap: 4 }}>
+        <span style={{ color: t.ink3 }}>{card.series_id}</span>
+        <span>{indexValue != null ? `${indexValue.toFixed(2)}%` : "—"}</span>
+        <span>+</span>
+        <span>{(spreadBps / 100).toFixed(2)}%</span>
+        <span style={{ color: t.ink4 }}>(spread)</span>
+      </div>
+    </button>
+  );
+}
+
+// ── Pro Terms Card (clients only) ──────────────────────────────────────────
+function ProTermsCard({ userName, userEmail }: { userName: string; userEmail: string }) {
+  const { t } = useTheme();
+  const { data: credit } = useMyCredit();
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"first" | "rerun">("first");
+
+  const unlocked = !!credit && !!credit.fico;
+
+  return (
+    <>
+      <Card
+        pad={18}
+        style={{
+          background: unlocked ? t.profitBg : t.dangerBg,
+          borderColor: unlocked ? `${t.profit}40` : `${t.danger}40`,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              background: unlocked ? t.profit : t.danger,
+              color: "#fff",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <Icon name={unlocked ? "unlock" : "lock"} size={20} stroke={2.4} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 800,
+                color: unlocked ? t.profit : t.danger,
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+              }}
+            >
+              {unlocked ? "Pro Terms Unlocked" : "Pro Terms Locked"}
+            </div>
+            {unlocked ? (
+              <div style={{ fontSize: 12, color: t.ink2, marginTop: 1 }}>
+                FICO {credit.fico} · valid through{" "}
+                {credit.expires_at ? new Date(credit.expires_at).toLocaleDateString() : "—"}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: t.ink2, marginTop: 1 }}>
+                One soft pull unlocks all applications for 90 days · no score impact.
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => {
+              setMode(unlocked ? "rerun" : "first");
+              setOpen(true);
+            }}
+            style={{
+              ...qcBtnPrimary(t),
+              background: unlocked ? t.surface : t.danger,
+              color: unlocked ? t.ink : "#fff",
+              border: unlocked ? `1px solid ${t.line}` : "none",
+              padding: "10px 16px",
+              fontSize: 13,
+              whiteSpace: "nowrap",
+            }}
+          >
+            <Icon name={unlocked ? "refresh" : "lock"} size={14} />
+            {unlocked ? "Re-run pull" : "Unlock Pro Terms · Soft Pull"}
+          </button>
+        </div>
+      </Card>
+      <CreditPullModal
+        open={open}
+        onClose={() => setOpen(false)}
+        initialName={userName}
+        initialEmail={userEmail}
+        mode={mode}
+      />
+    </>
+  );
+}
+
+// ── Borrower / broker pipeline cards (mobile-style) ──────────────────────
+function BorrowerPipelineCards({ loans }: { loans: Loan[] }) {
+  const { t } = useTheme();
+  if (loans.length === 0) {
+    return (
+      <div style={{ padding: 16, fontSize: 13, color: t.ink3, textAlign: "center" }}>
+        No loans yet.
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+      {loans.slice(0, 3).map((l) => (
+        <Link
+          key={l.id}
+          href={`/loans/${l.id}`}
+          style={{
+            background: t.surface2,
+            border: `1px solid ${t.line}`,
+            borderRadius: 12,
+            padding: 14,
+            textDecoration: "none",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <span
+              style={{
+                fontFamily: "ui-monospace, SF Mono, monospace",
+                fontSize: 11,
+                color: t.ink3,
+                fontWeight: 700,
+              }}
+            >
+              {l.deal_id}
+            </span>
+            <StageBadge stage={STAGE_KEYS.indexOf(l.stage)} />
+          </div>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: t.ink,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {l.address}
+          </div>
+          <div style={{ fontSize: 12, color: t.ink3 }}>
+            {QC_FMT.short(Number(l.amount))} · {l.type.replace("_", " ")}
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+// ── Portfolio Health ────────────────────────────────────────────────────
+function PortfolioHealth({ loans }: { loans: Loan[] }) {
+  const { t } = useTheme();
+  const equityUnlocked = loans.reduce((s, l) => s + Number(l.amount) * 0.3, 0);
+  const dscrLoans = loans.filter((l) => l.dscr != null);
+  const globalDSCR =
+    dscrLoans.length > 0
+      ? dscrLoans.reduce((s, l) => s + Number(l.dscr ?? 0), 0) / dscrLoans.length
+      : null;
+  const activeLoans = loans.filter((l) => l.stage !== "funded").length;
+  return (
+    <Card pad={16}>
+      <SectionLabel>Portfolio Health</SectionLabel>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+        <Stat label="Equity Unlocked" value={QC_FMT.short(equityUnlocked)} sub="estimated 30% of loan vol." />
+        <Stat
+          label="Global DSCR"
+          value={globalDSCR != null ? globalDSCR.toFixed(2) : "—"}
+          sub={dscrLoans.length > 0 ? `avg of ${dscrLoans.length} loans` : "no DSCR data"}
+        />
+        <Stat label="Active loans" value={String(activeLoans)} sub={`${loans.length - activeLoans} funded`} />
+      </div>
+    </Card>
+  );
+}
+
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  const { t } = useTheme();
+  return (
+    <div
+      style={{
+        background: t.surface2,
+        border: `1px solid ${t.line}`,
+        borderRadius: 12,
+        padding: 16,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10.5,
+          fontWeight: 700,
+          color: t.ink3,
+          letterSpacing: 1.2,
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 26,
+          fontWeight: 800,
+          color: t.ink,
+          marginTop: 6,
+          fontFeatureSettings: '"tnum"',
+          letterSpacing: -0.4,
+        }}
+      >
+        {value}
+      </div>
+      {sub && <div style={{ fontSize: 11, color: t.ink3, marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+}
+
+// ── Top brokers (replaces Top exposures) ─────────────────────────────────
+function TopBrokersPanel() {
+  const { t } = useTheme();
+  // Try the leaderboard first (super-admin only). Fall back to /brokers (broader
+  // access) so the panel still renders for AE/UW roles. The fallback hook is
+  // always wired but we only consume it when the leaderboard 403s.
+  const leaderboard = useBrokerLeaderboard();
+  const fallbackBrokers = useBrokers();
+  const data: Broker[] = leaderboard.data ?? fallbackBrokers.data ?? [];
+  const sorted = [...data]
+    .sort((a, b) => Number(b.funded_total ?? 0) - Number(a.funded_total ?? 0))
+    .slice(0, 5);
+
+  return (
+    <Card pad={16}>
+      <SectionLabel
+        action={
+          <Link
+            href="/rewards"
+            style={{
+              color: t.petrol,
+              fontWeight: 700,
+              fontSize: 12,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            Leaderboard <Icon name="arrowR" size={12} />
+          </Link>
+        }
+      >
+        Top brokers
+      </SectionLabel>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {sorted.map((b) => {
+          const initials = (b.display_name ?? "?")
+            .split(" ")
+            .map((n) => n[0])
+            .slice(0, 2)
+            .join("");
+          return (
+            <div
+              key={b.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 6px",
+                borderBottom: `1px solid ${t.line}`,
+              }}
+            >
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 999,
+                  background: t.petrol,
+                  color: "#fff",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}
+              >
+                {initials}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{b.display_name}</div>
+                <div style={{ fontSize: 11, color: t.ink3 }}>
+                  {b.tier ?? "—"}
+                  {b.funded_count != null ? ` · ${b.funded_count} loans` : ""}
+                  {b.lifetime_points != null ? ` · ${b.lifetime_points.toLocaleString()} pts` : ""}
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, fontFeatureSettings: '"tnum"' }}>
+                  {QC_FMT.short(Number(b.funded_total ?? 0))}
+                </div>
+                <div style={{ fontSize: 10.5, color: t.ink3 }}>funded</div>
+              </div>
+            </div>
+          );
+        })}
+        {sorted.length === 0 && (
+          <div style={{ padding: 16, fontSize: 13, color: t.ink3, textAlign: "center" }}>
+            No brokers to show yet.
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 

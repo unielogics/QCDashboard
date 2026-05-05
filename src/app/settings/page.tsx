@@ -5,10 +5,18 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useSettings, useUpdateSettings, useUsers } from "@/hooks/useApi";
+import {
+  useCurrentUser,
+  useDeleteUser,
+  useSettings,
+  useUpdateSettings,
+  useUpdateUserRole,
+  useUsers,
+} from "@/hooks/useApi";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
 import { parseIntStrict } from "@/lib/formCoerce";
+import { InviteMemberDialog } from "@/components/InviteMemberDialog";
 import type {
   AICadenceSettings,
   AppSettingsData,
@@ -17,6 +25,7 @@ import type {
   PricingSettings,
   ReferralSettings,
   SecuritySettings,
+  SimulatorSettings,
 } from "@/lib/types";
 
 const SECTIONS = [
@@ -24,6 +33,7 @@ const SECTIONS = [
   { id: "cadence", label: "AI cadence", icon: "ai" as const },
   { id: "referrals", label: "Referrals", icon: "user" as const },
   { id: "pricing", label: "Pricing", icon: "rates" as const },
+  { id: "simulator", label: "Simulator", icon: "calc" as const },
   { id: "security", label: "Security", icon: "shield" as const },
   { id: "team", label: "Team", icon: "clients" as const },
 ] as const;
@@ -107,6 +117,22 @@ export default function SettingsPage() {
           borrower_portal_mfa: false,
           session_timeout_minutes: 30,
           ip_allowlist: [],
+        },
+        simulator: {
+          points_min: 0,
+          points_max: 3,
+          points_step: 0.5,
+          amount_min: 100_000,
+          amount_max: 5_000_000,
+          amount_step: 25_000,
+          ltv_min: 0.5,
+          ltv_max: 0.9,
+          ltv_step: 0.05,
+          advanced_mode_enabled: true,
+          show_taxes: true,
+          show_insurance: true,
+          show_hoa: true,
+          show_ltv_toggle: true,
         },
       });
     }
@@ -232,6 +258,16 @@ export default function SettingsPage() {
               canEdit={canEdit}
               dirty={dirty}
               onSave={() => handleSaveSection("security")}
+              saving={update.isPending}
+            />
+          )}
+          {section === "simulator" && (
+            <SimulatorSection
+              draft={draft}
+              setDraft={setDraft}
+              canEdit={canEdit}
+              dirty={dirty}
+              onSave={() => handleSaveSection("simulator")}
               saving={update.isPending}
             />
           )}
@@ -514,9 +550,21 @@ function SecuritySection({ draft, setDraft, canEdit, dirty, onSave, saving }: Se
 
 // ── Section: Team ───────────────────────────────────────────────────────
 
+const ASSIGNABLE_ROLES: { value: Role; label: string }[] = [
+  { value: Role.BROKER, label: "Account Exec" },
+  { value: Role.LOAN_EXEC, label: "Underwriter" },
+  { value: Role.SUPER_ADMIN, label: "Super Admin" },
+];
+
 function TeamSection({ canEdit }: { canEdit: boolean }) {
   const { t } = useTheme();
   const { data: users, isLoading, error } = useUsers();
+  const { data: me } = useCurrentUser();
+  const updateRole = useUpdateUserRole();
+  const deleteUser = useDeleteUser();
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
+
   if (!canEdit) {
     return (
       <Card pad={20}>
@@ -524,39 +572,197 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
       </Card>
     );
   }
+
+  const onChangeRole = (userId: string, role: Role) => {
+    updateRole.mutate({ userId, role });
+  };
+  const onRevoke = (userId: string) => {
+    deleteUser.mutate({ userId });
+    setConfirmRevoke(null);
+  };
+
   return (
-    <Card pad={0}>
-      <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.line}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <SectionLabel>Operator team</SectionLabel>
-        <Pill>{users?.length ?? 0} members</Pill>
-      </div>
-      {isLoading && <div style={{ padding: 16, fontSize: 13, color: t.ink3 }}>Loading…</div>}
-      {error && <div style={{ padding: 16, fontSize: 13, color: t.danger }}>Failed to load: {error instanceof Error ? error.message : String(error)}</div>}
-      {users && users.length > 0 && (
-        <div>
-          <div style={{
-            display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 2fr) 130px 120px",
-            padding: "10px 16px", fontSize: 11, fontWeight: 700, color: t.ink3,
-            textTransform: "uppercase", letterSpacing: 1.2, borderBottom: `1px solid ${t.line}`,
-          }}>
-            <div>Name</div><div>Email</div><div>Role</div><div>Joined</div>
+    <>
+      <Card pad={0}>
+        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.line}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <SectionLabel>Operator team</SectionLabel>
+            <Pill>{users?.length ?? 0} members</Pill>
           </div>
-          {users.map((u) => (
-            <div key={u.id} style={{
-              display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 2fr) 130px 120px",
-              padding: "12px 16px", borderBottom: `1px solid ${t.line}`, alignItems: "center", fontSize: 13,
-            }}>
-              <div style={{ fontWeight: 700, color: t.ink }}>{u.name}</div>
-              <div style={{ color: t.ink2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
-              <div><Pill>{u.role.replace(/_/g, " ")}</Pill></div>
-              <div style={{ color: t.ink3 }}>
-                {u.created_at ? new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
-              </div>
-            </div>
-          ))}
+          <button onClick={() => setInviteOpen(true)} style={qcBtnPrimary(t)}>
+            <Icon name="plus" size={13} stroke={2.4} /> Invite member
+          </button>
         </div>
-      )}
-      {users && users.length === 0 && <div style={{ padding: 16, fontSize: 13, color: t.ink3 }}>No team members yet.</div>}
+        {isLoading && <div style={{ padding: 16, fontSize: 13, color: t.ink3 }}>Loading…</div>}
+        {error && <div style={{ padding: 16, fontSize: 13, color: t.danger }}>Failed to load: {error instanceof Error ? error.message : String(error)}</div>}
+        {users && users.length > 0 && (
+          <div>
+            <div style={{
+              display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 2fr) 160px 120px 50px",
+              padding: "10px 16px", fontSize: 11, fontWeight: 700, color: t.ink3,
+              textTransform: "uppercase", letterSpacing: 1.2, borderBottom: `1px solid ${t.line}`,
+            }}>
+              <div>Name</div><div>Email</div><div>Role</div><div>Joined</div><div></div>
+            </div>
+            {users.map((u) => {
+              const isSelf = me?.id === u.id;
+              return (
+                <div key={u.id} style={{
+                  display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 2fr) 160px 120px 50px",
+                  padding: "10px 16px", borderBottom: `1px solid ${t.line}`, alignItems: "center", fontSize: 13,
+                  gap: 8,
+                }}>
+                  <div style={{ fontWeight: 700, color: t.ink }}>{u.name} {isSelf && <Pill>You</Pill>}</div>
+                  <div style={{ color: t.ink2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
+                  <div>
+                    <select
+                      value={u.role}
+                      onChange={(e) => onChangeRole(u.id, e.target.value as Role)}
+                      disabled={isSelf || updateRole.isPending}
+                      style={{
+                        width: "100%",
+                        padding: "6px 8px",
+                        borderRadius: 7,
+                        border: `1px solid ${t.line}`,
+                        background: t.surface2,
+                        color: t.ink2,
+                        fontFamily: "inherit",
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {ASSIGNABLE_ROLES.map((r) => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ color: t.ink3 }}>
+                    {u.created_at ? new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    {!isSelf && (
+                      confirmRevoke === u.id ? (
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button
+                            onClick={() => onRevoke(u.id)}
+                            style={{ ...qcBtn(t), padding: "4px 8px", color: t.danger, borderColor: t.danger, fontSize: 11 }}
+                            disabled={deleteUser.isPending}
+                          >
+                            Revoke
+                          </button>
+                          <button
+                            onClick={() => setConfirmRevoke(null)}
+                            style={{ ...qcBtn(t), padding: "4px 8px", fontSize: 11 }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          aria-label={`Remove ${u.name}`}
+                          onClick={() => setConfirmRevoke(u.id)}
+                          style={{
+                            all: "unset",
+                            cursor: "pointer",
+                            width: 28,
+                            height: 28,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            borderRadius: 6,
+                            color: t.ink3,
+                          }}
+                        >
+                          <Icon name="x" size={13} />
+                        </button>
+                      )
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {users && users.length === 0 && <div style={{ padding: 16, fontSize: 13, color: t.ink3 }}>No team members yet.</div>}
+      </Card>
+      <InviteMemberDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
+    </>
+  );
+}
+
+// ── Section: Simulator ──────────────────────────────────────────────────
+
+function SimulatorSection({ draft, setDraft, canEdit, dirty, onSave, saving }: SectionProps) {
+  const { t } = useTheme();
+  const s = draft.simulator;
+  const set = (patch: Partial<SimulatorSettings>) =>
+    setDraft((d) => d && ({ ...d, simulator: { ...s, ...patch } }));
+
+  return (
+    <Card pad={20}>
+      <SectionLabel action={canEdit && <SaveBtn t={t} dirty={dirty} saving={saving} onClick={onSave} />}>
+        Borrower simulator
+      </SectionLabel>
+      <div style={{ fontSize: 12.5, color: t.ink3, marginBottom: 12, lineHeight: 1.5 }}>
+        Defines the bounds the Simulate screen exposes to borrowers. Changes apply immediately to every borrower&apos;s
+        scenario builder.
+      </div>
+
+      <SectionLabel>Discount points</SectionLabel>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+        <Field t={t} label="Min">
+          <FloatInput t={t} value={s.points_min} onChange={(n) => set({ points_min: n })} disabled={!canEdit} step={0.25} />
+        </Field>
+        <Field t={t} label="Max">
+          <FloatInput t={t} value={s.points_max} onChange={(n) => set({ points_max: n })} disabled={!canEdit} step={0.25} />
+        </Field>
+        <Field t={t} label="Step">
+          <FloatInput t={t} value={s.points_step} onChange={(n) => set({ points_step: n })} disabled={!canEdit} step={0.25} />
+        </Field>
+      </div>
+
+      <div style={{ height: 12 }} />
+      <SectionLabel>Loan amount</SectionLabel>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+        <Field t={t} label="Min ($)">
+          <NumInput t={t} value={s.amount_min} onChange={(n) => set({ amount_min: n })} disabled={!canEdit} />
+        </Field>
+        <Field t={t} label="Max ($)">
+          <NumInput t={t} value={s.amount_max} onChange={(n) => set({ amount_max: n })} disabled={!canEdit} />
+        </Field>
+        <Field t={t} label="Step ($)">
+          <NumInput t={t} value={s.amount_step} onChange={(n) => set({ amount_step: n })} disabled={!canEdit} />
+        </Field>
+      </div>
+
+      <div style={{ height: 12 }} />
+      <SectionLabel>LTV (decimal, e.g. 0.75 = 75%)</SectionLabel>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+        <Field t={t} label="Min">
+          <FloatInput t={t} value={s.ltv_min} onChange={(n) => set({ ltv_min: n })} disabled={!canEdit} step={0.05} />
+        </Field>
+        <Field t={t} label="Max">
+          <FloatInput t={t} value={s.ltv_max} onChange={(n) => set({ ltv_max: n })} disabled={!canEdit} step={0.05} />
+        </Field>
+        <Field t={t} label="Step">
+          <FloatInput t={t} value={s.ltv_step} onChange={(n) => set({ ltv_step: n })} disabled={!canEdit} step={0.05} />
+        </Field>
+      </div>
+
+      <div style={{ height: 14 }} />
+      <SectionLabel>Advanced mode</SectionLabel>
+      <Toggle
+        t={t}
+        label="Enable advanced mode"
+        sub="Show the taxes / insurance / HOA / LTV inputs in the borrower simulator."
+        value={s.advanced_mode_enabled}
+        onChange={(v) => set({ advanced_mode_enabled: v })}
+        disabled={!canEdit}
+      />
+      <Toggle t={t} label="Show LTV toggle" value={s.show_ltv_toggle} onChange={(v) => set({ show_ltv_toggle: v })} disabled={!canEdit || !s.advanced_mode_enabled} />
+      <Toggle t={t} label="Show annual taxes input" value={s.show_taxes} onChange={(v) => set({ show_taxes: v })} disabled={!canEdit || !s.advanced_mode_enabled} />
+      <Toggle t={t} label="Show annual insurance input" value={s.show_insurance} onChange={(v) => set({ show_insurance: v })} disabled={!canEdit || !s.advanced_mode_enabled} />
+      <Toggle t={t} label="Show monthly HOA input" value={s.show_hoa} onChange={(v) => set({ show_hoa: v })} disabled={!canEdit || !s.advanced_mode_enabled} />
     </Card>
   );
 }

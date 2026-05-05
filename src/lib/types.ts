@@ -1,7 +1,7 @@
 // Hand-typed mirror of backend response shapes.
 // (When you scale, switch to OpenAPI codegen — for now the surface is small.)
 
-import type { LoanStage, LoanType, PropertyType, Role, AITaskPriority, AITaskSource, AITaskStatus, BrokerTier, MessageFrom, DocStatus, CalendarEventKind, EntityType, ExperienceTier, CreditPullStatus } from "./enums.generated";
+import type { LoanStage, LoanType, PropertyType, Role, AITaskPriority, AITaskSource, AITaskStatus, BrokerTier, MessageFrom, DocStatus, CalendarEventKind, EntityType, ExperienceTier, CreditPullStatus, DealChatMode, DealChatRole, FeedbackOutputType, FeedbackRating } from "./enums.generated";
 
 export interface User {
   id: string;
@@ -40,6 +40,23 @@ export interface Loan {
   // Living Loan File
   status_summary?: string | null;
   deal_health?: "on_track" | "at_risk" | "stuck";
+  living_profile?: LivingLoanProfile | null;
+}
+
+// Output of "The Associate" summarizer — see qcbackend/app/services/ai/summarizer.py
+export type MarketWarning = "Rate Pressure" | "Rate Stability" | "Rate Easing";
+export interface LivingLoanProfile {
+  current_status: string;
+  market_context: {
+    narrative: string;
+    warning: MarketWarning | null;
+  };
+  bottlenecks: string[];
+  next_actions: {
+    ai: string[];
+    broker: string[];
+  };
+  deal_health: "on_track" | "at_risk" | "stuck";
 }
 
 export interface Client {
@@ -332,12 +349,29 @@ export interface SecuritySettings {
   session_timeout_minutes: number;
   ip_allowlist: string[];
 }
+export interface SimulatorSettings {
+  points_min: number;
+  points_max: number;
+  points_step: number;
+  amount_min: number;
+  amount_max: number;
+  amount_step: number;
+  ltv_min: number;
+  ltv_max: number;
+  ltv_step: number;
+  advanced_mode_enabled: boolean;
+  show_taxes: boolean;
+  show_insurance: boolean;
+  show_hoa: boolean;
+  show_ltv_toggle: boolean;
+}
 export interface AppSettingsData {
   checklists: Record<string, LoanTypeChecklist>;
   ai_cadence: AICadenceSettings;
   referrals: ReferralSettings;
   pricing: PricingSettings;
   security: SecuritySettings;
+  simulator: SimulatorSettings;
 }
 export interface AppSettingsRead {
   data: AppSettingsData;
@@ -348,6 +382,7 @@ export type AppSettingsUpdate = Partial<{
   referrals: ReferralSettings;
   pricing: PricingSettings;
   security: SecuritySettings;
+  simulator: SimulatorSettings;
 }>;
 
 // ── Users (Team) ───────────────────────────────────────────────────────────
@@ -444,4 +479,140 @@ export interface InboundEmailResponse {
   draft_id: string | null;
   task_id: string | null;
   note: string;
+}
+
+
+// ── Deal Workspace ─────────────────────────────────────────────────────
+export interface LoanInstruction {
+  id: string;
+  loan_id: string;
+  body: string;
+  created_by: string | null;
+  is_active: boolean;
+  created_at: string;
+  deactivated_at: string | null;
+}
+
+export interface LoanChatMessage {
+  id: string;
+  loan_id: string;
+  from_role: DealChatRole;
+  from_user_id: string | null;
+  body: string;
+  client_visible: boolean;
+  created_at: string;
+}
+
+export interface ChatSendResponse {
+  kind: "message" | "instruction" | "ai_task";
+  message: LoanChatMessage | null;
+  ai_reply: LoanChatMessage | null;
+  instruction: LoanInstruction | null;
+  ai_task_id: string | null;
+  paused_until: string | null;
+}
+
+export interface AIModifyCorrection {
+  id: string;
+  loan_id: string;
+  target_message_id: string;
+  correction: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface LoanScenario {
+  id: string;
+  loan_id: string;
+  name: string;
+  discount_points: number;
+  loan_amount: number | null;
+  base_rate: number | null;
+  annual_taxes: number | null;
+  annual_insurance: number | null;
+  monthly_hoa: number | null;
+  ltv: number | null;
+  recalc_snapshot: {
+    final_rate?: number;
+    monthly_pi?: number;
+    dscr?: number | null;
+    cash_to_close_pricing?: number;
+  } | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ScenarioCreate {
+  name: string;
+  discount_points: number;
+  loan_amount?: number | null;
+  base_rate?: number | null;
+  annual_taxes?: number | null;
+  annual_insurance?: number | null;
+  monthly_hoa?: number | null;
+  ltv?: number | null;
+}
+
+export interface HudLine {
+  id: string;
+  loan_id: string;
+  code: string;
+  label: string;
+  amount: number;
+  category: string;
+  editable: boolean;
+}
+
+export interface WorkspaceState {
+  instructions: LoanInstruction[];
+  chat_messages: LoanChatMessage[];
+  scenarios: LoanScenario[];
+  hud_lines: HudLine[];
+  ai_paused_until: string | null;
+  feedback_summary: { up?: number; down?: number };
+}
+
+export interface AIFeedback {
+  id: string;
+  output_type: FeedbackOutputType;
+  output_id: string;
+  loan_id: string | null;
+  rating: FeedbackRating;
+  comment: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+// ── FRED + Lender Spreads ──────────────────────────────────────────────
+export interface FredObservation {
+  date: string; // ISO date
+  value: number | null;
+}
+
+export interface FredSeriesSummary {
+  series_id: string;
+  label: string;
+  description: string;
+  current_value: number | null;
+  current_date: string | null;
+  previous_value: number | null;
+  delta_bps: number | null;
+  spread_bps: number;
+  estimated_rate: number | null;
+  history_7d: FredObservation[];
+  history_30d: FredObservation[];
+}
+
+export interface LenderSpread {
+  id: string;
+  series_id: string;
+  spread_bps: number;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface FredRefreshResult {
+  series: Record<string, { rows: number; latest_date: string | null; latest_value: number | null }>;
+  errors: Record<string, string>;
 }

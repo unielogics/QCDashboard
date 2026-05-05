@@ -10,12 +10,15 @@ import type {
   Activity,
   AIChatRequest,
   AIChatResponse,
+  AIFeedback,
   AITask,
   AITaskDecisionRequest,
+  AIModifyCorrection,
   AppSettingsRead,
   AppSettingsUpdate,
   Broker,
   CalendarEvent,
+  ChatSendResponse,
   Client,
   CreditPull,
   DashboardReport,
@@ -23,24 +26,33 @@ import type {
   DocumentUploadInitResponse,
   EmailDraft,
   EmailDraftDecisionRequest,
+  FredRefreshResult,
+  FredSeriesSummary,
   GroupedResults,
+  HudLine,
   InboundEmailRequest,
   InboundEmailResponse,
+  LenderSpread,
   Loan,
+  LoanChatMessage,
+  LoanInstruction,
   LoanParticipant,
   LoanParticipantCreate,
   LoanParticipantUpdate,
+  LoanScenario,
   Message,
   MetaResponse,
   RateSKU,
   RecalcResponse,
+  ScenarioCreate,
   SmartIntakePayload,
   SmartIntakeResponse,
   StageTransitionRequest,
   SummaryRefreshResponse,
   UserRow,
+  WorkspaceState,
 } from "@/lib/types";
-import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, PropertyType } from "@/lib/enums.generated";
+import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, PropertyType, Role, DealChatMode, FeedbackOutputType, FeedbackRating } from "@/lib/enums.generated";
 
 function useDevUser(): string {
   return useActiveProfile().email;
@@ -289,6 +301,86 @@ export function useUsers() {
   });
 }
 
+export function useInviteUser() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    // invalidates: ["users"]
+    mutationFn: (body: { email: string; name: string; role: Role }) =>
+      apiCall<UserRow>("/users", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+}
+
+export function useUpdateUserRole() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    // invalidates: ["users"]
+    mutationFn: ({ userId, ...patch }: { userId: string; role?: Role; name?: string }) =>
+      apiCall<UserRow>(`/users/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+}
+
+export function useDeleteUser() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    // invalidates: ["users"]
+    mutationFn: ({ userId }: { userId: string }) =>
+      apiCall<void>(`/users/${userId}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+}
+
+// Borrower-self credit pull (mirrors mobile useCurrentCredit / useStartCreditPull).
+// The backend derives client_id from the authenticated user's `user.client.id`,
+// so no client_id is required in the request body.
+export function useMyCredit() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["my-credit", devUser],
+    queryFn: () => apiCall<CreditPull | null>("/credit/current?client_id=self"),
+  });
+}
+
+export function useStartMyCreditPull() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      legal_first_name: string;
+      legal_last_name: string;
+      dob: string;
+      street: string;
+      city: string;
+      state: string;
+      zip: string;
+      phone: string;
+      email: string;
+      last4_ssn: string;
+      fcra_consent: boolean;
+    }) =>
+      apiCall<CreditPull>("/credit/pull", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-credit", devUser] });
+      qc.invalidateQueries({ queryKey: ["credit"] });
+    },
+  });
+}
+
 export function useAIChat() {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
@@ -433,18 +525,20 @@ export function useRecalc() {
     // invalidates: ["loan", loanId]
     mutationFn: ({
       loanId,
-      discount_points,
-      loan_amount,
-      base_rate,
+      ...body
     }: {
       loanId: string;
       discount_points: number;
       loan_amount?: number;
       base_rate?: number;
+      annual_taxes?: number;
+      annual_insurance?: number;
+      monthly_hoa?: number;
+      ltv?: number;
     }) =>
       apiCall<RecalcResponse>(`/loans/${loanId}/recalc`, {
         method: "POST",
-        body: JSON.stringify({ discount_points, loan_amount, base_rate }),
+        body: JSON.stringify(body),
       }),
     onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ["loan", vars.loanId] }),
   });
@@ -676,5 +770,276 @@ export function useCreditPull() {
         body: JSON.stringify(payload),
       }),
     onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ["credit", vars.client_id] }),
+  });
+}
+
+// ── Deal Workspace ─────────────────────────────────────────────────────────
+
+export function useDealWorkspace(loanId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["workspace", loanId, devUser],
+    queryFn: () => apiCall<WorkspaceState>(`/loans/${loanId}/workspace/state`),
+    enabled: !!loanId,
+  });
+}
+
+export function useLoanInstructions(loanId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["loanInstructions", loanId, devUser],
+    queryFn: () => apiCall<LoanInstruction[]>(`/loans/${loanId}/instructions`),
+    enabled: !!loanId,
+  });
+}
+
+export function useCreateInstruction() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ loanId, body }: { loanId: string; body: string }) =>
+      apiCall<LoanInstruction>(`/loans/${loanId}/instructions`, {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["loanInstructions", vars.loanId] });
+      qc.invalidateQueries({ queryKey: ["workspace", vars.loanId] });
+    },
+  });
+}
+
+export function useDeactivateInstruction() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ loanId, instructionId }: { loanId: string; instructionId: string }) =>
+      apiCall<void>(`/loans/${loanId}/instructions/${instructionId}`, { method: "DELETE" }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["loanInstructions", vars.loanId] });
+      qc.invalidateQueries({ queryKey: ["workspace", vars.loanId] });
+    },
+  });
+}
+
+export function useDealChat(loanId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["dealChat", loanId, devUser],
+    queryFn: () => apiCall<LoanChatMessage[]>(`/loans/${loanId}/chat`),
+    enabled: !!loanId,
+  });
+}
+
+export function useSendDealChat() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ loanId, body, mode }: { loanId: string; body: string; mode: DealChatMode }) =>
+      apiCall<ChatSendResponse>(`/loans/${loanId}/chat`, {
+        method: "POST",
+        body: JSON.stringify({ body, mode }),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["dealChat", vars.loanId] });
+      qc.invalidateQueries({ queryKey: ["workspace", vars.loanId] });
+      qc.invalidateQueries({ queryKey: ["loanInstructions", vars.loanId] });
+      qc.invalidateQueries({ queryKey: ["aiTasks"] });
+    },
+  });
+}
+
+export function useAttachAIModifyCorrection() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      loanId,
+      messageId,
+      correction,
+    }: {
+      loanId: string;
+      messageId: string;
+      correction: string;
+    }) =>
+      apiCall<AIModifyCorrection>(`/loans/${loanId}/chat/${messageId}/correction`, {
+        method: "POST",
+        body: JSON.stringify({ correction }),
+      }),
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ["dealChat", vars.loanId] }),
+  });
+}
+
+export function useResumeAI() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ loanId }: { loanId: string }) =>
+      apiCall<void>(`/loans/${loanId}/ai/resume`, { method: "POST" }),
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ["workspace", vars.loanId] }),
+  });
+}
+
+export function useLoanScenarios(loanId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["loanScenarios", loanId, devUser],
+    queryFn: () => apiCall<LoanScenario[]>(`/loans/${loanId}/scenarios`),
+    enabled: !!loanId,
+  });
+}
+
+export function useSaveScenario() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ loanId, ...body }: { loanId: string } & ScenarioCreate) =>
+      apiCall<LoanScenario>(`/loans/${loanId}/scenarios`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["loanScenarios", vars.loanId] });
+      qc.invalidateQueries({ queryKey: ["workspace", vars.loanId] });
+    },
+  });
+}
+
+export function useDeleteScenario() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ loanId, scenarioId }: { loanId: string; scenarioId: string }) =>
+      apiCall<void>(`/loans/${loanId}/scenarios/${scenarioId}`, { method: "DELETE" }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["loanScenarios", vars.loanId] });
+      qc.invalidateQueries({ queryKey: ["workspace", vars.loanId] });
+    },
+  });
+}
+
+export function useUpdateHudLine() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      loanId,
+      lineId,
+      ...patch
+    }: {
+      loanId: string;
+      lineId: string;
+      label?: string;
+      amount?: number;
+      category?: string;
+    }) =>
+      apiCall<HudLine>(`/loans/${loanId}/hud/${lineId}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["workspace", vars.loanId] });
+      qc.invalidateQueries({ queryKey: ["loan", vars.loanId] });
+    },
+  });
+}
+
+// ── AI Feedback ────────────────────────────────────────────────────────────
+
+export function useFeedbackForOutput(
+  outputType: FeedbackOutputType | null,
+  outputId: string | null,
+) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["aiFeedback", outputType, outputId, devUser],
+    queryFn: () =>
+      apiCall<AIFeedback[]>(
+        `/ai-feedback?output_type=${outputType}&output_id=${outputId}`,
+      ),
+    enabled: !!outputType && !!outputId,
+  });
+}
+
+export function useUpsertFeedback() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      output_type: FeedbackOutputType;
+      output_id: string;
+      loan_id?: string | null;
+      rating: FeedbackRating;
+      comment?: string | null;
+    }) =>
+      apiCall<AIFeedback>("/ai-feedback", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["aiFeedback", vars.output_type, vars.output_id] });
+      if (vars.loan_id) qc.invalidateQueries({ queryKey: ["workspace", vars.loan_id] });
+    },
+  });
+}
+
+// ── FRED + Lender Spreads ──────────────────────────────────────────────────
+
+export function useFredSeries() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["fredSeries", devUser],
+    queryFn: () => apiCall<FredSeriesSummary[]>("/fred/series"),
+    staleTime: 5 * 60 * 1000, // 5 min — cron updates daily
+  });
+}
+
+export function useFredSeriesDetail(seriesId: string | null, days = 30) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["fredSeries", seriesId, days, devUser],
+    queryFn: () => apiCall<FredSeriesSummary>(`/fred/series/${seriesId}?days=${days}`),
+    enabled: !!seriesId,
+  });
+}
+
+export function useRefreshFred() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiCall<FredRefreshResult>("/admin/fred/refresh", { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["fredSeries"] }),
+  });
+}
+
+export function useLenderSpreads() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lenderSpreads", devUser],
+    queryFn: () => apiCall<LenderSpread[]>("/lender-spreads"),
+  });
+}
+
+export function useUpsertLenderSpread() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { series_id: string; spread_bps: number; notes?: string | null }) =>
+      apiCall<LenderSpread>("/lender-spreads", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["lenderSpreads"] });
+      qc.invalidateQueries({ queryKey: ["fredSeries"] });
+    },
   });
 }

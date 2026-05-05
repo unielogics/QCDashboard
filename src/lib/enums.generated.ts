@@ -20,7 +20,8 @@ export const AITaskSource = {
   CALENDAR: "calendar",
   DOCUMENTS: "documents",
   PIPELINE: "pipeline",
-  RATES: "rates"
+  RATES: "rates",
+  BROKER_SUGGESTION: "broker_suggestion"
 } as const;
 export type AITaskSource = (typeof AITaskSource)[keyof typeof AITaskSource];
 export const AITaskSourceOptions = [
@@ -30,8 +31,40 @@ export const AITaskSourceOptions = [
   { value: "calendar", label: "Calendar" },
   { value: "documents", label: "Documents" },
   { value: "pipeline", label: "Pipeline" },
-  { value: "rates", label: "Rates" }
+  { value: "rates", label: "Rates" },
+  { value: "broker_suggestion", label: "Broker Suggestion" }
 ] as const;
+
+// Deal Workspace enums (added by hand — keep in sync with app/enums.py)
+export const DealChatRole = {
+  AI: "ai",
+  SUPER_ADMIN: "super_admin",
+  BROKER_INTERNAL: "broker_internal",
+  CLIENT: "client"
+} as const;
+export type DealChatRole = (typeof DealChatRole)[keyof typeof DealChatRole];
+
+export const DealChatMode = {
+  CHAT: "chat",
+  INSTRUCT: "instruct",
+  BROKER_QUESTION: "broker_question",
+  BROKER_SUGGESTION: "broker_suggestion"
+} as const;
+export type DealChatMode = (typeof DealChatMode)[keyof typeof DealChatMode];
+
+export const FeedbackOutputType = {
+  AI_TASK: "ai_task",
+  CHAT_REPLY: "chat_reply",
+  EMAIL_DRAFT: "email_draft",
+  SUMMARY: "summary"
+} as const;
+export type FeedbackOutputType = (typeof FeedbackOutputType)[keyof typeof FeedbackOutputType];
+
+export const FeedbackRating = {
+  UP: "up",
+  DOWN: "down"
+} as const;
+export type FeedbackRating = (typeof FeedbackRating)[keyof typeof FeedbackRating];
 
 export const AITaskStatus = {
   PENDING: "pending",

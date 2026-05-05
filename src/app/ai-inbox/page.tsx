@@ -6,9 +6,11 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useAITasks, useAITaskDecision } from "@/hooks/useApi";
+import { FeedbackOutputType } from "@/lib/enums.generated";
 import type { AITask } from "@/lib/types";
+import { FeedbackWidget } from "@/components/FeedbackWidget";
 
-const SOURCE_FILTERS = ["all", "underwriting", "messages", "risk", "calendar", "documents", "pipeline", "rates"] as const;
+const SOURCE_FILTERS = ["all", "underwriting", "messages", "risk", "calendar", "documents", "pipeline", "rates", "broker_suggestion"] as const;
 type SourceFilter = (typeof SOURCE_FILTERS)[number];
 
 const PRIORITY_FILTERS = ["all", "high", "medium", "low"] as const;
@@ -77,7 +79,13 @@ export default function AIInboxPage() {
               cursor: "pointer",
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                <Pill>{task.source}</Pill>
+                {task.source === "broker_suggestion" ? (
+                  <Pill bg={t.goldSoft} color={t.gold}>
+                    <Icon name="user" size={9} stroke={2.4} /> broker suggestion
+                  </Pill>
+                ) : (
+                  <Pill>{task.source}</Pill>
+                )}
                 <Pill bg={task.priority === "high" ? t.dangerBg : task.priority === "medium" ? t.warnBg : t.chip} color={task.priority === "high" ? t.danger : task.priority === "medium" ? t.warn : t.ink2}>
                   {task.priority}
                 </Pill>
@@ -277,6 +285,17 @@ function Detail({ task }: { task: AITask }) {
               background: task.confidence >= 0.85 ? t.profit : task.confidence >= 0.7 ? t.warn : t.danger,
             }} />
           </div>
+        </div>
+
+        {/* Operator feedback — rolls into 'avoid these patterns' on the next
+            AI run for this loan (services/ai/context.assemble_loan_context). */}
+        <div style={{ marginTop: 18 }}>
+          <SectionLabel>Operator feedback</SectionLabel>
+          <FeedbackWidget
+            outputType={FeedbackOutputType.AI_TASK}
+            outputId={task.id}
+            loanId={task.loan_id ?? null}
+          />
         </div>
       </div>
 
