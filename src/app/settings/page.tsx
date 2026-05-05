@@ -56,10 +56,12 @@ export default function SettingsPage() {
   const { t } = useTheme();
   const profile = useActiveProfile();
   const [section, setSection] = useState<SectionId>("checklists");
-  const { data: settingsData, isLoading } = useSettings();
+  const { data: settingsData, isLoading, error } = useSettings();
   const update = useUpdateSettings();
 
-  // Local working copy — flushed to server on Save.
+  // Local working copy — flushed to server on Save. If the server doesn't
+  // expose /settings yet (older backend deploy), seed from the typed defaults
+  // so the UI is still navigable in read-only mode.
   const [draft, setDraft] = useState<AppSettingsData | null>(null);
   const [savedFlash, setSavedFlash] = useState<string | null>(null);
   const [errFlash, setErrFlash] = useState<string | null>(null);
@@ -67,8 +69,48 @@ export default function SettingsPage() {
   useEffect(() => {
     if (settingsData?.data && !draft) {
       setDraft(settingsData.data);
+    } else if (error && !draft) {
+      // Backend doesn't have /settings yet — fall back to local defaults so the
+      // page renders. Save buttons will surface the same error on click.
+      setDraft({
+        checklists: {},
+        ai_cadence: {
+          morning_digest: "08:00",
+          evening_summary: "17:30",
+          auto_nudge_borrower: true,
+          auto_escalate_overdue: true,
+          auto_draft_replies: true,
+          anomaly_alerts: true,
+          weekend_ops: false,
+          confidence_floor_default: 0.8,
+        },
+        referrals: {
+          require_approval: true,
+          auto_link_from_url: true,
+          block_re_attribution: true,
+          notify_broker_on_signup: true,
+          points_per_dollar: 1.0,
+          refi_multiplier: 1.25,
+          expiry_days: 365,
+          dispute_sla_business_days: 5,
+        },
+        pricing: {
+          daily_pull_time: "07:00",
+          auto_publish_threshold_bps: 25,
+          notify_clients_on_change: true,
+          lock_window_business_days: 5,
+        },
+        security: {
+          sso_enabled: true,
+          mfa_enforced: true,
+          mfa_renewal_days: 14,
+          borrower_portal_mfa: false,
+          session_timeout_minutes: 30,
+          ip_allowlist: [],
+        },
+      });
     }
-  }, [settingsData?.data, draft]);
+  }, [settingsData?.data, error, draft]);
 
   const dirty = useMemo(() => {
     if (!draft || !settingsData?.data) return false;
@@ -93,15 +135,30 @@ export default function SettingsPage() {
     }
   };
 
-  if (isLoading || !draft) {
+  if (isLoading && !draft) {
     return <div style={{ color: t.ink3, padding: 16, fontSize: 13 }}>Loading settings…</div>;
+  }
+
+  if (!draft) {
+    // Final fallback — should be unreachable since useEffect seeds defaults
+    // on either success or error.
+    return (
+      <div style={{ padding: 16 }}>
+        <Pill bg={t.dangerBg} color={t.danger}>Could not load settings</Pill>
+      </div>
+    );
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>Settings</h1>
         {canEdit ? <Pill bg={t.brandSoft} color={t.brand}>Editing as super-admin</Pill> : <Pill bg={t.warnBg} color={t.warn}>Read-only — super-admin required</Pill>}
+        {error && (
+          <Pill bg={t.warnBg} color={t.warn}>
+            Backend /settings not deployed yet — preview mode (saves disabled)
+          </Pill>
+        )}
         {savedFlash && <Pill bg={t.profitBg} color={t.profit}>✓ {savedFlash}</Pill>}
         {errFlash && <Pill bg={t.dangerBg} color={t.danger}>{errFlash}</Pill>}
       </div>
