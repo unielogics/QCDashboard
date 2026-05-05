@@ -55,7 +55,7 @@ export default function CalendarPage() {
               {byDay[day].map((ev) => (
                 <div key={ev.id} style={{ display: "flex", gap: 12, padding: 10, borderRadius: 10, border: `1px solid ${t.line}`, alignItems: "center" }}>
                   <div style={{ width: 56, fontSize: 12, fontWeight: 700, color: t.ink2 }}>
-                    {new Date(ev.starts_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: false })}
+                    {new Date(ev.starts_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{ev.title}</div>

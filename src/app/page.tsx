@@ -71,7 +71,7 @@ export default function DashboardPage() {
   const isClient = user?.role === Role.CLIENT;
 
   const datelineDate = today.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
-  const datelineTime = today.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: false });
+  const datelineTime = today.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 
   return (
     <div
@@ -350,7 +350,7 @@ export default function DashboardPage() {
                       fontFeatureSettings: '"tnum"',
                     }}
                   >
-                    {new Date(ev.starts_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: false })}
+                    {new Date(ev.starts_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink, lineHeight: 1.4 }}>{ev.title}</div>
