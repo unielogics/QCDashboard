@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Avatar } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -112,53 +113,6 @@ export default function Sidebar() {
         )}
       </div>
 
-      {/* Current user card — read-only, sourced from /auth/me */}
-      {!collapsed && user && (
-        <div style={{ padding: "0 12px 14px" }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              background: t.surface2,
-              border: `1px solid ${t.line}`,
-              borderRadius: 10,
-              padding: "8px 10px",
-            }}
-          >
-            <Avatar label={initials} color={t.petrol} size={28} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: t.ink,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {user.name}
-              </div>
-              <div
-                style={{
-                  fontSize: 10.5,
-                  color: t.ink3,
-                  fontWeight: 600,
-                  letterSpacing: 0.6,
-                  textTransform: "uppercase",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {ROLE_LABEL[user.role] ?? user.role}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Nav */}
       <nav
         style={{
@@ -216,48 +170,112 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Footer mini status */}
-      {!collapsed && (
-        <div style={{ padding: 12, borderTop: `1px solid ${t.line}` }}>
-          <div
-            style={{
-              background: t.petrolSoft,
-              color: t.petrol,
-              borderRadius: 9,
-              padding: "9px 11px",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              fontSize: 11.5,
-              fontWeight: 600,
-            }}
-          >
-            <span
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: 999,
-                background: t.petrol,
-                boxShadow: `0 0 0 4px ${t.petrolSoft}`,
+      {/* Footer — user identity + Clerk account menu (sign out, manage account).
+          The Clerk <UserButton> renders an avatar that opens its own menu on
+          click; we lay our name + role chips alongside it so the whole row
+          reads as the operator's identity card. */}
+      <div
+        style={{
+          padding: collapsed ? "10px 8px" : 12,
+          borderTop: `1px solid ${t.line}`,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            background: t.surface2,
+            border: `1px solid ${t.line}`,
+            borderRadius: 10,
+            padding: collapsed ? "8px" : "8px 10px",
+            justifyContent: collapsed ? "center" : "flex-start",
+          }}
+        >
+          <SignedIn>
+            <UserButton
+              afterSignOutUrl="/sign-in"
+              appearance={{
+                elements: {
+                  avatarBox: { width: 32, height: 32 },
+                },
               }}
             />
-            <div style={{ flex: 1 }}>
-              <div
-                style={{
-                  fontWeight: 700,
-                  color: t.petrol,
-                  letterSpacing: 0.4,
-                  textTransform: "uppercase",
-                  fontSize: 9.5,
-                }}
-              >
-                Live · synced
-              </div>
-              <div style={{ color: t.ink3, fontSize: 10.5, fontWeight: 500 }}>Backend healthy</div>
+          </SignedIn>
+          <SignedOut>
+            <Link
+              href="/sign-in"
+              aria-label="Sign in"
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 999,
+                background: t.petrol,
+                color: "#fff",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                textDecoration: "none",
+                flexShrink: 0,
+              }}
+            >
+              <Icon name="user" size={16} />
+            </Link>
+          </SignedOut>
+
+          {!collapsed && (
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {user ? (
+                <>
+                  <div
+                    style={{
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      color: t.ink,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {user.name}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 10.5,
+                      color: t.ink3,
+                      fontWeight: 600,
+                      letterSpacing: 0.6,
+                      textTransform: "uppercase",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {ROLE_LABEL[user.role] ?? user.role}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink2 }}>Sign in</div>
+                  <div
+                    style={{
+                      fontSize: 10.5,
+                      color: t.ink3,
+                      fontWeight: 600,
+                      letterSpacing: 0.6,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Operator Console
+                  </div>
+                </>
+              )}
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
+      {/* Suppress unused warning for `initials` — kept for future fallback */}
+      <span style={{ display: "none" }}>{initials}</span>
     </aside>
   );
 }

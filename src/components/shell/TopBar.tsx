@@ -1,7 +1,5 @@
 "use client";
 
-import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
-import Link from "next/link";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import { useUI } from "@/store/ui";
@@ -165,7 +163,8 @@ export default function TopBar() {
           />
         </button>
 
-        {/* Co-pilot toggle — only for non-client roles, with pending-task badge */}
+        {/* Co-pilot toggle — only for non-client roles, with pending-task badge.
+            Account / sign-out controls live in the sidebar footer now. */}
         {!isClient && (
           <button
             onClick={() => setAiOpen(!aiOpen)}
@@ -202,27 +201,6 @@ export default function TopBar() {
             )}
           </button>
         )}
-
-        {/* Auth control — Clerk handles the actual sign-in / avatar menu */}
-        <SignedIn>
-          <UserButton afterSignOutUrl="/sign-in" />
-        </SignedIn>
-        <SignedOut>
-          <Link
-            href="/sign-in"
-            style={{
-              padding: "7px 12px",
-              borderRadius: 9,
-              background: t.brand,
-              color: t.inverse,
-              fontSize: 12.5,
-              fontWeight: 700,
-              textDecoration: "none",
-            }}
-          >
-            Sign in
-          </Link>
-        </SignedOut>
       </div>
     </header>
   );
