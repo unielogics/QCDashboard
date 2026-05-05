@@ -9,6 +9,11 @@ export const metadata: Metadata = {
   description: "AI-driven brokerage underwriting platform for commercial real estate.",
 };
 
+// Every screen uses Clerk auth + react-query — no static prerender.
+// This forces SSR for every route, which is what we want behind Clerk middleware.
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider>
