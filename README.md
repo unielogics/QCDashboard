@@ -12,6 +12,10 @@ Visit http://localhost:3000
 
 The backend (qcbackend) must be running at `NEXT_PUBLIC_API_URL` (default http://localhost:8000) for data to render. Without Clerk keys, the backend uses dev-mode auth and treats every request as a seeded super_admin.
 
+## Production
+
+Hosted on **AWS Amplify** at `app.qualifiedcommercial.com`. Build spec lives at [`amplify.yml`](amplify.yml). Pushes to `main` auto-build & deploy via Amplify's GitHub integration.
+
 ## Structure
 - `src/app/` — Next.js 14 App Router pages
 - `src/components/design-system/` — ported from `.design/.../primitives*.jsx`
