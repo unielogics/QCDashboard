@@ -5,6 +5,27 @@ frontend:
       commands:
         - npm install -g pnpm@10.33.3
         - pnpm install --frozen-lockfile
+        # Amplify quirk: env vars set in the console reach the build phase but
+        # don't always flow into the SSR Lambda runtime. Writing them to
+        # .env.production guarantees Next.js loads them at request time too.
+        - |
+          set -e
+          : > .env.production
+          for var in NEXT_PUBLIC_API_URL \
+                    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
+                    CLERK_SECRET_KEY \
+                    NEXT_PUBLIC_CLERK_SIGN_IN_URL \
+                    NEXT_PUBLIC_CLERK_SIGN_UP_URL \
+                    NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL \
+                    NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL ; do
+            val="${!var-}"
+            if [ -n "$val" ]; then
+              echo "$var=$val" >> .env.production
+              echo "  ✓ exported $var (${#val} chars)"
+            else
+              echo "  ✗ MISSING $var — set it in Amplify console → App settings → Environment variables"
+            fi
+          done
     build:
       commands:
         - pnpm build
