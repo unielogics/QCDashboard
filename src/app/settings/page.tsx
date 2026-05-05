@@ -78,7 +78,11 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (settingsData?.data && !draft) {
-      setDraft(settingsData.data);
+      // Backfill any sections that older AppSettings rows pre-date. Without
+      // this, switching to e.g. the Simulator section crashes with
+      // "Cannot read properties of undefined (reading 'points_min')" because
+      // the backend's persisted JSONB has no `simulator` block.
+      setDraft(withDefaults(settingsData.data));
     } else if (error && !draft) {
       // Backend doesn't have /settings yet — fall back to local defaults so the
       // page renders. Save buttons will surface the same error on click.
@@ -846,4 +850,63 @@ function SaveBtn({ t, dirty, saving, onClick }: { t: ReturnType<typeof useTheme>
       <Icon name="check" size={13} /> {saving ? "Saving…" : "Save section"}
     </button>
   );
+}
+
+// Defensive normalizer — fills in any AppSettingsData section that the
+// backend's persisted JSONB blob doesn't have yet. Older rows pre-date
+// the simulator section; rendering it without these defaults crashes.
+function withDefaults(data: AppSettingsData): AppSettingsData {
+  return {
+    checklists: data.checklists ?? {},
+    ai_cadence: data.ai_cadence ?? {
+      morning_digest: "08:00",
+      evening_summary: "17:30",
+      auto_nudge_borrower: true,
+      auto_escalate_overdue: true,
+      auto_draft_replies: true,
+      anomaly_alerts: true,
+      weekend_ops: false,
+      confidence_floor_default: 0.8,
+    },
+    referrals: data.referrals ?? {
+      require_approval: true,
+      auto_link_from_url: true,
+      block_re_attribution: true,
+      notify_broker_on_signup: true,
+      points_per_dollar: 1.0,
+      refi_multiplier: 1.25,
+      expiry_days: 365,
+      dispute_sla_business_days: 5,
+    },
+    pricing: data.pricing ?? {
+      daily_pull_time: "07:00",
+      auto_publish_threshold_bps: 25,
+      notify_clients_on_change: true,
+      lock_window_business_days: 5,
+    },
+    security: data.security ?? {
+      sso_enabled: true,
+      mfa_enforced: true,
+      mfa_renewal_days: 14,
+      borrower_portal_mfa: false,
+      session_timeout_minutes: 30,
+      ip_allowlist: [],
+    },
+    simulator: data.simulator ?? {
+      points_min: 0,
+      points_max: 3,
+      points_step: 0.5,
+      amount_min: 100_000,
+      amount_max: 5_000_000,
+      amount_step: 25_000,
+      ltv_min: 0.5,
+      ltv_max: 0.9,
+      ltv_step: 0.05,
+      advanced_mode_enabled: true,
+      show_taxes: true,
+      show_insurance: true,
+      show_hoa: true,
+      show_ltv_toggle: true,
+    },
+  };
 }

@@ -1,17 +1,21 @@
 "use client";
 
-// Simulator — borrower scenario calculator. Ports qcmobile/app/(tabs)/simulator.tsx
-// and adds an "Advanced" toggle that exposes taxes / insurance / HOA / LTV
-// overrides, all clamped to the super-admin SimulatorSettings ranges.
+// Standalone Simulator — two modes:
+//   - "Free calc"   : punch in the loan parameters; no loan record required
+//                     (POST /loans/calc). Default for fresh users.
+//   - "From loan"   : pick an existing loan from your pipeline and tweak
+//                     its terms (POST /loans/{id}/recalc). Behaves like the
+//                     loan-scoped simulator inside the Deal Workspace tab.
 
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useLoans, useRecalc, useSettings } from "@/hooks/useApi";
+import { useFreeCalc, useLoans, useRecalc, useSettings } from "@/hooks/useApi";
+import { LoanType, PropertyType } from "@/lib/enums.generated";
 import { QC_FMT } from "@/components/design-system/tokens";
-import type { SimulatorSettings } from "@/lib/types";
+import type { RecalcResponse, SimulatorSettings } from "@/lib/types";
 
 const DEFAULT_SIM: SimulatorSettings = {
   points_min: 0,
@@ -30,32 +34,215 @@ const DEFAULT_SIM: SimulatorSettings = {
   show_ltv_toggle: true,
 };
 
+const LOAN_TYPE_OPTIONS: { value: LoanType; label: string }[] = [
+  { value: LoanType.DSCR, label: "DSCR Rental (30-yr)" },
+  { value: LoanType.FIX_AND_FLIP, label: "Fix & Flip (12-mo)" },
+  { value: LoanType.GROUND_UP, label: "Ground Up (18-mo)" },
+  { value: LoanType.BRIDGE, label: "Bridge (24-mo)" },
+];
+
+type Mode = "free" | "loan";
+
 export default function SimulatorPage() {
   const { t } = useTheme();
   const { data: loans = [] } = useLoans();
   const { data: settings } = useSettings();
-  const recalc = useRecalc();
   const sim: SimulatorSettings = settings?.data?.simulator ?? DEFAULT_SIM;
 
+  const [mode, setMode] = useState<Mode>("free");
+
+  return (
+    <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Simulate</h1>
+          <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
+            Run pricing math from scratch or against any loan in your pipeline. Operators set the
+            allowed ranges in Settings → Simulator.
+          </div>
+        </div>
+        <div style={{ display: "inline-flex", gap: 4 }}>
+          <ModeButton t={t} active={mode === "free"} onClick={() => setMode("free")}>
+            <Icon name="calc" size={12} /> Free calculation
+          </ModeButton>
+          <ModeButton t={t} active={mode === "loan"} onClick={() => setMode("loan")}>
+            <Icon name="layers" size={12} /> From a loan
+          </ModeButton>
+        </div>
+      </div>
+
+      {mode === "free" ? <FreeCalcMode t={t} sim={sim} /> : <FromLoanMode t={t} sim={sim} loans={loans} />}
+    </div>
+  );
+}
+
+// ── Free-calc mode (no loan record) ────────────────────────────────────────
+
+function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: SimulatorSettings }) {
+  const calc = useFreeCalc();
+  const [type, setType] = useState<LoanType>(LoanType.DSCR);
+  const [propertyType, setPropertyType] = useState<PropertyType>(PropertyType.SFR);
+  const [amount, setAmount] = useState(500_000);
+  const [baseRate, setBaseRate] = useState(0.0775);
+  const [points, setPoints] = useState(0);
+  const [annualTaxes, setAnnualTaxes] = useState(6000);
+  const [annualInsurance, setAnnualInsurance] = useState(1800);
+  const [monthlyHoa, setMonthlyHoa] = useState(0);
+  const [monthlyRent, setMonthlyRent] = useState(4500);
+
+  const isDscr = type === LoanType.DSCR;
+
+  const pointsOptions = useMemo(() => {
+    const out: number[] = [];
+    for (let p = sim.points_min; p <= sim.points_max + 1e-9; p += sim.points_step) {
+      out.push(+p.toFixed(2));
+    }
+    return out;
+  }, [sim.points_min, sim.points_max, sim.points_step]);
+
+  const submit = () => {
+    calc.mutate({
+      type,
+      property_type: propertyType,
+      loan_amount: amount,
+      base_rate: baseRate,
+      discount_points: points,
+      annual_taxes: annualTaxes,
+      annual_insurance: annualInsurance,
+      monthly_hoa: monthlyHoa,
+      monthly_rent: isDscr ? monthlyRent : null,
+    });
+  };
+
+  return (
+    <>
+      <Card pad={16}>
+        <SectionLabel>Loan parameters</SectionLabel>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
+          <Field t={t} label="Loan type">
+            <select value={type} onChange={(e) => setType(e.target.value as LoanType)} style={inputStyle(t)}>
+              {LOAN_TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </Field>
+          <Field t={t} label="Property type">
+            <select
+              value={propertyType}
+              onChange={(e) => setPropertyType(e.target.value as PropertyType)}
+              style={inputStyle(t)}
+            >
+              <option value={PropertyType.SFR}>Single family</option>
+              <option value={PropertyType.UNITS_2_4}>2-4 units</option>
+              <option value={PropertyType.UNITS_5_8}>5-8 units</option>
+              <option value={PropertyType.MIXED_USE}>Mixed use</option>
+              <option value={PropertyType.COMMERCIAL}>Commercial</option>
+            </select>
+          </Field>
+          <Field t={t} label={`Loan amount · ${QC_FMT.usd(amount)}`}>
+            <input
+              type="range"
+              min={sim.amount_min}
+              max={sim.amount_max}
+              step={sim.amount_step}
+              value={amount}
+              onChange={(e) => setAmount(Number(e.target.value))}
+              style={{ width: "100%", accentColor: t.petrol }}
+            />
+          </Field>
+          <Field t={t} label={`Base rate · ${(baseRate * 100).toFixed(3)}%`}>
+            <input
+              type="range"
+              min={0.04}
+              max={0.15}
+              step={0.001}
+              value={baseRate}
+              onChange={(e) => setBaseRate(Number(e.target.value))}
+              style={{ width: "100%", accentColor: t.petrol }}
+            />
+          </Field>
+        </div>
+
+        <div style={{ height: 12 }} />
+        <SectionLabel>Discount points</SectionLabel>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {pointsOptions.map((p) => {
+            const active = points === p;
+            return (
+              <button
+                key={p}
+                onClick={() => setPoints(p)}
+                style={{
+                  ...qcBtn(t),
+                  minWidth: 60,
+                  justifyContent: "center",
+                  padding: "5px 10px",
+                  fontSize: 12,
+                  background: active ? t.petrol : t.surface,
+                  color: active ? "#fff" : t.ink2,
+                  border: active ? "none" : `1px solid ${t.lineStrong}`,
+                  fontFeatureSettings: '"tnum"',
+                }}
+              >
+                {p.toFixed(2)}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ height: 14 }} />
+        <SectionLabel>Carrying costs (monthly P&I and DSCR)</SectionLabel>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+          {sim.show_taxes && (
+            <NumberField t={t} label="Annual taxes ($)" value={annualTaxes} onChange={setAnnualTaxes} step={100} />
+          )}
+          {sim.show_insurance && (
+            <NumberField t={t} label="Annual insurance ($)" value={annualInsurance} onChange={setAnnualInsurance} step={100} />
+          )}
+          {sim.show_hoa && (
+            <NumberField t={t} label="Monthly HOA ($)" value={monthlyHoa} onChange={setMonthlyHoa} step={25} />
+          )}
+          {isDscr && (
+            <NumberField t={t} label="Monthly rent ($)" value={monthlyRent} onChange={setMonthlyRent} step={50} />
+          )}
+        </div>
+      </Card>
+
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button onClick={submit} disabled={calc.isPending} style={qcBtnPrimary(t)}>
+          <Icon name="refresh" size={13} /> {calc.isPending ? "Calculating…" : "Calculate"}
+        </button>
+      </div>
+
+      {calc.error && (
+        <Pill bg={t.dangerBg} color={t.danger}>
+          {calc.error instanceof Error ? calc.error.message : "Calculation failed"}
+        </Pill>
+      )}
+      {calc.data && <ResultsCard t={t} result={calc.data} />}
+    </>
+  );
+}
+
+// ── From-loan mode (existing pipeline loan) ────────────────────────────────
+
+function FromLoanMode({
+  t,
+  sim,
+  loans,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  sim: SimulatorSettings;
+  loans: ReturnType<typeof useLoans>["data"];
+}) {
+  const recalc = useRecalc();
   const [activeLoanId, setActiveLoanId] = useState<string | null>(null);
   const [points, setPoints] = useState(0);
-  const [advanced, setAdvanced] = useState(false);
-  const [loanAmount, setLoanAmount] = useState<number | "">("");
-  const [annualTaxes, setAnnualTaxes] = useState<number | "">("");
-  const [annualInsurance, setAnnualInsurance] = useState<number | "">("");
-  const [monthlyHoa, setMonthlyHoa] = useState<number | "">("");
-  const [ltv, setLtv] = useState<number | "">("");
 
-  const activeLoan = useMemo(() => loans.find((l) => l.id === activeLoanId) ?? null, [loans, activeLoanId]);
+  const activeLoan = useMemo(() => loans?.find((l) => l.id === activeLoanId) ?? null, [loans, activeLoanId]);
 
-  // When the active loan changes, seed the advanced inputs from its current values.
   useEffect(() => {
-    if (!activeLoan) return;
-    setLoanAmount(Number(activeLoan.amount));
-    setAnnualTaxes(Number(activeLoan.annual_taxes ?? 0));
-    setAnnualInsurance(Number(activeLoan.annual_insurance ?? 0));
-    setMonthlyHoa(Number(activeLoan.monthly_hoa ?? 0));
-    setLtv(activeLoan.ltv != null ? Number(activeLoan.ltv) : "");
+    if (activeLoan) setPoints(Number(activeLoan.discount_points ?? 0));
   }, [activeLoan]);
 
   const pointsOptions = useMemo(() => {
@@ -68,50 +255,21 @@ export default function SimulatorPage() {
 
   const submit = () => {
     if (!activeLoanId) return;
-    recalc.mutate({
-      loanId: activeLoanId,
-      discount_points: points,
-      ...(advanced && loanAmount !== "" ? { loan_amount: clamp(Number(loanAmount), sim.amount_min, sim.amount_max) } : {}),
-      ...(advanced && annualTaxes !== "" ? { annual_taxes: Number(annualTaxes) } : {}),
-      ...(advanced && annualInsurance !== "" ? { annual_insurance: Number(annualInsurance) } : {}),
-      ...(advanced && monthlyHoa !== "" ? { monthly_hoa: Number(monthlyHoa) } : {}),
-      ...(advanced && ltv !== "" && sim.show_ltv_toggle
-        ? { ltv: clamp(Number(ltv), sim.ltv_min, sim.ltv_max) }
-        : {}),
-    });
+    recalc.mutate({ loanId: activeLoanId, discount_points: points });
   };
 
   return (
-    <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Simulate</h1>
-          <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
-            Run a what-if against any loan in your pipeline. Operators set the allowed ranges in Settings → Simulator.
-          </div>
-        </div>
-        {sim.advanced_mode_enabled && (
-          <button
-            onClick={() => setAdvanced((v) => !v)}
-            style={{
-              ...qcBtn(t),
-              background: advanced ? t.ink : t.surface,
-              color: advanced ? t.inverse : t.ink2,
-              border: advanced ? "none" : `1px solid ${t.lineStrong}`,
-            }}
-          >
-            <Icon name="sliders" size={13} /> {advanced ? "Advanced ON" : "Advanced mode"}
-          </button>
-        )}
-      </div>
-
+    <>
       <Card pad={16}>
         <SectionLabel>Pick a loan</SectionLabel>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {loans.length === 0 && (
-            <div style={{ fontSize: 13, color: t.ink3 }}>No loans available.</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {(loans ?? []).length === 0 && (
+            <div style={{ fontSize: 13, color: t.ink3 }}>
+              No loans yet. Switch to <strong>Free calculation</strong> above, or create one from
+              the <strong>Pipeline</strong> page.
+            </div>
           )}
-          {loans.map((l) => {
+          {(loans ?? []).map((l) => {
             const active = activeLoanId === l.id;
             return (
               <button
@@ -133,7 +291,7 @@ export default function SimulatorPage() {
 
       {activeLoan && (
         <Card pad={16}>
-          <SectionLabel>Discount points (buy down)</SectionLabel>
+          <SectionLabel>Discount points</SectionLabel>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {pointsOptions.map((p) => {
               const active = points === p;
@@ -143,8 +301,10 @@ export default function SimulatorPage() {
                   onClick={() => setPoints(p)}
                   style={{
                     ...qcBtn(t),
-                    minWidth: 64,
+                    minWidth: 60,
                     justifyContent: "center",
+                    padding: "5px 10px",
+                    fontSize: 12,
                     background: active ? t.petrol : t.surface,
                     color: active ? "#fff" : t.ink2,
                     border: active ? "none" : `1px solid ${t.lineStrong}`,
@@ -155,54 +315,6 @@ export default function SimulatorPage() {
                 </button>
               );
             })}
-          </div>
-          <div style={{ fontSize: 11, color: t.ink3, marginTop: 8 }}>
-            Range: {sim.points_min.toFixed(2)} → {sim.points_max.toFixed(2)} (step {sim.points_step.toFixed(2)})
-          </div>
-        </Card>
-      )}
-
-      {activeLoan && advanced && (
-        <Card pad={16}>
-          <SectionLabel>Advanced inputs</SectionLabel>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
-            <NumberField
-              t={t}
-              label={`Loan amount (${QC_FMT.short(sim.amount_min)} – ${QC_FMT.short(sim.amount_max)})`}
-              value={loanAmount}
-              onChange={setLoanAmount}
-              step={sim.amount_step}
-              min={sim.amount_min}
-              max={sim.amount_max}
-            />
-            {sim.show_ltv_toggle && (
-              <NumberField
-                t={t}
-                label={`LTV (${(sim.ltv_min * 100).toFixed(0)}% – ${(sim.ltv_max * 100).toFixed(0)}%)`}
-                value={ltv}
-                onChange={setLtv}
-                step={sim.ltv_step}
-                min={sim.ltv_min}
-                max={sim.ltv_max}
-                hint="As a decimal (e.g. 0.75 = 75%)"
-              />
-            )}
-            {sim.show_taxes && (
-              <NumberField t={t} label="Annual taxes ($)" value={annualTaxes} onChange={setAnnualTaxes} step={100} min={0} />
-            )}
-            {sim.show_insurance && (
-              <NumberField
-                t={t}
-                label="Annual insurance ($)"
-                value={annualInsurance}
-                onChange={setAnnualInsurance}
-                step={100}
-                min={0}
-              />
-            )}
-            {sim.show_hoa && (
-              <NumberField t={t} label="Monthly HOA ($)" value={monthlyHoa} onChange={setMonthlyHoa} step={25} min={0} />
-            )}
           </div>
         </Card>
       )}
@@ -215,48 +327,84 @@ export default function SimulatorPage() {
         </div>
       )}
 
-      {recalc.data && (
-        <Card pad={20}>
-          <SectionLabel>Results</SectionLabel>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-            <ResultStat t={t} label="Final rate" value={`${(recalc.data.final_rate * 100).toFixed(3)}%`} />
-            <ResultStat t={t} label="Monthly P&I" value={QC_FMT.usd(recalc.data.monthly_pi)} />
-            {recalc.data.dscr != null && <ResultStat t={t} label="DSCR" value={recalc.data.dscr.toFixed(2)} />}
-            <ResultStat t={t} label="Cash to close" value={QC_FMT.usd(recalc.data.cash_to_close_pricing)} />
-            <ResultStat t={t} label="HUD-1 total" value={QC_FMT.usd(recalc.data.hud_total)} />
-          </div>
-          {recalc.data.warnings && recalc.data.warnings.length > 0 && (
-            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-              {recalc.data.warnings.map((w, i) => {
-                const severity = (w.severity ?? "warn") as string;
-                const isBlock = severity === "block";
-                return (
-                  <div
-                    key={(w.code ?? `w-${i}`) as string}
-                    style={{
-                      padding: 10,
-                      borderRadius: 9,
-                      background: isBlock ? t.dangerBg : t.warnBg,
-                      color: isBlock ? t.danger : t.warn,
-                      fontSize: 12.5,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {(w.message ?? JSON.stringify(w)) as string}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
-      )}
-
       {recalc.error && (
         <Pill bg={t.dangerBg} color={t.danger}>
           {recalc.error instanceof Error ? recalc.error.message : "Recalc failed"}
         </Pill>
       )}
-    </div>
+      {recalc.data && <ResultsCard t={t} result={recalc.data} />}
+    </>
+  );
+}
+
+// ── Shared bits ────────────────────────────────────────────────────────────
+
+function ResultsCard({ t, result }: { t: ReturnType<typeof useTheme>["t"]; result: RecalcResponse }) {
+  return (
+    <Card pad={20}>
+      <SectionLabel>Results</SectionLabel>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+        <ResultStat t={t} label="Final rate" value={`${(result.final_rate * 100).toFixed(3)}%`} />
+        <ResultStat t={t} label="Monthly P&I" value={QC_FMT.usd(result.monthly_pi)} />
+        {result.dscr != null ? (
+          <ResultStat t={t} label="DSCR" value={result.dscr.toFixed(2)} />
+        ) : (
+          <div />
+        )}
+        <ResultStat t={t} label="Cash to close" value={QC_FMT.usd(result.cash_to_close_pricing)} />
+        <ResultStat t={t} label="HUD-1 total" value={QC_FMT.usd(result.hud_total)} />
+      </div>
+      {result.warnings && result.warnings.length > 0 && (
+        <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+          {result.warnings.map((w, i) => {
+            const isBlock = w.severity === "block";
+            return (
+              <Pill
+                key={(w.code ?? `w-${i}`) as string}
+                bg={isBlock ? t.dangerBg : t.warnBg}
+                color={isBlock ? t.danger : t.warn}
+              >
+                {w.message}
+              </Pill>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function ModeButton({
+  t,
+  active,
+  onClick,
+  children,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        all: "unset",
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "8px 14px",
+        borderRadius: 9,
+        background: active ? t.ink : t.surface,
+        color: active ? t.inverse : t.ink2,
+        border: active ? "none" : `1px solid ${t.lineStrong}`,
+        fontSize: 12.5,
+        fontWeight: 700,
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -288,61 +436,67 @@ function ResultStat({ t, label, value }: { t: ReturnType<typeof useTheme>["t"]; 
   );
 }
 
+function Field({ t, label, children }: { t: ReturnType<typeof useTheme>["t"]; label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 10.5,
+          fontWeight: 700,
+          color: t.ink3,
+          letterSpacing: 1.0,
+          textTransform: "uppercase",
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function NumberField({
   t,
   label,
   value,
   onChange,
   step,
-  min,
-  max,
-  hint,
 }: {
   t: ReturnType<typeof useTheme>["t"];
   label: string;
-  value: number | "";
-  onChange: (v: number | "") => void;
-  step?: number;
-  min?: number;
-  max?: number;
-  hint?: string;
+  value: number;
+  onChange: (n: number) => void;
+  step: number;
 }) {
   return (
-    <div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 6 }}>
-        {label}
-      </div>
+    <Field t={t} label={label}>
       <input
         type="number"
-        value={value === "" ? "" : value}
-        onChange={(e) => {
-          const raw = e.target.value;
-          if (raw === "") return onChange("");
-          const n = Number(raw);
-          if (!Number.isFinite(n)) return;
-          onChange(n);
-        }}
+        value={value}
         step={step}
-        min={min}
-        max={max}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          borderRadius: 9,
-          background: t.surface2,
-          border: `1px solid ${t.line}`,
-          color: t.ink,
-          fontSize: 13,
-          fontFamily: "inherit",
-          outline: "none",
-          fontFeatureSettings: '"tnum"',
+        min={0}
+        onChange={(e) => {
+          const n = Number(e.target.value);
+          if (Number.isFinite(n)) onChange(n);
         }}
+        style={inputStyle(t)}
       />
-      {hint && <div style={{ fontSize: 11, color: t.ink3, marginTop: 4 }}>{hint}</div>}
-    </div>
+    </Field>
   );
 }
 
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(Math.max(n, lo), hi);
+function inputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
+  return {
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: 9,
+    background: t.surface2,
+    border: `1px solid ${t.line}`,
+    color: t.ink,
+    fontSize: 13,
+    fontFamily: "inherit",
+    outline: "none",
+    fontFeatureSettings: '"tnum"',
+  };
 }

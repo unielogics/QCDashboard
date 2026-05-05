@@ -29,7 +29,6 @@ const NAV: NavItem[] = [
   { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "cal" },
   { href: "/documents", label: "Documents", icon: "doc" },
-  { href: "/vault", label: "Vault", icon: "vault" },
   { href: "/simulator", label: "Simulate", icon: "calc" },
   { href: "/rates", label: "Rate Sheet", icon: "sliders", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
   { href: "/reports", label: "Reports", icon: "trend", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },

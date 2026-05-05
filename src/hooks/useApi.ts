@@ -1043,3 +1043,54 @@ export function useUpsertLenderSpread() {
     },
   });
 }
+
+// Manual minimal-loan creation — used by the Messages → New Thread flow when
+// a client doesn't have a loan to link a thread to. The doc-collection
+// workflow then runs via the existing per-loan-type checklist (Settings →
+// Doc checklists) and the AI cadence settings.
+export function useCreateLoan() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      client_id: string;
+      address: string;
+      type: LoanType;
+      amount: number;
+      property_type?: PropertyType;
+      city?: string | null;
+    }) =>
+      apiCall<Loan>("/loans", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["loans"] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+    },
+  });
+}
+
+// Loan-less what-if math — used by the standalone Simulator's "Free
+// calculation" mode. Backend: POST /api/v1/loans/calc.
+export function useFreeCalc() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (body: {
+      type: LoanType;
+      property_type?: PropertyType;
+      loan_amount: number;
+      base_rate: number;
+      discount_points: number;
+      term_months?: number | null;
+      monthly_rent?: number | null;
+      annual_taxes?: number;
+      annual_insurance?: number;
+      monthly_hoa?: number;
+    }) =>
+      apiCall<RecalcResponse>("/loans/calc", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  });
+}
