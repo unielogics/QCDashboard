@@ -11,7 +11,7 @@
 //   8. AI co-pilot + Top brokers (renamed from Top exposures, source swapped)
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel, Sparkline, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -26,6 +26,7 @@ import {
   useFredSeries,
   useLoans,
   useMyCredit,
+  useRefreshFred,
 } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
 import type { AITask, Broker, CalendarEvent, FredSeriesSummary, Loan } from "@/lib/types";
@@ -470,15 +471,37 @@ const PRODUCT_CARDS: Array<{ id: string; label: string; term: string; sub: strin
 
 function TodaysMarketRates() {
   const { t } = useTheme();
+  const { data: user } = useCurrentUser();
   const { data: series = [], isLoading } = useFredSeries();
+  const refreshFred = useRefreshFred();
   const [activeSeries, setActiveSeries] = useState<string | null>(null);
+  const autoRefreshFired = useRef(false);
 
   const seriesById = new Map(series.map((s) => [s.series_id, s] as const));
+  const hasAnyData = series.some((s) => s.current_value != null);
   const lastUpdated = series
     .map((s) => s.current_date)
     .filter((d): d is string => !!d)
     .sort()
     .at(-1);
+
+  // Auto-bootstrap: super-admin lands on a fresh DB, the widget triggers
+  // the cron-style refresh exactly once so the dashboard is never empty.
+  // Other roles just see the empty-state message until super-admin / the
+  // cron populates it.
+  const isSuperAdmin = user?.role === Role.SUPER_ADMIN;
+  useEffect(() => {
+    if (
+      !autoRefreshFired.current &&
+      isSuperAdmin &&
+      !isLoading &&
+      !hasAnyData &&
+      !refreshFred.isPending
+    ) {
+      autoRefreshFired.current = true;
+      refreshFred.mutate();
+    }
+  }, [isSuperAdmin, isLoading, hasAnyData, refreshFred]);
 
   return (
     <>
@@ -490,6 +513,30 @@ function TodaysMarketRates() {
                 <span style={{ fontSize: 11, color: t.ink3 }}>
                   FRED · updated {new Date(lastUpdated).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                 </span>
+              )}
+              {isSuperAdmin && (
+                <button
+                  onClick={() => refreshFred.mutate()}
+                  disabled={refreshFred.isPending}
+                  title="Force a FRED pull now (normally runs via the morning cron)"
+                  style={{
+                    all: "unset",
+                    cursor: refreshFred.isPending ? "wait" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 8px",
+                    borderRadius: 7,
+                    background: t.surface2,
+                    border: `1px solid ${t.line}`,
+                    color: t.ink2,
+                    fontSize: 11,
+                    fontWeight: 700,
+                  }}
+                >
+                  <Icon name="refresh" size={11} />
+                  {refreshFred.isPending ? "Pulling…" : "Refresh"}
+                </button>
               )}
               <Link
                 href="/rates"
@@ -511,13 +558,28 @@ function TodaysMarketRates() {
           Today&apos;s market rates
         </SectionLabel>
 
-        {isLoading && series.length === 0 && (
-          <div style={{ padding: 16, fontSize: 13, color: t.ink3 }}>Loading rates…</div>
+        {(isLoading || refreshFred.isPending) && !hasAnyData && (
+          <div style={{ padding: 14, fontSize: 12.5, color: t.ink3 }}>
+            {refreshFred.isPending ? "Pulling latest from FRED…" : "Loading rates…"}
+          </div>
         )}
 
-        {!isLoading && series.length === 0 && (
+        {!isLoading && !refreshFred.isPending && !hasAnyData && (
           <div style={{ padding: 14, fontSize: 12.5, color: t.warn, background: t.warnBg, borderRadius: 9 }}>
-            No FRED data yet. Super-admin: hit <code>POST /api/v1/admin/fred/refresh</code> or wait for the morning cron.
+            {isSuperAdmin ? (
+              <>
+                No FRED data yet — auto-pull failed. Check that <code>FRED_API_KEY</code> is set on
+                the backend, then click <strong>Refresh</strong> above.
+              </>
+            ) : (
+              <>Market data refreshing — check back shortly.</>
+            )}
+          </div>
+        )}
+
+        {refreshFred.error && (
+          <div style={{ padding: 10, fontSize: 11.5, color: t.danger, fontWeight: 700 }}>
+            FRED refresh failed: {refreshFred.error instanceof Error ? refreshFred.error.message : "unknown"}
           </div>
         )}
 

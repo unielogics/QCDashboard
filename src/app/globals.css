@@ -2,7 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body { margin: 0; padding: 0; height: 100%; box-sizing: border-box; }
+/* Theme background applied to html/body so overscroll bounce + first paint
+   never show the browser's default white. ThemeProvider sets the runtime
+   --qc-* vars on its provider div; the fallbacks here keep things sane
+   during the brief pre-hydration window and respect the user's system
+   color preference so dark-mode users don't get a white flash. */
+:root { color-scheme: light dark; --qc-bg: #F4F1EA; --qc-ink: #0B1629; --qc-line-strong: rgba(11, 22, 41, 0.16); }
+@media (prefers-color-scheme: dark) {
+  :root { --qc-bg: #06070B; --qc-ink: #F1F5F9; --qc-line-strong: rgba(255,255,255,0.14); }
+}
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  box-sizing: border-box;
+  background: var(--qc-bg);
+  color: var(--qc-ink);
+}
 *, *::before, *::after { box-sizing: inherit; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: var(--qc-line-strong); border-radius: 3px; }

@@ -43,6 +43,19 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const t = QC_TOKENS[mode];
   const d = QC_DENSITY[density];
 
+  // Mirror the theme tokens onto :root so html/body (styled in globals.css)
+  // pick up the active palette. Without this the body bg falls back to the
+  // pre-hydration default and overscroll/elastic-scroll flashes white in
+  // dark mode (and the inverted color in light mode after a toggle).
+  useEffect(() => {
+    const root = document.documentElement;
+    const vars = tokensToCssVars(t);
+    Object.entries(vars).forEach(([k, v]) => {
+      if (typeof v === "string") root.style.setProperty(k, v);
+    });
+    root.style.colorScheme = mode;
+  }, [t, mode]);
+
   const value = useMemo<ThemeCtx>(
     () => ({
       mode,

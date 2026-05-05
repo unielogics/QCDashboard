@@ -34,7 +34,6 @@ const NAV: NavItem[] = [
   { href: "/rates", label: "Rate Sheet", icon: "sliders", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
   { href: "/reports", label: "Reports", icon: "trend", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
   { href: "/rewards", label: "Rewards", icon: "trophy", roles: [Role.SUPER_ADMIN] },
-  { href: "/profile", label: "Profile", icon: "user" },
   { href: "/settings", label: "Settings", icon: "gear", roles: [Role.SUPER_ADMIN] },
 ];
 
@@ -227,7 +226,17 @@ export default function Sidebar() {
           </SignedOut>
 
           {!collapsed && (
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <Link
+              href="/profile"
+              title="Open profile"
+              style={{
+                flex: 1,
+                minWidth: 0,
+                textDecoration: "none",
+                color: "inherit",
+                cursor: "pointer",
+              }}
+            >
               {user ? (
                 <>
                   <div
@@ -273,7 +282,7 @@ export default function Sidebar() {
                   </div>
                 </>
               )}
-            </div>
+            </Link>
           )}
         </div>
       </div>
