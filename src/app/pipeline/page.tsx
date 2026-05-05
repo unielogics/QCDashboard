@@ -7,7 +7,8 @@ import { Card, Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useLoans } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
-import type { Loan } from "@/lib/types";
+import { SmartIntakeModal } from "./components/SmartIntakeModal";
+import { useActiveProfile } from "@/store/role";
 
 const STAGE_KEYS = ["prequalified", "collecting_docs", "lender_connected", "processing", "closing", "funded"] as const;
 const STAGE_LABELS = ["Prequalified", "Collecting Docs", "Lender Connected", "Processing", "Closing", "Funded"];
@@ -17,10 +18,15 @@ type SortKey = "deal_id" | "address" | "type" | "amount" | "stage" | "close_date
 export default function PipelinePage() {
   const { t } = useTheme();
   const { data: loans = [] } = useLoans();
+  const profile = useActiveProfile();
   const [view, setView] = useState<"table" | "kanban">("table");  // table default per chat2.md
   const [sortKey, setSortKey] = useState<SortKey>("amount");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [intakeOpen, setIntakeOpen] = useState(false);
+
+  // Clients can't create loans (mirrors backend role gate at qcbackend/app/routers/loans.py).
+  const canCreate = profile.role !== "client";
 
   const sorted = useMemo(() => {
     const filtered = typeFilter === "all" ? loans : loans.filter((l) => l.type === typeFilter);
@@ -56,13 +62,20 @@ export default function PipelinePage() {
           <button onClick={() => setView("table")} style={{ padding: "8px 12px", background: view === "table" ? t.brandSoft : "transparent", color: view === "table" ? t.ink : t.ink3, fontSize: 13, fontWeight: 600 }}>Table</button>
           <button onClick={() => setView("kanban")} style={{ padding: "8px 12px", background: view === "kanban" ? t.brandSoft : "transparent", color: view === "kanban" ? t.ink : t.ink3, fontSize: 13, fontWeight: 600 }}>Kanban</button>
         </div>
-        <button style={{
-          padding: "8px 14px", borderRadius: 10, background: t.brand, color: t.inverse, fontSize: 13, fontWeight: 700,
-          display: "inline-flex", alignItems: "center", gap: 6,
-        }}>
-          <Icon name="plus" size={14} /> New loan
-        </button>
+        {canCreate && (
+          <button
+            onClick={() => setIntakeOpen(true)}
+            style={{
+              padding: "8px 14px", borderRadius: 10, background: t.brand, color: t.inverse, fontSize: 13, fontWeight: 700,
+              display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", border: "none",
+            }}
+          >
+            <Icon name="plus" size={14} /> New loan
+          </button>
+        )}
       </div>
+
+      <SmartIntakeModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
 
       {view === "table" ? (
         <Card pad={0}>

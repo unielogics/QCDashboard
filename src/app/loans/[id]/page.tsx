@@ -2,58 +2,112 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, StageBadge, KPI, SectionLabel } from "@/components/design-system/primitives";
+import { Card, Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useDocuments, useLoan, useMessages, useRecalc } from "@/hooks/useApi";
+import { useDocuments, useLoan, useLoanActivity, useStageTransition } from "@/hooks/useApi";
+import { useDealChannel } from "@/hooks/useDealChannel";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { useUI } from "@/store/ui";
+import { useActiveProfile } from "@/store/role";
+import { LoanStageOptions, Role } from "@/lib/enums.generated";
+import { OverviewTab } from "./tabs/OverviewTab";
+import { TermsTab } from "./tabs/TermsTab";
+import { Hud1Tab } from "./tabs/Hud1Tab";
+import { DocsTab } from "./tabs/DocsTab";
+import { UnderwritingTab } from "./tabs/UnderwritingTab";
+import { PropertyTab } from "./tabs/PropertyTab";
+import { WireClosingTab } from "./tabs/WireClosingTab";
+import { ActivityTab } from "./tabs/ActivityTab";
+import { DealHealthPill } from "./components/DealHealthPill";
+import { ParticipantsCard } from "./components/ParticipantsCard";
+import { EmailDraftsCard } from "./components/EmailDraftsCard";
 
-const TABS = ["Overview", "Terms", "HUD-1", "Docs"] as const;
-type Tab = (typeof TABS)[number];
+const TABS = [
+  { id: "overview", label: "Overview", icon: "home" as const },
+  { id: "terms", label: "Terms", icon: "rates" as const },
+  { id: "hud", label: "HUD-1", icon: "doc" as const },
+  { id: "docs", label: "Documents", icon: "vault" as const },
+  { id: "uw", label: "Underwriting", icon: "shield" as const },
+  { id: "property", label: "Property", icon: "build" as const },
+  { id: "wire", label: "Wire & Closing", icon: "bolt" as const },
+  { id: "thread", label: "Thread", icon: "messages" as const },
+  { id: "activity", label: "Activity", icon: "trend" as const },
+] as const;
+type TabId = (typeof TABS)[number]["id"];
+
 const STAGE_KEYS = ["prequalified", "collecting_docs", "lender_connected", "processing", "closing", "funded"];
 
 export default function LoanDetailPage() {
   const params = useParams<{ id: string }>();
   const { t } = useTheme();
+  const profile = useActiveProfile();
   const setAiOpen = useUI((s) => s.setAiOpen);
   const { data: loan } = useLoan(params.id);
   const { data: docs = [] } = useDocuments(params.id);
-  const { data: messages = [] } = useMessages(params.id);
-  const recalc = useRecalc();
-  const [tab, setTab] = useState<Tab>("Overview");
-  const [points, setPoints] = useState(0);
+  const { data: activity = [], isLoading: activityLoading } = useLoanActivity(params.id);
+  const stageMut = useStageTransition();
+  const [tab, setTab] = useState<TabId>("overview");
+  const [stageNote, setStageNote] = useState("");
+
+  // Subscribe to live message updates so the AI rail / messages are realtime
+  useDealChannel(params.id, loan?.deal_id ?? null);
 
   if (!loan) return <div style={{ color: t.ink3 }}>Loading…</div>;
 
   const stageIndex = STAGE_KEYS.indexOf(loan.stage);
+  const canTransitionStage = profile.role !== Role.CLIENT;
+  const canRequestDoc = profile.role !== Role.CLIENT;
+  const docsReceived = docs.filter((d) => d.status === "received" || d.status === "verified").length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Hero */}
       <Card pad={20}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.4 }}>LOAN {loan.deal_id}</span>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.4, fontFamily: "ui-monospace, SF Mono, monospace" }}>{loan.deal_id}</span>
               <StageBadge stage={stageIndex} />
               <Pill>{loan.type.replace("_", " ")}</Pill>
+              <DealHealthPill health={loan.deal_health} />
             </div>
             <h1 style={{ fontSize: 28, fontWeight: 800, color: t.ink, margin: "6px 0 4px", letterSpacing: -0.6 }}>
               {loan.address}
             </h1>
             <div style={{ fontSize: 13, color: t.ink2 }}>
-              {loan.city} · {QC_FMT.short(Number(loan.amount))} ·{" "}
+              {loan.city ?? "—"} · {QC_FMT.short(Number(loan.amount))} ·{" "}
               {loan.close_date ? `Close ${new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "—"}
             </div>
           </div>
-          <button onClick={() => setAiOpen(true)} style={{
-            padding: "10px 14px", borderRadius: 10, background: t.petrolSoft, color: t.petrol, fontSize: 13, fontWeight: 700,
-            border: `1px solid ${t.line}`, display: "inline-flex", alignItems: "center", gap: 6,
-          }}>
-            <Icon name="sparkles" size={14} /> Ask co-pilot about this loan
-          </button>
+
+          {/* Right rail summary card */}
+          <div style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{
+              border: `1px solid ${t.line}`, borderRadius: 12, padding: 14, background: t.surface2,
+            }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>Loan amount</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: t.ink, marginTop: 2, fontFeatureSettings: '"tnum"' }}>{QC_FMT.usd(Number(loan.amount))}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 12 }}>
+                <Mini t={t} label="Rate" value={loan.final_rate ? `${(loan.final_rate * 100).toFixed(3)}%` : "—"} />
+                <Mini t={t} label="LTV" value={loan.ltv ? `${(loan.ltv * 100).toFixed(0)}%` : "—"} />
+                <Mini t={t} label="Points" value={loan.discount_points.toFixed(2)} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 8 }}>
+                <Mini t={t} label="Term" value={loan.term_months ? `${loan.term_months}mo` : "—"} />
+                <Mini t={t} label="Close" value={loan.close_date ? new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"} />
+                <Mini t={t} label="Risk" value={loan.risk_score ?? "—"} accent={loan.risk_score && loan.risk_score >= 80 ? t.profit : t.warn} />
+              </div>
+            </div>
+            <button onClick={() => setAiOpen(true)} style={{
+              padding: "10px 14px", borderRadius: 10, background: t.petrolSoft, color: t.petrol,
+              fontSize: 13, fontWeight: 700,
+              border: `1px solid ${t.petrol}40`, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+              cursor: "pointer",
+            }}>
+              <Icon name="sparkles" size={14} /> Ask co-pilot about this loan
+            </button>
+          </div>
         </div>
 
         {/* Stage stepper */}
@@ -65,111 +119,109 @@ export default function LoanDetailPage() {
             }} />
           ))}
         </div>
+
+        {/* Stage transition control */}
+        {canTransitionStage && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, paddingTop: 14, borderTop: `1px dashed ${t.line}`, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>Move stage</span>
+            <select
+              value=""
+              onChange={(e) => {
+                const next = e.target.value;
+                if (!next) return;
+                stageMut.mutate({
+                  loanId: loan.id,
+                  new_stage: next as typeof LoanStageOptions[number]["value"],
+                  note: stageNote.trim() || null,
+                });
+                setStageNote("");
+              }}
+              disabled={stageMut.isPending}
+              style={{
+                padding: "8px 10px", borderRadius: 8, background: t.surface2,
+                border: `1px solid ${t.line}`, color: t.ink, fontSize: 12, fontFamily: "inherit",
+              }}
+            >
+              <option value="">Select target stage…</option>
+              {LoanStageOptions
+                .filter((o) => o.value !== loan.stage)
+                .map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <input
+              value={stageNote}
+              onChange={(e) => setStageNote(e.target.value)}
+              placeholder="Note (optional)"
+              style={{
+                flex: 1, minWidth: 200, padding: "8px 10px", borderRadius: 8, background: t.surface2,
+                border: `1px solid ${t.line}`, color: t.ink, fontSize: 12, fontFamily: "inherit", outline: "none",
+              }}
+            />
+            {stageMut.isError && (
+              <span style={{ fontSize: 11, color: t.danger, fontWeight: 700 }}>
+                {stageMut.error instanceof Error ? stageMut.error.message : "Failed"}
+              </span>
+            )}
+            {stageMut.isPending && <span style={{ fontSize: 11, color: t.ink3, fontWeight: 600 }}>Moving…</span>}
+          </div>
+        )}
       </Card>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${t.line}` }}>
-        {TABS.map((label) => (
-          <button key={label} onClick={() => setTab(label)} style={{
-            padding: "10px 16px",
-            borderBottom: `2px solid ${tab === label ? t.brand : "transparent"}`,
-            color: tab === label ? t.ink : t.ink3,
-            fontSize: 13, fontWeight: 700,
-          }}>{label}</button>
-        ))}
+      <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${t.line}`, overflowX: "auto" }}>
+        {TABS.map((tabDef) => {
+          const active = tab === tabDef.id;
+          const isDocs = tabDef.id === "docs";
+          return (
+            <button
+              key={tabDef.id}
+              onClick={() => setTab(tabDef.id)}
+              style={{
+                padding: "10px 14px",
+                borderBottom: `2px solid ${active ? t.brand : "transparent"}`,
+                color: active ? t.ink : t.ink3,
+                fontSize: 13, fontWeight: 700,
+                background: "transparent", border: "none", cursor: "pointer",
+                display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
+              }}
+            >
+              <Icon name={tabDef.icon} size={13} />
+              {tabDef.label}
+              {isDocs && docs.length > 0 && (
+                <span style={{
+                  marginLeft: 4, padding: "1px 6px", borderRadius: 999,
+                  background: t.chip, color: t.ink3, fontSize: 10, fontWeight: 800, fontFeatureSettings: '"tnum"',
+                }}>
+                  {docsReceived}/{docs.length}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      {tab === "Overview" && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-          <KPI label="Loan Amount" value={QC_FMT.short(Number(loan.amount))} sub={`${loan.ltv ? (loan.ltv * 100).toFixed(0) + "% LTV" : ""}`} />
-          <KPI label="Final Rate" value={loan.final_rate ? `${(loan.final_rate * 100).toFixed(3)}%` : "—"} sub={loan.discount_points > 0 ? `${loan.discount_points} pts` : "no buydown"} />
-          <KPI label="DSCR" value={loan.dscr ? loan.dscr.toFixed(2) : "—"} sub={loan.dscr && loan.dscr >= 1.25 ? "Preferred" : "Standard"} />
-          <KPI label="Risk Score" value={loan.risk_score ?? "—"} />
+      {tab === "overview" && <OverviewTab loan={loan} docs={docs} activity={activity} />}
+      {tab === "terms" && <TermsTab loan={loan} />}
+      {tab === "hud" && <Hud1Tab loan={loan} />}
+      {tab === "docs" && <DocsTab loan={loan} canRequest={canRequestDoc} />}
+      {tab === "uw" && <UnderwritingTab loan={loan} />}
+      {tab === "property" && <PropertyTab loan={loan} canEdit={canTransitionStage} />}
+      {tab === "wire" && <WireClosingTab loan={loan} />}
+      {tab === "thread" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <ParticipantsCard loanId={loan.id} />
+          <EmailDraftsCard loanId={loan.id} />
         </div>
       )}
+      {tab === "activity" && <ActivityTab activity={activity} isLoading={activityLoading} />}
+    </div>
+  );
+}
 
-      {tab === "Terms" && (
-        <Card pad={20}>
-          <SectionLabel>Buy down (HUD simulator)</SectionLabel>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <input type="range" min={0} max={3} step={0.25} value={points} onChange={(e) => setPoints(Number(e.target.value))} style={{ flex: 1 }} />
-            <div style={{ width: 80, textAlign: "right", fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"' }}>{points.toFixed(2)} pts</div>
-            <button
-              onClick={() => recalc.mutate({ loanId: loan.id, discount_points: points })}
-              style={{ padding: "10px 14px", borderRadius: 10, background: t.brand, color: t.inverse, fontWeight: 700, fontSize: 13 }}
-            >Recalc</button>
-          </div>
-          {recalc.data && (
-            <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-              <KPI label="Final rate" value={`${(recalc.data.final_rate * 100).toFixed(3)}%`} />
-              <KPI label="Monthly P&I" value={QC_FMT.usd(recalc.data.monthly_pi)} />
-              <KPI label="DSCR" value={recalc.data.dscr ? recalc.data.dscr.toFixed(2) : "—"} />
-              <KPI label="Cash to close (pricing)" value={QC_FMT.usd(recalc.data.cash_to_close_pricing)} />
-            </div>
-          )}
-          {recalc.data?.warnings && recalc.data.warnings.length > 0 && (
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-              {recalc.data.warnings.map((w) => (
-                <div key={w.code} style={{ padding: 10, borderRadius: 8, background: w.severity === "block" ? t.dangerBg : t.warnBg, color: w.severity === "block" ? t.danger : t.warn, fontSize: 12, fontWeight: 700 }}>
-                  {w.message}
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
-
-      {tab === "HUD-1" && (
-        <Card pad={0}>
-          <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.line}`, fontSize: 13, fontWeight: 700, color: t.ink }}>
-            HUD-1 Settlement Statement (Draft)
-          </div>
-          {/* Pulled from the loan via /loans recalc; replace with dedicated hook later */}
-          <div style={{ padding: 16, color: t.ink3, fontSize: 13 }}>
-            Open the Terms tab and tap Recalc — HUD total updates with current pricing.
-          </div>
-        </Card>
-      )}
-
-      {tab === "Docs" && (
-        <Card pad={16}>
-          <SectionLabel>Document Vault</SectionLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {docs.length === 0 && <div style={{ color: t.ink3, fontSize: 13 }}>No documents yet.</div>}
-            {docs.map((doc) => (
-              <div key={doc.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, border: `1px solid ${t.line}` }}>
-                <Icon name="doc" size={16} style={{ color: t.ink3 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{doc.name}</div>
-                  <div style={{ fontSize: 11.5, color: t.ink3 }}>{doc.category ?? "uncategorized"}</div>
-                </div>
-                <Pill bg={
-                  doc.status === "verified" ? t.profitBg : doc.status === "received" ? t.brandSoft : doc.status === "flagged" ? t.dangerBg : t.warnBg
-                } color={
-                  doc.status === "verified" ? t.profit : doc.status === "received" ? t.brand : doc.status === "flagged" ? t.danger : t.warn
-                }>
-                  {doc.status}
-                </Pill>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* Always-visible Messages strip */}
-      {messages.length > 0 && (
-        <Card pad={16}>
-          <SectionLabel action={<Link href="/messages" style={{ color: t.brand }}>All messages →</Link>}>Recent activity</SectionLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {messages.slice(-3).map((m) => (
-              <div key={m.id} style={{ display: "flex", gap: 10, padding: 10, borderRadius: 10, border: `1px solid ${t.line}`, background: m.from_role === "lender" ? t.surface2 : t.surface }}>
-                <Pill>{m.from_role}</Pill>
-                <div style={{ flex: 1, fontSize: 13, color: t.ink2 }}>{m.body}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
+function Mini({ t, label, value, accent }: { t: ReturnType<typeof useTheme>["t"]; label: string; value: string | number; accent?: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 9.5, fontWeight: 700, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 800, color: accent ?? t.ink, marginTop: 2, fontFeatureSettings: '"tnum"' }}>{value}</div>
     </div>
   );
 }

@@ -5,14 +5,21 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useDocuments, useLoans, useClients } from "@/hooks/useApi";
+import { useActiveProfile } from "@/store/role";
+import { DocRequestModal } from "./components/DocRequestModal";
+import { DocUploadButton } from "./components/DocUploadButton";
 
 export default function DocumentsPage() {
   const { t } = useTheme();
+  const profile = useActiveProfile();
   const { data: docs = [] } = useDocuments();
   const { data: loans = [] } = useLoans();
   const { data: clients = [] } = useClients();
   const [q, setQ] = useState("");
   const [hideClosed, setHideClosed] = useState(true);
+  const [requestOpen, setRequestOpen] = useState(false);
+
+  const canRequest = profile.role !== "client";
 
   const loansById = Object.fromEntries(loans.map((l) => [l.id, l]));
   const clientsById = Object.fromEntries(clients.map((c) => [c.id, c]));
@@ -48,7 +55,29 @@ export default function DocumentsPage() {
           <input type="checkbox" checked={hideClosed} onChange={(e) => setHideClosed(e.target.checked)} />
           Hide funded
         </label>
+        {canRequest && (
+          <button
+            onClick={() => setRequestOpen(true)}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 10,
+              background: t.brand,
+              color: t.inverse,
+              fontSize: 13,
+              fontWeight: 700,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              cursor: "pointer",
+              border: "none",
+            }}
+          >
+            <Icon name="plus" size={14} /> Request doc
+          </button>
+        )}
       </div>
+
+      <DocRequestModal open={requestOpen} onClose={() => setRequestOpen(false)} />
 
       {Object.entries(byClient).map(([clientId, items]) => {
         const client = clientsById[clientId];
@@ -60,6 +89,7 @@ export default function DocumentsPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {items.map((d) => {
                 const loan = loansById[d.loan_id];
+                const showUpload = canRequest && (d.status === "requested" || d.status === "pending" || d.status === "flagged");
                 return (
                   <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, border: `1px solid ${t.line}` }}>
                     <Icon name="doc" size={16} style={{ color: t.ink3 }} />
@@ -72,6 +102,14 @@ export default function DocumentsPage() {
                     } color={
                       d.status === "verified" ? t.profit : d.status === "received" ? t.brand : d.status === "flagged" ? t.danger : t.warn
                     }>{d.status}</Pill>
+                    {showUpload && (
+                      <DocUploadButton
+                        loanId={d.loan_id}
+                        category={d.category ?? undefined}
+                        compact
+                        label="Upload"
+                      />
+                    )}
                   </div>
                 );
               })}
