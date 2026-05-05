@@ -67,6 +67,12 @@ function useDevUser(): string {
  * always carries a fresh token. We also still send the legacy `X-Dev-User`
  * header — the backend ignores it whenever Clerk is configured, but it
  * keeps local dev (no Clerk key) working end-to-end.
+ *
+ * Auth-readiness gate: when Clerk hasn't finished loading, we return a
+ * never-resolving promise instead of firing the request. React Query treats
+ * the query as `pending` (not `error`), so the network tab never sees a
+ * tokenless 401. Once Clerk resolves, the useCallback deps change and the
+ * query refetches with a real Bearer token.
  */
 function useAuthedApi() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
@@ -74,8 +80,17 @@ function useAuthedApi() {
 
   return useCallback(
     async function authedApi<T>(path: string, opts: ApiOptions = {}): Promise<T> {
+      // Block until Clerk has finished resolving the session. Without this,
+      // the first wave of queries (ai-tasks, settings, /auth/me) fires before
+      // getToken() is wired and the backend 401s every one of them.
+      if (!isLoaded) {
+        return new Promise<T>(() => {
+          /* never resolves — useCallback dep change will replace this fn,
+             react-query will refetch with the new identity once isLoaded. */
+        });
+      }
       let token: string | null = null;
-      if (isLoaded && isSignedIn) {
+      if (isSignedIn) {
         try {
           token = await getToken();
         } catch {
