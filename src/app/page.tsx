@@ -42,7 +42,16 @@ export default function DashboardPage() {
   const { data: clients = [] } = useClients();
   const { data: report } = useDashboardReport();
 
-  const firstName = (user?.name ?? "there").split(" ")[0];
+  // Greeting personalization: prefer the real user's first name, fall back to
+  // the Clerk-known email-prefix once /auth/me resolves, then to a soft default
+  // while the request is in flight (avoids a jarring "Hi there." flash).
+  const firstName = (() => {
+    if (!user) return null; // hide the greeting entirely while loading
+    const n = (user.name ?? "").trim();
+    if (n && n !== user.email) return n.split(" ")[0];
+    if (user.email) return user.email.split("@")[0].split(".")[0];
+    return null;
+  })();
   const today = new Date();
   const greeting =
     today.getHours() < 12 ? "Good morning" : today.getHours() < 18 ? "Good afternoon" : "Good evening";
@@ -90,7 +99,7 @@ export default function DashboardPage() {
             {datelineDate} · {datelineTime} ET
           </div>
           <h1 style={{ margin: "4px 0 0", fontSize: 30, fontWeight: 700, letterSpacing: -0.8, color: t.ink }}>
-            {greeting}, {firstName}.
+            {firstName ? `${greeting}, ${firstName}.` : greeting + "."}
           </h1>
           <div style={{ fontSize: 14, color: t.ink2, marginTop: 4 }}>
             {highPriority.length} high-priority items, {todayEvents.length} events today, {inFlight.length} loans in flight.

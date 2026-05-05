@@ -1,7 +1,9 @@
 "use client";
 
+import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { useAuth } from "@clerk/nextjs";
+import { api, type ApiOptions } from "@/lib/api";
 import { useActiveProfile } from "@/store/role";
 import type { User } from "@/lib/types";
 import type {
@@ -44,16 +46,54 @@ function useDevUser(): string {
   return useActiveProfile().email;
 }
 
+/**
+ * Authenticated fetch wrapper.
+ *
+ * In production the backend has CLERK_SECRET_KEY set and rejects any request
+ * without a valid Bearer token. This hook fetches the current Clerk JWT via
+ * @clerk/nextjs's `useAuth().getToken()` for every request, so each call
+ * always carries a fresh token. We also still send the legacy `X-Dev-User`
+ * header — the backend ignores it whenever Clerk is configured, but it
+ * keeps local dev (no Clerk key) working end-to-end.
+ */
+function useAuthedApi() {
+  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const devUser = useDevUser();
+
+  return useCallback(
+    async function authedApi<T>(path: string, opts: ApiOptions = {}): Promise<T> {
+      let token: string | null = null;
+      if (isLoaded && isSignedIn) {
+        try {
+          token = await getToken();
+        } catch {
+          token = null;
+        }
+      }
+      return api<T>(path, {
+        ...opts,
+        devUser: opts.devUser ?? devUser,
+        authToken: opts.authToken ?? token ?? undefined,
+      });
+    },
+    [getToken, isLoaded, isSignedIn, devUser]);
+}
+
 // /auth/me — the canonical "who am I?" endpoint. Drives the sidebar avatar,
 // the role gates throughout the UI, and the audit-log actor for outbound
 // mutations. Returns User | null while loading.
 export function useCurrentUser() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const { isLoaded, isSignedIn } = useAuth();
   return useQuery({
-    queryKey: ["auth-me", devUser],
-    queryFn: () => api<User>("/auth/me", { devUser }),
+    queryKey: ["auth-me", isSignedIn],
+    queryFn: () => apiCall<User>("/auth/me"),
     staleTime: 5 * 60 * 1000,
     retry: false, // 401s should not retry
+    // Don't fire until Clerk has resolved the auth state — otherwise we send
+    // a token-less request and immediately 401.
+    enabled: isLoaded,
   });
 }
 
@@ -61,159 +101,176 @@ export function useCurrentUser() {
 
 export function useLoans() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["loans", devUser],
-    queryFn: () => api<Loan[]>("/loans", { devUser }),
+    queryFn: () => apiCall<Loan[]>("/loans"),
   });
 }
 
 export function useLoan(loanId: string | null | undefined) {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["loan", loanId, devUser],
-    queryFn: () => api<Loan>(`/loans/${loanId}`, { devUser }),
+    queryFn: () => apiCall<Loan>(`/loans/${loanId}`),
     enabled: !!loanId,
   });
 }
 
 export function useClients() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["clients", devUser],
-    queryFn: () => api<Client[]>("/clients", { devUser }),
+    queryFn: () => apiCall<Client[]>("/clients"),
   });
 }
 
 export function useClient(clientId: string | null | undefined) {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["client", clientId, devUser],
-    queryFn: () => api<Client>(`/clients/${clientId}`, { devUser }),
+    queryFn: () => apiCall<Client>(`/clients/${clientId}`),
     enabled: !!clientId,
   });
 }
 
 export function useAITasks() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["aiTasks", devUser],
-    queryFn: () => api<AITask[]>("/ai-tasks", { devUser }),
+    queryFn: () => apiCall<AITask[]>("/ai-tasks"),
   });
 }
 
 export function useDocuments(loanId?: string) {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["documents", loanId, devUser],
-    queryFn: () => api<Document[]>(loanId ? `/documents?loan_id=${loanId}` : "/documents", { devUser }),
+    queryFn: () => apiCall<Document[]>(loanId ? `/documents?loan_id=${loanId}` : "/documents"),
   });
 }
 
 export function useMessages(loanId: string | null | undefined) {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["messages", loanId, devUser],
-    queryFn: () => api<Message[]>(`/messages?loan_id=${loanId}`, { devUser }),
+    queryFn: () => apiCall<Message[]>(`/messages?loan_id=${loanId}`),
     enabled: !!loanId,
   });
 }
 
 export function useCalendar() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["calendar", devUser],
-    queryFn: () => api<CalendarEvent[]>("/calendar", { devUser }),
+    queryFn: () => apiCall<CalendarEvent[]>("/calendar"),
   });
 }
 
 export function useBrokerLeaderboard() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["leaderboard", devUser],
-    queryFn: () => api<Broker[]>("/brokers/leaderboard", { devUser }),
+    queryFn: () => apiCall<Broker[]>("/brokers/leaderboard"),
   });
 }
 
 export function useBrokers() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["brokers", devUser],
-    queryFn: () => api<Broker[]>("/brokers", { devUser }),
+    queryFn: () => apiCall<Broker[]>("/brokers"),
   });
 }
 
 export function useMeta() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["meta", devUser],
-    queryFn: () => api<MetaResponse>("/meta", { devUser }),
+    queryFn: () => apiCall<MetaResponse>("/meta"),
     staleTime: 5 * 60 * 1000, // 5 min — enums rarely change
   });
 }
 
 export function useGlobalSearch(query: string) {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["search", query, devUser],
-    queryFn: () => api<GroupedResults[]>(`/search?q=${encodeURIComponent(query)}`, { devUser }),
+    queryFn: () => apiCall<GroupedResults[]>(`/search?q=${encodeURIComponent(query)}`),
     enabled: query.trim().length >= 2,
   });
 }
 
 export function useCurrentCredit(clientId: string | null | undefined) {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["credit", clientId, devUser],
-    queryFn: () => api<CreditPull | null>(`/credit/current?client_id=${clientId}`, { devUser }),
+    queryFn: () => apiCall<CreditPull | null>(`/credit/current?client_id=${clientId}`),
     enabled: !!clientId,
   });
 }
 
 export function useLoanActivity(loanId: string | null | undefined) {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["loanActivity", loanId, devUser],
-    queryFn: () => api<Activity[]>(`/loans/${loanId}/activity`, { devUser }),
+    queryFn: () => apiCall<Activity[]>(`/loans/${loanId}/activity`),
     enabled: !!loanId,
   });
 }
 
 export function useRates() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["rates", devUser],
-    queryFn: () => api<RateSKU[]>("/rates", { devUser }),
+    queryFn: () => apiCall<RateSKU[]>("/rates"),
     staleTime: 60 * 1000,
   });
 }
 
 export function useDashboardReport() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["dashboard-report", devUser],
-    queryFn: () => api<DashboardReport>("/reports/dashboard", { devUser }),
+    queryFn: () => apiCall<DashboardReport>("/reports/dashboard"),
     staleTime: 30 * 1000,
   });
 }
 
 export function useSettings() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["settings", devUser],
-    queryFn: () => api<AppSettingsRead>("/settings", { devUser }),
+    queryFn: () => apiCall<AppSettingsRead>("/settings"),
     staleTime: 30 * 1000,
   });
 }
 
 export function useUpdateSettings() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["settings"]
     mutationFn: (patch: AppSettingsUpdate) =>
-      api<AppSettingsRead>("/settings", {
+      apiCall<AppSettingsRead>("/settings", {
         method: "PATCH",
-        devUser,
         body: JSON.stringify(patch),
       }),
     onSuccess: (data) => {
@@ -225,19 +282,20 @@ export function useUpdateSettings() {
 
 export function useUsers() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["users", devUser],
-    queryFn: () => api<UserRow[]>("/users", { devUser }),
+    queryFn: () => apiCall<UserRow[]>("/users"),
   });
 }
 
 export function useAIChat() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useMutation({
     mutationFn: (payload: AIChatRequest) =>
-      api<AIChatResponse>("/ai/chat", {
+      apiCall<AIChatResponse>("/ai/chat", {
         method: "POST",
-        devUser,
         body: JSON.stringify(payload),
       }),
   });
@@ -247,22 +305,23 @@ export function useAIChat() {
 
 export function useLoanParticipants(loanId: string | null | undefined) {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["loanParticipants", loanId, devUser],
-    queryFn: () => api<LoanParticipant[]>(`/loans/${loanId}/participants`, { devUser }),
+    queryFn: () => apiCall<LoanParticipant[]>(`/loans/${loanId}/participants`),
     enabled: !!loanId,
   });
 }
 
 export function useCreateParticipant() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["loanParticipants", loanId]
     mutationFn: ({ loanId, ...payload }: { loanId: string } & LoanParticipantCreate) =>
-      api<LoanParticipant>(`/loans/${loanId}/participants`, {
+      apiCall<LoanParticipant>(`/loans/${loanId}/participants`, {
         method: "POST",
-        devUser,
         body: JSON.stringify(payload),
       }),
     onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ["loanParticipants", vars.loanId] }),
@@ -271,13 +330,13 @@ export function useCreateParticipant() {
 
 export function useUpdateParticipant() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["loanParticipants", loanId]
     mutationFn: ({ loanId, participantId, ...patch }: { loanId: string; participantId: string } & LoanParticipantUpdate) =>
-      api<LoanParticipant>(`/loans/${loanId}/participants/${participantId}`, {
+      apiCall<LoanParticipant>(`/loans/${loanId}/participants/${participantId}`, {
         method: "PATCH",
-        devUser,
         body: JSON.stringify(patch),
       }),
     onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ["loanParticipants", vars.loanId] }),
@@ -286,12 +345,12 @@ export function useUpdateParticipant() {
 
 export function useDeleteParticipant() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ loanId, participantId }: { loanId: string; participantId: string }) =>
-      api<void>(`/loans/${loanId}/participants/${participantId}`, {
+      apiCall<void>(`/loans/${loanId}/participants/${participantId}`, {
         method: "DELETE",
-        devUser,
       }),
     onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ["loanParticipants", vars.loanId] }),
   });
@@ -301,13 +360,13 @@ export function useDeleteParticipant() {
 
 export function useRefreshLoanSummary() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["loan", loanId], ["loanActivity", loanId]
     mutationFn: ({ loanId }: { loanId: string }) =>
-      api<SummaryRefreshResponse>(`/loans/${loanId}/summary/refresh`, {
+      apiCall<SummaryRefreshResponse>(`/loans/${loanId}/summary/refresh`, {
         method: "POST",
-        devUser,
       }),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["loan", vars.loanId] });
@@ -318,12 +377,12 @@ export function useRefreshLoanSummary() {
 
 export function useSimulateInboundEmail() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ loanId, ...payload }: { loanId: string } & InboundEmailRequest) =>
-      api<InboundEmailResponse>(`/loans/${loanId}/inbound-email`, {
+      apiCall<InboundEmailResponse>(`/loans/${loanId}/inbound-email`, {
         method: "POST",
-        devUser,
         body: JSON.stringify(payload),
       }),
     onSuccess: (_, vars) => {
@@ -339,20 +398,21 @@ export function useSimulateInboundEmail() {
 
 export function useEmailDrafts(loanId?: string | null) {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["emailDrafts", loanId, devUser],
-    queryFn: () => api<EmailDraft[]>(loanId ? `/email-drafts?loan_id=${loanId}` : "/email-drafts", { devUser }),
+    queryFn: () => apiCall<EmailDraft[]>(loanId ? `/email-drafts?loan_id=${loanId}` : "/email-drafts"),
   });
 }
 
 export function useEmailDraftDecision() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ draftId, ...payload }: { draftId: string } & EmailDraftDecisionRequest) =>
-      api<EmailDraft>(`/email-drafts/${draftId}/decision`, {
+      apiCall<EmailDraft>(`/email-drafts/${draftId}/decision`, {
         method: "POST",
-        devUser,
         body: JSON.stringify(payload),
       }),
     onSuccess: (data) => {
@@ -367,6 +427,7 @@ export function useEmailDraftDecision() {
 
 export function useRecalc() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["loan", loanId]
@@ -381,9 +442,8 @@ export function useRecalc() {
       loan_amount?: number;
       base_rate?: number;
     }) =>
-      api<RecalcResponse>(`/loans/${loanId}/recalc`, {
+      apiCall<RecalcResponse>(`/loans/${loanId}/recalc`, {
         method: "POST",
-        devUser,
         body: JSON.stringify({ discount_points, loan_amount, base_rate }),
       }),
     onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ["loan", vars.loanId] }),
@@ -392,13 +452,13 @@ export function useRecalc() {
 
 export function useCreateIntake() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["loans"]
     mutationFn: (payload: SmartIntakePayload) =>
-      api<SmartIntakeResponse>("/intake", {
+      apiCall<SmartIntakeResponse>("/intake", {
         method: "POST",
-        devUser,
         body: JSON.stringify(payload),
       }),
     onSuccess: () => {
@@ -410,13 +470,13 @@ export function useCreateIntake() {
 
 export function useAITaskDecision() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["aiTasks"], ["loan", task.loan_id]
     mutationFn: ({ taskId, decision, edited_payload, loanId }: { taskId: string; decision: AITaskDecisionRequest["decision"]; edited_payload?: Record<string, unknown> | null; loanId?: string | null }) =>
-      api<AITask>(`/ai-tasks/${taskId}/decision`, {
+      apiCall<AITask>(`/ai-tasks/${taskId}/decision`, {
         method: "POST",
-        devUser,
         body: JSON.stringify({ decision, edited_payload }),
       }),
     onSuccess: (_, vars) => {
@@ -428,13 +488,13 @@ export function useAITaskDecision() {
 
 export function useSendMessage() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["messages", loanId]
     mutationFn: ({ loan_id, body, from_role, is_draft }: { loan_id: string; body: string; from_role: MessageFrom; is_draft?: boolean }) =>
-      api<Message>("/messages", {
+      apiCall<Message>("/messages", {
         method: "POST",
-        devUser,
         body: JSON.stringify({ loan_id, body, from_role, is_draft: !!is_draft }),
       }),
     onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ["messages", vars.loan_id] }),
@@ -443,13 +503,13 @@ export function useSendMessage() {
 
 export function useRequestDocument() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["documents", loan_id], ["loan", loan_id]
     mutationFn: ({ loan_id, name, category, due_in_days }: { loan_id: string; name: string; category?: string; due_in_days?: number }) =>
-      api<Document>("/documents/request", {
+      apiCall<Document>("/documents/request", {
         method: "POST",
-        devUser,
         body: JSON.stringify({ loan_id, name, category, due_in_days }),
       }),
     onSuccess: (_, vars) => {
@@ -462,13 +522,13 @@ export function useRequestDocument() {
 
 export function useUploadDocument() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["documents", loan_id]
     mutationFn: async ({ loan_id, file, name, category }: { loan_id: string; file: File; name?: string; category?: string }) => {
-      const init = await api<DocumentUploadInitResponse>("/documents/upload-init", {
+      const init = await apiCall<DocumentUploadInitResponse>("/documents/upload-init", {
         method: "POST",
-        devUser,
         body: JSON.stringify({
           loan_id,
           name: name ?? file.name,
@@ -500,6 +560,7 @@ export function useUploadDocument() {
 
 export function useCreateEvent() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["calendar"]
@@ -512,9 +573,8 @@ export function useCreateEvent() {
       duration_min?: number | null;
       priority?: AITaskPriority | null;
     }) =>
-      api<CalendarEvent>("/calendar", {
+      apiCall<CalendarEvent>("/calendar", {
         method: "POST",
-        devUser,
         body: JSON.stringify(payload),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar"] }),
@@ -523,13 +583,13 @@ export function useCreateEvent() {
 
 export function useStageTransition() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["loan", loanId], ["loans"], ["loanActivity", loanId]
     mutationFn: ({ loanId, ...body }: { loanId: string } & StageTransitionRequest) =>
-      api<Loan>(`/loans/${loanId}/stage`, {
+      apiCall<Loan>(`/loans/${loanId}/stage`, {
         method: "POST",
-        devUser,
         body: JSON.stringify(body),
       }),
     onSuccess: (_, vars) => {
@@ -542,13 +602,13 @@ export function useStageTransition() {
 
 export function useUpdateLoan() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["loan", loanId], ["loans"]
     mutationFn: ({ loanId, ...patch }: { loanId: string } & Partial<Loan>) =>
-      api<Loan>(`/loans/${loanId}`, {
+      apiCall<Loan>(`/loans/${loanId}`, {
         method: "PATCH",
-        devUser,
         body: JSON.stringify(patch),
       }),
     onSuccess: (_, vars) => {
@@ -560,13 +620,13 @@ export function useUpdateLoan() {
 
 export function useCreateClient() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["clients"]
     mutationFn: (payload: { name: string; email?: string; phone?: string; city?: string; referral_source?: string; broker_id?: string }) =>
-      api<Client>("/clients", {
+      apiCall<Client>("/clients", {
         method: "POST",
-        devUser,
         body: JSON.stringify(payload),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["clients"] }),
@@ -575,13 +635,13 @@ export function useCreateClient() {
 
 export function useUpdateClient() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["client", clientId], ["clients"]
     mutationFn: ({ clientId, ...patch }: { clientId: string } & Partial<Client>) =>
-      api<Client>(`/clients/${clientId}`, {
+      apiCall<Client>(`/clients/${clientId}`, {
         method: "PATCH",
-        devUser,
         body: JSON.stringify(patch),
       }),
     onSuccess: (_, vars) => {
@@ -593,6 +653,7 @@ export function useUpdateClient() {
 
 export function useCreditPull() {
   const devUser = useDevUser();
+  const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["credit", client_id]
@@ -610,9 +671,8 @@ export function useCreditPull() {
       last4_ssn: string;
       fcra_consent: boolean;
     }) =>
-      api<CreditPull>("/credit/pull", {
+      apiCall<CreditPull>("/credit/pull", {
         method: "POST",
-        devUser,
         body: JSON.stringify(payload),
       }),
     onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ["credit", vars.client_id] }),
