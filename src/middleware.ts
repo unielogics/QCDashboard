@@ -14,7 +14,11 @@ export default clerkMiddleware(async (auth, req) => {
   // routes for unauthenticated requests. This 302s straight to /sign-in.
   const { userId, redirectToSignIn } = await auth();
   if (!userId) {
-    return redirectToSignIn({ returnBackUrl: req.url });
+    // DON'T pass req.url as returnBackUrl — inside the Amplify SSR Lambda,
+    // req.url has the internal `http://localhost:3000/...` URL, not the public
+    // hostname. Clerk would then reject it as outside allowedRedirectOrigins.
+    // Letting Clerk default uses the static SIGN_IN URL with no redirect param.
+    return redirectToSignIn();
   }
 });
 
