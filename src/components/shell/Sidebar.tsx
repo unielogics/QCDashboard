@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { SignedIn, SignedOut, UserButton, useClerk } from "@clerk/nextjs";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Avatar } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -46,8 +47,12 @@ const ROLE_LABEL: Record<string, string> = {
 export default function Sidebar() {
   const { t } = useTheme();
   const pathname = usePathname();
+  const router = useRouter();
+  const clerk = useClerk();
   const collapsed = useUI((s) => s.sidebarCollapsed);
   const { data: user } = useCurrentUser();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   // Until /auth/me resolves, hide role-gated items rather than flicker.
   const items = NAV.filter((n) => !n.roles || (user && n.roles.includes(user.role as Role)));
@@ -55,6 +60,33 @@ export default function Sidebar() {
   const initials = user?.name
     ? user.name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()
     : "?";
+
+  // Click-outside + Escape close the identity popover.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  const handleSignOut = async () => {
+    setMenuOpen(false);
+    try {
+      await clerk.signOut({ redirectUrl: "/sign-in" });
+    } catch {
+      // If Clerk's signOut hiccups, push to /sign-in anyway so the user lands somewhere sensible.
+      router.push("/sign-in");
+    }
+  };
 
   return (
     <aside
@@ -225,63 +257,119 @@ export default function Sidebar() {
           </SignedOut>
 
           {!collapsed && (
-            <Link
-              href="/profile"
-              title="Open profile"
-              style={{
-                flex: 1,
-                minWidth: 0,
-                textDecoration: "none",
-                color: "inherit",
-                cursor: "pointer",
-              }}
-            >
-              {user ? (
-                <>
-                  <div
-                    style={{
-                      fontSize: 12.5,
-                      fontWeight: 700,
-                      color: t.ink,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
+            <div ref={menuRef} style={{ flex: 1, minWidth: 0, position: "relative" }}>
+              <button
+                onClick={() => setMenuOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                title="Account menu"
+                style={{
+                  all: "unset",
+                  cursor: "pointer",
+                  display: "block",
+                  width: "100%",
+                  minWidth: 0,
+                }}
+              >
+                {user ? (
+                  <>
+                    <div
+                      style={{
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        color: t.ink,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {user.name}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 10.5,
+                        color: t.ink3,
+                        fontWeight: 600,
+                        letterSpacing: 0.6,
+                        textTransform: "uppercase",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {ROLE_LABEL[user.role] ?? user.role}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink2 }}>Sign in</div>
+                    <div
+                      style={{
+                        fontSize: 10.5,
+                        color: t.ink3,
+                        fontWeight: 600,
+                        letterSpacing: 0.6,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Operator Console
+                    </div>
+                  </>
+                )}
+              </button>
+
+              {menuOpen && user && (
+                <div
+                  role="menu"
+                  // Float ABOVE the identity card since this card sits at the
+                  // bottom of the sidebar — opening downward would clip outside
+                  // the viewport.
+                  style={{
+                    position: "absolute",
+                    bottom: "calc(100% + 8px)",
+                    left: 0,
+                    right: 0,
+                    background: t.surface,
+                    border: `1px solid ${t.line}`,
+                    borderRadius: 10,
+                    boxShadow: t.shadowLg,
+                    padding: 4,
+                    zIndex: 60,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 2,
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      router.push("/profile");
                     }}
+                    style={menuItemStyle(t)}
+                    role="menuitem"
                   >
-                    {user.name}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 10.5,
-                      color: t.ink3,
-                      fontWeight: 600,
-                      letterSpacing: 0.6,
-                      textTransform: "uppercase",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
+                    <Icon name="user" size={13} /> Open profile
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      router.push("/settings");
                     }}
-                  >
-                    {ROLE_LABEL[user.role] ?? user.role}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink2 }}>Sign in</div>
-                  <div
                     style={{
-                      fontSize: 10.5,
-                      color: t.ink3,
-                      fontWeight: 600,
-                      letterSpacing: 0.6,
-                      textTransform: "uppercase",
+                      ...menuItemStyle(t),
+                      display: user.role === Role.SUPER_ADMIN ? "flex" : "none",
                     }}
+                    role="menuitem"
                   >
-                    Operator Console
-                  </div>
-                </>
+                    <Icon name="gear" size={13} /> Settings
+                  </button>
+                  <div style={{ height: 1, background: t.line, margin: "3px 4px" }} />
+                  <button onClick={handleSignOut} style={menuItemStyle(t, t.danger)} role="menuitem">
+                    <Icon name="arrowR" size={13} /> Sign out
+                  </button>
+                </div>
               )}
-            </Link>
+            </div>
           )}
         </div>
       </div>
@@ -289,4 +377,22 @@ export default function Sidebar() {
       <span style={{ display: "none" }}>{initials}</span>
     </aside>
   );
+}
+
+function menuItemStyle(
+  t: ReturnType<typeof useTheme>["t"],
+  color?: string,
+): React.CSSProperties {
+  return {
+    all: "unset",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 10px",
+    borderRadius: 7,
+    fontSize: 12.5,
+    fontWeight: 600,
+    color: color ?? t.ink,
+  };
 }
