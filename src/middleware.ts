@@ -1,23 +1,30 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
 
-const isPublicRoute = createRouteMatcher([
+const isAuthPage = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
-  if (isPublicRoute(req)) return;
-
-  // Use an explicit redirect rather than auth.protect()'s handshake rewrite —
-  // the rewrite (`/clerk_<timestamp>`) requires Clerk's edge runtime to
-  // intercept it, which Amplify SSR doesn't do; you get a 404 on protected
-  // routes for unauthenticated requests. This 302s straight to /sign-in.
   const { userId, redirectToSignIn } = await auth();
+
+  // Already signed in? Don't show them the sign-in / sign-up pages — bounce
+  // to the dashboard. Clerk's <SignIn> component renders nothing for signed-in
+  // users and expects auto-redirect, which doesn't always fire on Amplify SSR;
+  // do it server-side here so it always works.
+  if (isAuthPage(req)) {
+    if (userId) {
+      // Use req.nextUrl.origin (public host) — req.url leaks Lambda's
+      // localhost:3000.
+      return NextResponse.redirect(new URL("/", req.nextUrl.origin));
+    }
+    return; // unauthenticated visitors — let them through to /sign-in
+  }
+
+  // Protected route: send unauthenticated users to /sign-in (no returnBackUrl
+  // because req.url is the internal Lambda URL, which Clerk would reject).
   if (!userId) {
-    // DON'T pass req.url as returnBackUrl — inside the Amplify SSR Lambda,
-    // req.url has the internal `http://localhost:3000/...` URL, not the public
-    // hostname. Clerk would then reject it as outside allowedRedirectOrigins.
-    // Letting Clerk default uses the static SIGN_IN URL with no redirect param.
     return redirectToSignIn();
   }
 });
