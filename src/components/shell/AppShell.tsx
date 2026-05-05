@@ -8,6 +8,8 @@ import AIRail from "./AIRail";
 import GlobalSearch from "./GlobalSearch";
 import { useUI } from "@/store/ui";
 import { useTheme } from "@/components/design-system/ThemeProvider";
+import { useCurrentUser } from "@/hooks/useApi";
+import { _setActiveProfileFromUser } from "@/store/role";
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const { t } = useTheme();
@@ -16,6 +18,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const setAiOpen = useUI((s) => s.setAiOpen);
   const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
   const setSearchOpen = useUI((s) => s.setSearchOpen);
+  const { data: user } = useCurrentUser();
+
+  // Mirror the real /auth/me user into the legacy useActiveProfile() shim so
+  // older call sites keep working while we migrate them off.
+  useEffect(() => {
+    _setActiveProfileFromUser(user ?? null);
+  }, [user]);
 
   // Auto-close the AI rail on screen change (per chat2.md final state)
   useEffect(() => { setAiOpen(false); }, [pathname, setAiOpen]);
@@ -32,7 +41,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [setSearchOpen]);
 
-  const sidebarW = sidebarCollapsed ? 64 : 232;
+  // Sidebar manages its own collapsed/expanded width internally now.
+  // Reference sidebarCollapsed to keep the dependency tracked (drives
+  // the sidebar's transition, not the grid).
+  void sidebarCollapsed;
   const railW = aiOpen ? 360 : 0;
 
   // Auth pages render bare — no sidebar / topbar / AI rail
@@ -41,7 +53,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: `${sidebarW}px 1fr ${railW}px`, height: "100vh", background: t.bg, transition: "grid-template-columns .2s ease" }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: `auto 1fr ${railW}px`,
+        height: "100vh",
+        background: t.bg,
+        transition: "grid-template-columns .2s ease",
+      }}
+    >
       <Sidebar />
       <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
         <TopBar />

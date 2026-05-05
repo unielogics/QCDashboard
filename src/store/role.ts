@@ -1,65 +1,59 @@
 "use client";
 
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
+// LEGACY SHIM — dev role switcher is removed in production.
+//
+// `useActiveProfile()` originally exposed a dev-mode "view as" persona that
+// switched via a sidebar dropdown. The dropdown was removed (per design) so
+// the production app reads the actual signed-in user via /auth/me.
+//
+// This module is kept as a compatibility shim while call sites migrate to
+// `useCurrentUser()` directly. New code should NOT import from here.
+
 import type { Role } from "@/lib/enums.generated";
 
-// Dev "View as" — maps to seeded users by email
 export interface RoleProfile {
   email: string;
   name: string;
-  role: Role;
+  role: Role | string;
   homeRail: boolean;
   canSee: { aiInbox: boolean; rewards: boolean; settings: boolean };
 }
 
-export const ROLE_PROFILES: Record<string, RoleProfile> = {
-  admin: {
-    email: "admin@qc.dev",
-    name: "Asha Patel",
-    role: "super_admin",
-    homeRail: true,
-    canSee: { aiInbox: true, rewards: true, settings: true },
-  },
-  ae: {
-    email: "daniel@qc.dev",
-    name: "Daniel Reyes",
-    role: "broker",
-    homeRail: true,
-    canSee: { aiInbox: true, rewards: false, settings: false },
-  },
-  uw: {
-    email: "priya@qc.dev",
-    name: "Priya Singh",
-    role: "loan_exec",
-    homeRail: true,
-    canSee: { aiInbox: true, rewards: false, settings: false },
-  },
-  client: {
-    email: "marcus@qc.dev",
-    name: "Marcus Holloway",
-    role: "client",
-    homeRail: false,
-    canSee: { aiInbox: false, rewards: false, settings: false },
-  },
+const CLIENT_FALLBACK: RoleProfile = {
+  email: "anonymous@qc.local",
+  name: "—",
+  role: "super_admin",
+  homeRail: true,
+  canSee: { aiInbox: true, rewards: true, settings: true },
 };
 
-interface RoleStore {
-  activeKey: keyof typeof ROLE_PROFILES;
-  setActive: (k: keyof typeof ROLE_PROFILES) => void;
+// Lazy require so this module stays SSR-safe.
+let _cached: RoleProfile = CLIENT_FALLBACK;
+
+/** Set by the AppShell once /auth/me resolves so legacy callers stay accurate. */
+export function _setActiveProfileFromUser(user: { email: string; name: string; role: string } | null | undefined) {
+  if (!user) {
+    _cached = CLIENT_FALLBACK;
+    return;
+  }
+  const role = user.role;
+  _cached = {
+    email: user.email,
+    name: user.name,
+    role,
+    homeRail: role !== "client",
+    canSee: {
+      aiInbox: role === "super_admin" || role === "broker" || role === "loan_exec",
+      rewards: role === "super_admin",
+      settings: role === "super_admin",
+    },
+  };
 }
 
-export const useRole = create<RoleStore>()(
-  persist(
-    (set) => ({
-      activeKey: "ae",
-      setActive: (k) => set({ activeKey: k }),
-    }),
-    { name: "qc.role" }
-  )
-);
-
+/**
+ * @deprecated Use `useCurrentUser()` from `src/hooks/useApi.ts` directly.
+ * This stub returns the last-known user (set by AppShell) or a safe fallback.
+ */
 export function useActiveProfile(): RoleProfile {
-  const key = useRole((s) => s.activeKey);
-  return ROLE_PROFILES[key];
+  return _cached;
 }

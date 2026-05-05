@@ -261,6 +261,30 @@ export interface RateSKU {
   delta_bps: number;
 }
 
+// ── Dashboard report ───────────────────────────────────────────────────────
+export interface StageBreakdown {
+  stage: LoanStage;
+  count: number;
+  value: number;
+}
+export interface TypeBreakdown {
+  type: string;
+  count: number;
+  value: number;
+}
+export interface DashboardReport {
+  funded_ytd: number;
+  funded_ytd_delta: number | null;
+  pipeline_value: number;
+  pipeline_count: number;
+  avg_close_days: number | null;
+  avg_close_delta: number | null;
+  pull_through: number | null;
+  pull_through_delta: number | null;
+  by_stage: StageBreakdown[];
+  by_type: TypeBreakdown[];
+}
+
 // ── App settings ───────────────────────────────────────────────────────────
 export interface DocChecklistItem {
   name: string;

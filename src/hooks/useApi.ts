@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useActiveProfile } from "@/store/role";
+import type { User } from "@/lib/types";
 import type {
   Activity,
   AIChatRequest,
@@ -15,6 +16,7 @@ import type {
   CalendarEvent,
   Client,
   CreditPull,
+  DashboardReport,
   Document,
   DocumentUploadInitResponse,
   EmailDraft,
@@ -40,6 +42,19 @@ import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, Property
 
 function useDevUser(): string {
   return useActiveProfile().email;
+}
+
+// /auth/me — the canonical "who am I?" endpoint. Drives the sidebar avatar,
+// the role gates throughout the UI, and the audit-log actor for outbound
+// mutations. Returns User | null while loading.
+export function useCurrentUser() {
+  const devUser = useDevUser();
+  return useQuery({
+    queryKey: ["auth-me", devUser],
+    queryFn: () => api<User>("/auth/me", { devUser }),
+    staleTime: 5 * 60 * 1000,
+    retry: false, // 401s should not retry
+  });
 }
 
 // ── Queries ────────────────────────────────────────────────────────────────
@@ -169,6 +184,15 @@ export function useRates() {
     queryKey: ["rates", devUser],
     queryFn: () => api<RateSKU[]>("/rates", { devUser }),
     staleTime: 60 * 1000,
+  });
+}
+
+export function useDashboardReport() {
+  const devUser = useDevUser();
+  return useQuery({
+    queryKey: ["dashboard-report", devUser],
+    queryFn: () => api<DashboardReport>("/reports/dashboard", { devUser }),
+    staleTime: 30 * 1000,
   });
 }
 

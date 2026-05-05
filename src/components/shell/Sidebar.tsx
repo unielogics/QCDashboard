@@ -6,113 +6,258 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Avatar } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useUI } from "@/store/ui";
-import { ROLE_PROFILES, useActiveProfile, useRole } from "@/store/role";
+import { useCurrentUser } from "@/hooks/useApi";
+import { Role } from "@/lib/enums.generated";
 
 interface NavItem {
   href: string;
   label: string;
   icon: string;
-  needsKey?: keyof ReturnType<typeof useActiveProfile>["canSee"];
+  // role-gating: nav item only shows when current user role matches one of these
+  // (omit to show for everyone)
+  roles?: Role[];
 }
 
+// Icons match design (icons.jsx) — `bolt` for AI, `doc` for Documents,
+// `trend` for Reports — not the previously-used aliases.
 const NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: "home" },
-  { href: "/pipeline", label: "Pipeline", icon: "pipeline" },
-  { href: "/ai-inbox", label: "AI Inbox", icon: "ai", needsKey: "aiInbox" },
-  { href: "/clients", label: "Clients", icon: "clients" },
-  { href: "/messages", label: "Messages", icon: "messages" },
+  { href: "/pipeline", label: "Pipeline", icon: "layers" },
+  { href: "/ai-inbox", label: "AI Inbox", icon: "bolt", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
+  { href: "/clients", label: "Clients", icon: "user" },
+  { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "cal" },
-  { href: "/documents", label: "Documents", icon: "vault" },
-  { href: "/rates", label: "Rate Sheet", icon: "rates" },
-  { href: "/reports", label: "Reports", icon: "reports" },
-  { href: "/rewards", label: "Rewards", icon: "rewards", needsKey: "rewards" },
-  { href: "/settings", label: "Settings", icon: "gear", needsKey: "settings" },
+  { href: "/documents", label: "Documents", icon: "doc" },
+  { href: "/rates", label: "Rate Sheet", icon: "sliders", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
+  { href: "/reports", label: "Reports", icon: "trend", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
+  { href: "/rewards", label: "Rewards", icon: "trophy", roles: [Role.SUPER_ADMIN] },
+  { href: "/settings", label: "Settings", icon: "gear", roles: [Role.SUPER_ADMIN] },
 ];
+
+const ROLE_LABEL: Record<string, string> = {
+  super_admin: "Super Admin",
+  broker: "Account Exec",
+  loan_exec: "Underwriter",
+  client: "Borrower",
+};
 
 export default function Sidebar() {
   const { t } = useTheme();
   const pathname = usePathname();
   const collapsed = useUI((s) => s.sidebarCollapsed);
-  const toggle = useUI((s) => s.toggleSidebar);
-  const profile = useActiveProfile();
-  const setRoleKey = useRole((s) => s.setActive);
-  const activeKey = useRole((s) => s.activeKey);
+  const { data: user } = useCurrentUser();
 
-  const items = NAV.filter((n) => !n.needsKey || profile.canSee[n.needsKey]);
+  // Until /auth/me resolves, hide role-gated items rather than flicker.
+  const items = NAV.filter((n) => !n.roles || (user && n.roles.includes(user.role as Role)));
+
+  const initials = user?.name
+    ? user.name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()
+    : "?";
 
   return (
-    <aside style={{
-      borderRight: `1px solid ${t.line}`,
-      background: t.surface,
-      display: "flex", flexDirection: "column", padding: 12,
-    }}>
-      {/* Logo + role pill */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 6px 14px" }}>
-        <Avatar label="QC" color={t.brand} size={32} />
+    <aside
+      style={{
+        width: collapsed ? 68 : 232,
+        flexShrink: 0,
+        borderRight: `1px solid ${t.line}`,
+        background: t.surface,
+        display: "flex",
+        flexDirection: "column",
+        transition: "width .18s ease",
+        overflow: "hidden",
+      }}
+    >
+      {/* Logo */}
+      <div
+        style={{
+          padding: collapsed ? "20px 16px" : "20px 18px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}
+      >
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 9,
+            background: `linear-gradient(135deg, ${t.brand}, ${t.petrol})`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#fff",
+            fontWeight: 800,
+            fontSize: 14,
+            letterSpacing: 0.5,
+            flexShrink: 0,
+          }}
+        >
+          QC
+        </div>
         {!collapsed && (
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: t.ink, lineHeight: 1.1 }}>Qualified</div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: t.ink3, letterSpacing: 1.4 }}>OPERATOR CONSOLE</div>
-          </div>
-        )}
-      </div>
-
-      {/* Role chooser (visible label + transparent select overlay) */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 10, padding: 10, marginBottom: 10,
-        background: t.surface2, borderRadius: 10, border: `1px solid ${t.line}`, position: "relative",
-      }}>
-        <Avatar label={profile.name.split(" ").map(n => n[0]).slice(0, 2).join("")} color={t.petrol} size={28} />
-        {!collapsed && (
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: t.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{profile.name}</div>
-            <div style={{ fontSize: 9.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
-              {profile.role.replace("_", " ")}
+            <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, letterSpacing: -0.2 }}>Qualified</div>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: t.ink3,
+                letterSpacing: 1.4,
+                textTransform: "uppercase",
+              }}
+            >
+              Operator Console
             </div>
           </div>
         )}
-        {!collapsed && <Icon name="chevD" size={12} style={{ color: t.ink3 }} />}
-        <select
-          aria-label="View as"
-          value={activeKey}
-          onChange={(e) => setRoleKey(e.target.value as keyof typeof ROLE_PROFILES)}
-          style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
-        >
-          {Object.entries(ROLE_PROFILES).map(([k, p]) => (
-            <option key={k} value={k}>View as {p.name} ({p.role})</option>
-          ))}
-        </select>
       </div>
 
+      {/* Current user card — read-only, sourced from /auth/me */}
+      {!collapsed && user && (
+        <div style={{ padding: "0 12px 14px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: t.surface2,
+              border: `1px solid ${t.line}`,
+              borderRadius: 10,
+              padding: "8px 10px",
+            }}
+          >
+            <Avatar label={initials} color={t.petrol} size={28} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: t.ink,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {user.name}
+              </div>
+              <div
+                style={{
+                  fontSize: 10.5,
+                  color: t.ink3,
+                  fontWeight: 600,
+                  letterSpacing: 0.6,
+                  textTransform: "uppercase",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {ROLE_LABEL[user.role] ?? user.role}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Nav */}
-      <nav style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, overflowY: "auto" }}>
+      <nav
+        style={{
+          padding: "0 8px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+          flex: 1,
+          overflow: "auto",
+        }}
+      >
         {items.map((n) => {
-          const active = pathname === n.href || (n.href !== "/" && pathname.startsWith(n.href));
+          const active =
+            n.href === "/"
+              ? pathname === "/"
+              : pathname === n.href || pathname.startsWith(n.href + "/");
           return (
-            <Link key={n.href} href={n.href} style={{
-              display: "flex", alignItems: "center", gap: 10,
-              padding: "9px 10px", borderRadius: 9,
-              background: active ? t.brandSoft : "transparent",
-              color: active ? t.ink : t.ink2,
-              fontSize: 13, fontWeight: 600,
-              border: `1px solid ${active ? t.line : "transparent"}`,
-            }}>
-              <Icon name={n.icon} size={16} />
-              {!collapsed && <span>{n.label}</span>}
+            <Link
+              key={n.href}
+              href={n.href}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 11,
+                padding: collapsed ? "10px" : "9px 11px",
+                borderRadius: 9,
+                background: active ? t.brandSoft : "transparent",
+                color: active ? t.ink : t.ink2,
+                fontSize: 13,
+                fontWeight: active ? 700 : 500,
+                letterSpacing: -0.1,
+                justifyContent: collapsed ? "center" : "flex-start",
+                position: "relative",
+                textDecoration: "none",
+              }}
+            >
+              {/* Left-border active indicator (matches design) */}
+              {active && !collapsed && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: -8,
+                    top: 8,
+                    bottom: 8,
+                    width: 3,
+                    borderRadius: 3,
+                    background: t.brand,
+                  }}
+                />
+              )}
+              <Icon name={n.icon} size={17} stroke={active ? 2.4 : 1.8} />
+              {!collapsed && <span style={{ flex: 1, textAlign: "left" }}>{n.label}</span>}
             </Link>
           );
         })}
       </nav>
 
-      {/* Footer */}
-      <button onClick={toggle} style={{
-        marginTop: 8, padding: "8px 10px", borderRadius: 8,
-        color: t.ink3, fontSize: 12, fontWeight: 600,
-        display: "flex", alignItems: "center", gap: 8, justifyContent: collapsed ? "center" : "flex-start",
-      }}>
-        <Icon name={collapsed ? "chevR" : "chevL"} size={14} />
-        {!collapsed && "Collapse"}
-      </button>
+      {/* Footer mini status */}
+      {!collapsed && (
+        <div style={{ padding: 12, borderTop: `1px solid ${t.line}` }}>
+          <div
+            style={{
+              background: t.petrolSoft,
+              color: t.petrol,
+              borderRadius: 9,
+              padding: "9px 11px",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              fontSize: 11.5,
+              fontWeight: 600,
+            }}
+          >
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 999,
+                background: t.petrol,
+                boxShadow: `0 0 0 4px ${t.petrolSoft}`,
+              }}
+            />
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  fontWeight: 700,
+                  color: t.petrol,
+                  letterSpacing: 0.4,
+                  textTransform: "uppercase",
+                  fontSize: 9.5,
+                }}
+              >
+                Live · synced
+              </div>
+              <div style={{ color: t.ink3, fontSize: 10.5, fontWeight: 500 }}>Backend healthy</div>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

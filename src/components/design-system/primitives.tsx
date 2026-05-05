@@ -1,7 +1,8 @@
 "use client";
 
-import { type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { useTheme } from "./ThemeProvider";
+import { Icon } from "./Icon";
 
 // — Card —
 export function Card({
@@ -192,6 +193,7 @@ export function KPI({
   deltaSuffix = "%",
   sub,
   accent,
+  icon,
 }: {
   label: string;
   value: string | number;
@@ -199,6 +201,7 @@ export function KPI({
   deltaSuffix?: string;
   sub?: string;
   accent?: string;
+  icon?: string;
 }) {
   const { t } = useTheme();
   const positive = delta != null && delta >= 0;
@@ -214,16 +217,23 @@ export function KPI({
         gap: 6,
       }}
     >
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: 1.4,
-          textTransform: "uppercase",
-          color: t.ink3,
-        }}
-      >
-        {label}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: 1.4,
+            textTransform: "uppercase",
+            color: t.ink3,
+          }}
+        >
+          {label}
+        </div>
+        {icon && (
+          <div style={{ color: accent || t.ink3, display: "inline-flex" }}>
+            <Icon name={icon} size={14} />
+          </div>
+        )}
       </div>
       <div
         style={{
@@ -250,13 +260,73 @@ export function KPI({
               fontWeight: 700,
             }}
           >
-            {positive ? "▲" : "▼"} {(positive ? "+" : "") + delta}
+            <Icon name={positive ? "trend" : "trendDn"} size={11} stroke={2.4} />
+            {(positive ? "+" : "") + delta}
             {deltaSuffix}
           </span>
         )}
         {sub && <span style={{ color: t.ink3 }}>{sub}</span>}
       </div>
     </div>
+  );
+}
+
+// — TopButton — header pill button (used in TopBar)
+export function TopButton({
+  icon,
+  children,
+  onClick,
+  active,
+  badge,
+}: {
+  icon?: string;
+  children?: ReactNode;
+  onClick?: () => void;
+  active?: boolean;
+  badge?: number | null;
+}) {
+  const { t } = useTheme();
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        position: "relative",
+        padding: "8px 12px",
+        borderRadius: 10,
+        background: active ? t.brandSoft : "transparent",
+        color: active ? t.ink : t.ink2,
+        border: `1px solid ${active ? t.line : "transparent"}`,
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: "pointer",
+        fontFamily: "inherit",
+      }}
+    >
+      {icon && <Icon name={icon} size={16} />}
+      {children}
+      {badge != null && badge > 0 && (
+        <span
+          style={{
+            minWidth: 18,
+            height: 18,
+            padding: "0 5px",
+            borderRadius: 999,
+            background: t.danger,
+            color: "#fff",
+            fontSize: 10,
+            fontWeight: 700,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -298,8 +368,38 @@ export function StageBadge({ stage, label }: { stage: number; label?: string }) 
         whiteSpace: "nowrap",
       }}
     >
+      <span style={{ width: 6, height: 6, borderRadius: 999, background: fg }} />
       {label ?? STAGE_LABELS[stage] ?? "—"}
     </span>
+  );
+}
+
+// — StageBar — mini horizontal stage progress (used on Loan Detail hero)
+export function StageBar({
+  stages,
+  current,
+  accent,
+}: {
+  stages: number;
+  current: number;
+  accent?: string;
+}) {
+  const { t } = useTheme();
+  const ac = accent || t.petrol;
+  return (
+    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+      {Array.from({ length: stages }).map((_, i) => (
+        <div
+          key={i}
+          style={{
+            flex: 1,
+            height: 4,
+            borderRadius: 2,
+            background: i <= current ? ac : t.line,
+          }}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -342,6 +442,204 @@ export function Panel({
         </div>
       )}
       <div style={{ padding: pad }}>{children}</div>
+    </div>
+  );
+}
+
+// — Sortable table head — clickable column headers with asc/desc indicator.
+// Cols with `key` are sortable; others render as static headers.
+export interface SortCol {
+  label: string;
+  w?: string;
+  align?: "left" | "right" | "center";
+  key?: string;
+}
+export interface SortState {
+  key: string;
+  dir: "asc" | "desc";
+}
+
+export function useSort(initialKey: string, initialDir: "asc" | "desc" = "desc") {
+  const [sort, setSort] = useState<SortState>({ key: initialKey, dir: initialDir });
+  const onSort = (key: string) => {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: "desc" }
+    );
+  };
+  // Stable comparator. Numbers, strings, dates (parseable) all handled.
+  const compare = <T extends Record<string, unknown>>(a: T, b: T) => {
+    const k = sort.key as keyof T;
+    const av = a[k];
+    const bv = b[k];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    let cmp: number;
+    if (typeof av === "number" && typeof bv === "number") cmp = av - bv;
+    else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: "base" });
+    return sort.dir === "asc" ? cmp : -cmp;
+  };
+  return { sort, onSort, compare };
+}
+
+export function SortableTableHead({
+  cols,
+  sort,
+  onSort,
+}: {
+  cols: SortCol[];
+  sort: SortState;
+  onSort: (key: string) => void;
+}) {
+  const { t } = useTheme();
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: cols.map((c) => c.w || "1fr").join(" "),
+        gap: 10,
+        padding: "10px 14px",
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: 1.2,
+        textTransform: "uppercase",
+        color: t.ink3,
+        borderBottom: `1px solid ${t.line}`,
+        background: t.surface2,
+        position: "sticky",
+        top: 0,
+        zIndex: 1,
+      }}
+    >
+      {cols.map((c, i) => {
+        const sortable = !!c.key;
+        const active = sortable && sort.key === c.key;
+        const dir = active ? sort.dir : null;
+        return (
+          <button
+            key={i}
+            onClick={() => sortable && c.key && onSort(c.key)}
+            disabled={!sortable}
+            style={{
+              all: "unset",
+              cursor: sortable ? "pointer" : "default",
+              textAlign: c.align || "left",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              justifyContent:
+                c.align === "right" ? "flex-end" : c.align === "center" ? "center" : "flex-start",
+              color: active ? t.ink : t.ink3,
+              fontWeight: 700,
+              letterSpacing: 1.2,
+              textTransform: "uppercase",
+              userSelect: "none",
+            }}
+          >
+            {c.label}
+            {sortable && (
+              <span
+                style={{
+                  display: "inline-flex",
+                  flexDirection: "column",
+                  lineHeight: 0.6,
+                  fontSize: 9,
+                  opacity: active ? 1 : 0.4,
+                }}
+              >
+                <span style={{ color: dir === "asc" ? t.ink : "currentColor" }}>▲</span>
+                <span style={{ color: dir === "desc" ? t.ink : "currentColor" }}>▼</span>
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function TableRow({
+  cols,
+  values,
+  onClick,
+  active,
+}: {
+  cols: SortCol[];
+  values: ReactNode[];
+  onClick?: () => void;
+  active?: boolean;
+}) {
+  const { t } = useTheme();
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        display: "grid",
+        gridTemplateColumns: cols.map((c) => c.w || "1fr").join(" "),
+        gap: 10,
+        padding: "12px 14px",
+        borderBottom: `1px solid ${t.line}`,
+        cursor: onClick ? "pointer" : "default",
+        background: active ? t.brandSoft : "transparent",
+        alignItems: "center",
+        fontSize: 13,
+      }}
+    >
+      {values.map((v, i) => (
+        <div
+          key={i}
+          style={{
+            textAlign: cols[i].align || "left",
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {v}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// — Toast — lightweight bottom-center notification
+export function useToast() {
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    if (!msg) return;
+    const id = setTimeout(() => setMsg(null), 2400);
+    return () => clearTimeout(id);
+  }, [msg]);
+  return { msg, show: (m: string) => setMsg(m) };
+}
+
+export function Toast({ msg }: { msg: string | null }) {
+  const { t } = useTheme();
+  if (!msg) return null;
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 28,
+        left: "50%",
+        transform: "translateX(-50%)",
+        background: t.ink,
+        color: t.inverse,
+        padding: "10px 16px",
+        borderRadius: 10,
+        fontSize: 13,
+        fontWeight: 600,
+        boxShadow: t.shadowLg,
+        zIndex: 200,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+      }}
+    >
+      <Icon name="check" size={14} stroke={3} />
+      {msg}
     </div>
   );
 }

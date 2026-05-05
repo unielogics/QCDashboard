@@ -23,16 +23,20 @@ import { DealHealthPill } from "./components/DealHealthPill";
 import { ParticipantsCard } from "./components/ParticipantsCard";
 import { EmailDraftsCard } from "./components/EmailDraftsCard";
 
+// Tab icons match design (loan-detail.jsx lines 76–85): home/sliders/calc/doc/
+// shield/building2/send/audit. The "thread" tab is QC-specific (not in
+// canonical design) for the Fintech Orchestrator participant + drafts UI;
+// kept after Wire so the design's 8 main tabs render in the same order.
 const TABS = [
   { id: "overview", label: "Overview", icon: "home" as const },
-  { id: "terms", label: "Terms", icon: "rates" as const },
-  { id: "hud", label: "HUD-1", icon: "doc" as const },
-  { id: "docs", label: "Documents", icon: "vault" as const },
+  { id: "terms", label: "Terms", icon: "sliders" as const },
+  { id: "hud", label: "HUD-1", icon: "calc" as const },
+  { id: "docs", label: "Documents", icon: "doc" as const },
   { id: "uw", label: "Underwriting", icon: "shield" as const },
-  { id: "property", label: "Property", icon: "build" as const },
-  { id: "wire", label: "Wire & Closing", icon: "bolt" as const },
-  { id: "thread", label: "Thread", icon: "messages" as const },
-  { id: "activity", label: "Activity", icon: "trend" as const },
+  { id: "property", label: "Property", icon: "building2" as const },
+  { id: "wire", label: "Wire & Closing", icon: "send" as const },
+  { id: "thread", label: "Thread", icon: "chat" as const },
+  { id: "activity", label: "Activity", icon: "audit" as const },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 

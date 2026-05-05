@@ -103,6 +103,20 @@ export default function AIInboxPage() {
   );
 }
 
+function sourceHref(source: AITask["source"], loanId: string | null): string {
+  // Map AI task source to the screen that originated it.
+  switch (source) {
+    case "underwriting": return loanId ? `/loans/${loanId}` : "/pipeline";
+    case "messages":     return loanId ? `/loans/${loanId}` : "/messages";
+    case "risk":         return loanId ? `/loans/${loanId}` : "/pipeline";
+    case "calendar":     return "/calendar";
+    case "documents":    return loanId ? `/loans/${loanId}` : "/documents";
+    case "pipeline":     return "/pipeline";
+    case "rates":        return "/rates";
+    default:             return loanId ? `/loans/${loanId}` : "/pipeline";
+  }
+}
+
 function Detail({ task }: { task: AITask }) {
   const { t } = useTheme();
   const decision = useAITaskDecision();
@@ -162,12 +176,48 @@ function Detail({ task }: { task: AITask }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <div style={{ padding: 20, borderBottom: `1px solid ${t.line}` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
           <Pill>{task.source}</Pill>
           <Pill bg={task.priority === "high" ? t.dangerBg : t.chip} color={task.priority === "high" ? t.danger : t.ink2}>{task.priority}</Pill>
           <span style={{ fontSize: 11, color: t.ink3 }}>· {task.agent} · conf {(task.confidence * 100).toFixed(0)}%</span>
+
+          {/* Source jump — bounces to whichever screen the agent came from */}
+          <Link
+            href={sourceHref(task.source, task.loan_id)}
+            style={{
+              marginLeft: "auto",
+              fontSize: 12,
+              color: t.ink2,
+              fontWeight: 700,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "5px 9px",
+              borderRadius: 7,
+              border: `1px solid ${t.line}`,
+              textDecoration: "none",
+            }}
+          >
+            <Icon name="external" size={11} /> Open source
+          </Link>
+
           {task.loan_id && (
-            <Link href={`/loans/${task.loan_id}`} style={{ marginLeft: "auto", fontSize: 12, color: t.petrol, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <Link
+              href={`/loans/${task.loan_id}`}
+              style={{
+                fontSize: 12,
+                color: t.petrol,
+                fontWeight: 700,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "5px 9px",
+                borderRadius: 7,
+                border: `1px solid ${t.petrol}40`,
+                background: t.petrolSoft,
+                textDecoration: "none",
+              }}
+            >
               Open loan <Icon name="chevR" size={12} />
             </Link>
           )}

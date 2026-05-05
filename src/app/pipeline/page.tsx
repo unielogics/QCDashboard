@@ -23,6 +23,7 @@ export default function PipelinePage() {
   const [sortKey, setSortKey] = useState<SortKey>("amount");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [search, setSearch] = useState<string>("");
   const [intakeOpen, setIntakeOpen] = useState(false);
 
   // Clients can't create loans (mirrors backend role gate at qcbackend/app/routers/loans.py).
@@ -43,36 +44,124 @@ export default function PipelinePage() {
     else { setSortKey(k); setSortDir("desc"); }
   };
 
+  // Search filters down by deal_id or address (case-insensitive).
+  const visibleLoans = useMemo(() => {
+    if (!search.trim()) return sorted;
+    const q = search.trim().toLowerCase();
+    return sorted.filter(
+      (l) =>
+        l.deal_id.toLowerCase().includes(q) ||
+        l.address.toLowerCase().includes(q) ||
+        (l.city ?? "").toLowerCase().includes(q),
+    );
+  }, [sorted, search]);
+
+  const totalValue = visibleLoans.reduce((acc, l) => acc + Number(l.amount), 0);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>Pipeline</h1>
-        <Pill>{loans.length} loans</Pill>
-        <div style={{ flex: 1 }} />
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={{
-          padding: "8px 10px", borderRadius: 8, background: t.surface, border: `1px solid ${t.line}`, fontSize: 13, color: t.ink,
-        }}>
-          <option value="all">All types</option>
-          <option value="dscr">DSCR</option>
-          <option value="fix_and_flip">Fix &amp; Flip</option>
-          <option value="ground_up">Ground Up</option>
-          <option value="bridge">Bridge</option>
-        </select>
-        <div style={{ display: "inline-flex", gap: 0, border: `1px solid ${t.line}`, borderRadius: 8, overflow: "hidden" }}>
-          <button onClick={() => setView("table")} style={{ padding: "8px 12px", background: view === "table" ? t.brandSoft : "transparent", color: view === "table" ? t.ink : t.ink3, fontSize: 13, fontWeight: 600 }}>Table</button>
-          <button onClick={() => setView("kanban")} style={{ padding: "8px 12px", background: view === "kanban" ? t.brandSoft : "transparent", color: view === "kanban" ? t.ink : t.ink3, fontSize: 13, fontWeight: 600 }}>Kanban</button>
-        </div>
-        {canCreate && (
-          <button
-            onClick={() => setIntakeOpen(true)}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: -0.5, color: t.ink, margin: 0 }}>
+          Pipeline
+        </h1>
+        <span style={{ color: t.ink3, fontSize: 14 }}>
+          · {visibleLoans.length} loans · {QC_FMT.short(totalValue)} value
+        </span>
+
+        <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
+          {/* Search address or ID */}
+          <div
             style={{
-              padding: "8px 14px", borderRadius: 10, background: t.brand, color: t.inverse, fontSize: 13, fontWeight: 700,
-              display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", border: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              background: t.surface,
+              border: `1px solid ${t.line}`,
+              borderRadius: 10,
+              padding: "6px 10px",
+              width: 240,
             }}
           >
-            <Icon name="plus" size={14} /> New loan
-          </button>
-        )}
+            <Icon name="search" size={14} style={{ color: t.ink3 }} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search address or ID…"
+              style={{
+                flex: 1,
+                border: "none",
+                outline: "none",
+                background: "transparent",
+                fontSize: 12.5,
+                color: t.ink,
+                fontFamily: "inherit",
+              }}
+            />
+          </div>
+
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            style={{
+              background: t.surface,
+              color: t.ink2,
+              border: `1px solid ${t.line}`,
+              borderRadius: 10,
+              padding: "8px 10px",
+              fontSize: 12.5,
+              fontFamily: "inherit",
+              cursor: "pointer",
+            }}
+          >
+            <option value="all">All types</option>
+            <option value="dscr">DSCR</option>
+            <option value="fix_and_flip">Fix &amp; Flip</option>
+            <option value="ground_up">Ground Up</option>
+            <option value="bridge">Bridge</option>
+          </select>
+
+          {/* Segmented Kanban / Table toggle — design lines 39–44 */}
+          <div
+            style={{
+              display: "inline-flex",
+              background: t.surface,
+              border: `1px solid ${t.line}`,
+              borderRadius: 10,
+              padding: 3,
+            }}
+          >
+            <button
+              onClick={() => setView("kanban")}
+              style={segBtn(t, view === "kanban")}
+            >
+              <Icon name="layers" size={14} /> Kanban
+            </button>
+            <button onClick={() => setView("table")} style={segBtn(t, view === "table")}>
+              <Icon name="filter" size={14} /> Table
+            </button>
+          </div>
+
+          {canCreate && (
+            <button
+              onClick={() => setIntakeOpen(true)}
+              style={{
+                padding: "9px 14px",
+                borderRadius: 10,
+                background: t.ink,
+                color: t.inverse,
+                fontSize: 13,
+                fontWeight: 700,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 7,
+                cursor: "pointer",
+                border: "none",
+              }}
+            >
+              <Icon name="plus" size={14} /> New loan
+            </button>
+          )}
+        </div>
       </div>
 
       <SmartIntakeModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
@@ -92,7 +181,7 @@ export default function PipelinePage() {
             <div>Risk</div>
             <SortHead label="Close" k="close_date" current={sortKey} dir={sortDir} onClick={setSort} />
           </div>
-          {sorted.map((loan) => (
+          {visibleLoans.map((loan) => (
             <Link key={loan.id} href={`/loans/${loan.id}`} style={{
               display: "grid", gridTemplateColumns: "80px minmax(0, 2fr) 120px 100px 90px 80px 90px",
               padding: "12px 16px", borderBottom: `1px solid ${t.line}`, alignItems: "center",
@@ -116,7 +205,7 @@ export default function PipelinePage() {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
           {STAGE_KEYS.map((k, i) => {
-            const stageLoans = sorted.filter((l) => l.stage === k);
+            const stageLoans = visibleLoans.filter((l) => l.stage === k);
             return (
               <div key={k} style={{ background: t.surface2, padding: 12, borderRadius: 12, border: `1px solid ${t.line}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -153,4 +242,21 @@ function SortHead({
       {label} {active ? (dir === "asc" ? "↑" : "↓") : ""}
     </button>
   );
+}
+
+function segBtn(t: ReturnType<typeof useTheme>["t"], active: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "6px 12px",
+    borderRadius: 7,
+    border: "none",
+    background: active ? t.ink : "transparent",
+    color: active ? t.inverse : t.ink2,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+    fontFamily: "inherit",
+  };
 }
