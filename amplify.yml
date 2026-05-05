@@ -11,13 +11,15 @@ frontend:
         - |
           set -e
           : > .env.production
+          # NOTE: NEXT_PUBLIC_CLERK_AFTER_SIGN_{IN,UP}_URL are deprecated.
+          # Post-sign-in routing is handled by forceRedirectUrl="/" props on
+          # the <SignIn> / <SignUp> components — keeping the env vars produces
+          # console warnings about double-set redirect URLs.
           for var in NEXT_PUBLIC_API_URL \
                     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
                     CLERK_SECRET_KEY \
                     NEXT_PUBLIC_CLERK_SIGN_IN_URL \
-                    NEXT_PUBLIC_CLERK_SIGN_UP_URL \
-                    NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL \
-                    NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL ; do
+                    NEXT_PUBLIC_CLERK_SIGN_UP_URL ; do
             val="${!var-}"
             if [ -n "$val" ]; then
               echo "$var=$val" >> .env.production
