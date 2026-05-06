@@ -6,7 +6,7 @@ import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 import AIRail from "./AIRail";
 import GlobalSearch from "./GlobalSearch";
-import { useUI } from "@/store/ui";
+import { useUI, readPersistedSidebar } from "@/store/ui";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { useCurrentUser } from "@/hooks/useApi";
 import { useRecordPendingConsent } from "@/hooks/useRecordPendingConsent";
@@ -18,7 +18,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const aiOpen = useUI((s) => s.aiOpen);
   const setAiOpen = useUI((s) => s.setAiOpen);
   const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
+  const setSidebarCollapsed = useUI((s) => s.setSidebarCollapsed);
   const setSearchOpen = useUI((s) => s.setSearchOpen);
+
+  // Rehydrate the user's persisted sidebar choice once, post-mount. Doing
+  // this in an effect (rather than at store init) keeps the first client
+  // render identical to the server render, avoiding hydration mismatch
+  // (React #418/#425) when localStorage says "collapsed".
+  useEffect(() => {
+    const persisted = readPersistedSidebar();
+    if (persisted) setSidebarCollapsed(true);
+  }, [setSidebarCollapsed]);
   const { data: user } = useCurrentUser();
   // Flush any pending sign-up consent (from localStorage) into the
   // /legal/accept audit table once the user resolves.

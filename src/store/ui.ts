@@ -12,19 +12,7 @@ interface UIStore {
   setSearchOpen: (v: boolean) => void;
 }
 
-const SIDEBAR_KEY = "qc.sidebarCollapsed";
-
-// Hydrate the initial sidebar state from localStorage so the user's last
-// choice survives a refresh. SSR-safe — falls back to expanded when window
-// isn't available (initial server render).
-function readInitialSidebar(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.localStorage.getItem(SIDEBAR_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
+export const SIDEBAR_KEY = "qc.sidebarCollapsed";
 
 function writeSidebar(collapsed: boolean): void {
   if (typeof window === "undefined") return;
@@ -35,8 +23,12 @@ function writeSidebar(collapsed: boolean): void {
   }
 }
 
+// Always start expanded server-side AND on first client render — reading
+// localStorage at module init causes SSR/CSR mismatch (React #418/#425) when
+// the user has previously collapsed the sidebar. The persisted value is
+// rehydrated in a useEffect inside AppShell via hydrateSidebarFromStorage().
 export const useUI = create<UIStore>((set) => ({
-  sidebarCollapsed: readInitialSidebar(),
+  sidebarCollapsed: false,
   setSidebarCollapsed: (v) => {
     writeSidebar(v);
     set({ sidebarCollapsed: v });
@@ -52,3 +44,14 @@ export const useUI = create<UIStore>((set) => ({
   searchOpen: false,
   setSearchOpen: (v) => set({ searchOpen: v }),
 }));
+
+// Read the persisted sidebar state. Call only from a client-side effect
+// (post-hydration), never during render or module init.
+export function readPersistedSidebar(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(SIDEBAR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
