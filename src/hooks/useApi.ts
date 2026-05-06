@@ -1019,12 +1019,17 @@ function isNotFound(err: unknown): boolean {
   return err instanceof ApiError && err.status === 404;
 }
 
-export function useFredSeries() {
+export function useFredSeries(days?: number) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
+  // Days is part of the queryKey so different ranges are cached independently
+  // — switching the explorer between 7/14/30/60/90 doesn't refetch the
+  // ranges that have already been seen.
+  const requested = days != null ? Math.max(1, Math.min(days, 90)) : undefined;
+  const path = requested ? `/fred/series?days=${requested}` : "/fred/series";
   return useQuery({
-    queryKey: ["fredSeries", devUser],
-    queryFn: () => apiCall<FredSeriesSummary[]>("/fred/series"),
+    queryKey: ["fredSeries", devUser, requested ?? "default"],
+    queryFn: () => apiCall<FredSeriesSummary[]>(path),
     staleTime: 5 * 60 * 1000, // 5 min — cron updates daily
     // Don't retry on 404 (router not mounted) — wastes requests, fills the
     // console with errors, and the empty-state UI handles it cleanly.

@@ -605,6 +605,10 @@ export interface FredSeriesSummary {
   estimated_rate: number | null;
   history_7d: FredObservation[];
   history_30d: FredObservation[];
+  // `history` is the variable-window slice the caller asked for (1..90 days).
+  // Older backends may omit it — frontend should fall back to history_30d.
+  history?: FredObservation[];
+  history_days?: number;
 }
 
 export interface LenderSpread {

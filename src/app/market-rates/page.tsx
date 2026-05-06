@@ -12,7 +12,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel, Sparkline } from "@/components/design-system/primitives";
+import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import {
@@ -24,6 +24,16 @@ import {
 import { QC_FMT } from "@/components/design-system/tokens";
 import { Role } from "@/lib/enums.generated";
 import type { FredSeriesSummary } from "@/lib/types";
+import { FredChart } from "@/components/FredChart";
+
+type RangeDays = 7 | 14 | 30 | 60 | 90;
+const RANGE_OPTIONS: { id: RangeDays; label: string }[] = [
+  { id: 7, label: "7d" },
+  { id: 14, label: "14d" },
+  { id: 30, label: "30d" },
+  { id: 60, label: "60d" },
+  { id: 90, label: "90d" },
+];
 
 // Series → product / use-case copy. Mirrors the dashboard widget so the
 // borrower sees the same "this is what this benchmark drives" framing.
@@ -37,7 +47,8 @@ const SERIES_LABELS: Record<string, { headline: string; sub: string }> = {
 export default function MarketRatesPage() {
   const { t } = useTheme();
   const { data: user } = useCurrentUser();
-  const { data: series = [], isLoading, error: seriesError } = useFredSeries();
+  const [rangeDays, setRangeDays] = useState<RangeDays>(30);
+  const { data: series = [], isLoading, error: seriesError } = useFredSeries(rangeDays);
   const refreshFred = useRefreshFred();
 
   const isSuperAdmin = user?.role === Role.SUPER_ADMIN;
@@ -100,6 +111,62 @@ export default function MarketRatesPage() {
         </div>
       </div>
 
+      {/* Range filter — applies to every chart on the page */}
+      {!fredNotDeployed && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "10px 14px",
+            borderRadius: 11,
+            background: t.surface,
+            border: `1px solid ${t.line}`,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: 1.2,
+              textTransform: "uppercase",
+              color: t.ink3,
+            }}
+          >
+            Range
+          </span>
+          <div style={{ display: "inline-flex", gap: 4, background: t.chip, padding: 3, borderRadius: 9 }}>
+            {RANGE_OPTIONS.map((opt) => {
+              const active = rangeDays === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => setRangeDays(opt.id)}
+                  style={{
+                    all: "unset",
+                    cursor: "pointer",
+                    padding: "5px 12px",
+                    borderRadius: 7,
+                    background: active ? t.surface : "transparent",
+                    color: active ? t.ink : t.ink3,
+                    boxShadow: active ? t.shadow : "none",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    fontFeatureSettings: '"tnum"',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          <span style={{ flex: 1 }} />
+          <span style={{ fontSize: 11, color: t.ink3 }}>
+            Hover any chart to see the value on that date.
+          </span>
+        </div>
+      )}
+
       {fredNotDeployed && (
         <Card pad={16} style={{ background: t.surface2 }}>
           <div style={{ fontSize: 13, color: t.ink2 }}>
@@ -130,6 +197,7 @@ export default function MarketRatesPage() {
             t={t}
             series={s}
             canEditSpread={isSuperAdmin}
+            rangeDays={rangeDays}
           />
         ))}
       </div>
@@ -150,10 +218,12 @@ function SeriesCard({
   t,
   series,
   canEditSpread,
+  rangeDays,
 }: {
   t: ReturnType<typeof useTheme>["t"];
   series: FredSeriesSummary;
   canEditSpread: boolean;
+  rangeDays: RangeDays;
 }) {
   const meta = SERIES_LABELS[series.series_id] ?? { headline: series.series_id, sub: "" };
   const upsertSpread = useUpsertLenderSpread();
@@ -165,10 +235,15 @@ function SeriesCard({
   // Reset draft whenever the underlying spread changes (e.g. after save).
   useEffect(() => setDraftBps(series.spread_bps), [series.spread_bps]);
 
-  const sparkValues = useMemo(
-    () => (series.history_30d ?? []).map((p) => p.value).filter((v): v is number => v != null),
-    [series.history_30d],
-  );
+  // Pick the chart points to plot:
+  //   - prefer the variable-window `history` field set by the new backend
+  //   - fall back to history_30d when the backend hasn't been redeployed
+  //     yet (older API doesn't ship the `history` field)
+  const chartPoints = useMemo(() => {
+    if (series.history && series.history.length > 0) return series.history;
+    return series.history_30d ?? [];
+  }, [series.history, series.history_30d]);
+  const validCount = chartPoints.filter((p) => p.value != null).length;
 
   const submit = async () => {
     setFlash(null);
@@ -222,37 +297,31 @@ function SeriesCard({
           <div style={{ fontSize: 12, color: t.ink3, marginTop: 4 }}>{meta.sub}</div>
 
           <div style={{ marginTop: 14 }}>
-            {sparkValues.length >= 2 ? (
-              <Sparkline data={sparkValues} color={t.spark} width={620} height={140} fill />
+            {validCount >= 2 ? (
+              <FredChart
+                data={chartPoints}
+                width={620}
+                height={220}
+                variant="expanded"
+                color={t.spark}
+                fill
+              />
             ) : (
               <div style={{ fontSize: 12, color: t.ink3, padding: 24, textAlign: "center" }}>
-                Not enough history yet.
+                Not enough history yet for a {rangeDays}-day window.
               </div>
             )}
           </div>
 
           <div
             style={{
-              marginTop: 8,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
+              marginTop: 4,
               fontSize: 11,
               color: t.ink3,
-              fontFeatureSettings: '"tnum"',
+              textAlign: "center",
             }}
           >
-            <span>
-              {series.history_30d[0]?.date
-                ? new Date(series.history_30d[0].date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-                : "—"}
-            </span>
-            <span style={{ color: t.ink2 }}>30-day window</span>
-            <span>
-              {series.history_30d.at(-1)?.date
-                ? new Date(series.history_30d.at(-1)!.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-                : "—"}
-            </span>
+            {rangeDays}-day window · {validCount} data points
           </div>
         </div>
 

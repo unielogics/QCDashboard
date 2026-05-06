@@ -13,7 +13,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, KPI, Pill, SectionLabel, Sparkline, StageBadge } from "@/components/design-system/primitives";
+import { Card, KPI, Pill, SectionLabel, StageBadge } from "@/components/design-system/primitives";
+import { FredChart } from "@/components/FredChart";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import {
@@ -641,9 +642,10 @@ function RateCard({
   const spreadBps = series?.spread_bps ?? 0;
   const delta = series?.delta_bps ?? null;
   const deltaColor = delta == null ? t.ink3 : delta < 0 ? t.profit : delta > 0 ? t.danger : t.ink3;
-  const sparkValues = (series?.history_7d ?? [])
-    .map((h) => h.value)
-    .filter((v): v is number => v != null);
+  // 7-day points feed the small inline chart — matches the mobile design.
+  const chartPoints = series?.history_7d ?? [];
+  const hasEnoughHistory =
+    chartPoints.filter((p) => p.value != null).length >= 2;
 
   return (
     <button
@@ -667,10 +669,14 @@ function RateCard({
         </div>
         <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>{card.sub}</div>
       </div>
-      {sparkValues.length >= 2 ? (
-        <Sparkline data={sparkValues} color={t.spark} width={180} height={40} fill />
+      {hasEnoughHistory ? (
+        // Wrap so the chart's hover doesn't trigger the card's click on
+        // mouse-up — FredChart's tooltip swallows pointer events but the
+        // chart svg itself is inside the button, so a click anywhere on
+        // the card (including over the chart) still opens the modal.
+        <FredChart data={chartPoints} width={200} height={44} variant="compact" fill />
       ) : (
-        <div style={{ height: 40, fontSize: 11, color: t.ink4, fontStyle: "italic", display: "flex", alignItems: "center" }}>
+        <div style={{ height: 44, fontSize: 11, color: t.ink4, fontStyle: "italic", display: "flex", alignItems: "center" }}>
           {hasData ? "Building 7-day history…" : "Awaiting first FRED pull"}
         </div>
       )}
