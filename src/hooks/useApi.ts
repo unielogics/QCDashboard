@@ -109,6 +109,12 @@ function useAuthedApi() {
 // /auth/me — the canonical "who am I?" endpoint. Drives the sidebar avatar,
 // the role gates throughout the UI, and the audit-log actor for outbound
 // mutations. Returns User | null while loading.
+//
+// staleTime is intentionally short (30s) and refetchOnWindowFocus is on so
+// that backend-side role changes (scripts/demote_to_client.py, the
+// invite/promote flow in Settings → Team) propagate within a tab-switch.
+// Without this, a user demoted from super_admin → client would keep seeing
+// the operator console for up to 5 minutes after the DB change.
 export function useCurrentUser() {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
@@ -116,7 +122,8 @@ export function useCurrentUser() {
   return useQuery({
     queryKey: ["auth-me", isSignedIn],
     queryFn: () => apiCall<User>("/auth/me"),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
     retry: false, // 401s should not retry
     // Don't fire until Clerk has resolved the auth state — otherwise we send
     // a token-less request and immediately 401.
