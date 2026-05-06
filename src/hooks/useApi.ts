@@ -418,7 +418,9 @@ export function useStartMyCreditPull() {
       city: string;
       state: string;
       zip: string;
-      ssn: string; // 9 digits, no dashes
+      // SSN is optional — backend tries name+address+DOB first, asks
+      // for SSN only when the bureau can't match.
+      ssn?: string;
       fcra_consent: boolean;
     }) =>
       apiCall<CreditPull>("/credit/pull", {

@@ -11,6 +11,7 @@ import { Card, Pill, SectionLabel } from "@/components/design-system/primitives"
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { useStartMyCreditPull } from "@/hooks/useApi";
+import { ApiError } from "@/lib/api";
 
 type Stage = "form" | "consent" | "pulling" | "done";
 
@@ -31,8 +32,9 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
   const start = useStartMyCreditPull();
   const [stage, setStage] = useState<Stage>("form");
   // Form fields = exactly what iSoftPull's API requires (per their docs).
-  // No phone/email — those live on the user/client record. SSN is the
-  // full 9 digits; backend forwards to iSoftPull and persists only last 4.
+  // No phone/email — those live on the user/client record. SSN starts
+  // hidden and is only required if the bureau can't match on
+  // name+address+DOB alone (most consumers can be matched without it).
   const [first, last] = (initialName ?? "").split(" ", 2);
   const [form, setForm] = useState({
     legal_first_name: first ?? "",
@@ -44,16 +46,24 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
     zip: "",
     ssn: "",
   });
+  // Becomes true after the first attempt comes back with
+  // code="no_hit_provide_ssn". Reveals the SSN field; subsequent
+  // submits include it.
+  const [ssnRequired, setSsnRequired] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Reset to form whenever the modal reopens — avoids the modal flashing the
   // previous "done" state when the user re-runs the pull.
   useEffect(() => {
     if (open) {
       setStage("form");
+      setSsnRequired(false);
+      setSubmitError(null);
       setForm((prev) => ({
         ...prev,
         legal_first_name: prev.legal_first_name || (initialName?.split(" ")[0] ?? ""),
         legal_last_name: prev.legal_last_name || (initialName?.split(" ").slice(1).join(" ") ?? ""),
+        ssn: "", // never carry SSN across reopens
       }));
     }
   }, [open, initialName, initialEmail]);
@@ -72,10 +82,41 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
 
   const submit = async () => {
     setStage("pulling");
+    setSubmitError(null);
     try {
-      await start.mutateAsync({ ...form, fcra_consent: true });
+      // Send SSN only when the user typed one (or backend told us it's
+      // needed). Empty string would fail Pydantic's "exactly 9 digits"
+      // validator, so coerce to undefined when blank.
+      const payload: {
+        legal_first_name: string; legal_last_name: string; dob: string;
+        street: string; city: string; state: string; zip: string;
+        ssn?: string; fcra_consent: boolean;
+      } = {
+        legal_first_name: form.legal_first_name,
+        legal_last_name: form.legal_last_name,
+        dob: form.dob, street: form.street, city: form.city,
+        state: form.state, zip: form.zip, fcra_consent: true,
+      };
+      if (form.ssn.length === 9) payload.ssn = form.ssn;
+
+      await start.mutateAsync(payload);
       setStage("done");
-    } catch {
+    } catch (err: unknown) {
+      // Backend signals "we couldn't match without SSN" by returning
+      // 422 with body.detail.code === "no_hit_provide_ssn". ApiError
+      // carries the parsed JSON on `body`; pluck the code out.
+      const code = readErrorCode(err);
+      const detailMsg = readErrorMessage(err);
+      if (code === "no_hit_provide_ssn") {
+        setSsnRequired(true);
+        setSubmitError(
+          detailMsg ||
+            "We couldn't find your file with name + address + DOB alone. Add your SSN below and try again.",
+        );
+        setStage("form");
+        return;
+      }
+      setSubmitError(detailMsg || "Pull failed — please retry.");
       setStage("consent");
     }
   };
@@ -88,7 +129,8 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
     form.city.trim() &&
     form.state.length === 2 &&
     /^\d{5}(-\d{4})?$/.test(form.zip.trim()) &&
-    form.ssn.length === 9;
+    // SSN only required after the bureau told us it couldn't match.
+    (!ssnRequired || form.ssn.length === 9);
 
   return (
     <div
@@ -179,19 +221,34 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
                 <Field t={t} label="ZIP" value={form.zip} onChange={(v) => setForm({ ...form, zip: v })} />
               </div>
 
-              <div style={{ height: 10 }} />
-              <SectionLabel>Identity</SectionLabel>
-              <Field
-                t={t}
-                label="Social Security Number"
-                placeholder="9 digits, no dashes"
-                type="password"
-                value={form.ssn}
-                onChange={(v) => setForm({ ...form, ssn: v.replace(/\D/g, "").slice(0, 9) })}
-              />
-              <div style={{ fontSize: 11, color: t.ink3, marginTop: -4, marginBottom: 4 }}>
-                Sent to the bureau over TLS. Only the last 4 digits are stored on file.
-              </div>
+              {ssnRequired ? (
+                <>
+                  <div style={{ height: 10 }} />
+                  <SectionLabel>Identity verification</SectionLabel>
+                  {submitError ? (
+                    <div style={{ marginBottom: 10 }}>
+                      <Pill bg={t.warnBg} color={t.warn}>{submitError}</Pill>
+                    </div>
+                  ) : null}
+                  <Field
+                    t={t}
+                    label="Social Security Number"
+                    placeholder="9 digits, no dashes"
+                    type="password"
+                    value={form.ssn}
+                    onChange={(v) => setForm({ ...form, ssn: v.replace(/\D/g, "").slice(0, 9) })}
+                  />
+                  <div style={{ fontSize: 11, color: t.ink3, marginTop: -4, marginBottom: 4 }}>
+                    Sent to the bureau over TLS. Only the last 4 digits are stored on file.
+                  </div>
+                </>
+              ) : (
+                <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 8, background: t.surface2, border: `1px solid ${t.line}` }}>
+                  <div style={{ fontSize: 11.5, color: t.ink2, lineHeight: 1.5 }}>
+                    We try to match your credit file using name, address, and date of birth — most consumers can be matched on those alone. We only ask for your SSN if the bureau can't find your file without it.
+                  </div>
+                </div>
+              )}
 
               <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 <button onClick={onClose} style={qcBtn(t)}>Cancel</button>
@@ -312,4 +369,32 @@ function Field({
       />
     </div>
   );
+}
+
+// FastAPI returns 422s like:
+//   { detail: { code: "no_hit_provide_ssn", message: "..." } }
+// or for plain HTTPException(status, "msg") it returns:
+//   { detail: "msg" }
+// readErrorCode / readErrorMessage handle both shapes.
+function readErrorCode(err: unknown): string | null {
+  if (!(err instanceof ApiError)) return null;
+  const body = err.body as { detail?: unknown } | undefined;
+  const detail = body?.detail;
+  if (detail && typeof detail === "object" && "code" in detail) {
+    const code = (detail as { code?: unknown }).code;
+    return typeof code === "string" ? code : null;
+  }
+  return null;
+}
+
+function readErrorMessage(err: unknown): string | null {
+  if (!(err instanceof ApiError)) return null;
+  const body = err.body as { detail?: unknown } | undefined;
+  const detail = body?.detail;
+  if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object" && "message" in detail) {
+    const msg = (detail as { message?: unknown }).message;
+    return typeof msg === "string" ? msg : null;
+  }
+  return null;
 }
