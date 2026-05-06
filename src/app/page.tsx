@@ -387,8 +387,9 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Portfolio Health — for all roles (ported from mobile) */}
-      <PortfolioHealth loans={loans} />
+      {/* Portfolio Health — borrower-facing only. Operators have their own
+          KPI/exposure surfaces (Reports, Top Brokers, Pipeline). */}
+      {isClient && <PortfolioHealth loans={loans} />}
 
       {/* AI tasks + Top brokers */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
@@ -547,7 +548,7 @@ function TodaysMarketRates() {
                 </button>
               )}
               <Link
-                href="/rates"
+                href="/market-rates"
                 style={{
                   color: t.petrol,
                   fontWeight: 700,
@@ -869,7 +870,27 @@ function PortfolioHealth({ loans }: { loans: Loan[] }) {
   const activeLoans = loans.filter((l) => l.stage !== "funded").length;
   return (
     <Card pad={16}>
-      <SectionLabel>Portfolio Health</SectionLabel>
+      <SectionLabel
+        action={
+          <Link
+            href="/vault"
+            style={{
+              color: t.petrol,
+              fontWeight: 700,
+              fontSize: 12,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+            title="Manage properties, upload HUDs, and review your investor profile"
+          >
+            view all <Icon name="arrowR" size={12} />
+          </Link>
+        }
+      >
+        Portfolio Health
+      </SectionLabel>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
         <Stat label="Equity Unlocked" value={QC_FMT.short(equityUnlocked)} sub="estimated 30% of loan vol." />
         <Stat
