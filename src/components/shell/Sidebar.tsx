@@ -27,7 +27,11 @@ const NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: "home" },
   { href: "/pipeline", label: "Pipeline", icon: "layers" },
   { href: "/ai-inbox", label: "AI Inbox", icon: "bolt", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
-  { href: "/clients", label: "Clients", icon: "clients" },
+  // Operator-only — clients should not see the borrower roster.
+  { href: "/clients", label: "Clients", icon: "clients", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
+  // Borrower's personal document vault. Visible to everyone — operators
+  // get a borrower-style view grouped by client (see /vault page comments).
+  { href: "/vault", label: "Vault", icon: "vault" },
   { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "cal" },
   { href: "/simulator", label: "Simulate", icon: "calc" },

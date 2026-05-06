@@ -1,12 +1,13 @@
 "use client";
 
-// Vault — borrower's personal document vault. Distinct from /documents which
-// is the operator-side per-loan request queue. Two tabs:
-//   • Subject Property — docs tied to the borrower's most-recent loan
-//   • REO Schedule — docs tied to all funded (closed) loans
+// Vault — borrower's personal document vault. Mirrors qcmobile's Vault tab:
+// two sections by Document.category:
+//   • Experience      — proof of past deals (HUDs, closings, deeds, prior leases)
+//   • Active assets   — currently-owned real estate (bank notes, current leases,
+//                       insurance, tax bills)
 //
-// For operators we keep the same shell but group by client so the same route
-// works without role-gating in the sidebar.
+// For operators we keep the same shell — they get a borrower-style view of
+// the documents the connected borrower (or themselves) has uploaded.
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -17,57 +18,62 @@ import { useCurrentUser, useDocuments, useLoans } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import type { Document, Loan } from "@/lib/types";
 
-const TAB_SUBJECT = "subject";
-const TAB_REO = "reo";
+type VaultTab = "experience" | "active_asset";
+
+// Match the mobile heuristic: docs with no category default to the
+// experience tab (where the vault originally lived).
+function tabFor(category: string | null | undefined): VaultTab {
+  if (category === "active_asset") return "active_asset";
+  return "experience";
+}
 
 export default function VaultPage() {
   const { t } = useTheme();
   const { data: user } = useCurrentUser();
   const { data: loans = [] } = useLoans();
   const { data: docs = [] } = useDocuments();
-  const [tab, setTab] = useState<typeof TAB_SUBJECT | typeof TAB_REO>(TAB_SUBJECT);
+  const [tab, setTab] = useState<VaultTab>("experience");
 
   const isClient = user?.role === Role.CLIENT;
 
-  // Subject = docs tied to the most recent in-flight loan; REO = all funded.
-  const inFlight = loans.filter((l) => l.stage !== "funded");
-  const funded = loans.filter((l) => l.stage === "funded");
-  const subjectLoanIds = new Set(inFlight.map((l) => l.id));
-  const reoLoanIds = new Set(funded.map((l) => l.id));
+  const tabCounts = useMemo(() => ({
+    experience: docs.filter((d) => tabFor(d.category) === "experience").length,
+    active_asset: docs.filter((d) => tabFor(d.category) === "active_asset").length,
+  }), [docs]);
 
-  const filtered = useMemo(() => {
-    const ids = tab === TAB_SUBJECT ? subjectLoanIds : reoLoanIds;
-    return docs.filter((d) => ids.has(d.loan_id));
-  }, [docs, tab, subjectLoanIds, reoLoanIds]);
+  const filtered = useMemo(
+    () => docs.filter((d) => tabFor(d.category) === tab),
+    [docs, tab],
+  );
 
   const loanById = Object.fromEntries(loans.map((l) => [l.id, l] as const));
 
   return (
-    <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
       <div>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Vault</h1>
         <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
           {isClient
-            ? "Your verified document set. Subject Property = the loan in flight; REO = your closed deals."
-            : "Borrower-style document view, grouped by loan."}
+            ? "Your document vault. Experience = proof of past deals. Active assets = real estate you currently own."
+            : "Borrower-style document view, split by experience proof vs. active assets."}
         </div>
       </div>
 
       <div style={{ display: "flex", gap: 4 }}>
-        <TabButton t={t} active={tab === TAB_SUBJECT} onClick={() => setTab(TAB_SUBJECT)}>
-          Subject Property <Pill>{Array.from(subjectLoanIds).reduce((s, id) => s + docs.filter((d) => d.loan_id === id).length, 0)}</Pill>
+        <TabButton t={t} active={tab === "experience"} onClick={() => setTab("experience")}>
+          Experience <Pill>{tabCounts.experience}</Pill>
         </TabButton>
-        <TabButton t={t} active={tab === TAB_REO} onClick={() => setTab(TAB_REO)}>
-          REO Schedule <Pill>{Array.from(reoLoanIds).reduce((s, id) => s + docs.filter((d) => d.loan_id === id).length, 0)}</Pill>
+        <TabButton t={t} active={tab === "active_asset"} onClick={() => setTab("active_asset")}>
+          Active assets <Pill>{tabCounts.active_asset}</Pill>
         </TabButton>
       </div>
 
       {filtered.length === 0 ? (
         <Card pad={32}>
-          <div style={{ textAlign: "center", color: t.ink3, fontSize: 13 }}>
-            {tab === TAB_SUBJECT
-              ? "No documents in your subject-property vault yet. Documents requested by your broker show up here."
-              : "No closed-loan documents yet. They land here once a loan funds."}
+          <div style={{ textAlign: "center", color: t.ink3, fontSize: 13, lineHeight: 1.55 }}>
+            {tab === "experience"
+              ? "No experience proof yet. Upload HUDs, closing statements, deeds, or prior leases from past deals to count toward your investor experience tier."
+              : "No active assets yet. Upload bank notes, leases, insurance, or tax bills for properties you currently own."}
           </div>
         </Card>
       ) : (
