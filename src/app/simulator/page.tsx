@@ -166,11 +166,17 @@ function ClientSimulator() {
   const [ltvPct, setLtvPct] = useState(initialLtvPct);
   // Manual loan-amount override. null = derive from LTV slider.
   const [requestedLoanText, setRequestedLoanText] = useState<string | null>(null);
+  // DSCR — borrower's actual monthly rent. Empty string falls back to the
+  // 0.85% of loan-amount estimate inside computeSimulator.
+  const [monthlyRentText, setMonthlyRentText] = useState("");
+  // HUD detail expander — opens when the borrower clicks "Estimated cash to close".
+  const [showHud, setShowHud] = useState(false);
 
   const arvNum = Number(arvText.replace(/[^0-9.]/g, "")) || 0;
   const brvNum = Number(brvText.replace(/[^0-9.]/g, "")) || 0;
   const rehabNum = Number(rehabText.replace(/[^0-9.]/g, "")) || 0;
   const payoffNum = Number(payoffText.replace(/[^0-9.]/g, "")) || 0;
+  const monthlyRentNum = Number(monthlyRentText.replace(/[^0-9.]/g, "")) || 0;
   const requestedLoanNum =
     requestedLoanText != null ? Number(requestedLoanText.replace(/[^0-9.]/g, "")) || 0 : null;
   const isBlocked = eligibility.tier === "blocked";
@@ -211,6 +217,7 @@ function ClientSimulator() {
       rehabBudget: reno ? rehabNum : undefined,
       requestedLoanAmount: requestedLoanNum ?? undefined,
       ltvTierCap: eligibility.maxLTV > 0 ? eligibility.maxLTV : undefined,
+      monthlyRent: productKey === "dscr" && monthlyRentNum > 0 ? monthlyRentNum : undefined,
     });
   }, [
     isBlocked,
@@ -226,6 +233,7 @@ function ClientSimulator() {
     brvNum,
     rehabNum,
     requestedLoanNum,
+    monthlyRentNum,
     eligibility.maxLTV,
   ]);
 
@@ -313,84 +321,23 @@ function ClientSimulator() {
           />
         )
       ) : (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 20 }}>
-      {/* LEFT — results & amortization (the focus of this page). */}
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 280px", gap: 20 }}>
+      {/* LEFT — calculator, controls, results, amortization. The focal area. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-        <Card pad={16}>
-          <SectionLabel>Simulated terms</SectionLabel>
-          {result ? (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <KPI label="Loan amount" value={QC_FMT.usd(result.loanAmount, 0)} />
-              <KPI label="Final rate" value={`${(result.rate * 100).toFixed(3)}%`} accent={t.brand} />
-              <KPI label="Monthly P&I" value={QC_FMT.usd(result.monthlyPI, 0)} />
-              {result.dscr != null ? (
-                <KPI
-                  label="DSCR"
-                  value={result.dscr.toFixed(2)}
-                  accent={result.dscr > 1.25 ? t.profit : result.dscr > 1 ? t.warn : t.danger}
-                />
-              ) : null}
-              {result.cashFlow != null ? (
-                <KPI
-                  label="Est. cash flow"
-                  value={`${result.cashFlow > 0 ? "+" : ""}${QC_FMT.usd(result.cashFlow, 0)}`}
-                  accent={result.cashFlow > 0 ? t.profit : t.danger}
-                />
-              ) : null}
-              <KPI label="Discount points cost" value={QC_FMT.usd(result.pointsCost, 0)} />
-              <KPI label="Estimated cash to close" value={QC_FMT.usd(result.totalToClose, 0)} />
-              {result.cashToBorrower != null ? (
-                <KPI
-                  label={result.cashToBorrower >= 0 ? "Cash to borrower" : "Cash to close (refi gap)"}
-                  value={`${result.cashToBorrower >= 0 ? "+" : ""}${QC_FMT.usd(result.cashToBorrower, 0)}`}
-                  accent={result.cashToBorrower >= 0 ? t.profit : t.danger}
-                />
-              ) : null}
-              {result.cashToClose != null ? (
-                <KPI label="Borrower equity (cash to close)" value={QC_FMT.usd(result.cashToClose, 0)} />
-              ) : null}
-              {result.totalCost != null ? (
-                <KPI label="Total project cost" value={QC_FMT.usd(result.totalCost, 0)} />
-              ) : null}
-              <div style={{ gridColumn: "1 / -1", display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
-                <Pill bg={t.surface2} color={t.ink2}>
-                  Binding · {bindingConstraintLabel(result.bindingConstraint)}
-                </Pill>
-                {result.clamped ? (
-                  <Pill bg={t.warnBg} color={t.warn}>capped</Pill>
-                ) : null}
-              </div>
-            </div>
-          ) : (
-            <div style={{ fontSize: 12.5, color: t.ink3 }}>
-              {isBlocked
-                ? "Resolve the eligibility issue in the right panel to run a simulation."
-                : "Enter ARV to see simulated terms."}
-            </div>
-          )}
-        </Card>
-        {result && result.loanAmount > 0 && result.rate > 0 ? (
-          <AmortizationSchedule
-            loanAmount={result.loanAmount}
-            annualRate={result.rate}
-            termMonths={productKey === "dscr" ? 360 : 0}
-            monthlyPI={result.monthlyPI}
-          />
-        ) : null}
-      </div>
-
-      {/* RIGHT — credit/experience header (compact) + filters. */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-        <CollapsibleCreditSummary
-          summary={creditSummary ?? null}
-          fico={credit?.fico ?? null}
-          propertyCount={propertyCount}
-          hasYearOfOwnership={hasYearOfOwnership}
-          banner={eligibility.banner ?? null}
+        {/* Slim 2-line results header with DP slider attached, cash-to-close clickable. */}
+        <SlimTermsHeader
+          t={t}
+          result={result}
+          isBlocked={isBlocked}
+          productKey={productKey}
+          points={points}
+          setPoints={setPoints}
+          showHud={showHud}
+          setShowHud={setShowHud}
         />
 
-        <Card pad={20}>
-          <SectionLabel>Product</SectionLabel>
+        {/* Product selector — inline tabs, doesn't waste vertical space. */}
+        <Card pad={14}>
           <div style={{ display: "flex", gap: 4, background: t.chip, borderRadius: 11, padding: 3 }}>
             {(
               [
@@ -426,8 +373,10 @@ function ClientSimulator() {
           </div>
         </Card>
 
+        {/* Merged Property + Rent + LTV + Loan-amount card. */}
         <Card pad={20}>
-          <SectionLabel>Property</SectionLabel>
+          <SectionLabel>{reno ? "Property values & loan sizing" : "Property & loan sizing"}</SectionLabel>
+
           {productKey === "dscr" ? (
             <div style={{ marginBottom: 12, display: "flex", gap: 4, background: t.chip, borderRadius: 11, padding: 3 }}>
               {(["purchase", "refi"] as const).map((tx) => {
@@ -455,60 +404,51 @@ function ClientSimulator() {
               })}
             </div>
           ) : null}
+
+          {/* Property values row — grid varies by product/transaction. DSCR
+              gets an extra Monthly Rent input on the same row. */}
           {reno ? (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
               <ArvField label="Purchase price (BRV)" value={brvText} onChange={setBrvText} hint="As-is purchase" />
               <ArvField label="Rehab budget" value={rehabText} onChange={setRehabText} hint="Repair cost" />
               <ArvField label={propertyLabel} value={arvText} onChange={setArvText} hint="After repair value" />
             </div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: isRefi ? "1fr 1fr" : "1fr", gap: 12 }}>
+          ) : productKey === "dscr" ? (
+            <div style={{ display: "grid", gridTemplateColumns: isRefi ? "1fr 1fr 1fr" : "1fr 1fr", gap: 12 }}>
               <ArvField label={propertyLabel} value={arvText} onChange={setArvText} hint={isRefi ? "Today's appraised value" : "Loan = Market Value × LTV"} />
               {isRefi ? (
                 <ArvField label="Existing payoff" value={payoffText} onChange={setPayoffText} hint="Mortgage balance to pay off" />
               ) : null}
+              <ArvField
+                label="Monthly rent"
+                value={monthlyRentText}
+                onChange={setMonthlyRentText}
+                hint={
+                  monthlyRentNum > 0
+                    ? "Drives DSCR + cash flow"
+                    : "Auto-estimate ≈ 0.85% of loan if blank"
+                }
+              />
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
+              <ArvField label={propertyLabel} value={arvText} onChange={setArvText} hint="Loan = Market Value × LTV" />
             </div>
           )}
+
           {liveRate?.estimated_rate != null ? (
             <div style={{ fontSize: 11, color: t.ink3, marginTop: 10 }}>
               Today's base rate · {liveRate.label} +{liveRate.spread_bps} bps · <strong>{liveRate.estimated_rate.toFixed(3)}%</strong>
             </div>
           ) : null}
-        </Card>
 
-        <Card pad={20}>
-          <SectionLabel>Discount points</SectionLabel>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
+          {/* LTV section — heading + tier label + current % on one row. */}
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 18, marginBottom: 8 }}>
             <div>
-              <div style={{ fontSize: 12, color: t.ink2, fontWeight: 600 }}>0–2 pts</div>
-              <div style={{ fontSize: 10.5, color: t.ink4, marginTop: 1 }}>
-                {points > 0 ? `−${Math.round(points * 25)} bps off base rate` : "No buy-down · base rate"}
+              <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
+                {reno ? "Loan sizing" : "Loan-to-value"}
               </div>
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"', letterSpacing: -0.4 }}>
-              {points.toFixed(2)} pts
-            </div>
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={2}
-            step={0.25}
-            value={points}
-            disabled={isBlocked}
-            onChange={(e) => setPoints(Number(e.target.value))}
-            style={{ width: "100%", accentColor: t.petrol, opacity: isBlocked ? 0.4 : 1 }}
-          />
-        </Card>
-
-        <Card pad={20}>
-          <SectionLabel>{reno ? "Loan sizing" : "Loan-to-value (LTV)"}</SectionLabel>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
-            <div>
-              <div style={{ fontSize: 12, color: t.ink2, fontWeight: 600 }}>
-                {reno ? "Min(85% LTC, 70% ARV)" : "60–75% range"}
-              </div>
-              <div style={{ fontSize: 10.5, color: t.ink4, marginTop: 1 }}>
+              <div style={{ fontSize: 11, color: t.ink4, marginTop: 1 }}>
                 {result ? bindingConstraintLabel(result.bindingConstraint) : ltvLabel(ltvPct / 100)}
               </div>
             </div>
@@ -517,7 +457,6 @@ function ClientSimulator() {
             </div>
           </div>
 
-          {/* RangeGauge — visual cap-vs-current */}
           {result && arvNum > 0 ? (
             <div style={{ marginBottom: 12 }}>
               <RangeGauge
@@ -540,7 +479,6 @@ function ClientSimulator() {
             </div>
           ) : null}
 
-          {/* LTV slider */}
           {!reno ? (
             <>
               <input
@@ -577,7 +515,6 @@ function ClientSimulator() {
             </>
           ) : null}
 
-          {/* Manual loan amount — clamped to the cap. */}
           <div style={{ marginTop: 14 }}>
             <ArvField
               label={`Loan amount${result ? ` · max ${QC_FMT.usd(result.maxLoan, 0)}` : ""}`}
@@ -600,6 +537,28 @@ function ClientSimulator() {
             </div>
           ) : null}
         </Card>
+
+        {/* Amortization at the bottom of the focal column. */}
+        {result && result.loanAmount > 0 && result.rate > 0 ? (
+          <AmortizationSchedule
+            loanAmount={result.loanAmount}
+            annualRate={result.rate}
+            termMonths={productKey === "dscr" ? 360 : 0}
+            monthlyPI={result.monthlyPI}
+          />
+        ) : null}
+      </div>
+
+      {/* RIGHT — credit/experience header (compact). Just the credit pill;
+          everything else moved into the focal column. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+        <CollapsibleCreditSummary
+          summary={creditSummary ?? null}
+          fico={credit?.fico ?? null}
+          propertyCount={propertyCount}
+          hasYearOfOwnership={hasYearOfOwnership}
+          banner={eligibility.banner ?? null}
+        />
       </div>
     </div>
       )}
@@ -1437,6 +1396,272 @@ function PointsSlider({
       </div>
       <div style={{ fontSize: 11, color: t.ink3, marginTop: 8 }}>
         Loan amount × points% = HUD line 802. {QC_FMT.usd(loanAmount, 0)} × {value.toFixed(2)}% = {QC_FMT.usd(pointsCost, 0)}.
+      </div>
+    </div>
+  );
+}
+
+// ── Slim 2-line terms header with attached DP slider + HUD expander ────
+// Replaces the previous tall "Simulated terms" Card. Line 1: 4 headline
+// metrics (loan amount / rate / monthly P&I / DSCR-or-cash-to-close).
+// Line 2: discount-points slider inline. Cash-to-close is a button that
+// reveals the full HUD-style breakdown beneath the card.
+function SlimTermsHeader({
+  t,
+  result,
+  isBlocked,
+  productKey,
+  points,
+  setPoints,
+  showHud,
+  setShowHud,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  result: import("@/lib/eligibility").SimulatorOutputs | null;
+  isBlocked: boolean;
+  productKey: "dscr" | "ff" | "gu" | "br";
+  points: number;
+  setPoints: (n: number) => void;
+  showHud: boolean;
+  setShowHud: (v: boolean) => void;
+}) {
+  if (!result) {
+    return (
+      <Card pad={16}>
+        <div style={{ fontSize: 12.5, color: t.ink3 }}>
+          {isBlocked
+            ? "Resolve the eligibility issue in the right panel to run a simulation."
+            : "Enter ARV to see simulated terms."}
+        </div>
+      </Card>
+    );
+  }
+  const isDscr = productKey === "dscr";
+  const dscrAccent = result.dscr == null ? t.ink2 : result.dscr > 1.25 ? t.profit : result.dscr > 1 ? t.warn : t.danger;
+  return (
+    <Card pad={0} style={{ overflow: "hidden" }}>
+      {/* Line 1: 4 headline KPIs in a single row. */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isDscr ? "1.1fr 0.9fr 0.9fr 0.9fr 0.9fr" : "1.1fr 0.9fr 0.9fr 0.9fr",
+          gap: 0,
+          padding: "14px 18px",
+          borderBottom: `1px solid ${t.line}`,
+          alignItems: "stretch",
+        }}
+      >
+        <SlimStat t={t} label="Loan amount" value={QC_FMT.usd(result.loanAmount, 0)} />
+        <SlimStat t={t} label="Final rate" value={`${(result.rate * 100).toFixed(3)}%`} accent={t.brand} />
+        <SlimStat t={t} label="Monthly P&I" value={QC_FMT.usd(result.monthlyPI, 0)} />
+        {isDscr && result.dscr != null ? (
+          <SlimStat t={t} label="DSCR" value={result.dscr.toFixed(2)} accent={dscrAccent} />
+        ) : null}
+        <button
+          onClick={() => setShowHud(!showHud)}
+          aria-expanded={showHud}
+          style={{
+            all: "unset",
+            cursor: "pointer",
+            padding: "0 10px",
+            borderLeft: `1px solid ${t.line}`,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 9.5,
+              fontWeight: 700,
+              color: t.ink3,
+              letterSpacing: 0.8,
+              textTransform: "uppercase",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            Cash to close <Icon name={showHud ? "chevU" : "chevD"} size={10} />
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: t.ink, marginTop: 2, fontFeatureSettings: '"tnum"' }}>
+            {QC_FMT.usd(result.totalToClose, 0)}
+          </div>
+        </button>
+      </div>
+
+      {/* Line 2: DP slider + binding pill inline. */}
+      <div
+        style={{
+          padding: "10px 18px 12px",
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 140 }}>
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase" }}>
+            DP
+          </span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: t.ink, fontFeatureSettings: '"tnum"' }}>
+            {points.toFixed(2)}
+          </span>
+          <span style={{ fontSize: 10.5, color: t.ink3 }}>
+            {points > 0 ? `−${Math.round(points * 25)} bps` : "no buy-down"}
+          </span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={2}
+          step={0.25}
+          value={points}
+          disabled={isBlocked}
+          onChange={(e) => setPoints(Number(e.target.value))}
+          style={{ flex: 1, accentColor: t.petrol, opacity: isBlocked ? 0.4 : 1 }}
+        />
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <Pill bg={t.surface2} color={t.ink2}>
+            {bindingConstraintLabel(result.bindingConstraint)}
+          </Pill>
+          {result.clamped ? <Pill bg={t.warnBg} color={t.warn}>capped</Pill> : null}
+        </div>
+      </div>
+
+      {/* Inline HUD breakdown — expands below when cash-to-close is clicked. */}
+      {showHud ? <HudBreakdown t={t} result={result} /> : null}
+    </Card>
+  );
+}
+
+function SlimStat({
+  t,
+  label,
+  value,
+  accent,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  label: string;
+  value: string;
+  accent?: string;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", paddingRight: 14, minWidth: 0 }}>
+      <div style={{ fontSize: 9.5, fontWeight: 700, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase", whiteSpace: "nowrap" }}>
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: 18,
+          fontWeight: 800,
+          color: accent ?? t.ink,
+          marginTop: 2,
+          fontFeatureSettings: '"tnum"',
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// HUD-1 style breakdown — the line items rolled up into Cash to Close.
+// Hidden by default; revealed when the user clicks the Cash-to-close stat.
+function HudBreakdown({
+  t,
+  result,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  result: import("@/lib/eligibility").SimulatorOutputs;
+}) {
+  const rows: Array<{ label: string; value: number; muted?: boolean }> = [
+    { label: "Discount points", value: result.pointsCost },
+    { label: "Origination (0.75%)", value: result.origination },
+    { label: "Processing + underwriting", value: result.fixedFees },
+    { label: "Title insurance (0.5%)", value: result.titleIns },
+    { label: "Appraisal", value: result.appraisal },
+    { label: "Recording + filing", value: result.recording },
+  ];
+  const sum = rows.reduce((s, r) => s + r.value, 0);
+  return (
+    <div style={{ borderTop: `1px solid ${t.line}`, padding: "12px 18px", background: t.surface2 }}>
+      <div
+        style={{
+          fontSize: 10.5,
+          fontWeight: 700,
+          color: t.ink3,
+          letterSpacing: 0.8,
+          textTransform: "uppercase",
+          marginBottom: 8,
+        }}
+      >
+        Cash-to-close breakdown
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {rows.map((r) => (
+          <div
+            key={r.label}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: 12.5,
+              color: t.ink2,
+              fontFeatureSettings: '"tnum"',
+            }}
+          >
+            <span>{r.label}</span>
+            <span>{QC_FMT.usd(r.value, 0)}</span>
+          </div>
+        ))}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: 13,
+            fontWeight: 800,
+            color: t.ink,
+            borderTop: `1px solid ${t.line}`,
+            paddingTop: 6,
+            marginTop: 4,
+            fontFeatureSettings: '"tnum"',
+          }}
+        >
+          <span>Estimated cash to close</span>
+          <span>{QC_FMT.usd(sum, 0)}</span>
+        </div>
+        {result.cashToBorrower != null ? (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: 12,
+              color: result.cashToBorrower >= 0 ? t.profit : t.danger,
+              marginTop: 6,
+              fontFeatureSettings: '"tnum"',
+            }}
+          >
+            <span>{result.cashToBorrower >= 0 ? "Cash to borrower (refi)" : "Cash to close (refi gap)"}</span>
+            <span>
+              {result.cashToBorrower >= 0 ? "+" : ""}
+              {QC_FMT.usd(result.cashToBorrower, 0)}
+            </span>
+          </div>
+        ) : null}
+        {result.cashToClose != null ? (
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: t.ink2, marginTop: 4, fontFeatureSettings: '"tnum"' }}>
+            <span>Borrower equity into deal</span>
+            <span>{QC_FMT.usd(result.cashToClose, 0)}</span>
+          </div>
+        ) : null}
+        {result.totalCost != null ? (
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: t.ink2, marginTop: 4, fontFeatureSettings: '"tnum"' }}>
+            <span>Total project cost</span>
+            <span>{QC_FMT.usd(result.totalCost, 0)}</span>
+          </div>
+        ) : null}
       </div>
     </div>
   );
