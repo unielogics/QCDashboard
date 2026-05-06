@@ -29,7 +29,6 @@ const NAV: NavItem[] = [
   { href: "/clients", label: "Clients", icon: "clients" },
   { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "cal" },
-  { href: "/documents", label: "Documents", icon: "doc" },
   { href: "/simulator", label: "Simulate", icon: "calc" },
   { href: "/rates", label: "Rate Sheet", icon: "sliders", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
   { href: "/reports", label: "Reports", icon: "trend", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
@@ -50,6 +49,7 @@ export default function Sidebar() {
   const router = useRouter();
   const clerk = useClerk();
   const collapsed = useUI((s) => s.sidebarCollapsed);
+  const toggleSidebar = useUI((s) => s.toggleSidebar);
   const { data: user } = useCurrentUser();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -101,22 +101,23 @@ export default function Sidebar() {
         // overflow:visible so the identity-card popover (which renders ABOVE
         // the footer with bottom:calc(100% + 8px)) isn't clipped by aside.
         // Internal regions (logo, nav) hide their own overflow as needed.
+        // Height is inherited from the AppShell grid row (height:100vh) —
+        // adding sticky/100vh here fights the grid and caused page-level
+        // scroll on tall content.
         overflow: "visible",
-        // Pin to the viewport so the footer never scrolls off-screen even
-        // when the nav grows. AppShell's grid gives us the height already
-        // but being explicit avoids a sub-page where the nav escapes.
-        height: "100vh",
-        position: "sticky",
-        top: 0,
       }}
     >
-      {/* Logo */}
+      {/* Logo + collapse toggle. The toggle persists to localStorage via the
+          ui store so the user's choice survives a refresh. When collapsed,
+          the toggle sits below the QC mark (no room beside it at 68px). */}
       <div
         style={{
-          padding: collapsed ? "20px 16px" : "20px 18px",
+          padding: collapsed ? "16px 8px 8px" : "20px 14px 20px 18px",
           display: "flex",
+          flexDirection: collapsed ? "column" : "row",
           alignItems: "center",
-          gap: 10,
+          gap: collapsed ? 8 : 10,
+          justifyContent: collapsed ? "center" : "flex-start",
         }}
       >
         <div
@@ -138,7 +139,7 @@ export default function Sidebar() {
           QC
         </div>
         {!collapsed && (
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, letterSpacing: -0.2 }}>Qualified</div>
             <div
               style={{
@@ -153,6 +154,36 @@ export default function Sidebar() {
             </div>
           </div>
         )}
+        <button
+          onClick={toggleSidebar}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          style={{
+            all: "unset",
+            cursor: "pointer",
+            width: 26,
+            height: 26,
+            borderRadius: 7,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: t.ink3,
+            background: "transparent",
+            border: `1px solid transparent`,
+            transition: "background 120ms, border-color 120ms",
+            flexShrink: 0,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = t.surface2;
+            (e.currentTarget as HTMLButtonElement).style.borderColor = t.line;
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "transparent";
+          }}
+        >
+          <Icon name={collapsed ? "chevR" : "chevL"} size={14} stroke={2.4} />
+        </button>
       </div>
 
       {/* Nav */}

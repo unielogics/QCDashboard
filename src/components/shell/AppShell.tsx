@@ -74,9 +74,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
       }}
     >
       <Sidebar />
-      <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+      {/* min-height:0 + minWidth:0 are REQUIRED on the flex column so the
+          inner <main> can actually shrink and scroll instead of pushing the
+          page taller than the viewport. Without min-height:0 the column
+          grows to fit children's content and the whole document scrolls. */}
+      <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
         <TopBar />
-        <main style={{ flex: 1, overflow: "auto", padding: 24 }}>{children}</main>
+        <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: 24 }}>{children}</main>
       </div>
       <AIRail />
       <GlobalSearch />
