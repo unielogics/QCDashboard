@@ -313,13 +313,81 @@ function ClientSimulator() {
           />
         )
       ) : (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 420px", gap: 20 }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {eligibility.banner ? <EligibilityBanner banner={eligibility.banner} /> : null}
-
-        {credit && creditSummary ? (
-          <CollapsibleCreditSummary summary={creditSummary} />
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 20 }}>
+      {/* LEFT — results & amortization (the focus of this page). */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+        <Card pad={16}>
+          <SectionLabel>Simulated terms</SectionLabel>
+          {result ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <KPI label="Loan amount" value={QC_FMT.usd(result.loanAmount, 0)} />
+              <KPI label="Final rate" value={`${(result.rate * 100).toFixed(3)}%`} accent={t.brand} />
+              <KPI label="Monthly P&I" value={QC_FMT.usd(result.monthlyPI, 0)} />
+              {result.dscr != null ? (
+                <KPI
+                  label="DSCR"
+                  value={result.dscr.toFixed(2)}
+                  accent={result.dscr > 1.25 ? t.profit : result.dscr > 1 ? t.warn : t.danger}
+                />
+              ) : null}
+              {result.cashFlow != null ? (
+                <KPI
+                  label="Est. cash flow"
+                  value={`${result.cashFlow > 0 ? "+" : ""}${QC_FMT.usd(result.cashFlow, 0)}`}
+                  accent={result.cashFlow > 0 ? t.profit : t.danger}
+                />
+              ) : null}
+              <KPI label="Discount points cost" value={QC_FMT.usd(result.pointsCost, 0)} />
+              <KPI label="Estimated cash to close" value={QC_FMT.usd(result.totalToClose, 0)} />
+              {result.cashToBorrower != null ? (
+                <KPI
+                  label={result.cashToBorrower >= 0 ? "Cash to borrower" : "Cash to close (refi gap)"}
+                  value={`${result.cashToBorrower >= 0 ? "+" : ""}${QC_FMT.usd(result.cashToBorrower, 0)}`}
+                  accent={result.cashToBorrower >= 0 ? t.profit : t.danger}
+                />
+              ) : null}
+              {result.cashToClose != null ? (
+                <KPI label="Borrower equity (cash to close)" value={QC_FMT.usd(result.cashToClose, 0)} />
+              ) : null}
+              {result.totalCost != null ? (
+                <KPI label="Total project cost" value={QC_FMT.usd(result.totalCost, 0)} />
+              ) : null}
+              <div style={{ gridColumn: "1 / -1", display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
+                <Pill bg={t.surface2} color={t.ink2}>
+                  Binding · {bindingConstraintLabel(result.bindingConstraint)}
+                </Pill>
+                {result.clamped ? (
+                  <Pill bg={t.warnBg} color={t.warn}>capped</Pill>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12.5, color: t.ink3 }}>
+              {isBlocked
+                ? "Resolve the eligibility issue in the right panel to run a simulation."
+                : "Enter ARV to see simulated terms."}
+            </div>
+          )}
+        </Card>
+        {result && result.loanAmount > 0 && result.rate > 0 ? (
+          <AmortizationSchedule
+            loanAmount={result.loanAmount}
+            annualRate={result.rate}
+            termMonths={productKey === "dscr" ? 360 : 0}
+            monthlyPI={result.monthlyPI}
+          />
         ) : null}
+      </div>
+
+      {/* RIGHT — credit/experience header (compact) + filters. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+        <CollapsibleCreditSummary
+          summary={creditSummary ?? null}
+          fico={credit?.fico ?? null}
+          propertyCount={propertyCount}
+          hasYearOfOwnership={hasYearOfOwnership}
+          banner={eligibility.banner ?? null}
+        />
 
         <Card pad={20}>
           <SectionLabel>Product</SectionLabel>
@@ -532,73 +600,6 @@ function ClientSimulator() {
             </div>
           ) : null}
         </Card>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Card pad={16}>
-        <SectionLabel>Simulated terms</SectionLabel>
-        {result ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <KPI label="Loan amount" value={QC_FMT.usd(result.loanAmount, 0)} />
-            <KPI label="Final rate" value={`${(result.rate * 100).toFixed(3)}%`} accent={t.brand} />
-            <KPI label="Monthly P&I" value={QC_FMT.usd(result.monthlyPI, 0)} />
-            {result.dscr != null ? (
-              <KPI
-                label="DSCR"
-                value={result.dscr.toFixed(2)}
-                accent={result.dscr > 1.25 ? t.profit : result.dscr > 1 ? t.warn : t.danger}
-              />
-            ) : null}
-            {result.cashFlow != null ? (
-              <KPI
-                label="Est. cash flow"
-                value={`${result.cashFlow > 0 ? "+" : ""}${QC_FMT.usd(result.cashFlow, 0)}`}
-                accent={result.cashFlow > 0 ? t.profit : t.danger}
-              />
-            ) : null}
-            <KPI label="Discount points cost" value={QC_FMT.usd(result.pointsCost, 0)} />
-            <KPI label="Estimated cash to close" value={QC_FMT.usd(result.totalToClose, 0)} />
-            {result.cashToBorrower != null ? (
-              <KPI
-                label={result.cashToBorrower >= 0 ? "Cash to borrower" : "Cash to close (refi gap)"}
-                value={`${result.cashToBorrower >= 0 ? "+" : ""}${QC_FMT.usd(result.cashToBorrower, 0)}`}
-                accent={result.cashToBorrower >= 0 ? t.profit : t.danger}
-              />
-            ) : null}
-            {result.cashToClose != null ? (
-              <KPI label="Borrower equity (cash to close)" value={QC_FMT.usd(result.cashToClose, 0)} />
-            ) : null}
-            {result.totalCost != null ? (
-              <KPI label="Total project cost" value={QC_FMT.usd(result.totalCost, 0)} />
-            ) : null}
-            <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
-              <Pill bg={t.surface2} color={t.ink2}>
-                Binding · {bindingConstraintLabel(result.bindingConstraint)}
-              </Pill>
-              {result.clamped ? (
-                <Pill bg={t.warnBg} color={t.warn}>capped</Pill>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <div style={{ fontSize: 12.5, color: t.ink3 }}>
-            {isBlocked
-              ? "Resolve the eligibility issue above to run a simulation."
-              : "Enter ARV to see simulated terms."}
-          </div>
-        )}
-      </Card>
-      {result && result.loanAmount > 0 && result.rate > 0 ? (
-        <AmortizationSchedule
-          loanAmount={result.loanAmount}
-          annualRate={result.rate}
-          // DSCR rentals amortize over 30 years; the short-term products
-          // (F&F, GU, Bridge) are interest-only — represent that with a
-          // 0-month amort that the schedule treats as IO.
-          termMonths={productKey === "dscr" ? 360 : 0}
-          monthlyPI={result.monthlyPI}
-        />
-      ) : null}
       </div>
     </div>
       )}
@@ -1441,45 +1442,113 @@ function PointsSlider({
   );
 }
 
-// ── Collapsible credit summary ────────────────────────────────────────────
-// The full CreditSummaryCard is busy and dominates the simulator when expanded.
-// Collapsed by default — shows just FICO + tier so the borrower can confirm
-// they're looking at the right pull, with a chevron to expand on demand.
-function CollapsibleCreditSummary({ summary }: { summary: import("@/lib/types").CreditSummary }) {
+// ── Collapsible credit + experience header ───────────────────────────────
+// One compact pill at the top of the right column showing FICO + tier +
+// experience signal + (if present) the eligibility banner — all clickable
+// to expand into the full summary. Replaces the previous wider banner +
+// CreditSummaryCard stack so the page can focus on the calculator.
+function CollapsibleCreditSummary({
+  summary,
+  fico,
+  propertyCount,
+  hasYearOfOwnership,
+  banner,
+}: {
+  summary: import("@/lib/types").CreditSummary | null;
+  fico: number | null;
+  propertyCount: number;
+  hasYearOfOwnership: boolean;
+  banner: import("@/lib/eligibility").EligibilityBanner | null;
+}) {
   const { t } = useTheme();
   const [open, setOpen] = useState(false);
-  const positives = summary.bullets.filter((b) => b.kind === "positive").length;
-  const warns = summary.bullets.filter((b) => b.kind === "warn").length;
+
+  // Compact experience label: "5 properties" / "2 properties · 1+ yr held"
+  // / "no experience yet". Single-line, lives next to the credit tier.
+  const expLabel =
+    propertyCount === 0
+      ? "no experience yet"
+      : `${propertyCount} ${propertyCount === 1 ? "property" : "properties"}${
+          hasYearOfOwnership ? " · 1+ yr held" : ""
+        }`;
+
+  const tierLabel = summary?.tier ?? (fico == null ? "no pull" : "tier unknown");
+  const hasBanner = banner != null;
+
+  // The whole header row is the toggle target — chevron sits inside the
+  // same Card so it never visually escapes the container.
   return (
-    <Card pad={0}>
+    <Card pad={0} style={{ overflow: "hidden" }}>
       <button
         onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
         style={{
           all: "unset",
           cursor: "pointer",
           width: "100%",
-          padding: "14px 18px",
+          padding: "12px 14px",
           display: "flex",
           alignItems: "center",
-          gap: 12,
+          gap: 10,
+          boxSizing: "border-box",
         }}
       >
-        <div style={{ fontSize: 22, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"', minWidth: 42 }}>
-          {summary.fico ?? "—"}
+        <div
+          style={{
+            fontSize: 20,
+            fontWeight: 800,
+            color: fico == null ? t.ink3 : t.ink,
+            fontFeatureSettings: '"tnum"',
+            minWidth: 36,
+            textAlign: "center",
+          }}
+        >
+          {fico ?? "—"}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
-            Your credit · {summary.tier ?? "tier unknown"}
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 700,
+              color: t.ink3,
+              letterSpacing: 0.8,
+              textTransform: "uppercase",
+            }}
+          >
+            Credit · {tierLabel}
           </div>
-          <div style={{ fontSize: 12, color: t.ink2, marginTop: 2 }}>
-            {positives} good signals · {warns} concerns · {summary.available_products.length} eligible products
+          <div
+            style={{
+              fontSize: 11.5,
+              color: t.ink2,
+              marginTop: 2,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {expLabel}
+            {hasBanner ? <span style={{ color: t.warn, fontWeight: 700 }}>  ·  ⚠ action</span> : null}
           </div>
         </div>
-        <Icon name={open ? "chevU" : "chevD"} size={16} />
+        <Icon name={open ? "chevU" : "chevD"} size={14} color={t.ink3} />
       </button>
       {open ? (
-        <div style={{ borderTop: `1px solid ${t.line}`, padding: 18 }}>
-          <CreditSummaryCard summary={summary} />
+        <div
+          style={{
+            borderTop: `1px solid ${t.line}`,
+            padding: 14,
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
+          {hasBanner ? <EligibilityBanner banner={banner} /> : null}
+          {summary ? <CreditSummaryCard summary={summary} /> : (
+            <div style={{ fontSize: 12, color: t.ink3 }}>
+              No credit summary yet. Run a soft pull to see your file.
+            </div>
+          )}
         </div>
       ) : null}
     </Card>
@@ -1579,24 +1648,29 @@ function AmortizationSchedule({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "60px 1fr 1fr 1fr",
+                gridTemplateColumns: "52px 1fr 1fr 1fr 1fr 60px 1fr",
                 background: t.surface2,
                 padding: "8px 12px",
-                fontSize: 10.5,
+                fontSize: 10,
                 fontWeight: 700,
                 color: t.ink3,
                 letterSpacing: 0.6,
                 textTransform: "uppercase",
+                gap: 6,
               }}
             >
               <div>Month</div>
               <div>Principal</div>
               <div>Interest</div>
+              <div>Interest paid</div>
+              <div>Equity $</div>
+              <div>Equity %</div>
               <div>Balance</div>
             </div>
             {visibleRows.map((row, idx) => {
               const prevRow = idx > 0 ? visibleRows[idx - 1] : null;
               const isGap = prevRow && row.n - prevRow.n > 1;
+              const equityPct = loanAmount > 0 ? (row.cumulativePrincipal / loanAmount) * 100 : 0;
               return (
                 <div key={row.n}>
                   {isGap ? (
@@ -1617,16 +1691,20 @@ function AmortizationSchedule({
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "60px 1fr 1fr 1fr",
+                      gridTemplateColumns: "52px 1fr 1fr 1fr 1fr 60px 1fr",
                       padding: "8px 12px",
-                      fontSize: 12,
+                      fontSize: 11.5,
                       color: t.ink2,
                       borderTop: idx === 0 ? "none" : `1px solid ${t.line}`,
+                      gap: 6,
                     }}
                   >
                     <div style={{ fontWeight: 700, color: t.ink }}>{row.n}</div>
                     <div>{QC_FMT.usd(row.principal, 2)}</div>
                     <div>{QC_FMT.usd(row.interest, 2)}</div>
+                    <div style={{ color: t.warn }}>{QC_FMT.usd(row.cumulativeInterest, 0)}</div>
+                    <div style={{ color: t.profit }}>{QC_FMT.usd(row.cumulativePrincipal, 0)}</div>
+                    <div style={{ color: t.profit, fontWeight: 600 }}>{equityPct.toFixed(1)}%</div>
                     <div>{QC_FMT.usd(row.balance, 0)}</div>
                   </div>
                 </div>
