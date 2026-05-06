@@ -1172,3 +1172,16 @@ export function useAcceptLegal() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["legalAcceptance"] }),
   });
 }
+
+// Operator-side view of a client's vault — drives the Vault section on
+// the Client detail page. Joins Document → Loan → client_id server-side
+// so we don't need the loans list first.
+export function useDocumentsForClient(clientId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["documents", "by-client", clientId, devUser],
+    queryFn: () => apiCall<Document[]>(`/documents?client_id=${clientId}`),
+    enabled: !!clientId,
+  });
+}

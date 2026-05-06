@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { Card, KPI, Pill, SectionLabel, VerifiedBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useClient, useCurrentCredit, useLoans, useUpdateClient } from "@/hooks/useApi";
+import { useClient, useCurrentCredit, useDocumentsForClient, useLoans, useUpdateClient } from "@/hooks/useApi";
 import { useActiveProfile } from "@/store/role";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { parseIntStrict } from "@/lib/formCoerce";
-import type { Client } from "@/lib/types";
+import type { Client, Document, Loan } from "@/lib/types";
 
 export default function ClientDetailPage() {
   const { t } = useTheme();
@@ -20,6 +20,7 @@ export default function ClientDetailPage() {
   const { data: client } = useClient(id);
   const { data: loans = [] } = useLoans();
   const { data: credit } = useCurrentCredit(id);
+  const { data: clientDocs = [] } = useDocumentsForClient(id);
   const updateClient = useUpdateClient();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<Client>>({});
@@ -191,8 +192,190 @@ export default function ClientDetailPage() {
           ))}
         </div>
       </Card>
+
+      {/* Vault — operator-side view of the same documents the client sees in
+          their own /vault. Subject Property = docs tied to in-flight loans;
+          REO Schedule = docs tied to funded loans. Backed by the new
+          GET /documents?client_id={id} server-side join. */}
+      <ClientVaultCard t={t} clientLoans={clientLoans} docs={clientDocs} />
     </div>
   );
+}
+
+function ClientVaultCard({
+  t,
+  clientLoans,
+  docs,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  clientLoans: Loan[];
+  docs: Document[];
+}) {
+  const [tab, setTab] = useState<"subject" | "reo">("subject");
+  const subjectLoanIds = new Set(clientLoans.filter((l) => l.stage !== "funded").map((l) => l.id));
+  const reoLoanIds = new Set(clientLoans.filter((l) => l.stage === "funded").map((l) => l.id));
+  const loanById = Object.fromEntries(clientLoans.map((l) => [l.id, l] as const));
+  const visible = docs.filter((d) =>
+    (tab === "subject" ? subjectLoanIds : reoLoanIds).has(d.loan_id),
+  );
+  const subjectCount = docs.filter((d) => subjectLoanIds.has(d.loan_id)).length;
+  const reoCount = docs.filter((d) => reoLoanIds.has(d.loan_id)).length;
+
+  return (
+    <Card pad={0}>
+      <div
+        style={{
+          padding: "12px 16px",
+          borderBottom: `1px solid ${t.line}`,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <SectionLabel>Vault</SectionLabel>
+        <Pill>{docs.length} total</Pill>
+        <div style={{ flex: 1 }} />
+        <div style={{ display: "inline-flex", gap: 4 }}>
+          <button
+            onClick={() => setTab("subject")}
+            style={{
+              ...vaultTabStyle(t, tab === "subject"),
+            }}
+          >
+            Subject Property <Pill>{subjectCount}</Pill>
+          </button>
+          <button
+            onClick={() => setTab("reo")}
+            style={{
+              ...vaultTabStyle(t, tab === "reo"),
+            }}
+          >
+            REO Schedule <Pill>{reoCount}</Pill>
+          </button>
+        </div>
+      </div>
+
+      {visible.length === 0 ? (
+        <div style={{ padding: 24, fontSize: 13, color: t.ink3, textAlign: "center" }}>
+          {tab === "subject"
+            ? "No documents on in-flight loans yet. Documents requested from the client will land here."
+            : "No documents on closed loans yet."}
+        </div>
+      ) : (
+        <>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 2fr) 130px 110px 120px 110px",
+              padding: "10px 16px",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: 1.2,
+              textTransform: "uppercase",
+              color: t.ink3,
+              borderBottom: `1px solid ${t.line}`,
+              background: t.surface2,
+            }}
+          >
+            <div>Document</div>
+            <div>Category</div>
+            <div>Loan</div>
+            <div>Received</div>
+            <div>Status</div>
+          </div>
+          {visible.map((d) => {
+            const loan = loanById[d.loan_id];
+            const kind: "verified" | "pending" | "flagged" =
+              d.status === "verified" ? "verified" : d.status === "flagged" ? "flagged" : "pending";
+            return (
+              <div
+                key={d.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 2fr) 130px 110px 120px 110px",
+                  padding: "12px 16px",
+                  borderBottom: `1px solid ${t.line}`,
+                  alignItems: "center",
+                  fontSize: 13,
+                  color: t.ink,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                  <div
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 8,
+                      background: t.brandSoft,
+                      color: t.brand,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Icon name="doc" size={14} />
+                  </div>
+                  <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700 }}>
+                    {d.name}
+                  </div>
+                </div>
+                <div>
+                  <Pill>{d.category ?? "—"}</Pill>
+                </div>
+                <div>
+                  {loan ? (
+                    <Link
+                      href={`/loans/${loan.id}`}
+                      style={{
+                        color: t.petrol,
+                        textDecoration: "none",
+                        fontFamily: "ui-monospace, SF Mono, monospace",
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {loan.deal_id}
+                    </Link>
+                  ) : (
+                    <span style={{ color: t.ink3 }}>—</span>
+                  )}
+                </div>
+                <div style={{ color: t.ink3, fontSize: 12 }}>
+                  {d.received_on
+                    ? new Date(d.received_on).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                    : "—"}
+                </div>
+                <div>
+                  <VerifiedBadge kind={kind} />
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
+    </Card>
+  );
+}
+
+function vaultTabStyle(
+  t: ReturnType<typeof useTheme>["t"],
+  active: boolean,
+): React.CSSProperties {
+  return {
+    all: "unset",
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "6px 12px",
+    borderRadius: 8,
+    background: active ? t.ink : t.surface2,
+    color: active ? t.inverse : t.ink2,
+    fontSize: 12,
+    fontWeight: 700,
+  };
 }
 
 function Field({ t, label, children }: { t: ReturnType<typeof useTheme>["t"]; label: string; children: React.ReactNode }) {
