@@ -130,53 +130,58 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
     }
   };
 
-  const formValid =
+  const formValid = Boolean(
     form.legal_first_name.trim() &&
     form.legal_last_name.trim() &&
-    /^\d{4}-\d{2}-\d{2}$/.test(form.dob) &&
+    isValidDob(form.dob) &&
     form.street.trim() &&
     form.city.trim() &&
     form.state.length === 2 &&
     /^\d{5}(-\d{4})?$/.test(form.zip.trim()) &&
     // SSN only required after the bureau told us it couldn't match.
-    (!ssnRequired || form.ssn.length === 9);
+    (!ssnRequired || form.ssn.length === 9)
+  );
 
   return (
+    // Right-side panel (not a centered modal): the borrower can keep
+    // glancing at the simulator/dashboard behind it. Backdrop has NO
+    // onClick — clicks outside don't dismiss, since losing 7 fields of
+    // half-typed PII to a stray click is a much worse outcome than
+    // having to hit Cancel/Esc explicitly.
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Soft credit pull"
-      onClick={onClose}
       style={{
         position: "fixed",
         inset: 0,
         background: "rgba(6, 7, 11, 0.55)",
         backdropFilter: "blur(2px)",
         zIndex: 200,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
       }}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
         style={{
-          width: "100%",
-          maxWidth: 560,
-          maxHeight: "90vh",
-          overflowY: "auto",
+          position: "absolute",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: "min(640px, 95vw)",
           background: t.bg,
-          borderRadius: 18,
           boxShadow: t.shadowLg,
+          borderTopLeftRadius: 18,
+          borderBottomLeftRadius: 18,
+          display: "flex",
+          flexDirection: "column",
         }}
       >
         <div
           style={{
+            flex: "0 0 auto",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "16px 20px",
+            padding: "20px 28px",
             borderBottom: `1px solid ${t.line}`,
           }}
         >
@@ -209,24 +214,39 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
           </button>
         </div>
 
-        <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.5 }}>
+        <div
+          style={{
+            flex: "1 1 auto",
+            overflowY: "auto",
+            padding: "20px 28px 28px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+          }}
+        >
+          <div style={{ fontSize: 13.5, color: t.ink2, lineHeight: 1.55 }}>
             We capture only what the bureaus require. No score impact. Valid for 90 days.
           </div>
 
           {stage === "form" && (
-            <Card pad={16}>
+            <Card pad={20}>
               <SectionLabel>Legal Name</SectionLabel>
-              <Field t={t} label="First name" value={form.legal_first_name} onChange={(v) => setForm({ ...form, legal_first_name: v })} />
-              <Field t={t} label="Last name" value={form.legal_last_name} onChange={(v) => setForm({ ...form, legal_last_name: v })} />
-              <Field t={t} label="Date of birth" placeholder="YYYY-MM-DD" value={form.dob} onChange={(v) => setForm({ ...form, dob: v })} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <Field t={t} label="First name" value={form.legal_first_name} onChange={(v) => setForm({ ...form, legal_first_name: v })} />
+                <Field t={t} label="Last name" value={form.legal_last_name} onChange={(v) => setForm({ ...form, legal_last_name: v })} />
+              </div>
+              <DobField
+                t={t}
+                valueIso={form.dob}
+                onChangeIso={(iso) => setForm({ ...form, dob: iso })}
+              />
 
               <div style={{ height: 10 }} />
               <SectionLabel>Address Used for Credit</SectionLabel>
               <Field t={t} label="Street" value={form.street} onChange={(v) => setForm({ ...form, street: v })} />
               <Field t={t} label="City" value={form.city} onChange={(v) => setForm({ ...form, city: v })} />
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <Field t={t} label="State (2-letter)" value={form.state} onChange={(v) => setForm({ ...form, state: v.toUpperCase().slice(0, 2) })} />
+              <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 10 }}>
+                <StateSelect t={t} value={form.state} onChange={(v) => setForm({ ...form, state: v })} />
                 <Field t={t} label="ZIP" value={form.zip} onChange={(v) => setForm({ ...form, zip: v })} />
               </div>
 
@@ -400,6 +420,180 @@ function Field({
       />
     </div>
   );
+}
+
+// US-format DOB input: shows MM / DD / YYYY with auto-slashes; stores
+// the canonical ISO YYYY-MM-DD upstream so the bureau payload doesn't
+// change. Mirrors qcmobile's DobField — typing 8/15/1980 just works.
+function DobField({
+  t,
+  valueIso,
+  onChangeIso,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  valueIso: string;
+  onChangeIso: (iso: string) => void;
+}) {
+  const [display, setDisplay] = useState(() => isoToMmDdYyyy(valueIso));
+
+  // Keep display in sync if parent pushes a new ISO (account pre-fill).
+  useEffect(() => {
+    const formatted = isoToMmDdYyyy(valueIso);
+    if (formatted !== display) setDisplay(formatted);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valueIso]);
+
+  const onChange = (raw: string) => {
+    const digits = raw.replace(/\D/g, "").slice(0, 8);
+    let formatted = digits;
+    if (digits.length > 4) {
+      formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    } else if (digits.length > 2) {
+      formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    }
+    setDisplay(formatted);
+    if (digits.length === 8) {
+      const mm = digits.slice(0, 2);
+      const dd = digits.slice(2, 4);
+      const yyyy = digits.slice(4);
+      onChangeIso(`${yyyy}-${mm}-${dd}`);
+    } else {
+      onChangeIso("");
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
+        Date of birth
+      </div>
+      <input
+        value={display}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="MM / DD / YYYY"
+        inputMode="numeric"
+        maxLength={10}
+        style={{
+          width: "100%",
+          padding: "10px 12px",
+          borderRadius: 9,
+          background: t.surface2,
+          border: `1px solid ${t.line}`,
+          color: t.ink,
+          fontSize: 14,
+          fontFamily: "inherit",
+          outline: "none",
+          letterSpacing: 0.5,
+          fontVariant: "tabular-nums",
+        }}
+      />
+      <div style={{ fontSize: 11, color: t.ink3, marginTop: 4 }}>US format · MM / DD / YYYY</div>
+    </div>
+  );
+}
+
+const US_STATES: { code: string; name: string }[] = [
+  { code: "AL", name: "Alabama" },        { code: "AK", name: "Alaska" },
+  { code: "AZ", name: "Arizona" },        { code: "AR", name: "Arkansas" },
+  { code: "CA", name: "California" },     { code: "CO", name: "Colorado" },
+  { code: "CT", name: "Connecticut" },    { code: "DE", name: "Delaware" },
+  { code: "DC", name: "District of Columbia" },
+  { code: "FL", name: "Florida" },        { code: "GA", name: "Georgia" },
+  { code: "HI", name: "Hawaii" },         { code: "ID", name: "Idaho" },
+  { code: "IL", name: "Illinois" },       { code: "IN", name: "Indiana" },
+  { code: "IA", name: "Iowa" },           { code: "KS", name: "Kansas" },
+  { code: "KY", name: "Kentucky" },       { code: "LA", name: "Louisiana" },
+  { code: "ME", name: "Maine" },          { code: "MD", name: "Maryland" },
+  { code: "MA", name: "Massachusetts" },  { code: "MI", name: "Michigan" },
+  { code: "MN", name: "Minnesota" },      { code: "MS", name: "Mississippi" },
+  { code: "MO", name: "Missouri" },       { code: "MT", name: "Montana" },
+  { code: "NE", name: "Nebraska" },       { code: "NV", name: "Nevada" },
+  { code: "NH", name: "New Hampshire" },  { code: "NJ", name: "New Jersey" },
+  { code: "NM", name: "New Mexico" },     { code: "NY", name: "New York" },
+  { code: "NC", name: "North Carolina" }, { code: "ND", name: "North Dakota" },
+  { code: "OH", name: "Ohio" },           { code: "OK", name: "Oklahoma" },
+  { code: "OR", name: "Oregon" },         { code: "PA", name: "Pennsylvania" },
+  { code: "RI", name: "Rhode Island" },   { code: "SC", name: "South Carolina" },
+  { code: "SD", name: "South Dakota" },   { code: "TN", name: "Tennessee" },
+  { code: "TX", name: "Texas" },          { code: "UT", name: "Utah" },
+  { code: "VT", name: "Vermont" },        { code: "VA", name: "Virginia" },
+  { code: "WA", name: "Washington" },     { code: "WV", name: "West Virginia" },
+  { code: "WI", name: "Wisconsin" },      { code: "WY", name: "Wyoming" },
+];
+
+function StateSelect({
+  t,
+  value,
+  onChange,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  value: string;
+  onChange: (code: string) => void;
+}) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
+        State
+      </div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          width: "100%",
+          padding: "10px 12px",
+          borderRadius: 9,
+          background: t.surface2,
+          border: `1px solid ${t.line}`,
+          color: value ? t.ink : t.ink3,
+          fontSize: 14,
+          fontFamily: "inherit",
+          outline: "none",
+          appearance: "none",
+          // Caret hint via background image (no extra deps)
+          backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${encodeURIComponent(t.ink3)}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>")`,
+          backgroundRepeat: "no-repeat",
+          backgroundPosition: "right 12px center",
+          paddingRight: 32,
+        }}
+      >
+        <option value="" disabled>Select a state…</option>
+        {US_STATES.map((s) => (
+          <option key={s.code} value={s.code}>{s.name} ({s.code})</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function isoToMmDdYyyy(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return "";
+  return `${m[2]}/${m[3]}/${m[1]}`;
+}
+
+function isValidDob(iso: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return false;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (month < 1 || month > 12) return false;
+  if (day < 1 || day > 31) return false;
+  // Round-trip catches Feb 30, etc.
+  const d = new Date(Date.UTC(year, month - 1, day));
+  if (
+    d.getUTCFullYear() !== year ||
+    d.getUTCMonth() !== month - 1 ||
+    d.getUTCDate() !== day
+  ) {
+    return false;
+  }
+  // Reasonable bounds: must be at least 18 years old, not before 1900.
+  const today = new Date();
+  const eighteenYearsAgo = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+  if (d > eighteenYearsAgo) return false;
+  if (year < 1900) return false;
+  return true;
 }
 
 // FastAPI returns 422s like:
