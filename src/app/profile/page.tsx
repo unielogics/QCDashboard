@@ -8,8 +8,8 @@
 // destinations or no-op with a toast. Sign Out is the live row at the
 // bottom and goes through Clerk.
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useClerk } from "@clerk/nextjs";
 import { useTheme, type ThemePreference } from "@/components/design-system/ThemeProvider";
 import { Avatar, Card, Pill, SectionLabel } from "@/components/design-system/primitives";
@@ -48,8 +48,28 @@ export default function ProfilePage() {
   const clerk = useClerk();
   const { data: user } = useCurrentUser();
   const { data: credit } = useMyCredit();
+  const searchParams = useSearchParams();
   const [pullOpen, setPullOpen] = useState(false);
-  const [pullMode, setPullMode] = useState<"first" | "rerun">("first");
+  const [pullMode, setPullMode] = useState<"first" | "rerun" | "expired">("first");
+
+  // Auto-open the credit modal when the user lands here from an expiry
+  // banner or with `?credit=open` in the URL. Without this, clicking
+  // "Refresh Credit" on the simulator banner dumps the user on /profile
+  // and they have to click again to actually run the pull.
+  useEffect(() => {
+    const requested = searchParams?.get("credit");
+    if (!requested) return;
+    if (credit?.is_expired) {
+      setPullMode("expired");
+      setPullOpen(true);
+    } else if (credit?.fico != null) {
+      setPullMode("rerun");
+      setPullOpen(true);
+    } else {
+      setPullMode("first");
+      setPullOpen(true);
+    }
+  }, [searchParams, credit?.is_expired, credit?.fico]);
   const [signingOut, setSigningOut] = useState(false);
   const [investorOpen, setInvestorOpen] = useState(false);
 

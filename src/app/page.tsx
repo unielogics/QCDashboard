@@ -720,9 +720,9 @@ function ProTermsCard({ userName, userEmail }: { userName: string; userEmail: st
   const { t } = useTheme();
   const { data: credit } = useMyCredit();
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<"first" | "rerun">("first");
+  const [mode, setMode] = useState<"first" | "rerun" | "expired">("first");
 
-  const unlocked = !!credit && !!credit.fico;
+  const unlocked = !!credit && !!credit.fico && !credit.is_expired;
 
   return (
     <>
@@ -774,7 +774,12 @@ function ProTermsCard({ userName, userEmail }: { userName: string; userEmail: st
           </div>
           <button
             onClick={() => {
-              setMode(unlocked ? "rerun" : "first");
+              const next: "first" | "rerun" | "expired" = credit?.is_expired
+                ? "expired"
+                : unlocked
+                  ? "rerun"
+                  : "first";
+              setMode(next);
               setOpen(true);
             }}
             style={{

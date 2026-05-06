@@ -7,7 +7,9 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel, VerifiedBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useClient, useCurrentCredit, useDocumentsForClient, useLoans, useUpdateClient } from "@/hooks/useApi";
+import { useClient, useCreditSummary, useCurrentCredit, useDocumentsForClient, useLoans, useParsedReport, useUpdateClient } from "@/hooks/useApi";
+import { CreditSummaryCard } from "@/components/CreditSummaryCard";
+import { CreditReportDetail } from "@/components/CreditReportDetail";
 import { useActiveProfile } from "@/store/role";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { parseIntStrict } from "@/lib/formCoerce";
@@ -20,6 +22,9 @@ export default function ClientDetailPage() {
   const { data: client } = useClient(id);
   const { data: loans = [] } = useLoans();
   const { data: credit } = useCurrentCredit(id);
+  const { data: creditSummary, isLoading: summaryLoading } = useCreditSummary(credit?.id);
+  const { data: parsedReport, isLoading: parsedLoading } = useParsedReport(credit?.id);
+  const [showFullReport, setShowFullReport] = useState(false);
   const { data: clientDocs = [] } = useDocumentsForClient(id);
   const updateClient = useUpdateClient();
   const [editing, setEditing] = useState(false);
@@ -153,29 +158,30 @@ export default function ClientDetailPage() {
         <KPI label="Funded" value={QC_FMT.short(Number(client.funded_total))} />
       </div>
 
-      {/* Credit pull widget */}
+      {/* Credit pull widget — summary card + drill-down to the full
+          parsed report. Operators see this as the canonical credit view
+          for the client; the underlying iSoftPull HTML is reachable via
+          the "View raw report" link inside CreditReportDetail. */}
       {credit && (
-        <Card pad={16}>
-          <SectionLabel>Latest credit pull</SectionLabel>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{ fontSize: 36, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"' }}>
-              {credit.fico ?? "—"}
-            </div>
-            <div style={{ flex: 1 }}>
-              <Pill bg={
-                credit.status === "completed" ? t.profitBg : credit.status === "expired" ? t.warnBg : t.chip
-              } color={
-                credit.status === "completed" ? t.profit : credit.status === "expired" ? t.warn : t.ink2
-              }>
-                {credit.status}
-              </Pill>
-              <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 4 }}>
-                {credit.pulled_at ? `Pulled ${new Date(credit.pulled_at).toLocaleDateString()}` : "Not pulled"}
-                {credit.expires_at && ` · expires ${new Date(credit.expires_at).toLocaleDateString()}`}
-              </div>
+        <>
+          <CreditSummaryCard summary={creditSummary} loading={summaryLoading} />
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => setShowFullReport((v) => !v)}
+              style={{ ...qcBtn(t), display: "inline-flex", alignItems: "center", gap: 6 }}
+            >
+              <Icon name={showFullReport ? "arrowR" : "arrowR"} size={11} />
+              {showFullReport ? "Hide full credit report" : "View full credit report"}
+            </button>
+            <div style={{ fontSize: 11, color: t.ink3 }}>
+              {credit.pulled_at ? `Pulled ${new Date(credit.pulled_at).toLocaleDateString()}` : ""}
+              {credit.expires_at ? ` · expires ${new Date(credit.expires_at).toLocaleDateString()}` : ""}
             </div>
           </div>
-        </Card>
+          {showFullReport ? (
+            <CreditReportDetail report={parsedReport} loading={parsedLoading} />
+          ) : null}
+        </>
       )}
 
       <Card pad={16}>

@@ -11,6 +11,7 @@ import { QC_FMT } from "@/components/design-system/tokens";
 import { useUI } from "@/store/ui";
 import { useActiveProfile } from "@/store/role";
 import { LoanStageOptions, Role } from "@/lib/enums.generated";
+import { LoanSimulator } from "@/components/LoanSimulator";
 import { OverviewTab } from "./tabs/OverviewTab";
 import { TermsTab } from "./tabs/TermsTab";
 import { Hud1Tab } from "./tabs/Hud1Tab";
@@ -206,7 +207,8 @@ export default function LoanDetailPage() {
       </div>
 
       {tab === "overview" && <OverviewTab loan={loan} docs={docs} activity={activity} />}
-      {tab === "terms" && <TermsTab loan={loan} />}
+      {tab === "terms" &&
+        (profile.role === Role.CLIENT ? <LoanSimulator loan={loan} /> : <TermsTab loan={loan} />)}
       {tab === "hud" && <Hud1Tab loan={loan} />}
       {tab === "docs" && <DocsTab loan={loan} canRequest={canRequestDoc} />}
       {tab === "uw" && <UnderwritingTab loan={loan} />}

@@ -21,7 +21,9 @@ interface Props {
   initialEmail?: string;
   initialName?: string;
   // "rerun" tweaks copy slightly to acknowledge there's already a pull on file.
-  mode?: "first" | "rerun";
+  // "expired" is for the 90-day re-verification flow — emphasizes that the
+  // calculator is locked until the pull refreshes.
+  mode?: "first" | "rerun" | "expired";
 }
 
 export function CreditPullModal({ open, onClose, initialEmail, initialName, mode = "first" }: Props) {
@@ -129,8 +131,12 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
           }}
         >
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: t.petrol }}>
-              {mode === "rerun" ? "Re-run soft pull" : "Unlock pro terms"}
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: mode === "expired" ? t.danger : t.petrol }}>
+              {mode === "expired"
+                ? "Refresh credit · 90-day expiry"
+                : mode === "rerun"
+                  ? "Re-run soft pull"
+                  : "Unlock pro terms"}
             </div>
             <div style={{ fontSize: 18, fontWeight: 800, color: t.ink, marginTop: 2 }}>Soft Credit Pull</div>
           </div>

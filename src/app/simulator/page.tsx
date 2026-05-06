@@ -29,12 +29,21 @@ import { LoanType, PropertyType, Role } from "@/lib/enums.generated";
 import { QC_FMT } from "@/components/design-system/tokens";
 import type { FredSeriesSummary, RecalcResponse, SimulatorSettings } from "@/lib/types";
 import { EligibilityBanner } from "@/components/EligibilityBanner";
+import { CreditSummaryCard } from "@/components/CreditSummaryCard";
+import { useCreditSummary } from "@/hooks/useApi";
+import { RangeGauge } from "@/components/RangeGauge";
 import {
+  bindingConstraintLabel,
+  cappedReasonLabel,
   computeEligibility,
   computeSimulator,
   ltvLabel,
   type SimulatorInputs,
+  type TransactionType,
 } from "@/lib/eligibility";
+import { isLoanTypeEnabled, isProductKeyEnabled } from "@/lib/products";
+import { LoanSimulator } from "@/components/LoanSimulator";
+import type { Loan } from "@/lib/types";
 
 const DEFAULT_SIM: SimulatorSettings = {
   points_min: 0,
@@ -58,7 +67,7 @@ const LOAN_TYPE_OPTIONS: { value: LoanType; label: string }[] = [
   { value: LoanType.FIX_AND_FLIP, label: "Fix & Flip (12-mo)" },
   { value: LoanType.GROUND_UP, label: "Ground Up (18-mo)" },
   { value: LoanType.BRIDGE, label: "Bridge (24-mo)" },
-];
+].filter((o) => isLoanTypeEnabled(o.value));
 
 type Mode = "free" | "loan";
 
@@ -119,8 +128,14 @@ export default function SimulatorPage() {
 function ClientSimulator() {
   const { t } = useTheme();
   const { data: credit } = useMyCredit();
+  const { data: creditSummary } = useCreditSummary(credit?.id);
   const { data: loans = [] } = useLoans();
   const { data: fred } = useFredSeries();
+
+  // Segmented-control state — Free Simulate | My Loans.
+  const [simTab, setSimTab] = useState<"free" | "started">("free");
+  const [pickedLoanId, setPickedLoanId] = useState<string | null>(null);
+  const pickedLoan = pickedLoanId ? loans.find((l) => l.id === pickedLoanId) ?? null : null;
 
   const propertyCount = loans.length;
   const hasYearOfOwnership = useMemo(() => {
@@ -135,21 +150,38 @@ function ClientSimulator() {
     fico: credit?.fico ?? null,
     propertyCount,
     hasYearOfOwnership,
+    creditExpired: credit?.is_expired ?? false,
+    creditExpiringSoon: credit?.expiring_soon ?? false,
+    daysUntilExpiry: credit?.days_until_expiry ?? null,
   });
 
   const [productKey, setProductKey] = useState<SimulatorInputs["productKey"]>("dscr");
+  const [transactionType, setTransactionType] = useState<TransactionType>("purchase");
   const [arvText, setArvText] = useState("500000");
   const [brvText, setBrvText] = useState("400000");
+  const [rehabText, setRehabText] = useState("80000");
+  const [payoffText, setPayoffText] = useState("0");
   const [points, setPoints] = useState(1);
   const initialLtvPct = Math.min(eligibility.maxLTV * 100 || 65, 65);
   const [ltvPct, setLtvPct] = useState(initialLtvPct);
+  // Manual loan-amount override. null = derive from LTV slider.
+  const [requestedLoanText, setRequestedLoanText] = useState<string | null>(null);
 
   const arvNum = Number(arvText.replace(/[^0-9.]/g, "")) || 0;
   const brvNum = Number(brvText.replace(/[^0-9.]/g, "")) || 0;
+  const rehabNum = Number(rehabText.replace(/[^0-9.]/g, "")) || 0;
+  const payoffNum = Number(payoffText.replace(/[^0-9.]/g, "")) || 0;
+  const requestedLoanNum =
+    requestedLoanText != null ? Number(requestedLoanText.replace(/[^0-9.]/g, "")) || 0 : null;
   const isBlocked = eligibility.tier === "blocked";
   const maxLtvPct = eligibility.maxLTV * 100;
   const reno = productKey === "ff" || productKey === "gu";
-  const propertyLabel = reno ? "ARV (After Repair Value)" : "Market Value";
+  const isRefi = productKey === "dscr" && transactionType === "refi";
+  const propertyLabel = reno
+    ? "ARV (After Repair Value)"
+    : isRefi
+      ? "Property Value"
+      : "Market Value";
 
   // Map the client-simulator product key to a FRED series and use today's
   // rate (index + spread). Falls back to the hardcoded table inside
@@ -173,13 +205,121 @@ function ClientSimulator() {
       discountPoints: points,
       productKey,
       baseRatePct,
+      transactionType: productKey === "dscr" ? transactionType : undefined,
+      payoff: isRefi ? payoffNum : undefined,
+      brv: reno ? brvNum : undefined,
+      rehabBudget: reno ? rehabNum : undefined,
+      requestedLoanAmount: requestedLoanNum ?? undefined,
+      ltvTierCap: eligibility.maxLTV > 0 ? eligibility.maxLTV : undefined,
     });
-  }, [isBlocked, arvNum, ltvPct, points, productKey, baseRatePct]);
+  }, [
+    isBlocked,
+    arvNum,
+    ltvPct,
+    points,
+    productKey,
+    baseRatePct,
+    transactionType,
+    isRefi,
+    payoffNum,
+    reno,
+    brvNum,
+    rehabNum,
+    requestedLoanNum,
+    eligibility.maxLTV,
+  ]);
+
+  // When the loan amount is manually entered and clamps, snap the LTV
+  // slider to match — otherwise the slider lies about what the borrower
+  // is actually getting.
+  useEffect(() => {
+    if (!result || requestedLoanText == null || arvNum <= 0) return;
+    const matchedLtv = Math.round((result.loanAmount / arvNum) * 100);
+    if (Math.abs(matchedLtv - ltvPct) > 0) setLtvPct(matchedLtv);
+  }, [result?.loanAmount, requestedLoanText, arvNum]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Segmented control — Free Simulate | My Loans */}
+      <div
+        style={{
+          display: "flex",
+          gap: 4,
+          background: t.chip,
+          borderRadius: 12,
+          padding: 3,
+          alignSelf: "stretch",
+        }}
+      >
+        {(
+          [
+            { id: "free" as const, label: "Free Simulate" },
+            {
+              id: "started" as const,
+              label: `My Loans${loans.length ? ` (${loans.length})` : ""}`,
+            },
+          ]
+        ).map((opt) => {
+          const active = simTab === opt.id;
+          return (
+            <button
+              key={opt.id}
+              onClick={() => {
+                setSimTab(opt.id);
+                setPickedLoanId(null);
+              }}
+              style={{
+                all: "unset",
+                flex: 1,
+                padding: "9px 0",
+                borderRadius: 9,
+                background: active ? t.surface : "transparent",
+                color: active ? t.ink : t.ink3,
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                textAlign: "center",
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {simTab === "started" ? (
+        pickedLoan ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <button
+              onClick={() => setPickedLoanId(null)}
+              style={{
+                all: "unset",
+                cursor: "pointer",
+                color: t.brand,
+                fontSize: 13,
+                fontWeight: 700,
+                alignSelf: "flex-start",
+              }}
+            >
+              ‹ My Loans
+            </button>
+            <LoanSimulator loan={pickedLoan} />
+          </div>
+        ) : (
+          <DesktopMyLoansList
+            loans={loans}
+            onPick={setPickedLoanId}
+            onSwitchToFree={() => setSimTab("free")}
+          />
+        )
+      ) : (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 20 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {eligibility.banner ? <EligibilityBanner banner={eligibility.banner} /> : null}
+
+        {credit && creditSummary ? (
+          <CreditSummaryCard summary={creditSummary} />
+        ) : null}
 
         <Card pad={20}>
           <SectionLabel>Product</SectionLabel>
@@ -191,7 +331,7 @@ function ClientSimulator() {
                 { id: "gu",   label: "Ground Up",     sub: "18 mo" },
                 { id: "br",   label: "Bridge",        sub: "24 mo" },
               ] as const
-            ).map((p) => {
+            ).filter((p) => isProductKeyEnabled(p.id)).map((p) => {
               const active = productKey === p.id;
               return (
                 <button
@@ -220,13 +360,46 @@ function ClientSimulator() {
 
         <Card pad={20}>
           <SectionLabel>Property</SectionLabel>
+          {productKey === "dscr" ? (
+            <div style={{ marginBottom: 12, display: "flex", gap: 4, background: t.chip, borderRadius: 11, padding: 3 }}>
+              {(["purchase", "refi"] as const).map((tx) => {
+                const active = transactionType === tx;
+                return (
+                  <button
+                    key={tx}
+                    onClick={() => setTransactionType(tx)}
+                    style={{
+                      all: "unset",
+                      flex: 1,
+                      padding: "7px 0",
+                      borderRadius: 9,
+                      background: active ? t.surface : "transparent",
+                      color: active ? t.ink : t.ink3,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      textAlign: "center",
+                    }}
+                  >
+                    {tx === "purchase" ? "Purchase" : "Refinance"}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
           {reno ? (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <ArvField label="BRV (Before Repair Value)" value={brvText} onChange={setBrvText} hint="As-is purchase value" />
-              <ArvField label={propertyLabel} value={arvText} onChange={setArvText} hint="Loan sized off ARV × LTV" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+              <ArvField label="Purchase price (BRV)" value={brvText} onChange={setBrvText} hint="As-is purchase" />
+              <ArvField label="Rehab budget" value={rehabText} onChange={setRehabText} hint="Repair cost" />
+              <ArvField label={propertyLabel} value={arvText} onChange={setArvText} hint="After repair value" />
             </div>
           ) : (
-            <ArvField label={propertyLabel} value={arvText} onChange={setArvText} hint="Loan amount = Market Value × LTV" />
+            <div style={{ display: "grid", gridTemplateColumns: isRefi ? "1fr 1fr" : "1fr", gap: 12 }}>
+              <ArvField label={propertyLabel} value={arvText} onChange={setArvText} hint={isRefi ? "Today's appraised value" : "Loan = Market Value × LTV"} />
+              {isRefi ? (
+                <ArvField label="Existing payoff" value={payoffText} onChange={setPayoffText} hint="Mortgage balance to pay off" />
+              ) : null}
+            </div>
           )}
           {liveRate?.estimated_rate != null ? (
             <div style={{ fontSize: 11, color: t.ink3, marginTop: 10 }}>
@@ -261,45 +434,99 @@ function ClientSimulator() {
         </Card>
 
         <Card pad={20}>
-          <SectionLabel>{reno ? "Loan-to-ARV" : "Loan-to-value (LTV)"}</SectionLabel>
+          <SectionLabel>{reno ? "Loan sizing" : "Loan-to-value (LTV)"}</SectionLabel>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
             <div>
-              <div style={{ fontSize: 12, color: t.ink2, fontWeight: 600 }}>60–75% range</div>
-              <div style={{ fontSize: 10.5, color: t.ink4, marginTop: 1 }}>{ltvLabel(ltvPct / 100)}</div>
+              <div style={{ fontSize: 12, color: t.ink2, fontWeight: 600 }}>
+                {reno ? "Min(85% LTC, 70% ARV)" : "60–75% range"}
+              </div>
+              <div style={{ fontSize: 10.5, color: t.ink4, marginTop: 1 }}>
+                {result ? bindingConstraintLabel(result.bindingConstraint) : ltvLabel(ltvPct / 100)}
+              </div>
             </div>
             <div style={{ fontSize: 22, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"', letterSpacing: -0.4 }}>
-              {ltvPct}%
+              {result ? `${(result.effectiveLtv * 100).toFixed(0)}%` : `${ltvPct}%`}
             </div>
           </div>
-          <input
-            type="range"
-            min={60}
-            max={isBlocked ? 60 : maxLtvPct}
-            step={1}
-            value={ltvPct}
-            disabled={isBlocked}
-            onChange={(e) => setLtvPct(Number(e.target.value))}
-            style={{ width: "100%", accentColor: t.petrol, opacity: isBlocked ? 0.4 : 1 }}
-          />
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-            {[60, 65, 70, 75].map((tick) => {
-              const locked = !isBlocked && tick > maxLtvPct;
-              return (
-                <span
-                  key={tick}
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    letterSpacing: 0.4,
-                    color: locked ? t.ink4 : ltvPct === tick ? t.ink : t.ink3,
-                  }}
-                >
-                  {tick}%{locked ? " 🔒" : ""}
-                </span>
-              );
-            })}
+
+          {/* RangeGauge — visual cap-vs-current */}
+          {result && arvNum > 0 ? (
+            <div style={{ marginBottom: 12 }}>
+              <RangeGauge
+                current={result.effectiveLtv}
+                max={reno ? Math.max(0.001, result.maxLoan / Math.max(arvNum, 1)) : result.effectiveLtvCap ?? eligibility.maxLTV}
+                tiers={[0.6, 0.65, 0.7, 0.75]}
+                lockedAbove={eligibility.maxLTV}
+                binding={result.clamped ? result.bindingConstraint as ("ltv" | "ltc" | "arv" | "refi-cap") : undefined}
+                markers={
+                  isRefi && payoffNum > 0 && arvNum > 0
+                    ? [{ at: payoffNum / arvNum, label: "payoff", tone: "muted" }]
+                    : undefined
+                }
+                secondaryCap={
+                  reno && arvNum > 0
+                    ? { at: 0.7, label: "ARV cap" }
+                    : undefined
+                }
+              />
+            </div>
+          ) : null}
+
+          {/* LTV slider */}
+          {!reno ? (
+            <>
+              <input
+                type="range"
+                min={60}
+                max={isBlocked ? 60 : Math.min(maxLtvPct, isRefi ? 75 : 80)}
+                step={1}
+                value={ltvPct}
+                disabled={isBlocked}
+                onChange={(e) => {
+                  setLtvPct(Number(e.target.value));
+                  setRequestedLoanText(null);
+                }}
+                style={{ width: "100%", accentColor: t.petrol, opacity: isBlocked ? 0.4 : 1 }}
+              />
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+                {[60, 65, 70, 75].map((tick) => {
+                  const locked = !isBlocked && tick > maxLtvPct;
+                  return (
+                    <span
+                      key={tick}
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: 0.4,
+                        color: locked ? t.ink4 : ltvPct === tick ? t.ink : t.ink3,
+                      }}
+                    >
+                      {tick}%{locked ? " 🔒" : ""}
+                    </span>
+                  );
+                })}
+              </div>
+            </>
+          ) : null}
+
+          {/* Manual loan amount — clamped to the cap. */}
+          <div style={{ marginTop: 14 }}>
+            <ArvField
+              label={`Loan amount${result ? ` · max ${QC_FMT.usd(result.maxLoan, 0)}` : ""}`}
+              value={
+                requestedLoanText ??
+                (result ? Math.round(result.loanAmount).toString() : "")
+              }
+              onChange={(v) => setRequestedLoanText(v)}
+              hint={
+                result?.clamped
+                  ? cappedReasonLabel(result.bindingConstraint, result.maxLoan)
+                  : "Type to override; will clamp to cap on blur"
+              }
+            />
           </div>
-          {!isBlocked && eligibility.maxLTV < 0.75 ? (
+
+          {!isBlocked && eligibility.maxLTV < 0.75 && !reno ? (
             <div style={{ fontSize: 11, color: t.ink3, marginTop: 8 }}>
               70% and 75% locked at this tier.
             </div>
@@ -330,6 +557,27 @@ function ClientSimulator() {
             ) : null}
             <KPI label="Discount points cost" value={QC_FMT.usd(result.pointsCost, 0)} />
             <KPI label="Estimated cash to close" value={QC_FMT.usd(result.totalToClose, 0)} />
+            {result.cashToBorrower != null ? (
+              <KPI
+                label={result.cashToBorrower >= 0 ? "Cash to borrower" : "Cash to close (refi gap)"}
+                value={`${result.cashToBorrower >= 0 ? "+" : ""}${QC_FMT.usd(result.cashToBorrower, 0)}`}
+                accent={result.cashToBorrower >= 0 ? t.profit : t.danger}
+              />
+            ) : null}
+            {result.cashToClose != null ? (
+              <KPI label="Borrower equity (cash to close)" value={QC_FMT.usd(result.cashToClose, 0)} />
+            ) : null}
+            {result.totalCost != null ? (
+              <KPI label="Total project cost" value={QC_FMT.usd(result.totalCost, 0)} />
+            ) : null}
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
+              <Pill bg={t.surface2} color={t.ink2}>
+                Binding · {bindingConstraintLabel(result.bindingConstraint)}
+              </Pill>
+              {result.clamped ? (
+                <Pill bg={t.warnBg} color={t.warn}>capped</Pill>
+              ) : null}
+            </div>
           </div>
         ) : (
           <div style={{ fontSize: 12.5, color: t.ink3 }}>
@@ -339,6 +587,103 @@ function ClientSimulator() {
           </div>
         )}
       </Card>
+    </div>
+      )}
+    </div>
+  );
+}
+
+function DesktopMyLoansList({
+  loans,
+  onPick,
+  onSwitchToFree,
+}: {
+  loans: Loan[];
+  onPick: (loanId: string) => void;
+  onSwitchToFree: () => void;
+}) {
+  const { t } = useTheme();
+  if (loans.length === 0) {
+    return (
+      <Card pad={24}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: t.ink, letterSpacing: -0.3 }}>
+          No started loans yet
+        </div>
+        <div style={{ fontSize: 13, color: t.ink3, marginTop: 6, lineHeight: 1.5 }}>
+          Once a loan is started, you'll see it here with a locked-terms view. Until then, use Free
+          Simulate to model what a deal could look like.
+        </div>
+        <button
+          onClick={onSwitchToFree}
+          style={{
+            all: "unset",
+            marginTop: 14,
+            padding: "11px 16px",
+            borderRadius: 10,
+            background: t.brand,
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          Open Free Simulate
+        </button>
+      </Card>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {loans.map((loan) => {
+        const arvNum = loan.arv != null ? Number(loan.arv) : 0;
+        const ltvPct = loan.ltv != null ? Math.round(Number(loan.ltv) * 100) : null;
+        return (
+          <button
+            key={loan.id}
+            onClick={() => onPick(loan.id)}
+            style={{
+              all: "unset",
+              cursor: "pointer",
+              display: "block",
+            }}
+          >
+            <Card pad={16}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 800,
+                      color: t.ink,
+                      letterSpacing: -0.3,
+                    }}
+                  >
+                    {loan.address || "Unnamed loan"}
+                  </div>
+                  <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
+                    {loan.type.replace(/_/g, " ")} · {loan.stage.replace(/_/g, " ")}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 800,
+                      color: t.ink,
+                      fontFeatureSettings: '"tnum"',
+                    }}
+                  >
+                    {arvNum > 0 ? QC_FMT.short(arvNum) : "—"}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: t.ink3, marginTop: 1 }}>
+                    {ltvPct != null ? `${ltvPct}% LTV` : "—"}
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -3,9 +3,10 @@
 import { useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, SectionLabel } from "@/components/design-system/primitives";
-import { useLoans, useMyCredit } from "@/hooks/useApi";
+import { useCreditSummary, useLoans, useMyCredit } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { EligibilityBanner } from "@/components/EligibilityBanner";
+import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import {
   computeEligibility,
   computeSimulator,
@@ -33,6 +34,7 @@ function productKeyFor(loanType: string): SimulatorInputs["productKey"] {
 export function TermsTab({ loan }: { loan: Loan }) {
   const { t } = useTheme();
   const { data: credit } = useMyCredit();
+  const { data: creditSummary } = useCreditSummary(credit?.id);
   const { data: loans = [] } = useLoans();
 
   const propertyCount = loans.length;
@@ -48,6 +50,9 @@ export function TermsTab({ loan }: { loan: Loan }) {
     fico: credit?.fico ?? null,
     propertyCount,
     hasYearOfOwnership,
+    creditExpired: credit?.is_expired ?? false,
+    creditExpiringSoon: credit?.expiring_soon ?? false,
+    daysUntilExpiry: credit?.days_until_expiry ?? null,
   });
 
   const productKey = productKeyFor(loan.type);
@@ -82,6 +87,7 @@ export function TermsTab({ loan }: { loan: Loan }) {
     <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 20 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {eligibility.banner ? <EligibilityBanner banner={eligibility.banner} /> : null}
+        {credit && creditSummary ? <CreditSummaryCard summary={creditSummary} /> : null}
 
         <Card pad={20}>
           <SectionLabel>Property</SectionLabel>

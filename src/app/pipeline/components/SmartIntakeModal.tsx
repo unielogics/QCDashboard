@@ -17,6 +17,7 @@ import {
   LoanType,
   PropertyType,
 } from "@/lib/enums.generated";
+import { isLoanTypeEnabled } from "@/lib/products";
 import type { SmartIntakePayload } from "@/lib/types";
 import type { QCTokens } from "@/components/design-system/tokens";
 
@@ -417,7 +418,7 @@ function NumbersStepView({ t, form, update }: StepProps) {
             { value: LoanType.GROUND_UP, label: "Ground Up / Construction" },
             { value: LoanType.PORTFOLIO, label: "Portfolio" },
             { value: LoanType.CASH_OUT_REFI, label: "Cash-Out Refi" },
-          ]} />
+          ].filter((o) => isLoanTypeEnabled(o.value))} />
         </Field>
         <Field t={t} label={`Target LTV — ${ltv}%`}>
           <input

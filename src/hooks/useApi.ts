@@ -21,6 +21,8 @@ import type {
   ChatSendResponse,
   Client,
   CreditPull,
+  CreditSummary,
+  ParsedReport,
   DashboardReport,
   Document,
   DocumentUploadInitResponse,
@@ -149,6 +151,10 @@ export function useLoan(loanId: string | null | undefined) {
     queryKey: ["loan", loanId, devUser],
     queryFn: () => apiCall<Loan>(`/loans/${loanId}`),
     enabled: !!loanId,
+    // Poll every 15s so CLIENTs see operator/AI edits propagate without
+    // a page refresh. Slice 3 will replace this with WebSocket push.
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -253,6 +259,31 @@ export function useCurrentCredit(clientId: string | null | undefined) {
     queryKey: ["credit", clientId, devUser],
     queryFn: () => apiCall<CreditPull | null>(`/credit/current?client_id=${clientId}`),
     enabled: !!clientId,
+  });
+}
+
+// Borrower-safe summary derived from the parsed credit report.
+// Backend: GET /credit/pulls/{id}/summary. Auth: client (own pull) / operator (any).
+export function useCreditSummary(pullId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["credit-summary", pullId, devUser],
+    queryFn: () => apiCall<CreditSummary>(`/credit/pulls/${pullId}/summary`),
+    enabled: !!pullId,
+  });
+}
+
+// Operator-only full structured report (every field iSoftPull surfaced).
+// Backend: GET /credit/pulls/{id}/parsed. 403 for clients.
+export function useParsedReport(pullId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["credit-parsed", pullId, devUser],
+    queryFn: () => apiCall<ParsedReport>(`/credit/pulls/${pullId}/parsed`),
+    enabled: !!pullId,
+    retry: false, // 403/404 should not retry
   });
 }
 
@@ -396,7 +427,11 @@ export function useStartMyCreditPull() {
         method: "POST",
         body: JSON.stringify(payload),
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Populate the cache synchronously so the simulator reflects the
+      // new pull the moment the modal closes — avoids the race where a
+      // slow refetch leaves the calculator briefly in its locked state.
+      qc.setQueryData(["my-credit", devUser], data);
       qc.invalidateQueries({ queryKey: ["my-credit", devUser] });
       qc.invalidateQueries({ queryKey: ["credit"] });
     },

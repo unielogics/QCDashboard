@@ -228,6 +228,94 @@ export interface CreditPull {
   fico: number | null;
   pulled_at: string | null;
   expires_at: string | null;
+  // Derived (computed in router) — UI uses these directly to render the
+  // "expires in 12 days" pill without doing date math.
+  is_expired?: boolean;
+  days_until_expiry?: number | null;
+  expiring_soon?: boolean;
+}
+
+// ── Credit summary (borrower-facing) ───────────────────────────────────────
+export interface CreditSummaryBullet {
+  kind: "positive" | "neutral" | "warn";
+  label: string;
+  detail: string | null;
+}
+export interface CreditSummaryProduct {
+  id: string;
+  label: string;
+  loan_type: string;
+  rate?: number;
+  max_ltv?: number;
+  term?: string;
+  min_fico?: number;
+  reason?: string; // populated for blocked products
+}
+export interface CreditSummaryAggregates {
+  open_count: number;
+  closed_count: number;
+  derogatory_count: number;
+  total_balance: number;
+  total_credit_limit: number;
+  total_monthly_payment: number;
+  revolving_balance: number;
+  revolving_credit_limit: number;
+  revolving_utilization: number | null;
+  has_mortgage: boolean;
+  oldest_account_opened: string | null;
+  by_type: Record<string, number>;
+}
+export interface CreditSummary {
+  fico: number | null;
+  fico_model: string | null;
+  tier: string | null;
+  tier_max_ltv: number | null;
+  bullets: CreditSummaryBullet[];
+  aggregates?: CreditSummaryAggregates;
+  recent_inquiries_6mo?: number;
+  available_products: CreditSummaryProduct[];
+  blocked_products: CreditSummaryProduct[];
+  fraud_flag: string | null;
+  note?: string;
+}
+
+// ── Parsed report (operator-facing — full structured ScrapedReport) ────────
+export interface ParsedCreditScore {
+  model: string;
+  score: number | null;
+  reason_codes: string[];
+}
+export interface ParsedAddressOrEmployment {
+  period: string;
+  fields: Record<string, string>;
+}
+export interface ParsedTradeAccount {
+  fields: Record<string, string>;
+}
+export interface ParsedInquiry {
+  fields: Record<string, string>;
+}
+export interface ParsedIdentityRisk {
+  ofac: Record<string, string>;
+  mla: Record<string, string>;
+  fraud_shield: Record<string, string>;
+}
+export interface ParsedReport {
+  personal_info: Record<string, string>;
+  addresses: ParsedAddressOrEmployment[];
+  employment: ParsedAddressOrEmployment[];
+  scores: ParsedCreditScore[];
+  identity_risk: ParsedIdentityRisk;
+  inquiries: ParsedInquiry[];
+  trade_accounts: ParsedTradeAccount[];
+  public_records: Record<string, string>[];
+  collections: Record<string, string>[];
+  fico_8: number | null;
+  fico_2: number | null;
+  vantage_4: number | null;
+  best_score: number | null;
+  best_score_model: string | null;
+  raw_html_length: number;
 }
 
 // ── Stage transition ───────────────────────────────────────────────────────

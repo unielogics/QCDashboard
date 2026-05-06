@@ -9,8 +9,12 @@ import { Card } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import type { EligibilityBanner as EligibilityBannerData } from "@/lib/eligibility";
 
+// `credit=open` is a bookmarkable hint for /profile to auto-open the
+// CreditPullModal. The page picks the right mode (expired/rerun/first)
+// based on the user's actual credit state — no need to encode it in the
+// URL beyond the simple "open" trigger.
 const TARGET_HREF: Record<NonNullable<EligibilityBannerData["ctaTarget"]>, string> = {
-  "credit-pull": "/profile",
+  "credit-pull": "/profile?credit=open",
   vault: "/vault",
   "new-loan": "/pipeline",
 };
@@ -29,6 +33,10 @@ export function EligibilityBanner({ banner }: { banner: EligibilityBannerData })
         return { bg: t.petrolSoft, fg: t.petrol, icon: "trend" as const };
       case "no-credit":
         return { bg: t.brandSoft, fg: t.brand, icon: "shield" as const };
+      case "credit-expired":
+        return { bg: t.dangerBg, fg: t.danger, icon: "refresh" as const };
+      case "credit-expiring":
+        return { bg: t.warnBg, fg: t.warn, icon: "refresh" as const };
     }
   })();
 
