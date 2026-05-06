@@ -19,12 +19,17 @@ export interface RoleProfile {
   canSee: { aiInbox: boolean; rewards: boolean; settings: boolean };
 }
 
+// Pre-/auth/me fallback. Role MUST default to "client" (least-privileged) —
+// historically this was "super_admin" which leaked operator chrome to anyone
+// during the brief window before /auth/me resolved, and to any signed-out
+// user. Real role flows in via _setActiveProfileFromUser() the moment
+// useCurrentUser() returns.
 const CLIENT_FALLBACK: RoleProfile = {
   email: "anonymous@qc.local",
   name: "—",
-  role: "super_admin",
-  homeRail: true,
-  canSee: { aiInbox: true, rewards: true, settings: true },
+  role: "client",
+  homeRail: false,
+  canSee: { aiInbox: false, rewards: false, settings: false },
 };
 
 // Lazy require so this module stays SSR-safe.
