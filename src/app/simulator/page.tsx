@@ -321,7 +321,7 @@ function ClientSimulator() {
           />
         )
       ) : (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 280px", gap: 20 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 380px", gap: 20 }}>
       {/* LEFT — calculator, controls, results, amortization. The focal area. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
         {/* Slim 2-line results header with DP slider attached, cash-to-close clickable. */}
@@ -336,7 +336,30 @@ function ClientSimulator() {
           setShowHud={setShowHud}
         />
 
-        {/* Product selector — inline tabs, doesn't waste vertical space. */}
+        {/* Amortization at the bottom of the focal column. */}
+        {result && result.loanAmount > 0 && result.rate > 0 ? (
+          <AmortizationSchedule
+            loanAmount={result.loanAmount}
+            annualRate={result.rate}
+            termMonths={productKey === "dscr" ? 360 : 0}
+            monthlyPI={result.monthlyPI}
+          />
+        ) : null}
+      </div>
+
+      {/* RIGHT — controls panel: credit (compact) → product → property+sizing.
+          Stacked vertically so the borrower reads identity → product →
+          deal inputs in one column. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+        <CollapsibleCreditSummary
+          summary={creditSummary ?? null}
+          fico={credit?.fico ?? null}
+          propertyCount={propertyCount}
+          hasYearOfOwnership={hasYearOfOwnership}
+          banner={eligibility.banner ?? null}
+        />
+
+        {/* Product selector — directly under the credit pill. */}
         <Card pad={14}>
           <div style={{ display: "flex", gap: 4, background: t.chip, borderRadius: 11, padding: 3 }}>
             {(
@@ -359,22 +382,24 @@ function ClientSimulator() {
                     borderRadius: 9,
                     background: active ? t.surface : "transparent",
                     color: active ? t.ink : t.ink3,
-                    fontSize: 12.5,
+                    fontSize: 11.5,
                     fontWeight: 700,
                     cursor: "pointer",
                     textAlign: "center",
                   }}
                 >
                   {p.label}
-                  <div style={{ fontSize: 10, fontWeight: 600, color: active ? t.ink3 : t.ink4, marginTop: 2 }}>{p.sub}</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 600, color: active ? t.ink3 : t.ink4, marginTop: 2 }}>{p.sub}</div>
                 </button>
               );
             })}
           </div>
         </Card>
 
-        {/* Merged Property + Rent + LTV + Loan-amount card. */}
-        <Card pad={20}>
+        {/* Merged Property + Rent + Loan amount + LTV card. Loan amount
+            sits directly under the property values so the borrower reads
+            "property worth → loan" as one unit. */}
+        <Card pad={18}>
           <SectionLabel>{reno ? "Property values & loan sizing" : "Property & loan sizing"}</SectionLabel>
 
           {productKey === "dscr" ? (
@@ -405,36 +430,67 @@ function ClientSimulator() {
             </div>
           ) : null}
 
-          {/* Property values row — grid varies by product/transaction. DSCR
-              gets an extra Monthly Rent input on the same row. */}
+          {/* Property values — single column in the narrow right rail. */}
           {reno ? (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <ArvField label="Purchase price (BRV)" value={brvText} onChange={setBrvText} hint="As-is purchase" />
               <ArvField label="Rehab budget" value={rehabText} onChange={setRehabText} hint="Repair cost" />
               <ArvField label={propertyLabel} value={arvText} onChange={setArvText} hint="After repair value" />
             </div>
-          ) : productKey === "dscr" ? (
-            <div style={{ display: "grid", gridTemplateColumns: isRefi ? "1fr 1fr 1fr" : "1fr 1fr", gap: 12 }}>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <ArvField label={propertyLabel} value={arvText} onChange={setArvText} hint={isRefi ? "Today's appraised value" : "Loan = Market Value × LTV"} />
+              {/* Loan amount sits directly beneath Market Value. */}
+              <ArvField
+                label={`Loan amount${result ? ` · max ${QC_FMT.usd(result.maxLoan, 0)}` : ""}`}
+                value={
+                  requestedLoanText ??
+                  (result ? Math.round(result.loanAmount).toString() : "")
+                }
+                onChange={(v) => setRequestedLoanText(v)}
+                hint={
+                  result?.clamped
+                    ? cappedReasonLabel(result.bindingConstraint, result.maxLoan)
+                    : "Type to override; will clamp to cap on blur"
+                }
+              />
               {isRefi ? (
                 <ArvField label="Existing payoff" value={payoffText} onChange={setPayoffText} hint="Mortgage balance to pay off" />
               ) : null}
+              {productKey === "dscr" ? (
+                <ArvField
+                  label="Monthly rent"
+                  value={monthlyRentText}
+                  onChange={setMonthlyRentText}
+                  hint={
+                    monthlyRentNum > 0
+                      ? "Drives DSCR + cash flow"
+                      : "Auto ≈ 0.85% of loan if blank"
+                  }
+                />
+              ) : null}
+            </div>
+          )}
+
+          {reno ? (
+            // For reno, loan-amount lives under the renovation grid for
+            // the same "property → loan" reading order.
+            <div style={{ marginTop: 12 }}>
               <ArvField
-                label="Monthly rent"
-                value={monthlyRentText}
-                onChange={setMonthlyRentText}
+                label={`Loan amount${result ? ` · max ${QC_FMT.usd(result.maxLoan, 0)}` : ""}`}
+                value={
+                  requestedLoanText ??
+                  (result ? Math.round(result.loanAmount).toString() : "")
+                }
+                onChange={(v) => setRequestedLoanText(v)}
                 hint={
-                  monthlyRentNum > 0
-                    ? "Drives DSCR + cash flow"
-                    : "Auto-estimate ≈ 0.85% of loan if blank"
+                  result?.clamped
+                    ? cappedReasonLabel(result.bindingConstraint, result.maxLoan)
+                    : "Type to override; will clamp to cap on blur"
                 }
               />
             </div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
-              <ArvField label={propertyLabel} value={arvText} onChange={setArvText} hint="Loan = Market Value × LTV" />
-            </div>
-          )}
+          ) : null}
 
           {liveRate?.estimated_rate != null ? (
             <div style={{ fontSize: 11, color: t.ink3, marginTop: 10 }}>
@@ -442,23 +498,23 @@ function ClientSimulator() {
             </div>
           ) : null}
 
-          {/* LTV section — heading + tier label + current % on one row. */}
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 18, marginBottom: 8 }}>
+          {/* LTV section. */}
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 16, marginBottom: 8 }}>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
                 {reno ? "Loan sizing" : "Loan-to-value"}
               </div>
               <div style={{ fontSize: 11, color: t.ink4, marginTop: 1 }}>
                 {result ? bindingConstraintLabel(result.bindingConstraint) : ltvLabel(ltvPct / 100)}
               </div>
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"', letterSpacing: -0.4 }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"', letterSpacing: -0.4 }}>
               {result ? `${(result.effectiveLtv * 100).toFixed(0)}%` : `${ltvPct}%`}
             </div>
           </div>
 
           {result && arvNum > 0 ? (
-            <div style={{ marginBottom: 12 }}>
+            <div style={{ marginBottom: 10 }}>
               <RangeGauge
                 current={result.effectiveLtv}
                 max={reno ? Math.max(0.001, result.maxLoan / Math.max(arvNum, 1)) : result.effectiveLtvCap ?? eligibility.maxLTV}
@@ -515,50 +571,12 @@ function ClientSimulator() {
             </>
           ) : null}
 
-          <div style={{ marginTop: 14 }}>
-            <ArvField
-              label={`Loan amount${result ? ` · max ${QC_FMT.usd(result.maxLoan, 0)}` : ""}`}
-              value={
-                requestedLoanText ??
-                (result ? Math.round(result.loanAmount).toString() : "")
-              }
-              onChange={(v) => setRequestedLoanText(v)}
-              hint={
-                result?.clamped
-                  ? cappedReasonLabel(result.bindingConstraint, result.maxLoan)
-                  : "Type to override; will clamp to cap on blur"
-              }
-            />
-          </div>
-
           {!isBlocked && eligibility.maxLTV < 0.75 && !reno ? (
             <div style={{ fontSize: 11, color: t.ink3, marginTop: 8 }}>
               70% and 75% locked at this tier.
             </div>
           ) : null}
         </Card>
-
-        {/* Amortization at the bottom of the focal column. */}
-        {result && result.loanAmount > 0 && result.rate > 0 ? (
-          <AmortizationSchedule
-            loanAmount={result.loanAmount}
-            annualRate={result.rate}
-            termMonths={productKey === "dscr" ? 360 : 0}
-            monthlyPI={result.monthlyPI}
-          />
-        ) : null}
-      </div>
-
-      {/* RIGHT — credit/experience header (compact). Just the credit pill;
-          everything else moved into the focal column. */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-        <CollapsibleCreditSummary
-          summary={creditSummary ?? null}
-          fico={credit?.fico ?? null}
-          propertyCount={propertyCount}
-          hasYearOfOwnership={hasYearOfOwnership}
-          banner={eligibility.banner ?? null}
-        />
       </div>
     </div>
       )}
