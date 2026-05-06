@@ -114,6 +114,10 @@ export interface SimulatorInputs {
   ltv: number;
   discountPoints: number;
   productKey: "dscr" | "ff" | "gu" | "br";
+  // Optional override — when the caller has fetched today's rate from FRED
+  // (index + lender spread) we use it instead of the hardcoded fallback.
+  // Expressed as a percentage (e.g. 7.875 == 7.875%).
+  baseRatePct?: number;
 }
 
 export interface SimulatorOutputs {
@@ -152,9 +156,11 @@ export function computeSimulator({
   ltv,
   discountPoints,
   productKey,
+  baseRatePct,
 }: SimulatorInputs): SimulatorOutputs {
   const loanAmount = arv * ltv;
-  const rate = (PRODUCT_BASE_RATE[productKey] - discountPoints * 0.25) / 100;
+  const basePct = baseRatePct ?? PRODUCT_BASE_RATE[productKey];
+  const rate = (basePct - discountPoints * 0.25) / 100;
   const monthlyRate = rate / 12;
   const termMonths = PRODUCT_TERM_MONTHS[productKey];
   const isAmortized = productKey === "dscr";
