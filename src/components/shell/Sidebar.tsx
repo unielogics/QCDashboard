@@ -387,6 +387,28 @@ export default function Sidebar() {
           )}
         </div>
       </div>
+      {/* Legal footer — collapsed mode hides the labels but the routes
+          stay reachable from the URL bar / from /sign-up consent links. */}
+      {!collapsed && (
+        <div
+          style={{
+            padding: "6px 16px 12px",
+            display: "flex",
+            justifyContent: "center",
+            gap: 10,
+            fontSize: 10.5,
+            color: t.ink4,
+          }}
+        >
+          <Link href="/terms" style={{ color: "inherit", textDecoration: "none" }}>
+            Terms
+          </Link>
+          <span aria-hidden>·</span>
+          <Link href="/privacy" style={{ color: "inherit", textDecoration: "none" }}>
+            Privacy
+          </Link>
+        </div>
+      )}
       {/* Suppress unused warning for `initials` — kept for future fallback */}
       <span style={{ display: "none" }}>{initials}</span>
     </aside>

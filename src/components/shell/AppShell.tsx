@@ -9,6 +9,7 @@ import GlobalSearch from "./GlobalSearch";
 import { useUI } from "@/store/ui";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { useCurrentUser } from "@/hooks/useApi";
+import { useRecordPendingConsent } from "@/hooks/useRecordPendingConsent";
 import { _setActiveProfileFromUser } from "@/store/role";
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -19,6 +20,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
   const setSearchOpen = useUI((s) => s.setSearchOpen);
   const { data: user } = useCurrentUser();
+  // Flush any pending sign-up consent (from localStorage) into the
+  // /legal/accept audit table once the user resolves.
+  useRecordPendingConsent();
 
   // Mirror the real /auth/me user into the legacy useActiveProfile() shim so
   // older call sites keep working while we migrate them off.
@@ -47,8 +51,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
   void sidebarCollapsed;
   const railW = aiOpen ? 360 : 0;
 
-  // Auth pages render bare — no sidebar / topbar / AI rail
-  if (pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up")) {
+  // Auth + public-legal pages render bare — no sidebar / topbar / AI rail.
+  // /terms and /privacy must be reachable without auth (signup consent links
+  // point to them, and Apple/Google review require public legal URLs).
+  const isBareRoute =
+    pathname.startsWith("/sign-in") ||
+    pathname.startsWith("/sign-up") ||
+    pathname.startsWith("/terms") ||
+    pathname.startsWith("/privacy");
+  if (isBareRoute) {
     return <div style={{ background: t.bg, minHeight: "100vh" }}>{children}</div>;
   }
 

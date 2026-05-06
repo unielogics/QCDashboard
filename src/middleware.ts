@@ -6,6 +6,14 @@ const isAuthPage = createRouteMatcher([
   "/sign-up(.*)",
 ]);
 
+// Public pages — no Clerk auth required. The legal documents must be
+// reachable without an account (App Store / Play Store reviewers + signup
+// consent links both need anonymous access).
+const isPublicPage = createRouteMatcher([
+  "/terms(.*)",
+  "/privacy(.*)",
+]);
+
 export default clerkMiddleware(async (auth, req) => {
   const { userId, redirectToSignIn } = await auth();
 
@@ -20,6 +28,11 @@ export default clerkMiddleware(async (auth, req) => {
       return NextResponse.redirect(new URL("/", req.nextUrl.origin));
     }
     return; // unauthenticated visitors — let them through to /sign-in
+  }
+
+  // Public legal pages — let everyone through unconditionally.
+  if (isPublicPage(req)) {
+    return;
   }
 
   // Protected route: send unauthenticated users to /sign-in (no returnBackUrl

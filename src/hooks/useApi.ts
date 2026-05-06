@@ -1156,3 +1156,19 @@ export function useUpdateMyClient() {
     },
   });
 }
+
+// Legal acceptance — backed by /legal/accept (server captures IP + UA).
+// Used by useRecordPendingConsent (below) to flush a localStorage-pending
+// signup acceptance into the audit table once the user's session resolves.
+export function useAcceptLegal() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { terms_version: string; privacy_version: string }) =>
+      apiCall<{ id: string }>("/legal/accept", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["legalAcceptance"] }),
+  });
+}
