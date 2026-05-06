@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
-import { api, type ApiOptions } from "@/lib/api";
+import { ApiError, api, type ApiOptions } from "@/lib/api";
 import { useActiveProfile } from "@/store/role";
 import type { User } from "@/lib/types";
 import type {
@@ -1005,6 +1005,13 @@ export function useUpsertFeedback() {
 
 // ── FRED + Lender Spreads ──────────────────────────────────────────────────
 
+// Treat 404 as "endpoint not deployed yet" — return [] silently instead of
+// looping retries / spamming the console. Deploys can lag behind frontend
+// pushes (the FRED router was added in a recent backend release).
+function isNotFound(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 404;
+}
+
 export function useFredSeries() {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
@@ -1012,6 +1019,9 @@ export function useFredSeries() {
     queryKey: ["fredSeries", devUser],
     queryFn: () => apiCall<FredSeriesSummary[]>("/fred/series"),
     staleTime: 5 * 60 * 1000, // 5 min — cron updates daily
+    // Don't retry on 404 (router not mounted) — wastes requests, fills the
+    // console with errors, and the empty-state UI handles it cleanly.
+    retry: (failureCount, error) => !isNotFound(error) && failureCount < 1,
   });
 }
 
@@ -1107,5 +1117,42 @@ export function useFreeCalc() {
         method: "POST",
         body: JSON.stringify(body),
       }),
+  });
+}
+
+// Self-edit profile hooks for borrower (Profile → Investor Profile dialog).
+// Backed by /clients/me on the backend (super-admins / brokers should use
+// /clients/{id} + useUpdateClient instead).
+export function useMyClient() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["my-client", devUser],
+    queryFn: () => apiCall<Client>("/clients/me"),
+    // 404 is expected for operator users with no client linkage — don't retry.
+    retry: (failureCount, error) => !isNotFound(error) && failureCount < 1,
+  });
+}
+
+export function useUpdateMyClient() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: {
+      name?: string;
+      phone?: string;
+      address?: string;
+      city?: string;
+      properties?: string;
+      experience?: string;
+    }) =>
+      apiCall<Client>("/clients/me", {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-client"] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+    },
   });
 }

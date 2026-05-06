@@ -98,7 +98,16 @@ export default function Sidebar() {
         display: "flex",
         flexDirection: "column",
         transition: "width .18s ease",
-        overflow: "hidden",
+        // overflow:visible so the identity-card popover (which renders ABOVE
+        // the footer with bottom:calc(100% + 8px)) isn't clipped by aside.
+        // Internal regions (logo, nav) hide their own overflow as needed.
+        overflow: "visible",
+        // Pin to the viewport so the footer never scrolls off-screen even
+        // when the nav grows. AppShell's grid gives us the height already
+        // but being explicit avoids a sub-page where the nav escapes.
+        height: "100vh",
+        position: "sticky",
+        top: 0,
       }}
     >
       {/* Logo */}
@@ -154,7 +163,12 @@ export default function Sidebar() {
           flexDirection: "column",
           gap: 2,
           flex: 1,
-          overflow: "auto",
+          // min-height:0 is REQUIRED for flex:1 children to actually shrink
+          // and let overflow:auto kick in. Without it the nav pushes the
+          // footer below the viewport when there are many nav items.
+          minHeight: 0,
+          overflowY: "auto",
+          overflowX: "hidden",
         }}
       >
         {items.map((n) => {

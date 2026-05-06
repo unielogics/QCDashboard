@@ -472,10 +472,17 @@ const PRODUCT_CARDS: Array<{ id: string; label: string; term: string; sub: strin
 function TodaysMarketRates() {
   const { t } = useTheme();
   const { data: user } = useCurrentUser();
-  const { data: series = [], isLoading } = useFredSeries();
+  const { data: series = [], isLoading, error: seriesError } = useFredSeries();
   const refreshFred = useRefreshFred();
   const [activeSeries, setActiveSeries] = useState<string | null>(null);
   const autoRefreshFired = useRef(false);
+
+  // 404 from /fred/series means the backend doesn't have the FRED router
+  // mounted yet (deploy lag). Treat it as a "feature not enabled" state
+  // rather than an error — quiet message, no auto-refresh attempts that
+  // would also 404.
+  const fredNotDeployed =
+    !!seriesError && seriesError instanceof Error && /404/.test(String(seriesError.message));
 
   const seriesById = new Map(series.map((s) => [s.series_id, s] as const));
   const hasAnyData = series.some((s) => s.current_value != null);
@@ -488,7 +495,7 @@ function TodaysMarketRates() {
   // Auto-bootstrap: super-admin lands on a fresh DB, the widget triggers
   // the cron-style refresh exactly once so the dashboard is never empty.
   // Other roles just see the empty-state message until super-admin / the
-  // cron populates it.
+  // cron populates it. Skip entirely when the FRED endpoint isn't deployed.
   const isSuperAdmin = user?.role === Role.SUPER_ADMIN;
   useEffect(() => {
     if (
@@ -496,12 +503,13 @@ function TodaysMarketRates() {
       isSuperAdmin &&
       !isLoading &&
       !hasAnyData &&
-      !refreshFred.isPending
+      !refreshFred.isPending &&
+      !fredNotDeployed
     ) {
       autoRefreshFired.current = true;
       refreshFred.mutate();
     }
-  }, [isSuperAdmin, isLoading, hasAnyData, refreshFred]);
+  }, [isSuperAdmin, isLoading, hasAnyData, refreshFred, fredNotDeployed]);
 
   return (
     <>
@@ -558,13 +566,21 @@ function TodaysMarketRates() {
           Today&apos;s market rates
         </SectionLabel>
 
-        {(isLoading || refreshFred.isPending) && !hasAnyData && (
+        {(isLoading || refreshFred.isPending) && !hasAnyData && !fredNotDeployed && (
           <div style={{ padding: 14, fontSize: 12.5, color: t.ink3 }}>
             {refreshFred.isPending ? "Pulling latest from FRED…" : "Loading rates…"}
           </div>
         )}
 
-        {!isLoading && !refreshFred.isPending && !hasAnyData && (
+        {fredNotDeployed && (
+          <div style={{ padding: 14, fontSize: 12.5, color: t.ink2, background: t.surface2, borderRadius: 9, border: `1px solid ${t.line}` }}>
+            <strong>Market data not yet enabled.</strong> The backend at this environment doesn&apos;t expose
+            <code> /fred/series</code> yet — redeploy <code>qcbackend</code> to pick up the FRED router and
+            run <code>alembic upgrade head</code> for the matching schema.
+          </div>
+        )}
+
+        {!fredNotDeployed && !isLoading && !refreshFred.isPending && !hasAnyData && (
           <div style={{ padding: 14, fontSize: 12.5, color: t.warn, background: t.warnBg, borderRadius: 9 }}>
             {isSuperAdmin ? (
               <>

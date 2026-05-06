@@ -17,6 +17,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { useCurrentUser, useMyCredit } from "@/hooks/useApi";
 import { CreditPullModal } from "@/components/CreditPullModal";
 import { Role } from "@/lib/enums.generated";
+import { InvestorProfileDialog } from "./components/InvestorProfileDialog";
 
 const ROLE_LABEL: Record<string, string> = {
   super_admin: "Super Admin",
@@ -50,6 +51,7 @@ export default function ProfilePage() {
   const [pullOpen, setPullOpen] = useState(false);
   const [pullMode, setPullMode] = useState<"first" | "rerun">("first");
   const [signingOut, setSigningOut] = useState(false);
+  const [investorOpen, setInvestorOpen] = useState(false);
 
   if (!user) {
     return <div style={{ padding: 24, color: t.ink3, fontSize: 13 }}>Loading profile…</div>;
@@ -71,28 +73,31 @@ export default function ProfilePage() {
     }
   };
 
-  // Account-row destinations. Most are stubs — the row exists in the design
-  // and is wired to the closest existing surface. Where there's no good
-  // destination yet we fall back to /settings (super-admin) or no-op (others).
+  // Account rows. Personal Info (avatar, name, phone, address) is delegated
+  // to Clerk's hosted user profile — they handle avatar uploads, validation,
+  // and the messy bits we don't want to reinvent. Investor Profile is the
+  // QC-specific borrower data (properties owned + experience) edited in
+  // our own InvestorProfileDialog.
   const accountRows: Array<{
     label: string;
     sub: string;
     icon: string;
-    onClick?: () => void;
-    href?: string;
+    onClick: () => void;
     danger?: boolean;
+    hidden?: boolean;
   }> = [
     {
-      label: "Linked Banks · Plaid",
-      sub: "Not connected yet",
-      icon: "shield",
-      onClick: () => alert("Plaid integration coming soon."),
+      label: "Personal Info",
+      sub: "Avatar, name, phone, address — managed in Clerk",
+      icon: "user",
+      onClick: () => clerk.openUserProfile(),
     },
     {
       label: "Investor Profile",
-      sub: tierLabel,
-      icon: "user",
-      onClick: () => alert("Investor profile editor coming soon."),
+      sub: isClient ? `${tierLabel} · properties + experience` : "Borrower-only — N/A for operator accounts",
+      icon: "shield",
+      onClick: () => setInvestorOpen(true),
+      hidden: !isClient,
     },
     {
       label: "Notifications",
@@ -107,12 +112,6 @@ export default function ProfilePage() {
       onClick: () => clerk.openUserProfile(),
     },
     {
-      label: "Tax Documents",
-      sub: isClient ? "K-1 statements & 1099s" : "Operator W-9 / contractor docs",
-      icon: "doc",
-      onClick: () => router.push("/documents"),
-    },
-    {
       label: signingOut ? "Signing out…" : "Sign Out",
       sub: "Ends this session and returns to sign-in",
       icon: "arrowR",
@@ -120,6 +119,7 @@ export default function ProfilePage() {
       danger: true,
     },
   ];
+  const visibleRows = accountRows.filter((r) => !r.hidden);
 
   return (
     <div style={{ padding: 24, maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -208,10 +208,10 @@ export default function ProfilePage() {
         )}
       </Card>
 
-      {/* Account — stub list mirroring the mobile design */}
+      {/* Account */}
       <SectionLabel>Account</SectionLabel>
       <Card pad={0}>
-        {accountRows.map((row, i) => (
+        {visibleRows.map((row, i) => (
           <button
             key={row.label}
             onClick={row.onClick}
@@ -223,7 +223,7 @@ export default function ProfilePage() {
               alignItems: "center",
               gap: 12,
               padding: "13px 14px",
-              borderBottom: i < accountRows.length - 1 ? `1px solid ${t.line}` : "none",
+              borderBottom: i < visibleRows.length - 1 ? `1px solid ${t.line}` : "none",
               width: "100%",
               boxSizing: "border-box",
             }}
@@ -261,6 +261,7 @@ export default function ProfilePage() {
         initialEmail={user.email}
         mode={pullMode}
       />
+      <InvestorProfileDialog open={investorOpen} onClose={() => setInvestorOpen(false)} />
     </div>
   );
 }

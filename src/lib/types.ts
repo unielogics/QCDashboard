@@ -66,6 +66,7 @@ export interface Client {
   name: string;
   email: string | null;
   phone: string | null;
+  address?: string | null;
   city: string | null;
   since: string | null;
   tier: string;
@@ -73,6 +74,9 @@ export interface Client {
   avatar_color: string | null;
   funded_total: number;
   funded_count: number;
+  // Investor profile (free-text, edited by the borrower in /profile)
+  properties?: string | null;
+  experience?: string | null;
 }
 
 export interface AITask {
