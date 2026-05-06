@@ -418,9 +418,7 @@ export function useStartMyCreditPull() {
       city: string;
       state: string;
       zip: string;
-      phone: string;
-      email: string;
-      last4_ssn: string;
+      ssn: string; // 9 digits, no dashes
       fcra_consent: boolean;
     }) =>
       apiCall<CreditPull>("/credit/pull", {
@@ -817,9 +815,7 @@ export function useCreditPull() {
       city: string;
       state: string;
       zip: string;
-      phone: string;
-      email: string;
-      last4_ssn: string;
+      ssn: string; // 9 digits, no dashes
       fcra_consent: boolean;
     }) =>
       apiCall<CreditPull>("/credit/pull", {

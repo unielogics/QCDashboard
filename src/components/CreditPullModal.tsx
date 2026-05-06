@@ -30,18 +30,19 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
   const { t } = useTheme();
   const start = useStartMyCreditPull();
   const [stage, setStage] = useState<Stage>("form");
+  // Form fields = exactly what iSoftPull's API requires (per their docs).
+  // No phone/email — those live on the user/client record. SSN is the
+  // full 9 digits; backend forwards to iSoftPull and persists only last 4.
   const [first, last] = (initialName ?? "").split(" ", 2);
   const [form, setForm] = useState({
     legal_first_name: first ?? "",
     legal_last_name: last ?? "",
-    dob: "1985-01-01",
+    dob: "",
     street: "",
     city: "",
     state: "",
     zip: "",
-    phone: "",
-    email: initialEmail ?? "",
-    last4_ssn: "",
+    ssn: "",
   });
 
   // Reset to form whenever the modal reopens — avoids the modal flashing the
@@ -53,7 +54,6 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
         ...prev,
         legal_first_name: prev.legal_first_name || (initialName?.split(" ")[0] ?? ""),
         legal_last_name: prev.legal_last_name || (initialName?.split(" ").slice(1).join(" ") ?? ""),
-        email: prev.email || (initialEmail ?? ""),
       }));
     }
   }, [open, initialName, initialEmail]);
@@ -83,13 +83,12 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
   const formValid =
     form.legal_first_name.trim() &&
     form.legal_last_name.trim() &&
-    form.dob &&
+    /^\d{4}-\d{2}-\d{2}$/.test(form.dob) &&
     form.street.trim() &&
     form.city.trim() &&
     form.state.length === 2 &&
-    form.zip.trim() &&
-    form.email.trim() &&
-    form.last4_ssn.length === 4;
+    /^\d{5}(-\d{4})?$/.test(form.zip.trim()) &&
+    form.ssn.length === 9;
 
   return (
     <div
@@ -181,13 +180,18 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
               </div>
 
               <div style={{ height: 10 }} />
-              <SectionLabel>Contact</SectionLabel>
-              <Field t={t} label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
-              <Field t={t} label="Email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
-
-              <div style={{ height: 10 }} />
               <SectionLabel>Identity</SectionLabel>
-              <Field t={t} label="Last 4 of SSN" value={form.last4_ssn} onChange={(v) => setForm({ ...form, last4_ssn: v.replace(/\D/g, "").slice(0, 4) })} />
+              <Field
+                t={t}
+                label="Social Security Number"
+                placeholder="9 digits, no dashes"
+                type="password"
+                value={form.ssn}
+                onChange={(v) => setForm({ ...form, ssn: v.replace(/\D/g, "").slice(0, 9) })}
+              />
+              <div style={{ fontSize: 11, color: t.ink3, marginTop: -4, marginBottom: 4 }}>
+                Sent to the bureau over TLS. Only the last 4 digits are stored on file.
+              </div>
 
               <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 <button onClick={onClose} style={qcBtn(t)}>Cancel</button>
@@ -273,12 +277,14 @@ function Field({
   value,
   onChange,
   placeholder,
+  type = "text",
 }: {
   t: ReturnType<typeof useTheme>["t"];
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  type?: "text" | "password";
 }) {
   return (
     <div style={{ marginBottom: 10 }}>
@@ -289,6 +295,9 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        type={type}
+        autoComplete={type === "password" ? "off" : undefined}
+        inputMode={type === "password" ? "numeric" : undefined}
         style={{
           width: "100%",
           padding: "10px 12px",
