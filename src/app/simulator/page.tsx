@@ -84,7 +84,7 @@ export default function SimulatorPage() {
   // CLIENT view — same gated, ARV-driven simulator as mobile.
   if (isClient) {
     return (
-      <div style={{ padding: 24, maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Simulate</h1>
           <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
@@ -99,7 +99,7 @@ export default function SimulatorPage() {
 
   // OPERATOR view — full advanced flow against the backend.
   return (
-    <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Simulate</h1>
@@ -313,12 +313,12 @@ function ClientSimulator() {
           />
         )
       ) : (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 20 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 420px", gap: 20 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {eligibility.banner ? <EligibilityBanner banner={eligibility.banner} /> : null}
 
         {credit && creditSummary ? (
-          <CreditSummaryCard summary={creditSummary} />
+          <CollapsibleCreditSummary summary={creditSummary} />
         ) : null}
 
         <Card pad={20}>
@@ -534,6 +534,7 @@ function ClientSimulator() {
         </Card>
       </div>
 
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Card pad={16}>
         <SectionLabel>Simulated terms</SectionLabel>
         {result ? (
@@ -587,6 +588,18 @@ function ClientSimulator() {
           </div>
         )}
       </Card>
+      {result && result.loanAmount > 0 && result.rate > 0 ? (
+        <AmortizationSchedule
+          loanAmount={result.loanAmount}
+          annualRate={result.rate}
+          // DSCR rentals amortize over 30 years; the short-term products
+          // (F&F, GU, Bridge) are interest-only — represent that with a
+          // 0-month amort that the schedule treats as IO.
+          termMonths={productKey === "dscr" ? 360 : 0}
+          monthlyPI={result.monthlyPI}
+        />
+      ) : null}
+      </div>
     </div>
       )}
     </div>
@@ -1423,6 +1436,240 @@ function PointsSlider({
       </div>
       <div style={{ fontSize: 11, color: t.ink3, marginTop: 8 }}>
         Loan amount × points% = HUD line 802. {QC_FMT.usd(loanAmount, 0)} × {value.toFixed(2)}% = {QC_FMT.usd(pointsCost, 0)}.
+      </div>
+    </div>
+  );
+}
+
+// ── Collapsible credit summary ────────────────────────────────────────────
+// The full CreditSummaryCard is busy and dominates the simulator when expanded.
+// Collapsed by default — shows just FICO + tier so the borrower can confirm
+// they're looking at the right pull, with a chevron to expand on demand.
+function CollapsibleCreditSummary({ summary }: { summary: import("@/lib/types").CreditSummary }) {
+  const { t } = useTheme();
+  const [open, setOpen] = useState(false);
+  const positives = summary.bullets.filter((b) => b.kind === "positive").length;
+  const warns = summary.bullets.filter((b) => b.kind === "warn").length;
+  return (
+    <Card pad={0}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          all: "unset",
+          cursor: "pointer",
+          width: "100%",
+          padding: "14px 18px",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <div style={{ fontSize: 22, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"', minWidth: 42 }}>
+          {summary.fico ?? "—"}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
+            Your credit · {summary.tier ?? "tier unknown"}
+          </div>
+          <div style={{ fontSize: 12, color: t.ink2, marginTop: 2 }}>
+            {positives} good signals · {warns} concerns · {summary.available_products.length} eligible products
+          </div>
+        </div>
+        <Icon name={open ? "chevU" : "chevD"} size={16} />
+      </button>
+      {open ? (
+        <div style={{ borderTop: `1px solid ${t.line}`, padding: 18 }}>
+          <CreditSummaryCard summary={summary} />
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+// ── Amortization schedule + P&I breakdown ─────────────────────────────────
+// Client-side computation. For amortizing products (DSCR rental, term=360),
+// renders a full month-by-month schedule with principal / interest / balance.
+// For interest-only products (F&F, GU, Bridge), the schedule shows the
+// fixed monthly interest payment plus a balloon principal payoff at term.
+function AmortizationSchedule({
+  loanAmount,
+  annualRate,
+  termMonths,
+  monthlyPI,
+}: {
+  loanAmount: number;
+  annualRate: number;
+  termMonths: number;
+  monthlyPI: number;
+}) {
+  const { t } = useTheme();
+  const [showAll, setShowAll] = useState(false);
+
+  const rows = useMemo(() => {
+    const r = annualRate / 12;
+    if (termMonths === 0) {
+      // Interest-only — represent as a single recurring row + balloon note.
+      return [{
+        n: 1,
+        principal: 0,
+        interest: loanAmount * r,
+        balance: loanAmount,
+        cumulativePrincipal: 0,
+        cumulativeInterest: loanAmount * r,
+        isIO: true,
+      }];
+    }
+    let balance = loanAmount;
+    let cumPrin = 0;
+    let cumInt = 0;
+    const rows = [] as Array<{
+      n: number; principal: number; interest: number; balance: number;
+      cumulativePrincipal: number; cumulativeInterest: number; isIO?: boolean;
+    }>;
+    for (let n = 1; n <= termMonths; n++) {
+      const interest = balance * r;
+      const principal = Math.max(0, monthlyPI - interest);
+      balance = Math.max(0, balance - principal);
+      cumPrin += principal;
+      cumInt += interest;
+      rows.push({ n, principal, interest, balance, cumulativePrincipal: cumPrin, cumulativeInterest: cumInt });
+    }
+    return rows;
+  }, [loanAmount, annualRate, termMonths, monthlyPI]);
+
+  const isIO = rows[0]?.isIO === true;
+  const totalInterest = isIO
+    ? loanAmount * (annualRate / 12) * 12 // 1 yr of interest as ballpark for IO
+    : rows[rows.length - 1]?.cumulativeInterest ?? 0;
+  const visibleRows = isIO
+    ? rows
+    : showAll
+      ? rows
+      : [...rows.slice(0, 6), ...rows.slice(-6)];
+
+  return (
+    <Card pad={16}>
+      <SectionLabel>Amortization & P&I breakdown</SectionLabel>
+      {isIO ? (
+        <div>
+          <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.55, marginBottom: 12 }}>
+            This is an <strong style={{ color: t.ink }}>interest-only</strong> product — the borrower
+            pays interest each month and the full principal balloons at maturity.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Stat t={t} label="Monthly interest" value={QC_FMT.usd(rows[0].interest, 2)} />
+            <Stat t={t} label="Balloon principal at maturity" value={QC_FMT.usd(loanAmount, 0)} accent={t.warn} />
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
+            <Stat t={t} label="Total interest (life of loan)" value={QC_FMT.usd(totalInterest, 0)} accent={t.warn} />
+            <Stat t={t} label="Total principal" value={QC_FMT.usd(loanAmount, 0)} />
+            <Stat t={t} label="Total paid" value={QC_FMT.usd(loanAmount + totalInterest, 0)} />
+          </div>
+          <div
+            style={{
+              border: `1px solid ${t.line}`,
+              borderRadius: 10,
+              overflow: "hidden",
+              fontFeatureSettings: '"tnum"',
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "60px 1fr 1fr 1fr",
+                background: t.surface2,
+                padding: "8px 12px",
+                fontSize: 10.5,
+                fontWeight: 700,
+                color: t.ink3,
+                letterSpacing: 0.6,
+                textTransform: "uppercase",
+              }}
+            >
+              <div>Month</div>
+              <div>Principal</div>
+              <div>Interest</div>
+              <div>Balance</div>
+            </div>
+            {visibleRows.map((row, idx) => {
+              const prevRow = idx > 0 ? visibleRows[idx - 1] : null;
+              const isGap = prevRow && row.n - prevRow.n > 1;
+              return (
+                <div key={row.n}>
+                  {isGap ? (
+                    <div
+                      style={{
+                        padding: "6px 12px",
+                        fontSize: 11,
+                        color: t.ink3,
+                        background: t.surface2,
+                        borderTop: `1px dashed ${t.line}`,
+                        borderBottom: `1px dashed ${t.line}`,
+                        textAlign: "center",
+                      }}
+                    >
+                      … {prevRow ? row.n - prevRow.n - 1 : 0} months …
+                    </div>
+                  ) : null}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "60px 1fr 1fr 1fr",
+                      padding: "8px 12px",
+                      fontSize: 12,
+                      color: t.ink2,
+                      borderTop: idx === 0 ? "none" : `1px solid ${t.line}`,
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, color: t.ink }}>{row.n}</div>
+                    <div>{QC_FMT.usd(row.principal, 2)}</div>
+                    <div>{QC_FMT.usd(row.interest, 2)}</div>
+                    <div>{QC_FMT.usd(row.balance, 0)}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {!showAll && rows.length > 12 ? (
+            <button
+              onClick={() => setShowAll(true)}
+              style={{
+                ...qcBtn(t),
+                marginTop: 10,
+                width: "100%",
+                fontSize: 12,
+              }}
+            >
+              Show all {rows.length} months
+            </button>
+          ) : null}
+        </>
+      )}
+    </Card>
+  );
+}
+
+function Stat({
+  t,
+  label,
+  value,
+  accent,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  label: string;
+  value: string;
+  accent?: string;
+}) {
+  return (
+    <div style={{ background: t.surface2, padding: "10px 12px", borderRadius: 9 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase" }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 16, fontWeight: 800, color: accent ?? t.ink, marginTop: 4, fontFeatureSettings: '"tnum"' }}>
+        {value}
       </div>
     </div>
   );
