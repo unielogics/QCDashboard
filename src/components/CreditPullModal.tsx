@@ -10,7 +10,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useStartMyCreditPull } from "@/hooks/useApi";
+import { useCreditSummary, useStartMyCreditPull } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api";
 
 type Stage = "form" | "consent" | "pulling" | "done";
@@ -366,6 +366,7 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
                   <div style={{ marginTop: 4, fontSize: 12, color: t.ink3 }}>
                     Valid through {start.data?.expires_at ? new Date(start.data.expires_at).toLocaleDateString() : "—"}
                   </div>
+                  <CreditBriefing pullId={start.data.id} />
                   <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
                     <button onClick={onClose} style={qcBtnPrimary(t)}>Done</button>
                   </div>
@@ -561,6 +562,62 @@ function StateSelect({
           <option key={s.code} value={s.code}>{s.name} ({s.code})</option>
         ))}
       </select>
+    </div>
+  );
+}
+
+// Brief "what's good vs what's a concern" summary for the done stage.
+// Pulls the structured summary (already computed by the backend's
+// credit_summary service) and shows up to 3 positives + 3 warns.
+// Intentionally label-only — operators looking for detail click into
+// the full credit summary card on the dashboard.
+function CreditBriefing({ pullId }: { pullId: string }) {
+  const { t } = useTheme();
+  const { data: summary, isLoading } = useCreditSummary(pullId);
+
+  if (isLoading) {
+    return (
+      <div style={{ marginTop: 18, fontSize: 12, color: t.ink3 }}>Loading briefing…</div>
+    );
+  }
+  if (!summary) return null;
+
+  const positives = summary.bullets.filter((b) => b.kind === "positive").slice(0, 3);
+  const warns = summary.bullets.filter((b) => b.kind === "warn").slice(0, 3);
+  if (positives.length === 0 && warns.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 18, textAlign: "left", display: "grid", gap: 12 }}>
+      {positives.length > 0 && (
+        <div>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: t.profit, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 6 }}>
+            What's good
+          </div>
+          <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 4 }}>
+            {positives.map((b, i) => (
+              <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5, color: t.ink2, lineHeight: 1.4 }}>
+                <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 3, background: t.profit, marginTop: 7, flexShrink: 0 }} />
+                <span>{b.label}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {warns.length > 0 && (
+        <div>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: t.warn, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 6 }}>
+            Things to watch
+          </div>
+          <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 4 }}>
+            {warns.map((b, i) => (
+              <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5, color: t.ink2, lineHeight: 1.4 }}>
+                <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 3, background: t.warn, marginTop: 7, flexShrink: 0 }} />
+                <span>{b.label}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
