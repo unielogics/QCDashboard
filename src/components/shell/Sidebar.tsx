@@ -10,6 +10,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { useUI } from "@/store/ui";
 import { useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
+import { QCMark } from "@/components/QCMark";
 
 interface NavItem {
   href: string;
@@ -120,24 +121,7 @@ export default function Sidebar() {
           justifyContent: collapsed ? "center" : "flex-start",
         }}
       >
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 9,
-            background: `linear-gradient(135deg, ${t.brand}, ${t.petrol})`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: t.inverse,
-            fontWeight: 800,
-            fontSize: 14,
-            letterSpacing: 0.5,
-            flexShrink: 0,
-          }}
-        >
-          QC
-        </div>
+        <QCMark size={32} />
         {!collapsed && (
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, letterSpacing: -0.2 }}>Qualified</div>
