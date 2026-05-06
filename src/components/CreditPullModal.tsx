@@ -102,9 +102,10 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
       await start.mutateAsync(payload);
       setStage("done");
     } catch (err: unknown) {
-      // Backend signals "we couldn't match without SSN" by returning
-      // 422 with body.detail.code === "no_hit_provide_ssn". ApiError
-      // carries the parsed JSON on `body`; pluck the code out.
+      // Backend signals structured deny outcomes via 422 + detail.code:
+      //   no_hit_provide_ssn  → reveal SSN field, return to form, retry
+      //   bureau_freeze       → user must lift their freeze with the bureau
+      // Other failures fall through to a generic message.
       const code = readErrorCode(err);
       const detailMsg = readErrorMessage(err);
       if (code === "no_hit_provide_ssn") {
@@ -112,6 +113,14 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
         setSubmitError(
           detailMsg ||
             "We couldn't find your file with name + address + DOB alone. Add your SSN below and try again.",
+        );
+        setStage("form");
+        return;
+      }
+      if (code === "bureau_freeze") {
+        setSubmitError(
+          detailMsg ||
+            "Your credit file is frozen at the bureau. Please lift the freeze with Experian, Equifax, or TransUnion and try again.",
         );
         setStage("form");
         return;
@@ -306,20 +315,42 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
 
           {stage === "done" && (
             <Card pad={32}>
-              <div style={{ textAlign: "center" }}>
-                <Pill bg={t.profitBg} color={t.profit}>
-                  <Icon name="check" size={11} stroke={3} /> Verified
-                </Pill>
-                <div style={{ marginTop: 12, fontSize: 56, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"' }}>
-                  {start.data?.fico ?? "—"}
+              {start.data?.fico == null ? (
+                // Bureau matched but didn't return a usable score (thin file,
+                // no recent activity). Re-running won't help — show that
+                // explicitly so the operator doesn't burn another pull.
+                <div style={{ textAlign: "center" }}>
+                  <Pill bg={t.warnBg} color={t.warn}>
+                    <Icon name="info" size={11} stroke={3} /> No score available
+                  </Pill>
+                  <div style={{ marginTop: 14, fontSize: 14, fontWeight: 700, color: t.ink }}>
+                    The bureau didn't return a usable score
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 12.5, color: t.ink2, lineHeight: 1.5, maxWidth: 380, marginInline: "auto" }}>
+                    This usually means a thin or stale credit file. Re-running a soft pull
+                    on the same identity won't change the result — please contact support
+                    if you believe this is an error.
+                  </div>
+                  <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
+                    <button onClick={onClose} style={qcBtnPrimary(t)}>Done</button>
+                  </div>
                 </div>
-                <div style={{ marginTop: 4, fontSize: 12, color: t.ink3 }}>
-                  Valid through {start.data?.expires_at ? new Date(start.data.expires_at).toLocaleDateString() : "—"}
+              ) : (
+                <div style={{ textAlign: "center" }}>
+                  <Pill bg={t.profitBg} color={t.profit}>
+                    <Icon name="check" size={11} stroke={3} /> Verified
+                  </Pill>
+                  <div style={{ marginTop: 12, fontSize: 56, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"' }}>
+                    {start.data.fico}
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 12, color: t.ink3 }}>
+                    Valid through {start.data?.expires_at ? new Date(start.data.expires_at).toLocaleDateString() : "—"}
+                  </div>
+                  <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
+                    <button onClick={onClose} style={qcBtnPrimary(t)}>Done</button>
+                  </div>
                 </div>
-                <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
-                  <button onClick={onClose} style={qcBtnPrimary(t)}>Done</button>
-                </div>
-              </div>
+              )}
             </Card>
           )}
         </div>
