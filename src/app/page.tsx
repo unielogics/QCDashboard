@@ -127,42 +127,45 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* KPI row — 4 tiles, all sourced from /reports/dashboard */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <KPI
-          label="Funded YTD"
-          value={report ? QC_FMT.short(report.funded_ytd) : "—"}
-          delta={report?.funded_ytd_delta ?? undefined}
-          sub="vs. prior year"
-          icon="dollar"
-          accent={t.profit}
-        />
-        <KPI
-          label="Pipeline"
-          value={report ? QC_FMT.short(report.pipeline_value) : "—"}
-          sub={report ? `${report.pipeline_count} loans` : undefined}
-          icon="layers"
-        />
-        <KPI
-          label="Avg close"
-          value={report?.avg_close_days ? `${report.avg_close_days}d` : "—"}
-          delta={report?.avg_close_delta ?? undefined}
-          deltaSuffix="d"
-          sub="from app to wire"
-          icon="audit"
-        />
-        <KPI
-          label="Pull-through"
-          value={report?.pull_through != null ? `${(report.pull_through * 100).toFixed(0)}%` : "—"}
-          delta={
-            report?.pull_through_delta != null
-              ? Math.round(report.pull_through_delta * 100)
-              : undefined
-          }
-          sub="last 90d"
-          icon="trend"
-        />
-      </div>
+      {/* KPI row — operator-only. Borrowers don't need (and shouldn't see)
+          firm-wide funded/pipeline/pull-through metrics. */}
+      {!isClient && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+          <KPI
+            label="Funded YTD"
+            value={report ? QC_FMT.short(report.funded_ytd) : "—"}
+            delta={report?.funded_ytd_delta ?? undefined}
+            sub="vs. prior year"
+            icon="dollar"
+            accent={t.profit}
+          />
+          <KPI
+            label="Pipeline"
+            value={report ? QC_FMT.short(report.pipeline_value) : "—"}
+            sub={report ? `${report.pipeline_count} loans` : undefined}
+            icon="layers"
+          />
+          <KPI
+            label="Avg close"
+            value={report?.avg_close_days ? `${report.avg_close_days}d` : "—"}
+            delta={report?.avg_close_delta ?? undefined}
+            deltaSuffix="d"
+            sub="from app to wire"
+            icon="audit"
+          />
+          <KPI
+            label="Pull-through"
+            value={report?.pull_through != null ? `${(report.pull_through * 100).toFixed(0)}%` : "—"}
+            delta={
+              report?.pull_through_delta != null
+                ? Math.round(report.pull_through_delta * 100)
+                : undefined
+            }
+            sub="last 90d"
+            icon="trend"
+          />
+        </div>
+      )}
 
       <TodaysOverduePanel tasks={tasks} events={events} loans={loans} />
 
@@ -392,7 +395,9 @@ export default function DashboardPage() {
           KPI/exposure surfaces (Reports, Top Brokers, Pipeline). */}
       {isClient && <PortfolioHealth loans={loans} />}
 
-      {/* AI tasks + Top brokers */}
+      {/* AI tasks + Top brokers — operator-only. Borrowers don't have an
+          AI-task queue and shouldn't see the broker leaderboard. */}
+      {!isClient && (
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         <Card pad={16}>
           <SectionLabel
@@ -442,6 +447,7 @@ export default function DashboardPage() {
 
         <TopBrokersPanel />
       </div>
+      )}
     </div>
   );
 }

@@ -5,7 +5,8 @@ import { useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useAITasks, useCalendar, useDocuments, useLoans } from "@/hooks/useApi";
+import { useAITasks, useCalendar, useCurrentUser, useDocuments, useLoans } from "@/hooks/useApi";
+import { Role } from "@/lib/enums.generated";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import type { AITask, CalendarEvent, Document, Loan } from "@/lib/types";
 import { EventModal } from "./components/EventModal";
@@ -25,6 +26,8 @@ export default function CalendarPage() {
   const { data: tasks = [] } = useAITasks();
   const { data: docs = [] } = useDocuments();
   const { data: loans = [] } = useLoans();
+  const { data: user } = useCurrentUser();
+  const isClient = user?.role === Role.CLIENT;
 
   const now = Date.now();
   const horizon = now + windowDays * 24 * 60 * 60 * 1000;
@@ -79,11 +82,15 @@ export default function CalendarPage() {
           })}
         </div>
         <div style={{ flex: 1 }} />
-        <button onClick={() => setCreateOpen(true)} style={qcBtnPrimary(t)}>
-          <Icon name="plus" size={14} /> New event
-        </button>
+        {/* Borrowers don't create calendar events — closings/inspections
+            are scheduled by operators. Hide both the trigger and the modal. */}
+        {!isClient && (
+          <button onClick={() => setCreateOpen(true)} style={qcBtnPrimary(t)}>
+            <Icon name="plus" size={14} /> New event
+          </button>
+        )}
       </div>
-      <EventModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      {!isClient && <EventModal open={createOpen} onClose={() => setCreateOpen(false)} />}
 
       <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 14, alignItems: "flex-start" }}>
         {/* Left — events grouped by day */}
