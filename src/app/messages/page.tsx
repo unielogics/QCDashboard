@@ -26,6 +26,7 @@ function fromRoleForProfile(role: string): typeof MessageFrom[keyof typeof Messa
 export default function MessagesPage() {
   const { t } = useTheme();
   const profile = useActiveProfile();
+  const isClient = profile?.role === Role.CLIENT;
   const { data: loans = [] } = useLoans();
   const [activeLoan, setActiveLoan] = useState<string | null>(null);
   const [newThreadOpen, setNewThreadOpen] = useState(false);
@@ -83,25 +84,31 @@ export default function MessagesPage() {
           }}
         >
           <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>Threads</div>
-          <button
-            onClick={() => setNewThreadOpen(true)}
-            title="Start a new thread (pick client + loan)"
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "4px 9px",
-              borderRadius: 7,
-              background: t.brand,
-              color: t.inverse,
-              fontSize: 11.5,
-              fontWeight: 700,
-            }}
-          >
-            <Icon name="plus" size={11} stroke={2.4} /> New
-          </button>
+          {/* Borrowers don't initiate new threads via the client+loan picker
+              (which is operator-centric). They reply to threads operators
+              start. The full role-based recipient picker (broker + admins
+              for borrowers, clients + admins for brokers) is a follow-up. */}
+          {!isClient && (
+            <button
+              onClick={() => setNewThreadOpen(true)}
+              title="Start a new thread (pick client + loan)"
+              style={{
+                all: "unset",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "4px 9px",
+                borderRadius: 7,
+                background: t.brand,
+                color: t.inverse,
+                fontSize: 11.5,
+                fontWeight: 700,
+              }}
+            >
+              <Icon name="plus" size={11} stroke={2.4} /> New
+            </button>
+          )}
         </div>
         {loans.map((l) => (
           <button key={l.id} onClick={() => setActiveLoan(l.id)} style={{
@@ -115,15 +122,19 @@ export default function MessagesPage() {
         ))}
         {loans.length === 0 && (
           <div style={{ padding: 16, fontSize: 13, color: t.ink3 }}>
-            No active threads yet. Click <strong>+ New</strong> to start one.
+            {isClient
+              ? "No active threads yet. Your broker will start a thread once your loan is in flight."
+              : <>No active threads yet. Click <strong>+ New</strong> to start one.</>}
           </div>
         )}
       </Card>
-      <NewThreadDialog
-        open={newThreadOpen}
-        onClose={() => setNewThreadOpen(false)}
-        onThreadReady={(loanId) => setActiveLoan(loanId)}
-      />
+      {!isClient && (
+        <NewThreadDialog
+          open={newThreadOpen}
+          onClose={() => setNewThreadOpen(false)}
+          onThreadReady={(loanId) => setActiveLoan(loanId)}
+        />
+      )}
       <Card pad={0} style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
         <div ref={scrollerRef} style={{ flex: 1, padding: 16, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
           {!activeLoan && <div style={{ color: t.ink3, fontSize: 13 }}>Pick a thread.</div>}
