@@ -12,7 +12,7 @@ import { qcBtnPrimary } from "@/components/design-system/buttons";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { useLoanPrequalRequests } from "@/hooks/useApi";
 import { PrequalReviewModal } from "@/components/PrequalReviewModal";
-import type { Loan, PrequalRequest } from "@/lib/types";
+import { PREQUAL_LOAN_TYPE_LABELS, type Loan, type PrequalRequest } from "@/lib/types";
 
 export function PrequalTab({ loan }: { loan: Loan }) {
   const { t } = useTheme();
@@ -126,7 +126,7 @@ function Row({ req, onOpen }: { req: PrequalRequest; onOpen: () => void }) {
       <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700 }}>
         {req.target_property_address}
         <div style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600, marginTop: 2, textTransform: "uppercase", letterSpacing: 0.6 }}>
-          {req.loan_type === "dscr" ? "DSCR rental" : "Bridge"}
+          {PREQUAL_LOAN_TYPE_LABELS[req.loan_type]?.title ?? req.loan_type}
         </div>
       </div>
       <div style={{ fontSize: 12, fontFeatureSettings: '"tnum"' }}>{QC_FMT.usd(requested, 0)}</div>

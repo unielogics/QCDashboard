@@ -729,7 +729,25 @@ export type PrequalStatus =
   | "rejected"
   | "offer_accepted"
   | "offer_declined";
-export type PrequalLoanType = "dscr" | "bridge";
+// Four products. DSCR splits into purchase vs refi (5pt LTV haircut on
+// refi); Fix & Flip is a first-class option alongside Bridge. The
+// underwriter-bound LTV ceilings live in PREQUAL_LTV_CAPS below — keep
+// them in sync with the backend's LTV_CAPS in app/routers/prequal.py.
+export type PrequalLoanType = "dscr_purchase" | "dscr_refi" | "fix_flip" | "bridge";
+
+export const PREQUAL_LTV_CAPS: Record<PrequalLoanType, number> = {
+  dscr_purchase: 0.80,
+  dscr_refi: 0.75,
+  fix_flip: 0.85,
+  bridge: 0.85,
+};
+
+export const PREQUAL_LOAN_TYPE_LABELS: Record<PrequalLoanType, { title: string; sub: string }> = {
+  dscr_purchase: { title: "DSCR Purchase", sub: "30-yr fixed · long-term hold" },
+  dscr_refi:     { title: "DSCR Refinance", sub: "30-yr fixed · rate-and-term refi" },
+  fix_flip:      { title: "Fix & Flip", sub: "Short-term · rehab financing" },
+  bridge:        { title: "Bridge", sub: "Short-term · purchase / value-add" },
+};
 
 export interface PrequalRequest {
   id: string;

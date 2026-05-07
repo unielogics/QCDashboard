@@ -28,10 +28,17 @@ import {
   useApprovePrequalRequest,
   useRejectPrequalRequest,
 } from "@/hooks/useApi";
-import type { PrequalLoanType, PrequalRequest } from "@/lib/types";
+import { PREQUAL_LOAN_TYPE_LABELS, PREQUAL_LTV_CAPS, type PrequalRequest } from "@/lib/types";
 
-const LTV_CAPS: Record<PrequalLoanType, number> = { dscr: 0.8, bridge: 0.85 };
+const LTV_CAPS = PREQUAL_LTV_CAPS;
 const DEFAULT_EXPIRATION_DAYS = 90;
+
+// DSCR variants share calculator inputs (rate/rent/taxes/ins/HOA →
+// P&I/NOI/DSCR). F&F + Bridge share the short-term IO calc (rate/term/
+// points → monthly interest, fee, IR estimate).
+function isDscrLike(loanType: string): boolean {
+  return loanType === "dscr_purchase" || loanType === "dscr_refi";
+}
 
 interface Props {
   open: boolean;
@@ -120,8 +127,8 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
     // Calculator seed: pull from approved_scenario if the underwriter
     // already saved one (re-approval flow). Otherwise sensible defaults.
     const sc = (request.approved_scenario ?? {}) as Record<string, unknown>;
-    setCalcRate(String(sc.rate ?? (request.loan_type === "dscr" ? 7.625 : 11.0)));
-    setCalcTerm(String(sc.term_months ?? (request.loan_type === "dscr" ? 360 : 12)));
+    setCalcRate(String(sc.rate ?? (isDscrLike(request.loan_type) ? 7.625 : 11.0)));
+    setCalcTerm(String(sc.term_months ?? (isDscrLike(request.loan_type) ? 360 : 12)));
     setCalcRent(String(sc.rent ?? ""));
     setCalcTaxes(String(sc.taxes_annual ?? ""));
     setCalcInsurance(String(sc.insurance_annual ?? ""));
@@ -146,7 +153,7 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
   const purchaseNum = num(purchaseText);
   const loanNum = num(loanText);
   const ltv = purchaseNum > 0 ? loanNum / purchaseNum : 0;
-  const cap = request ? LTV_CAPS[request.loan_type] : 0;
+  const cap = request ? (LTV_CAPS[request.loan_type] ?? 0) : 0;
   const ltvOverCap = ltv > cap + 1e-6;
   const expirationNum = Math.max(1, Math.min(365, num(expirationText) || DEFAULT_EXPIRATION_DAYS));
 
@@ -155,7 +162,7 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
   // borrower-accepted-offer.
   const scenario = useMemo(() => {
     if (!request) return null;
-    if (request.loan_type === "dscr") {
+    if (isDscrLike(request.loan_type)) {
       const out = computeDscr(loanNum, {
         rate: num(calcRate),
         termMonths: num(calcTerm) || 360,
@@ -165,7 +172,7 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
         hoa: num(calcHoa),
       });
       return {
-        loan_type: "dscr",
+        loan_type: request.loan_type,
         rate: num(calcRate),
         term_months: num(calcTerm) || 360,
         rent: num(calcRent),
@@ -179,13 +186,14 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
         dscr: out.dscr,
       };
     }
+    // Fix & Flip + Bridge share the short-term IO calculator.
     const out = computeBridge(loanNum, {
       rate: num(calcRate),
       termMonths: num(calcTerm) || 12,
       points: num(calcPoints),
     });
     return {
-      loan_type: "bridge",
+      loan_type: request.loan_type,
       rate: num(calcRate),
       term_months: num(calcTerm) || 12,
       points: num(calcPoints),
@@ -244,8 +252,10 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
     }
   };
 
-  const programLabel =
-    request.loan_type === "dscr" ? "DSCR Rental (30-yr fixed)" : "Bridge / Purchase";
+  const programLabel = (() => {
+    const meta = PREQUAL_LOAN_TYPE_LABELS[request.loan_type];
+    return meta ? `${meta.title} · ${meta.sub}` : request.loan_type;
+  })();
 
   return (
     <div
@@ -363,7 +373,7 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
                 accepts the offer.
               </div>
 
-              {request.loan_type === "dscr" ? (
+              {isDscrLike(request.loan_type) ? (
                 <DscrCalc
                   t={t}
                   loanNum={loanNum}

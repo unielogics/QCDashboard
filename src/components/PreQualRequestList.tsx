@@ -17,7 +17,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { useAcceptPrequalOffer, useDeclinePrequalOffer } from "@/hooks/useApi";
-import type { PrequalRequest } from "@/lib/types";
+import { PREQUAL_LOAN_TYPE_LABELS, type PrequalRequest } from "@/lib/types";
 
 export function PreQualRequestList({
   requests,
@@ -76,7 +76,7 @@ function RequestRow({ req }: { req: PrequalRequest }) {
   const requestedAmount = Number(req.requested_loan_amount);
   const approvedAmount = req.approved_loan_amount != null ? Number(req.approved_loan_amount) : null;
   const showApproved = approvedAmount != null && approvedAmount !== requestedAmount;
-  const programLabel = req.loan_type === "dscr" ? "DSCR Rental (30-yr fixed)" : "Bridge / Purchase";
+  const programLabel = PREQUAL_LOAN_TYPE_LABELS[req.loan_type]?.title ?? req.loan_type;
 
   const submitOutcome = async () => {
     if (showOutcome == null) return;

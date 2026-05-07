@@ -17,7 +17,7 @@ import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
 import { useAdminPrequalQueue } from "@/hooks/useApi";
 import { PrequalReviewModal } from "@/components/PrequalReviewModal";
-import type { PrequalRequest, PrequalStatus } from "@/lib/types";
+import { PREQUAL_LOAN_TYPE_LABELS, type PrequalRequest, type PrequalStatus } from "@/lib/types";
 
 type FilterId = PrequalStatus | "all";
 const FILTERS: { id: FilterId; label: string }[] = [
@@ -361,7 +361,7 @@ function Row({
       <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         <div style={{ fontWeight: 700 }}>{req.target_property_address}</div>
         <div style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600, marginTop: 2, textTransform: "uppercase", letterSpacing: 0.6 }}>
-          {req.loan_type === "dscr" ? "DSCR rental" : "Bridge"}
+          {PREQUAL_LOAN_TYPE_LABELS[req.loan_type]?.title ?? req.loan_type}
         </div>
       </div>
       <div style={{ fontSize: 12, color: req.borrower_entity ? t.ink2 : t.ink4, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
