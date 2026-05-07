@@ -21,6 +21,7 @@ import {
   type PrequalLoanType,
   type PrequalSowLineItem,
 } from "@/lib/types";
+import { PrequalSowEditor } from "./PrequalSowEditor";
 
 // F&F project-viability cap: BRV + total construction must be ≤ this
 // fraction of ARV. Industry standard ~75%; the borrower sees a live
@@ -536,8 +537,7 @@ export function PreQualRequestModal({
                   Negotiation-Shield version.
                 </div>
 
-                <SowEditor
-                  t={t}
+                <PrequalSowEditor
                   items={sowItems}
                   onChange={setSowItems}
                 />
@@ -713,144 +713,3 @@ function Textarea({
   );
 }
 
-// F&F scope-of-work line editor. Renders a small table — category /
-// short description / total $ — with row-level remove + an Add Row
-// affordance. Numeric column is sanitized on every keystroke so the
-// stored value is always a finite number. Keeps zero state simple
-// (no lines on first open; Add Row materializes the first one).
-function SowEditor({
-  t,
-  items,
-  onChange,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  items: PrequalSowLineItem[];
-  onChange: (next: PrequalSowLineItem[]) => void;
-}) {
-  const total = items.reduce((sum, item) => sum + (Number(item.total_usd) || 0), 0);
-  const setItem = (idx: number, patch: Partial<PrequalSowLineItem>) => {
-    onChange(items.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
-  };
-  const removeItem = (idx: number) => {
-    onChange(items.filter((_, i) => i !== idx));
-  };
-  const addItem = () => {
-    onChange([...items, { category: "", description: "", total_usd: 0 }]);
-  };
-
-  return (
-    <>
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(120px, 1fr) minmax(160px, 2fr) 130px 32px",
-        gap: 6,
-        fontSize: 10, fontWeight: 700, color: t.ink3,
-        letterSpacing: 1, textTransform: "uppercase",
-        marginBottom: 6,
-      }}>
-        <div>Category</div>
-        <div>Description</div>
-        <div>Total $</div>
-        <div></div>
-      </div>
-
-      {items.length === 0 ? (
-        <div style={{
-          fontSize: 12, color: t.ink3, padding: 14,
-          textAlign: "center", border: `1px dashed ${t.line}`,
-          borderRadius: 9, background: t.surface2,
-        }}>
-          No scope-of-work lines yet. Tap <strong style={{ color: t.ink2 }}>Add row</strong> to start.
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {items.map((item, idx) => (
-            <div key={idx} style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(120px, 1fr) minmax(160px, 2fr) 130px 32px",
-              gap: 6, alignItems: "center",
-            }}>
-              <input
-                value={item.category}
-                onChange={(e) => setItem(idx, { category: e.target.value })}
-                placeholder="Demo / HVAC / Plumbing"
-                style={sowInputStyle(t)}
-              />
-              <input
-                value={item.description}
-                onChange={(e) => setItem(idx, { description: e.target.value })}
-                placeholder="Brief description"
-                style={sowInputStyle(t)}
-              />
-              <input
-                value={String(item.total_usd || "")}
-                onChange={(e) => {
-                  const v = Number(e.target.value.replace(/[^0-9.]/g, "")) || 0;
-                  setItem(idx, { total_usd: v });
-                }}
-                placeholder="0"
-                inputMode="numeric"
-                style={{ ...sowInputStyle(t), fontFeatureSettings: '"tnum"' }}
-              />
-              <button
-                type="button"
-                onClick={() => removeItem(idx)}
-                title="Remove row"
-                style={{
-                  all: "unset",
-                  cursor: "pointer",
-                  width: 24, height: 24,
-                  borderRadius: 6,
-                  display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  color: t.ink3,
-                }}
-              >
-                <Icon name="x" size={12} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div style={{
-        marginTop: 12, paddingTop: 10,
-        borderTop: `1px solid ${t.line}`,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-      }}>
-        <button
-          type="button"
-          onClick={addItem}
-          style={{
-            ...qcBtn(t),
-            display: "inline-flex", alignItems: "center", gap: 6,
-          }}
-        >
-          <Icon name="plus" size={12} /> Add row
-        </button>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>
-            Total construction
-          </div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: t.ink, marginTop: 2, fontFeatureSettings: '"tnum"' }}>
-            {QC_FMT.usd(total, 0)}
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function sowInputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "8px 10px",
-    borderRadius: 7,
-    background: t.surface2,
-    border: `1px solid ${t.line}`,
-    color: t.ink,
-    fontSize: 12.5,
-    fontFamily: "inherit",
-    outline: "none",
-    boxSizing: "border-box",
-  };
-}

@@ -28,7 +28,16 @@ import {
   useApprovePrequalRequest,
   useRejectPrequalRequest,
 } from "@/hooks/useApi";
-import { PREQUAL_LOAN_TYPE_LABELS, PREQUAL_LTV_CAPS, type PrequalRequest } from "@/lib/types";
+import {
+  PREQUAL_LOAN_TYPE_LABELS,
+  PREQUAL_LTV_CAPS,
+  type PrequalRequest,
+  type PrequalSowLineItem,
+} from "@/lib/types";
+import { PrequalSowEditor } from "./PrequalSowEditor";
+
+// F&F project-viability cap — keep in sync with the borrower form.
+const FF_LTARV_CAP = 0.75;
 
 const LTV_CAPS = PREQUAL_LTV_CAPS;
 const DEFAULT_EXPIRATION_DAYS = 90;
@@ -108,6 +117,11 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
   const [calcHoa, setCalcHoa] = useState("0");
   const [calcPoints, setCalcPoints] = useState("1.0");
 
+  // F&F-only — admin overrides for ARV + SOW. Seeded from the request
+  // so re-approvals carry the previous edits forward.
+  const [arvText, setArvText] = useState("");
+  const [sowItems, setSowItems] = useState<PrequalSowLineItem[]>([]);
+
   const [error, setError] = useState<string | null>(null);
   const [confirmReject, setConfirmReject] = useState(false);
 
@@ -134,6 +148,19 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
     setCalcInsurance(String(sc.insurance_annual ?? ""));
     setCalcHoa(String(sc.hoa_monthly ?? 0));
     setCalcPoints(String(sc.points ?? 1.0));
+    // F&F seed — prefer admin overrides on re-approval, fall back to
+    // borrower-submitted values, then to empty.
+    const seedArv = request.approved_arv ?? request.arv_estimate ?? null;
+    setArvText(seedArv != null ? String(Math.round(Number(seedArv))) : "");
+    setSowItems(
+      Array.isArray(request.sow_items)
+        ? request.sow_items.map((item) => ({
+            category: String(item?.category ?? ""),
+            description: String(item?.description ?? ""),
+            total_usd: Number(item?.total_usd ?? 0) || 0,
+          }))
+        : [],
+    );
     setError(null);
     setConfirmReject(false);
   }, [open, request]);
@@ -234,6 +261,11 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
   const onApprove = async () => {
     setError(null);
     try {
+      const arvNum = Number(arvText.replace(/[^0-9.]/g, "")) || 0;
+      const totalConstruction = sowItems.reduce(
+        (sum, item) => sum + (Number(item.total_usd) || 0),
+        0,
+      );
       await approve.mutateAsync({
         requestId: request.id,
         payload: {
@@ -243,6 +275,10 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
           approved_scenario: scenario,
           expiration_days: expirationNum,
           borrower_entity: entityTBD ? null : (entityName.trim() || null),
+          // F&F-only overrides — backend ignores them on non-F&F.
+          approved_arv: !isDscrLike(request.loan_type) && request.loan_type === "fix_flip" && arvNum > 0 ? arvNum : null,
+          approved_sow_items: request.loan_type === "fix_flip" && sowItems.length > 0 ? sowItems : null,
+          approved_total_construction: request.loan_type === "fix_flip" && totalConstruction > 0 ? totalConstruction : null,
         },
       });
       onClose();
@@ -410,6 +446,65 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
                 />
               )}
             </Card>
+
+            {/* F&F-specific — Scope of Work + ARV. Admin can edit
+                every line, override ARV, and the LTARV pill
+                re-validates live. Lives only on F&F prequals; other
+                products skip the entire card. */}
+            {request.loan_type === "fix_flip" ? (
+              <Card pad={16}>
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  marginBottom: 8,
+                }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
+                    Scope of work · ARV
+                  </div>
+                  <Pill bg={t.brandSoft} color={t.brand}>
+                    Hidden from PDF
+                  </Pill>
+                </div>
+                <div style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.45, marginBottom: 12 }}>
+                  Borrower-submitted SOW + ARV. Edit any field; the saved
+                  approval row updates accordingly. Total construction is
+                  re-derived from the line items unless you override it
+                  explicitly via the standalone field below.
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8, marginBottom: 14 }}>
+                  <Field
+                    t={t}
+                    label="Estimated ARV (After Repair Value)"
+                    value={arvText}
+                    onChange={setArvText}
+                  />
+                </div>
+                <PrequalSowEditor items={sowItems} onChange={setSowItems} />
+                {/* Live LTARV pill — informational. */}
+                {(() => {
+                  const arvNum = Number(arvText.replace(/[^0-9.]/g, "")) || 0;
+                  const total = sowItems.reduce(
+                    (s, it) => s + (Number(it.total_usd) || 0), 0
+                  );
+                  const allInBasis = purchaseNum + total;
+                  const ltarv = arvNum > 0 ? allInBasis / arvNum : 0;
+                  const overCap = ltarv > FF_LTARV_CAP + 1e-6;
+                  if (arvNum <= 0 || allInBasis <= 0) return null;
+                  return (
+                    <div style={{ marginTop: 12 }}>
+                      <Pill
+                        bg={overCap ? t.dangerBg : t.profitBg}
+                        color={overCap ? t.danger : t.profit}
+                      >
+                        All-in {QC_FMT.usd(allInBasis, 0)} ÷ ARV {QC_FMT.usd(arvNum, 0)} = {(ltarv * 100).toFixed(1)}% ·{" "}
+                        {overCap
+                          ? `over ${Math.round(FF_LTARV_CAP * 100)}% project cap`
+                          : `within ${Math.round(FF_LTARV_CAP * 100)}% project cap`}
+                      </Pill>
+                    </div>
+                  );
+                })()}
+              </Card>
+            ) : null}
           </div>
 
           {/* ── RIGHT: approval fields ─────────────────────────────── */}
