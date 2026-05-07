@@ -22,6 +22,7 @@ import type {
   LenderUpdate,
   LenderSendRequest,
   LenderSendResponse,
+  RequiredDocument,
   AITask,
   AITaskDecisionRequest,
   AIModifyCorrection,
@@ -828,8 +829,26 @@ export function useUploadDocument() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
-    // invalidates: ["documents", loan_id]
-    mutationFn: async ({ loan_id, file, name, category }: { loan_id: string; file: File; name?: string; category?: string }) => {
+    // invalidates: ["documents", loan_id], ["required-documents", loan_id]
+    mutationFn: async ({
+      loan_id,
+      file,
+      name,
+      category,
+      fulfill_document_id,
+      checklist_key,
+      is_other,
+    }: {
+      loan_id: string;
+      file: File;
+      name?: string;
+      category?: string;
+      // Categorization (alembic 0017): pick exactly ONE of these
+      // three to link the upload to the loan's checklist.
+      fulfill_document_id?: string | null;
+      checklist_key?: string | null;
+      is_other?: boolean;
+    }) => {
       const init = await apiCall<DocumentUploadInitResponse>("/documents/upload-init", {
         method: "POST",
         body: JSON.stringify({
@@ -837,6 +856,9 @@ export function useUploadDocument() {
           name: name ?? file.name,
           content_type: file.type || "application/octet-stream",
           category,
+          fulfill_document_id: fulfill_document_id ?? null,
+          checklist_key: checklist_key ?? null,
+          is_other: !!is_other,
         }),
       });
       // Dev path: backend returns null upload_url when AWS keys are absent.
@@ -851,13 +873,52 @@ export function useUploadDocument() {
           },
         });
         if (!res.ok) throw new Error(`S3 upload failed: ${res.status} ${res.statusText}`);
+        // Flip the doc to RECEIVED + queue the vision scan. Skipping
+        // this step in dev mode (no S3) is fine — there's nothing
+        // to scan anyway.
+        await apiCall(`/documents/upload-complete`, {
+          method: "POST",
+          body: JSON.stringify({ document_id: init.document_id }),
+        });
       }
       return init;
     },
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["documents", vars.loan_id] });
       qc.invalidateQueries({ queryKey: ["documents", undefined] });
+      qc.invalidateQueries({ queryKey: ["required-documents", vars.loan_id] });
     },
+  });
+}
+
+// /loans/{id}/required-documents — drives the vault upload modal's
+// checklist picker. Returns the loan's product checklist joined
+// against existing Document rows so the operator/borrower sees
+// which slots are filled, in flight, or empty.
+export function useRequiredDocuments(loanId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["required-documents", loanId, devUser],
+    queryFn: () => apiCall<RequiredDocument[]>(`/loans/${loanId}/required-documents`),
+    enabled: !!loanId,
+  });
+}
+
+// AI chat thread find-or-create — used by the Messages thread list
+// to lazy-spawn a thread the first time the user taps on a loan
+// row (or the Account thread).
+export function useFindOrCreateChatThread() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ loan_id }: { loan_id: string | null }) =>
+      apiCall<AIChatThread>("/ai/chat/threads/find-or-create", {
+        method: "POST",
+        body: JSON.stringify({ loan_id }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["aiChatThreads", devUser] }),
   });
 }
 

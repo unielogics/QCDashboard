@@ -554,6 +554,29 @@ export interface AIChatThread {
   last_message_at: string | null;
   created_at: string;
   updated_at: string;
+  // Loan-scoped thread when set; account-wide when null. Lightweight
+  // loan ref (deal_id + address) is included so the thread list can
+  // render rows without a second fetch.
+  loan_id?: string | null;
+  loan_deal_id?: string | null;
+  loan_address?: string | null;
+}
+
+// /loans/{id}/required-documents response shape (alembic 0017).
+// Drives the vault upload modal's checklist picker. The last item
+// is always the "Other / not in checklist" sentinel (is_other=true,
+// checklist_key=null).
+export interface RequiredDocument {
+  checklist_key: string | null;
+  label: string;
+  required: boolean;
+  auto_request: boolean;
+  is_other: boolean;
+  current_document_id: string | null;
+  current_status: DocStatus | null;
+  received_on: string | null;
+  verified_at: string | null;
+  days_since_requested: number | null;
 }
 
 export interface AIChatMessage {

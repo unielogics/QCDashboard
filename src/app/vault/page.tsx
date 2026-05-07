@@ -15,7 +15,8 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel, VerifiedBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useCurrentUser, useDocuments, useLoans, useUploadDocument } from "@/hooks/useApi";
+import { useCurrentUser, useDocuments, useLoans, useRequiredDocuments, useUploadDocument } from "@/hooks/useApi";
+import type { RequiredDocument } from "@/lib/types";
 import { Role } from "@/lib/enums.generated";
 import type { Document, Loan } from "@/lib/types";
 
@@ -249,20 +250,40 @@ function UploadDocumentModal({
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [kind, setKind] = useState<UploadKind>(defaultKind);
   const [loanId, setLoanId] = useState<string>("");
+  // pickedKey: identifies the selected checklist row. Format:
+  //   "checklist:<key>"          → fulfill the existing requested row OR create a new one with that key
+  //   "doc:<document_id>"        → fulfill a specific in-flight Document by id
+  //   "other"                    → off-checklist upload (is_other=true)
+  const [pickedKey, setPickedKey] = useState<string>("");
+  const [otherLabel, setOtherLabel] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const { data: required = [], isLoading: requiredLoading } = useRequiredDocuments(
+    loanId || null,
+  );
 
   // Reset state when the modal opens.
   if (open && file === null && error === null && loanId === "" && loans.length > 0) {
-    // First open: pick a sensible default loan.
     setLoanId(loans[0]?.id ?? "");
     setKind(defaultKind);
   }
 
   if (!open) return null;
 
+  const resetSelection = () => {
+    setPickedKey("");
+    setOtherLabel("");
+    setFile(null);
+    setError(null);
+    setSuccess(null);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
   const submit = async () => {
     setError(null);
+    setSuccess(null);
     if (!file) {
       setError("Pick a file first.");
       return;
@@ -271,16 +292,42 @@ function UploadDocumentModal({
       setError("Pick a property/loan to attach this to.");
       return;
     }
+    if (!pickedKey) {
+      setError("Pick which document this is — or choose 'Other / not in checklist'.");
+      return;
+    }
+    let fulfillId: string | null = null;
+    let checklistKey: string | null = null;
+    let isOther = false;
+    let nameOverride: string | undefined = undefined;
+    if (pickedKey === "other") {
+      isOther = true;
+      if (otherLabel.trim()) nameOverride = otherLabel.trim();
+    } else if (pickedKey.startsWith("doc:")) {
+      fulfillId = pickedKey.slice(4);
+    } else if (pickedKey.startsWith("checklist:")) {
+      checklistKey = pickedKey.slice(10);
+      nameOverride = checklistKey ?? undefined;
+    }
     try {
       await upload.mutateAsync({
         loan_id: loanId,
         file,
+        name: nameOverride,
         category: kind,
+        fulfill_document_id: fulfillId,
+        checklist_key: checklistKey,
+        is_other: isOther,
       });
-      // Success — reset and close.
+      setSuccess(
+        "Uploaded — the AI is reviewing your file. You'll see the verdict in Messages within a minute.",
+      );
+      // Reset for next upload but keep the modal open so the user
+      // sees the toast.
       setFile(null);
+      setPickedKey("");
+      setOtherLabel("");
       if (fileRef.current) fileRef.current.value = "";
-      onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
     }
@@ -413,7 +460,86 @@ function UploadDocumentModal({
             )}
           </div>
 
-          {/* File picker */}
+          {/* Checklist picker — drives `fulfill_document_id` /
+              `checklist_key` / `is_other` on the upload payload.
+              Must pick exactly one row before the file input enables. */}
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
+              Which document is this?
+            </div>
+            {requiredLoading ? (
+              <div style={{ fontSize: 12, color: t.ink3 }}>Loading checklist…</div>
+            ) : required.length === 0 ? (
+              <div style={{ fontSize: 12, color: t.ink3 }}>
+                Couldn&apos;t resolve a checklist for this loan. Pick &quot;Other&quot; below.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 220, overflowY: "auto" }}>
+                {required.map((r) => {
+                  if (r.is_other) {
+                    return (
+                      <ChecklistRow
+                        key="other"
+                        t={t}
+                        label="Other — not in checklist"
+                        sub="The AI will try to classify it; if it doesn't match anything specific, an underwriter will follow up."
+                        statusPill={null}
+                        active={pickedKey === "other"}
+                        disabled={false}
+                        onClick={() => setPickedKey("other")}
+                      />
+                    );
+                  }
+                  const id = r.current_document_id
+                    ? `doc:${r.current_document_id}`
+                    : `checklist:${r.checklist_key}`;
+                  const fulfilled = r.current_status === "verified" || r.current_status === "received";
+                  const inFlight = r.current_status === "pending";
+                  const requested = r.current_status === "requested";
+                  let statusPill: { label: string; bg: string; fg: string } | null = null;
+                  if (fulfilled) statusPill = { label: r.current_status === "verified" ? "Verified" : "Received", bg: t.profitBg, fg: t.profit };
+                  else if (inFlight) statusPill = { label: "In review", bg: t.warnBg, fg: t.warn };
+                  else if (requested) {
+                    const days = r.days_since_requested ?? 0;
+                    statusPill = { label: `Requested · ${days}d`, bg: t.surface2, fg: t.ink3 };
+                  }
+                  return (
+                    <ChecklistRow
+                      key={id}
+                      t={t}
+                      label={r.label}
+                      sub={fulfilled ? "Already on file" : r.required ? "Required" : undefined}
+                      statusPill={statusPill}
+                      active={pickedKey === id}
+                      disabled={fulfilled}
+                      onClick={() => !fulfilled && setPickedKey(id)}
+                    />
+                  );
+                })}
+              </div>
+            )}
+            {pickedKey === "other" ? (
+              <input
+                value={otherLabel}
+                onChange={(e) => setOtherLabel(e.target.value)}
+                placeholder="Briefly describe what this is (optional)"
+                style={{
+                  marginTop: 8,
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 9,
+                  background: t.surface2,
+                  border: `1px solid ${t.line}`,
+                  color: t.ink,
+                  fontSize: 13,
+                  fontFamily: "inherit",
+                  outline: "none",
+                }}
+              />
+            ) : null}
+          </div>
+
+          {/* File picker — disabled until a checklist row is picked. */}
           <div>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
               File
@@ -421,6 +547,7 @@ function UploadDocumentModal({
             <input
               ref={fileRef}
               type="file"
+              disabled={!pickedKey}
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               style={{
                 width: "100%",
@@ -431,6 +558,7 @@ function UploadDocumentModal({
                 color: t.ink,
                 fontSize: 13,
                 fontFamily: "inherit",
+                opacity: pickedKey ? 1 : 0.5,
               }}
             />
             {file ? (
@@ -443,6 +571,11 @@ function UploadDocumentModal({
           {error ? (
             <div style={{ marginTop: -2 }}>
               <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill>
+            </div>
+          ) : null}
+          {success ? (
+            <div style={{ marginTop: -2 }}>
+              <Pill bg={t.profitBg} color={t.profit}>{success}</Pill>
             </div>
           ) : null}
 
@@ -463,6 +596,71 @@ function UploadDocumentModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function ChecklistRow({
+  t,
+  label,
+  sub,
+  statusPill,
+  active,
+  disabled,
+  onClick,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  label: string;
+  sub?: string;
+  statusPill: { label: string; bg: string; fg: string } | null;
+  active: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        all: "unset",
+        cursor: disabled ? "not-allowed" : "pointer",
+        padding: "9px 11px",
+        borderRadius: 9,
+        border: `1px solid ${active ? t.petrol : t.line}`,
+        background: active ? t.brandSoft : "transparent",
+        opacity: disabled ? 0.55 : 1,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          width: 16,
+          height: 16,
+          borderRadius: 4,
+          border: `1.5px solid ${active ? t.petrol : t.line}`,
+          background: active ? t.petrol : "transparent",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flex: "0 0 auto",
+        }}
+      >
+        {active ? <Icon name="check" size={11} color="#fff" stroke={3} /> : null}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {label}
+        </div>
+        {sub ? (
+          <div style={{ fontSize: 10.5, color: t.ink3, marginTop: 2 }}>{sub}</div>
+        ) : null}
+      </div>
+      {statusPill ? (
+        <Pill bg={statusPill.bg} color={statusPill.fg}>{statusPill.label}</Pill>
+      ) : null}
+    </button>
   );
 }
 
