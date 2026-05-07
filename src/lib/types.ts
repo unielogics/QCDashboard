@@ -457,6 +457,17 @@ export interface SimulatorSettings {
   show_hoa: boolean;
   show_ltv_toggle: boolean;
 }
+// Mirrors backend app/schemas/settings.py LetterheadSettings — the
+// values rendered into every prequal PDF (header address, signing
+// officer name + title, signature image S3 key).
+export interface LetterheadSettings {
+  officer_name: string;
+  officer_title: string;
+  office_address_line_1: string;
+  office_address_line_2: string;
+  office_address_line_3: string;
+  signature_s3_key: string | null;
+}
 export interface AppSettingsData {
   checklists: Record<string, LoanTypeChecklist>;
   ai_cadence: AICadenceSettings;
@@ -464,6 +475,7 @@ export interface AppSettingsData {
   pricing: PricingSettings;
   security: SecuritySettings;
   simulator: SimulatorSettings;
+  letterhead: LetterheadSettings;
 }
 export interface AppSettingsRead {
   data: AppSettingsData;
@@ -475,7 +487,13 @@ export type AppSettingsUpdate = Partial<{
   pricing: PricingSettings;
   security: SecuritySettings;
   simulator: SimulatorSettings;
+  letterhead: LetterheadSettings;
 }>;
+// POST /settings/letterhead/signature/upload-init
+export interface SignatureUploadInitResponse {
+  s3_key: string;
+  upload_url: string | null;
+}
 
 // ── Users (Team) ───────────────────────────────────────────────────────────
 export interface UserRow {

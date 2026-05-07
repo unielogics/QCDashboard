@@ -21,12 +21,14 @@ import type {
   AICadenceSettings,
   AppSettingsData,
   DocChecklistItem,
+  LetterheadSettings,
   LoanTypeChecklist,
   PricingSettings,
   ReferralSettings,
   SecuritySettings,
   SimulatorSettings,
 } from "@/lib/types";
+import { useInitSignatureUpload } from "@/hooks/useApi";
 
 const SECTIONS = [
   { id: "checklists", label: "Doc checklists", icon: "vault" as const },
@@ -34,6 +36,7 @@ const SECTIONS = [
   { id: "referrals", label: "Referrals", icon: "user" as const },
   { id: "pricing", label: "Pricing", icon: "rates" as const },
   { id: "simulator", label: "Simulator", icon: "calc" as const },
+  { id: "letterhead", label: "Firm letterhead", icon: "docCheck" as const },
   { id: "security", label: "Security", icon: "shield" as const },
   { id: "team", label: "Team", icon: "clients" as const },
 ] as const;
@@ -138,6 +141,7 @@ export default function SettingsPage() {
           show_hoa: true,
           show_ltv_toggle: true,
         },
+        letterhead: defaultLetterhead(),
       });
     }
   }, [settingsData?.data, error, draft]);
@@ -272,6 +276,16 @@ export default function SettingsPage() {
               canEdit={canEdit}
               dirty={dirty}
               onSave={() => handleSaveSection("simulator")}
+              saving={update.isPending}
+            />
+          )}
+          {section === "letterhead" && (
+            <LetterheadSection
+              draft={draft}
+              setDraft={setDraft}
+              canEdit={canEdit}
+              dirty={dirty}
+              onSave={() => handleSaveSection("letterhead")}
               saving={update.isPending}
             />
           )}
@@ -771,6 +785,231 @@ function SimulatorSection({ draft, setDraft, canEdit, dirty, onSave, saving }: S
   );
 }
 
+// ── Section: Firm letterhead ────────────────────────────────────────────
+//
+// Drives every prequal PDF (officer name + title, address block, saved
+// signature image). Super-admin only — non-supers see the form
+// read-only with a "super-admin required" pill at the page header.
+//
+// Signature upload flow:
+//   1. POST /settings/letterhead/signature/upload-init → presigned PUT URL
+//   2. Browser PUTs the PNG bytes directly to S3
+//   3. PATCH /settings with letterhead.signature_s3_key set → activates
+//      it on the next render. Until step 3 is saved, the previously
+//      saved signature remains the active one.
+
+function LetterheadSection({ draft, setDraft, canEdit, dirty, onSave, saving }: SectionProps) {
+  const { t } = useTheme();
+  const lh = draft.letterhead;
+  const set = (patch: Partial<LetterheadSettings>) => setDraft((d) => d && ({ ...d, letterhead: { ...lh, ...patch } }));
+  const initUpload = useInitSignatureUpload();
+  const [uploadStatus, setUploadStatus] = useState<null | { kind: "ok" | "err" | "uploading"; msg: string }>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  const handleFile = async (file: File | null) => {
+    if (!file) return;
+    if (!canEdit) {
+      setUploadStatus({ kind: "err", msg: "Super-admin required" });
+      return;
+    }
+    if (!/^image\/(png|jpeg)$/.test(file.type)) {
+      setUploadStatus({ kind: "err", msg: "PNG or JPEG only — transparent PNG recommended" });
+      return;
+    }
+    if (file.size > 1_500_000) {
+      setUploadStatus({ kind: "err", msg: "File is too large — keep under 1.5 MB" });
+      return;
+    }
+    setUploadStatus({ kind: "uploading", msg: "Uploading signature…" });
+    try {
+      const init = await initUpload.mutateAsync(file.type === "image/jpeg" ? "image/jpeg" : "image/png");
+      if (!init.upload_url) {
+        setUploadStatus({ kind: "err", msg: "S3 not configured on the server. Ask the operator to enable it." });
+        return;
+      }
+      const put = await fetch(init.upload_url, {
+        method: "PUT",
+        headers: {
+          "Content-Type": file.type,
+          "x-amz-server-side-encryption": "AES256",
+        },
+        body: file,
+      });
+      if (!put.ok) throw new Error(`S3 PUT returned ${put.status}`);
+      // Stash the new key on the draft. The user still has to click
+      // Save section to persist it — same pattern as every other
+      // setting on this page.
+      set({ signature_s3_key: init.s3_key });
+      // Local preview so the operator can confirm the upload worked
+      // before saving.
+      setPreviewUrl(URL.createObjectURL(file));
+      setUploadStatus({ kind: "ok", msg: "Uploaded — click Save section to make it the active signature." });
+    } catch (e) {
+      setUploadStatus({ kind: "err", msg: e instanceof Error ? e.message : "Upload failed" });
+    }
+  };
+
+  return (
+    <Card pad={20}>
+      <SectionLabel action={canEdit && <SaveBtn t={t} dirty={dirty} saving={saving} onClick={onSave} />}>
+        Firm letterhead — prequal PDF header & signature
+      </SectionLabel>
+
+      <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
+        Edits here change every pre-qualification letter generated from the next
+        approval forward. Existing already-issued PDFs aren&apos;t retroactively
+        rewritten — re-approve a request from the queue if you need to refresh
+        an outstanding letter against new values.
+      </div>
+
+      {/* Officer identity */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <Field t={t} label="Signing officer — full name">
+          <input
+            type="text"
+            value={lh.officer_name}
+            onChange={(e) => set({ officer_name: e.target.value })}
+            disabled={!canEdit}
+            style={inputStyle(t)}
+            placeholder="Franco Pellegrino"
+          />
+        </Field>
+        <Field t={t} label="Officer title line">
+          <input
+            type="text"
+            value={lh.officer_title}
+            onChange={(e) => set({ officer_title: e.target.value })}
+            disabled={!canEdit}
+            style={inputStyle(t)}
+            placeholder="Managing Director | Qualified Commercial LLC"
+          />
+        </Field>
+      </div>
+
+      <div style={{ height: 14 }} />
+
+      {/* Office address (3 lines, top-right block on the letter) */}
+      <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 8 }}>
+        Office address (top-right of the letterhead)
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+        <input
+          type="text"
+          value={lh.office_address_line_1}
+          onChange={(e) => set({ office_address_line_1: e.target.value })}
+          disabled={!canEdit}
+          style={inputStyle(t)}
+          placeholder="123 Financial Way, Suite 400"
+        />
+        <input
+          type="text"
+          value={lh.office_address_line_2}
+          onChange={(e) => set({ office_address_line_2: e.target.value })}
+          disabled={!canEdit}
+          style={inputStyle(t)}
+          placeholder="Garfield, NJ 07026"
+        />
+        <input
+          type="text"
+          value={lh.office_address_line_3}
+          onChange={(e) => set({ office_address_line_3: e.target.value })}
+          disabled={!canEdit}
+          style={inputStyle(t)}
+          placeholder="www.qualifiedcommercial.com"
+        />
+      </div>
+
+      <div style={{ height: 18 }} />
+
+      {/* Signature image */}
+      <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 8 }}>
+        Saved signature image
+      </div>
+      <div style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.5, marginBottom: 12 }}>
+        Upload a PNG of your signature (transparent background ideal). The image
+        renders above your name on every prequal PDF. To create one, sign a
+        white sheet with a black pen, photograph it, then remove the background
+        with any free tool (e.g. remove.bg) and export as PNG.
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 280px) 1fr", gap: 16, alignItems: "flex-start" }}>
+        {/* Preview */}
+        <div style={{
+          border: `1px dashed ${t.line}`,
+          borderRadius: 12,
+          background: t.surface2,
+          padding: 16,
+          minHeight: 120,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          {previewUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={previewUrl} alt="Signature preview" style={{ maxWidth: 240, maxHeight: 90 }} />
+          ) : lh.signature_s3_key ? (
+            <div style={{ textAlign: "center", color: t.ink2, fontSize: 12 }}>
+              <Pill bg={t.profitBg} color={t.profit}>
+                <Icon name="check" size={11} stroke={3} /> Signature on file
+              </Pill>
+              <div style={{ marginTop: 8, fontSize: 10.5, color: t.ink3 }}>
+                Upload a new file below to replace it.
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", color: t.ink3, fontSize: 12 }}>
+              No signature uploaded yet.
+              <div style={{ fontSize: 10.5, color: t.ink4, marginTop: 4 }}>
+                Letters fall back to a plain underline + typed name.
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Upload controls */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <input
+            type="file"
+            accept="image/png,image/jpeg"
+            disabled={!canEdit || initUpload.isPending}
+            onChange={(e) => handleFile(e.currentTarget.files?.[0] ?? null)}
+            style={{
+              padding: 10,
+              border: `1px solid ${t.line}`,
+              borderRadius: 9,
+              background: t.surface2,
+              color: t.ink2,
+              fontSize: 12,
+            }}
+          />
+          {uploadStatus ? (
+            <Pill
+              bg={uploadStatus.kind === "ok" ? t.profitBg : uploadStatus.kind === "err" ? t.dangerBg : t.warnBg}
+              color={uploadStatus.kind === "ok" ? t.profit : uploadStatus.kind === "err" ? t.danger : t.warn}
+            >
+              {uploadStatus.msg}
+            </Pill>
+          ) : null}
+          {lh.signature_s3_key ? (
+            <button
+              onClick={() => { set({ signature_s3_key: null }); setPreviewUrl(null); setUploadStatus({ kind: "ok", msg: "Will revert to underline on save." }); }}
+              disabled={!canEdit}
+              style={{ ...qcBtn(t), color: t.danger, borderColor: `${t.danger}40`, alignSelf: "flex-start" }}
+            >
+              Remove saved signature
+            </button>
+          ) : null}
+          <div style={{ fontSize: 11, color: t.ink3, lineHeight: 1.5 }}>
+            <strong style={{ color: t.ink2 }}>Heads up:</strong> uploading replaces the
+            file in S3 immediately, but the new key only becomes the active
+            signature on PDFs after you click <em>Save section</em> at the top.
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 // ── Form primitives ─────────────────────────────────────────────────────
 
 function Field({ t, label, children }: { t: ReturnType<typeof useTheme>["t"]; label: string; children: React.ReactNode }) {
@@ -908,5 +1147,17 @@ function withDefaults(data: AppSettingsData): AppSettingsData {
       show_hoa: true,
       show_ltv_toggle: true,
     },
+    letterhead: data.letterhead ?? defaultLetterhead(),
+  };
+}
+
+function defaultLetterhead(): LetterheadSettings {
+  return {
+    officer_name: "Franco Pellegrino",
+    officer_title: "Managing Director | Qualified Commercial LLC",
+    office_address_line_1: "123 Financial Way, Suite 400",
+    office_address_line_2: "Garfield, NJ 07026",
+    office_address_line_3: "www.qualifiedcommercial.com",
+    signature_s3_key: null,
   };
 }

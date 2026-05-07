@@ -16,6 +16,7 @@ import type {
   AIModifyCorrection,
   AppSettingsRead,
   AppSettingsUpdate,
+  SignatureUploadInitResponse,
   Broker,
   CalendarEvent,
   ChatSendResponse,
@@ -348,6 +349,21 @@ export function useUpdateSettings() {
       qc.setQueryData(["settings", devUser], data);
       qc.invalidateQueries({ queryKey: ["settings"] });
     },
+  });
+}
+
+// Mints a presigned PUT URL for the firm's letterhead signature image.
+// Called from the firm-letterhead settings page; the browser then PUTs
+// the file bytes directly and PATCHes /settings with the returned key.
+// Super-admin only — backend gates this.
+export function useInitSignatureUpload() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (contentType: "image/png" | "image/jpeg" = "image/png") =>
+      apiCall<SignatureUploadInitResponse>(
+        "/settings/letterhead/signature/upload-init",
+        { method: "POST", body: JSON.stringify({ content_type: contentType }) },
+      ),
   });
 }
 
