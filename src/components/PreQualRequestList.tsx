@@ -78,6 +78,31 @@ function RequestRow({ req }: { req: PrequalRequest }) {
   const showApproved = approvedAmount != null && approvedAmount !== requestedAmount;
   const programLabel = PREQUAL_LOAN_TYPE_LABELS[req.loan_type]?.title ?? req.loan_type;
 
+  const isFixFlip = req.loan_type === "fix_flip";
+  const arvNum = req.approved_arv != null
+    ? Number(req.approved_arv)
+    : req.arv_estimate != null
+      ? Number(req.arv_estimate)
+      : 0;
+  const purchaseNum = Number(req.purchase_price);
+  const denomLabel = isFixFlip
+    ? (arvNum > 0 ? `${QC_FMT.usd(arvNum, 0)} ARV` : `${QC_FMT.usd(purchaseNum, 0)} BRV`)
+    : QC_FMT.usd(purchaseNum, 0);
+  const denomConnector = isFixFlip ? "against" : "of";
+
+  // Once a request is approved (or the loan is opened), the
+  // "[Auto-approval declined]" admin_notes from the pre-approval
+  // tick are stale and confusing. Hide them in the post-approval
+  // states; rejected/pending still show whatever's there.
+  const visibleAdminNotes = (() => {
+    const raw = req.admin_notes ?? "";
+    if (!raw) return null;
+    if ((req.status === "approved" || req.status === "offer_accepted") && raw.startsWith("[Auto-approval declined]")) {
+      return null;
+    }
+    return raw;
+  })();
+
   const submitOutcome = async () => {
     if (showOutcome == null) return;
     setOutcomeError(null);
@@ -119,14 +144,14 @@ function RequestRow({ req }: { req: PrequalRequest }) {
             {req.target_property_address}
           </div>
           <div style={{ fontSize: 12, color: t.ink2, marginTop: 4, fontFeatureSettings: '"tnum"' }}>
-            Requested {QC_FMT.usd(requestedAmount, 0)} of {QC_FMT.usd(Number(req.purchase_price), 0)}
+            Requested {QC_FMT.usd(requestedAmount, 0)} {denomConnector} {denomLabel}
             {showApproved ? (
               <span style={{ color: t.profit, fontWeight: 700 }}>
                 {" "}· approved at {QC_FMT.usd(approvedAmount as number, 0)}
               </span>
             ) : null}
           </div>
-          {req.admin_notes ? (
+          {visibleAdminNotes ? (
             <div
               style={{
                 marginTop: 10,
@@ -140,7 +165,7 @@ function RequestRow({ req }: { req: PrequalRequest }) {
               }}
             >
               <strong style={{ fontStyle: "normal", color: t.ink }}>Underwriter notes:</strong>{" "}
-              {req.admin_notes}
+              {visibleAdminNotes}
             </div>
           ) : null}
 

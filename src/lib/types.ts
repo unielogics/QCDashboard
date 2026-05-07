@@ -543,6 +543,69 @@ export interface AIChatResponse {
   used_stub: boolean;
 }
 
+// Persisted Underwriter chat threads (Phase 8). The legacy AIChat*
+// types above remain for stateless per-loan AIRail usage; everything
+// that goes through the topbar/FAB chat panel lives in threads.
+export interface AIChatThread {
+  id: string;
+  title: string;
+  last_message_preview: string | null;
+  last_message_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AIChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  body: string;
+  created_at: string;
+}
+
+export interface AIChatThreadDetail extends AIChatThread {
+  messages: AIChatMessage[];
+}
+
+export interface AIChatSendResponse {
+  user_message: AIChatMessage;
+  assistant_message: AIChatMessage;
+  thread: AIChatThread;
+  used_stub: boolean;
+}
+
+// ── Account-wide living profile (Phase 8) ─────────────────────────────────
+export interface ClientNextAction {
+  title: string;
+  owner: "client" | "broker" | "ai";
+  priority: "low" | "medium" | "high";
+  cta:
+    | "upload_doc"
+    | "run_credit"
+    | "complete_profile"
+    | "accept_prequal_offer"
+    | "decline_prequal_offer"
+    | "submit_prequal"
+    | "respond_to_message"
+    | "none";
+  due_at: string | null;
+}
+
+export interface ClientLivingProfileBody {
+  summary?: string;
+  outstanding_documents?: { loan_id?: string; deal_id?: string; name: string; days_overdue?: number }[];
+  blocking_credit_issues?: string[];
+  next_actions?: ClientNextAction[];
+  rate_pressure_notes?: string[];
+  suggested_next_loan?: string | null;
+}
+
+export interface ClientLivingProfile {
+  client_id: string;
+  living_profile: ClientLivingProfileBody | null;
+  living_summary: string | null;
+  living_refreshed_at: string | null;
+}
+
 // ── Fintech Orchestrator ──────────────────────────────────────────────────
 export type DealHealth = "on_track" | "at_risk" | "stuck";
 

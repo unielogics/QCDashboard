@@ -10,7 +10,11 @@ import type {
   Activity,
   AIChatRequest,
   AIChatResponse,
+  AIChatSendResponse,
+  AIChatThread,
+  AIChatThreadDetail,
   AIFeedback,
+  ClientLivingProfile,
   AITask,
   AITaskDecisionRequest,
   AIModifyCorrection,
@@ -470,6 +474,124 @@ export function useAIChat() {
         method: "POST",
         body: JSON.stringify(payload),
       }),
+  });
+}
+
+// ── Persisted Underwriter chat threads (Phase 8) ──────────────────────────
+
+export function useAIChatThreads() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["aiChatThreads", devUser],
+    queryFn: () => apiCall<AIChatThread[]>("/ai/chat/threads"),
+  });
+}
+
+export function useAIChatThread(threadId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["aiChatThread", threadId, devUser],
+    queryFn: () => apiCall<AIChatThreadDetail>(`/ai/chat/threads/${threadId}`),
+    enabled: !!threadId,
+  });
+}
+
+export function useCreateAIChatThread() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { title?: string | null }) =>
+      apiCall<AIChatThread>("/ai/chat/threads", {
+        method: "POST",
+        body: JSON.stringify(payload ?? {}),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["aiChatThreads", devUser] }),
+  });
+}
+
+export function useSendAIChatMessage() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ threadId, body, loan_id }: { threadId: string; body: string; loan_id?: string | null }) =>
+      apiCall<AIChatSendResponse>(`/ai/chat/threads/${threadId}/message`, {
+        method: "POST",
+        body: JSON.stringify({ body, loan_id: loan_id ?? null }),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["aiChatThread", vars.threadId, devUser] });
+      qc.invalidateQueries({ queryKey: ["aiChatThreads", devUser] });
+    },
+  });
+}
+
+export function useRenameAIChatThread() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ threadId, title }: { threadId: string; title: string }) =>
+      apiCall<AIChatThread>(`/ai/chat/threads/${threadId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title }),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["aiChatThread", vars.threadId, devUser] });
+      qc.invalidateQueries({ queryKey: ["aiChatThreads", devUser] });
+    },
+  });
+}
+
+export function useDeleteAIChatThread() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (threadId: string) =>
+      apiCall<void>(`/ai/chat/threads/${threadId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["aiChatThreads", devUser] });
+    },
+  });
+}
+
+// ── Account-wide living profile (Phase 8) ─────────────────────────────────
+
+export function useMyLivingProfile() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["myLivingProfile", devUser],
+    queryFn: () => apiCall<ClientLivingProfile>("/clients/me/living-profile"),
+    staleTime: 60_000,
+  });
+}
+
+export function useRefreshMyLivingProfile() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiCall<ClientLivingProfile>("/clients/me/summary/refresh", { method: "POST" }),
+    onSuccess: (data) => {
+      qc.setQueryData(["myLivingProfile", devUser], data);
+    },
+  });
+}
+
+export function useClientLivingProfile(clientId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["clientLivingProfile", clientId, devUser],
+    queryFn: () => apiCall<ClientLivingProfile>(`/clients/${clientId}/living-profile`),
+    enabled: !!clientId,
+    staleTime: 60_000,
   });
 }
 
