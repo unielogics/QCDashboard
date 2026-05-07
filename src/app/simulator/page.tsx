@@ -86,18 +86,7 @@ export default function SimulatorPage() {
 
   // CLIENT view — same gated, ARV-driven simulator as mobile.
   if (isClient) {
-    return (
-      <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Simulate</h1>
-          <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
-            Model what a deal looks like at different points and LTV tiers. Higher LTVs unlock as you
-            verify credit and add experience to your investor profile.
-          </div>
-        </div>
-        <ClientSimulator />
-      </div>
-    );
+    return <ClientSimulatorPage />;
   }
 
   // OPERATOR view — full advanced flow against the backend.
@@ -122,6 +111,36 @@ export default function SimulatorPage() {
       </div>
 
       {mode === "free" ? <FreeCalcMode t={t} sim={sim} /> : <FromLoanMode t={t} sim={sim} loans={loans} />}
+    </div>
+  );
+}
+
+// ── Client simulator page wrapper ──────────────────────────────────────
+// Owns the page header (Simulate + subhead) AND the Request
+// Pre-Qualification CTA so the button sits on the same line as the
+// header text — top-right, always accessible regardless of which
+// inner tab the borrower is on. The modal state lives here too so
+// the button hoist works without prop-drilling through ClientSimulator.
+
+function ClientSimulatorPage() {
+  const { t } = useTheme();
+  const [prequalOpen, setPrequalOpen] = useState(false);
+  return (
+    <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Simulate</h1>
+          <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
+            Model what a deal looks like at different points and LTV tiers. Higher LTVs unlock as you
+            verify credit and add experience to your investor profile.
+          </div>
+        </div>
+        <button onClick={() => setPrequalOpen(true)} style={qcBtnPrimary(t)}>
+          <Icon name="plus" size={13} /> Request Pre-Qualification
+        </button>
+      </div>
+      <ClientSimulator />
+      <PreQualRequestModal open={prequalOpen} onClose={() => setPrequalOpen(false)} />
     </div>
   );
 }
@@ -2004,33 +2023,28 @@ function Stat({
 
 // ── Borrower's Pre-Qualification requests block ─────────────────────────
 // Lives at the top of the My Loans tab. Shows the borrower's recent
-// requests with their status badges + a primary button to start a new
-// request. Submitting from here also spawns a Loan stub in the pipeline.
+// requests with their status badges. The primary "Request
+// Pre-Qualification" CTA used to live in this section header — we
+// hoisted it up to the page header (top-right of the Simulate row) so
+// it's always accessible regardless of which tab the borrower is on.
 function PrequalRequestsSection() {
   const { t } = useTheme();
   const { data: requests = [], isLoading } = useMyPrequalRequests();
-  const [open, setOpen] = useState(false);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: t.ink, letterSpacing: -0.2 }}>
-            Pre-qualification letters
-          </div>
-          <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>
-            Submit a target property → an underwriter reviews → letter PDF arrives here.
-          </div>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 800, color: t.ink, letterSpacing: -0.2 }}>
+          Pre-qualification letters
         </div>
-        <button onClick={() => setOpen(true)} style={qcBtnPrimary(t)}>
-          <Icon name="plus" size={13} /> Request Pre-Qualification
-        </button>
+        <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>
+          Submit a target property → an underwriter reviews → letter PDF arrives here.
+        </div>
       </div>
       <PreQualRequestList
         requests={requests}
         isLoading={isLoading}
-        emptyState="No pre-qualification requests yet. Click 'Request Pre-Qualification' to start your first one."
+        emptyState="No pre-qualification requests yet. Use 'Request Pre-Qualification' at the top to start your first one."
       />
-      <PreQualRequestModal open={open} onClose={() => setOpen(false)} />
     </div>
   );
 }
