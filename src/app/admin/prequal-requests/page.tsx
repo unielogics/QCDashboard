@@ -383,10 +383,48 @@ function Row({
           ? new Date(req.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
           : <span style={{ color: t.ink4 }}>—</span>}
       </div>
-      <div style={{ fontSize: 11.5, color: t.ink3, fontFeatureSettings: '"tnum"' }}>
-        {submittedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-        <Icon name="arrowR" size={11} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+        <span style={{ fontSize: 11.5, color: t.ink3, fontFeatureSettings: '"tnum"' }}>
+          {submittedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+        </span>
+        <ActionPill t={t} status={req.status} />
       </div>
     </div>
+  );
+}
+
+// Status-aware row action label so admins know what clicking the row
+// will do — Review (pending), Edit (approved / loan-opened), Reopen
+// (the static reasoning for closed/rejected: still openable read-only).
+function ActionPill({
+  t,
+  status,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  status: PrequalStatus;
+}) {
+  const label = (() => {
+    if (status === "pending") return "Review";
+    if (status === "approved") return "Edit";
+    if (status === "offer_accepted") return "Edit";
+    return "Open";
+  })();
+  const accent = status === "approved" || status === "offer_accepted" ? t.brand : t.ink3;
+  return (
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 3,
+      padding: "3px 8px",
+      borderRadius: 7,
+      background: status === "approved" || status === "offer_accepted" ? t.brandSoft : t.surface2,
+      color: accent,
+      fontSize: 11,
+      fontWeight: 800,
+      letterSpacing: 0.3,
+    }}>
+      {label}
+      <Icon name="arrowR" size={10} />
+    </span>
   );
 }

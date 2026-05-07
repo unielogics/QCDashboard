@@ -206,14 +206,30 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
 
   if (!open || !request) return null;
 
+  // Editable statuses:
+  //   pending        — first-time approval (button: "Approve & Generate PDF")
+  //   approved       — re-issue with edited values (button: "Save changes & regenerate PDF")
+  //   offer_accepted — borrower already accepted; admin can still
+  //                    correct the printed letter. Status stays put,
+  //                    spawned Loan is unaffected (label: "Save changes & regenerate PDF")
+  // Non-editable: rejected (resubmit instead) and offer_declined (deal is dead).
+  const isEditableStatus =
+    request.status === "pending" ||
+    request.status === "approved" ||
+    request.status === "offer_accepted";
   const canApprove =
     purchaseNum > 0 &&
     loanNum > 0 &&
     !ltvOverCap &&
-    request.status !== "rejected" &&
-    request.status !== "offer_accepted" &&
-    request.status !== "offer_declined" &&
+    isEditableStatus &&
     !approve.isPending;
+  const isReissue = request.status === "approved" || request.status === "offer_accepted";
+  const approveLabel = (() => {
+    if (approve.isPending) return isReissue ? "Regenerating PDF…" : "Generating PDF…";
+    if (request.status === "offer_accepted") return "Save changes & regenerate letter";
+    if (request.status === "approved") return "Save changes & regenerate PDF";
+    return "Approve & Generate PDF";
+  })();
 
   const onApprove = async () => {
     setError(null);
@@ -527,26 +543,48 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
                     cursor: canApprove ? "pointer" : "not-allowed",
                   }}
                 >
-                  {approve.isPending
-                    ? "Generating PDF…"
-                    : request.status === "approved" ? "Re-approve & Re-generate PDF" : "Approve & Generate PDF"}
+                  {approveLabel}
                 </button>
               </div>
             </div>
 
             {request.status === "approved" && request.pdf_url ? (
               <div style={{ fontSize: 12, color: t.ink3 }}>
-                Already approved.{" "}
+                Letter already issued.{" "}
                 <a href={request.pdf_url} target="_blank" rel="noopener noreferrer" style={{ color: t.petrol, fontWeight: 700 }}>
-                  Open the current letter →
+                  Open the current PDF →
                 </a>
+                {"  "}Edit any field above and click <em>Save changes &amp; regenerate PDF</em>{" "}
+                to re-issue.
               </div>
             ) : null}
-            {(request.status === "offer_accepted" || request.status === "offer_declined") ? (
+            {request.status === "offer_accepted" ? (
+              <div style={{
+                fontSize: 12,
+                color: t.ink2,
+                background: t.brandSoft,
+                border: `1px solid ${t.brand}30`,
+                padding: "8px 12px",
+                borderRadius: 8,
+                lineHeight: 1.5,
+              }}>
+                <strong style={{ color: t.brand }}>Loan {request.quote_number ?? ""} is already opened.</strong>{" "}
+                Editing fields here will regenerate the printed letter only — the
+                spawned loan record is left untouched. Update the loan file from
+                the loans page if you also need to change the underlying deal.
+              </div>
+            ) : null}
+            {request.status === "offer_declined" ? (
               <div style={{ fontSize: 12, color: t.ink3 }}>
-                Borrower has already reported the seller&apos;s outcome
-                ({request.status === "offer_accepted" ? "accepted — Loan opened" : "declined — closed"}).
-                Approval can no longer be edited.
+                Borrower walked away — request is closed and no longer editable.
+                If they come back with the same property, ask them to submit a
+                new pre-qualification.
+              </div>
+            ) : null}
+            {request.status === "rejected" ? (
+              <div style={{ fontSize: 12, color: t.ink3 }}>
+                This request was rejected. Editing isn&apos;t supported — the
+                borrower can submit a new request whenever they&apos;re ready.
               </div>
             ) : null}
           </div>
