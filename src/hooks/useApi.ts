@@ -44,6 +44,11 @@ import type {
   LoanScenario,
   Message,
   MetaResponse,
+  PrequalRequest,
+  PrequalRequestApprove,
+  PrequalRequestCreate,
+  PrequalRequestReject,
+  PrequalStatus,
   RateSKU,
   RecalcResponse,
   ScenarioCreate,
@@ -1228,5 +1233,125 @@ export function useDocumentsForClient(clientId: string | null | undefined) {
     queryKey: ["documents", "by-client", clientId, devUser],
     queryFn: () => apiCall<Document[]>(`/documents?client_id=${clientId}`),
     enabled: !!clientId,
+  });
+}
+
+// ── Pre-qualification letter requests ──────────────────────────────────
+// Backend: app/routers/prequal.py
+//
+//   useMyPrequalRequests        - borrower's own list across all loans
+//   useLoanPrequalRequests(id)  - per-loan list (operator drill-down or
+//                                 borrower viewing their own loan)
+//   useSubmitPrequalRequest()   - borrower POST; spawns Loan stub if
+//                                 no loan_id given
+//   useAdminPrequalQueue()      - firm-wide queue (operator-only)
+//   useApprovePrequalRequest()  - PUT approve; renders PDF
+//   useRejectPrequalRequest()   - PUT reject; mandatory admin_notes
+
+export function useMyPrequalRequests() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["prequal-requests", "me", devUser],
+    queryFn: () => apiCall<PrequalRequest[]>("/me/prequal-requests"),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useLoanPrequalRequests(loanId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["prequal-requests", "loan", loanId, devUser],
+    queryFn: () =>
+      apiCall<PrequalRequest[]>(`/loans/${loanId}/prequal-requests`),
+    enabled: !!loanId,
+    refetchOnWindowFocus: true,
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useAdminPrequalQueue(statusFilter?: PrequalStatus) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qs = statusFilter ? `?status=${statusFilter}` : "";
+  return useQuery({
+    queryKey: ["prequal-requests", "admin", statusFilter ?? "all", devUser],
+    queryFn: () => apiCall<PrequalRequest[]>(`/admin/prequal-requests${qs}`),
+    refetchOnWindowFocus: true,
+    staleTime: 15 * 1000,
+  });
+}
+
+export function useSubmitPrequalRequest() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    // loanId is optional. Without it, backend spawns or attaches to a
+    // Loan record at the same property.
+    mutationFn: ({
+      loanId,
+      payload,
+    }: {
+      loanId?: string;
+      payload: PrequalRequestCreate;
+    }) => {
+      const path = loanId
+        ? `/loans/${loanId}/prequal-requests`
+        : `/prequal-requests`;
+      return apiCall<PrequalRequest>(path, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prequal-requests"] });
+      // Also invalidate /loans because we may have just spawned a Loan stub.
+      qc.invalidateQueries({ queryKey: ["loans"] });
+    },
+  });
+}
+
+export function useApprovePrequalRequest() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      requestId,
+      payload,
+    }: {
+      requestId: string;
+      payload: PrequalRequestApprove;
+    }) =>
+      apiCall<PrequalRequest>(
+        `/admin/prequal-requests/${requestId}/approve`,
+        { method: "PUT", body: JSON.stringify(payload) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prequal-requests"] });
+    },
+  });
+}
+
+export function useRejectPrequalRequest() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      requestId,
+      payload,
+    }: {
+      requestId: string;
+      payload: PrequalRequestReject;
+    }) =>
+      apiCall<PrequalRequest>(
+        `/admin/prequal-requests/${requestId}/reject`,
+        { method: "PUT", body: JSON.stringify(payload) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prequal-requests"] });
+    },
   });
 }

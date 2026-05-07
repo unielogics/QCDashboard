@@ -712,3 +712,51 @@ export interface FredRefreshResult {
   series: Record<string, { rows: number; latest_date: string | null; latest_value: number | null }>;
   errors: Record<string, string>;
 }
+
+// ── Pre-qualification letter requests ──────────────────────────────────
+// Backend: app/models/prequal_request.py + app/routers/prequal.py
+export type PrequalStatus = "pending" | "approved" | "rejected";
+export type PrequalLoanType = "dscr" | "bridge";
+
+export interface PrequalRequest {
+  id: string;
+  loan_id: string;
+  requester_id: string;
+  target_property_address: string;
+  purchase_price: number;
+  requested_loan_amount: number;
+  approved_purchase_price: number | null;
+  approved_loan_amount: number | null;
+  loan_type: PrequalLoanType;
+  expected_closing_date: string | null;
+  borrower_notes: string | null;
+  admin_notes: string | null;
+  status: PrequalStatus;
+  // Presigned 24h GET URL — minted fresh on every API read so it's never
+  // stale. Only present when status === "approved".
+  pdf_url: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PrequalRequestCreate {
+  target_property_address: string;
+  purchase_price: number;
+  requested_loan_amount: number;
+  loan_type: PrequalLoanType;
+  expected_closing_date?: string | null;
+  borrower_notes?: string | null;
+}
+
+export interface PrequalRequestApprove {
+  approved_purchase_price: number;
+  approved_loan_amount: number;
+  admin_notes?: string | null;
+}
+
+export interface PrequalRequestReject {
+  // Mandatory — borrower sees this verbatim.
+  admin_notes: string;
+}

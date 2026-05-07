@@ -22,9 +22,12 @@ import {
   useFredSeries,
   useLoans,
   useMyCredit,
+  useMyPrequalRequests,
   useRecalc,
   useSettings,
 } from "@/hooks/useApi";
+import { PreQualRequestList } from "@/components/PreQualRequestList";
+import { PreQualRequestModal } from "@/components/PreQualRequestModal";
 import { LoanType, PropertyType, Role } from "@/lib/enums.generated";
 import { QC_FMT } from "@/components/design-system/tokens";
 import type { FredSeriesSummary, RecalcResponse, SimulatorSettings } from "@/lib/types";
@@ -314,11 +317,14 @@ function ClientSimulator() {
             <LoanSimulator loan={pickedLoan} />
           </div>
         ) : (
-          <DesktopMyLoansList
-            loans={loans}
-            onPick={setPickedLoanId}
-            onSwitchToFree={() => setSimTab("free")}
-          />
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <PrequalRequestsSection />
+            <DesktopMyLoansList
+              loans={loans}
+              onPick={setPickedLoanId}
+              onSwitchToFree={() => setSimTab("free")}
+            />
+          </div>
         )
       ) : (
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 380px", gap: 20 }}>
@@ -1992,6 +1998,39 @@ function Stat({
       <div style={{ fontSize: 16, fontWeight: 800, color: accent ?? t.ink, marginTop: 4, fontFeatureSettings: '"tnum"' }}>
         {value}
       </div>
+    </div>
+  );
+}
+
+// ── Borrower's Pre-Qualification requests block ─────────────────────────
+// Lives at the top of the My Loans tab. Shows the borrower's recent
+// requests with their status badges + a primary button to start a new
+// request. Submitting from here also spawns a Loan stub in the pipeline.
+function PrequalRequestsSection() {
+  const { t } = useTheme();
+  const { data: requests = [], isLoading } = useMyPrequalRequests();
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: t.ink, letterSpacing: -0.2 }}>
+            Pre-qualification letters
+          </div>
+          <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>
+            Submit a target property → an underwriter reviews → letter PDF arrives here.
+          </div>
+        </div>
+        <button onClick={() => setOpen(true)} style={qcBtnPrimary(t)}>
+          <Icon name="plus" size={13} /> Request Pre-Qualification
+        </button>
+      </div>
+      <PreQualRequestList
+        requests={requests}
+        isLoading={isLoading}
+        emptyState="No pre-qualification requests yet. Click 'Request Pre-Qualification' to start your first one."
+      />
+      <PreQualRequestModal open={open} onClose={() => setOpen(false)} />
     </div>
   );
 }

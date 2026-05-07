@@ -32,6 +32,8 @@ const NAV: NavItem[] = [
   // Borrower's personal document vault. Visible to everyone — operators
   // get a borrower-style view grouped by client (see /vault page comments).
   { href: "/vault", label: "Vault", icon: "vault" },
+  // Operator-only firm-wide pre-qualification queue.
+  { href: "/admin/prequal-requests", label: "Pre-Qual Queue", icon: "docCheck", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
   { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "cal" },
   { href: "/simulator", label: "Simulate", icon: "calc" },
