@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import { useUI } from "@/store/ui";
 import { useAITasks, useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
+import { AIChatPanel } from "@/components/AIChatPanel";
 
 export default function TopBar() {
   const { t, isDark, toggle } = useTheme();
@@ -15,6 +17,11 @@ export default function TopBar() {
   const setAiOpen = useUI((s) => s.setAiOpen);
   const { data: user } = useCurrentUser();
   const { data: tasks = [] } = useAITasks();
+  // AI Intelligent Underwriter chat — borrower-facing entry point.
+  // Operators have the existing AIRail co-pilot for per-loan + AI-task
+  // workflows; this is the cross-account, conversational surface
+  // borrowers (and operators on borrower-style questions) reach for.
+  const [aiChatOpen, setAiChatOpen] = useState(false);
 
   const isClient = user?.role === Role.CLIENT;
   const pendingTasks = tasks.filter((task) => task.status === "pending").length;
@@ -131,6 +138,28 @@ export default function TopBar() {
           <Icon name={isDark ? "sun" : "moon"} size={14} />
         </button>
 
+        {/* AI Intelligent Underwriter chat — visible to all roles.
+            Opens a right-side panel mirroring the mobile sheet. */}
+        <button
+          onClick={() => setAiChatOpen(true)}
+          aria-label="AI Intelligent Underwriter"
+          title="Ask AI Intelligent Underwriter"
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            border: `1px solid ${t.line}`,
+            background: aiChatOpen ? t.petrolSoft : "transparent",
+            color: aiChatOpen ? t.petrol : t.ink2,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Icon name="chat" size={14} />
+        </button>
+
         {/* Notifications */}
         <button
           aria-label="Notifications"
@@ -202,6 +231,8 @@ export default function TopBar() {
           </button>
         )}
       </div>
+
+      <AIChatPanel open={aiChatOpen} onClose={() => setAiChatOpen(false)} />
     </header>
   );
 }
