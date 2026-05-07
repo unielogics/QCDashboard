@@ -179,7 +179,18 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
 
   const purchaseNum = num(purchaseText);
   const loanNum = num(loanText);
-  const ltv = purchaseNum > 0 ? loanNum / purchaseNum : 0;
+  // F&F gets ARV-based LTV (loan / ARV) — project is sized against
+  // the after-repair value, not the as-is BRV. Other products use
+  // the standard loan / purchase math. Without this branch the F&F
+  // pill shows nonsense like 352% when you finance $300K against an
+  // $85K BRV that's projected to $450K ARV.
+  const isFixFlip = request?.loan_type === "fix_flip";
+  const arvNumLive =
+    isFixFlip
+      ? num(arvText) || (request?.approved_arv ?? request?.arv_estimate ?? 0)
+      : 0;
+  const ltvBasis = isFixFlip ? Number(arvNumLive) : purchaseNum;
+  const ltv = ltvBasis > 0 ? loanNum / ltvBasis : 0;
   const cap = request ? (LTV_CAPS[request.loan_type] ?? 0) : 0;
   const ltvOverCap = ltv > cap + 1e-6;
   const expirationNum = Math.max(1, Math.min(365, num(expirationText) || DEFAULT_EXPIRATION_DAYS));
@@ -514,15 +525,33 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
                 Approval values
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <Field t={t} label="Approved purchase price" value={purchaseText} onChange={setPurchaseText} />
+                <Field
+                  t={t}
+                  label={isFixFlip ? "Approved BRV (purchase price)" : "Approved purchase price"}
+                  value={purchaseText}
+                  onChange={setPurchaseText}
+                />
                 <Field t={t} label="Approved loan amount" value={loanText} onChange={setLoanText} />
               </div>
               <div style={{ marginTop: 8 }}>
                 <Pill bg={ltvOverCap ? t.dangerBg : t.profitBg} color={ltvOverCap ? t.danger : t.profit}>
-                  LTV {(ltv * 100).toFixed(1)}% ·{" "}
-                  {ltvOverCap
-                    ? `over ${Math.round(cap * 100)}% cap — lower the loan amount`
-                    : `within ${Math.round(cap * 100)}% cap — OK to approve`}
+                  {isFixFlip ? (
+                    arvNumLive > 0
+                      ? <>
+                          LTARV {(ltv * 100).toFixed(1)}% (loan ÷ ARV) ·{" "}
+                          {ltvOverCap
+                            ? `over ${Math.round(cap * 100)}% cap — lower the loan amount`
+                            : `within ${Math.round(cap * 100)}% cap — OK to approve`}
+                        </>
+                      : <>Add an ARV in the Scope of Work card to compute LTARV</>
+                  ) : (
+                    <>
+                      LTV {(ltv * 100).toFixed(1)}% ·{" "}
+                      {ltvOverCap
+                        ? `over ${Math.round(cap * 100)}% cap — lower the loan amount`
+                        : `within ${Math.round(cap * 100)}% cap — OK to approve`}
+                    </>
+                  )}
                 </Pill>
               </div>
             </Card>
