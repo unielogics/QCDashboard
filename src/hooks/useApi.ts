@@ -48,6 +48,7 @@ import type {
   PrequalRequestApprove,
   PrequalRequestCreate,
   PrequalRequestReject,
+  PrequalSellerOutcome,
   PrequalStatus,
   RateSKU,
   RecalcResponse,
@@ -1348,6 +1349,53 @@ export function useRejectPrequalRequest() {
     }) =>
       apiCall<PrequalRequest>(
         `/admin/prequal-requests/${requestId}/reject`,
+        { method: "PUT", body: JSON.stringify(payload) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prequal-requests"] });
+    },
+  });
+}
+
+// Borrower (or super-admin acting on their behalf) reports the seller's
+// outcome on an approved prequal. Accept spawns a Loan; decline closes.
+export function useAcceptPrequalOffer() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      requestId,
+      payload,
+    }: {
+      requestId: string;
+      payload: PrequalSellerOutcome;
+    }) =>
+      apiCall<PrequalRequest>(
+        `/me/prequal-requests/${requestId}/accept-offer`,
+        { method: "PUT", body: JSON.stringify(payload) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prequal-requests"] });
+      // The new Loan lands in /pipeline & /loans; refresh those too.
+      qc.invalidateQueries({ queryKey: ["loans"] });
+      qc.invalidateQueries({ queryKey: ["pipeline"] });
+    },
+  });
+}
+
+export function useDeclinePrequalOffer() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      requestId,
+      payload,
+    }: {
+      requestId: string;
+      payload: PrequalSellerOutcome;
+    }) =>
+      apiCall<PrequalRequest>(
+        `/me/prequal-requests/${requestId}/decline-offer`,
         { method: "PUT", body: JSON.stringify(payload) },
       ),
     onSuccess: () => {

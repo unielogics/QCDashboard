@@ -45,6 +45,11 @@ export function PreQualRequestModal({
   const [loanText, setLoanText] = useState("");
   const [closingDate, setClosingDate] = useState("");
   const [notes, setNotes] = useState("");
+  // LLC / entity name on the letter. The TBD toggle stores null on the
+  // request; the underwriter can fill it in later when the borrower has
+  // formed the entity, or the letter prints to the individual's name.
+  const [entityTBD, setEntityTBD] = useState(true);
+  const [entityName, setEntityName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [doneFlash, setDoneFlash] = useState(false);
 
@@ -57,6 +62,8 @@ export function PreQualRequestModal({
       setLoanText("");
       setClosingDate("");
       setNotes("");
+      setEntityTBD(true);
+      setEntityName("");
       setError(null);
       setDoneFlash(false);
     }
@@ -101,6 +108,9 @@ export function PreQualRequestModal({
           loan_type: loanType,
           expected_closing_date: closingDate || null,
           borrower_notes: notes.trim() || null,
+          // Null on TBD — underwriter fills in or letter falls back to
+          // the borrower's individual legal name.
+          borrower_entity: entityTBD ? null : (entityName.trim() || null),
         },
       });
       setDoneFlash(true);
@@ -283,6 +293,65 @@ export function PreQualRequestModal({
               />
 
               <div style={{ height: 10 }} />
+              {/* LLC / entity name. TBD toggle stores null — underwriter
+                  can fill it in later, or the letter falls back to the
+                  borrower's individual legal name. */}
+              <div>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 5,
+                }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
+                    LLC / entity name
+                  </span>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11.5, color: t.ink2 }}>
+                    <input
+                      type="checkbox"
+                      checked={entityTBD}
+                      onChange={(e) => setEntityTBD(e.target.checked)}
+                      style={{ accentColor: t.brand }}
+                    />
+                    TBD — I haven&apos;t formed the LLC yet
+                  </label>
+                </div>
+                {!entityTBD ? (
+                  <input
+                    type="text"
+                    value={entityName}
+                    onChange={(e) => setEntityName(e.target.value)}
+                    placeholder="e.g. Riverside Holdings LLC"
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 9,
+                      background: t.surface2,
+                      border: `1px solid ${t.line}`,
+                      color: t.ink,
+                      fontSize: 13,
+                      fontFamily: "inherit",
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                ) : (
+                  <div style={{
+                    fontSize: 11.5,
+                    color: t.ink3,
+                    background: t.surface2,
+                    border: `1px dashed ${t.line}`,
+                    borderRadius: 9,
+                    padding: "8px 12px",
+                    lineHeight: 1.4,
+                  }}>
+                    Letter will be issued to your individual legal name. The
+                    underwriter can re-issue under your LLC once it&apos;s formed.
+                  </div>
+                )}
+              </div>
+
+              <div style={{ height: 10 }} />
               <Textarea
                 t={t}
                 label="Borrower notes (optional)"
@@ -312,10 +381,10 @@ export function PreQualRequestModal({
             </div>
 
             <div style={{ fontSize: 11, color: t.ink3, lineHeight: 1.4 }}>
-              Submitting also creates (or attaches to) a deal file in the pipeline
-              so an underwriter can review your request. You'll see the status
-              update here — pending → approved (with downloadable letter) or
-              rejected (with reviewer notes).
+              Submitting just opens an underwriter review — no loan file is
+              created yet. Once approved, you&apos;ll download the letter, present
+              the offer, and report back here whether the seller accepted.
+              That&apos;s when the deal moves into the pipeline.
             </div>
           </div>
         )}

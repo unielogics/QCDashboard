@@ -715,25 +715,47 @@ export interface FredRefreshResult {
 
 // ── Pre-qualification letter requests ──────────────────────────────────
 // Backend: app/models/prequal_request.py + app/routers/prequal.py
-export type PrequalStatus = "pending" | "approved" | "rejected";
+//
+// Status state machine (backend lifecycle 0011+):
+//   pending → approved → offer_accepted (a Loan is spawned at THIS step)
+//                        offer_declined (no loan ever created)
+//             rejected
+//
+// loan_id is NULL until offer_accepted — submit creates a standalone
+// request, not a Loan.
+export type PrequalStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "offer_accepted"
+  | "offer_declined";
 export type PrequalLoanType = "dscr" | "bridge";
 
 export interface PrequalRequest {
   id: string;
-  loan_id: string;
+  loan_id: string | null;
   requester_id: string;
   target_property_address: string;
   purchase_price: number;
   requested_loan_amount: number;
   approved_purchase_price: number | null;
   approved_loan_amount: number | null;
+  // Calculator snapshot the underwriter saved on approve. Shape varies
+  // by loan_type — JSON blob, not a fixed shape, since DSCR / Bridge /
+  // F&F / GU each compute different fields.
+  approved_scenario: Record<string, unknown> | null;
   loan_type: PrequalLoanType;
   expected_closing_date: string | null;
   borrower_notes: string | null;
   admin_notes: string | null;
+  // LLC / entity name on the letter. NULL = TBD (borrower hasn't formed
+  // the LLC yet — letter falls back to the individual client's name).
+  borrower_entity: string | null;
   status: PrequalStatus;
+  // Q-XXXX, generated on first approval and frozen across re-approvals.
+  quote_number: string | null;
   // Presigned 24h GET URL — minted fresh on every API read so it's never
-  // stale. Only present when status === "approved".
+  // stale. Only present when status === "approved" or "offer_accepted".
   pdf_url: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
@@ -748,15 +770,28 @@ export interface PrequalRequestCreate {
   loan_type: PrequalLoanType;
   expected_closing_date?: string | null;
   borrower_notes?: string | null;
+  // null = TBD (borrower hasn't formed the LLC yet)
+  borrower_entity?: string | null;
 }
 
 export interface PrequalRequestApprove {
   approved_purchase_price: number;
   approved_loan_amount: number;
   admin_notes?: string | null;
+  // Calculator snapshot from the review panel. Shape varies by product.
+  approved_scenario?: Record<string, unknown> | null;
+  // Override the default 90-day validity window.
+  expiration_days?: number | null;
+  // Admin can correct or fill in the LLC name.
+  borrower_entity?: string | null;
 }
 
 export interface PrequalRequestReject {
   // Mandatory — borrower sees this verbatim.
   admin_notes: string;
+}
+
+export interface PrequalSellerOutcome {
+  // Optional borrower note about the outcome (e.g. "seller countered to 410k").
+  note?: string | null;
 }
