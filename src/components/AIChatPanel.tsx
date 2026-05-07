@@ -1,25 +1,29 @@
 "use client";
 
-// AI Intelligent Underwriter — borrower-facing chat panel.
-// Operators already have the AIRail co-pilot in the topbar; this is
-// the client-facing equivalent.
+// AI Intelligent Underwriter — borrower-facing chat panel
+// (topbar slide-in shortcut). The full Messages page does the
+// same job at /messages; this is the at-a-glance entry from any
+// other page.
 //
-// Phase 8: every conversation persists to the DB. Users can resume
-// previous threads, rename them, or delete them. The panel has a
-// thread sidebar (left) and the active conversation (right).
+// Sidebar is DERIVED, not raw — exactly one Account row + one row
+// per loan the user has. Threads lazy-create on first tap via
+// /ai/chat/threads/find-or-create. Canonical-thread guarantees
+// (alembic 0017 partial unique on (user, loan), 0018 partial
+// unique on (user) WHERE loan_id IS NULL) prevent duplicates at
+// the DB level no matter how the panel is poked.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import {
-  useAIChatThreads,
   useAIChatThread,
-  useCreateAIChatThread,
+  useAIChatThreads,
+  useFindOrCreateChatThread,
+  useLoans,
   useSendAIChatMessage,
-  useRenameAIChatThread,
-  useDeleteAIChatThread,
 } from "@/hooks/useApi";
+import type { AIChatThread, Loan } from "@/lib/types";
 
 const STARTER_PROMPTS = [
   "What's the next thing I need to do?",
@@ -35,11 +39,10 @@ interface Props {
 
 export function AIChatPanel({ open, onClose }: Props) {
   const { t } = useTheme();
+  const { data: loans = [] } = useLoans();
   const threadsQ = useAIChatThreads();
-  const createThread = useCreateAIChatThread();
+  const findOrCreate = useFindOrCreateChatThread();
   const sendMessage = useSendAIChatMessage();
-  const renameThread = useRenameAIChatThread();
-  const deleteThread = useDeleteAIChatThread();
 
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -49,13 +52,17 @@ export function AIChatPanel({ open, onClose }: Props) {
   const activeThreadQ = useAIChatThread(activeThreadId);
   const messages = activeThreadQ.data?.messages ?? [];
 
-  // On open: pick the most recent thread (or none → starter screen).
-  useEffect(() => {
-    if (!open) return;
-    if (activeThreadId == null && threadsQ.data && threadsQ.data.length > 0) {
-      setActiveThreadId(threadsQ.data[0].id);
+  const accountThread = useMemo<AIChatThread | undefined>(
+    () => (threadsQ.data ?? []).find((th) => !th.loan_id),
+    [threadsQ.data],
+  );
+  const loanThreadMap = useMemo(() => {
+    const map = new Map<string, AIChatThread>();
+    for (const th of threadsQ.data ?? []) {
+      if (th.loan_id) map.set(th.loan_id, th);
     }
-  }, [open, threadsQ.data, activeThreadId]);
+    return map;
+  }, [threadsQ.data]);
 
   // Esc closes
   useEffect(() => {
@@ -78,10 +85,19 @@ export function AIChatPanel({ open, onClose }: Props) {
     }, 60);
   }, [messages.length, sendMessage.isPending]);
 
-  const startNewThread = () => {
-    setActiveThreadId(null);
-    setInput("");
+  const openThread = async (loan_id: string | null) => {
     setError(null);
+    const existing = loan_id == null ? accountThread : loanThreadMap.get(loan_id);
+    if (existing) {
+      setActiveThreadId(existing.id);
+      return;
+    }
+    try {
+      const created = await findOrCreate.mutateAsync({ loan_id });
+      setActiveThreadId(created.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't open the conversation.");
+    }
   };
 
   const send = async (raw: string) => {
@@ -91,8 +107,10 @@ export function AIChatPanel({ open, onClose }: Props) {
     try {
       let threadId = activeThreadId;
       if (!threadId) {
-        const created = await createThread.mutateAsync({});
-        threadId = created.id;
+        // Find-or-create the canonical Account thread (NOT plain
+        // create) so we never spawn a duplicate.
+        const t = await findOrCreate.mutateAsync({ loan_id: null });
+        threadId = t.id;
         setActiveThreadId(threadId);
       }
       await sendMessage.mutateAsync({ threadId, body: text });
@@ -101,30 +119,6 @@ export function AIChatPanel({ open, onClose }: Props) {
       setError(e instanceof Error ? e.message : "AI failed to respond.");
     }
   };
-
-  const renamePrompt = async (threadId: string, currentTitle: string) => {
-    const next = window.prompt("Rename conversation", currentTitle);
-    if (next == null || next.trim() === "" || next.trim() === currentTitle) return;
-    try {
-      await renameThread.mutateAsync({ threadId, title: next.trim() });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Rename failed");
-    }
-  };
-
-  const confirmDelete = async (threadId: string) => {
-    if (!window.confirm("Delete this conversation? This cannot be undone.")) return;
-    try {
-      await deleteThread.mutateAsync(threadId);
-      if (activeThreadId === threadId) setActiveThreadId(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Delete failed");
-    }
-  };
-
-  const sortedThreads = useMemo(() => {
-    return [...(threadsQ.data ?? [])];
-  }, [threadsQ.data]);
 
   if (!open) return null;
 
@@ -159,10 +153,10 @@ export function AIChatPanel({ open, onClose }: Props) {
           flexDirection: "row",
         }}
       >
-        {/* Thread sidebar */}
+        {/* Conversation sidebar — derived, never raw */}
         <div
           style={{
-            width: 260,
+            width: 280,
             borderRight: `1px solid ${t.line}`,
             background: t.surface2,
             display: "flex",
@@ -185,124 +179,62 @@ export function AIChatPanel({ open, onClose }: Props) {
                 letterSpacing: 1.6,
                 textTransform: "uppercase",
                 color: t.petrol,
-                marginBottom: 4,
               }}
             >
               Conversations
             </div>
-            <button
-              onClick={startNewThread}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                width: "100%",
-                padding: "8px 10px",
-                marginTop: 6,
-                borderRadius: 10,
-                border: `1px solid ${t.line}`,
-                background: t.bg,
-                color: t.ink,
-                fontSize: 12.5,
-                fontWeight: 700,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-              }}
-            >
-              <Icon name="plus" size={12} stroke={3} /> New conversation
-            </button>
+            <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 4, lineHeight: 1.5 }}>
+              {`1 account thread · ${loans.length} loan${loans.length === 1 ? "" : "s"}`}
+            </div>
           </div>
           <div style={{ flex: "1 1 auto", overflowY: "auto", padding: 8 }}>
-            {threadsQ.isLoading ? (
-              <div style={{ padding: 12, fontSize: 12, color: t.ink3 }}>Loading…</div>
-            ) : sortedThreads.length === 0 ? (
-              <div style={{ padding: 12, fontSize: 12, color: t.ink3, lineHeight: 1.5 }}>
-                No conversations yet. Start one to see your history here.
+            <SidebarRow
+              t={t}
+              title="Account questions"
+              subtitle={accountThread?.last_message_preview ?? "General questions about your portfolio."}
+              timestamp={accountThread?.last_message_at ?? null}
+              accent="petrol"
+              empty={!accountThread}
+              isActive={!!accountThread && activeThreadId === accountThread.id}
+              onClick={() => openThread(null)}
+            />
+
+            {loans.length > 0 ? (
+              <div
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  color: t.ink3,
+                  letterSpacing: 1.4,
+                  textTransform: "uppercase",
+                  margin: "12px 4px 6px",
+                }}
+              >
+                Loans
               </div>
-            ) : (
-              sortedThreads.map((tr) => {
-                const isActive = tr.id === activeThreadId;
-                return (
-                  <div
-                    key={tr.id}
-                    onClick={() => setActiveThreadId(tr.id)}
-                    style={{
-                      padding: "10px 10px",
-                      borderRadius: 10,
-                      marginBottom: 4,
-                      cursor: "pointer",
-                      background: isActive ? t.brandSoft : "transparent",
-                      border: isActive ? `1px solid ${t.petrol}` : "1px solid transparent",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 12.5,
-                        fontWeight: 700,
-                        color: isActive ? t.brand : t.ink,
-                        marginBottom: 2,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {tr.title}
-                    </div>
-                    {tr.last_message_preview ? (
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: t.ink3,
-                          lineHeight: 1.4,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          display: "-webkit-box",
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: "vertical",
-                        }}
-                      >
-                        {tr.last_message_preview}
-                      </div>
-                    ) : null}
-                    {isActive ? (
-                      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            renamePrompt(tr.id, tr.title);
-                          }}
-                          style={{
-                            all: "unset",
-                            cursor: "pointer",
-                            fontSize: 10.5,
-                            color: t.ink2,
-                            textDecoration: "underline",
-                          }}
-                        >
-                          Rename
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            confirmDelete(tr.id);
-                          }}
-                          style={{
-                            all: "unset",
-                            cursor: "pointer",
-                            fontSize: 10.5,
-                            color: t.danger,
-                            textDecoration: "underline",
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })
-            )}
+            ) : null}
+
+            {loans.map((loan: Loan) => {
+              const th = loanThreadMap.get(loan.id);
+              return (
+                <SidebarRow
+                  key={loan.id}
+                  t={t}
+                  title={loan.deal_id}
+                  subtitleHeader={loan.address ?? ""}
+                  subtitle={th?.last_message_preview ?? "No conversation yet — tap to start."}
+                  timestamp={th?.last_message_at ?? null}
+                  accent="brand"
+                  empty={!th}
+                  isActive={!!th && activeThreadId === th.id}
+                  onClick={() => openThread(loan.id)}
+                />
+              );
+            })}
+
+            {threadsQ.isLoading && (threadsQ.data ?? []).length === 0 ? (
+              <div style={{ padding: 12, fontSize: 12, color: t.ink3 }}>Loading…</div>
+            ) : null}
           </div>
         </div>
 
@@ -326,7 +258,7 @@ export function AIChatPanel({ open, onClose }: Props) {
               borderBottom: `1px solid ${t.line}`,
             }}
           >
-            <div>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div
                 style={{
                   fontSize: 11,
@@ -347,11 +279,16 @@ export function AIChatPanel({ open, onClose }: Props) {
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
-                  maxWidth: 480,
                 }}
               >
-                {activeThreadQ.data?.title ?? "How can I help?"}
+                {activeThreadQ.data?.title ?? "Pick a conversation"}
               </div>
+              {activeThreadQ.data?.loan_deal_id ? (
+                <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>
+                  {activeThreadQ.data.loan_deal_id}
+                  {activeThreadQ.data.loan_address ? ` · ${activeThreadQ.data.loan_address}` : ""}
+                </div>
+              ) : null}
             </div>
             <button
               onClick={onClose}
@@ -384,7 +321,13 @@ export function AIChatPanel({ open, onClose }: Props) {
               gap: 10,
             }}
           >
-            {!activeThreadId || messages.length === 0 ? (
+            {!activeThreadId ? (
+              <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.55 }}>
+                Pick a conversation on the left to start chatting. The AI sees the
+                full context for whichever scope you choose — account-wide for
+                general questions, loan-specific for deal-level questions.
+              </div>
+            ) : messages.length === 0 ? (
               <>
                 <div
                   style={{
@@ -395,8 +338,7 @@ export function AIChatPanel({ open, onClose }: Props) {
                   }}
                 >
                   Ask about your pipeline, outstanding documents, what&apos;s next on a
-                  deal, or anything else underwriting-related. I see your full
-                  account context.
+                  deal, or anything else underwriting-related.
                 </div>
                 <div
                   style={{
@@ -482,8 +424,8 @@ export function AIChatPanel({ open, onClose }: Props) {
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your question…"
-              disabled={sendMessage.isPending}
+              placeholder={activeThreadId ? "Type your question…" : "Pick a conversation first"}
+              disabled={sendMessage.isPending || !activeThreadId}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -500,20 +442,21 @@ export function AIChatPanel({ open, onClose }: Props) {
                 fontSize: 14,
                 fontFamily: "inherit",
                 outline: "none",
+                opacity: activeThreadId ? 1 : 0.6,
               }}
             />
             <button
               onClick={() => send(input)}
-              disabled={!input.trim() || sendMessage.isPending}
+              disabled={!input.trim() || sendMessage.isPending || !activeThreadId}
               aria-label="Send"
               style={{
                 width: 44,
                 height: 44,
                 borderRadius: 12,
                 border: "none",
-                background: input.trim() && !sendMessage.isPending ? t.petrol : t.chip,
-                color: input.trim() && !sendMessage.isPending ? "#fff" : t.ink4,
-                cursor: input.trim() && !sendMessage.isPending ? "pointer" : "not-allowed",
+                background: input.trim() && !sendMessage.isPending && activeThreadId ? t.petrol : t.chip,
+                color: input.trim() && !sendMessage.isPending && activeThreadId ? "#fff" : t.ink4,
+                cursor: input.trim() && !sendMessage.isPending && activeThreadId ? "pointer" : "not-allowed",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -525,5 +468,101 @@ export function AIChatPanel({ open, onClose }: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+interface SidebarRowProps {
+  t: ReturnType<typeof useTheme>["t"];
+  title: string;
+  subtitleHeader?: string;
+  subtitle: string;
+  timestamp: string | null;
+  accent: "petrol" | "brand";
+  empty: boolean;
+  isActive: boolean;
+  onClick: () => void;
+}
+
+function SidebarRow({
+  t,
+  title,
+  subtitleHeader,
+  subtitle,
+  timestamp,
+  accent,
+  empty,
+  isActive,
+  onClick,
+}: SidebarRowProps) {
+  const accentColor = accent === "petrol" ? t.petrol : t.brand;
+  const accentBg = accent === "petrol" ? t.petrolSoft : t.brandSoft;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        all: "unset",
+        cursor: "pointer",
+        display: "block",
+        width: "100%",
+        boxSizing: "border-box",
+        padding: "10px 12px",
+        borderRadius: 10,
+        marginBottom: 4,
+        background: isActive ? accentBg : "transparent",
+        border: isActive ? `1px solid ${accentColor}` : "1px solid transparent",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div
+          style={{
+            fontSize: 12.5,
+            fontWeight: 700,
+            color: isActive ? accentColor : t.ink,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            flex: 1,
+          }}
+        >
+          {title}
+        </div>
+        {timestamp ? (
+          <div style={{ fontSize: 10, color: t.ink4, flex: "0 0 auto" }}>
+            {new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+          </div>
+        ) : null}
+      </div>
+      {subtitleHeader ? (
+        <div
+          style={{
+            fontSize: 10.5,
+            color: t.ink3,
+            marginTop: 1,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {subtitleHeader}
+        </div>
+      ) : null}
+      <div
+        style={{
+          fontSize: 11,
+          color: empty ? t.ink4 : t.ink3,
+          fontStyle: empty ? "italic" : "normal",
+          marginTop: 4,
+          lineHeight: 1.4,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+        }}
+      >
+        {subtitle}
+      </div>
+    </button>
   );
 }
