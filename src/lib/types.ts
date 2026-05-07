@@ -118,15 +118,39 @@ export interface Message {
   sent_at: string;
 }
 
+// Mirror of backend app/enums.py CalendarEventStatus / Source / ExternalRefKind.
+// Kept hand-typed (no codegen) — tiny surface, low churn.
+export type CalendarEventStatus = "pending" | "done" | "cancelled";
+export type CalendarEventSource = "manual" | "auto" | "ai";
+
 export interface CalendarEvent {
   id: string;
   loan_id: string | null;
   kind: CalendarEventKind;
   title: string;
+  description: string | null;
   who: string | null;
   starts_at: string;
   duration_min: number | null;
   priority: AITaskPriority | null;
+  status: CalendarEventStatus;
+  source: CalendarEventSource;
+  owner_user_id: string | null;
+  external_ref_kind: string | null;
+  external_ref_id: string | null;
+}
+
+// Partial-update payload for PATCH /calendar/{id}.
+export interface CalendarEventUpdate {
+  kind?: CalendarEventKind;
+  title?: string;
+  description?: string | null;
+  who?: string | null;
+  starts_at?: string;
+  duration_min?: number | null;
+  priority?: AITaskPriority | null;
+  owner_user_id?: string | null;
+  status?: CalendarEventStatus;
 }
 
 export interface Broker {

@@ -19,6 +19,7 @@ import type {
   SignatureUploadInitResponse,
   Broker,
   CalendarEvent,
+  CalendarEventUpdate,
   ChatSendResponse,
   Client,
   CreditPull,
@@ -741,15 +742,52 @@ export function useCreateEvent() {
       loan_id?: string | null;
       kind: CalendarEventKind;
       title: string;
+      description?: string | null;
       who?: string | null;
       starts_at: string; // ISO datetime
       duration_min?: number | null;
       priority?: AITaskPriority | null;
+      owner_user_id?: string | null;
     }) =>
       apiCall<CalendarEvent>("/calendar", {
         method: "POST",
         body: JSON.stringify(payload),
       }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar"] }),
+  });
+}
+
+// Partial update — typically used to flip status to "done" or
+// "cancelled", or to edit title/who/starts_at on a manual row.
+// Borrowers may only patch status (backend enforces this).
+export function useUpdateCalendarEvent() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      patch,
+    }: {
+      id: string;
+      patch: CalendarEventUpdate;
+    }) =>
+      apiCall<CalendarEvent>(`/calendar/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar"] }),
+  });
+}
+
+// Hard delete — operator-only. Prefer status='cancelled' via PATCH
+// for anything you might want to audit; this is the trapdoor for
+// typos and demo cleanup.
+export function useDeleteCalendarEvent() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiCall<void>(`/calendar/${id}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar"] }),
   });
 }

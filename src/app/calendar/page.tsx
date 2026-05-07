@@ -5,7 +5,15 @@ import { useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useAITasks, useCalendar, useCurrentUser, useDocuments, useLoans } from "@/hooks/useApi";
+import {
+  useAITasks,
+  useCalendar,
+  useCurrentUser,
+  useDeleteCalendarEvent,
+  useDocuments,
+  useLoans,
+  useUpdateCalendarEvent,
+} from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import type { AITask, CalendarEvent, Document, Loan } from "@/lib/types";
@@ -121,41 +129,9 @@ export default function CalendarPage() {
                   })}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
-                  {byDay[day].map((ev) => {
-                    const link = ev.loan_id ? `/loans/${ev.loan_id}` : "/calendar";
-                    return (
-                      <Link
-                        key={ev.id}
-                        href={link}
-                        style={{
-                          display: "flex",
-                          gap: 12,
-                          padding: 10,
-                          borderRadius: 10,
-                          border: `1px solid ${t.line}`,
-                          alignItems: "center",
-                          textDecoration: "none",
-                          color: "inherit",
-                        }}
-                      >
-                        <div style={{ width: 70, fontSize: 12, fontWeight: 700, color: t.ink2, fontFeatureSettings: '"tnum"' }}>
-                          {new Date(ev.starts_at).toLocaleTimeString("en-US", {
-                            hour: "numeric",
-                            minute: "2-digit",
-                            hour12: true,
-                          })}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{ev.title}</div>
-                          <div style={{ fontSize: 11.5, color: t.ink3 }}>
-                            {ev.who ?? "—"} · {ev.duration_min ?? 0}m
-                          </div>
-                        </div>
-                        {ev.priority === "high" && <Pill bg={t.dangerBg} color={t.danger}>high</Pill>}
-                        <Pill>{ev.kind}</Pill>
-                      </Link>
-                    );
-                  })}
+                  {byDay[day].map((ev) => (
+                    <EventRow key={ev.id} ev={ev} canDelete={!isClient} />
+                  ))}
                 </div>
               </Card>
             ))
@@ -250,6 +226,120 @@ export default function CalendarPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+// Single calendar row with inline status controls. Borrowers see only
+// the "✓ Done" toggle (backend enforces). Operators additionally get
+// a small delete affordance for typo / demo cleanup; cancellation
+// (preferred over delete because it preserves audit) lives in the
+// Done dropdown — mark "✓" twice to flip done→cancelled.
+function EventRow({ ev, canDelete }: { ev: CalendarEvent; canDelete: boolean }) {
+  const { t } = useTheme();
+  const update = useUpdateCalendarEvent();
+  const remove = useDeleteCalendarEvent();
+  const link = ev.loan_id ? `/loans/${ev.loan_id}` : "/calendar";
+  const isDone = ev.status === "done";
+  const isCancelled = ev.status === "cancelled";
+
+  const onToggleDone = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    update.mutate({
+      id: ev.id,
+      patch: { status: isDone ? "pending" : "done" },
+    });
+  };
+
+  const onDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm(`Delete "${ev.title}"? Use status=cancelled to preserve audit trail.`)) return;
+    remove.mutate(ev.id);
+  };
+
+  return (
+    <Link
+      href={link}
+      style={{
+        display: "flex",
+        gap: 12,
+        padding: 10,
+        borderRadius: 10,
+        border: `1px solid ${t.line}`,
+        alignItems: "center",
+        textDecoration: "none",
+        color: "inherit",
+        opacity: isDone || isCancelled ? 0.55 : 1,
+      }}
+    >
+      <button
+        onClick={onToggleDone}
+        title={isDone ? "Mark as pending" : "Mark as done"}
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: 6,
+          border: `1.5px solid ${isDone ? t.profit : t.lineStrong}`,
+          background: isDone ? t.profit : "transparent",
+          color: isDone ? t.inverse : "transparent",
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <Icon name="check" size={12} stroke={3} />
+      </button>
+      <div style={{ width: 70, fontSize: 12, fontWeight: 700, color: t.ink2, fontFeatureSettings: '"tnum"' }}>
+        {new Date(ev.starts_at).toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        })}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            color: t.ink,
+            textDecoration: isDone || isCancelled ? "line-through" : "none",
+          }}
+        >
+          {ev.title}
+        </div>
+        <div style={{ fontSize: 11.5, color: t.ink3 }}>
+          {ev.who ?? "—"} · {ev.duration_min ?? 0}m
+        </div>
+      </div>
+      {ev.source === "ai" && <Pill bg={t.brandSoft} color={t.brand}>AI</Pill>}
+      {ev.source === "auto" && <Pill bg={t.petrolSoft} color={t.petrol}>auto</Pill>}
+      {ev.priority === "high" && <Pill bg={t.dangerBg} color={t.danger}>high</Pill>}
+      <Pill>{ev.kind}</Pill>
+      {canDelete && (
+        <button
+          onClick={onDelete}
+          title="Delete event"
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: 6,
+            border: "none",
+            background: "transparent",
+            color: t.ink4,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <Icon name="x" size={12} />
+        </button>
+      )}
+    </Link>
   );
 }
 
