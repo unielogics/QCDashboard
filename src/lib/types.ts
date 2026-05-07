@@ -16,6 +16,7 @@ export interface Loan {
   deal_id: string;
   client_id: string;
   broker_id: string | null;
+  lender_id?: string | null;
   address: string;
   city: string | null;
   property_type: PropertyType;
@@ -811,6 +812,85 @@ export interface LenderSpread {
   notes: string | null;
   created_by: string | null;
   created_at: string;
+}
+
+// ── Lender admin (Phase: lenders v2) ──────────────────────────────────────
+export interface Lender {
+  id: string;
+  name: string;
+  submission_email: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  contact_title: string | null;
+  products: LoanType[];
+  email_domain: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LenderCreate {
+  name: string;
+  products: LoanType[];
+  submission_email?: string | null;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  contact_title?: string | null;
+  email_domain?: string | null;
+  notes?: string | null;
+  is_active?: boolean;
+}
+
+export interface LenderUpdate {
+  name?: string;
+  products?: LoanType[];
+  submission_email?: string | null;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  contact_title?: string | null;
+  email_domain?: string | null;
+  notes?: string | null;
+  is_active?: boolean;
+}
+
+export interface ConnectLenderNotifyToggle {
+  participant_id: string;
+  cc_outbound: boolean;
+  bcc_outbound: boolean;
+}
+
+export interface ConnectLenderRequest {
+  lender_id: string;
+  notify: ConnectLenderNotifyToggle[];
+}
+
+export interface ConnectLenderResponse {
+  loan: Loan;
+  lender_id: string;
+  lender_name: string;
+  cc_count: number;
+  bcc_count: number;
+  stage_advanced: boolean;
+}
+
+export interface LenderSendRequest {
+  document_ids: string[];
+  delivery: "links" | "zip";
+}
+
+export interface LenderSendResponse {
+  draft_id: string;
+  lender_id: string;
+  lender_name: string;
+  delivery: "links" | "zip";
+  document_count: number;
+  zip_s3_key: string | null;
+  to_email: string;
+  subject: string;
 }
 
 export interface FredRefreshResult {

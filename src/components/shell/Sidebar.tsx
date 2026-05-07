@@ -34,6 +34,9 @@ const NAV: NavItem[] = [
   { href: "/vault", label: "Vault", icon: "vault" },
   // Operator-only firm-wide pre-qualification queue.
   { href: "/admin/prequal-requests", label: "Pre-Qual Queue", icon: "docCheck", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
+  // Super-admin lender roster — drives the Connect-Lender flow on
+  // each loan and the One-Way Mirror redaction it activates.
+  { href: "/admin/lenders", label: "Lenders", icon: "building", roles: [Role.SUPER_ADMIN] },
   { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "cal" },
   { href: "/simulator", label: "Simulate", icon: "calc" },

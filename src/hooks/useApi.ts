@@ -15,6 +15,13 @@ import type {
   AIChatThreadDetail,
   AIFeedback,
   ClientLivingProfile,
+  ConnectLenderRequest,
+  ConnectLenderResponse,
+  Lender,
+  LenderCreate,
+  LenderUpdate,
+  LenderSendRequest,
+  LenderSendResponse,
   AITask,
   AITaskDecisionRequest,
   AIModifyCorrection,
@@ -1576,6 +1583,126 @@ export function useDeclinePrequalOffer() {
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["prequal-requests"] });
+    },
+  });
+}
+
+// ── Lender admin (Phase: lenders v2) ──────────────────────────────────────
+
+export function useLenders(opts?: { product?: string | null; activeOnly?: boolean }) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const product = opts?.product ?? null;
+  const activeOnly = !!opts?.activeOnly;
+  return useQuery({
+    queryKey: ["lenders", devUser, product, activeOnly],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (product) params.set("product", product);
+      if (activeOnly) params.set("active_only", "true");
+      const qs = params.toString();
+      return apiCall<Lender[]>(`/lenders${qs ? `?${qs}` : ""}`);
+    },
+  });
+}
+
+export function useLender(lenderId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lender", lenderId, devUser],
+    queryFn: () => apiCall<Lender>(`/lenders/${lenderId}`),
+    enabled: !!lenderId,
+  });
+}
+
+export function useCreateLender() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: LenderCreate) =>
+      apiCall<Lender>("/lenders", { method: "POST", body: JSON.stringify(payload) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["lenders", devUser] }),
+  });
+}
+
+export function useUpdateLender() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lenderId, ...patch }: { lenderId: string } & LenderUpdate) =>
+      apiCall<Lender>(`/lenders/${lenderId}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["lender", vars.lenderId, devUser] });
+      qc.invalidateQueries({ queryKey: ["lenders", devUser] });
+    },
+  });
+}
+
+export function useDeleteLender() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lenderId, hard }: { lenderId: string; hard?: boolean }) =>
+      apiCall<{ status: string; mode: string }>(
+        `/lenders/${lenderId}${hard ? "?hard=true" : ""}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["lenders", devUser] }),
+  });
+}
+
+export function useConnectLender() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ loanId, payload }: { loanId: string; payload: ConnectLenderRequest }) =>
+      apiCall<ConnectLenderResponse>(`/loans/${loanId}/connect-lender`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["loan", vars.loanId, devUser] });
+      qc.invalidateQueries({ queryKey: ["loans"] });
+      qc.invalidateQueries({ queryKey: ["loanParticipants", vars.loanId] });
+    },
+  });
+}
+
+export function useDisconnectLender() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (loanId: string) =>
+      apiCall<Loan>(`/loans/${loanId}/disconnect-lender`, { method: "POST" }),
+    onSuccess: (_, loanId) => {
+      qc.invalidateQueries({ queryKey: ["loan", loanId, devUser] });
+      qc.invalidateQueries({ queryKey: ["loans"] });
+      qc.invalidateQueries({ queryKey: ["loanParticipants", loanId] });
+    },
+  });
+}
+
+export function useDraftLenderSend() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ loanId, payload }: { loanId: string; payload: LenderSendRequest }) =>
+      apiCall<LenderSendResponse>(`/loans/${loanId}/lender/send`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["emailDrafts", vars.loanId] });
+      qc.invalidateQueries({ queryKey: ["activities", vars.loanId] });
     },
   });
 }

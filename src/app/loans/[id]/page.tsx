@@ -23,6 +23,7 @@ import { ActivityTab } from "./tabs/ActivityTab";
 import { DealWorkspaceTab } from "./tabs/DealWorkspaceTab";
 import { PrequalTab } from "./tabs/PrequalTab";
 import { DealHealthPill } from "./components/DealHealthPill";
+import { LenderConnectCard } from "./components/LenderConnectCard";
 import { ParticipantsCard } from "./components/ParticipantsCard";
 import { EmailDraftsCard } from "./components/EmailDraftsCard";
 
@@ -220,6 +221,7 @@ export default function LoanDetailPage() {
       {tab === "workspace" && <DealWorkspaceTab loanId={loan.id} />}
       {tab === "thread" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <LenderConnectCard loan={loan} />
           <ParticipantsCard loanId={loan.id} />
           <EmailDraftsCard loanId={loan.id} />
         </div>
