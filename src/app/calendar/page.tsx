@@ -241,6 +241,25 @@ function EventRow({ ev, canDelete }: { ev: CalendarEvent; canDelete: boolean }) 
   const link = ev.loan_id ? `/loans/${ev.loan_id}` : "/calendar";
   const isDone = ev.status === "done";
   const isCancelled = ev.status === "cancelled";
+  const isOverdue = !isDone && !isCancelled && new Date(ev.starts_at).getTime() < Date.now();
+
+  // Status color: green=done, red=overdue, yellow=pending, gray=cancelled.
+  // The whole pill carries the signal so the user reads completion
+  // state at a glance.
+  const statusFg = isCancelled
+    ? t.ink3
+    : isDone
+      ? t.profit
+      : isOverdue
+        ? t.danger
+        : t.warn;
+  const statusBg = isCancelled
+    ? t.surface2
+    : isDone
+      ? t.profitBg
+      : isOverdue
+        ? t.dangerBg
+        : t.warnBg;
 
   const onToggleDone = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -261,38 +280,30 @@ function EventRow({ ev, canDelete }: { ev: CalendarEvent; canDelete: boolean }) 
   return (
     <Link
       href={link}
+      onClick={onToggleDone}
       style={{
         display: "flex",
         gap: 12,
         padding: 10,
-        borderRadius: 10,
-        border: `1px solid ${t.line}`,
+        borderRadius: 14,
+        border: `1px solid ${statusFg}`,
+        background: statusBg,
         alignItems: "center",
         textDecoration: "none",
         color: "inherit",
-        opacity: isDone || isCancelled ? 0.55 : 1,
+        opacity: isCancelled ? 0.6 : 1,
       }}
     >
-      <button
-        onClick={onToggleDone}
-        title={isDone ? "Mark as pending" : "Mark as done"}
+      <div
         style={{
-          width: 22,
-          height: 22,
-          borderRadius: 6,
-          border: `1.5px solid ${isDone ? t.profit : t.lineStrong}`,
-          background: isDone ? t.profit : "transparent",
-          color: isDone ? t.inverse : "transparent",
-          cursor: "pointer",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
+          minWidth: 70,
+          fontSize: 12,
+          fontWeight: 700,
+          color: statusFg,
+          fontFeatureSettings: '"tnum"',
+          letterSpacing: 0.3,
         }}
       >
-        <Icon name="check" size={12} stroke={3} />
-      </button>
-      <div style={{ width: 70, fontSize: 12, fontWeight: 700, color: t.ink2, fontFeatureSettings: '"tnum"' }}>
         {new Date(ev.starts_at).toLocaleTimeString("en-US", {
           hour: "numeric",
           minute: "2-digit",
@@ -310,13 +321,18 @@ function EventRow({ ev, canDelete }: { ev: CalendarEvent; canDelete: boolean }) 
         >
           {ev.title}
         </div>
-        <div style={{ fontSize: 11.5, color: t.ink3 }}>
-          {ev.who ?? "—"} · {ev.duration_min ?? 0}m
+        <div style={{ fontSize: 11.5, color: t.ink3, display: "flex", gap: 6, alignItems: "center" }}>
+          {isOverdue ? (
+            <span style={{ fontWeight: 700, color: t.danger, letterSpacing: 0.5 }}>OVERDUE</span>
+          ) : null}
+          {isOverdue && ev.who ? <span>·</span> : null}
+          {ev.who ?? (isOverdue ? "" : "—")}
+          {ev.duration_min ? <> · {ev.duration_min}m</> : null}
         </div>
       </div>
       {ev.source === "ai" && <Pill bg={t.brandSoft} color={t.brand}>AI</Pill>}
       {ev.source === "auto" && <Pill bg={t.petrolSoft} color={t.petrol}>auto</Pill>}
-      {ev.priority === "high" && <Pill bg={t.dangerBg} color={t.danger}>high</Pill>}
+      {ev.priority === "high" && !isDone && !isCancelled && <Pill bg={t.dangerBg} color={t.danger}>high</Pill>}
       <Pill>{ev.kind}</Pill>
       {canDelete && (
         <button
