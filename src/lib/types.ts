@@ -791,13 +791,31 @@ export const PREQUAL_LOAN_TYPE_LABELS: Record<PrequalLoanType, { title: string; 
   bridge:        { title: "Bridge", sub: "Short-term · purchase / value-add" },
 };
 
+// Fix & Flip scope-of-work line. Backend validates total_usd >= 0,
+// category 1-80 chars, description 0-500 chars (alembic 0014).
+export interface PrequalSowLineItem {
+  category: string;
+  description: string;
+  total_usd: number;
+}
+
 export interface PrequalRequest {
   id: string;
   loan_id: string | null;
   requester_id: string;
   target_property_address: string;
+  // For F&F: purchase_price is the BRV (Before Repair Value). For
+  // DSCR / Bridge it's the property purchase / value. Same column,
+  // different semantics by product.
   purchase_price: number;
   requested_loan_amount: number;
+  // F&F-only (alembic 0014). Borrower's stated ARV + SOW breakdown.
+  // Null on non-F&F products.
+  arv_estimate: number | null;
+  sow_items: PrequalSowLineItem[] | null;
+  total_construction: number | null;
+  approved_arv: number | null;
+  approved_total_construction: number | null;
   approved_purchase_price: number | null;
   approved_loan_amount: number | null;
   // Calculator snapshot the underwriter saved on approve. Shape varies
@@ -832,6 +850,10 @@ export interface PrequalRequestCreate {
   borrower_notes?: string | null;
   // null = TBD (borrower hasn't formed the LLC yet)
   borrower_entity?: string | null;
+  // F&F-only. Borrower's stated ARV + SOW breakdown. Validated
+  // server-side when loan_type='fix_flip'.
+  arv_estimate?: number | null;
+  sow_items?: PrequalSowLineItem[] | null;
 }
 
 export interface PrequalRequestApprove {
@@ -844,6 +866,10 @@ export interface PrequalRequestApprove {
   expiration_days?: number | null;
   // Admin can correct or fill in the LLC name.
   borrower_entity?: string | null;
+  // F&F-only — admin overrides for ARV + SOW + total construction.
+  approved_arv?: number | null;
+  approved_sow_items?: PrequalSowLineItem[] | null;
+  approved_total_construction?: number | null;
 }
 
 export interface PrequalRequestReject {

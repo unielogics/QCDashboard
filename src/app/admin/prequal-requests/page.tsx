@@ -55,7 +55,11 @@ export default function AdminPrequalQueuePage() {
   const { t } = useTheme();
   const profile = useActiveProfile();
   const router = useRouter();
-  const [filter, setFilter] = useState<FilterId>("pending");
+  // Default to "all" so admin lands on a populated queue regardless of
+  // status. Pending floats to the top (STATUS_RANK), so the action
+  // bias is preserved without hiding approved / loan-opened rows from
+  // an admin who might want to edit a previously-issued letter.
+  const [filter, setFilter] = useState<FilterId>("all");
   const [sortKey, setSortKey] = useState<SortKey>("closing");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selected, setSelected] = useState<PrequalRequest | null>(null);

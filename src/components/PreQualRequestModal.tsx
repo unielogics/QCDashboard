@@ -19,7 +19,13 @@ import {
   PREQUAL_LOAN_TYPE_LABELS,
   PREQUAL_LTV_CAPS,
   type PrequalLoanType,
+  type PrequalSowLineItem,
 } from "@/lib/types";
+
+// F&F project-viability cap: BRV + total construction must be ≤ this
+// fraction of ARV. Industry standard ~75%; the borrower sees a live
+// pill when their numbers blow through it.
+const FF_LTARV_CAP = 0.75;
 
 interface Props {
   open: boolean;
@@ -62,6 +68,14 @@ export function PreQualRequestModal({
   // formed the entity, or the letter prints to the individual's name.
   const [entityTBD, setEntityTBD] = useState(true);
   const [entityName, setEntityName] = useState("");
+  // F&F-specific: ARV (After Repair Value) + scope-of-work line items.
+  // Only collected when loan_type === "fix_flip"; the form gains a
+  // second step where the borrower lists category / description /
+  // total $. Sum of line items = total construction. Validated
+  // against (BRV + total_construction) ≤ ARV × FF_LTARV_CAP.
+  const [arvText, setArvText] = useState("");
+  const [sowItems, setSowItems] = useState<PrequalSowLineItem[]>([]);
+  const [step, setStep] = useState<1 | 2>(1);
   const [error, setError] = useState<string | null>(null);
   const [doneFlash, setDoneFlash] = useState(false);
 
@@ -76,6 +90,9 @@ export function PreQualRequestModal({
       setNotes("");
       setEntityTBD(true);
       setEntityName("");
+      setArvText("");
+      setSowItems([]);
+      setStep(1);
       setError(null);
       setDoneFlash(false);
     }
@@ -95,6 +112,7 @@ export function PreQualRequestModal({
 
   const purchaseNum = Number(purchaseText.replace(/[^0-9.]/g, "")) || 0;
   const loanNum = Number(loanText.replace(/[^0-9.]/g, "")) || 0;
+  const arvNum = Number(arvText.replace(/[^0-9.]/g, "")) || 0;
   const ltv = purchaseNum > 0 ? loanNum / purchaseNum : 0;
   // Effective cap = the tighter of the program ceiling and the
   // borrower's tier ceiling. tier_max_ltv comes from /credit/summary
@@ -107,16 +125,41 @@ export function PreQualRequestModal({
   const effectiveCap = tierConstrained ? (tierMaxLtv as number) : programCap;
   const maxLoan = purchaseNum > 0 ? purchaseNum * effectiveCap : 0;
   const ltvOverCap = ltv > effectiveCap + 1e-6;
+  const isFixFlip = loanType === "fix_flip";
 
-  const formValid =
+  // F&F project-viability math (only meaningful when loan_type=fix_flip).
+  // Underwriting cares about (BRV + total_construction) / ARV ≤ cap —
+  // this protects against deals where rehab + purchase eat too much
+  // of the projected post-repair value.
+  const totalConstruction = sowItems.reduce(
+    (sum, item) => sum + (Number(item.total_usd) || 0),
+    0,
+  );
+  const allInBasis = purchaseNum + totalConstruction;
+  const ltarv = arvNum > 0 ? allInBasis / arvNum : 0;
+  const ltarvOverCap = ltarv > FF_LTARV_CAP + 1e-6;
+
+  // Step 1 validity (Loan program, address, BRV, requested loan,
+  // and for F&F also ARV).
+  const step1Valid =
     address.trim().length >= 3 &&
     purchaseNum > 0 &&
-    loanNum > 0;
+    loanNum > 0 &&
+    (!isFixFlip || arvNum > 0);
+
+  // For F&F the user must also have at least one SOW line on step 2
+  // before submitting. For non-F&F the form submits straight from
+  // step 1 (step state stays at 1).
+  const formValid = isFixFlip ? step1Valid && sowItems.length > 0 : step1Valid;
 
   const onSubmit = async () => {
     setError(null);
     if (!formValid) {
-      setError("Please fill in property address, purchase price, and requested loan amount.");
+      setError(
+        isFixFlip
+          ? "Please fill in address, purchase price (BRV), ARV, requested loan, and at least one Scope of Work line."
+          : "Please fill in property address, purchase price, and requested loan amount.",
+      );
       return;
     }
     try {
@@ -132,6 +175,9 @@ export function PreQualRequestModal({
           // Null on TBD — underwriter fills in or letter falls back to
           // the borrower's individual legal name.
           borrower_entity: entityTBD ? null : (entityName.trim() || null),
+          // F&F-only fields. Backend ignores them on non-F&F loan types.
+          arv_estimate: isFixFlip ? arvNum : null,
+          sow_items: isFixFlip ? sowItems : null,
         },
       });
       setDoneFlash(true);
@@ -219,8 +265,23 @@ export function PreQualRequestModal({
             <div style={{ fontSize: 13.5, color: t.ink2, lineHeight: 1.55 }}>
               Pre-qualification letters are issued by an underwriter — never
               auto-generated. Submit your request and we'll review against
-              today's matrix and your credit profile.
+              today&apos;s matrix and your credit profile.
             </div>
+
+            {/* F&F gets a 2-step flow: Step 1 collects the deal
+                fundamentals (BRV / ARV / loan ask). Step 2 collects
+                the scope-of-work line items so the system can run
+                LTARV math. Other products stay single-step. */}
+            {isFixFlip ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: t.ink3 }}>
+                <span style={{ color: step === 1 ? t.brand : t.ink3 }}>1 · Deal fundamentals</span>
+                <span style={{ color: t.ink4 }}>›</span>
+                <span style={{ color: step === 2 ? t.brand : t.ink4 }}>2 · Scope of work</span>
+              </div>
+            ) : null}
+
+            {step === 1 ? (
+            <>
 
             {/* Loan type */}
             <Card pad={16}>
@@ -294,7 +355,13 @@ export function PreQualRequestModal({
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <Field
                   t={t}
-                  label={loanType === "dscr_refi" ? "Estimated property value" : "Estimated purchase price"}
+                  label={
+                    loanType === "dscr_refi"
+                      ? "Estimated property value"
+                      : isFixFlip
+                        ? "Purchase price (BRV)"
+                        : "Estimated purchase price"
+                  }
                   value={purchaseText}
                   onChange={setPurchaseText}
                   placeholder="400000"
@@ -342,6 +409,23 @@ export function PreQualRequestModal({
                   />
                 </div>
               </div>
+
+              {/* F&F-only: Estimated ARV (After Repair Value). Lives
+                  on Step 1 alongside BRV so the borrower sees the
+                  delta before they're walked into Scope of Work. */}
+              {isFixFlip ? (
+                <>
+                  <div style={{ height: 10 }} />
+                  <Field
+                    t={t}
+                    label="Estimated ARV (After Repair Value)"
+                    value={arvText}
+                    onChange={setArvText}
+                    placeholder="600000"
+                    inputMode="numeric"
+                  />
+                </>
+              ) : null}
 
               {/* Live LTV pill — informational. */}
               {purchaseNum > 0 && loanNum > 0 ? (
@@ -436,23 +520,94 @@ export function PreQualRequestModal({
               />
             </Card>
 
+            </>
+            ) : null}
+
+            {/* Step 2 — F&F Scope of Work editor. Hidden on Step 1
+                and on non-F&F products. */}
+            {isFixFlip && step === 2 ? (
+              <Card pad={16}>
+                <SectionLabel>Scope of work</SectionLabel>
+                <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
+                  Add a row for each major rehab category. The total
+                  here drives our project-viability check ({Math.round(FF_LTARV_CAP * 100)}% of ARV cap on
+                  BRV + construction). The list isn&apos;t shown on the
+                  printed letter — sellers continue to see only the
+                  Negotiation-Shield version.
+                </div>
+
+                <SowEditor
+                  t={t}
+                  items={sowItems}
+                  onChange={setSowItems}
+                />
+
+                {/* Live LTARV pill — informational. */}
+                {arvNum > 0 && allInBasis > 0 ? (
+                  <div style={{ marginTop: 12 }}>
+                    <Pill
+                      bg={ltarvOverCap ? t.dangerBg : t.profitBg}
+                      color={ltarvOverCap ? t.danger : t.profit}
+                    >
+                      All-in basis {QC_FMT.usd(allInBasis, 0)} ÷ ARV {QC_FMT.usd(arvNum, 0)} = {(ltarv * 100).toFixed(1)}% ·{" "}
+                      {ltarvOverCap
+                        ? `over ${Math.round(FF_LTARV_CAP * 100)}% project cap — underwriter will review`
+                        : `within ${Math.round(FF_LTARV_CAP * 100)}% project cap`}
+                    </Pill>
+                  </div>
+                ) : null}
+              </Card>
+            ) : null}
+
             {error ? (
               <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill>
             ) : null}
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button onClick={onClose} style={qcBtn(t)}>Cancel</button>
-              <button
-                onClick={onSubmit}
-                disabled={!formValid || submit.isPending}
-                style={{
-                  ...qcBtnPrimary(t),
-                  opacity: !formValid || submit.isPending ? 0.5 : 1,
-                  cursor: !formValid || submit.isPending ? "not-allowed" : "pointer",
-                }}
-              >
-                {submit.isPending ? "Submitting…" : "Submit for review"}
-              </button>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+              <div>
+                {isFixFlip && step === 2 ? (
+                  <button onClick={() => setStep(1)} style={qcBtn(t)}>
+                    ← Back
+                  </button>
+                ) : null}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={onClose} style={qcBtn(t)}>Cancel</button>
+                {isFixFlip && step === 1 ? (
+                  <button
+                    onClick={() => {
+                      if (!step1Valid) {
+                        setError(
+                          "Please fill in address, BRV, ARV, and requested loan amount before continuing.",
+                        );
+                        return;
+                      }
+                      setError(null);
+                      setStep(2);
+                    }}
+                    disabled={!step1Valid}
+                    style={{
+                      ...qcBtnPrimary(t),
+                      opacity: !step1Valid ? 0.5 : 1,
+                      cursor: !step1Valid ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Continue → Scope of Work
+                  </button>
+                ) : (
+                  <button
+                    onClick={onSubmit}
+                    disabled={!formValid || submit.isPending}
+                    style={{
+                      ...qcBtnPrimary(t),
+                      opacity: !formValid || submit.isPending ? 0.5 : 1,
+                      cursor: !formValid || submit.isPending ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {submit.isPending ? "Submitting…" : "Submit for review"}
+                  </button>
+                )}
+              </div>
             </div>
 
             <div style={{ fontSize: 11, color: t.ink3, lineHeight: 1.4 }}>
@@ -556,4 +711,146 @@ function Textarea({
       </div>
     </div>
   );
+}
+
+// F&F scope-of-work line editor. Renders a small table — category /
+// short description / total $ — with row-level remove + an Add Row
+// affordance. Numeric column is sanitized on every keystroke so the
+// stored value is always a finite number. Keeps zero state simple
+// (no lines on first open; Add Row materializes the first one).
+function SowEditor({
+  t,
+  items,
+  onChange,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  items: PrequalSowLineItem[];
+  onChange: (next: PrequalSowLineItem[]) => void;
+}) {
+  const total = items.reduce((sum, item) => sum + (Number(item.total_usd) || 0), 0);
+  const setItem = (idx: number, patch: Partial<PrequalSowLineItem>) => {
+    onChange(items.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+  };
+  const removeItem = (idx: number) => {
+    onChange(items.filter((_, i) => i !== idx));
+  };
+  const addItem = () => {
+    onChange([...items, { category: "", description: "", total_usd: 0 }]);
+  };
+
+  return (
+    <>
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(120px, 1fr) minmax(160px, 2fr) 130px 32px",
+        gap: 6,
+        fontSize: 10, fontWeight: 700, color: t.ink3,
+        letterSpacing: 1, textTransform: "uppercase",
+        marginBottom: 6,
+      }}>
+        <div>Category</div>
+        <div>Description</div>
+        <div>Total $</div>
+        <div></div>
+      </div>
+
+      {items.length === 0 ? (
+        <div style={{
+          fontSize: 12, color: t.ink3, padding: 14,
+          textAlign: "center", border: `1px dashed ${t.line}`,
+          borderRadius: 9, background: t.surface2,
+        }}>
+          No scope-of-work lines yet. Tap <strong style={{ color: t.ink2 }}>Add row</strong> to start.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {items.map((item, idx) => (
+            <div key={idx} style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(120px, 1fr) minmax(160px, 2fr) 130px 32px",
+              gap: 6, alignItems: "center",
+            }}>
+              <input
+                value={item.category}
+                onChange={(e) => setItem(idx, { category: e.target.value })}
+                placeholder="Demo / HVAC / Plumbing"
+                style={sowInputStyle(t)}
+              />
+              <input
+                value={item.description}
+                onChange={(e) => setItem(idx, { description: e.target.value })}
+                placeholder="Brief description"
+                style={sowInputStyle(t)}
+              />
+              <input
+                value={String(item.total_usd || "")}
+                onChange={(e) => {
+                  const v = Number(e.target.value.replace(/[^0-9.]/g, "")) || 0;
+                  setItem(idx, { total_usd: v });
+                }}
+                placeholder="0"
+                inputMode="numeric"
+                style={{ ...sowInputStyle(t), fontFeatureSettings: '"tnum"' }}
+              />
+              <button
+                type="button"
+                onClick={() => removeItem(idx)}
+                title="Remove row"
+                style={{
+                  all: "unset",
+                  cursor: "pointer",
+                  width: 24, height: 24,
+                  borderRadius: 6,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  color: t.ink3,
+                }}
+              >
+                <Icon name="x" size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{
+        marginTop: 12, paddingTop: 10,
+        borderTop: `1px solid ${t.line}`,
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <button
+          type="button"
+          onClick={addItem}
+          style={{
+            ...qcBtn(t),
+            display: "inline-flex", alignItems: "center", gap: 6,
+          }}
+        >
+          <Icon name="plus" size={12} /> Add row
+        </button>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>
+            Total construction
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: t.ink, marginTop: 2, fontFeatureSettings: '"tnum"' }}>
+            {QC_FMT.usd(total, 0)}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function sowInputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
+  return {
+    width: "100%",
+    padding: "8px 10px",
+    borderRadius: 7,
+    background: t.surface2,
+    border: `1px solid ${t.line}`,
+    color: t.ink,
+    fontSize: 12.5,
+    fontFamily: "inherit",
+    outline: "none",
+    boxSizing: "border-box",
+  };
 }
