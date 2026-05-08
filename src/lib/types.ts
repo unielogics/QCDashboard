@@ -527,6 +527,9 @@ export interface AgentLetterhead {
   brokerage_name: string | null;
   logo_data_url?: string | null;
   headshot_data_url?: string | null;
+  // S3-backed headshot (preferred). When set, overrides
+  // headshot_data_url for prequal PDF rendering.
+  headshot_s3_key?: string | null;
   // Legacy shape (kept optional so existing form submissions still
   // compile). Backend strips them at parse time. Will be removed
   // once the agent-settings page rewrite lands across all envs.
@@ -534,6 +537,12 @@ export interface AgentLetterhead {
   phone?: string | null;
   email?: string | null;
   signature_block?: string | null;
+}
+
+// Response from POST /me/broker-settings/headshot/upload-init.
+export interface HeadshotUploadInitResponse {
+  s3_key: string;
+  upload_url: string | null;
 }
 
 export interface AgentSettingsData {

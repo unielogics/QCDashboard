@@ -71,6 +71,7 @@ import type {
   SmartIntakeResponse,
   StageTransitionRequest,
   SummaryRefreshResponse,
+  HeadshotUploadInitResponse,
   UserRow,
   WorkspaceState,
 } from "@/lib/types";
@@ -604,6 +605,49 @@ export function useInitSignatureUpload() {
         "/settings/letterhead/signature/upload-init",
         { method: "POST", body: JSON.stringify({ content_type: contentType }) },
       ),
+  });
+}
+
+// One-shot helper that bundles the 3-step S3 upload for the broker's
+// headshot:
+//   1. POST /me/broker-settings/headshot/upload-init → presigned PUT URL
+//   2. PUT bytes directly to S3
+//   3. Returns the s3_key — caller PUTs /me/broker-settings with
+//      letterhead.headshot_s3_key set to this value.
+//
+// When the backend has no S3 bucket (local dev), falls back to a
+// data-URL roundtrip so the UI still has SOMETHING to render. The
+// caller distinguishes via the returned `kind` field.
+export function useUploadHeadshot() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: async (file: File): Promise<{ kind: "s3"; s3_key: string } | { kind: "data_url"; data_url: string }> => {
+      const contentType: "image/png" | "image/jpeg" =
+        file.type === "image/jpeg" ? "image/jpeg" : "image/png";
+      const init = await apiCall<HeadshotUploadInitResponse>(
+        "/broker-settings/headshot/upload-init",
+        { method: "POST", body: JSON.stringify({ content_type: contentType }) },
+      );
+      if (!init.upload_url) {
+        // Local dev — read as data URL so the picker still works.
+        const data_url = await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(typeof r.result === "string" ? r.result : "");
+          r.onerror = () => reject(r.error);
+          r.readAsDataURL(file);
+        });
+        return { kind: "data_url", data_url };
+      }
+      const putRes = await fetch(init.upload_url, {
+        method: "PUT",
+        headers: { "Content-Type": contentType, "x-amz-server-side-encryption": "AES256" },
+        body: file,
+      });
+      if (!putRes.ok) {
+        throw new Error(`Headshot upload failed: ${putRes.status}`);
+      }
+      return { kind: "s3", s3_key: init.s3_key };
+    },
   });
 }
 

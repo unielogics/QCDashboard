@@ -26,6 +26,7 @@ import {
   useBrokerSettings,
   useCurrentUser,
   useUpdateBrokerSettings,
+  useUploadHeadshot,
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import type {
@@ -91,6 +92,7 @@ function emptyLetterhead(): AgentLetterhead {
     license_number: null,
     brokerage_name: null,
     headshot_data_url: null,
+    headshot_s3_key: null,
   };
 }
 
@@ -272,9 +274,32 @@ interface IdentityProps {
 function IdentitySection({ draft, setDraft, user, dirty, saving, onSave }: IdentityProps) {
   const { t } = useTheme();
   const lh = draft.letterhead ?? emptyLetterhead();
+  const upload = useUploadHeadshot();
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
   const update = (patch: Partial<AgentLetterhead>) => {
     setDraft((d) => ({ ...d, letterhead: { ...lh, ...patch } }));
   };
+
+  const onPickHeadshot = async (file: File | null) => {
+    if (!file) return;
+    setUploadErr(null);
+    try {
+      const r = await upload.mutateAsync(file);
+      if (r.kind === "s3") {
+        // Wipe legacy data URL when an S3 key is set so the
+        // backend reads the production path.
+        update({ headshot_s3_key: r.s3_key, headshot_data_url: null });
+      } else {
+        // Local dev — keep the data URL for instant preview.
+        update({ headshot_data_url: r.data_url, headshot_s3_key: null });
+      }
+    } catch (e) {
+      setUploadErr(e instanceof Error ? e.message : "Upload failed");
+    }
+  };
+
+  const headshotPreview = lh.headshot_data_url || null;
+  const hasS3Key = !!lh.headshot_s3_key;
   return (
     <Card>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -326,7 +351,62 @@ function IdentitySection({ draft, setDraft, user, dirty, saving, onSave }: Ident
         </Field>
       </div>
       <div style={{ marginTop: 14 }}>
-        <ImageDataField label="Headshot" value={lh.headshot_data_url ?? null} onChange={(v) => update({ headshot_data_url: v })} />
+        <Field label="Headshot">
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {hasS3Key || headshotPreview ? (
+              headshotPreview ? (
+                <img
+                  src={headshotPreview}
+                  alt="Headshot"
+                  style={{ width: 96, height: 96, objectFit: "cover", borderRadius: 8, border: `1px solid ${t.line}` }}
+                />
+              ) : (
+                <div style={{
+                  width: 96, height: 96, borderRadius: 8, border: `1px solid ${t.line}`,
+                  background: t.surface2, display: "flex", alignItems: "center", justifyContent: "center",
+                  color: t.ink3, fontSize: 10.5, padding: 6, textAlign: "center",
+                }}>
+                  Stored on S3
+                </div>
+              )
+            ) : (
+              <div style={{
+                width: 96, height: 96, borderRadius: 8, border: `1px dashed ${t.line}`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: t.ink4, fontSize: 11,
+              }}>
+                No image
+              </div>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
+              <input
+                type="file"
+                accept="image/png,image/jpeg"
+                onChange={(e) => void onPickHeadshot(e.target.files?.[0] ?? null)}
+                disabled={upload.isPending}
+                style={inputStyle(t)}
+              />
+              {upload.isPending && (
+                <div style={{ fontSize: 11, color: t.ink3 }}>Uploading…</div>
+              )}
+              {uploadErr && (
+                <div style={{ fontSize: 11, color: t.danger }}>{uploadErr}</div>
+              )}
+              {(hasS3Key || headshotPreview) && !upload.isPending && (
+                <button
+                  onClick={() => update({ headshot_s3_key: null, headshot_data_url: null })}
+                  style={{
+                    all: "unset", cursor: "pointer",
+                    fontSize: 11, color: t.danger, fontWeight: 600,
+                    padding: "4px 8px", alignSelf: "flex-start",
+                  }}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+        </Field>
       </div>
     </Card>
   );
@@ -733,48 +813,6 @@ function TextInput({ value, onChange, placeholder }: { value: string; onChange: 
       placeholder={placeholder}
       style={inputStyle(t)}
     />
-  );
-}
-
-function ImageDataField({ label, value, onChange }: { label: string; value: string | null; onChange: (v: string | null) => void }) {
-  const { t } = useTheme();
-  const onPick = async (file: File | null) => {
-    if (!file) return;
-    const r = new FileReader();
-    r.onload = () => onChange(typeof r.result === "string" ? r.result : null);
-    r.readAsDataURL(file);
-  };
-  return (
-    <Field label={label}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        {value ? (
-          <img src={value} alt={label} style={{ width: 96, height: 96, objectFit: "cover", borderRadius: 8, border: `1px solid ${t.line}` }} />
-        ) : (
-          <div style={{
-            width: 96, height: 96, borderRadius: 8, border: `1px dashed ${t.line}`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: t.ink4, fontSize: 11,
-          }}>
-            No image
-          </div>
-        )}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
-          <input type="file" accept="image/*" onChange={(e) => void onPick(e.target.files?.[0] ?? null)} style={inputStyle(t)} />
-          {value && (
-            <button
-              onClick={() => onChange(null)}
-              style={{
-                all: "unset", cursor: "pointer",
-                fontSize: 11, color: t.danger, fontWeight: 600,
-                padding: "4px 8px", alignSelf: "flex-start",
-              }}
-            >
-              Remove
-            </button>
-          )}
-        </div>
-      </div>
-    </Field>
   );
 }
 
