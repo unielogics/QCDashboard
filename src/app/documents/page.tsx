@@ -47,6 +47,10 @@ export default function DocumentsPage() {
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>Documents</h1>
         <Pill>{filtered.length} of {docs.length}</Pill>
+        <Pill bg={t.brandSoft} color={t.brand}>Funding</Pill>
+        <span style={{ fontSize: 11, color: t.ink3 }}>
+          Transaction docs (Agent-requested) join here in P1.
+        </span>
         <div style={{ flex: 1 }} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search documents…" style={{
           padding: "8px 12px", borderRadius: 8, background: t.surface, border: `1px solid ${t.line}`, fontSize: 13, color: t.ink, width: 280,
@@ -97,6 +101,12 @@ export default function DocumentsPage() {
                       <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{d.name}</div>
                       <div style={{ fontSize: 11.5, color: t.ink3 }}>{loan?.deal_id} — {loan?.address}</div>
                     </div>
+                    {/* Source label per Architecture decision #6. Every row in this
+                        Document table is lender/funding-side. Agent-requested
+                        transaction docs (Purchase Agreement, Inspection, etc.)
+                        live in the future agent_document_request table and will
+                        render alongside with a "Transaction" pill — P1. */}
+                    <Pill bg={t.brandSoft} color={t.brand}>Funding</Pill>
                     <Pill bg={
                       d.status === "verified" ? t.profitBg : d.status === "received" ? t.brandSoft : d.status === "flagged" ? t.dangerBg : t.warnBg
                     } color={

@@ -109,11 +109,18 @@ export default function VaultPage() {
     <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Vault</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Vault</h1>
+            {/* Per Architecture decision #6: every doc surfaced here is a
+                lender-required (Funding) document — labeled clearly so the
+                Borrower can distinguish from Agent-requested transaction docs
+                that join the unified view in P1. */}
+            <Pill bg={t.brandSoft} color={t.brand}>Funding</Pill>
+          </div>
           <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
             {isClient
-              ? "Your document vault. Experience = proof of past deals. Active assets = real estate you currently own."
-              : "Borrower-style document view, split by experience proof vs. active assets."}
+              ? "Your document vault — funding documents requested by Qualified Commercial / Lender. Experience = proof of past deals. Active assets = real estate you currently own. Transaction documents requested by your Agent will join here in P1."
+              : "Borrower-style document view, split by experience proof vs. active assets. Lender-required only — Agent-requested transaction docs join in P1."}
           </div>
         </div>
         <button onClick={() => setUploadOpen(true)} style={qcBtnPrimary(t)}>

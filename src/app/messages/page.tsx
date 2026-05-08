@@ -18,11 +18,18 @@ import { NewThreadDialog } from "./components/NewThreadDialog";
 import { ThreadChatView } from "@/components/messages/ThreadChatView";
 import type { AIChatThread, Loan } from "@/lib/types";
 
+// Per-role attribution for outbound messages. Architecture decision #6 —
+// Agent-side messages should be labeled from the Agent (the Borrower sees
+// "from your Agent"); Funding Team / Underwriter messages get labeled as
+// "Qualified Commercial Funding Team" on the Borrower's side. The
+// from_role travels with each Message row so the Borrower's unified thread
+// can render a clear sender attribution.
 function fromRoleForProfile(role: string): typeof MessageFrom[keyof typeof MessageFrom] {
   switch (role) {
     case Role.CLIENT:
       return MessageFrom.CLIENT;
     case Role.BROKER:
+      return MessageFrom.BROKER;
     case Role.LOAN_EXEC:
     case Role.SUPER_ADMIN:
       return MessageFrom.LENDER;
@@ -375,20 +382,42 @@ function OperatorMessagesView() {
         <div ref={scrollerRef} style={{ flex: 1, padding: 16, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
           {!activeLoan && <div style={{ color: t.ink3, fontSize: 13 }}>Pick a thread.</div>}
           {activeLoan && messages.length === 0 && <div style={{ color: t.ink3, fontSize: 13 }}>No messages yet — start the conversation.</div>}
-          {messages.map((m) => (
-            <div key={m.id} style={{ alignSelf: m.from_role === "lender" ? "flex-start" : m.from_role === "client" ? "flex-end" : "center", maxWidth: "70%" }}>
-              <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
-                <Pill>{m.from_role}</Pill>
-                {m.is_draft && <Pill bg={t.warnBg} color={t.warn}>Draft</Pill>}
-                {m.is_system && <Pill bg={t.petrolSoft} color={t.petrol}>System</Pill>}
+          {messages.map((m) => {
+            // BROKER and LENDER both align flex-start (operator side).
+            // CLIENT aligns flex-end. AI/system float center.
+            const align =
+              m.from_role === "client"
+                ? "flex-end"
+                : m.from_role === "lender" || m.from_role === "broker"
+                ? "flex-start"
+                : "center";
+            const pillLabel =
+              m.from_role === "broker"
+                ? "Agent"
+                : m.from_role === "lender"
+                ? "Funding Team"
+                : m.from_role === "client"
+                ? "Borrower"
+                : m.from_role;
+            return (
+              <div key={m.id} style={{ alignSelf: align, maxWidth: "70%" }}>
+                <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+                  <Pill>{pillLabel}</Pill>
+                  {m.is_draft && <Pill bg={t.warnBg} color={t.warn}>Draft</Pill>}
+                  {m.is_system && <Pill bg={t.petrolSoft} color={t.petrol}>System</Pill>}
+                </div>
+                <div style={{
+                  padding: "10px 14px", borderRadius: 14,
+                  background:
+                    m.from_role === "client" ? t.brandSoft :
+                    m.from_role === "ai" ? t.petrolSoft :
+                    m.from_role === "broker" ? t.brandSoft :
+                    t.surface2,
+                  color: t.ink, fontSize: 13,
+                }}>{m.body}</div>
               </div>
-              <div style={{
-                padding: "10px 14px", borderRadius: 14,
-                background: m.from_role === "client" ? t.brandSoft : m.from_role === "ai" ? t.petrolSoft : t.surface2,
-                color: t.ink, fontSize: 13,
-              }}>{m.body}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <div style={{ padding: 12, borderTop: `1px solid ${t.line}`, display: "flex", gap: 8 }}>
           <input

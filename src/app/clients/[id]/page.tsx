@@ -7,7 +7,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel, VerifiedBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useClient, useCreditSummary, useCurrentCredit, useDocumentsForClient, useLoans, useParsedReport, useUpdateClient } from "@/hooks/useApi";
+import { useClient, useCreditSummary, useCurrentCredit, useDocumentsForClient, useDeals, useEngagement, useLoans, useParsedReport, useUpdateClient } from "@/hooks/useApi";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { CreditReportDetail } from "@/components/CreditReportDetail";
 import { useActiveProfile } from "@/store/role";
@@ -26,6 +26,13 @@ export default function ClientDetailPage() {
   const { data: parsedReport, isLoading: parsedLoading } = useParsedReport(credit?.id);
   const [showFullReport, setShowFullReport] = useState(false);
   const { data: clientDocs = [] } = useDocumentsForClient(id);
+  // Per-Borrower CRM workspace data (P0A frontend-first):
+  //   - useDeals returns the Agent's deals; we filter to this Borrower
+  //     client-side until the future GET /deals?client_id={id} ships.
+  //   - useEngagement returns [] when backend isn't live (graceful empty).
+  const { data: allDeals = [] } = useDeals("mine");
+  const { data: engagement = [] } = useEngagement(id);
+  const clientDeals = allDeals.filter((d) => d.client_id === id);
   const updateClient = useUpdateClient();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<Client>>({});
@@ -196,6 +203,95 @@ export default function ClientDetailPage() {
               <div style={{ fontWeight: 700, fontFeatureSettings: '"tnum"', color: t.ink }}>{QC_FMT.short(Number(l.amount))}</div>
             </Link>
           ))}
+        </div>
+      </Card>
+
+      {/* Linked Deals — the Agent's working files for this Borrower. Each
+          Deal carries Quotes/Loans/Documents/Messages/AI tasks via deal_id. */}
+      <Card pad={16}>
+        <SectionLabel
+          action={
+            <Link href="/deals" style={{ color: t.petrol, textDecoration: "none", fontSize: 12, fontWeight: 600 }}>
+              All deals →
+            </Link>
+          }
+        >
+          Deals
+        </SectionLabel>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {clientDeals.length === 0 && (
+            <div style={{ fontSize: 13, color: t.ink3 }}>
+              No deals for this borrower yet. Create one from{" "}
+              <Link href="/deals" style={{ color: t.petrol, textDecoration: "none", fontWeight: 600 }}>Deals</Link>.
+            </div>
+          )}
+          {clientDeals.map((d) => (
+            <Link
+              key={d.id}
+              href={`/deals/${d.id}`}
+              style={{ display: "flex", gap: 10, padding: "10px 12px", borderRadius: 10, border: `1px solid ${t.line}`, textDecoration: "none", alignItems: "center" }}
+            >
+              <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: t.ink }}>
+                {d.property_address || <span style={{ color: t.ink3 }}>Property TBD</span>}
+              </div>
+              <Pill>{d.type.replace(/_/g, " ")}</Pill>
+              <Pill bg={t.chip} color={t.ink2}>{d.status.replace(/_/g, " ")}</Pill>
+              <Pill bg={t.chip} color={t.ink2}>DRS {d.deal_readiness_score ?? "—"}</Pill>
+              <Pill bg={t.chip} color={t.ink2}>FFR {d.funding_file_readiness_score ?? "—"}</Pill>
+            </Link>
+          ))}
+        </div>
+      </Card>
+
+      {/* Engagement timeline — buyer-intent + funnel signals captured per
+          Architecture Rule #9. Empty until the backend GET
+          /clients/{id}/engagement endpoint ships. */}
+      <Card pad={16}>
+        <SectionLabel>Engagement</SectionLabel>
+        {engagement.length === 0 ? (
+          <div style={{ fontSize: 13, color: t.ink3, lineHeight: 1.55 }}>
+            No engagement signals yet. As the borrower interacts (opens invites,
+            starts/abandons intake, uploads docs, views messages, runs the simulator,
+            updates their profile, pulls credit), each event lands here so the AI can
+            reason about timing and intent.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {engagement.slice(0, 12).map((s) => (
+              <div
+                key={s.id}
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  padding: "8px 12px",
+                  borderRadius: 9,
+                  border: `1px solid ${t.line}`,
+                  alignItems: "center",
+                  fontSize: 12,
+                }}
+              >
+                <Icon name="bolt" size={12} style={{ color: t.petrol }} />
+                <div style={{ flex: 1, color: t.ink }}>{s.signal_type.replace(/_/g, " ")}</div>
+                <div style={{ color: t.ink3 }}>
+                  {new Date(s.occurred_at).toLocaleDateString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Next Best Actions stub — populated by the shared Deal Intelligence
+          Core in P0B. Today renders a placeholder so the surface is visible. */}
+      <Card pad={16}>
+        <SectionLabel>Next Best Actions</SectionLabel>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, color: t.ink3, fontSize: 13 }}>
+          <Icon name="spark" size={14} />
+          The Next Best Action engine ships in P0B (deterministic rules) and
+          P1 (LLM-driven). Tasks generated for this Borrower will route to the
+          Agent Inbox (relationship work) and the Funding AI Inbox (lender
+          packaging, doc validation, escalations) per the shared Deal
+          Intelligence Core routing rules.
         </div>
       </Card>
 

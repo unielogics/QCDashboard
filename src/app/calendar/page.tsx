@@ -345,8 +345,18 @@ function EventRow({ ev, canDelete }: { ev: CalendarEvent; canDelete: boolean }) 
           {ev.duration_min ? <> · {ev.duration_min}m</> : null}
         </div>
       </div>
+      {(() => {
+        // Source-side label for the unified calendar — surfaces whether an
+        // event came from the Lender (funding-side milestones) or the Agent
+        // (relationship/follow-up). Inferred from `kind` for P0A.
+        // TODO(P0A backend): add an explicit CalendarEvent.owner_side field
+        // ("agent" | "funding" | "ai" | "system") so we don't have to infer.
+        const side = sideForKind(ev.kind);
+        if (side === "agent") return <Pill bg={t.petrolSoft} color={t.petrol}>Agent</Pill>;
+        if (side === "funding") return <Pill bg={t.brandSoft} color={t.brand}>Lender</Pill>;
+        return null;
+      })()}
       {ev.source === "ai" && <Pill bg={t.brandSoft} color={t.brand}>AI</Pill>}
-      {ev.source === "auto" && <Pill bg={t.petrolSoft} color={t.petrol}>auto</Pill>}
       {ev.priority === "high" && !isDone && !isCancelled && <Pill bg={t.dangerBg} color={t.danger}>high</Pill>}
       <Pill>{ev.kind}</Pill>
       {canDelete && (
@@ -372,6 +382,29 @@ function EventRow({ ev, canDelete }: { ev: CalendarEvent; canDelete: boolean }) 
       )}
     </Link>
   );
+}
+
+// Heuristic mapping from CalendarEventKind to the side of the file the
+// event belongs to. Agent-side: relationship & lead work (calls, lock).
+// Funding-side: lender-driven milestones (docs, inspections, payments,
+// closing). AI/system events render their own pills.
+//
+// TODO(P0A backend): replace this client-side inference with an explicit
+// CalendarEvent.owner_side field on the row.
+function sideForKind(kind: string): "agent" | "funding" | "other" {
+  switch (kind) {
+    case "call":
+      return "agent";
+    case "doc":
+    case "inspect":
+    case "milestone":
+    case "lock":
+    case "pay":
+    case "closing":
+      return "funding";
+    default:
+      return "other";
+  }
 }
 
 interface Todo {
