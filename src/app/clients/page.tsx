@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SortableTableHead, TableRow, useSort } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -9,6 +8,7 @@ import { useClients, useCurrentUser, useLoans } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import type { Client, ClientStage } from "@/lib/types";
 import { QC_FMT } from "@/components/design-system/tokens";
+import { SmartIntakeModal } from "@/app/pipeline/components/SmartIntakeModal";
 
 // Stages-as-filter-chips shown above the table.
 type StageFilter = "all" | ClientStage;
@@ -62,6 +62,7 @@ export default function ClientsPage() {
   const { data: loans = [] } = useLoans();
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<StageFilter>("all");
+  const [intakeOpen, setIntakeOpen] = useState(false);
 
   const canCreate = user?.role !== Role.CLIENT;
 
@@ -153,8 +154,13 @@ export default function ClientsPage() {
             />
           </div>
           {canCreate && (
-            <Link
-              href="/clients/new"
+            // Single entry point — opens SmartIntakeModal which leads
+            // with a client search before falling through to the
+            // borrower-creation flow. For agents, this gives a
+            // listing/purchase choice; for super-admin / underwriter
+            // the wizard runs in pure prequalification mode.
+            <button
+              onClick={() => setIntakeOpen(true)}
               style={{
                 padding: "9px 14px",
                 borderRadius: 10,
@@ -162,14 +168,15 @@ export default function ClientsPage() {
                 color: t.inverse,
                 fontSize: 13,
                 fontWeight: 700,
-                textDecoration: "none",
+                border: "none",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 7,
+                cursor: "pointer",
               }}
             >
-              <Icon name="plus" size={14} /> New client
-            </Link>
+              <Icon name="plus" size={14} /> New deal
+            </button>
           )}
         </div>
       </div>
@@ -243,14 +250,18 @@ export default function ClientsPage() {
             {canCreate && !search && stageFilter === "all" && (
               <>
                 {" "}
-                <Link href="/clients/new" style={{ color: t.petrol, fontWeight: 700 }}>
-                  Create one →
-                </Link>
+                <button
+                  onClick={() => setIntakeOpen(true)}
+                  style={{ all: "unset", cursor: "pointer", color: t.petrol, fontWeight: 700 }}
+                >
+                  Start a deal →
+                </button>
               </>
             )}
           </div>
         )}
       </Card>
+      <SmartIntakeModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
     </div>
   );
 }

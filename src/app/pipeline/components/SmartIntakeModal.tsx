@@ -28,25 +28,37 @@
 // appended on the same payload. Backend will ignore unknowns until support
 // lands.
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPetrol } from "@/components/design-system/buttons";
 import { RightPanel } from "@/components/design-system/RightPanel";
-import { useCreateIntake } from "@/hooks/useApi";
+import { useClients, useCreateIntake, useCurrentUser } from "@/hooks/useApi";
 import { parseUSD, parseIntStrict } from "@/lib/formCoerce";
 import {
   EntityType,
   ExperienceTier,
   LoanType,
   PropertyType,
+  Role,
 } from "@/lib/enums.generated";
 import { isLoanTypeEnabled } from "@/lib/products";
 import type { SmartIntakePayload, OwnedAsset } from "@/lib/types";
 import type { QCTokens } from "@/components/design-system/tokens";
 
 type DealSide = "buyer" | "seller";
+
+// Minimal client shape the modal accepts via prefillClient. Sourced
+// from the existing Client type — kept narrow so callers (clients
+// list / detail / pipeline) don't have to pass full records.
+export interface IntakePrefillClient {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  client_type?: "buyer" | "seller" | null;
+}
 type Channel = "sms+email" | "sms" | "email" | "push";
 
 interface AssetEntry {
@@ -140,19 +152,93 @@ const STEPS = [
   { id: "ai", label: "AI & Messaging" },
 ] as const;
 
-export function SmartIntakeModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function SmartIntakeModal({
+  open,
+  onClose,
+  prefillClient,
+}: {
+  open: boolean;
+  onClose: () => void;
+  // Optional pre-selected client. When set, the modal skips its
+  // search step and locks the borrower fields. The agent / operator
+  // can still tap "Choose different client" to clear it.
+  prefillClient?: IntakePrefillClient | null;
+}) {
   const { t } = useTheme();
   const router = useRouter();
   const createIntake = useCreateIntake();
+  const { data: user } = useCurrentUser();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(INITIAL);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
+  // Tracks whether the borrower fields were filled from a picked
+  // existing client. Drives the "locked" UI + the search affordance.
+  const [pickedClient, setPickedClient] = useState<IntakePrefillClient | null>(
+    prefillClient ?? null,
+  );
+
+  const isBroker = user?.role === Role.BROKER;
+  // Real-estate side toggle is only meaningful to realtors. Super-
+  // admins / underwriters originate loans directly — for them the
+  // wizard runs in pure prequalification mode.
+  const showSideToggle = isBroker;
+
+  // Sync prefill into form on open. Clears when prefill removed.
+  useEffect(() => {
+    if (!open) return;
+    if (prefillClient) {
+      setForm((f) => ({
+        ...f,
+        borrowerName: prefillClient.name,
+        borrowerEmail: prefillClient.email ?? "",
+        borrowerPhone: prefillClient.phone ?? "",
+        // If the client carries a side preference (buyer/seller),
+        // honor it so the agent doesn't have to flip it again.
+        dealSide:
+          prefillClient.client_type === "seller"
+            ? "seller"
+            : prefillClient.client_type === "buyer"
+              ? "buyer"
+              : f.dealSide,
+      }));
+      setPickedClient(prefillClient);
+    }
+  }, [open, prefillClient]);
 
   const update = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
   const isSeller = form.dealSide === "seller";
   const isBuyer = form.dealSide === "buyer";
+
+  // When the user clears the picked client, wipe the borrower fields
+  // back to blanks so the form makes sense.
+  const clearPickedClient = () => {
+    setPickedClient(null);
+    setForm((f) => ({
+      ...f,
+      borrowerName: "",
+      borrowerEmail: "",
+      borrowerPhone: "",
+    }));
+  };
+
+  // Picking from the search list locks the borrower trio.
+  const onPickClient = (c: IntakePrefillClient) => {
+    setPickedClient(c);
+    setForm((f) => ({
+      ...f,
+      borrowerName: c.name,
+      borrowerEmail: c.email ?? "",
+      borrowerPhone: c.phone ?? "",
+      dealSide:
+        c.client_type === "seller"
+          ? "seller"
+          : c.client_type === "buyer"
+            ? "buyer"
+            : f.dealSide,
+    }));
+  };
 
   const canAdvance = () => {
     if (step === 0) {
@@ -214,7 +300,11 @@ export function SmartIntakeModal({ open, onClose }: { open: boolean; onClose: ()
       open={open}
       onClose={onClose}
       width="min(680px, max(45vw, 520px))"
-      eyebrow={`New Deal · Smart Intake · ${isSeller ? "Seller" : "Buyer"}`}
+      eyebrow={
+        showSideToggle
+          ? `New Deal · Smart Intake · ${isSeller ? "Seller" : "Buyer"}`
+          : "New Deal · Smart Intake"
+      }
       title={STEPS[step].label}
       ariaLabel="Smart Intake — new deal"
       footer={
@@ -295,6 +385,10 @@ export function SmartIntakeModal({ open, onClose }: { open: boolean; onClose: ()
           t={t}
           form={form}
           update={update}
+          showSideToggle={showSideToggle}
+          pickedClient={pickedClient}
+          onPickClient={onPickClient}
+          clearPickedClient={clearPickedClient}
         />
       )}
       {step === 1 && (
@@ -415,42 +509,226 @@ function isBuyerWithAssets(form: FormState): boolean {
 
 // ── Step views ────────────────────────────────────────────────────────────
 
+// Searches the calling user's accessible clients (broker → their book;
+// super-admin → firm-wide via the existing useClients scope rules) and
+// surfaces hits as picker rows. The user can ALWAYS skip this and just
+// type a new borrower in the form below — falling through is the
+// "client doesn't exist yet" path.
+function ClientSearchBlock({
+  t,
+  onPick,
+}: {
+  t: QCTokens;
+  onPick: (c: IntakePrefillClient) => void;
+}) {
+  const { data: clients = [] } = useClients();
+  const [query, setQuery] = useState("");
+  const [showResults, setShowResults] = useState(false);
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return clients
+      .filter((c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.email ?? "").toLowerCase().includes(q),
+      )
+      .slice(0, 6);
+  }, [clients, query]);
+
+  return (
+    <div>
+      <Label t={t}>Find an existing client</Label>
+      <div style={{ position: "relative" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "0 12px",
+            background: t.surface2,
+            border: `1px solid ${t.line}`,
+            borderRadius: 9,
+          }}
+        >
+          <Icon name="search" size={14} />
+          <input
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setShowResults(true); }}
+            onFocus={() => setShowResults(true)}
+            placeholder="Search by name or email…"
+            style={{
+              flex: 1, minWidth: 0,
+              padding: "10px 0",
+              background: "transparent",
+              border: "none",
+              color: t.ink,
+              fontSize: 13,
+              outline: "none",
+              fontFamily: "inherit",
+            }}
+          />
+        </div>
+        {showResults && matches.length > 0 && (
+          <div
+            style={{
+              position: "absolute",
+              top: "100%", left: 0, right: 0,
+              marginTop: 4,
+              background: t.surface,
+              border: `1px solid ${t.line}`,
+              borderRadius: 9,
+              boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
+              zIndex: 10,
+              maxHeight: 240,
+              overflow: "auto",
+            }}
+          >
+            {matches.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => {
+                  onPick({
+                    id: c.id,
+                    name: c.name,
+                    email: c.email ?? null,
+                    phone: c.phone ?? null,
+                    client_type: c.client_type ?? null,
+                  });
+                  setQuery("");
+                  setShowResults(false);
+                }}
+                style={{
+                  all: "unset",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "9px 12px",
+                  borderBottom: `1px solid ${t.line}`,
+                  width: "calc(100% - 24px)",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {c.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {c.email ?? "—"}
+                  </div>
+                </div>
+                <Icon name="arrowR" size={11} />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div style={{ fontSize: 11, color: t.ink3, marginTop: 6 }}>
+        Don&apos;t see them? Skip the search and fill the borrower fields below — we&apos;ll create a new client.
+      </div>
+    </div>
+  );
+}
+
 interface StepProps {
   t: QCTokens;
   form: FormState;
   update: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
 }
 
-function BorrowerStepView({ t, form, update }: StepProps) {
+interface BorrowerStepProps extends StepProps {
+  showSideToggle: boolean;
+  pickedClient: IntakePrefillClient | null;
+  onPickClient: (c: IntakePrefillClient) => void;
+  clearPickedClient: () => void;
+}
+
+function BorrowerStepView({
+  t,
+  form,
+  update,
+  showSideToggle,
+  pickedClient,
+  onPickClient,
+  clearPickedClient,
+}: BorrowerStepProps) {
+  // Borrower fields lock when an existing client is selected so we
+  // don't accidentally fork the record. Tap "Choose different
+  // client" to clear and go back to free-form entry.
+  const locked = !!pickedClient;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {/* Side toggle — pick this first so the rest of the flow can branch */}
-      <div>
-        <Label t={t}>Buyer or Seller?</Label>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <SideButton t={t} active={form.dealSide === "buyer"} onClick={() => update("dealSide", "buyer")}>
-            Buyer
-          </SideButton>
-          <SideButton t={t} active={form.dealSide === "seller"} onClick={() => update("dealSide", "seller")}>
-            Seller
-          </SideButton>
+      {/* Side toggle — only for realtors. Super-admin / underwriter
+          run the wizard in pure prequalification mode and skip the
+          listing-vs-purchase framing. */}
+      {showSideToggle && (
+        <div>
+          <Label t={t}>Listing or Purchase?</Label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <SideButton t={t} active={form.dealSide === "buyer"} onClick={() => update("dealSide", "buyer")}>
+              Purchase (Buyer)
+            </SideButton>
+            <SideButton t={t} active={form.dealSide === "seller"} onClick={() => update("dealSide", "seller")}>
+              Listing (Seller)
+            </SideButton>
+          </div>
+          <div style={{ fontSize: 11, color: t.ink3, marginTop: 6 }}>
+            {form.dealSide === "buyer"
+              ? "We'll capture purchase capacity and any properties they currently own."
+              : "We'll capture the listing — the property they're selling, plus the sale price."}
+          </div>
         </div>
-        <div style={{ fontSize: 11, color: t.ink3, marginTop: 6 }}>
-          {form.dealSide === "buyer"
-            ? "We'll capture purchase capacity and any properties they currently own."
-            : "We'll capture the listing — the property they're selling, plus the sale price."}
+      )}
+
+      {/* Client lookup — pick an existing client OR fall through to
+          create a new one. Hidden when prefillClient locked us in. */}
+      {!locked && (
+        <ClientSearchBlock t={t} onPick={onPickClient} />
+      )}
+
+      {locked && pickedClient && (
+        <div
+          style={{
+            padding: "10px 12px",
+            borderRadius: 9,
+            background: t.brandSoft,
+            border: `1px solid ${t.brand}40`,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <Icon name="check" size={14} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: t.brand }}>
+              Existing client: {pickedClient.name}
+            </div>
+            <div style={{ fontSize: 11, color: t.ink3 }}>
+              {pickedClient.email ?? "—"}
+              {pickedClient.phone ? ` · ${pickedClient.phone}` : ""}
+            </div>
+          </div>
+          <button
+            onClick={clearPickedClient}
+            style={{
+              all: "unset", cursor: "pointer",
+              fontSize: 11, fontWeight: 700, color: t.brand,
+              padding: "4px 8px",
+            }}
+          >
+            Choose different client
+          </button>
         </div>
-      </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <Field t={t} label="Name" required>
-          <Input t={t} value={form.borrowerName} onChange={(v) => update("borrowerName", v)} placeholder="Marcus Holloway" />
+          <Input t={t} value={form.borrowerName} onChange={(v) => update("borrowerName", v)} placeholder="Marcus Holloway" disabled={locked} />
         </Field>
         <Field t={t} label="Email" required>
-          <Input t={t} type="email" value={form.borrowerEmail} onChange={(v) => update("borrowerEmail", v)} placeholder="marcus@holloway.cap" />
+          <Input t={t} type="email" value={form.borrowerEmail} onChange={(v) => update("borrowerEmail", v)} placeholder="marcus@holloway.cap" disabled={locked} />
         </Field>
         <Field t={t} label="Phone">
-          <Input t={t} value={form.borrowerPhone} onChange={(v) => update("borrowerPhone", v)} placeholder="(917) 555-0148" />
+          <Input t={t} value={form.borrowerPhone} onChange={(v) => update("borrowerPhone", v)} placeholder="(917) 555-0148" disabled={locked} />
         </Field>
         <Field t={t} label="Entity type">
           <Select
@@ -868,6 +1146,7 @@ function Input({
   type = "text",
   prefix,
   suffix,
+  disabled,
 }: {
   t: QCTokens;
   value: string;
@@ -876,6 +1155,7 @@ function Input({
   type?: string;
   prefix?: string;
   suffix?: string;
+  disabled?: boolean;
 }) {
   return (
     <div
@@ -886,6 +1166,7 @@ function Input({
         background: t.surface2,
         border: `1px solid ${t.line}`,
         borderRadius: 9,
+        opacity: disabled ? 0.6 : 1,
       }}
     >
       {prefix && (
@@ -896,6 +1177,7 @@ function Input({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        disabled={disabled}
         style={{
           flex: 1,
           minWidth: 0,

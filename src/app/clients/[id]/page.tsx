@@ -16,6 +16,7 @@ import { parseIntStrict } from "@/lib/formCoerce";
 import { deriveExperienceMode } from "@/lib/experienceMode";
 import { canEditExperienceMode } from "@/lib/experienceModePermissions";
 import { DocUploadButton } from "@/app/documents/components/DocUploadButton";
+import { SmartIntakeModal } from "@/app/pipeline/components/SmartIntakeModal";
 import type { Client, ClientExperienceMode, ClientExperienceModeLockedBy, ClientExperienceModeReason, ClientStage, Document, Loan } from "@/lib/types";
 
 export default function ClientDetailPage() {
@@ -37,8 +38,12 @@ export default function ClientDetailPage() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<Client>>({});
   const [error, setError] = useState<string | null>(null);
+  const [intakeOpen, setIntakeOpen] = useState(false);
 
   const canEdit = profile.role !== "client";
+  // CLIENT-role users can't kick off deals from inside their own page;
+  // every other role gets the "+ New deal" affordance.
+  const canStartDeal = canEdit;
 
   useEffect(() => {
     if (client) {
@@ -88,6 +93,19 @@ export default function ClientDetailPage() {
             <div style={{ fontSize: 13, color: t.ink3 }}>{client.email ?? "—"} · {client.phone ?? "—"} · {client.city ?? "—"}</div>
           </div>
           <Pill>{client.tier}</Pill>
+          {canStartDeal && (
+            <button
+              onClick={() => setIntakeOpen(true)}
+              style={{
+                padding: "8px 12px", borderRadius: 9,
+                background: t.ink, color: t.inverse, border: "none",
+                fontSize: 12, fontWeight: 700,
+                display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer",
+              }}
+            >
+              <Icon name="plus" size={12} /> New deal
+            </button>
+          )}
           {canEdit && !editing && (
             <button
               onClick={() => setEditing(true)}
@@ -102,6 +120,17 @@ export default function ClientDetailPage() {
           )}
         </div>
       </Card>
+      <SmartIntakeModal
+        open={intakeOpen}
+        onClose={() => setIntakeOpen(false)}
+        prefillClient={{
+          id: client.id,
+          name: client.name,
+          email: client.email ?? null,
+          phone: client.phone ?? null,
+          client_type: client.client_type ?? null,
+        }}
+      />
 
       <ClientStageCard t={t} client={client} canEdit={canEdit} clientLoans={clientLoans} />
 
