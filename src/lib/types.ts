@@ -570,6 +570,10 @@ export interface AIChatThread {
   title: string;
   last_message_preview: string | null;
   last_message_at: string | null;
+  // alembic 0021 — bumped on /threads/{id}/seen. `unread` is
+  // computed server-side: true iff last_message_at > last_seen_at.
+  last_seen_at?: string | null;
+  unread?: boolean;
   created_at: string;
   updated_at: string;
   // Loan-scoped thread when set; account-wide when null. Lightweight

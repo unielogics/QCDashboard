@@ -23,6 +23,7 @@ import {
   useChatAttachmentInit,
   useFindOrCreateChatThread,
   useLoans,
+  useMarkThreadSeen,
   useRouteDocument,
   useSendAIChatMessage,
 } from "@/hooks/useApi";
@@ -49,6 +50,7 @@ export function AIChatPanel({ open, onClose }: Props) {
   const sendMessage = useSendAIChatMessage();
   const attachmentInit = useChatAttachmentInit();
   const routeDocument = useRouteDocument();
+  const markSeen = useMarkThreadSeen();
 
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -93,6 +95,15 @@ export function AIChatPanel({ open, onClose }: Props) {
       });
     }, 60);
   }, [messages.length, sendMessage.isPending]);
+
+  // Mark the thread as seen whenever it becomes the active view —
+  // clears the unread dot. Re-fires when the user switches threads
+  // OR when fresh messages arrive while the thread is open.
+  useEffect(() => {
+    if (!activeThreadId) return;
+    markSeen.mutate(activeThreadId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeThreadId, messages.length]);
 
   const openThread = async (loan_id: string | null) => {
     setError(null);
@@ -259,6 +270,7 @@ export function AIChatPanel({ open, onClose }: Props) {
               accent="petrol"
               empty={!accountThread}
               isActive={!!accountThread && activeThreadId === accountThread.id}
+              unread={!!accountThread?.unread}
               onClick={() => openThread(null)}
             />
 
@@ -290,6 +302,7 @@ export function AIChatPanel({ open, onClose }: Props) {
                   accent="brand"
                   empty={!th}
                   isActive={!!th && activeThreadId === th.id}
+                  unread={!!th?.unread}
                   onClick={() => openThread(loan.id)}
                 />
               );
@@ -657,6 +670,7 @@ interface SidebarRowProps {
   accent: "petrol" | "brand";
   empty: boolean;
   isActive: boolean;
+  unread?: boolean;
   onClick: () => void;
 }
 
@@ -669,6 +683,7 @@ function SidebarRow({
   accent,
   empty,
   isActive,
+  unread,
   onClick,
 }: SidebarRowProps) {
   const accentColor = accent === "petrol" ? t.petrol : t.brand;
@@ -691,18 +706,32 @@ function SidebarRow({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <div
-          style={{
-            fontSize: 12.5,
-            fontWeight: 700,
-            color: isActive ? accentColor : t.ink,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            flex: 1,
-          }}
-        >
-          {title}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 1 }}>
+          {unread ? (
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 999,
+                background: t.danger,
+                flex: "0 0 auto",
+              }}
+            />
+          ) : null}
+          <div
+            style={{
+              fontSize: 12.5,
+              fontWeight: unread ? 800 : 700,
+              color: isActive ? accentColor : t.ink,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              minWidth: 0,
+              flex: 1,
+            }}
+          >
+            {title}
+          </div>
         </div>
         {timestamp ? (
           <div style={{ fontSize: 10, color: t.ink4, flex: "0 0 auto" }}>

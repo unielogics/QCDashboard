@@ -493,6 +493,11 @@ export function useAIChatThreads() {
   return useQuery({
     queryKey: ["aiChatThreads", devUser],
     queryFn: () => apiCall<AIChatThread[]>("/ai/chat/threads"),
+    // Poll so the topbar's unread dot picks up new system messages
+    // (kickoff opener, anchor narration, doc-reminder tier-1) within
+    // 15s — same cadence the loans table uses elsewhere.
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -503,6 +508,28 @@ export function useAIChatThread(threadId: string | null | undefined) {
     queryKey: ["aiChatThread", threadId, devUser],
     queryFn: () => apiCall<AIChatThreadDetail>(`/ai/chat/threads/${threadId}`),
     enabled: !!threadId,
+    // Live-refresh while the thread is open so the AI's
+    // anchor-narration replies show up without a manual reopen.
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+// Bumps `last_seen_at = now()` on the thread. Called when the user
+// opens a thread so the unread dot clears.
+export function useMarkThreadSeen() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (threadId: string) =>
+      apiCall<AIChatThread>(`/ai/chat/threads/${threadId}/seen`, {
+        method: "POST",
+      }),
+    onSuccess: (_, threadId) => {
+      qc.invalidateQueries({ queryKey: ["aiChatThread", threadId, devUser] });
+      qc.invalidateQueries({ queryKey: ["aiChatThreads", devUser] });
+    },
   });
 }
 

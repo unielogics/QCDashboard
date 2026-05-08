@@ -17,6 +17,7 @@ import { Icon } from "@/components/design-system/Icon";
 import {
   useAIChatThread,
   useChatAttachmentInit,
+  useMarkThreadSeen,
   useRouteDocument,
   useSendAIChatMessage,
 } from "@/hooks/useApi";
@@ -46,6 +47,7 @@ export function ThreadChatView({
   const sendMessage = useSendAIChatMessage();
   const attachmentInit = useChatAttachmentInit();
   const routeDocument = useRouteDocument();
+  const markSeen = useMarkThreadSeen();
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [staged, setStaged] = useState<{ document_id: string; name: string }[]>([]);
@@ -63,6 +65,15 @@ export function ThreadChatView({
       });
     }, 60);
   }, [messages.length, sendMessage.isPending]);
+
+  // Mark thread seen on open + whenever new messages land while it's
+  // open. Bumps `last_seen_at = now()` on the server so the unread
+  // dot clears across refreshes.
+  useEffect(() => {
+    if (!threadId) return;
+    markSeen.mutate(threadId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId, messages.length]);
 
   const send = async (raw: string) => {
     const text = raw.trim();

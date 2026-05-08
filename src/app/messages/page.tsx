@@ -124,6 +124,7 @@ function BorrowerMessagesView() {
           onClick={openAccountThread}
           accent="petrol"
           empty={!accountThread}
+          unread={!!accountThread?.unread}
         />
 
         {/* One row per loan */}
@@ -140,6 +141,7 @@ function BorrowerMessagesView() {
               onClick={() => openLoanThread(loan)}
               accent="brand"
               empty={!th}
+              unread={!!th?.unread}
             />
           );
         })}
@@ -183,6 +185,7 @@ function ThreadRow({
   onClick,
   accent,
   empty,
+  unread,
 }: {
   t: ReturnType<typeof useTheme>["t"];
   title: string;
@@ -192,6 +195,7 @@ function ThreadRow({
   onClick: () => void;
   accent: "petrol" | "brand";
   empty: boolean;
+  unread?: boolean;
 }) {
   const accentColor = accent === "petrol" ? t.petrol : t.brand;
   const accentBg = accent === "petrol" ? t.petrolSoft : t.brandSoft;
@@ -213,18 +217,32 @@ function ThreadRow({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <div
-          style={{
-            fontSize: 13,
-            fontWeight: 700,
-            color: active ? accentColor : t.ink,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            flex: 1,
-          }}
-        >
-          {title}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 1 }}>
+          {unread ? (
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 999,
+                background: t.danger,
+                flex: "0 0 auto",
+              }}
+            />
+          ) : null}
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: unread ? 800 : 700,
+              color: active ? accentColor : t.ink,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              minWidth: 0,
+              flex: 1,
+            }}
+          >
+            {title}
+          </div>
         </div>
         {timestamp ? (
           <div style={{ fontSize: 10, color: t.ink4, flex: "0 0 auto" }}>

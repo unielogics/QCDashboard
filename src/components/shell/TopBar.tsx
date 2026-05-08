@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import { useUI } from "@/store/ui";
-import { useAITasks, useCurrentUser } from "@/hooks/useApi";
+import { useAIChatThreads, useAITasks, useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { AIChatPanel } from "@/components/AIChatPanel";
 
@@ -17,6 +17,8 @@ export default function TopBar() {
   const setAiOpen = useUI((s) => s.setAiOpen);
   const { data: user } = useCurrentUser();
   const { data: tasks = [] } = useAITasks();
+  const { data: chatThreads = [] } = useAIChatThreads();
+  const hasUnreadChat = chatThreads.some((th) => th.unread);
   // AI Intelligent Underwriter chat — borrower-facing entry point.
   // Operators have the existing AIRail co-pilot for per-loan + AI-task
   // workflows; this is the cross-account, conversational surface
@@ -142,9 +144,10 @@ export default function TopBar() {
             Opens a right-side panel mirroring the mobile sheet. */}
         <button
           onClick={() => setAiChatOpen(true)}
-          aria-label="AI Intelligent Underwriter"
-          title="Ask AI Intelligent Underwriter"
+          aria-label={hasUnreadChat ? "AI Intelligent Underwriter — new message" : "AI Intelligent Underwriter"}
+          title={hasUnreadChat ? "New AI message" : "Ask AI Intelligent Underwriter"}
           style={{
+            position: "relative",
             width: 32,
             height: 32,
             borderRadius: 8,
@@ -158,6 +161,20 @@ export default function TopBar() {
           }}
         >
           <Icon name="chat" size={14} />
+          {hasUnreadChat ? (
+            <span
+              style={{
+                position: "absolute",
+                top: 4,
+                right: 4,
+                width: 8,
+                height: 8,
+                borderRadius: 999,
+                background: t.danger,
+                border: `1.5px solid ${aiChatOpen ? t.petrolSoft : t.bg}`,
+              }}
+            />
+          ) : null}
         </button>
 
         {/* Notifications */}
