@@ -80,8 +80,8 @@ function emptyLetterhead(): AgentLetterhead {
     email: null,
     license_number: null,
     brokerage_name: null,
+    logo_data_url: null,
     headshot_data_url: null,
-    signature_block: null,
   };
 }
 
@@ -274,12 +274,6 @@ function IdentitySection({ draft, setDraft, dirty, saving, onSave }: SectionProp
         <Field label="Title">
           <TextInput value={lh.title ?? ""} onChange={(v) => update({ title: v || null })} placeholder="Real Estate Agent" />
         </Field>
-        <Field label="Phone">
-          <TextInput value={lh.phone ?? ""} onChange={(v) => update({ phone: v || null })} />
-        </Field>
-        <Field label="Email">
-          <TextInput value={lh.email ?? ""} onChange={(v) => update({ email: v || null })} />
-        </Field>
         <Field label="License #">
           <TextInput value={lh.license_number ?? ""} onChange={(v) => update({ license_number: v || null })} />
         </Field>
@@ -288,14 +282,10 @@ function IdentitySection({ draft, setDraft, dirty, saving, onSave }: SectionProp
         </Field>
       </div>
       <div style={{ marginTop: 14 }}>
-        <Field label="Signature block (free text appended to outbound)">
-          <textarea
-            value={lh.signature_block ?? ""}
-            onChange={(e) => update({ signature_block: e.target.value || null })}
-            rows={3}
-            style={{ ...inputStyle(t), resize: "vertical", fontFamily: "inherit" }}
-          />
-        </Field>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <ImageDataField label="Firm logo" value={lh.logo_data_url ?? null} onChange={(v) => update({ logo_data_url: v })} />
+          <ImageDataField label="Realtor headshot" value={lh.headshot_data_url ?? null} onChange={(v) => update({ headshot_data_url: v })} />
+        </div>
       </div>
     </Card>
   );
@@ -618,6 +608,23 @@ function TextInput({ value, onChange, placeholder }: { value: string; onChange: 
       placeholder={placeholder}
       style={inputStyle(t)}
     />
+  );
+}
+function ImageDataField({ label, value, onChange }: { label: string; value: string | null; onChange: (v: string | null) => void }) {
+  const { t } = useTheme();
+  const onPick = async (file: File | null) => {
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = () => onChange(typeof r.result === "string" ? r.result : null);
+    r.readAsDataURL(file);
+  };
+  return (
+    <Field label={label}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <input type="file" accept="image/*" onChange={(e) => void onPick(e.target.files?.[0] ?? null)} style={inputStyle(t)} />
+        {value ? <img src={value} alt={label} style={{ width: 96, height: 96, objectFit: "cover", borderRadius: 8, border: `1px solid ${t.line}` }} /> : null}
+      </div>
+    </Field>
   );
 }
 

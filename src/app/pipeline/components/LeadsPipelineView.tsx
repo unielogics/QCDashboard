@@ -10,8 +10,9 @@ import { useMemo, useState } from "react";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { useClients, useCreateClient } from "@/hooks/useApi";
+import { useClients } from "@/hooks/useApi";
 import { LEAD_STAGES, type Client, type ClientStage } from "@/lib/types";
+import { SmartIntakeModal } from "./SmartIntakeModal";
 
 const LEAD_STAGE_LABELS: Record<(typeof LEAD_STAGES)[number], string> = {
   lead: "Lead",
@@ -142,7 +143,7 @@ export function LeadsPipelineView({ view, search }: Props) {
           </div>
         )}
       </Card>
-      {showAddModal && <AddLeadModal t={t} onClose={() => setShowAddModal(false)} />}
+      {showAddModal && <SmartIntakeModal open={showAddModal} onClose={() => setShowAddModal(false)} />}
       </>
     );
   }
@@ -225,121 +226,8 @@ export function LeadsPipelineView({ view, search }: Props) {
         );
       })}
     </div>
-    {showAddModal && <AddLeadModal t={t} onClose={() => setShowAddModal(false)} />}
+    {showAddModal && <SmartIntakeModal open={showAddModal} onClose={() => setShowAddModal(false)} />}
     </>
-  );
-}
-
-function AddLeadModal({
-  t,
-  onClose,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  onClose: () => void;
-}) {
-  const create = useCreateClient();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [city, setCity] = useState("");
-  const [clientType, setClientType] = useState<"buyer" | "seller" | "">("");
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const canSave = name.trim().length > 0 && !create.isPending;
-
-  const onSave = async () => {
-    setFeedback(null);
-    try {
-      await create.mutateAsync({
-        name: name.trim(),
-        email: email.trim() || undefined,
-        phone: phone.trim() || undefined,
-        city: city.trim() || undefined,
-        client_type: clientType || undefined,
-        // stage defaults to 'lead' on the backend.
-        // broker_id is hard-stamped from the session for BROKER role.
-      });
-      onClose();
-    } catch (e) {
-      setFeedback(e instanceof Error ? e.message : "Couldn't add lead.");
-    }
-  };
-
-  const inputStyle: React.CSSProperties = {
-    padding: "8px 10px", borderRadius: 7,
-    border: `1px solid ${t.line}`, background: t.surface2,
-    color: t.ink, fontSize: 13, outline: "none",
-  };
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)",
-        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: t.surface, borderRadius: 12, padding: 20,
-          width: 460, maxWidth: "90vw",
-          boxShadow: `0 20px 50px ${t.line}`,
-          display: "flex", flexDirection: "column", gap: 12,
-        }}
-      >
-        <div style={{ fontSize: 14, fontWeight: 800, color: t.ink }}>Add lead</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "1 / -1" }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>Name</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} autoFocus style={inputStyle} placeholder="Sarah Smith" />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>Email</span>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} style={inputStyle} placeholder="sarah@example.com" />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>Phone</span>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inputStyle} placeholder="(555) 123-4567" />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>City</span>
-            <input value={city} onChange={(e) => setCity(e.target.value)} style={inputStyle} />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>Side</span>
-            <select value={clientType} onChange={(e) => setClientType(e.target.value as "buyer" | "seller" | "")} style={inputStyle}>
-              <option value="">Unknown</option>
-              <option value="buyer">Buyer</option>
-              <option value="seller">Seller</option>
-            </select>
-          </label>
-        </div>
-        {feedback && <div style={{ fontSize: 12, color: t.danger }}>{feedback}</div>}
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
-          <button
-            onClick={onClose}
-            style={{ padding: "7px 12px", borderRadius: 7, border: `1px solid ${t.line}`, background: t.surface2, color: t.ink, fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onSave}
-            disabled={!canSave}
-            style={{
-              padding: "7px 14px", borderRadius: 7, border: "none",
-              background: canSave ? t.brand : t.chip,
-              color: canSave ? t.inverse : t.ink4,
-              fontSize: 12, fontWeight: 700,
-              cursor: canSave ? "pointer" : "not-allowed",
-            }}
-          >
-            {create.isPending ? "Adding…" : "Add lead"}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 
