@@ -164,7 +164,7 @@ export function SmartIntakeModal({ open, onClose }: { open: boolean; onClose: ()
         }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: t.petrol, letterSpacing: 1.4, textTransform: "uppercase" }}>
-              New Loan · Smart Intake
+              New Deal · Smart Intake
             </div>
             <div style={{ fontSize: 19, fontWeight: 700, color: t.ink, letterSpacing: -0.4, marginTop: 2 }}>
               {STEPS[step].label}

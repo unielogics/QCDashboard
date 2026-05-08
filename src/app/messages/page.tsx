@@ -397,7 +397,7 @@ function OperatorMessagesView() {
                 : m.from_role === "lender"
                 ? "Funding Team"
                 : m.from_role === "client"
-                ? "Borrower"
+                ? "Client"
                 : m.from_role;
             return (
               <div key={m.id} style={{ alignSelf: align, maxWidth: "70%" }}>

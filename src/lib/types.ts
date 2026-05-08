@@ -84,6 +84,11 @@ export interface Client {
   // Investor profile (free-text, edited by the borrower in /profile)
   properties?: string | null;
   experience?: string | null;
+  // Agent CRM fields — see ClientStage / ClientType. Optional on the
+  // interface so existing rows without these populated still type-check;
+  // backend will default new rows to stage="lead" and client_type=null.
+  stage?: ClientStage | null;
+  client_type?: ClientType | null;
 }
 
 export interface AITask {
@@ -1100,84 +1105,50 @@ export interface PrequalSellerOutcome {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Agent Funding Command Center — P0A types (frontend-first mocks)
+// Agent Funding Command Center — P0A types (frontend-first)
 //
-// Architecture rules (see plan "Architecture Rules Added Before P0A"):
-//   1. Nullable ownership — agent_id / lead_id / deal_id may all be null on
-//      existing/imported records. Agent views (`scope: "mine"`) exclude
-//      unassigned; Super Admin sees all via `scope: "all"`.
-//   2. Smart Intake without a Lead is allowed; lead_id is nullable everywhere.
-//   3. Reassignment: originating_agent_id never changes; current_agent_id
-//      changes only via Super Admin and writes an AgentReassignmentAudit row.
-//      Open AITasks transfer if still relevant; drafted-but-unsent messages
-//      become requires_review_after_reassignment; sent messages keep their
-//      original from_user_id; agent_note rows preserve created_by_agent_id.
-//   4. visibility_scope is enforced at the server-projection layer — these
+// Architecture rules:
+//   1. Nullable ownership — agent_id may be null on existing/imported records.
+//      Agent views (`scope: "mine"`) exclude unassigned; Super Admin / Funding
+//      Team see all via `scope: "all"`.
+//   2. visibility_scope is enforced at the server-projection layer — these
 //      types describe internal/full shapes; borrower-facing endpoints must
 //      return filtered projections, never raw event/task rows.
+//   3. Reassignment: originating_agent_id never changes; current_agent_id
+//      changes only via Super Admin and writes an AgentReassignmentAudit row.
+//
+// Single Client entity carries the full lifecycle via `stage`:
+//   - lead → contacted → verified  (Agent-focused stages, "Leads view")
+//   - ready_for_lending → processing → funded  (Funding Team owns; "Funding view")
+//   - lost is terminal-loss
+// "Start Funding" on a Pipeline card transitions stage to ready_for_lending,
+// which kicks off Loan creation + handoff to Funding Team. Deals are not
+// manually created — they emerge from this status transition.
 // ────────────────────────────────────────────────────────────────────────────
 
-export type LeadStatus = "new" | "contacted" | "qualified" | "converted" | "lost";
-
-export type LeadSource =
-  | "agent_added"
-  | "self_signup"
-  | "admin_assigned"
-  | "existing_database"
-  | "referral";
-
-export interface Lead {
-  id: string;
-  agent_id: string | null;
-  name: string;
-  email: string | null;
-  phone: string | null;
-  status: LeadStatus;
-  source: LeadSource;
-  created_at: string;
-  // Set when the Lead converts to a Borrower. Until then, null.
-  client_id: string | null;
-  notes: string | null;
-}
-
-export type DealType =
-  | "purchase"
-  | "refi"
-  | "bridge"
-  | "fix_flip"
-  | "ground_up"
-  | "dscr_purchase"
-  | "dscr_refi";
-
-export type DealStatus =
-  | "exploring"
-  | "intake"
-  | "prequalified"
-  | "under_contract"
-  | "submitted"
-  | "in_uw"
-  | "clear_to_close"
+export type ClientStage =
+  | "lead"
+  | "contacted"
+  | "verified"
+  | "ready_for_lending"
+  | "processing"
   | "funded"
   | "lost";
 
-export interface Deal {
-  id: string;
-  // All upstream FKs are nullable per Architecture Rule #1. Backend enforces
-  // a check constraint that at least one of (lead_id, client_id) is non-null
-  // — a Deal must trace to either a Lead or a converted Borrower; both can
-  // be null only transiently if Super Admin creates an orphan record.
-  lead_id: string | null;
-  client_id: string | null;
-  agent_id: string | null;
-  type: DealType;
-  property_address: string | null;
-  status: DealStatus;
-  // Engines come in P1; fields exist from P0A so the data shape is stable.
-  deal_readiness_score: number | null;          // 0–100 — is this real, active, closeable?
-  funding_file_readiness_score: number | null;  // 0–100 — is the lender package ready?
-  created_at: string;
-  last_movement_at: string | null;
-}
+export type ClientType = "buyer" | "seller";
+
+// Stages that belong to the Agent's "Leads view" of the Pipeline. The Agent
+// is heavily focused here — qualifying, collecting info, verifying. After
+// verified the Agent clicks Start Funding and the Client enters the funding
+// pipeline (ready_for_lending onward).
+//
+// `as const` narrows the array's element type to the literal union (not the
+// full ClientStage) so consumers can build exhaustive Record<…> mappings.
+export const LEAD_STAGES = ["lead", "contacted", "verified"] as const;
+
+// Stages owned by the Funding Team / Super Admin. Agent retains read-only
+// visibility on these for their own clients.
+export const FUNDING_STAGES = ["ready_for_lending", "processing", "funded"] as const;
 
 // Buyer-intent + funnel-progression signals. Captured from day one so the
 // shared Deal Intelligence Core (P0B) has history to reason over.

@@ -304,7 +304,7 @@ function AIMonitor({
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Type a direct message to the borrower…"
+            placeholder="Type a direct message to the client…"
             onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
             style={{
               flex: 1, padding: "10px 12px", borderRadius: 10,

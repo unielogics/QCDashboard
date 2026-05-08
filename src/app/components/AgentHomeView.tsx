@@ -77,7 +77,7 @@ export function AgentHomeView() {
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: t.petrol }}>
-            Funding Command Center
+            Dashboard
           </div>
           <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.6, color: t.ink, margin: "4px 0 0" }}>
             {greeting}{firstName ? `, ${firstName}` : ""}.

@@ -35,16 +35,13 @@ interface NavItem {
 //   Underwriter / Borrower. Preserved per Architecture Rule #5: do not break
 //   current operator workflows when reorganizing for Agents.
 const AGENT_NAV: NavItem[] = [
-  { href: "/", label: "Funding Command Center", icon: "home" },
+  { href: "/", label: "Dashboard", icon: "home" },
   { href: "/pipeline", label: "My Pipeline", icon: "layers" },
   { href: "/ai-inbox", label: "Next Best Actions", icon: "bolt" },
-  { href: "/leads", label: "Leads", icon: "user" },
-  { href: "/deals", label: "Deals", icon: "key" },
-  { href: "/clients", label: "Borrowers", icon: "clients" },
+  { href: "/clients", label: "Clients", icon: "clients" },
   { href: "/vault", label: "Documents", icon: "vault" },
   { href: "/ai-tasks", label: "AI Follow-Up", icon: "spark" },
   { href: "/messages", label: "Messages", icon: "chat" },
-  { href: "/funding-packages", label: "Funding Packages", icon: "docCheck" },
   { href: "/reports", label: "Performance", icon: "trend" },
 ];
 
@@ -52,7 +49,7 @@ const OPERATOR_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: "home" },
   { href: "/pipeline", label: "Pipeline", icon: "layers" },
   { href: "/ai-inbox", label: "AI Inbox", icon: "bolt", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
-  { href: "/clients", label: "Borrowers", icon: "clients", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
+  { href: "/clients", label: "Clients", icon: "clients", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
   { href: "/vault", label: "Vault", icon: "vault" },
   { href: "/admin/prequal-requests", label: "Pre-Qual Queue", icon: "docCheck", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
   { href: "/admin/lenders", label: "Lenders", icon: "building", roles: [Role.SUPER_ADMIN] },
@@ -69,7 +66,7 @@ const ROLE_LABEL: Record<string, string> = {
   super_admin: "Super Admin",
   broker: "Agent",
   loan_exec: "Underwriter",
-  client: "Borrower",
+  client: "Client",
 };
 
 export default function Sidebar() {

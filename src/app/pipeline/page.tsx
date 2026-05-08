@@ -8,7 +8,10 @@ import { Icon } from "@/components/design-system/Icon";
 import { useLoans } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { SmartIntakeModal } from "./components/SmartIntakeModal";
+import { LeadsPipelineView } from "./components/LeadsPipelineView";
 import { useActiveProfile } from "@/store/role";
+
+type PipelineMode = "leads" | "funding";
 
 const STAGE_KEYS = ["prequalified", "collecting_docs", "lender_connected", "processing", "closing", "funded"] as const;
 const STAGE_LABELS = ["Prequalified", "Collecting Docs", "Lender Connected", "Processing", "Closing", "Funded"];
@@ -19,7 +22,11 @@ export default function PipelinePage() {
   const { t } = useTheme();
   const { data: loans = [] } = useLoans();
   const profile = useActiveProfile();
-  const [view, setView] = useState<"table" | "kanban">("table");  // table default per chat2.md
+  // Top-level mode: Leads (Agent funnel) vs Funding (loan stages). Each mode
+  // independently picks kanban vs table for layout. Agents see Leads by
+  // default; non-Agent operators land on Funding.
+  const [mode, setMode] = useState<PipelineMode>(profile.role === "broker" ? "leads" : "funding");
+  const [view, setView] = useState<"table" | "kanban">("table");
   const [sortKey, setSortKey] = useState<SortKey>("amount");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -64,9 +71,35 @@ export default function PipelinePage() {
         <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: -0.5, color: t.ink, margin: 0 }}>
           Pipeline
         </h1>
-        <span style={{ color: t.ink3, fontSize: 14 }}>
-          · {visibleLoans.length} loans · {QC_FMT.short(totalValue)} value
-        </span>
+
+        {/* Mode dropdown — Leads vs Funding. Pipeline does double duty:
+            Leads view shows the Agent's early-funnel clients (lead, contacted,
+            verified); Funding view shows the lender-stage loans. */}
+        <select
+          value={mode}
+          onChange={(e) => setMode(e.target.value as PipelineMode)}
+          style={{
+            background: t.surface,
+            color: t.ink,
+            border: `1px solid ${t.line}`,
+            borderRadius: 10,
+            padding: "8px 10px",
+            fontSize: 13,
+            fontFamily: "inherit",
+            fontWeight: 700,
+            cursor: "pointer",
+            marginLeft: 4,
+          }}
+        >
+          <option value="leads">Leads</option>
+          <option value="funding">Funding</option>
+        </select>
+
+        {mode === "funding" ? (
+          <span style={{ color: t.ink3, fontSize: 14 }}>
+            · {visibleLoans.length} loans · {QC_FMT.short(totalValue)} value
+          </span>
+        ) : null}
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
           {/* Search address or ID */}
@@ -99,26 +132,30 @@ export default function PipelinePage() {
             />
           </div>
 
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            style={{
-              background: t.surface,
-              color: t.ink2,
-              border: `1px solid ${t.line}`,
-              borderRadius: 10,
-              padding: "8px 10px",
-              fontSize: 12.5,
-              fontFamily: "inherit",
-              cursor: "pointer",
-            }}
-          >
-            <option value="all">All types</option>
-            <option value="dscr">DSCR</option>
-            <option value="fix_and_flip">Fix &amp; Flip</option>
-            <option value="ground_up">Ground Up</option>
-            <option value="bridge">Bridge</option>
-          </select>
+          {/* Loan-type filter only applies in Funding mode (Leads don't have a
+              loan type yet; that gets locked when Start Funding fires). */}
+          {mode === "funding" && (
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              style={{
+                background: t.surface,
+                color: t.ink2,
+                border: `1px solid ${t.line}`,
+                borderRadius: 10,
+                padding: "8px 10px",
+                fontSize: 12.5,
+                fontFamily: "inherit",
+                cursor: "pointer",
+              }}
+            >
+              <option value="all">All types</option>
+              <option value="dscr">DSCR</option>
+              <option value="fix_and_flip">Fix &amp; Flip</option>
+              <option value="ground_up">Ground Up</option>
+              <option value="bridge">Bridge</option>
+            </select>
+          )}
 
           {/* Segmented Kanban / Table toggle — design lines 39–44 */}
           <div
@@ -142,31 +179,53 @@ export default function PipelinePage() {
           </div>
 
           {canCreate && (
-            <button
-              onClick={() => setIntakeOpen(true)}
-              style={{
-                padding: "9px 14px",
-                borderRadius: 10,
-                background: t.ink,
-                color: t.inverse,
-                fontSize: 13,
-                fontWeight: 700,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 7,
-                cursor: "pointer",
-                border: "none",
-              }}
-            >
-              <Icon name="plus" size={14} /> New loan
-            </button>
+            mode === "funding" ? (
+              <button
+                onClick={() => setIntakeOpen(true)}
+                style={{
+                  padding: "9px 14px",
+                  borderRadius: 10,
+                  background: t.ink,
+                  color: t.inverse,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 7,
+                  cursor: "pointer",
+                  border: "none",
+                }}
+              >
+                <Icon name="plus" size={14} /> New deal
+              </button>
+            ) : (
+              <Link
+                href="/clients/new"
+                style={{
+                  padding: "9px 14px",
+                  borderRadius: 10,
+                  background: t.ink,
+                  color: t.inverse,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 7,
+                  textDecoration: "none",
+                }}
+              >
+                <Icon name="plus" size={14} /> New lead
+              </Link>
+            )
           )}
         </div>
       </div>
 
       <SmartIntakeModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
 
-      {view === "table" ? (
+      {mode === "leads" ? (
+        <LeadsPipelineView view={view} search={search} />
+      ) : view === "table" ? (
         <Card pad={0}>
           <div style={{
             display: "grid", gridTemplateColumns: "80px minmax(0, 2fr) 120px 100px 90px 80px 90px",

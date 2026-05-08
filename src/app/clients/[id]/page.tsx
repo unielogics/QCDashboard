@@ -7,13 +7,13 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel, VerifiedBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useClient, useCreditSummary, useCurrentCredit, useDocumentsForClient, useDeals, useEngagement, useLoans, useParsedReport, useUpdateClient } from "@/hooks/useApi";
+import { useClient, useCreditSummary, useCurrentCredit, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { CreditReportDetail } from "@/components/CreditReportDetail";
 import { useActiveProfile } from "@/store/role";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { parseIntStrict } from "@/lib/formCoerce";
-import type { Client, Document, Loan } from "@/lib/types";
+import type { Client, ClientStage, Document, Loan } from "@/lib/types";
 
 export default function ClientDetailPage() {
   const { t } = useTheme();
@@ -26,13 +26,10 @@ export default function ClientDetailPage() {
   const { data: parsedReport, isLoading: parsedLoading } = useParsedReport(credit?.id);
   const [showFullReport, setShowFullReport] = useState(false);
   const { data: clientDocs = [] } = useDocumentsForClient(id);
-  // Per-Borrower CRM workspace data (P0A frontend-first):
-  //   - useDeals returns the Agent's deals; we filter to this Borrower
-  //     client-side until the future GET /deals?client_id={id} ships.
-  //   - useEngagement returns [] when backend isn't live (graceful empty).
-  const { data: allDeals = [] } = useDeals("mine");
+  // Per-Client CRM workspace data: engagement returns [] when backend isn't
+  // live (graceful empty). Loans for this client are derived from useLoans
+  // already loaded above (clientLoans below).
   const { data: engagement = [] } = useEngagement(id);
-  const clientDeals = allDeals.filter((d) => d.client_id === id);
   const updateClient = useUpdateClient();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<Client>>({});
@@ -102,6 +99,8 @@ export default function ClientDetailPage() {
           )}
         </div>
       </Card>
+
+      <ClientStageCard t={t} client={client} canEdit={canEdit} clientLoans={clientLoans} />
 
       {editing && canEdit && (
         <Card pad={20}>
@@ -206,43 +205,6 @@ export default function ClientDetailPage() {
         </div>
       </Card>
 
-      {/* Linked Deals — the Agent's working files for this Borrower. Each
-          Deal carries Quotes/Loans/Documents/Messages/AI tasks via deal_id. */}
-      <Card pad={16}>
-        <SectionLabel
-          action={
-            <Link href="/deals" style={{ color: t.petrol, textDecoration: "none", fontSize: 12, fontWeight: 600 }}>
-              All deals →
-            </Link>
-          }
-        >
-          Deals
-        </SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {clientDeals.length === 0 && (
-            <div style={{ fontSize: 13, color: t.ink3 }}>
-              No deals for this borrower yet. Create one from{" "}
-              <Link href="/deals" style={{ color: t.petrol, textDecoration: "none", fontWeight: 600 }}>Deals</Link>.
-            </div>
-          )}
-          {clientDeals.map((d) => (
-            <Link
-              key={d.id}
-              href={`/deals/${d.id}`}
-              style={{ display: "flex", gap: 10, padding: "10px 12px", borderRadius: 10, border: `1px solid ${t.line}`, textDecoration: "none", alignItems: "center" }}
-            >
-              <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: t.ink }}>
-                {d.property_address || <span style={{ color: t.ink3 }}>Property TBD</span>}
-              </div>
-              <Pill>{d.type.replace(/_/g, " ")}</Pill>
-              <Pill bg={t.chip} color={t.ink2}>{d.status.replace(/_/g, " ")}</Pill>
-              <Pill bg={t.chip} color={t.ink2}>DRS {d.deal_readiness_score ?? "—"}</Pill>
-              <Pill bg={t.chip} color={t.ink2}>FFR {d.funding_file_readiness_score ?? "—"}</Pill>
-            </Link>
-          ))}
-        </div>
-      </Card>
-
       {/* Engagement timeline — buyer-intent + funnel signals captured per
           Architecture Rule #9. Empty until the backend GET
           /clients/{id}/engagement endpoint ships. */}
@@ -250,7 +212,7 @@ export default function ClientDetailPage() {
         <SectionLabel>Engagement</SectionLabel>
         {engagement.length === 0 ? (
           <div style={{ fontSize: 13, color: t.ink3, lineHeight: 1.55 }}>
-            No engagement signals yet. As the borrower interacts (opens invites,
+            No engagement signals yet. As the client interacts (opens invites,
             starts/abandons intake, uploads docs, views messages, runs the simulator,
             updates their profile, pulls credit), each event lands here so the AI can
             reason about timing and intent.
@@ -502,5 +464,172 @@ function Input({ t, value, onChange, placeholder }: { t: ReturnType<typeof useTh
         border: `1px solid ${t.line}`, color: t.ink, fontSize: 13, fontFamily: "inherit", outline: "none",
       }}
     />
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// ClientStageCard — surfaces the Client's current pipeline stage and exposes
+// the stage-transition actions. Lives near the top of the per-Client workspace
+// so the Agent can advance the client (lead → contacted → verified → Start
+// Funding) without leaving this page. Document upload happens via the Vault
+// section below — the same surface lets the Agent upload on the client's
+// behalf when needed.
+// ────────────────────────────────────────────────────────────────────────────
+const STAGE_LABEL: Record<ClientStage, string> = {
+  lead: "Lead",
+  contacted: "Contacted",
+  verified: "Verified",
+  ready_for_lending: "Ready for Lending",
+  processing: "Processing",
+  funded: "Funded",
+  lost: "Lost",
+};
+
+function inferStage(c: Client, activeLoans: number): ClientStage {
+  if (c.stage) return c.stage;
+  if (c.funded_count > 0) return "funded";
+  if (activeLoans > 0) return "processing";
+  return "lead";
+}
+
+function ClientStageCard({
+  t,
+  client,
+  canEdit,
+  clientLoans,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  client: Client;
+  canEdit: boolean;
+  clientLoans: Loan[];
+}) {
+  const updateStage = useUpdateClientStage();
+  const startFunding = useStartFunding();
+  const [error, setError] = useState<string | null>(null);
+
+  const activeLoans = clientLoans.filter((l) => l.stage !== "funded").length;
+  const stage = inferStage(client, activeLoans);
+
+  const advance = async (next: ClientStage) => {
+    setError(null);
+    try {
+      await updateStage.mutateAsync({ clientId: client.id, stage: next });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update stage");
+    }
+  };
+
+  const handleStartFunding = async () => {
+    setError(null);
+    if (!confirm("Start funding for this client? This marks the prequal approved, creates the loan, and hands off to the Funding Team. The client moves to 'Ready for Lending' and you'll keep read-only visibility during processing.")) {
+      return;
+    }
+    try {
+      await startFunding.mutateAsync(client.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start funding");
+    }
+  };
+
+  const palette: Record<ClientStage, { bg: string; fg: string }> = {
+    lead:               { bg: t.chip,        fg: t.ink2 },
+    contacted:          { bg: t.warnBg,      fg: t.warn },
+    verified:           { bg: t.petrolSoft,  fg: t.petrol },
+    ready_for_lending:  { bg: t.brandSoft,   fg: t.brand },
+    processing:         { bg: t.brandSoft,   fg: t.brand },
+    funded:             { bg: t.profitBg,    fg: t.profit },
+    lost:               { bg: t.surface2,    fg: t.ink3 },
+  };
+  const { bg, fg } = palette[stage];
+  const inFunding = stage === "ready_for_lending" || stage === "processing" || stage === "funded";
+  const busy = updateStage.isPending || startFunding.isPending;
+
+  return (
+    <Card pad={18}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
+            Pipeline stage
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "5px 12px",
+                borderRadius: 999,
+                background: bg,
+                color: fg,
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: fg }} />
+              {STAGE_LABEL[stage]}
+            </span>
+            {client.client_type && (
+              <Pill bg={client.client_type === "buyer" ? t.brandSoft : t.warnBg} color={client.client_type === "buyer" ? t.brand : t.warn}>
+                {client.client_type === "buyer" ? "Buyer" : "Seller"}
+              </Pill>
+            )}
+          </div>
+        </div>
+
+        {canEdit && !inFunding && stage !== "lost" && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {stage === "lead" && (
+              <button onClick={() => advance("contacted")} disabled={busy} style={qcBtn(t)}>
+                Mark contacted →
+              </button>
+            )}
+            {stage === "contacted" && (
+              <button onClick={() => advance("verified")} disabled={busy} style={qcBtn(t)}>
+                Mark verified →
+              </button>
+            )}
+            {stage === "verified" && (
+              <button
+                onClick={handleStartFunding}
+                disabled={busy}
+                style={{
+                  ...qcBtnPrimary(t),
+                  opacity: busy ? 0.6 : 1,
+                  cursor: busy ? "wait" : "pointer",
+                }}
+              >
+                <Icon name="bolt" size={13} />
+                {startFunding.isPending ? "Starting…" : "Start Funding"}
+              </button>
+            )}
+            <button
+              onClick={() => advance("lost")}
+              disabled={busy}
+              style={{ ...qcBtn(t), color: t.danger, borderColor: `${t.danger}40` }}
+            >
+              Mark lost
+            </button>
+          </div>
+        )}
+
+        {inFunding && (
+          <div style={{ fontSize: 12, color: t.ink3, maxWidth: 280, textAlign: "right" }}>
+            File is with the Funding Team. You retain read-only visibility on
+            funding-doc collection and lender milestones.
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <div style={{ marginTop: 10, fontSize: 12, color: t.danger, fontWeight: 700 }}>{error}</div>
+      )}
+
+      <div style={{ marginTop: 12, fontSize: 11, color: t.ink3, lineHeight: 1.55 }}>
+        Use the <strong>Documents</strong> section below to upload on the client&apos;s
+        behalf when needed — funding docs verify only by the Funding Team, but
+        you can always add transaction-side docs (purchase agreement, inspection,
+        etc.) to keep the file moving.
+      </div>
+    </Card>
   );
 }

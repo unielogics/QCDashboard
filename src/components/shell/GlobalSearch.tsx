@@ -35,7 +35,7 @@ export default function GlobalSearch() {
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search loans, borrowers, documents, messages…"
+            placeholder="Search loans, clients, documents, messages…"
             style={{ flex: 1, fontSize: 15, color: t.ink, background: "transparent", border: "none", outline: "none" }}
           />
           <button onClick={() => setOpen(false)} style={{ color: t.ink3 }}>

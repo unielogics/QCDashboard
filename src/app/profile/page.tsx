@@ -23,17 +23,16 @@ const ROLE_LABEL: Record<string, string> = {
   super_admin: "Super Admin",
   broker: "Agent",
   loan_exec: "Underwriter",
-  client: "Borrower",
+  client: "Client",
 };
 
-// Tier label per role — the design's "Tier II Borrower" pill belongs to
-// the borrower mobile audience; operator roles get a parallel chip that
-// reads naturally on the same surface.
+// Tier label per role — operator roles get an "Operator · …" chip; the
+// end-consumer tier label reflects their borrower-portal identity.
 const ROLE_TIER: Record<string, string> = {
   super_admin: "Operator · Super Admin",
   broker: "Operator · Agent",
   loan_exec: "Operator · Underwriter",
-  client: "Tier II Borrower",
+  client: "Tier II Client",
 };
 
 const THEME_OPTIONS: { id: ThemePreference; label: string; icon: string }[] = [
