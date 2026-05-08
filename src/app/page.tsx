@@ -352,6 +352,19 @@ export default function DashboardPage() {
           >
             Today
           </SectionLabel>
+
+          {/* Compact 2x2 rates grid — same FRED data as the full
+              "Today's Market Rates" widget above, rendered tighter
+              for the half-width Today column. */}
+          <TodayRatesGrid />
+
+          <div style={{
+            fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
+            textTransform: "uppercase", color: t.ink3,
+            margin: "16px 0 8px 0",
+          }}>
+            On the calendar
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {todayEvents.length === 0 && (
               <div style={{ fontSize: 12.5, color: t.ink3 }}>No events scheduled for today.</div>
@@ -484,6 +497,52 @@ const PRODUCT_CARDS: Array<{ id: string; label: string; term: string; sub: strin
   { id: "dscr", label: "DSCR Rental", term: "30 yr", sub: "80% LTV", series_id: "DGS10" },
   { id: "br", label: "Bridge", term: "24 mo", sub: "75% LTV", series_id: "SOFR" },
 ];
+
+// Compact 2x2 rate grid for the half-width "Today" card.
+// Reuses the same FRED series the wide widget shows; just a tighter
+// layout (label + estimated rate + delta, no inline chart).
+function TodayRatesGrid() {
+  const { t } = useTheme();
+  const { data: series = [] } = useFredSeries();
+  const seriesById = new Map(series.map((s) => [s.series_id, s] as const));
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 4 }}>
+      {PRODUCT_CARDS.map((card) => {
+        const s = seriesById.get(card.series_id);
+        const estimated = s?.estimated_rate;
+        const delta = s?.delta_bps ?? null;
+        const deltaColor = delta == null ? t.ink3 : delta < 0 ? t.profit : delta > 0 ? t.danger : t.ink3;
+        return (
+          <Link
+            key={card.id}
+            href="/market-rates"
+            style={{
+              display: "flex", flexDirection: "column", gap: 3,
+              padding: "10px 12px", borderRadius: 10,
+              background: t.surface2, border: `1px solid ${t.line}`,
+              textDecoration: "none",
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 700, color: t.ink, lineHeight: 1.2 }}>
+              {card.label}
+            </div>
+            <div style={{ fontSize: 9.5, color: t.ink3, lineHeight: 1.2 }}>{card.term}</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 2 }}>
+              <span style={{ fontSize: 16, fontWeight: 700, color: t.ink, fontFeatureSettings: '"tnum"' }}>
+                {estimated != null ? `${estimated.toFixed(2)}%` : "—"}
+              </span>
+              {delta != null && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: deltaColor, fontFeatureSettings: '"tnum"' }}>
+                  {delta > 0 ? "+" : ""}{delta} bps
+                </span>
+              )}
+            </div>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
 
 function TodaysMarketRates() {
   const { t } = useTheme();

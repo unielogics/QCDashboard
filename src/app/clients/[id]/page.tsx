@@ -15,6 +15,7 @@ import { QC_FMT } from "@/components/design-system/tokens";
 import { parseIntStrict } from "@/lib/formCoerce";
 import { deriveExperienceMode } from "@/lib/experienceMode";
 import { canEditExperienceMode } from "@/lib/experienceModePermissions";
+import { DocUploadButton } from "@/app/documents/components/DocUploadButton";
 import type { Client, ClientExperienceMode, ClientExperienceModeLockedBy, ClientExperienceModeReason, ClientStage, Document, Loan } from "@/lib/types";
 
 export default function ClientDetailPage() {
@@ -280,7 +281,8 @@ function ClientVaultCard({
   docs: Document[];
 }) {
   const [tab, setTab] = useState<"subject" | "reo">("subject");
-  const subjectLoanIds = new Set(clientLoans.filter((l) => l.stage !== "funded").map((l) => l.id));
+  const subjectLoans = clientLoans.filter((l) => l.stage !== "funded");
+  const subjectLoanIds = new Set(subjectLoans.map((l) => l.id));
   const reoLoanIds = new Set(clientLoans.filter((l) => l.stage === "funded").map((l) => l.id));
   const loanById = Object.fromEntries(clientLoans.map((l) => [l.id, l] as const));
   const visible = docs.filter((d) =>
@@ -288,6 +290,13 @@ function ClientVaultCard({
   );
   const subjectCount = docs.filter((d) => subjectLoanIds.has(d.loan_id)).length;
   const reoCount = docs.filter((d) => reoLoanIds.has(d.loan_id)).length;
+  // Replaces the firm-wide /vault entry for agents — they now upload
+  // experience / supplemental docs from inside the client's vault.
+  // Default-picks the first active loan when there's exactly one
+  // (the common case); otherwise the agent picks from a dropdown.
+  const [uploadLoanId, setUploadLoanId] = useState<string>(
+    subjectLoans[0]?.id ?? "",
+  );
 
   return (
     <Card pad={0}>
@@ -323,6 +332,50 @@ function ClientVaultCard({
           </button>
         </div>
       </div>
+
+      {/* Agent-side upload strip: pick the target deal + drop a file.
+          Replaces the now-hidden /vault entry by letting agents upload
+          experience verification, supplemental docs, etc. directly
+          from inside the client. */}
+      {subjectLoans.length > 0 && (
+        <div style={{
+          padding: "10px 16px",
+          borderBottom: `1px solid ${t.line}`,
+          background: t.surface2,
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
+            Upload to deal
+          </span>
+          {subjectLoans.length > 1 ? (
+            <select
+              value={uploadLoanId || subjectLoans[0].id}
+              onChange={(e) => setUploadLoanId(e.target.value)}
+              style={{
+                padding: "6px 10px", borderRadius: 7,
+                border: `1px solid ${t.line}`, background: t.surface,
+                color: t.ink, fontSize: 12.5, outline: "none",
+              }}
+            >
+              {subjectLoans.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.deal_id} — {l.address}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span style={{ fontSize: 12, color: t.ink2 }}>
+              {subjectLoans[0].deal_id} &middot; {subjectLoans[0].address}
+            </span>
+          )}
+          <div style={{ flex: 1 }} />
+          <DocUploadButton
+            loanId={uploadLoanId || subjectLoans[0].id}
+            label="Upload"
+            compact
+          />
+        </div>
+      )}
 
       {visible.length === 0 ? (
         <div style={{ padding: 24, fontSize: 13, color: t.ink3, textAlign: "center" }}>

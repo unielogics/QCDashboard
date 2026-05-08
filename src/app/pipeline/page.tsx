@@ -179,44 +179,28 @@ export default function PipelinePage() {
           </div>
 
           {canCreate && (
-            mode === "funding" ? (
-              <button
-                onClick={() => setIntakeOpen(true)}
-                style={{
-                  padding: "9px 14px",
-                  borderRadius: 10,
-                  background: t.ink,
-                  color: t.inverse,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 7,
-                  cursor: "pointer",
-                  border: "none",
-                }}
-              >
-                <Icon name="plus" size={14} /> New deal
-              </button>
-            ) : (
-              <Link
-                href="/clients/new"
-                style={{
-                  padding: "9px 14px",
-                  borderRadius: 10,
-                  background: t.ink,
-                  color: t.inverse,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 7,
-                  textDecoration: "none",
-                }}
-              >
-                <Icon name="plus" size={14} /> New lead
-              </Link>
-            )
+            // Single entry point regardless of leads/funding mode.
+            // Opens the SmartIntakeModal which now provisions a User
+            // invite + sets client_experience_mode='guided' on the
+            // backend (alembic 0026 / realtor overhaul).
+            <button
+              onClick={() => setIntakeOpen(true)}
+              style={{
+                padding: "9px 14px",
+                borderRadius: 10,
+                background: t.ink,
+                color: t.inverse,
+                fontSize: 13,
+                fontWeight: 700,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 7,
+                cursor: "pointer",
+                border: "none",
+              }}
+            >
+              <Icon name="plus" size={14} /> New deal
+            </button>
           )}
         </div>
       </div>

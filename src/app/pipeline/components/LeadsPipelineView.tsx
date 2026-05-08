@@ -6,13 +6,12 @@
 // Start Funding action that promotes the client into the Funding view.
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { useClients } from "@/hooks/useApi";
 import { LEAD_STAGES, type Client, type ClientStage } from "@/lib/types";
-import { AddLeadWizard } from "./AddLeadWizard";
 
 const LEAD_STAGE_LABELS: Record<(typeof LEAD_STAGES)[number], string> = {
   lead: "Lead",
@@ -35,7 +34,6 @@ export function LeadsPipelineView({ view, search }: Props) {
   // /clients does the actual gating; we still pass `scope="mine"`
   // so super-admins viewing the leads view see firm-wide instead.
   const { data: clients = [] } = useClients("mine");
-  const [showAddModal, setShowAddModal] = useState(false);
 
   // alembic 0024 backfilled every existing client with a real `stage`
   // value, and new clients default to 'lead' on creation. Use the
@@ -60,23 +58,15 @@ export function LeadsPipelineView({ view, search }: Props) {
     );
   }, [enriched, search]);
 
+  // The lead-creation entry point lives in the parent pipeline page header
+  // ("+ New deal") — single source of truth for deal creation across the
+  // leads + funding views.
   const header = (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
       <div style={{ fontSize: 12, color: t.ink3 }}>
         {visible.length} {visible.length === 1 ? "lead" : "leads"}
         {search ? ` matching "${search}"` : ""}
       </div>
-      <button
-        onClick={() => setShowAddModal(true)}
-        style={{
-          padding: "8px 12px", borderRadius: 9,
-          background: t.brand, color: t.inverse,
-          fontSize: 13, fontWeight: 700, border: "none",
-          display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer",
-        }}
-      >
-        <Icon name="plus" size={13} /> Add Lead
-      </button>
     </div>
   );
 
@@ -143,7 +133,6 @@ export function LeadsPipelineView({ view, search }: Props) {
           </div>
         )}
       </Card>
-      {showAddModal && <AddLeadWizard onClose={() => setShowAddModal(false)} />}
       </>
     );
   }
@@ -226,7 +215,6 @@ export function LeadsPipelineView({ view, search }: Props) {
         );
       })}
     </div>
-    {showAddModal && <AddLeadWizard onClose={() => setShowAddModal(false)} />}
     </>
   );
 }

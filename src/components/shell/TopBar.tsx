@@ -26,6 +26,7 @@ export default function TopBar() {
   const [aiChatOpen, setAiChatOpen] = useState(false);
 
   const isClient = user?.role === Role.CLIENT;
+  const isAgent = user?.role === Role.BROKER;
   const pendingTasks = tasks.filter((task) => task.status === "pending").length;
 
   return (
@@ -119,6 +120,35 @@ export default function TopBar() {
       )}
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+        {/* AI Secretary — agent-only entry point for account-wide
+            questions ("how many leads this week?", "what did Marcus
+            email me?", etc.). Opens the same AIChatPanel as the
+            general chat icon — distinct affordance with the agent's
+            name nearby so it feels like "your assistant". */}
+        {isAgent && (
+          <button
+            onClick={() => setAiChatOpen(true)}
+            aria-label="AI Secretary"
+            title="AI Secretary — ask account-wide questions"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 7,
+              padding: "7px 12px",
+              borderRadius: 9,
+              background: t.brandSoft,
+              border: `1px solid ${t.brand}40`,
+              color: t.brand,
+              fontSize: 12.5,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            <Icon name="spark" size={14} />
+            {user?.name ? `${user.name.split(" ")[0]}'s AI` : "AI Secretary"}
+          </button>
+        )}
+
         {/* Theme toggle — sun/moon per design */}
         <button
           onClick={toggle}

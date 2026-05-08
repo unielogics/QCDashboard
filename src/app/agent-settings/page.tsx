@@ -560,6 +560,9 @@ interface ChecklistsProps {
 function ChecklistsSection({ draft, setDraft, dirty, saving, onSave }: ChecklistsProps) {
   const { t } = useTheme();
   const [activeSide, setActiveSide] = useState<LoanSide>("buyer");
+  // Click-to-expand state. Starter rows use string id "starter:<name>";
+  // extra rows use "extra:<idx>". One row open at a time.
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   const overlay = draft.checklists?.[activeSide] ?? emptyOverlay();
   const starter = activeSide === "buyer" ? STARTER_BUYER_DOCS : STARTER_SELLER_DOCS;
@@ -591,6 +594,8 @@ function ChecklistsSection({ draft, setDraft, dirty, saving, onSave }: Checklist
       side: activeSide,
     };
     setOverlay({ ...overlay, extra_items: [...overlay.extra_items, newItem] });
+    // Auto-expand the new row so the agent immediately edits its details
+    setExpandedKey(`extra:${overlay.extra_items.length}`);
   };
 
   const updateExtra = (idx: number, patch: Partial<DocChecklistItem>) => {
@@ -602,6 +607,14 @@ function ChecklistsSection({ draft, setDraft, dirty, saving, onSave }: Checklist
   const removeExtra = (idx: number) => {
     const next = overlay.extra_items.filter((_, i) => i !== idx);
     setOverlay({ ...overlay, extra_items: next });
+    if (expandedKey === `extra:${idx}`) setExpandedKey(null);
+  };
+
+  // Reset expanded row when switching tab so we don't accidentally
+  // show a row from the other side.
+  const onSideChange = (next: LoanSide) => {
+    setActiveSide(next);
+    setExpandedKey(null);
   };
 
   return (
@@ -612,14 +625,14 @@ function ChecklistsSection({ draft, setDraft, dirty, saving, onSave }: Checklist
       </div>
       <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
         What the AI will collect from your buyer-side and seller-side leads.
-        Disable starter items you don&apos;t want, and add your own. You can
-        further override per-lead when you add a lead.
+        Click any row to see its full detail. Disable starter items you don&apos;t
+        want, and add your own. You can further override per-lead when you add a lead.
       </div>
 
-      <Tabs t={t} value={activeSide} onChange={(v) => setActiveSide(v as LoanSide)}
+      <Tabs t={t} value={activeSide} onChange={(v) => onSideChange(v as LoanSide)}
         options={SIDES.map((s) => ({ id: s.id, label: s.label }))} />
 
-      {/* Starter (firm-default) zone */}
+      {/* Starter (firm-default) zone — read-only details, toggle to disable */}
       <div style={{ marginTop: 16 }}>
         <div style={{
           fontSize: 11, fontWeight: 700, letterSpacing: 1.6,
@@ -630,38 +643,83 @@ function ChecklistsSection({ draft, setDraft, dirty, saving, onSave }: Checklist
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {starter.map((name) => {
             const disabled = overlay.disabled_firm_items.includes(name);
+            const key = `starter:${name}`;
+            const isExpanded = expandedKey === key;
             return (
-              <label key={name} style={{
-                display: "flex", alignItems: "center", gap: 10,
-                padding: "9px 12px", borderRadius: 9, cursor: "pointer",
-                border: `1px solid ${t.line}`,
-                background: disabled ? t.surface2 : "transparent",
-                opacity: disabled ? 0.65 : 1,
-              }}>
-                <input
-                  type="checkbox"
-                  checked={!disabled}
-                  onChange={() => toggleDisable(name)}
-                  style={{ width: 16, height: 16, cursor: "pointer" }}
-                />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{
-                    fontSize: 13, fontWeight: 700, color: t.ink,
-                    textDecoration: disabled ? "line-through" : "none",
-                  }}>
-                    {name}
+              <div
+                key={name}
+                style={{
+                  borderRadius: 9,
+                  border: `1px solid ${isExpanded ? t.brand : t.line}`,
+                  overflow: "hidden",
+                  background: disabled ? t.surface2 : "transparent",
+                  opacity: disabled ? 0.65 : 1,
+                }}
+              >
+                {/* Collapsed row */}
+                <div
+                  onClick={() => setExpandedKey(isExpanded ? null : key)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "9px 12px", cursor: "pointer",
+                    background: isExpanded ? t.brandSoft : "transparent",
+                  }}
+                >
+                  <Icon name={isExpanded ? "chevD" : "chevR"} size={11} />
+                  <input
+                    type="checkbox"
+                    checked={!disabled}
+                    onChange={(e) => { e.stopPropagation(); toggleDisable(name); }}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ width: 16, height: 16, cursor: "pointer" }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 13, fontWeight: 700, color: t.ink,
+                      textDecoration: disabled ? "line-through" : "none",
+                    }}>
+                      {name}
+                    </div>
                   </div>
+                  <Pill bg={t.surface2} color={t.ink3}>
+                    {activeSide}
+                  </Pill>
                 </div>
-                <Pill bg={t.surface2} color={t.ink3}>
-                  {activeSide}
-                </Pill>
-              </label>
+
+                {/* Expanded details (read-only — firm defaults can't be
+                    edited from the agent surface; only disabled). */}
+                {isExpanded && (
+                  <div style={{
+                    padding: 14, borderTop: `1px solid ${t.line}`,
+                    background: t.surface2, fontSize: 12.5, color: t.ink2,
+                    lineHeight: 1.5,
+                  }}>
+                    <div>
+                      <strong style={{ color: t.ink }}>What the AI collects:</strong> {name}
+                    </div>
+                    <div style={{ marginTop: 4 }}>
+                      <strong style={{ color: t.ink }}>Side:</strong> {activeSide}
+                    </div>
+                    <div style={{ marginTop: 4 }}>
+                      <strong style={{ color: t.ink }}>Status:</strong>{" "}
+                      {disabled
+                        ? "Disabled on your leads — the AI won't request this."
+                        : "Active — the AI will request this from each new lead."}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 11.5, color: t.ink3, fontStyle: "italic" }}>
+                      Starter docs are firm-managed. To edit due dates or wording,
+                      add your own version under &quot;Your additions&quot; below and
+                      disable this one.
+                    </div>
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
       </div>
 
-      {/* Your additions */}
+      {/* Your additions — fully editable */}
       <div style={{ marginTop: 22 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
           <div style={{
@@ -688,41 +746,111 @@ function ChecklistsSection({ draft, setDraft, dirty, saving, onSave }: Checklist
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {overlay.extra_items.map((it, idx) => (
-              <div key={idx} style={{
-                padding: 12, borderRadius: 9, border: `1px solid ${t.line}`,
-                display: "grid", gridTemplateColumns: "1fr 1fr 90px 36px", gap: 10, alignItems: "center",
-              }}>
-                <input
-                  value={it.name}
-                  onChange={(e) => updateExtra(idx, { name: e.target.value })}
-                  placeholder="Internal key (e.g. closing_disclosure)"
-                  style={inputStyle(t)}
-                />
-                <input
-                  value={it.display_name ?? ""}
-                  onChange={(e) => updateExtra(idx, { display_name: e.target.value || null })}
-                  placeholder="What the borrower sees"
-                  style={inputStyle(t)}
-                />
-                <NumInput
-                  value={it.due_offset_days ?? 7}
-                  onChange={(n) => updateExtra(idx, { due_offset_days: n })}
-                />
-                <button
-                  onClick={() => removeExtra(idx)}
-                  aria-label="Remove row"
+            {overlay.extra_items.map((it, idx) => {
+              const key = `extra:${idx}`;
+              const isExpanded = expandedKey === key;
+              const offset = it.due_offset_days ?? 7;
+              return (
+                <div
+                  key={idx}
                   style={{
-                    width: 36, height: 36, borderRadius: 7,
-                    border: `1px solid ${t.line}`, background: t.surface2,
-                    color: t.danger, cursor: "pointer",
-                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    borderRadius: 9,
+                    border: `1px solid ${isExpanded ? t.brand : t.line}`,
+                    overflow: "hidden",
                   }}
                 >
-                  <Icon name="x" size={12} />
-                </button>
-              </div>
-            ))}
+                  {/* Collapsed row */}
+                  <div
+                    onClick={() => setExpandedKey(isExpanded ? null : key)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      padding: "9px 12px", cursor: "pointer",
+                      background: isExpanded ? t.brandSoft : "transparent",
+                    }}
+                  >
+                    <Icon name={isExpanded ? "chevD" : "chevR"} size={11} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {it.display_name || it.name}
+                      </div>
+                    </div>
+                    {it.required ? <Pill>Required</Pill> : null}
+                    <span style={{ fontSize: 11, color: t.ink3, whiteSpace: "nowrap" }}>
+                      due +{offset}d
+                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); removeExtra(idx); }}
+                      aria-label="Remove row"
+                      style={{
+                        width: 28, height: 28, borderRadius: 6,
+                        border: `1px solid ${t.line}`, background: "transparent",
+                        color: t.ink3, cursor: "pointer",
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      }}
+                    >
+                      <Icon name="x" size={11} />
+                    </button>
+                  </div>
+
+                  {/* Expanded editor — agent-relevant fields only.
+                      Drops type/anchor/per_unit/internal_action since
+                      those are funding-stage internal concerns. */}
+                  {isExpanded && (
+                    <div
+                      style={{
+                        display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
+                        padding: 14, borderTop: `1px solid ${t.line}`,
+                        background: t.surface2,
+                      }}
+                    >
+                      <Field label="Internal key">
+                        <input
+                          value={it.name}
+                          onChange={(e) => updateExtra(idx, { name: e.target.value })}
+                          placeholder="e.g. closing_disclosure"
+                          style={inputStyle(t)}
+                        />
+                      </Field>
+                      <Field label="What the borrower sees">
+                        <input
+                          value={it.display_name ?? ""}
+                          onChange={(e) => updateExtra(idx, { display_name: e.target.value || null })}
+                          placeholder={it.name}
+                          style={inputStyle(t)}
+                        />
+                      </Field>
+                      <Field label="Due offset (days)">
+                        <NumInput
+                          value={it.due_offset_days ?? 7}
+                          onChange={(n) => updateExtra(idx, { due_offset_days: n })}
+                        />
+                      </Field>
+                      <Field label="Side">
+                        <select
+                          value={it.side ?? activeSide}
+                          onChange={(e) => updateExtra(idx, { side: e.target.value as DocChecklistItem["side"] })}
+                          style={inputStyle(t)}
+                        >
+                          <option value="buyer">Buyer</option>
+                          <option value="seller">Seller</option>
+                          <option value="both">Both</option>
+                        </select>
+                      </Field>
+                      <Toggle
+                        label="Required"
+                        value={!!it.required}
+                        onChange={(v) => updateExtra(idx, { required: v })}
+                      />
+                      <Toggle
+                        label="Auto-request from borrower"
+                        value={it.auto_request !== false}
+                        onChange={(v) => updateExtra(idx, { auto_request: v })}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -813,6 +941,25 @@ function TextInput({ value, onChange, placeholder }: { value: string; onChange: 
       placeholder={placeholder}
       style={inputStyle(t)}
     />
+  );
+}
+
+function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  const { t } = useTheme();
+  return (
+    <label style={{
+      display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
+      padding: "8px 10px", borderRadius: 7,
+      border: `1px solid ${t.line}`,
+    }}>
+      <input
+        type="checkbox"
+        checked={value}
+        onChange={(e) => onChange(e.target.checked)}
+        style={{ width: 16, height: 16, cursor: "pointer" }}
+      />
+      <span style={{ fontSize: 12.5, color: t.ink2, fontWeight: 600 }}>{label}</span>
+    </label>
   );
 }
 
