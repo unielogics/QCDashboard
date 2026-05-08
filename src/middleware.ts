@@ -35,8 +35,17 @@ const isSuperAdminOnlyPage = createRouteMatcher([
 // "let through" — page-level guards (Sidebar nav + per-page role checks) keep
 // the UI hidden in the meantime.
 //
-// TODO(P0A backend): mirror User.role → Clerk publicMetadata.role on every
-// role change so the JWT carries it. Once that lands this becomes a hard gate.
+// 🚧 PRODUCTION BLOCKER 🚧
+// This soft-degrade behavior is acceptable ONLY for P0A demo. Before any
+// production cutover, ONE of the following MUST be true:
+//   (a) qcbackend mirrors User.role → Clerk publicMetadata.role on every
+//       role change so the JWT carries it (preferred), OR
+//   (b) the `if (!role)` branch below is changed to deny missing-role access
+//       outright (return redirect/403) instead of falling through.
+// Either way, a non-super-admin who guesses /admin/lenders or /settings must
+// be bounced at the edge, not relying on UI-only hiding.
+//
+// TODO(production blocker): pick (a) or (b) and remove this caveat block.
 function getRoleFromClaims(
   sessionClaims: Record<string, unknown> | null | undefined,
 ): string | null {

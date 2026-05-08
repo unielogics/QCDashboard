@@ -14,7 +14,6 @@
 // labelled "—" so they don't read as real numbers in screenshots.
 
 import Link from "next/link";
-import { useMemo } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -28,17 +27,16 @@ const PLACEHOLDER = "—";
 export function AgentHomeView() {
   const { t } = useTheme();
   const { data: user } = useCurrentUser();
-  const { data: loans = [] } = useLoans();
-
-  // TODO(P0A backend): replace client-side loan filtering with server-side
-  // useLoans({ scope: "mine" }). This is demo-only. Do not ship to production
-  // with firm-wide loans pulled into Agent browsers — both a privacy issue
-  // (Agents see other Agents' books in DevTools) and a scale issue (the whole
-  // firm's pipeline gets serialized to every Agent on every dashboard load).
-  const myLoans: Loan[] = useMemo(() => {
-    if (!user) return [];
-    return loans.filter((l) => l.broker_id === user.id);
-  }, [loans, user]);
+  // Scope assertion is now hook-driven — `useLoans("mine")` adds `?scope=mine`
+  // to the request so the backend filters to this Agent's book before sending.
+  // The earlier client-side `broker_id === user.id` filter was demo-only and
+  // is intentionally NOT used here: it leaked firm-wide pipeline through
+  // DevTools and didn't scale.
+  //
+  // TODO(production blocker): backend must enforce `?scope=mine` server-side
+  // — today the Loans endpoint may still return firm-wide rows even with the
+  // query param set. Verify in qcbackend before this view is allowed in prod.
+  const { data: myLoans = [] } = useLoans("mine") as { data: Loan[] | undefined };
 
   const firstName = (() => {
     if (!user) return null;
