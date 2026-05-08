@@ -7,13 +7,15 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel, VerifiedBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useClient, useCreditSummary, useCurrentCredit, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
+import { useClient, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { CreditReportDetail } from "@/components/CreditReportDetail";
 import { useActiveProfile } from "@/store/role";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { parseIntStrict } from "@/lib/formCoerce";
-import type { Client, ClientStage, Document, Loan } from "@/lib/types";
+import { deriveExperienceMode } from "@/lib/experienceMode";
+import { canEditExperienceMode } from "@/lib/experienceModePermissions";
+import type { Client, ClientExperienceMode, ClientExperienceModeLockedBy, ClientExperienceModeReason, ClientStage, Document, Loan } from "@/lib/types";
 
 export default function ClientDetailPage() {
   const { t } = useTheme();
@@ -101,6 +103,8 @@ export default function ClientDetailPage() {
       </Card>
 
       <ClientStageCard t={t} client={client} canEdit={canEdit} clientLoans={clientLoans} />
+
+      <ExperienceModeCard t={t} client={client} />
 
       {editing && canEdit && (
         <Card pad={20}>
@@ -630,6 +634,160 @@ function ClientStageCard({
         you can always add transaction-side docs (purchase agreement, inspection,
         etc.) to keep the file moving.
       </div>
+    </Card>
+  );
+}
+
+const MODE_LABEL: Record<"guided" | "self_directed", string> = {
+  guided: "Guided",
+  self_directed: "Self-Directed",
+};
+
+const LOCKED_BY_LABEL: Record<ClientExperienceModeLockedBy, string> = {
+  system: "system default",
+  agent: "Agent",
+  funding_team: "Funding Team",
+  super_admin: "Super Admin",
+};
+
+const REASON_LABEL: Record<ClientExperienceModeReason, string> = {
+  agent_referred: "Agent-referred",
+  self_signup: "Self sign-up",
+  funding_team_required: "Funding Team required",
+  underwriting_conditions: "Underwriting conditions",
+  user_preference: "Manual selection",
+  super_admin_override: "Super Admin override",
+};
+
+function ExperienceModeCard({ t, client }: { t: ReturnType<typeof useTheme>["t"]; client: Client }) {
+  const { data: user } = useCurrentUser();
+  const updateClient = useUpdateClient();
+  const [error, setError] = useState<string | null>(null);
+
+  const effective = deriveExperienceMode(client);
+  const isExplicit = client.client_experience_mode === "guided" || client.client_experience_mode === "self_directed";
+  const lockedBy = client.client_experience_mode_locked_by ?? null;
+  const reason = client.client_experience_mode_reason ?? null;
+  const { canEdit, canOverrideLock } = canEditExperienceMode(user, client);
+  const busy = updateClient.isPending;
+
+  const reasonForChange = (target: "guided" | "self_directed"): ClientExperienceModeReason => {
+    if (user?.role === "super_admin") return "super_admin_override";
+    if (user?.role === "loan_exec" && target === "guided") return "funding_team_required";
+    return "user_preference";
+  };
+
+  const setMode = async (target: "guided" | "self_directed") => {
+    if (target === effective && isExplicit) return;
+    setError(null);
+    try {
+      await updateClient.mutateAsync({
+        clientId: client.id,
+        client_experience_mode: target,
+        client_experience_mode_reason: reasonForChange(target),
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update experience mode");
+    }
+  };
+
+  const setLock = async (next: ClientExperienceModeLockedBy | null) => {
+    setError(null);
+    try {
+      await updateClient.mutateAsync({
+        clientId: client.id,
+        client_experience_mode_locked_by: next,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update lock");
+    }
+  };
+
+  const lockTarget: ClientExperienceModeLockedBy | null =
+    user?.role === "loan_exec" ? "funding_team" : user?.role === "super_admin" ? "super_admin" : null;
+
+  return (
+    <Card pad={18}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
+            Mobile experience mode
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+            <span
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "5px 12px", borderRadius: 999,
+                background: effective === "guided" ? t.brandSoft : t.petrolSoft,
+                color: effective === "guided" ? t.brand : t.petrol,
+                fontSize: 13, fontWeight: 700,
+              }}
+            >
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: effective === "guided" ? t.brand : t.petrol }} />
+              {MODE_LABEL[effective]}
+            </span>
+            {!isExplicit && (
+              <span style={{ fontSize: 11, color: t.ink3 }}>
+                (default — derived from {client.broker_id ? "Agent referral" : "self sign-up"})
+              </span>
+            )}
+          </div>
+          {(reason || lockedBy) && (
+            <div style={{ fontSize: 11, color: t.ink3, marginTop: 6 }}>
+              {reason ? REASON_LABEL[reason] : ""}
+              {reason && lockedBy ? " · " : ""}
+              {lockedBy ? `Locked by ${LOCKED_BY_LABEL[lockedBy]}` : ""}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ display: "inline-flex", border: `1px solid ${t.line}`, borderRadius: 9, overflow: "hidden" }}>
+            {(["guided", "self_directed"] as const).map((m) => {
+              const active = effective === m;
+              return (
+                <button
+                  key={m}
+                  onClick={() => setMode(m)}
+                  disabled={!canEdit || busy}
+                  title={!canEdit ? "You cannot change this client's experience mode." : undefined}
+                  style={{
+                    padding: "8px 14px",
+                    background: active ? t.brand : t.surface2,
+                    color: active ? "#fff" : t.ink,
+                    border: "none",
+                    fontSize: 12, fontWeight: 700,
+                    cursor: !canEdit || busy ? "not-allowed" : "pointer",
+                    opacity: !canEdit ? 0.55 : 1,
+                  }}
+                >
+                  {MODE_LABEL[m]}
+                </button>
+              );
+            })}
+          </div>
+
+          {canOverrideLock && lockTarget && (
+            lockedBy === lockTarget || lockedBy === "super_admin" ? (
+              <button
+                onClick={() => setLock(null)}
+                disabled={busy || (lockedBy === "super_admin" && user?.role !== "super_admin")}
+                style={qcBtn(t)}
+              >
+                Unlock
+              </button>
+            ) : (
+              <button onClick={() => setLock(lockTarget)} disabled={busy} style={qcBtn(t)}>
+                Lock to {LOCKED_BY_LABEL[lockTarget]}
+              </button>
+            )
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ marginTop: 10, fontSize: 12, color: t.danger, fontWeight: 700 }}>{error}</div>
+      )}
     </Card>
   );
 }
