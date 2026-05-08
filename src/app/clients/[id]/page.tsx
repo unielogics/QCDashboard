@@ -477,8 +477,8 @@ function Input({ t, value, onChange, placeholder }: { t: ReturnType<typeof useTh
 // ────────────────────────────────────────────────────────────────────────────
 const STAGE_LABEL: Record<ClientStage, string> = {
   lead: "Lead",
-  contacted: "Contacted",
-  verified: "Verified",
+  contacted: "Nurturing",
+  verified: "Ready",
   ready_for_lending: "Ready for Lending",
   processing: "Processing",
   funded: "Funded",

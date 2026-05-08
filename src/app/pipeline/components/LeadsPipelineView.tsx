@@ -14,8 +14,8 @@ import { LEAD_STAGES, type Client, type ClientStage } from "@/lib/types";
 
 const LEAD_STAGE_LABELS: Record<(typeof LEAD_STAGES)[number], string> = {
   lead: "Lead",
-  contacted: "Contacted",
-  verified: "Verified",
+  contacted: "Nurturing",
+  verified: "Ready",
 };
 
 // Best-effort stage inference for legacy rows that pre-date the `stage`

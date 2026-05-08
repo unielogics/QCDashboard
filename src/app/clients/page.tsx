@@ -16,8 +16,8 @@ type StageFilter = "all" | ClientStage;
 const STAGE_CHIPS: { value: StageFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "lead", label: "Leads" },
-  { value: "contacted", label: "Contacted" },
-  { value: "verified", label: "Verified" },
+  { value: "contacted", label: "Nurturing" },
+  { value: "verified", label: "Ready" },
   { value: "ready_for_lending", label: "Ready for Lending" },
   { value: "processing", label: "Processing" },
   { value: "funded", label: "Funded" },
@@ -26,8 +26,8 @@ const STAGE_CHIPS: { value: StageFilter; label: string }[] = [
 
 const STAGE_LABEL: Record<ClientStage, string> = {
   lead: "Lead",
-  contacted: "Contacted",
-  verified: "Verified",
+  contacted: "Nurturing",
+  verified: "Ready",
   ready_for_lending: "Ready",
   processing: "Processing",
   funded: "Funded",

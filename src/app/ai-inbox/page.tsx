@@ -405,9 +405,7 @@ function Detail({ task }: { task: AITask }) {
             }}
           />
         ) : (
-          <div style={{ background: t.surface2, borderRadius: 10, padding: 14, fontSize: 13, color: t.ink2, whiteSpace: "pre-wrap", fontFamily: "ui-monospace, SF Mono, monospace" }}>
-            {task.draft_payload ? JSON.stringify(task.draft_payload, null, 2) : `(No drafted payload yet for action "${task.action}")`}
-          </div>
+          <DraftedArtifactView payload={task.draft_payload} action={task.action} t={t} />
         )}
         {editError && <div style={{ marginTop: 8, color: t.danger, fontSize: 12, fontWeight: 700 }}>{editError}</div>}
 
@@ -494,6 +492,214 @@ function Detail({ task }: { task: AITask }) {
           <Icon name="check" size={14} /> {decision.isPending ? "Working…" : "Approve & Run"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// DraftedArtifactView — humanized renderer for task.draft_payload.
+//
+// The earlier implementation dumped JSON.stringify(payload) into the right
+// pane, which is correct data but unreadable for a non-engineer. This
+// component renders the common payload shapes (scheduled_followup,
+// email_draft, message_draft, doc_request, etc.) as a friendly preview:
+// title up top, supporting fields as labeled rows / pills, dates formatted,
+// internal IDs hidden. Unrecognized fields collapse into a "raw payload"
+// disclosure for debugging.
+// ────────────────────────────────────────────────────────────────────────────
+
+const HIDDEN_KEYS = new Set([
+  "loan_id",
+  "deal_id",
+  "client_id",
+  "borrower_id",
+  "relative_days",
+]);
+
+function isEmptyValue(v: unknown): boolean {
+  return v === null || v === undefined || (typeof v === "string" && v.trim() === "");
+}
+
+function formatDate(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return null;
+  // Friendly local format: "Thu, May 8 · 10:00 AM"
+  return d.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function humanLabel(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function DraftedArtifactView({
+  payload,
+  action,
+  t,
+}: {
+  payload: Record<string, unknown> | null;
+  action: string;
+  t: ReturnType<typeof useTheme>["t"];
+}) {
+  if (!payload) {
+    return (
+      <div style={{ background: t.surface2, borderRadius: 10, padding: 14, fontSize: 13, color: t.ink3 }}>
+        No drafted content yet for action <code style={{ background: t.chip, padding: "1px 5px", borderRadius: 4 }}>{action}</code>.
+      </div>
+    );
+  }
+
+  // Known fields, rendered prominently
+  const title = (payload.title as string | undefined) ?? (payload.subject as string | undefined);
+  const body = (payload.body as string | undefined) ?? (payload.message as string | undefined) ?? (payload.summary as string | undefined);
+  const dueAt = formatDate(payload.due_at) ?? formatDate(payload.starts_at) ?? formatDate(payload.scheduled_at);
+  const kind = payload.kind as string | undefined;
+  const owner = payload.owner as string | undefined;
+  const priority = payload.priority as string | undefined;
+  const channel = payload.channel as string | undefined;
+  const to = payload.to as string | undefined;
+  const cta = payload.cta as string | undefined;
+
+  // Anything we didn't pluck explicitly that isn't an internal id, isn't
+  // empty, and isn't already shown in the dedicated rows above.
+  const consumed = new Set([
+    "title", "subject",
+    "body", "message", "summary",
+    "due_at", "starts_at", "scheduled_at",
+    "kind", "owner", "priority", "channel", "to", "cta",
+  ]);
+  const extras = Object.entries(payload).filter(
+    ([k, v]) => !consumed.has(k) && !HIDDEN_KEYS.has(k) && !isEmptyValue(v),
+  );
+
+  return (
+    <div
+      style={{
+        background: t.surface2,
+        border: `1px solid ${t.line}`,
+        borderRadius: 12,
+        padding: 16,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      {title && (
+        <div style={{ fontSize: 14, fontWeight: 700, color: t.ink, lineHeight: 1.45 }}>
+          {title}
+        </div>
+      )}
+
+      {(kind || owner || priority || channel) && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {kind && <Pill>{humanLabel(kind)}</Pill>}
+          {owner && (
+            <Pill bg={t.petrolSoft} color={t.petrol}>
+              <Icon name="user" size={9} stroke={2.4} /> {humanLabel(owner)}
+            </Pill>
+          )}
+          {priority && (
+            <Pill
+              bg={priority === "high" ? t.dangerBg : priority === "medium" ? t.warnBg : t.chip}
+              color={priority === "high" ? t.danger : priority === "medium" ? t.warn : t.ink2}
+            >
+              {humanLabel(priority)} priority
+            </Pill>
+          )}
+          {channel && <Pill bg={t.brandSoft} color={t.brand}>via {channel}</Pill>}
+        </div>
+      )}
+
+      {to && (
+        <div style={{ fontSize: 12.5, color: t.ink2 }}>
+          <span style={{ color: t.ink3, fontWeight: 700, marginRight: 6 }}>TO:</span>
+          {to}
+        </div>
+      )}
+
+      {body && (
+        <div
+          style={{
+            fontSize: 13,
+            color: t.ink2,
+            whiteSpace: "pre-wrap",
+            lineHeight: 1.55,
+            padding: "10px 12px",
+            background: t.surface,
+            border: `1px solid ${t.line}`,
+            borderRadius: 9,
+          }}
+        >
+          {body}
+        </div>
+      )}
+
+      {dueAt && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: t.ink2 }}>
+          <Icon name="cal" size={13} style={{ color: t.ink3 }} />
+          <span style={{ color: t.ink3, fontWeight: 700 }}>Due:</span>
+          {dueAt}
+        </div>
+      )}
+
+      {cta && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: t.ink2 }}>
+          <Icon name="arrowR" size={13} style={{ color: t.ink3 }} />
+          <span style={{ color: t.ink3, fontWeight: 700 }}>Action:</span>
+          {cta}
+        </div>
+      )}
+
+      {extras.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {extras.map(([k, v]) => (
+            <div key={k} style={{ fontSize: 12, color: t.ink3 }}>
+              <span style={{ fontWeight: 700, marginRight: 6 }}>{humanLabel(k)}:</span>
+              <span style={{ color: t.ink2 }}>{String(v)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <details style={{ marginTop: 4 }}>
+        <summary
+          style={{
+            cursor: "pointer",
+            fontSize: 11,
+            color: t.ink3,
+            fontWeight: 700,
+            letterSpacing: 0.4,
+            textTransform: "uppercase",
+            userSelect: "none",
+          }}
+        >
+          View raw payload
+        </summary>
+        <pre
+          style={{
+            marginTop: 8,
+            background: t.surface,
+            border: `1px solid ${t.line}`,
+            borderRadius: 8,
+            padding: 10,
+            fontSize: 11,
+            color: t.ink3,
+            fontFamily: "ui-monospace, SF Mono, monospace",
+            overflowX: "auto",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {JSON.stringify(payload, null, 2)}
+        </pre>
+      </details>
     </div>
   );
 }
