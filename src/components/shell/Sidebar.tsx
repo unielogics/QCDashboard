@@ -37,7 +37,7 @@ interface NavItem {
 const AGENT_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: "home" },
   { href: "/pipeline", label: "My Pipeline", icon: "layers" },
-  { href: "/ai-inbox", label: "Next Best Actions", icon: "bolt" },
+  { href: "/ai-inbox", label: "AI Inbox", icon: "bolt" },
   { href: "/clients", label: "Clients", icon: "clients" },
   { href: "/vault", label: "Documents", icon: "vault" },
   { href: "/ai-tasks", label: "AI Follow-Up", icon: "spark" },
