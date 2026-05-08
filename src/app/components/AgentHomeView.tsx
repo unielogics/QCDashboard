@@ -20,7 +20,6 @@ import { Icon } from "@/components/design-system/Icon";
 import { qcBtnPrimary } from "@/components/design-system/buttons";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { useCurrentUser, useLoans } from "@/hooks/useApi";
-import type { Loan } from "@/lib/types";
 
 const PLACEHOLDER = "—";
 
@@ -36,7 +35,7 @@ export function AgentHomeView() {
   // TODO(production blocker): backend must enforce `?scope=mine` server-side
   // — today the Loans endpoint may still return firm-wide rows even with the
   // query param set. Verify in qcbackend before this view is allowed in prod.
-  const { data: myLoans = [] } = useLoans("mine") as { data: Loan[] | undefined };
+  const { data: myLoans = [] } = useLoans("mine");
 
   const firstName = (() => {
     if (!user) return null;
