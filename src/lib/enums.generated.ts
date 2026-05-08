@@ -160,6 +160,26 @@ export const LoanSideOptions = [
   { value: "seller", label: "Seller" }
 ] as const;
 
+export const ClientStage = {
+  LEAD: "lead",
+  CONTACTED: "contacted",
+  VERIFIED: "verified",
+  READY_FOR_LENDING: "ready_for_lending",
+  PROCESSING: "processing",
+  FUNDED: "funded",
+  LOST: "lost"
+} as const;
+export type ClientStage = (typeof ClientStage)[keyof typeof ClientStage];
+export const ClientStageOptions = [
+  { value: "lead", label: "Lead" },
+  { value: "contacted", label: "Contacted" },
+  { value: "verified", label: "Verified" },
+  { value: "ready_for_lending", label: "Ready for lending" },
+  { value: "processing", label: "Processing" },
+  { value: "funded", label: "Funded" },
+  { value: "lost", label: "Lost" }
+] as const;
+
 export const EntityType = {
   INDIVIDUAL: "individual",
   LLC: "llc",

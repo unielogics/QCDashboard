@@ -506,6 +506,64 @@ export function useDashboardReport() {
   });
 }
 
+// ── Agent dashboard metrics — funnel + Next Best Actions ──────────
+//
+// Backed by /agents/me/funnel and /agents/me/next-actions (alembic
+// 0024). Both endpoints scope by role: BROKER → their book,
+// SUPER_ADMIN/LOAN_EXEC → firm-wide, CLIENT → 403.
+
+export interface FunnelStat {
+  value: number | null;
+  sample_size: number;
+}
+
+export interface FunnelMetrics {
+  leads_this_week: number;
+  contacted: number;
+  stale_lead_count: number;
+  intake_completion: FunnelStat;
+  prequal_conversion: FunnelStat;
+  lead_to_prequal: FunnelStat;
+  prequal_to_funded: FunnelStat;
+  clients_by_stage: Record<string, number>;
+}
+
+export interface NextAction {
+  id: string;
+  kind: "call_lead" | "chase_doc" | "closing_prep" | "pending_task";
+  priority: "high" | "medium" | "low";
+  title: string;
+  subtitle: string;
+  target_type: "client" | "loan" | "document" | "ai_task";
+  target_id: string;
+  deeplink: string;
+  created_at: string;
+  client_id: string | null;
+  loan_id: string | null;
+}
+
+export function useLeadFunnel() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["leadFunnel", devUser],
+    queryFn: () => apiCall<FunnelMetrics>("/agents/me/funnel"),
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+}
+
+export function useNextActions() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["nextActions", devUser],
+    queryFn: () => apiCall<NextAction[]>("/agents/me/next-actions"),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+}
+
 export function useSettings() {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
@@ -1303,7 +1361,22 @@ export function useCreateClient() {
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["clients"]
-    mutationFn: (payload: { name: string; email?: string; phone?: string; city?: string; referral_source?: string; broker_id?: string }) =>
+    // Note: brokers do NOT send broker_id — backend hard-stamps it
+    // from the session for Role.BROKER (see app/routers/clients.py).
+    // Sending it would be ignored anyway; we keep the field for
+    // super-admin / loan_exec who can assign explicitly.
+    mutationFn: (payload: {
+      name: string;
+      email?: string;
+      phone?: string;
+      city?: string;
+      referral_source?: string;
+      broker_id?: string;
+      // Lead-funnel fields (alembic 0024). Default 'lead' is fine
+      // for the broker's "+ Add Lead" path.
+      stage?: "lead" | "contacted" | "verified" | "ready_for_lending" | "processing" | "funded" | "lost";
+      client_type?: "buyer" | "seller";
+    }) =>
       apiCall<Client>("/clients", {
         method: "POST",
         body: JSON.stringify(payload),
