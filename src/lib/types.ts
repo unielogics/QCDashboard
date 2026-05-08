@@ -38,6 +38,12 @@ export interface Loan {
   dscr: number | null;
   risk_score: number | null;
   close_date: string | null;
+  // Property details (writable via PropertyTab + AI intake tool)
+  sqft?: number | null;
+  beds?: number | null;
+  baths?: number | null;
+  year_built?: number | null;
+  unit_count?: number | null;
   // Living Loan File
   status_summary?: string | null;
   deal_health?: "on_track" | "at_risk" | "stuck";
@@ -422,8 +428,20 @@ export interface DashboardReport {
 // ── App settings ───────────────────────────────────────────────────────────
 export interface DocChecklistItem {
   name: string;
+  // Pretty label shown in UI; falls back to `name` when null.
+  display_name?: string | null;
+  // 'internal' = operator-ordered (Appraisal, Title, Insurance, PFS).
+  // 'external' = borrower upload.
+  type?: "internal" | "external";
   required: boolean;
   auto_request: boolean;
+  due_offset_days?: number;
+  // 'loan_created' or 'doc_received:<name>'.
+  anchor?: string;
+  // Fan out to N copies (one per Loan.unit_count).
+  per_unit?: boolean;
+  // Operator UI hint for internal items.
+  internal_action?: string | null;
 }
 export interface LoanTypeChecklist {
   docs: DocChecklistItem[];

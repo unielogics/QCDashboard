@@ -19,17 +19,32 @@ export function PropertyTab({ loan, canEdit }: { loan: Loan; canEdit: boolean })
     address: loan.address,
     city: loan.city ?? "",
     property_type: loan.property_type,
+    beds: loan.beds == null ? "" : String(loan.beds),
+    baths: loan.baths == null ? "" : String(loan.baths),
+    sqft: loan.sqft == null ? "" : String(loan.sqft),
+    year_built: loan.year_built == null ? "" : String(loan.year_built),
+    unit_count: loan.unit_count == null ? "" : String(loan.unit_count),
     annual_taxes: String(loan.annual_taxes ?? ""),
     annual_insurance: String(loan.annual_insurance ?? ""),
     monthly_hoa: String(loan.monthly_hoa ?? ""),
   });
 
   const save = async () => {
+    const beds = parseIntStrict(draft.beds);
+    const baths = draft.baths.trim() === "" ? null : Number(draft.baths);
+    const sqft = parseIntStrict(draft.sqft);
+    const yearBuilt = parseIntStrict(draft.year_built);
+    const unitCount = parseIntStrict(draft.unit_count);
     await update.mutateAsync({
       loanId: loan.id,
       address: draft.address,
       city: draft.city || null,
       property_type: draft.property_type as Loan["property_type"],
+      beds,
+      baths: baths != null && Number.isFinite(baths) ? baths : null,
+      sqft,
+      year_built: yearBuilt,
+      unit_count: unitCount,
       annual_taxes: parseUSD(draft.annual_taxes),
       annual_insurance: parseUSD(draft.annual_insurance),
       monthly_hoa: parseUSD(draft.monthly_hoa),
@@ -81,6 +96,21 @@ export function PropertyTab({ loan, canEdit }: { loan: Loan; canEdit: boolean })
                   {PropertyTypeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </Field>
+              <Field t={t} label="Units (1 = SFR, 2-4 = small multi…)">
+                <Input t={t} value={draft.unit_count} onChange={(v) => setDraft((d) => ({ ...d, unit_count: v }))} placeholder="1" />
+              </Field>
+              <Field t={t} label="Beds">
+                <Input t={t} value={draft.beds} onChange={(v) => setDraft((d) => ({ ...d, beds: v }))} />
+              </Field>
+              <Field t={t} label="Baths">
+                <Input t={t} value={draft.baths} onChange={(v) => setDraft((d) => ({ ...d, baths: v }))} />
+              </Field>
+              <Field t={t} label="Square feet">
+                <Input t={t} value={draft.sqft} onChange={(v) => setDraft((d) => ({ ...d, sqft: v }))} />
+              </Field>
+              <Field t={t} label="Year built">
+                <Input t={t} value={draft.year_built} onChange={(v) => setDraft((d) => ({ ...d, year_built: v }))} />
+              </Field>
               <Field t={t} label="Annual taxes">
                 <Input t={t} value={draft.annual_taxes} onChange={(v) => setDraft((d) => ({ ...d, annual_taxes: v }))} prefix="$" />
               </Field>
@@ -104,8 +134,13 @@ export function PropertyTab({ loan, canEdit }: { loan: Loan; canEdit: boolean })
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginTop: 14 }}>
               <KPI label="Type" value={prettyPropertyType(loan.property_type)} />
+              <KPI label="Units" value={loan.unit_count != null ? String(loan.unit_count) : "—"} />
+              <KPI label="Beds / Baths" value={`${loan.beds ?? "—"} / ${loan.baths ?? "—"}`} />
+              <KPI label="Square feet" value={loan.sqft ? loan.sqft.toLocaleString() : "—"} />
+              <KPI label="Year built" value={loan.year_built ? String(loan.year_built) : "—"} />
               <KPI label="Annual taxes" value={QC_FMT.usd(Number(loan.annual_taxes))} />
               <KPI label="Annual insurance" value={QC_FMT.usd(Number(loan.annual_insurance))} />
+              <KPI label="Monthly HOA" value={QC_FMT.usd(Number(loan.monthly_hoa))} />
             </div>
           )}
         </div>
@@ -144,11 +179,28 @@ function Field({ t, label, children }: { t: ReturnType<typeof useTheme>["t"]; la
   );
 }
 
-function Input({ t, value, onChange, prefix }: { t: ReturnType<typeof useTheme>["t"]; value: string; onChange: (v: string) => void; prefix?: string }) {
+function Input({
+  t,
+  value,
+  onChange,
+  prefix,
+  placeholder,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  value: string;
+  onChange: (v: string) => void;
+  prefix?: string;
+  placeholder?: string;
+}) {
   return (
     <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
       {prefix && <span style={{ position: "absolute", left: 10, fontSize: 12.5, color: t.ink3, fontWeight: 600 }}>{prefix}</span>}
-      <input value={value} onChange={(e) => onChange(e.target.value)} style={{ ...inputStyle(t), paddingLeft: prefix ? 22 : 12 }} />
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ ...inputStyle(t), paddingLeft: prefix ? 22 : 12 }}
+      />
     </div>
   );
 }

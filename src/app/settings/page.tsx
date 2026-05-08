@@ -307,11 +307,21 @@ interface SectionProps {
   saving: boolean;
 }
 
+const INTERNAL_ACTION_OPTIONS = [
+  { value: "", label: "(none)" },
+  { value: "order_appraisal", label: "Order appraisal" },
+  { value: "order_title", label: "Order title commitment" },
+  { value: "shop_insurance", label: "Shop insurance" },
+  { value: "request_pfs", label: "Request PFS" },
+  { value: "other", label: "Other" },
+];
+
 function ChecklistsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: SectionProps) {
   const { t } = useTheme();
   const [loanType, setLoanType] = useState<string>(LOAN_TYPES[0].v);
   const checklist: LoanTypeChecklist = draft.checklists[loanType] ?? defaultChecklist(loanType);
   const [newDoc, setNewDoc] = useState("");
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
   const updateChecklist = (patch: Partial<LoanTypeChecklist>) => {
     setDraft((d) => d && ({
@@ -324,11 +334,37 @@ function ChecklistsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
     const nextDocs = checklist.docs.map((doc, i) => (i === idx ? { ...doc, ...patch } : doc));
     updateChecklist({ docs: nextDocs });
   };
-  const removeDoc = (idx: number) => updateChecklist({ docs: checklist.docs.filter((_, i) => i !== idx) });
+  const removeDoc = (idx: number) => {
+    updateChecklist({ docs: checklist.docs.filter((_, i) => i !== idx) });
+    if (expandedIdx === idx) setExpandedIdx(null);
+  };
   const addDoc = () => {
     if (!newDoc.trim()) return;
-    updateChecklist({ docs: [...checklist.docs, { name: newDoc.trim(), required: true, auto_request: true }] });
+    updateChecklist({
+      docs: [
+        ...checklist.docs,
+        {
+          name: newDoc.trim(),
+          required: true,
+          auto_request: true,
+          type: "external",
+          due_offset_days: 3,
+          anchor: "loan_created",
+          per_unit: false,
+        },
+      ],
+    });
     setNewDoc("");
+  };
+
+  // Anchor dropdown peers — a doc can only depend on items that
+  // come earlier in the list (prevents cycles).
+  const anchorOptionsFor = (idx: number): { value: string; label: string }[] => {
+    const peers = checklist.docs.slice(0, idx).map((d) => ({
+      value: `doc_received:${d.name}`,
+      label: `Doc received: ${d.display_name || d.name}`,
+    }));
+    return [{ value: "loan_created", label: "Loan created" }, ...peers];
   };
 
   return (
@@ -347,7 +383,7 @@ function ChecklistsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
         {LOAN_TYPES.map((tp) => (
           <button
             key={tp.v}
-            onClick={() => setLoanType(tp.v)}
+            onClick={() => { setLoanType(tp.v); setExpandedIdx(null); }}
             style={{
               padding: "8px 14px", borderRadius: 9, border: "none",
               background: loanType === tp.v ? t.ink : t.surface2,
@@ -359,37 +395,166 @@ function ChecklistsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {checklist.docs.map((doc, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 9, border: `1px solid ${t.line}` }}>
-            <input
-              type="checkbox"
-              checked={doc.required}
-              onChange={(e) => canEdit && updateDoc(i, { required: e.target.checked })}
-              disabled={!canEdit}
-              style={{ accentColor: t.petrol }}
-            />
-            <div style={{ flex: 1, fontSize: 13, color: t.ink, fontWeight: 600 }}>{doc.name}</div>
-            <label style={{ fontSize: 11, color: t.ink3, display: "inline-flex", alignItems: "center", gap: 5 }}>
-              <input
-                type="checkbox"
-                checked={doc.auto_request}
-                onChange={(e) => canEdit && updateDoc(i, { auto_request: e.target.checked })}
-                disabled={!canEdit}
-                style={{ accentColor: t.petrol }}
-              />
-              Auto-request
-            </label>
-            {canEdit && (
-              <button
-                onClick={() => removeDoc(i)}
-                style={{ padding: 4, color: t.ink3, background: "transparent", border: "none", cursor: "pointer" }}
-                aria-label={`Remove ${doc.name}`}
+        {checklist.docs.map((doc, i) => {
+          const isExpanded = expandedIdx === i;
+          const docType = doc.type ?? "external";
+          const anchor = doc.anchor ?? "loan_created";
+          const offset = doc.due_offset_days ?? 3;
+          const offsetLabel = anchor === "loan_created"
+            ? `+${offset}d after loan created`
+            : `+${offset}d after ${anchor.replace("doc_received:", "")} received`;
+          return (
+            <div
+              key={i}
+              style={{ borderRadius: 9, border: `1px solid ${isExpanded ? t.petrol : t.line}`, overflow: "hidden" }}
+            >
+              {/* Collapsed header row */}
+              <div
+                onClick={() => setExpandedIdx(isExpanded ? null : i)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "10px 12px", cursor: "pointer",
+                  background: isExpanded ? t.brandSoft : "transparent",
+                }}
               >
-                <Icon name="x" size={13} />
-              </button>
-            )}
-          </div>
-        ))}
+                <Icon name={isExpanded ? "chevD" : "chevR"} size={12} stroke={3} />
+                <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: t.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {doc.display_name || doc.name}
+                </div>
+                <Pill bg={docType === "internal" ? t.petrolSoft : t.brandSoft} color={docType === "internal" ? t.petrol : t.brand}>
+                  {docType}
+                </Pill>
+                {doc.required ? <Pill>Required</Pill> : null}
+                {doc.per_unit ? <Pill bg={t.warnBg} color={t.warn}>Per unit</Pill> : null}
+                <span style={{ fontSize: 11, color: t.ink3, whiteSpace: "nowrap" }}>{offsetLabel}</span>
+                {canEdit && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); removeDoc(i); }}
+                    style={{ padding: 4, color: t.ink3, background: "transparent", border: "none", cursor: "pointer" }}
+                    aria-label={`Remove ${doc.name}`}
+                  >
+                    <Icon name="x" size={13} />
+                  </button>
+                )}
+              </div>
+
+              {/* Expanded editor */}
+              {isExpanded && (
+                <div
+                  style={{
+                    display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
+                    padding: 14, borderTop: `1px solid ${t.line}`, background: t.surface2,
+                  }}
+                >
+                  <Field t={t} label="Display name">
+                    <input
+                      value={doc.display_name ?? ""}
+                      onChange={(e) => updateDoc(i, { display_name: e.target.value || null })}
+                      placeholder={doc.name}
+                      disabled={!canEdit}
+                      style={inputStyle(t)}
+                    />
+                  </Field>
+                  <Field t={t} label="Type">
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {(["external", "internal"] as const).map((opt) => (
+                        <button
+                          key={opt}
+                          onClick={() => canEdit && updateDoc(i, { type: opt })}
+                          disabled={!canEdit}
+                          style={{
+                            flex: 1, padding: "8px 10px", borderRadius: 8,
+                            border: `1px solid ${docType === opt ? t.petrol : t.line}`,
+                            background: docType === opt ? t.brandSoft : "transparent",
+                            color: docType === opt ? t.brand : t.ink2,
+                            fontSize: 12, fontWeight: 700, cursor: canEdit ? "pointer" : "not-allowed",
+                            textTransform: "capitalize",
+                          }}
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+
+                  <Field t={t} label="Anchor (when this fires)">
+                    <select
+                      value={anchor}
+                      onChange={(e) => canEdit && updateDoc(i, { anchor: e.target.value })}
+                      disabled={!canEdit}
+                      style={inputStyle(t)}
+                    >
+                      {anchorOptionsFor(i).map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field t={t} label="Due offset (days from anchor)">
+                    <NumInput
+                      t={t}
+                      value={offset}
+                      onChange={(n) => canEdit && updateDoc(i, { due_offset_days: n })}
+                      disabled={!canEdit}
+                    />
+                  </Field>
+
+                  <Field t={t} label="Required">
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={doc.required}
+                        onChange={(e) => canEdit && updateDoc(i, { required: e.target.checked })}
+                        disabled={!canEdit}
+                        style={{ accentColor: t.petrol }}
+                      />
+                      <span style={{ fontSize: 12, color: t.ink2 }}>Item is required for this loan type</span>
+                    </label>
+                  </Field>
+                  <Field t={t} label="Auto-request at intake">
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={doc.auto_request}
+                        onChange={(e) => canEdit && updateDoc(i, { auto_request: e.target.checked })}
+                        disabled={!canEdit}
+                        style={{ accentColor: t.petrol }}
+                      />
+                      <span style={{ fontSize: 12, color: t.ink2 }}>Spawn this on loan kickoff</span>
+                    </label>
+                  </Field>
+
+                  {docType === "external" ? (
+                    <Field t={t} label="Per-unit fan-out">
+                      <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <input
+                          type="checkbox"
+                          checked={!!doc.per_unit}
+                          onChange={(e) => canEdit && updateDoc(i, { per_unit: e.target.checked })}
+                          disabled={!canEdit}
+                          style={{ accentColor: t.petrol }}
+                        />
+                        <span style={{ fontSize: 12, color: t.ink2 }}>One row per unit (e.g. 4-plex → 4 leases)</span>
+                      </label>
+                    </Field>
+                  ) : (
+                    <Field t={t} label="Internal action (operator CTA)">
+                      <select
+                        value={doc.internal_action ?? ""}
+                        onChange={(e) => canEdit && updateDoc(i, { internal_action: e.target.value || null })}
+                        disabled={!canEdit}
+                        style={inputStyle(t)}
+                      >
+                        {INTERNAL_ACTION_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
       {canEdit && (
         <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
