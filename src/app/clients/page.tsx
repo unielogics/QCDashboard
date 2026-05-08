@@ -10,7 +10,7 @@ import { Role } from "@/lib/enums.generated";
 import { QC_FMT } from "@/components/design-system/tokens";
 
 const COLS = [
-  { label: "Client",   w: "minmax(0, 2fr)", key: "name" },
+  { label: "Borrower", w: "minmax(0, 2fr)", key: "name" },
   { label: "Tier",     w: "100px",          key: "tier" },
   { label: "FICO",     w: "80px",  align: "right" as const, key: "fico" },
   { label: "Loans",    w: "70px",  align: "right" as const, key: "active_loans" },
@@ -66,9 +66,9 @@ export default function ClientsPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: -0.5, color: t.ink, margin: 0 }}>
-          Clients
+          Borrowers
         </h1>
-        <span style={{ color: t.ink3, fontSize: 14 }}>· {filtered.length} clients</span>
+        <span style={{ color: t.ink3, fontSize: 14 }}>· {filtered.length} borrowers</span>
 
         <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
           <div

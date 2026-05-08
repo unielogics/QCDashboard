@@ -734,7 +734,7 @@ function SecuritySection({ draft, setDraft, canEdit, dirty, onSave, saving }: Se
 // ── Section: Team ───────────────────────────────────────────────────────
 
 const ASSIGNABLE_ROLES: { value: Role; label: string }[] = [
-  { value: Role.BROKER, label: "Account Exec" },
+  { value: Role.BROKER, label: "Agent" },
   { value: Role.LOAN_EXEC, label: "Underwriter" },
   { value: Role.SUPER_ADMIN, label: "Super Admin" },
 ];

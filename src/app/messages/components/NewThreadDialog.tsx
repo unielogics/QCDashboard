@@ -185,7 +185,7 @@ export function NewThreadDialog({ open, onClose, onThreadReady }: Props) {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search clients by name or email…"
+                placeholder="Search borrowers by name or email…"
                 autoFocus
                 style={inputStyle(t)}
               />

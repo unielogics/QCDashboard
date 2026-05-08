@@ -21,7 +21,7 @@ import { InvestorProfileDialog } from "./components/InvestorProfileDialog";
 
 const ROLE_LABEL: Record<string, string> = {
   super_admin: "Super Admin",
-  broker: "Account Exec",
+  broker: "Agent",
   loan_exec: "Underwriter",
   client: "Borrower",
 };
@@ -31,7 +31,7 @@ const ROLE_LABEL: Record<string, string> = {
 // reads naturally on the same surface.
 const ROLE_TIER: Record<string, string> = {
   super_admin: "Operator · Super Admin",
-  broker: "Operator · Account Exec",
+  broker: "Operator · Agent",
   loan_exec: "Operator · Underwriter",
   client: "Tier II Borrower",
 };
