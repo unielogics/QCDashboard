@@ -46,6 +46,7 @@ import {
 import { isLoanTypeEnabled } from "@/lib/products";
 import type { SmartIntakePayload, OwnedAsset } from "@/lib/types";
 import type { QCTokens } from "@/components/design-system/tokens";
+import { US_STATES } from "@/lib/usStates";
 
 type DealSide = "buyer" | "seller";
 
@@ -62,7 +63,12 @@ export interface IntakePrefillClient {
 type Channel = "sms+email" | "sms" | "email" | "push";
 
 interface AssetEntry {
+  // Street + city are stored separately so the property record
+  // doesn't depend on free-form parsing. `state` is a USPS 2-letter
+  // code matching @/lib/usStates.
   address: string;
+  city: string;
+  state: string;
   ownership: "primary" | "investment";
   marketValue: string;
   balanceOwed: string;
@@ -82,8 +88,12 @@ interface FormState {
   // Seller: subject is required (the property they're selling).
   // Buyer:  subject is optional (they may not have a target yet); the
   //         buyerOwnsProperties + ownedAssets list captures their portfolio.
+  // Street / city / state are split so the backend's loans.state
+  // column (alembic 0028) can persist the USPS code separately from
+  // the city for queryable / sortable filters.
   subjectAddress: string;
   subjectCity: string;
+  subjectState: string;
   subjectPropertyType: typeof PropertyType[keyof typeof PropertyType];
   subjectMarketValue: string;
   subjectSqft: string;
@@ -123,6 +133,7 @@ const INITIAL: FormState = {
   experience: ExperienceTier.LIGHT,
   subjectAddress: "",
   subjectCity: "",
+  subjectState: "",
   subjectPropertyType: PropertyType.SFR,
   subjectMarketValue: "",
   subjectSqft: "",
@@ -277,7 +288,7 @@ export function SmartIntakeModal({
   const handleAddAsset = () => {
     update("ownedAssets", [
       ...form.ownedAssets,
-      { address: "", ownership: "investment", marketValue: "", balanceOwed: "" },
+      { address: "", city: "", state: "", ownership: "investment", marketValue: "", balanceOwed: "" },
     ]);
   };
 
@@ -415,15 +426,12 @@ function mapToPayload(form: FormState): SmartIntakePayload {
   // Subject property: for sellers it's the listing; for buyers it's the
   // (optional) target they may have already identified. If buyer with no
   // subject, send placeholder data — the loan row exists as a working file
-  // until the borrower locks a property.
+  // until the borrower locks a property. Street + city + state are
+  // split — the backend stores state in its own column (alembic 0028).
   const subjectAddressRaw = form.subjectAddress.trim();
-  let address = subjectAddressRaw || (isSeller ? "" : "Property TBD");
-  let city = form.subjectCity.trim();
-  if (!city && address.includes(",")) {
-    const parts = address.split(",");
-    address = parts[0].trim();
-    city = parts.slice(1).join(",").trim();
-  }
+  const address = subjectAddressRaw || (isSeller ? "" : "Property TBD");
+  const city = form.subjectCity.trim();
+  const state = form.subjectState.trim().toUpperCase() || null;
 
   const subjectValue = parseUSD(form.subjectMarketValue);
   const cashAvailable = parseUSD(form.cashAvailable);
@@ -446,6 +454,8 @@ function mapToPayload(form: FormState): SmartIntakePayload {
           .filter((a) => a.address.trim().length > 0)
           .map<OwnedAsset>((a) => ({
             address: a.address.trim(),
+            city: a.city.trim() || null,
+            state: a.state.trim().toUpperCase() || null,
             ownership: a.ownership,
             market_value: parseUSD(a.marketValue) || null,
             balance_owed: parseUSD(a.balanceOwed) || null,
@@ -464,6 +474,7 @@ function mapToPayload(form: FormState): SmartIntakePayload {
     asset: {
       address,
       city: city || null,
+      state,
       property_type: form.subjectPropertyType,
       sqft: parseIntStrict(form.subjectSqft) || null,
       annual_taxes: parseUSD(form.subjectTaxes),
@@ -789,11 +800,14 @@ function AssetStepView({
           {isSeller ? "Property they're selling" : "Target property (optional)"}
         </SectionHeader>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <Field t={t} label="Address" full required={isSeller}>
+          <Field t={t} label="Street address" full required={isSeller}>
             <Input t={t} value={form.subjectAddress} onChange={(v) => update("subjectAddress", v)} placeholder="123 Main St" />
           </Field>
-          <Field t={t} label="City, State">
-            <Input t={t} value={form.subjectCity} onChange={(v) => update("subjectCity", v)} placeholder="Brooklyn, NY" />
+          <Field t={t} label="City">
+            <Input t={t} value={form.subjectCity} onChange={(v) => update("subjectCity", v)} placeholder="Brooklyn" />
+          </Field>
+          <Field t={t} label="State">
+            <StateSelect t={t} value={form.subjectState} onChange={(v) => update("subjectState", v)} />
           </Field>
           <Field t={t} label="Property type">
             <Select
@@ -848,8 +862,14 @@ function AssetStepView({
                   }}
                 >
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    <Field t={t} label="Address" full>
-                      <Input t={t} value={asset.address} onChange={(v) => onUpdateAsset(idx, { address: v })} placeholder="55 Park Ave, Brooklyn NY" />
+                    <Field t={t} label="Street address" full>
+                      <Input t={t} value={asset.address} onChange={(v) => onUpdateAsset(idx, { address: v })} placeholder="55 Park Ave" />
+                    </Field>
+                    <Field t={t} label="City">
+                      <Input t={t} value={asset.city} onChange={(v) => onUpdateAsset(idx, { city: v })} placeholder="Brooklyn" />
+                    </Field>
+                    <Field t={t} label="State">
+                      <StateSelect t={t} value={asset.state} onChange={(v) => onUpdateAsset(idx, { state: v })} />
                     </Field>
                     <Field t={t} label="Use">
                       <Select
@@ -1226,6 +1246,43 @@ function Select({
       {options.map((o) => (
         <option key={o.value} value={o.value}>
           {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+// Standardized US state dropdown — reads from @/lib/usStates so every
+// address-collection form across the app stays in lockstep.
+function StateSelect({
+  t,
+  value,
+  onChange,
+}: {
+  t: QCTokens;
+  value: string;
+  onChange: (code: string) => void;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        width: "100%",
+        padding: "10px 12px",
+        borderRadius: 9,
+        background: t.surface2,
+        border: `1px solid ${t.line}`,
+        color: value ? t.ink : t.ink3,
+        fontSize: 13,
+        fontFamily: "inherit",
+        outline: "none",
+      }}
+    >
+      <option value="">Select state…</option>
+      {US_STATES.map((s) => (
+        <option key={s.code} value={s.code}>
+          {s.name} ({s.code})
         </option>
       ))}
     </select>

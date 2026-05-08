@@ -221,6 +221,9 @@ export interface BorrowerStep {
 export interface AssetStep {
   address: string;
   city?: string | null;
+  // USPS 2-letter state code. Captured separately from city so the
+  // backend's loans.state column (alembic 0028) is queryable.
+  state?: string | null;
   property_type: PropertyType;
   sqft?: number | null;
   annual_taxes: number;
@@ -235,6 +238,10 @@ export interface AssetStep {
 // property of THIS deal, or a placeholder for buyer-no-property-yet).
 export interface OwnedAsset {
   address: string;
+  // Optional city + state — the SmartIntakeModal's owned-property
+  // collector now splits these out of the address string.
+  city?: string | null;
+  state?: string | null;
   ownership: "primary" | "investment";
   market_value: number | null;
   balance_owed: number | null;
