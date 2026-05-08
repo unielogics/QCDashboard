@@ -104,7 +104,7 @@ export function ThreadChatView({
           // Deep-link into the loan's docs tab with ?upload=<doc_id>.
           // DocsTab fires the upload picker pre-bound on mount.
           if (action.document_id && threadLoanId) {
-            router.push(`/loans/${threadLoanId}#docs?upload=${action.document_id}`);
+            router.push(`/loans/${threadLoanId}?upload=${action.document_id}#docs`);
           } else if (threadLoanId) {
             router.push(`/loans/${threadLoanId}#docs`);
           }

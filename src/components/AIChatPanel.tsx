@@ -156,7 +156,7 @@ export function AIChatPanel({ open, onClose }: Props) {
         case "upload_document": {
           if (action.document_id && activeThreadLoanId) {
             onClose();
-            router.push(`/loans/${activeThreadLoanId}#docs?upload=${action.document_id}`);
+            router.push(`/loans/${activeThreadLoanId}?upload=${action.document_id}#docs`);
           } else if (activeThreadLoanId) {
             onClose();
             router.push(`/loans/${activeThreadLoanId}#docs`);
