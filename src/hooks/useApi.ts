@@ -1376,6 +1376,12 @@ export function useCreateClient() {
       // for the broker's "+ Add Lead" path.
       stage?: "lead" | "contacted" | "verified" | "ready_for_lending" | "processing" | "funded" | "lost";
       client_type?: "buyer" | "seller";
+      // Per-lead overrides (alembic 0025). Captured by AddLeadWizard:
+      // lead_intake = property/financial context, checklist_overrides =
+      // disable+extras for THIS lead, ai_cadence_override = nudge frequency.
+      lead_intake?: Record<string, unknown> | null;
+      checklist_overrides?: Record<string, unknown> | null;
+      ai_cadence_override?: Record<string, unknown> | null;
     }) =>
       apiCall<Client>("/clients", {
         method: "POST",

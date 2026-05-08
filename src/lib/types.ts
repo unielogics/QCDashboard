@@ -519,22 +519,30 @@ export interface AgentCadenceOverride {
 }
 
 export interface AgentLetterhead {
-  display_name: string | null;
+  // Identity (name/email/phone) lives on the User row — not duplicated.
+  // Realtors don't sign loan docs, so no signature block. v2: move
+  // logo + headshot from base64 data URL to S3 keys.
   title: string | null;
-  phone: string | null;
-  email: string | null;
   license_number: string | null;
   brokerage_name: string | null;
   logo_data_url?: string | null;
-  headshot_data_url: string | null;
+  headshot_data_url?: string | null;
+  // Legacy shape (kept optional so existing form submissions still
+  // compile). Backend strips them at parse time. Will be removed
+  // once the agent-settings page rewrite lands across all envs.
+  display_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
   signature_block?: string | null;
 }
 
 export interface AgentSettingsData {
-  // Keyed by `${loan_type}:${side}` — e.g. "dscr:buyer".
+  // Keyed by side ONLY: "buyer" | "seller". Loan-type axis dropped
+  // post-codex-PR — realtors think transaction-side, not DSCR/F&F.
   checklists: Record<string, AgentChecklistOverlay>;
-  // Keyed by loan_type only.
-  cadence: Record<string, AgentCadenceOverride>;
+  // Single cadence override applied to ALL of this broker's loans.
+  // Was Record<loan_type, AgentCadenceOverride> in v1.
+  cadence: AgentCadenceOverride | null;
   letterhead: AgentLetterhead | null;
 }
 export interface LoanTypeChecklist {

@@ -12,7 +12,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { useClients } from "@/hooks/useApi";
 import { LEAD_STAGES, type Client, type ClientStage } from "@/lib/types";
-import { SmartIntakeModal } from "./SmartIntakeModal";
+import { AddLeadWizard } from "./AddLeadWizard";
 
 const LEAD_STAGE_LABELS: Record<(typeof LEAD_STAGES)[number], string> = {
   lead: "Lead",
@@ -143,7 +143,7 @@ export function LeadsPipelineView({ view, search }: Props) {
           </div>
         )}
       </Card>
-      {showAddModal && <SmartIntakeModal open={showAddModal} onClose={() => setShowAddModal(false)} />}
+      {showAddModal && <AddLeadWizard onClose={() => setShowAddModal(false)} />}
       </>
     );
   }
@@ -226,7 +226,7 @@ export function LeadsPipelineView({ view, search }: Props) {
         );
       })}
     </div>
-    {showAddModal && <SmartIntakeModal open={showAddModal} onClose={() => setShowAddModal(false)} />}
+    {showAddModal && <AddLeadWizard onClose={() => setShowAddModal(false)} />}
     </>
   );
 }

@@ -1,22 +1,21 @@
 "use client";
 
-// Agent Settings — the broker's personal configuration that overlays the
-// firm's checklist + AI cadence for any loan they own. Backed by
-// `brokers.settings_data` (alembic 0023, JSONB) via /me/broker-settings.
+// Agent Settings — the realtor's personal configuration. Three sections:
 //
-// Three sections that mirror the super-admin /settings page's visual
-// rhythm:
-//   1. Identity & Letterhead — agent's personal signing identity
-//   2. AI Cadence — per-broker overrides for first/second/escalate
-//      reminder windows. NULL field = inherit from firm defaults.
-//   3. Doc Checklist — per (loan_type, side) overlay. Two zones:
-//      "Firm defaults" (read-only with Disable checkbox) and
-//      "Your additions" (full editor).
+//   1. Identity & Letterhead
+//      • From your account — read-only (name/email from User row, Clerk-synced).
+//      • Your branding   — title, license #, brokerage, headshot. Persists to
+//        brokers.settings_data.letterhead. Headshot is stored as base64 data
+//        URL today; v2 will replace with S3-backed key.
 //
-// Save uses a single PUT to /me/broker-settings with the full
-// AgentSettingsData. Backend validates that disabled_firm_items
-// references real firm names and that extra_items names don't shadow
-// the firm.
+//   2. AI Cadence — single preset selector (Gentle / Standard / Aggressive).
+//      "Standard" = inherit firm default (sends `cadence: null`). Advanced
+//      disclosure exposes raw numeric overrides.
+//
+//   3. Doc Checklist — single Buyer | Seller tab strip. Loan-type axis
+//      dropped (those are funding-stage, super-admin territory). Two zones:
+//      starter buyer/seller docs (toggle to disable on the agent's leads),
+//      and "Your additions" (custom rows).
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -26,10 +25,9 @@ import { Icon } from "@/components/design-system/Icon";
 import {
   useBrokerSettings,
   useCurrentUser,
-  useSettings,
   useUpdateBrokerSettings,
 } from "@/hooks/useApi";
-import { LoanType, Role } from "@/lib/enums.generated";
+import { Role } from "@/lib/enums.generated";
 import type {
   AgentCadenceOverride,
   AgentChecklistOverlay,
@@ -39,14 +37,37 @@ import type {
   LoanSide,
 } from "@/lib/types";
 
-const LOAN_TYPES: { id: LoanType; label: string }[] = [
-  { id: LoanType.DSCR, label: "DSCR" },
-  { id: LoanType.FIX_AND_FLIP, label: "Fix & Flip" },
-  { id: LoanType.GROUND_UP, label: "Ground Up" },
-  { id: LoanType.BRIDGE, label: "Bridge" },
-  { id: LoanType.PORTFOLIO, label: "Portfolio" },
-  { id: LoanType.CASH_OUT_REFI, label: "Cash-out Refi" },
+// Buyer / seller starter docs — same as AddLeadWizard, kept in sync.
+// Until firm-level transaction_checklists ships (deferred), these act as
+// the canonical "firm defaults" the agent toggles against.
+const STARTER_BUYER_DOCS = [
+  "Government ID",
+  "Pre-Approval Letter",
+  "Buyer Agency Agreement",
+  "Purchase Agreement",
+  "Earnest Money Receipt",
+  "Inspection Report",
+  "Proof of Funds",
 ];
+const STARTER_SELLER_DOCS = [
+  "Government ID",
+  "Listing Agreement",
+  "Property Disclosure",
+  "HOA Documents",
+  "Lead-Based Paint Disclosure",
+  "Title / Deed",
+  "Agency Disclosure",
+];
+
+type CadencePreset = "gentle" | "standard" | "aggressive";
+const CADENCE_PRESETS: Record<
+  CadencePreset,
+  { first: number; second: number; escalate: number; label: string; sub: string }
+> = {
+  gentle:     { first: 5, second: 12, escalate: 21, label: "Gentle",     sub: "5 / 12 / 21 day nudges" },
+  standard:   { first: 3, second: 7,  escalate: 14, label: "Standard",   sub: "3 / 7 / 14d — firm default" },
+  aggressive: { first: 2, second: 5,  escalate: 10, label: "Aggressive", sub: "2 / 5 / 10 day nudges" },
+};
 
 const SIDES: { id: LoanSide; label: string }[] = [
   { id: "buyer", label: "Buyer" },
@@ -64,36 +85,36 @@ function emptyOverlay(): AgentChecklistOverlay {
   return { disabled_firm_items: [], extra_items: [] };
 }
 
-function emptyCadence(): AgentCadenceOverride {
-  return {
-    first_reminder_days: null,
-    second_reminder_days: null,
-    escalate_after_days: null,
-  };
-}
-
 function emptyLetterhead(): AgentLetterhead {
   return {
-    display_name: null,
     title: null,
-    phone: null,
-    email: null,
     license_number: null,
     brokerage_name: null,
-    logo_data_url: null,
     headshot_data_url: null,
   };
 }
 
 function emptyAgentSettings(): AgentSettingsData {
-  return { checklists: {}, cadence: {}, letterhead: emptyLetterhead() };
+  return { checklists: {}, cadence: null, letterhead: emptyLetterhead() };
+}
+
+// Map a saved cadence override → preset id. "Standard" = no override (null).
+function detectPreset(c: AgentCadenceOverride | null | undefined): CadencePreset {
+  if (!c) return "standard";
+  const f = c.first_reminder_days ?? null;
+  const s = c.second_reminder_days ?? null;
+  const e = c.escalate_after_days ?? null;
+  for (const id of ["gentle", "aggressive"] as const) {
+    const p = CADENCE_PRESETS[id];
+    if (f === p.first && s === p.second && e === p.escalate) return id;
+  }
+  return "standard";
 }
 
 export default function AgentSettingsPage() {
   const { t } = useTheme();
   const router = useRouter();
   const { data: user } = useCurrentUser();
-  const settingsQ = useSettings();
   const brokerQ = useBrokerSettings();
   const update = useUpdateBrokerSettings();
 
@@ -116,7 +137,7 @@ export default function AgentSettingsPage() {
     if (!data) return;
     const seeded: AgentSettingsData = {
       checklists: data.checklists ?? {},
-      cadence: data.cadence ?? {},
+      cadence: data.cadence ?? null,
       letterhead: data.letterhead ?? emptyLetterhead(),
     };
     setDraft(seeded);
@@ -141,7 +162,7 @@ export default function AgentSettingsPage() {
   };
 
   if (user?.role === Role.CLIENT) return null;
-  if (brokerQ.isLoading || settingsQ.isLoading) {
+  if (brokerQ.isLoading) {
     return (
       <div style={{ padding: 24, color: t.ink3, fontSize: 13 }}>Loading…</div>
     );
@@ -156,8 +177,6 @@ export default function AgentSettingsPage() {
     );
   }
 
-  const firmChecklists = settingsQ.data?.data?.checklists ?? {};
-
   return (
     <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 18, height: "100%", minHeight: 0 }}>
       {/* Sidebar */}
@@ -165,8 +184,8 @@ export default function AgentSettingsPage() {
         <div style={{ padding: 16, borderBottom: `1px solid ${t.line}` }}>
           <SectionLabel>Agent Settings</SectionLabel>
           <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 6, lineHeight: 1.5 }}>
-            Your personal overlay on the firm&apos;s checklist + cadence. Affects
-            only loans where you&apos;re the listed broker.
+            Your personal branding, follow-up cadence, and lead-stage doc list.
+            Per-lead overrides happen when you add a lead.
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", padding: 6 }}>
@@ -204,6 +223,7 @@ export default function AgentSettingsPage() {
           <IdentitySection
             draft={draft}
             setDraft={setDraft}
+            user={user ?? null}
             dirty={dirty}
             saving={update.isPending}
             onSave={onSave}
@@ -213,7 +233,6 @@ export default function AgentSettingsPage() {
           <CadenceSection
             draft={draft}
             setDraft={setDraft}
-            firmChecklists={firmChecklists}
             dirty={dirty}
             saving={update.isPending}
             onSave={onSave}
@@ -223,7 +242,6 @@ export default function AgentSettingsPage() {
           <ChecklistsSection
             draft={draft}
             setDraft={setDraft}
-            firmChecklists={firmChecklists}
             dirty={dirty}
             saving={update.isPending}
             onSave={onSave}
@@ -242,16 +260,16 @@ export default function AgentSettingsPage() {
 // ───────────────────────────────────────────────────────────────────
 // Section 1: Identity & Letterhead
 // ───────────────────────────────────────────────────────────────────
-interface SectionProps {
+interface IdentityProps {
   draft: AgentSettingsData;
   setDraft: React.Dispatch<React.SetStateAction<AgentSettingsData>>;
-  firmChecklists?: Record<string, { docs: DocChecklistItem[] }>;
+  user: { name: string; email: string } | null;
   dirty: boolean;
   saving: boolean;
   onSave: () => void;
 }
 
-function IdentitySection({ draft, setDraft, dirty, saving, onSave }: SectionProps) {
+function IdentitySection({ draft, setDraft, user, dirty, saving, onSave }: IdentityProps) {
   const { t } = useTheme();
   const lh = draft.letterhead ?? emptyLetterhead();
   const update = (patch: Partial<AgentLetterhead>) => {
@@ -264,13 +282,39 @@ function IdentitySection({ draft, setDraft, dirty, saving, onSave }: SectionProp
         <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />
       </div>
       <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
-        Renders on prequal letters and intake links you send. Persists to
-        <code style={{ padding: "1px 5px", background: t.surface2, borderRadius: 4, marginLeft: 4 }}>brokers.settings_data</code>.
+        Your headshot, brokerage, and license number appear on every prequal we
+        generate for your clients alongside the Qualified Commercial firm logo.
+      </div>
+
+      {/* Zone 1: From your account (read-only) */}
+      <div style={{
+        padding: 12, borderRadius: 9,
+        background: t.surface2, border: `1px solid ${t.line}`,
+        marginBottom: 16,
+      }}>
+        <div style={{
+          fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
+          textTransform: "uppercase", color: t.ink3, marginBottom: 8,
+        }}>
+          From your account
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <ReadOnlyField label="Name" value={user?.name ?? "—"} />
+          <ReadOnlyField label="Email" value={user?.email ?? "—"} />
+        </div>
+        <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 10, lineHeight: 1.5 }}>
+          Synced from your profile. Edit your name or email in your account settings.
+        </div>
+      </div>
+
+      {/* Zone 2: Your branding */}
+      <div style={{
+        fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
+        textTransform: "uppercase", color: t.ink3, marginBottom: 8,
+      }}>
+        Your branding
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Field label="Display name">
-          <TextInput value={lh.display_name ?? ""} onChange={(v) => update({ display_name: v || null })} />
-        </Field>
         <Field label="Title">
           <TextInput value={lh.title ?? ""} onChange={(v) => update({ title: v || null })} placeholder="Real Estate Agent" />
         </Field>
@@ -282,84 +326,166 @@ function IdentitySection({ draft, setDraft, dirty, saving, onSave }: SectionProp
         </Field>
       </div>
       <div style={{ marginTop: 14 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <ImageDataField label="Firm logo" value={lh.logo_data_url ?? null} onChange={(v) => update({ logo_data_url: v })} />
-          <ImageDataField label="Realtor headshot" value={lh.headshot_data_url ?? null} onChange={(v) => update({ headshot_data_url: v })} />
-        </div>
+        <ImageDataField label="Headshot" value={lh.headshot_data_url ?? null} onChange={(v) => update({ headshot_data_url: v })} />
       </div>
     </Card>
   );
 }
 
 // ───────────────────────────────────────────────────────────────────
-// Section 2: AI Cadence (per-broker overrides)
+// Section 2: AI Cadence — preset cards + advanced disclosure
 // ───────────────────────────────────────────────────────────────────
-function CadenceSection({ draft, setDraft, firmChecklists, dirty, saving, onSave }: SectionProps) {
-  const { t } = useTheme();
-  const [activeType, setActiveType] = useState<LoanType>(LoanType.DSCR);
-  const cadence = draft.cadence?.[activeType] ?? emptyCadence();
-  const firm = firmChecklists?.[activeType] as { first_reminder_days?: number; second_reminder_days?: number; escalate_after_days?: number } | undefined;
-  const firmFirst = firm?.first_reminder_days ?? 3;
-  const firmSecond = firm?.second_reminder_days ?? 7;
-  const firmEscalate = firm?.escalate_after_days ?? 14;
+interface CadenceProps {
+  draft: AgentSettingsData;
+  setDraft: React.Dispatch<React.SetStateAction<AgentSettingsData>>;
+  dirty: boolean;
+  saving: boolean;
+  onSave: () => void;
+}
 
-  const update = (patch: Partial<AgentCadenceOverride>) => {
+function CadenceSection({ draft, setDraft, dirty, saving, onSave }: CadenceProps) {
+  const { t } = useTheme();
+  const preset = detectPreset(draft.cadence);
+  const cadence = draft.cadence;
+  const [showAdvanced, setShowAdvanced] = useState(
+    // Auto-expand if the saved cadence doesn't match any preset (custom override)
+    !!cadence && preset === "standard" &&
+      (cadence.first_reminder_days != null ||
+       cadence.second_reminder_days != null ||
+       cadence.escalate_after_days != null)
+  );
+
+  const setPreset = (id: CadencePreset) => {
+    if (id === "standard") {
+      // Standard = inherit firm default = no override
+      setDraft((d) => ({ ...d, cadence: null }));
+    } else {
+      const p = CADENCE_PRESETS[id];
+      setDraft((d) => ({
+        ...d,
+        cadence: {
+          first_reminder_days: p.first,
+          second_reminder_days: p.second,
+          escalate_after_days: p.escalate,
+        },
+      }));
+    }
+  };
+
+  const updateAdvanced = (patch: Partial<AgentCadenceOverride>) => {
     setDraft((d) => ({
       ...d,
-      cadence: { ...d.cadence, [activeType]: { ...cadence, ...patch } },
+      cadence: {
+        first_reminder_days: d.cadence?.first_reminder_days ?? null,
+        second_reminder_days: d.cadence?.second_reminder_days ?? null,
+        escalate_after_days: d.cadence?.escalate_after_days ?? null,
+        ...patch,
+      },
     }));
   };
 
   return (
     <Card>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <SectionLabel>AI Cadence — your loans</SectionLabel>
+        <SectionLabel>AI Cadence</SectionLabel>
         <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />
       </div>
       <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
-        Override how often the AI nudges borrowers about their docs on YOUR
-        loans. Leave a field blank to inherit the firm default. Per-loan-type.
+        How aggressively the AI nudges your leads to send in the docs they owe.
+        Pick a preset; you can override per-lead when you add a lead.
       </div>
-      <Tabs t={t} value={activeType} onChange={(v) => setActiveType(v as LoanType)}
-        options={LOAN_TYPES.map((lt) => ({ id: lt.id, label: lt.label }))} />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 14 }}>
-        <Field label={`First reminder (firm: ${firmFirst}d)`}>
-          <NullableNumInput value={cadence.first_reminder_days} onChange={(n) => update({ first_reminder_days: n })} placeholder={`${firmFirst}`} />
-        </Field>
-        <Field label={`Second reminder (firm: ${firmSecond}d)`}>
-          <NullableNumInput value={cadence.second_reminder_days} onChange={(n) => update({ second_reminder_days: n })} placeholder={`${firmSecond}`} />
-        </Field>
-        <Field label={`Escalate (firm: ${firmEscalate}d)`}>
-          <NullableNumInput value={cadence.escalate_after_days} onChange={(n) => update({ escalate_after_days: n })} placeholder={`${firmEscalate}`} />
-        </Field>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+        {(Object.keys(CADENCE_PRESETS) as CadencePreset[]).map((id) => {
+          const p = CADENCE_PRESETS[id];
+          const active = preset === id;
+          return (
+            <button
+              key={id}
+              onClick={() => setPreset(id)}
+              style={{
+                all: "unset", cursor: "pointer",
+                padding: 14, borderRadius: 11,
+                border: `2px solid ${active ? t.brand : t.line}`,
+                background: active ? t.brandSoft : t.surface,
+                display: "flex", flexDirection: "column", gap: 6,
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 700, color: active ? t.brand : t.ink }}>
+                {p.label}
+              </div>
+              <div style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.4 }}>
+                {p.sub}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Advanced disclosure */}
+      <div style={{ marginTop: 18 }}>
+        <button
+          onClick={() => setShowAdvanced((v) => !v)}
+          style={{
+            all: "unset", cursor: "pointer",
+            fontSize: 11.5, fontWeight: 700, color: t.ink3,
+            display: "inline-flex", alignItems: "center", gap: 4,
+            padding: "4px 0",
+          }}
+        >
+          <Icon name={showAdvanced ? "chevD" : "chevR"} size={11} />
+          Advanced — set exact day counts
+        </button>
+        {showAdvanced && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 10 }}>
+            <Field label="First reminder (days)">
+              <NullableNumInput
+                value={cadence?.first_reminder_days ?? null}
+                onChange={(n) => updateAdvanced({ first_reminder_days: n })}
+                placeholder="3"
+              />
+            </Field>
+            <Field label="Second reminder (days)">
+              <NullableNumInput
+                value={cadence?.second_reminder_days ?? null}
+                onChange={(n) => updateAdvanced({ second_reminder_days: n })}
+                placeholder="7"
+              />
+            </Field>
+            <Field label="Escalate after (days)">
+              <NullableNumInput
+                value={cadence?.escalate_after_days ?? null}
+                onChange={(n) => updateAdvanced({ escalate_after_days: n })}
+                placeholder="14"
+              />
+            </Field>
+          </div>
+        )}
       </div>
     </Card>
   );
 }
 
 // ───────────────────────────────────────────────────────────────────
-// Section 3: Doc Checklist (per loan_type × side overlay)
+// Section 3: Doc Checklist — single Buyer | Seller tab
 // ───────────────────────────────────────────────────────────────────
-function ChecklistsSection({ draft, setDraft, firmChecklists, dirty, saving, onSave }: SectionProps) {
+interface ChecklistsProps {
+  draft: AgentSettingsData;
+  setDraft: React.Dispatch<React.SetStateAction<AgentSettingsData>>;
+  dirty: boolean;
+  saving: boolean;
+  onSave: () => void;
+}
+
+function ChecklistsSection({ draft, setDraft, dirty, saving, onSave }: ChecklistsProps) {
   const { t } = useTheme();
-  const [activeType, setActiveType] = useState<LoanType>(LoanType.DSCR);
   const [activeSide, setActiveSide] = useState<LoanSide>("buyer");
 
-  const overlayKey = `${activeType}:${activeSide}`;
-  const overlay = draft.checklists?.[overlayKey] ?? emptyOverlay();
-
-  const firmAll: DocChecklistItem[] = useMemo(() => {
-    return (firmChecklists?.[activeType]?.docs ?? []) as DocChecklistItem[];
-  }, [firmChecklists, activeType]);
-
-  // Show firm items where side ∈ (activeSide, "both")
-  const firmForSide = useMemo(
-    () => firmAll.filter((it) => (it.side ?? "both") === activeSide || (it.side ?? "both") === "both"),
-    [firmAll, activeSide],
-  );
+  const overlay = draft.checklists?.[activeSide] ?? emptyOverlay();
+  const starter = activeSide === "buyer" ? STARTER_BUYER_DOCS : STARTER_SELLER_DOCS;
 
   const setOverlay = (next: AgentChecklistOverlay) => {
-    setDraft((d) => ({ ...d, checklists: { ...d.checklists, [overlayKey]: next } }));
+    setDraft((d) => ({ ...d, checklists: { ...d.checklists, [activeSide]: next } }));
   };
 
   const toggleDisable = (name: string) => {
@@ -379,7 +505,7 @@ function ChecklistsSection({ draft, setDraft, firmChecklists, dirty, saving, onS
       type: "external",
       required: false,
       auto_request: true,
-      due_offset_days: 3,
+      due_offset_days: 7,
       anchor: "loan_created",
       per_unit: false,
       side: activeSide,
@@ -401,73 +527,68 @@ function ChecklistsSection({ draft, setDraft, firmChecklists, dirty, saving, onS
   return (
     <Card>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <SectionLabel>Doc Checklist — your loans</SectionLabel>
+        <SectionLabel>Doc Checklist — your leads</SectionLabel>
         <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />
       </div>
       <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
-        Tune what the AI collects on YOUR loans. Disable firm defaults you
-        don&apos;t want, and add your own rows. Affects all your future loans
-        of the chosen type and side.
-      </div>
-      <Tabs t={t} value={activeType} onChange={(v) => setActiveType(v as LoanType)}
-        options={LOAN_TYPES.map((lt) => ({ id: lt.id, label: lt.label }))} />
-      <div style={{ marginTop: 10 }}>
-        <Tabs t={t} value={activeSide} onChange={(v) => setActiveSide(v as LoanSide)}
-          options={SIDES.map((s) => ({ id: s.id, label: s.label }))} />
+        What the AI will collect from your buyer-side and seller-side leads.
+        Disable starter items you don&apos;t want, and add your own. You can
+        further override per-lead when you add a lead.
       </div>
 
-      {/* Firm defaults zone */}
+      <Tabs t={t} value={activeSide} onChange={(v) => setActiveSide(v as LoanSide)}
+        options={SIDES.map((s) => ({ id: s.id, label: s.label }))} />
+
+      {/* Starter (firm-default) zone */}
       <div style={{ marginTop: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: t.ink3, marginBottom: 6 }}>
-          Firm defaults — uncheck to disable on your loans
+        <div style={{
+          fontSize: 11, fontWeight: 700, letterSpacing: 1.6,
+          textTransform: "uppercase", color: t.ink3, marginBottom: 6,
+        }}>
+          Starter docs — uncheck to disable on your leads
         </div>
-        {firmForSide.length === 0 ? (
-          <div style={{ fontSize: 12, color: t.ink3, fontStyle: "italic", padding: "8px 0" }}>
-            No firm defaults for {activeType.replace(/_/g, " ")} ({activeSide}).
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {firmForSide.map((it) => {
-              const disabled = overlay.disabled_firm_items.includes(it.name);
-              return (
-                <label key={it.name} style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "9px 12px", borderRadius: 9, cursor: "pointer",
-                  border: `1px solid ${t.line}`,
-                  background: disabled ? t.surface2 : "transparent",
-                  opacity: disabled ? 0.65 : 1,
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={!disabled}
-                    onChange={() => toggleDisable(it.name)}
-                    style={{ width: 16, height: 16, cursor: "pointer" }}
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, textDecoration: disabled ? "line-through" : "none" }}>
-                      {it.display_name ?? it.name}
-                    </div>
-                    <div style={{ fontSize: 11, color: t.ink3, marginTop: 1 }}>
-                      {it.type ?? "external"} · due +{it.due_offset_days ?? 3}d
-                      {it.anchor && it.anchor !== "loan_created" ? ` · ${it.anchor}` : ""}
-                      {it.per_unit ? " · per-unit" : ""}
-                    </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {starter.map((name) => {
+            const disabled = overlay.disabled_firm_items.includes(name);
+            return (
+              <label key={name} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "9px 12px", borderRadius: 9, cursor: "pointer",
+                border: `1px solid ${t.line}`,
+                background: disabled ? t.surface2 : "transparent",
+                opacity: disabled ? 0.65 : 1,
+              }}>
+                <input
+                  type="checkbox"
+                  checked={!disabled}
+                  onChange={() => toggleDisable(name)}
+                  style={{ width: 16, height: 16, cursor: "pointer" }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 13, fontWeight: 700, color: t.ink,
+                    textDecoration: disabled ? "line-through" : "none",
+                  }}>
+                    {name}
                   </div>
-                  <Pill bg={t.surface2} color={t.ink3}>
-                    {it.side ?? "both"}
-                  </Pill>
-                </label>
-              );
-            })}
-          </div>
-        )}
+                </div>
+                <Pill bg={t.surface2} color={t.ink3}>
+                  {activeSide}
+                </Pill>
+              </label>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Your additions zone */}
+      {/* Your additions */}
       <div style={{ marginTop: 22 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: t.ink3 }}>
-            Your additions — extras only you will collect
+          <div style={{
+            fontSize: 11, fontWeight: 700, letterSpacing: 1.6,
+            textTransform: "uppercase", color: t.ink3,
+          }}>
+            Your additions — extras only you collect
           </div>
           <button
             onClick={addExtra}
@@ -483,15 +604,14 @@ function ChecklistsSection({ draft, setDraft, firmChecklists, dirty, saving, onS
         </div>
         {overlay.extra_items.length === 0 ? (
           <div style={{ fontSize: 12, color: t.ink3, fontStyle: "italic", padding: "8px 0" }}>
-            No additions yet. Click &quot;Add row&quot; to extend the checklist for
-            this loan type and side.
+            No additions yet. Click &quot;Add row&quot; to extend your {activeSide}-side checklist.
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {overlay.extra_items.map((it, idx) => (
               <div key={idx} style={{
                 padding: 12, borderRadius: 9, border: `1px solid ${t.line}`,
-                display: "grid", gridTemplateColumns: "1fr 1fr 90px 100px 36px", gap: 10, alignItems: "center",
+                display: "grid", gridTemplateColumns: "1fr 1fr 90px 36px", gap: 10, alignItems: "center",
               }}>
                 <input
                   value={it.name}
@@ -506,18 +626,9 @@ function ChecklistsSection({ draft, setDraft, firmChecklists, dirty, saving, onS
                   style={inputStyle(t)}
                 />
                 <NumInput
-                  value={it.due_offset_days ?? 3}
+                  value={it.due_offset_days ?? 7}
                   onChange={(n) => updateExtra(idx, { due_offset_days: n })}
                 />
-                <select
-                  value={it.side ?? "both"}
-                  onChange={(e) => updateExtra(idx, { side: e.target.value as DocChecklistItem["side"] })}
-                  style={inputStyle(t)}
-                >
-                  <option value="buyer">Buyer</option>
-                  <option value="seller">Seller</option>
-                  <option value="both">Both</option>
-                </select>
                 <button
                   onClick={() => removeExtra(idx)}
                   aria-label="Remove row"
@@ -540,7 +651,7 @@ function ChecklistsSection({ draft, setDraft, firmChecklists, dirty, saving, onS
 }
 
 // ───────────────────────────────────────────────────────────────────
-// Primitives (matching super-admin /settings page visual language)
+// Primitives
 // ───────────────────────────────────────────────────────────────────
 function Tabs<T extends string>({ t, value, onChange, options }: {
   t: ReturnType<typeof useTheme>["t"];
@@ -585,6 +696,20 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
+  const { t } = useTheme();
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>
+        {label}
+      </span>
+      <div style={{ fontSize: 13, color: t.ink, padding: "8px 10px" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function inputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
   return {
     width: "100%",
@@ -610,6 +735,7 @@ function TextInput({ value, onChange, placeholder }: { value: string; onChange: 
     />
   );
 }
+
 function ImageDataField({ label, value, onChange }: { label: string; value: string | null; onChange: (v: string | null) => void }) {
   const { t } = useTheme();
   const onPick = async (file: File | null) => {
@@ -620,9 +746,33 @@ function ImageDataField({ label, value, onChange }: { label: string; value: stri
   };
   return (
     <Field label={label}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <input type="file" accept="image/*" onChange={(e) => void onPick(e.target.files?.[0] ?? null)} style={inputStyle(t)} />
-        {value ? <img src={value} alt={label} style={{ width: 96, height: 96, objectFit: "cover", borderRadius: 8, border: `1px solid ${t.line}` }} /> : null}
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {value ? (
+          <img src={value} alt={label} style={{ width: 96, height: 96, objectFit: "cover", borderRadius: 8, border: `1px solid ${t.line}` }} />
+        ) : (
+          <div style={{
+            width: 96, height: 96, borderRadius: 8, border: `1px dashed ${t.line}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: t.ink4, fontSize: 11,
+          }}>
+            No image
+          </div>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
+          <input type="file" accept="image/*" onChange={(e) => void onPick(e.target.files?.[0] ?? null)} style={inputStyle(t)} />
+          {value && (
+            <button
+              onClick={() => onChange(null)}
+              style={{
+                all: "unset", cursor: "pointer",
+                fontSize: 11, color: t.danger, fontWeight: 600,
+                padding: "4px 8px", alignSelf: "flex-start",
+              }}
+            >
+              Remove
+            </button>
+          )}
+        </div>
       </div>
     </Field>
   );
