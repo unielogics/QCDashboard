@@ -23,10 +23,17 @@ import type { Document, Loan } from "@/lib/types";
 
 type UploadKind = "experience" | "active_asset";
 
-type VaultTab = "experience" | "active_asset";
+// Three tabs:
+//   requested    — open AI-driven asks (checklist items the AI auto-
+//                  requested at intake or via reminders). Click a row
+//                  → upload modal pre-bound to that doc.
+//   experience   — proof of past deals
+//   active_asset — currently-owned real estate
+type VaultTab = "requested" | "experience" | "active_asset";
 
 // Match the mobile heuristic: docs with no category default to the
-// experience tab (where the vault originally lived).
+// experience tab (where the vault originally lived). The new
+// "requested" tab filters by status, not category.
 function tabFor(category: string | null | undefined): VaultTab {
   if (category === "active_asset") return "active_asset";
   return "experience";
@@ -37,19 +44,36 @@ export default function VaultPage() {
   const { data: user } = useCurrentUser();
   const { data: loans = [] } = useLoans();
   const { data: docs = [] } = useDocuments();
-  const [tab, setTab] = useState<VaultTab>("experience");
+  const [tab, setTab] = useState<VaultTab>("requested");
 
   const isClient = user?.role === Role.CLIENT;
 
   const tabCounts = useMemo(() => ({
-    experience: docs.filter((d) => tabFor(d.category) === "experience").length,
-    active_asset: docs.filter((d) => tabFor(d.category) === "active_asset").length,
+    requested: docs.filter((d) => d.status === "requested").length,
+    experience: docs.filter((d) => d.status !== "requested" && tabFor(d.category) === "experience").length,
+    active_asset: docs.filter((d) => d.status !== "requested" && tabFor(d.category) === "active_asset").length,
   }), [docs]);
 
-  const filtered = useMemo(
-    () => docs.filter((d) => tabFor(d.category) === tab),
-    [docs, tab],
-  );
+  const filtered = useMemo(() => {
+    if (tab === "requested") {
+      return docs.filter((d) => d.status === "requested");
+    }
+    return docs.filter((d) => d.status !== "requested" && tabFor(d.category) === tab);
+  }, [docs, tab]);
+
+  // First-load default: land on Requested whenever there's an open
+  // request (the AI's task list); otherwise on Experience.
+  const defaultedRef = useRef(false);
+  useEffect(() => {
+    if (defaultedRef.current) return;
+    if (tabCounts.requested > 0) {
+      setTab("requested");
+      defaultedRef.current = true;
+    } else if (tabCounts.experience > 0 || tabCounts.active_asset > 0) {
+      setTab("experience");
+      defaultedRef.current = true;
+    }
+  }, [tabCounts.requested, tabCounts.experience, tabCounts.active_asset]);
 
   const loanById = Object.fromEntries(loans.map((l) => [l.id, l] as const));
 
@@ -98,6 +122,9 @@ export default function VaultPage() {
       </div>
 
       <div style={{ display: "flex", gap: 4 }}>
+        <TabButton t={t} active={tab === "requested"} onClick={() => setTab("requested")}>
+          Requested <Pill>{tabCounts.requested}</Pill>
+        </TabButton>
         <TabButton t={t} active={tab === "experience"} onClick={() => setTab("experience")}>
           Experience <Pill>{tabCounts.experience}</Pill>
         </TabButton>
@@ -113,16 +140,18 @@ export default function VaultPage() {
           setPrefill(null);
         }}
         loans={loans}
-        defaultKind={tab}
+        defaultKind={tab === "requested" ? "experience" : tab}
         prefill={prefill}
       />
 
       {filtered.length === 0 ? (
         <Card pad={32}>
           <div style={{ textAlign: "center", color: t.ink3, fontSize: 13, lineHeight: 1.55 }}>
-            {tab === "experience"
-              ? "No experience proof yet. Upload HUDs, closing statements, deeds, or prior leases from past deals to count toward your investor experience tier."
-              : "No active assets yet. Upload bank notes, leases, insurance, or tax bills for properties you currently own."}
+            {tab === "requested"
+              ? "Nothing requested right now. When the AI requests a document, it'll show up here. Click a row to upload."
+              : tab === "experience"
+                ? "No experience proof yet. Upload HUDs, closing statements, deeds, or prior leases from past deals to count toward your investor experience tier."
+                : "No active assets yet. Upload bank notes, leases, insurance, or tax bills for properties you currently own."}
           </div>
         </Card>
       ) : (
