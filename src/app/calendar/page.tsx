@@ -261,6 +261,13 @@ function EventRow({ ev, canDelete }: { ev: CalendarEvent; canDelete: boolean }) 
         ? t.dangerBg
         : t.warnBg;
 
+  // Smart-route: a document_due event carries the Document UUID in
+  // external_ref_id. Clicking it deep-links to the vault upload
+  // flow for that doc instead of toggling done — completion is
+  // implicit when the doc actually gets uploaded.
+  const isDocDue = ev.external_ref_kind === "document_due" && !!ev.external_ref_id;
+  const docDueHref = isDocDue ? `/vault?fulfill=${ev.external_ref_id}` : link;
+
   const onToggleDone = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -268,6 +275,14 @@ function EventRow({ ev, canDelete }: { ev: CalendarEvent; canDelete: boolean }) 
       id: ev.id,
       patch: { status: isDone ? "pending" : "done" },
     });
+  };
+
+  const onClick = (e: React.MouseEvent) => {
+    if (isDocDue && !isDone && !isCancelled) {
+      // Let the Link navigate — don't toggle done.
+      return;
+    }
+    onToggleDone(e);
   };
 
   const onDelete = (e: React.MouseEvent) => {
@@ -279,8 +294,8 @@ function EventRow({ ev, canDelete }: { ev: CalendarEvent; canDelete: boolean }) 
 
   return (
     <Link
-      href={link}
-      onClick={onToggleDone}
+      href={docDueHref}
+      onClick={onClick}
       style={{
         display: "flex",
         gap: 12,

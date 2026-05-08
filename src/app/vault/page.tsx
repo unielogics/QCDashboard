@@ -10,7 +10,8 @@
 // the documents the connected borrower (or themselves) has uploaded.
 
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel, VerifiedBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -52,8 +53,33 @@ export default function VaultPage() {
 
   const loanById = Object.fromEntries(loans.map((l) => [l.id, l] as const));
 
-  // Upload modal state
+  // Upload modal state. When the borrower clicks a REQUESTED row,
+  // we pre-bind `prefill` so the modal opens with that loan + that
+  // checklist item already selected — no need to walk through the
+  // pickers again. Same hook also handles deep-links from the
+  // calendar (?fulfill=<doc_id>).
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [prefill, setPrefill] = useState<{ loanId: string; fulfillDocId: string; name: string } | null>(null);
+
+  const onTapRequestedDoc = (doc: Document) => {
+    setPrefill({ loanId: doc.loan_id, fulfillDocId: doc.id, name: doc.name });
+    setUploadOpen(true);
+  };
+
+  // Calendar deep-link: /vault?fulfill=<doc_id>
+  const sp = useSearchParams();
+  const fulfillParam = sp.get("fulfill");
+  useEffect(() => {
+    if (!fulfillParam) return;
+    const target = docs.find((d) => d.id === fulfillParam);
+    if (!target || target.status !== "requested") return;
+    onTapRequestedDoc(target);
+    // strip the param so a re-render doesn't re-trigger
+    const url = new URL(window.location.href);
+    url.searchParams.delete("fulfill");
+    window.history.replaceState({}, "", url.toString());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fulfillParam, docs.length]);
 
   return (
     <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
@@ -82,9 +108,13 @@ export default function VaultPage() {
 
       <UploadDocumentModal
         open={uploadOpen}
-        onClose={() => setUploadOpen(false)}
+        onClose={() => {
+          setUploadOpen(false);
+          setPrefill(null);
+        }}
         loans={loans}
         defaultKind={tab}
+        prefill={prefill}
       />
 
       {filtered.length === 0 ? (
@@ -119,7 +149,12 @@ export default function VaultPage() {
             <div>Status</div>
           </div>
           {filtered.map((d) => (
-            <DocRow key={d.id} doc={d} loan={loanById[d.loan_id]} />
+            <DocRow
+              key={d.id}
+              doc={d}
+              loan={loanById[d.loan_id]}
+              onTapRequested={d.status === "requested" ? () => onTapRequestedDoc(d) : undefined}
+            />
           ))}
         </Card>
       )}
@@ -160,15 +195,40 @@ function TabButton({
   );
 }
 
-function DocRow({ doc, loan }: { doc: Document; loan: Loan | undefined }) {
+function DocRow({
+  doc,
+  loan,
+  onTapRequested,
+}: {
+  doc: Document;
+  loan: Loan | undefined;
+  // Set on REQUESTED rows — clicking the row opens the upload
+  // modal with this doc pre-bound. Other statuses pass undefined
+  // (the row stays as plain layout).
+  onTapRequested?: () => void;
+}) {
   const { t } = useTheme();
   const kind = doc.status === "verified"
     ? "verified"
     : doc.status === "flagged"
     ? "flagged"
     : "pending";
+  const isRequested = !!onTapRequested;
   return (
     <div
+      onClick={isRequested ? onTapRequested : undefined}
+      role={isRequested ? "button" : undefined}
+      tabIndex={isRequested ? 0 : undefined}
+      onKeyDown={
+        isRequested
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onTapRequested?.();
+              }
+            }
+          : undefined
+      }
       style={{
         display: "grid",
         gridTemplateColumns: "minmax(0, 2fr) 140px 120px 120px 120px",
@@ -178,6 +238,8 @@ function DocRow({ doc, loan }: { doc: Document; loan: Loan | undefined }) {
         alignItems: "center",
         fontSize: 13,
         color: t.ink,
+        cursor: isRequested ? "pointer" : "default",
+        background: isRequested ? t.warnBg : "transparent",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
@@ -196,8 +258,15 @@ function DocRow({ doc, loan }: { doc: Document; loan: Loan | undefined }) {
         >
           <Icon name="doc" size={14} />
         </div>
-        <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700 }}>
-          {doc.name}
+        <div style={{ minWidth: 0, overflow: "hidden" }}>
+          <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700 }}>
+            {doc.name}
+          </div>
+          {isRequested ? (
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: t.warn, letterSpacing: 0.4, marginTop: 2 }}>
+              CLICK TO UPLOAD →
+            </div>
+          ) : null}
         </div>
       </div>
       <div>
@@ -239,11 +308,17 @@ function UploadDocumentModal({
   onClose,
   loans,
   defaultKind,
+  prefill,
 }: {
   open: boolean;
   onClose: () => void;
   loans: Loan[];
   defaultKind: UploadKind;
+  // Set when the modal was opened from a tap on a REQUESTED row in
+  // the vault list or from a calendar deep-link (?fulfill=<doc_id>).
+  // Pre-binds loan + checklist pick so the user goes straight from
+  // file-pick to submit.
+  prefill?: { loanId: string; fulfillDocId: string; name: string } | null;
 }) {
   const { t } = useTheme();
   const upload = useUploadDocument();
@@ -264,11 +339,28 @@ function UploadDocumentModal({
     loanId || null,
   );
 
-  // Reset state when the modal opens.
-  if (open && file === null && error === null && loanId === "" && loans.length > 0) {
-    setLoanId(loans[0]?.id ?? "");
-    setKind(defaultKind);
-  }
+  // Reset state when the modal opens. When `prefill` is supplied
+  // (smart-route from a REQUESTED row tap or calendar deep-link),
+  // bind the loan + pickedKey from it so the user lands ready to
+  // pick a file immediately.
+  useEffect(() => {
+    if (!open) return;
+    if (prefill) {
+      setLoanId(prefill.loanId);
+      setPickedKey(`doc:${prefill.fulfillDocId}`);
+      setKind(defaultKind);
+      setFile(null);
+      setError(null);
+      setSuccess(null);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+    if (file === null && error === null && loanId === "" && loans.length > 0) {
+      setLoanId(loans[0]?.id ?? "");
+      setKind(defaultKind);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, prefill]);
 
   if (!open) return null;
 
