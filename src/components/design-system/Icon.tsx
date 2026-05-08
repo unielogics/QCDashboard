@@ -111,6 +111,7 @@ const ICON_PATHS: Record<string, string> = {
   reports:   "M3 17l6-6 4 4 8-8M21 7v6h-6",
   rewards:   "M12 2l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z",
   upload:    "M12 21V9M7 14l5-5 5 5M5 3h14",
+  paperclip: "M21 11l-9.5 9.5a5.5 5.5 0 01-7.78-7.78L13.4 3a4 4 0 015.66 5.66L9.5 18.22a2.5 2.5 0 01-3.54-3.54L14.62 5.99",
 };
 
 export interface IconProps extends Omit<SVGProps<SVGSVGElement>, "stroke"> {

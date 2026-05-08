@@ -10,10 +10,17 @@
 // owns the thread sidebar; this one is just the chat surface.
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useAIChatThread, useSendAIChatMessage } from "@/hooks/useApi";
+import {
+  useAIChatThread,
+  useChatAttachmentInit,
+  useRouteDocument,
+  useSendAIChatMessage,
+} from "@/hooks/useApi";
+import type { ChatAction, ChatAttachment } from "@/lib/types";
 
 interface Props {
   threadId: string;
@@ -34,12 +41,18 @@ export function ThreadChatView({
   starterPrompts,
 }: Props) {
   const { t } = useTheme();
+  const router = useRouter();
   const threadQ = useAIChatThread(threadId);
   const sendMessage = useSendAIChatMessage();
+  const attachmentInit = useChatAttachmentInit();
+  const routeDocument = useRouteDocument();
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [staged, setStaged] = useState<{ document_id: string; name: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const messages = threadQ.data?.messages ?? [];
+  const threadLoanId = threadQ.data?.loan_id ?? null;
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -53,13 +66,68 @@ export function ThreadChatView({
 
   const send = async (raw: string) => {
     const text = raw.trim();
-    if (!text || sendMessage.isPending) return;
+    if ((!text && staged.length === 0) || sendMessage.isPending) return;
     setError(null);
     try {
-      await sendMessage.mutateAsync({ threadId, body: text });
+      const tokens = staged.map((s) => s.document_id);
+      await sendMessage.mutateAsync({
+        threadId,
+        body: text,
+        attachment_tokens: tokens.length > 0 ? tokens : null,
+      });
       setInput("");
+      setStaged([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "AI failed to respond.");
+    }
+  };
+
+  const onPickFile = async (file: File) => {
+    if (!threadLoanId) {
+      setError("Attachments only work in loan-specific conversations.");
+      return;
+    }
+    setError(null);
+    try {
+      const result = await attachmentInit.mutateAsync({ threadId, file });
+      setStaged((prev) => [...prev, { document_id: result.document_id, name: file.name }]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't attach the file.");
+    }
+  };
+
+  const onAction = async (action: ChatAction) => {
+    setError(null);
+    try {
+      switch (action.kind) {
+        case "upload_document": {
+          // Deep-link into the loan's docs tab with ?upload=<doc_id>.
+          // DocsTab fires the upload picker pre-bound on mount.
+          if (action.document_id && threadLoanId) {
+            router.push(`/loans/${threadLoanId}#docs?upload=${action.document_id}`);
+          } else if (threadLoanId) {
+            router.push(`/loans/${threadLoanId}#docs`);
+          }
+          return;
+        }
+        case "confirm_document_routing": {
+          if (!action.document_id) return;
+          await routeDocument.mutateAsync({
+            documentId: action.document_id,
+            checklist_key: action.checklist_key ?? null,
+          });
+          threadQ.refetch();
+          return;
+        }
+        case "complete_property_intake":
+          threadQ.refetch();
+          return;
+        case "open_calendar_event":
+          // v1: no-op. Calendar deep-link is a follow-up.
+          return;
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Action failed.");
     }
   };
 
@@ -171,16 +239,44 @@ export function ThreadChatView({
               style={{
                 alignSelf: m.role === "user" ? "flex-end" : "flex-start",
                 maxWidth: "85%",
-                padding: 11,
-                borderRadius: 14,
-                background: m.role === "user" ? t.brandSoft : t.surface2,
-                color: m.role === "user" ? t.brand : t.ink,
-                fontSize: 13,
-                lineHeight: 1.5,
-                whiteSpace: "pre-wrap",
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
               }}
             >
-              {m.body}
+              <div
+                style={{
+                  padding: 11,
+                  borderRadius: 14,
+                  background: m.role === "user" ? t.brandSoft : t.surface2,
+                  color: m.role === "user" ? t.brand : t.ink,
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {m.body}
+              </div>
+              {m.attachments && m.attachments.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {m.attachments.map((att) => (
+                    <AttachmentChipDesktop key={att.document_id} t={t} attachment={att} />
+                  ))}
+                </div>
+              ) : null}
+              {m.role === "assistant" && m.actions && m.actions.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {m.actions.map((a, idx) => (
+                    <ActionButtonDesktop
+                      key={idx}
+                      t={t}
+                      action={a}
+                      onClick={() => onAction(a)}
+                      busy={routeDocument.isPending}
+                    />
+                  ))}
+                </div>
+              ) : null}
             </div>
           ))
         )}
@@ -201,6 +297,54 @@ export function ThreadChatView({
         {error ? <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill> : null}
       </div>
 
+      {/* Staged attachments preview */}
+      {staged.length > 0 ? (
+        <div
+          style={{
+            flex: "0 0 auto",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 6,
+            padding: "8px 18px 0",
+          }}
+        >
+          {staged.map((s) => (
+            <div
+              key={s.document_id}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: t.petrolSoft,
+                color: t.petrol,
+                fontSize: 11.5,
+                fontWeight: 600,
+              }}
+            >
+              <Icon name="doc" size={12} />
+              <span style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {s.name}
+              </span>
+              <button
+                onClick={() => setStaged((prev) => prev.filter((x) => x.document_id !== s.document_id))}
+                aria-label="Remove attachment"
+                style={{
+                  all: "unset",
+                  cursor: "pointer",
+                  padding: 2,
+                  display: "inline-flex",
+                  alignItems: "center",
+                }}
+              >
+                <Icon name="x" size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {/* Input */}
       <div
         style={{
@@ -213,9 +357,41 @@ export function ThreadChatView({
         }}
       >
         <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf,image/*"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) onPickFile(f);
+            e.target.value = "";
+          }}
+          style={{ display: "none" }}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!threadLoanId || attachmentInit.isPending}
+          aria-label="Attach file"
+          title={threadLoanId ? "Attach file" : "Attachments require a loan-scoped thread"}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            border: "none",
+            background: "transparent",
+            color: threadLoanId ? t.ink2 : t.ink4,
+            cursor: threadLoanId ? "pointer" : "not-allowed",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: threadLoanId ? 1 : 0.5,
+          }}
+        >
+          <Icon name="paperclip" size={18} />
+        </button>
+        <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type your question…"
+          placeholder={staged.length > 0 ? "Add a note (optional)…" : "Type your question…"}
           disabled={sendMessage.isPending}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -237,16 +413,16 @@ export function ThreadChatView({
         />
         <button
           onClick={() => send(input)}
-          disabled={!input.trim() || sendMessage.isPending}
+          disabled={(!input.trim() && staged.length === 0) || sendMessage.isPending}
           aria-label="Send"
           style={{
             width: 44,
             height: 44,
             borderRadius: 12,
             border: "none",
-            background: input.trim() && !sendMessage.isPending ? t.petrol : t.chip,
-            color: input.trim() && !sendMessage.isPending ? "#fff" : t.ink4,
-            cursor: input.trim() && !sendMessage.isPending ? "pointer" : "not-allowed",
+            background: (input.trim() || staged.length > 0) && !sendMessage.isPending ? t.petrol : t.chip,
+            color: (input.trim() || staged.length > 0) && !sendMessage.isPending ? "#fff" : t.ink4,
+            cursor: (input.trim() || staged.length > 0) && !sendMessage.isPending ? "pointer" : "not-allowed",
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
@@ -255,6 +431,86 @@ export function ThreadChatView({
           <Icon name="arrowR" size={18} />
         </button>
       </div>
+    </div>
+  );
+}
+
+function ActionButtonDesktop({
+  t,
+  action,
+  onClick,
+  busy,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  action: ChatAction;
+  onClick: () => void;
+  busy: boolean;
+}) {
+  const isPrimary = action.confirm !== false;
+  const iconName =
+    action.kind === "upload_document"
+      ? "upload"
+      : action.kind === "confirm_document_routing"
+        ? (isPrimary ? "check" : "x")
+        : action.kind === "complete_property_intake"
+          ? "check"
+          : "chevR";
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      style={{
+        all: "unset",
+        cursor: busy ? "not-allowed" : "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "10px 14px",
+        borderRadius: 12,
+        background: isPrimary ? t.petrol : t.surface2,
+        border: isPrimary ? "none" : `1px solid ${t.line}`,
+        color: isPrimary ? "#fff" : t.ink,
+        fontSize: 12.5,
+        fontWeight: 700,
+        opacity: busy ? 0.6 : 1,
+      }}
+    >
+      <Icon name={iconName} size={14} />
+      <span>{action.label}</span>
+    </button>
+  );
+}
+
+function AttachmentChipDesktop({
+  t,
+  attachment,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  attachment: ChatAttachment;
+}) {
+  const status = attachment.status ?? "received";
+  const statusColor =
+    status === "verified" ? t.profit : status === "flagged" ? t.warn : t.ink3;
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "6px 10px",
+        borderRadius: 12,
+        background: t.surface2,
+        border: `1px solid ${t.line}`,
+        fontSize: 11.5,
+      }}
+    >
+      <Icon name="doc" size={12} />
+      <span style={{ color: t.ink, fontWeight: 600, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {attachment.name}
+      </span>
+      <span style={{ color: statusColor, textTransform: "uppercase", letterSpacing: 0.6, fontSize: 10.5 }}>
+        {status}
+      </span>
     </div>
   );
 }

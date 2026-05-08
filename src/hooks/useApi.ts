@@ -525,13 +525,95 @@ export function useSendAIChatMessage() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ threadId, body, loan_id }: { threadId: string; body: string; loan_id?: string | null }) =>
+    mutationFn: ({
+      threadId,
+      body,
+      loan_id,
+      attachment_tokens,
+    }: {
+      threadId: string;
+      body: string;
+      loan_id?: string | null;
+      attachment_tokens?: string[] | null;
+    }) =>
       apiCall<AIChatSendResponse>(`/ai/chat/threads/${threadId}/message`, {
         method: "POST",
-        body: JSON.stringify({ body, loan_id: loan_id ?? null }),
+        body: JSON.stringify({
+          body,
+          loan_id: loan_id ?? null,
+          attachment_tokens: attachment_tokens ?? null,
+        }),
       }),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["aiChatThread", vars.threadId, devUser] });
+      qc.invalidateQueries({ queryKey: ["aiChatThreads", devUser] });
+      qc.invalidateQueries({ queryKey: ["documents"] });
+    },
+  });
+}
+
+// Mints a presigned PUT for a file the user drops into a loan-scoped
+// chat thread, uploads the bytes to S3, returns the document_id.
+// Caller stages the id and includes it in the next /message send.
+export function useChatAttachmentInit() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: async (vars: {
+      threadId: string;
+      file: File;
+    }): Promise<{ document_id: string }> => {
+      const init = await apiCall<{
+        document_id: string;
+        upload_url: string | null;
+        s3_key: string;
+      }>(`/ai/chat/threads/${vars.threadId}/attachments/upload-init`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: vars.file.name,
+          content_type: vars.file.type || "application/octet-stream",
+        }),
+      });
+      if (init.upload_url) {
+        const put = await fetch(init.upload_url, {
+          method: "PUT",
+          body: vars.file,
+          headers: {
+            "Content-Type": vars.file.type || "application/octet-stream",
+            "x-amz-server-side-encryption": "AES256",
+          },
+        });
+        if (!put.ok) throw new Error(`S3 upload failed: ${put.status} ${put.statusText}`);
+      }
+      return { document_id: init.document_id };
+    },
+  });
+}
+
+// Hit by the chat's confirm_document_routing CTA. Relinks an
+// orphan upload to a checklist slot (or merges it into the slot's
+// existing REQUESTED row).
+export function useRouteDocument() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      documentId,
+      checklist_key,
+    }: {
+      documentId: string;
+      checklist_key: string | null;
+    }) =>
+      apiCall(`/documents/${documentId}/route`, {
+        method: "POST",
+        body: JSON.stringify({
+          checklist_key,
+          is_other: checklist_key == null,
+        }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["documents"] });
+      qc.invalidateQueries({ queryKey: ["aiChatThread"] });
       qc.invalidateQueries({ queryKey: ["aiChatThreads", devUser] });
     },
   });

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -11,8 +12,31 @@ import type { Loan } from "@/lib/types";
 
 export function DocsTab({ loan, canRequest }: { loan: Loan; canRequest: boolean }) {
   const { t } = useTheme();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: docs = [] } = useDocuments(loan.id);
   const [requestOpen, setRequestOpen] = useState(false);
+  // Tracks the doc_id whose upload picker should auto-open on mount,
+  // sourced from `?upload=<doc_id>` (the chat's upload_document CTA
+  // deep-links here).
+  const [autoUploadDocId, setAutoUploadDocId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const u = searchParams?.get("upload");
+    if (!u) return;
+    if (docs.length === 0) return;
+    const target = docs.find((d) => d.id === u);
+    if (target && (target.status === "requested" || target.status === "pending" || target.status === "flagged")) {
+      setAutoUploadDocId(u);
+    }
+    // Strip the param so re-renders don't re-fire the picker.
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    params.delete("upload");
+    router.replace(
+      `/loans/${loan.id}${params.toString() ? `?${params.toString()}` : ""}#docs`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams?.get("upload"), docs.length]);
 
   const counts = {
     received: docs.filter((d) => d.status === "received" || d.status === "verified").length,
@@ -67,7 +91,15 @@ export function DocsTab({ loan, canRequest }: { loan: Loan; canRequest: boolean 
                 {d.status}
               </Pill>
               {showUpload && (
-                <DocUploadButton loanId={loan.id} category={d.category ?? undefined} compact label="Upload" />
+                <DocUploadButton
+                  loanId={loan.id}
+                  category={d.category ?? undefined}
+                  compact
+                  label="Upload"
+                  fulfillDocId={d.id}
+                  autoOpen={autoUploadDocId === d.id}
+                  onAutoOpenHandled={() => setAutoUploadDocId(null)}
+                />
               )}
             </div>
           );

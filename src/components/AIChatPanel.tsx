@@ -13,17 +13,20 @@
 // the DB level no matter how the panel is poked.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import {
   useAIChatThread,
   useAIChatThreads,
+  useChatAttachmentInit,
   useFindOrCreateChatThread,
   useLoans,
+  useRouteDocument,
   useSendAIChatMessage,
 } from "@/hooks/useApi";
-import type { AIChatThread, Loan } from "@/lib/types";
+import type { AIChatThread, ChatAction, ChatAttachment, Loan } from "@/lib/types";
 
 const STARTER_PROMPTS = [
   "What's the next thing I need to do?",
@@ -39,18 +42,24 @@ interface Props {
 
 export function AIChatPanel({ open, onClose }: Props) {
   const { t } = useTheme();
+  const router = useRouter();
   const { data: loans = [] } = useLoans();
   const threadsQ = useAIChatThreads();
   const findOrCreate = useFindOrCreateChatThread();
   const sendMessage = useSendAIChatMessage();
+  const attachmentInit = useChatAttachmentInit();
+  const routeDocument = useRouteDocument();
 
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [staged, setStaged] = useState<{ document_id: string; name: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const activeThreadQ = useAIChatThread(activeThreadId);
   const messages = activeThreadQ.data?.messages ?? [];
+  const activeThreadLoanId = activeThreadQ.data?.loan_id ?? null;
 
   const accountThread = useMemo<AIChatThread | undefined>(
     () => (threadsQ.data ?? []).find((th) => !th.loan_id),
@@ -102,7 +111,7 @@ export function AIChatPanel({ open, onClose }: Props) {
 
   const send = async (raw: string) => {
     const text = raw.trim();
-    if (!text || sendMessage.isPending) return;
+    if ((!text && staged.length === 0) || sendMessage.isPending) return;
     setError(null);
     try {
       let threadId = activeThreadId;
@@ -113,10 +122,64 @@ export function AIChatPanel({ open, onClose }: Props) {
         threadId = t.id;
         setActiveThreadId(threadId);
       }
-      await sendMessage.mutateAsync({ threadId, body: text });
+      const tokens = staged.map((s) => s.document_id);
+      await sendMessage.mutateAsync({
+        threadId,
+        body: text,
+        attachment_tokens: tokens.length > 0 ? tokens : null,
+      });
       setInput("");
+      setStaged([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "AI failed to respond.");
+    }
+  };
+
+  const onPickFile = async (file: File) => {
+    if (!activeThreadId || !activeThreadLoanId) {
+      setError("Attachments require a loan-specific conversation.");
+      return;
+    }
+    setError(null);
+    try {
+      const result = await attachmentInit.mutateAsync({ threadId: activeThreadId, file });
+      setStaged((prev) => [...prev, { document_id: result.document_id, name: file.name }]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't attach the file.");
+    }
+  };
+
+  const onAction = async (action: ChatAction) => {
+    setError(null);
+    try {
+      switch (action.kind) {
+        case "upload_document": {
+          if (action.document_id && activeThreadLoanId) {
+            onClose();
+            router.push(`/loans/${activeThreadLoanId}#docs?upload=${action.document_id}`);
+          } else if (activeThreadLoanId) {
+            onClose();
+            router.push(`/loans/${activeThreadLoanId}#docs`);
+          }
+          return;
+        }
+        case "confirm_document_routing": {
+          if (!action.document_id) return;
+          await routeDocument.mutateAsync({
+            documentId: action.document_id,
+            checklist_key: action.checklist_key ?? null,
+          });
+          activeThreadQ.refetch();
+          return;
+        }
+        case "complete_property_intake":
+          activeThreadQ.refetch();
+          return;
+        case "open_calendar_event":
+          return;
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Action failed.");
     }
   };
 
@@ -380,16 +443,44 @@ export function AIChatPanel({ open, onClose }: Props) {
                   style={{
                     alignSelf: m.role === "user" ? "flex-end" : "flex-start",
                     maxWidth: "85%",
-                    padding: 11,
-                    borderRadius: 14,
-                    background: m.role === "user" ? t.brandSoft : t.surface2,
-                    color: m.role === "user" ? t.brand : t.ink,
-                    fontSize: 13,
-                    lineHeight: 1.5,
-                    whiteSpace: "pre-wrap",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
                   }}
                 >
-                  {m.body}
+                  <div
+                    style={{
+                      padding: 11,
+                      borderRadius: 14,
+                      background: m.role === "user" ? t.brandSoft : t.surface2,
+                      color: m.role === "user" ? t.brand : t.ink,
+                      fontSize: 13,
+                      lineHeight: 1.5,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {m.body}
+                  </div>
+                  {m.attachments && m.attachments.length > 0 ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {m.attachments.map((att) => (
+                        <PanelAttachmentChip key={att.document_id} t={t} attachment={att} />
+                      ))}
+                    </div>
+                  ) : null}
+                  {m.role === "assistant" && m.actions && m.actions.length > 0 ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {m.actions.map((a, idx) => (
+                        <PanelActionButton
+                          key={idx}
+                          t={t}
+                          action={a}
+                          onClick={() => onAction(a)}
+                          busy={routeDocument.isPending}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ))
             )}
@@ -410,6 +501,54 @@ export function AIChatPanel({ open, onClose }: Props) {
             {error ? <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill> : null}
           </div>
 
+          {/* Staged attachments preview */}
+          {staged.length > 0 ? (
+            <div
+              style={{
+                flex: "0 0 auto",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 6,
+                padding: "8px 22px 0",
+              }}
+            >
+              {staged.map((s) => (
+                <div
+                  key={s.document_id}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    background: t.petrolSoft,
+                    color: t.petrol,
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                  }}
+                >
+                  <Icon name="doc" size={12} />
+                  <span style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {s.name}
+                  </span>
+                  <button
+                    onClick={() => setStaged((prev) => prev.filter((x) => x.document_id !== s.document_id))}
+                    aria-label="Remove attachment"
+                    style={{
+                      all: "unset",
+                      cursor: "pointer",
+                      padding: 2,
+                      display: "inline-flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Icon name="x" size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
           {/* Input */}
           <div
             style={{
@@ -422,9 +561,47 @@ export function AIChatPanel({ open, onClose }: Props) {
             }}
           >
             <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf,image/*"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onPickFile(f);
+                e.target.value = "";
+              }}
+              style={{ display: "none" }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!activeThreadLoanId || attachmentInit.isPending}
+              aria-label="Attach file"
+              title={activeThreadLoanId ? "Attach file" : "Attachments require a loan-scoped thread"}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                border: "none",
+                background: "transparent",
+                color: activeThreadLoanId ? t.ink2 : t.ink4,
+                cursor: activeThreadLoanId ? "pointer" : "not-allowed",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: activeThreadLoanId ? 1 : 0.5,
+              }}
+            >
+              <Icon name="paperclip" size={18} />
+            </button>
+            <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={activeThreadId ? "Type your question…" : "Pick a conversation first"}
+              placeholder={
+                staged.length > 0
+                  ? "Add a note (optional)…"
+                  : activeThreadId
+                    ? "Type your question…"
+                    : "Pick a conversation first"
+              }
               disabled={sendMessage.isPending || !activeThreadId}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -447,16 +624,16 @@ export function AIChatPanel({ open, onClose }: Props) {
             />
             <button
               onClick={() => send(input)}
-              disabled={!input.trim() || sendMessage.isPending || !activeThreadId}
+              disabled={(!input.trim() && staged.length === 0) || sendMessage.isPending || !activeThreadId}
               aria-label="Send"
               style={{
                 width: 44,
                 height: 44,
                 borderRadius: 12,
                 border: "none",
-                background: input.trim() && !sendMessage.isPending && activeThreadId ? t.petrol : t.chip,
-                color: input.trim() && !sendMessage.isPending && activeThreadId ? "#fff" : t.ink4,
-                cursor: input.trim() && !sendMessage.isPending && activeThreadId ? "pointer" : "not-allowed",
+                background: (input.trim() || staged.length > 0) && !sendMessage.isPending && activeThreadId ? t.petrol : t.chip,
+                color: (input.trim() || staged.length > 0) && !sendMessage.isPending && activeThreadId ? "#fff" : t.ink4,
+                cursor: (input.trim() || staged.length > 0) && !sendMessage.isPending && activeThreadId ? "pointer" : "not-allowed",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -564,5 +741,85 @@ function SidebarRow({
         {subtitle}
       </div>
     </button>
+  );
+}
+
+function PanelActionButton({
+  t,
+  action,
+  onClick,
+  busy,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  action: ChatAction;
+  onClick: () => void;
+  busy: boolean;
+}) {
+  const isPrimary = action.confirm !== false;
+  const iconName =
+    action.kind === "upload_document"
+      ? "upload"
+      : action.kind === "confirm_document_routing"
+        ? (isPrimary ? "check" : "x")
+        : action.kind === "complete_property_intake"
+          ? "check"
+          : "chevR";
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      style={{
+        all: "unset",
+        cursor: busy ? "not-allowed" : "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "10px 14px",
+        borderRadius: 12,
+        background: isPrimary ? t.petrol : t.surface2,
+        border: isPrimary ? "none" : `1px solid ${t.line}`,
+        color: isPrimary ? "#fff" : t.ink,
+        fontSize: 12.5,
+        fontWeight: 700,
+        opacity: busy ? 0.6 : 1,
+      }}
+    >
+      <Icon name={iconName} size={14} />
+      <span>{action.label}</span>
+    </button>
+  );
+}
+
+function PanelAttachmentChip({
+  t,
+  attachment,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  attachment: ChatAttachment;
+}) {
+  const status = attachment.status ?? "received";
+  const statusColor =
+    status === "verified" ? t.profit : status === "flagged" ? t.warn : t.ink3;
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "6px 10px",
+        borderRadius: 12,
+        background: t.surface2,
+        border: `1px solid ${t.line}`,
+        fontSize: 11.5,
+      }}
+    >
+      <Icon name="doc" size={12} />
+      <span style={{ color: t.ink, fontWeight: 600, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {attachment.name}
+      </span>
+      <span style={{ color: statusColor, textTransform: "uppercase", letterSpacing: 0.6, fontSize: 10.5 }}>
+        {status}
+      </span>
+    </div>
   );
 }
