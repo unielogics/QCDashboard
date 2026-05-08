@@ -42,6 +42,7 @@ const AGENT_NAV: NavItem[] = [
   { href: "/vault", label: "Documents", icon: "vault" },
   { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/reports", label: "Performance", icon: "trend" },
+  { href: "/agent-settings", label: "Settings", icon: "gear" },
 ];
 
 const OPERATOR_NAV: NavItem[] = [

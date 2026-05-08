@@ -1,14 +1,39 @@
 "use client";
 
-// Smart Intake — 4-step modal flow for creating a new loan.
-// Ports .design/qualified-commercial/project/desktop/screens/smart-intake.jsx.
-// On Activate → POST /api/v1/intake → router.push(`/loans/${loan_id}`).
+// Smart Intake — side-aware new-deal flow.
+//
+// Substantial rewrite to match the Agent's mental model after live feedback:
+//   1. Step 1 starts with the Buyer/Seller toggle so the rest of the flow can
+//      branch. Borrower + entity info follows; this step creates the Client.
+//   2. Step 2 is the Asset step — REQUIRED single subject property when side
+//      is "seller" (the property they're listing); for "buyer" the subject is
+//      optional ("they may not have a target yet"), with an additional list
+//      of owned properties (primary or investment) so the AI has financial
+//      context for Step 3 packaging.
+//   3. Step 3 is keyboard-first (sliders → number inputs). Conditional on
+//      side: buyer enters cash available + max purchase; seller enters sales
+//      price. Loan type + LTV stay common, plus DSCR/ARV when applicable.
+//   4. Step 4 is the AI / Communication step — language preference, channel,
+//      target close date, backstory, and free-text AI speaking instructions.
+//      The earlier financial-tactical rules (floor rate, escalation delta,
+//      etc.) are kept as defaults under the hood for backend compatibility
+//      but no longer surfaced — those are firm-wide / Super Admin concerns
+//      and don't belong on Agent intake per the architecture rules.
+//
+// Container is the shared <RightPanel> 1/3-width slide-in (was a centered
+// modal). Same UX standard the rest of the app is migrating to.
+//
+// Backend payload (qcbackend POST /api/v1/intake) is preserved on the
+// existing borrower/asset/numbers/ai_rules shape, with the new fields
+// appended on the same payload. Backend will ignore unknowns until support
+// lands.
 
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary, qcBtnPetrol } from "@/components/design-system/buttons";
+import { qcBtn, qcBtnPetrol } from "@/components/design-system/buttons";
+import { RightPanel } from "@/components/design-system/RightPanel";
 import { useCreateIntake } from "@/hooks/useApi";
 import { parseUSD, parseIntStrict } from "@/lib/formCoerce";
 import {
@@ -18,76 +43,101 @@ import {
   PropertyType,
 } from "@/lib/enums.generated";
 import { isLoanTypeEnabled } from "@/lib/products";
-import type { SmartIntakePayload } from "@/lib/types";
+import type { SmartIntakePayload, OwnedAsset } from "@/lib/types";
 import type { QCTokens } from "@/components/design-system/tokens";
 
+type DealSide = "buyer" | "seller";
+type Channel = "sms+email" | "sms" | "email" | "push";
+
+interface AssetEntry {
+  address: string;
+  ownership: "primary" | "investment";
+  marketValue: string;
+  balanceOwed: string;
+}
+
 interface FormState {
-  // Borrower
+  // ── Step 1: Side + Borrower & Entity ─────────────────────────────────
+  dealSide: DealSide;
   borrowerName: string;
   borrowerEmail: string;
   borrowerPhone: string;
   entityType: typeof EntityType[keyof typeof EntityType];
   entityName: string;
   experience: typeof ExperienceTier[keyof typeof ExperienceTier];
-  // Asset
-  address: string;
-  city: string;
-  propertyType: typeof PropertyType[keyof typeof PropertyType];
-  asIsValue: string;
-  sqft: string;
-  taxes: string;
-  insurance: string;
-  // Numbers
+
+  // ── Step 2: Subject property + owned-asset portfolio ─────────────────
+  // Seller: subject is required (the property they're selling).
+  // Buyer:  subject is optional (they may not have a target yet); the
+  //         buyerOwnsProperties + ownedAssets list captures their portfolio.
+  subjectAddress: string;
+  subjectCity: string;
+  subjectPropertyType: typeof PropertyType[keyof typeof PropertyType];
+  subjectMarketValue: string;
+  subjectSqft: string;
+  subjectTaxes: string;
+  subjectInsurance: string;
+  buyerOwnsProperties: boolean;
+  ownedAssets: AssetEntry[];
+
+  // ── Step 3: Numbers (keyboard-first inputs) ──────────────────────────
   loanType: typeof LoanType[keyof typeof LoanType];
-  targetLTV: number;
+  // Buyer-side
+  cashAvailable: string;
+  maxPurchasePrice: string;
+  // Seller-side
+  salesPrice: string;
+  // Common
+  targetLTV: string;
+  baseRate: string;
   expectedRent: string;
   arv: string;
-  baseRate: number;
-  // AI Rules
-  floorRate: number;
-  points: number;
-  requireSoftPull: boolean;
-  autoSendTerms: boolean;
-  allowDocAuto: boolean;
-  escalateOnDelta: number;
-  notifyChannel: "sms+email" | "sms" | "email" | "push";
-  message: string;
+
+  // ── Step 4: AI / Communication ───────────────────────────────────────
+  language: string;
+  preferredChannel: Channel;
+  targetCloseDate: string;
+  backstory: string;
+  aiInstructions: string;
 }
 
 const INITIAL: FormState = {
+  dealSide: "buyer",
   borrowerName: "",
   borrowerEmail: "",
   borrowerPhone: "",
   entityType: EntityType.LLC,
   entityName: "",
-  experience: ExperienceTier.HEAVY,
-  address: "",
-  city: "",
-  propertyType: PropertyType.SFR,
-  asIsValue: "",
-  sqft: "",
-  taxes: "",
-  insurance: "",
+  experience: ExperienceTier.LIGHT,
+  subjectAddress: "",
+  subjectCity: "",
+  subjectPropertyType: PropertyType.SFR,
+  subjectMarketValue: "",
+  subjectSqft: "",
+  subjectTaxes: "",
+  subjectInsurance: "",
+  buyerOwnsProperties: false,
+  ownedAssets: [],
   loanType: LoanType.DSCR,
-  targetLTV: 75,
+  cashAvailable: "",
+  maxPurchasePrice: "",
+  salesPrice: "",
+  targetLTV: "75",
+  baseRate: "7.5",
   expectedRent: "",
   arv: "",
-  baseRate: 7.5,
-  floorRate: 6.5,
-  points: 1.5,
-  requireSoftPull: true,
-  autoSendTerms: true,
-  allowDocAuto: true,
-  escalateOnDelta: 25,
-  notifyChannel: "sms+email",
-  message: "",
+  language: "en",
+  preferredChannel: "sms+email",
+  targetCloseDate: "",
+  backstory: "",
+  aiInstructions: "",
 };
 
 const STEPS = [
-  { id: "borrower", label: "Borrower & Entity" },
+  { id: "borrower", label: "Borrower" },
   { id: "asset", label: "Asset" },
   { id: "numbers", label: "Numbers" },
-  { id: "ai", label: "AI Rules" },
+  { id: "ai", label: "AI & Messaging" },
 ] as const;
 
 export function SmartIntakeModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -98,14 +148,29 @@ export function SmartIntakeModal({ open, onClose }: { open: boolean; onClose: ()
   const [form, setForm] = useState<FormState>(INITIAL);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
 
-  if (!open) return null;
+  const update = <K extends keyof FormState>(k: K, v: FormState[K]) =>
+    setForm((f) => ({ ...f, [k]: v }));
 
-  const update = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }));
+  const isSeller = form.dealSide === "seller";
+  const isBuyer = form.dealSide === "buyer";
 
   const canAdvance = () => {
-    if (step === 0) return form.borrowerName.trim().length > 0 && form.borrowerEmail.includes("@");
-    if (step === 1) return form.address.trim().length > 0 && parseUSD(form.asIsValue) > 0;
-    if (step === 2) return form.targetLTV > 0;
+    if (step === 0) {
+      return form.borrowerName.trim().length > 0 && form.borrowerEmail.includes("@");
+    }
+    if (step === 1) {
+      // Sellers need a subject property + market value.
+      // Buyers can move on without a subject (they may not have a target yet).
+      if (isSeller) {
+        return form.subjectAddress.trim().length > 0 && parseUSD(form.subjectMarketValue) > 0;
+      }
+      return true;
+    }
+    if (step === 2) {
+      // Buyer needs cash + max purchase; Seller needs sales price.
+      if (isBuyer) return parseUSD(form.cashAvailable) > 0 && parseUSD(form.maxPurchasePrice) > 0;
+      return parseUSD(form.salesPrice) > 0;
+    }
     return true;
   };
 
@@ -114,126 +179,54 @@ export function SmartIntakeModal({ open, onClose }: { open: boolean; onClose: ()
     try {
       const payload = mapToPayload(form);
       const result = await createIntake.mutateAsync(payload);
-      // Reset for next time, then navigate to the Deal Control Room.
       setForm(INITIAL);
       setStep(0);
       onClose();
       router.push(`/loans/${result.loan_id}/control-room?just-created=1`);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to create loan";
-      setSubmitErr(msg);
+      setSubmitErr(e instanceof Error ? e.message : "Failed to create deal");
     }
   };
 
+  const handleAddAsset = () => {
+    update("ownedAssets", [
+      ...form.ownedAssets,
+      { address: "", ownership: "investment", marketValue: "", balanceOwed: "" },
+    ]);
+  };
+
+  const handleRemoveAsset = (idx: number) => {
+    update(
+      "ownedAssets",
+      form.ownedAssets.filter((_, i) => i !== idx),
+    );
+  };
+
+  const handleUpdateAsset = (idx: number, patch: Partial<AssetEntry>) => {
+    update(
+      "ownedAssets",
+      form.ownedAssets.map((a, i) => (i === idx ? { ...a, ...patch } : a)),
+    );
+  };
+
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,20,28,0.55)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 200,
-        padding: 32,
-      }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%",
-          maxWidth: 880,
-          maxHeight: "90vh",
-          background: t.surface,
-          borderRadius: 18,
-          border: `1px solid ${t.line}`,
-          boxShadow: t.shadowLg,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
-        {/* Header */}
-        <div style={{
-          padding: "18px 24px",
-          borderBottom: `1px solid ${t.line}`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: t.petrol, letterSpacing: 1.4, textTransform: "uppercase" }}>
-              New Deal · Smart Intake
-            </div>
-            <div style={{ fontSize: 19, fontWeight: 700, color: t.ink, letterSpacing: -0.4, marginTop: 2 }}>
-              {STEPS[step].label}
-            </div>
-          </div>
+    <RightPanel
+      open={open}
+      onClose={onClose}
+      width="min(680px, max(45vw, 520px))"
+      eyebrow={`New Deal · Smart Intake · ${isSeller ? "Seller" : "Buyer"}`}
+      title={STEPS[step].label}
+      ariaLabel="Smart Intake — new deal"
+      footer={
+        <>
           <button
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              width: 30, height: 30, borderRadius: 8,
-              border: `1px solid ${t.line}`, background: "transparent", color: t.ink2,
-              cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center",
-            }}
+            onClick={() => (step === 0 ? onClose() : setStep(step - 1))}
+            style={qcBtn(t)}
+            disabled={createIntake.isPending}
           >
-            <Icon name="x" size={14} />
-          </button>
-        </div>
-
-        {/* Stepper */}
-        <div style={{
-          display: "flex",
-          padding: "14px 24px",
-          gap: 4,
-          borderBottom: `1px solid ${t.line}`,
-          background: t.surface2,
-        }}>
-          {STEPS.map((s, i) => (
-            <div key={s.id} style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{
-                width: 22, height: 22, borderRadius: 999, flexShrink: 0,
-                background: i <= step ? t.petrol : t.line,
-                color: i <= step ? "#fff" : t.ink3,
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                fontSize: 11, fontWeight: 800,
-              }}>
-                {i < step ? "✓" : i + 1}
-              </div>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: i <= step ? t.ink : t.ink3, letterSpacing: 0.3 }}>
-                {s.label}
-              </div>
-              {i < STEPS.length - 1 && (
-                <div style={{ flex: 1, height: 1, background: i < step ? t.petrol : t.line }} />
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Body */}
-        <div style={{ flex: 1, overflow: "auto", padding: 24 }}>
-          {step === 0 && <BorrowerStepView t={t} form={form} update={update} />}
-          {step === 1 && <AssetStepView t={t} form={form} update={update} />}
-          {step === 2 && <NumbersStepView t={t} form={form} update={update} />}
-          {step === 3 && <AIRulesStepView t={t} form={form} update={update} />}
-        </div>
-
-        {/* Footer */}
-        <div style={{
-          padding: "14px 24px",
-          borderTop: `1px solid ${t.line}`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          background: t.surface,
-          gap: 12,
-        }}>
-          <button onClick={() => (step === 0 ? onClose() : setStep(step - 1))} style={qcBtn(t)}>
             {step === 0 ? "Cancel" : "← Back"}
           </button>
-          <div style={{ flex: 1, textAlign: "center", fontSize: 12, color: submitErr ? t.danger : t.ink3, fontWeight: 600 }}>
+          <div style={{ flex: 1, textAlign: "center", fontSize: 11, color: submitErr ? t.danger : t.ink3, fontWeight: 600 }}>
             {submitErr ? submitErr : `Step ${step + 1} of ${STEPS.length}`}
           </div>
           {step < STEPS.length - 1 ? (
@@ -241,7 +234,7 @@ export function SmartIntakeModal({ open, onClose }: { open: boolean; onClose: ()
               onClick={() => canAdvance() && setStep(step + 1)}
               disabled={!canAdvance()}
               style={{
-                ...qcBtnPrimary(t),
+                ...qcBtnPetrol(t),
                 opacity: canAdvance() ? 1 : 0.5,
                 cursor: canAdvance() ? "pointer" : "not-allowed",
               }}
@@ -258,32 +251,113 @@ export function SmartIntakeModal({ open, onClose }: { open: boolean; onClose: ()
                 cursor: createIntake.isPending ? "wait" : "pointer",
               }}
             >
-              <Icon name="bolt" size={14} />
-              {createIntake.isPending ? "Activating…" : "Activate AI & Notify Client"}
+              <Icon name="bolt" size={13} />
+              {createIntake.isPending ? "Activating…" : "Activate AI"}
             </button>
           )}
-        </div>
+        </>
+      }
+    >
+      {/* Stepper */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+        {STEPS.map((s, i) => (
+          <div key={s.id} style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
+            <div
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: 999,
+                flexShrink: 0,
+                background: i <= step ? t.petrol : t.line,
+                color: i <= step ? "#fff" : t.ink3,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 10,
+                fontWeight: 800,
+              }}
+            >
+              {i < step ? "✓" : i + 1}
+            </div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: i <= step ? t.ink : t.ink3, letterSpacing: 0.3 }}>
+              {s.label}
+            </div>
+            {i < STEPS.length - 1 && (
+              <div style={{ flex: 1, height: 1, background: i < step ? t.petrol : t.line }} />
+            )}
+          </div>
+        ))}
       </div>
-    </div>
+
+      {/* Body — switch on step */}
+      {step === 0 && (
+        <BorrowerStepView
+          t={t}
+          form={form}
+          update={update}
+        />
+      )}
+      {step === 1 && (
+        <AssetStepView
+          t={t}
+          form={form}
+          update={update}
+          onAddAsset={handleAddAsset}
+          onRemoveAsset={handleRemoveAsset}
+          onUpdateAsset={handleUpdateAsset}
+        />
+      )}
+      {step === 2 && <NumbersStepView t={t} form={form} update={update} />}
+      {step === 3 && <CommunicationStepView t={t} form={form} update={update} />}
+    </RightPanel>
   );
 }
 
-// ── Map flat form → backend nested payload ────────────────────────────────
+// ── Map flat form → backend nested payload (backward-compatible) ──────────
 
 function mapToPayload(form: FormState): SmartIntakePayload {
-  const value = parseUSD(form.asIsValue);
-  const ltvDecimal = form.targetLTV / 100;
-  const amount = Math.round(value * ltvDecimal);
-  const monthlyRent = parseUSD(form.expectedRent);
-  const arv = parseUSD(form.arv);
-  // Split address by comma if user provided "Street, City" — heuristic only.
-  let address = form.address.trim();
-  let city = form.city.trim();
+  const isSeller = form.dealSide === "seller";
+
+  // Subject property: for sellers it's the listing; for buyers it's the
+  // (optional) target they may have already identified. If buyer with no
+  // subject, send placeholder data — the loan row exists as a working file
+  // until the borrower locks a property.
+  const subjectAddressRaw = form.subjectAddress.trim();
+  let address = subjectAddressRaw || (isSeller ? "" : "Property TBD");
+  let city = form.subjectCity.trim();
   if (!city && address.includes(",")) {
     const parts = address.split(",");
     address = parts[0].trim();
     city = parts.slice(1).join(",").trim();
   }
+
+  const subjectValue = parseUSD(form.subjectMarketValue);
+  const cashAvailable = parseUSD(form.cashAvailable);
+  const maxPurchase = parseUSD(form.maxPurchasePrice);
+  const salesPrice = parseUSD(form.salesPrice);
+
+  // Loan amount: seller side uses sales price * (1 - target LTV-equivalent)
+  // doesn't make sense; instead, use the Subject value the listing carries
+  // OR the explicit numbers field. For buyers, use max purchase as the basis.
+  const ltvDecimal = (parseFloat(form.targetLTV) || 0) / 100;
+  const baseValue = isSeller
+    ? subjectValue || salesPrice
+    : subjectValue || maxPurchase;
+  const amount = Math.round(baseValue * ltvDecimal);
+  const baseRate = parseFloat(form.baseRate) || 0;
+
+  const ownedAssets: OwnedAsset[] | null =
+    isBuyerWithAssets(form)
+      ? form.ownedAssets
+          .filter((a) => a.address.trim().length > 0)
+          .map<OwnedAsset>((a) => ({
+            address: a.address.trim(),
+            ownership: a.ownership,
+            market_value: parseUSD(a.marketValue) || null,
+            balance_owed: parseUSD(a.balanceOwed) || null,
+          }))
+      : null;
+
   return {
     borrower: {
       name: form.borrowerName.trim(),
@@ -296,32 +370,47 @@ function mapToPayload(form: FormState): SmartIntakePayload {
     asset: {
       address,
       city: city || null,
-      property_type: form.propertyType,
-      sqft: parseIntStrict(form.sqft) || null,
-      annual_taxes: parseUSD(form.taxes),
-      annual_insurance: parseUSD(form.insurance),
-      as_is_value: value || null,
+      property_type: form.subjectPropertyType,
+      sqft: parseIntStrict(form.subjectSqft) || null,
+      annual_taxes: parseUSD(form.subjectTaxes),
+      annual_insurance: parseUSD(form.subjectInsurance),
+      as_is_value: subjectValue || null,
     },
     numbers: {
       type: form.loanType,
       amount,
       ltv: ltvDecimal,
       ltc: null,
-      arv: arv || null,
-      monthly_rent: monthlyRent || null,
-      base_rate: form.baseRate,
+      arv: parseUSD(form.arv) || null,
+      monthly_rent: parseUSD(form.expectedRent) || null,
+      base_rate: baseRate,
+      cash_available: isSeller ? null : cashAvailable || null,
+      max_purchase_price: isSeller ? null : maxPurchase || null,
+      sales_price: isSeller ? salesPrice || null : null,
     },
     ai_rules: {
-      floor_rate: form.floorRate,
-      max_buy_down_points: form.points,
-      require_soft_pull: form.requireSoftPull,
-      auto_send_terms: form.autoSendTerms,
-      doc_auto_verify: form.allowDocAuto,
-      escalation_delta_bps: form.escalateOnDelta,
-      notify_channel: form.notifyChannel,
-      intro_message: form.message.trim() || null,
+      // Defaulted financial-tactical rules — kept for backend compat.
+      floor_rate: 6.5,
+      max_buy_down_points: 1.5,
+      require_soft_pull: true,
+      auto_send_terms: false,
+      doc_auto_verify: true,
+      escalation_delta_bps: 25,
+      // New communication-focused fields
+      notify_channel: form.preferredChannel,
+      intro_message: null,
+      language: form.language || null,
+      backstory: form.backstory.trim() || null,
+      target_close_date: form.targetCloseDate || null,
+      ai_instructions: form.aiInstructions.trim() || null,
     },
+    deal_side: form.dealSide,
+    owned_assets: ownedAssets,
   };
+}
+
+function isBuyerWithAssets(form: FormState): boolean {
+  return form.dealSide === "buyer" && form.buyerOwnsProperties && form.ownedAssets.length > 0;
 }
 
 // ── Step views ────────────────────────────────────────────────────────────
@@ -334,258 +423,370 @@ interface StepProps {
 
 function BorrowerStepView({ t, form, update }: StepProps) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-      <Field t={t} label="Borrower name" required>
-        <Input t={t} value={form.borrowerName} onChange={(v) => update("borrowerName", v)} placeholder="Marcus Holloway" />
-      </Field>
-      <Field t={t} label="Email" required>
-        <Input t={t} type="email" value={form.borrowerEmail} onChange={(v) => update("borrowerEmail", v)} placeholder="marcus@holloway.cap" />
-      </Field>
-      <Field t={t} label="Phone">
-        <Input t={t} value={form.borrowerPhone} onChange={(v) => update("borrowerPhone", v)} placeholder="(917) 555-0148" />
-      </Field>
-      <Field t={t} label="Entity type">
-        <Select t={t} value={form.entityType} onChange={(v) => update("entityType", v as FormState["entityType"])} options={[
-          { value: EntityType.INDIVIDUAL, label: "Individual" },
-          { value: EntityType.LLC, label: "LLC" },
-          { value: EntityType.CORPORATION, label: "Corporation" },
-          { value: EntityType.TRUST, label: "Trust" },
-        ]} />
-      </Field>
-      <Field t={t} label="Entity name (LLC)">
-        <Input t={t} value={form.entityName} onChange={(v) => update("entityName", v)} placeholder="Holloway Capital LLC" />
-      </Field>
-      <Field t={t} label="Experience level" full>
-        <Select t={t} value={form.experience} onChange={(v) => update("experience", v as FormState["experience"])} options={[
-          { value: ExperienceTier.NONE, label: "First-time investor" },
-          { value: ExperienceTier.LIGHT, label: "Some experience (1–2 deals)" },
-          { value: ExperienceTier.MID, label: "Experienced (3–5 deals)" },
-          { value: ExperienceTier.HEAVY, label: "Institutional (5+ deals)" },
-        ]} />
-      </Field>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Side toggle — pick this first so the rest of the flow can branch */}
+      <div>
+        <Label t={t}>Buyer or Seller?</Label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <SideButton t={t} active={form.dealSide === "buyer"} onClick={() => update("dealSide", "buyer")}>
+            Buyer
+          </SideButton>
+          <SideButton t={t} active={form.dealSide === "seller"} onClick={() => update("dealSide", "seller")}>
+            Seller
+          </SideButton>
+        </div>
+        <div style={{ fontSize: 11, color: t.ink3, marginTop: 6 }}>
+          {form.dealSide === "buyer"
+            ? "We'll capture purchase capacity and any properties they currently own."
+            : "We'll capture the listing — the property they're selling, plus the sale price."}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <Field t={t} label="Name" required>
+          <Input t={t} value={form.borrowerName} onChange={(v) => update("borrowerName", v)} placeholder="Marcus Holloway" />
+        </Field>
+        <Field t={t} label="Email" required>
+          <Input t={t} type="email" value={form.borrowerEmail} onChange={(v) => update("borrowerEmail", v)} placeholder="marcus@holloway.cap" />
+        </Field>
+        <Field t={t} label="Phone">
+          <Input t={t} value={form.borrowerPhone} onChange={(v) => update("borrowerPhone", v)} placeholder="(917) 555-0148" />
+        </Field>
+        <Field t={t} label="Entity type">
+          <Select
+            t={t}
+            value={form.entityType}
+            onChange={(v) => update("entityType", v as FormState["entityType"])}
+            options={[
+              { value: EntityType.INDIVIDUAL, label: "Individual" },
+              { value: EntityType.LLC, label: "LLC" },
+              { value: EntityType.CORPORATION, label: "Corporation" },
+              { value: EntityType.TRUST, label: "Trust" },
+            ]}
+          />
+        </Field>
+        <Field t={t} label="Entity name">
+          <Input t={t} value={form.entityName} onChange={(v) => update("entityName", v)} placeholder="Holloway Capital LLC" />
+        </Field>
+        <Field t={t} label="Experience level">
+          <Select
+            t={t}
+            value={form.experience}
+            onChange={(v) => update("experience", v as FormState["experience"])}
+            options={[
+              { value: ExperienceTier.NONE, label: "First-time" },
+              { value: ExperienceTier.LIGHT, label: "1–2 deals" },
+              { value: ExperienceTier.MID, label: "3–5 deals" },
+              { value: ExperienceTier.HEAVY, label: "Institutional" },
+            ]}
+          />
+        </Field>
+      </div>
+      <Note t={t}>
+        Submitting Step 1 creates the Client record. The rest of the flow enriches it.
+      </Note>
     </div>
   );
 }
 
-function AssetStepView({ t, form, update }: StepProps) {
+function AssetStepView({
+  t,
+  form,
+  update,
+  onAddAsset,
+  onRemoveAsset,
+  onUpdateAsset,
+}: StepProps & {
+  onAddAsset: () => void;
+  onRemoveAsset: (idx: number) => void;
+  onUpdateAsset: (idx: number, patch: Partial<AssetEntry>) => void;
+}) {
+  const isSeller = form.dealSide === "seller";
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-      <Field t={t} label="Property address" full required>
-        <Input t={t} value={form.address} onChange={(v) => update("address", v)} placeholder="123 Main St" />
-      </Field>
-      <Field t={t} label="City, State ZIP">
-        <Input t={t} value={form.city} onChange={(v) => update("city", v)} placeholder="Brooklyn, NY 11201" />
-      </Field>
-      <Field t={t} label="Property type">
-        <Select t={t} value={form.propertyType} onChange={(v) => update("propertyType", v as FormState["propertyType"])} options={[
-          { value: PropertyType.SFR, label: "Single-Family Rental" },
-          { value: PropertyType.UNITS_2_4, label: "2–4 Unit Multi-Family" },
-          { value: PropertyType.UNITS_5_8, label: "Multi-Family (5–8 units)" },
-          { value: PropertyType.MIXED_USE, label: "Mixed-Use" },
-          { value: PropertyType.COMMERCIAL, label: "Commercial" },
-        ]} />
-      </Field>
-      <Field t={t} label="As-is value" required>
-        <Input t={t} value={form.asIsValue} onChange={(v) => update("asIsValue", v)} placeholder="485,000" prefix="$" />
-      </Field>
-      <Field t={t} label="Square footage">
-        <Input t={t} value={form.sqft} onChange={(v) => update("sqft", v)} placeholder="2,140" suffix="sqft" />
-      </Field>
-      <Field t={t} label="Annual taxes">
-        <Input t={t} value={form.taxes} onChange={(v) => update("taxes", v)} placeholder="8,420" prefix="$" />
-      </Field>
-      <Field t={t} label="Annual insurance">
-        <Input t={t} value={form.insurance} onChange={(v) => update("insurance", v)} placeholder="2,400" prefix="$" />
-      </Field>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Subject property — required for sellers, optional for buyers */}
+      <div>
+        <SectionHeader t={t}>
+          {isSeller ? "Property they're selling" : "Target property (optional)"}
+        </SectionHeader>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <Field t={t} label="Address" full required={isSeller}>
+            <Input t={t} value={form.subjectAddress} onChange={(v) => update("subjectAddress", v)} placeholder="123 Main St" />
+          </Field>
+          <Field t={t} label="City, State">
+            <Input t={t} value={form.subjectCity} onChange={(v) => update("subjectCity", v)} placeholder="Brooklyn, NY" />
+          </Field>
+          <Field t={t} label="Property type">
+            <Select
+              t={t}
+              value={form.subjectPropertyType}
+              onChange={(v) => update("subjectPropertyType", v as FormState["subjectPropertyType"])}
+              options={[
+                { value: PropertyType.SFR, label: "Single-Family" },
+                { value: PropertyType.UNITS_2_4, label: "2–4 Units" },
+                { value: PropertyType.UNITS_5_8, label: "5–8 Units" },
+                { value: PropertyType.MIXED_USE, label: "Mixed-Use" },
+                { value: PropertyType.COMMERCIAL, label: "Commercial" },
+              ]}
+            />
+          </Field>
+          <Field t={t} label={isSeller ? "Estimated market value" : "Asking price (if known)"} required={isSeller}>
+            <Input t={t} value={form.subjectMarketValue} onChange={(v) => update("subjectMarketValue", v)} placeholder="485,000" prefix="$" />
+          </Field>
+          <Field t={t} label="Square footage">
+            <Input t={t} value={form.subjectSqft} onChange={(v) => update("subjectSqft", v)} placeholder="2,140" suffix="sqft" />
+          </Field>
+          <Field t={t} label="Annual taxes">
+            <Input t={t} value={form.subjectTaxes} onChange={(v) => update("subjectTaxes", v)} placeholder="8,420" prefix="$" />
+          </Field>
+        </div>
+      </div>
+
+      {/* Buyer-only — current portfolio */}
+      {form.dealSide === "buyer" && (
+        <div>
+          <SectionHeader t={t}>Properties currently owned</SectionHeader>
+          <Toggle
+            t={t}
+            label="The buyer currently owns real estate"
+            sub="Add each property they own. Becomes part of their experience profile + financial picture."
+            value={form.buyerOwnsProperties}
+            onChange={(v) => update("buyerOwnsProperties", v)}
+          />
+          {form.buyerOwnsProperties && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+              {form.ownedAssets.map((asset, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    border: `1px solid ${t.line}`,
+                    borderRadius: 10,
+                    padding: 12,
+                    background: t.surface2,
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <Field t={t} label="Address" full>
+                      <Input t={t} value={asset.address} onChange={(v) => onUpdateAsset(idx, { address: v })} placeholder="55 Park Ave, Brooklyn NY" />
+                    </Field>
+                    <Field t={t} label="Use">
+                      <Select
+                        t={t}
+                        value={asset.ownership}
+                        onChange={(v) => onUpdateAsset(idx, { ownership: v as AssetEntry["ownership"] })}
+                        options={[
+                          { value: "primary", label: "Primary residence" },
+                          { value: "investment", label: "Investment" },
+                        ]}
+                      />
+                    </Field>
+                    <Field t={t} label="Estimated value">
+                      <Input t={t} value={asset.marketValue} onChange={(v) => onUpdateAsset(idx, { marketValue: v })} placeholder="525,000" prefix="$" />
+                    </Field>
+                    <Field t={t} label="Balance owed">
+                      <Input t={t} value={asset.balanceOwed} onChange={(v) => onUpdateAsset(idx, { balanceOwed: v })} placeholder="280,000" prefix="$" />
+                    </Field>
+                  </div>
+                  <button
+                    onClick={() => onRemoveAsset(idx)}
+                    title="Remove asset"
+                    style={{
+                      all: "unset",
+                      cursor: "pointer",
+                      color: t.ink3,
+                      width: 28,
+                      height: 28,
+                      borderRadius: 8,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      alignSelf: "start",
+                    }}
+                  >
+                    <Icon name="x" size={13} />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={onAddAsset}
+                style={{
+                  ...qcBtn(t),
+                  alignSelf: "flex-start",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Icon name="plus" size={12} /> Add property
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 function NumbersStepView({ t, form, update }: StepProps) {
-  const ltv = Number(form.targetLTV) || 0;
-  const value = parseUSD(form.asIsValue);
-  const loanAmt = Math.round((value * ltv) / 100);
+  const isSeller = form.dealSide === "seller";
   const isDscr = form.loanType === LoanType.DSCR;
   const isFlipOrConstruct = form.loanType === LoanType.FIX_AND_FLIP || form.loanType === LoanType.GROUND_UP;
+
   return (
-    <div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <Field t={t} label="Loan type">
-          <Select t={t} value={form.loanType} onChange={(v) => update("loanType", v as FormState["loanType"])} options={[
-            { value: LoanType.DSCR, label: "DSCR Rental" },
-            { value: LoanType.FIX_AND_FLIP, label: "Fix & Flip" },
-            { value: LoanType.BRIDGE, label: "Bridge" },
-            { value: LoanType.GROUND_UP, label: "Ground Up / Construction" },
-            { value: LoanType.PORTFOLIO, label: "Portfolio" },
-            { value: LoanType.CASH_OUT_REFI, label: "Cash-Out Refi" },
-          ].filter((o) => isLoanTypeEnabled(o.value))} />
-        </Field>
-        <Field t={t} label={`Target LTV — ${ltv}%`}>
-          <input
-            type="range"
-            min={50}
-            max={85}
-            step={1}
-            value={ltv}
-            onChange={(e) => update("targetLTV", Number(e.target.value))}
-            style={{ width: "100%", accentColor: t.petrol }}
+          <Select
+            t={t}
+            value={form.loanType}
+            onChange={(v) => update("loanType", v as FormState["loanType"])}
+            options={[
+              { value: LoanType.DSCR, label: "DSCR Rental" },
+              { value: LoanType.FIX_AND_FLIP, label: "Fix & Flip" },
+              { value: LoanType.BRIDGE, label: "Bridge" },
+              { value: LoanType.GROUND_UP, label: "Ground Up" },
+              { value: LoanType.PORTFOLIO, label: "Portfolio" },
+              { value: LoanType.CASH_OUT_REFI, label: "Cash-Out Refi" },
+            ].filter((o) => isLoanTypeEnabled(o.value))}
           />
         </Field>
-        <Field t={t} label={`Base rate — ${form.baseRate.toFixed(3)}%`}>
-          <input
-            type="range"
-            min={6.0}
-            max={11.0}
-            step={0.125}
-            value={form.baseRate}
-            onChange={(e) => update("baseRate", Number(e.target.value))}
-            style={{ width: "100%", accentColor: t.petrol }}
-          />
+
+        {isSeller ? (
+          <Field t={t} label="Sales price" required>
+            <Input t={t} value={form.salesPrice} onChange={(v) => update("salesPrice", v)} placeholder="485,000" prefix="$" />
+          </Field>
+        ) : (
+          <>
+            <Field t={t} label="Cash available" required>
+              <Input t={t} value={form.cashAvailable} onChange={(v) => update("cashAvailable", v)} placeholder="125,000" prefix="$" />
+            </Field>
+            <Field t={t} label="Max purchase price" required full>
+              <Input t={t} value={form.maxPurchasePrice} onChange={(v) => update("maxPurchasePrice", v)} placeholder="650,000" prefix="$" />
+            </Field>
+          </>
+        )}
+
+        <Field t={t} label="Target LTV (%)">
+          <Input t={t} value={form.targetLTV} onChange={(v) => update("targetLTV", v)} placeholder="75" suffix="%" />
         </Field>
+        <Field t={t} label="Base rate (%)">
+          <Input t={t} value={form.baseRate} onChange={(v) => update("baseRate", v)} placeholder="7.500" suffix="%" />
+        </Field>
+
         {isDscr && (
-          <Field t={t} label="Expected monthly rent">
+          <Field t={t} label="Expected monthly rent" full>
             <Input t={t} value={form.expectedRent} onChange={(v) => update("expectedRent", v)} placeholder="3,650" prefix="$" />
           </Field>
         )}
         {isFlipOrConstruct && (
-          <Field t={t} label="ARV (after-repair value)">
+          <Field t={t} label="ARV (after-repair value)" full>
             <Input t={t} value={form.arv} onChange={(v) => update("arv", v)} placeholder="640,000" prefix="$" />
           </Field>
         )}
       </div>
-      {/* Live calc strip */}
-      <div style={{
-        marginTop: 18,
-        padding: 14,
-        borderRadius: 11,
-        background: t.petrolSoft,
-        border: `1px solid ${t.petrol}30`,
-        display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
-        gap: 12,
-      }}>
-        <Stat t={t} label="Loan amount" value={loanAmt ? `$${loanAmt.toLocaleString()}` : "—"} accent />
-        <Stat t={t} label="LTV" value={`${ltv}%`} />
-        <Stat t={t} label="Property value" value={value ? `$${value.toLocaleString()}` : "—"} />
-        <Stat t={t} label="Type" value={prettyLoanType(form.loanType)} />
-      </div>
+
+      <Note t={t}>
+        Type the numbers — sliders are gone. The Lender Submission Package generated from
+        a Deal recomputes terms server-side; these inputs are starting estimates.
+      </Note>
     </div>
   );
 }
 
-function AIRulesStepView({ t, form, update }: StepProps) {
+function CommunicationStepView({ t, form, update }: StepProps) {
   return (
-    <div>
-      <div style={{
-        padding: 14,
-        borderRadius: 11,
-        background: t.petrolSoft,
-        border: `1px solid ${t.petrol}30`,
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 10,
-        marginBottom: 18,
-      }}>
-        <Icon name="bolt" size={16} style={{ color: t.petrol, marginTop: 2 }} />
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div
+        style={{
+          padding: 12,
+          borderRadius: 10,
+          background: t.petrolSoft,
+          border: `1px solid ${t.petrol}30`,
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 10,
+        }}
+      >
+        <Icon name="bolt" size={14} style={{ color: t.petrol, marginTop: 1 }} />
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>How the AI should handle this client</div>
-          <div style={{ fontSize: 12, color: t.ink2, marginTop: 3, lineHeight: 1.5 }}>
-            The co-pilot will text/email the client on activation, run gates per your rules, and pause for a human anywhere outside these guardrails.
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink }}>How the AI should speak with this client</div>
+          <div style={{ fontSize: 11.5, color: t.ink2, marginTop: 3, lineHeight: 1.5 }}>
+            These instructions guide your client-side AI only — the early-funnel relationship
+            work. Once the client moves to <strong>Ready for Lending</strong>, the firm-wide
+            Funding Team AI takes over for the lender packaging side.
           </div>
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <Field t={t} label={`Floor rate (buy-down limit) — ${form.floorRate.toFixed(3)}%`}>
-          <input
-            type="range"
-            min={5.0}
-            max={form.baseRate}
-            step={0.125}
-            value={form.floorRate}
-            onChange={(e) => update("floorRate", Number(e.target.value))}
-            style={{ width: "100%", accentColor: t.petrol }}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <Field t={t} label="Preferred language">
+          <Select
+            t={t}
+            value={form.language}
+            onChange={(v) => update("language", v)}
+            options={[
+              { value: "en", label: "English" },
+              { value: "es", label: "Spanish" },
+              { value: "pt", label: "Portuguese" },
+              { value: "zh", label: "Chinese" },
+              { value: "fr", label: "French" },
+              { value: "other", label: "Other / multilingual" },
+            ]}
           />
         </Field>
-        <Field t={t} label={`Max buy-down points — ${form.points.toFixed(2)}`}>
-          <input
-            type="range"
-            min={0}
-            max={3}
-            step={0.125}
-            value={form.points}
-            onChange={(e) => update("points", Number(e.target.value))}
-            style={{ width: "100%", accentColor: t.petrol }}
+        <Field t={t} label="Preferred channel">
+          <Select
+            t={t}
+            value={form.preferredChannel}
+            onChange={(v) => update("preferredChannel", v as Channel)}
+            options={[
+              { value: "sms+email", label: "SMS + Email" },
+              { value: "sms", label: "SMS only" },
+              { value: "email", label: "Email only" },
+              { value: "push", label: "App push only" },
+            ]}
           />
         </Field>
-        <Field t={t} label={`Escalate on rate delta > ${form.escalateOnDelta} bps`} full>
-          <input
-            type="range"
-            min={10}
-            max={100}
-            step={5}
-            value={form.escalateOnDelta}
-            onChange={(e) => update("escalateOnDelta", Number(e.target.value))}
-            style={{ width: "100%", accentColor: t.petrol }}
+        <Field t={t} label="Target close date" full>
+          <Input
+            t={t}
+            type="date"
+            value={form.targetCloseDate}
+            onChange={(v) => update("targetCloseDate", v)}
           />
         </Field>
       </div>
 
-      <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-        <Toggle t={t} label="Require soft credit pull before showing terms" sub="Client consent captured in portal." value={form.requireSoftPull} onChange={(v) => update("requireSoftPull", v)} />
-        <Toggle t={t} label="Auto-send custom terms after soft pull clears" sub="Skips broker-approve step on green underwriting." value={form.autoSendTerms} onChange={(v) => update("autoSendTerms", v)} />
-        <Toggle t={t} label="Auto-verify standard documents (W-9, ID, bank stmts)" sub="OCR + cross-check; flags exceptions only." value={form.allowDocAuto} onChange={(v) => update("allowDocAuto", v)} />
-      </div>
-
-      <Field t={t} label="Initial message to client (optional)" full>
+      <Field t={t} label="Backstory / context">
         <textarea
-          value={form.message}
-          onChange={(e) => update("message", e.target.value)}
-          placeholder="Hi Marcus, I've started your file for 123 Main St. The link below will let you verify a few details, run a soft credit check, and view your custom terms in about 60 seconds…"
-          style={{
-            width: "100%",
-            minHeight: 76,
-            resize: "vertical",
-            padding: "10px 12px",
-            background: t.surface2,
-            border: `1px solid ${t.line}`,
-            borderRadius: 9,
-            color: t.ink,
-            fontSize: 12.5,
-            fontFamily: "inherit",
-            lineHeight: 1.5,
-            marginTop: 14,
-          }}
+          value={form.backstory}
+          onChange={(e) => update("backstory", e.target.value)}
+          placeholder="Anything the AI should know up-front — relocation timeline, family situation, prior agent, why they're transacting now…"
+          style={textareaStyle(t)}
+          rows={3}
         />
       </Field>
 
-      <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: t.ink2, fontWeight: 600 }}>
-        Notify via:
-        {([
-          { v: "sms+email", l: "SMS + Email" },
-          { v: "sms", l: "SMS only" },
-          { v: "email", l: "Email only" },
-          { v: "push", l: "Push only" },
-        ] as const).map((o) => (
-          <button
-            key={o.v}
-            onClick={() => update("notifyChannel", o.v)}
-            style={{
-              padding: "5px 10px",
-              borderRadius: 7,
-              fontFamily: "inherit",
-              fontSize: 11.5,
-              fontWeight: 700,
-              cursor: "pointer",
-              background: form.notifyChannel === o.v ? t.petrol : "transparent",
-              color: form.notifyChannel === o.v ? "#fff" : t.ink2,
-              border: `1px solid ${form.notifyChannel === o.v ? t.petrol : t.line}`,
-            }}
-          >
-            {o.l}
-          </button>
-        ))}
-      </div>
+      <Field t={t} label="AI speaking instructions">
+        <textarea
+          value={form.aiInstructions}
+          onChange={(e) => update("aiInstructions", e.target.value)}
+          placeholder="Keep messages short. Avoid jargon. Always copy me on first contact. Use a friendly, lower-pressure tone — they're nervous about timing."
+          style={textareaStyle(t)}
+          rows={3}
+        />
+      </Field>
+
+      <Note t={t}>
+        Compliance: AI drafts for borrower-facing messages always require your approval.
+        Forbidden phrasings (&quot;you are approved&quot;, &quot;guaranteed rate&quot;) are
+        enforced at prompt level — these instructions can&apos;t override them.
+      </Note>
     </div>
   );
 }
@@ -595,14 +796,7 @@ function AIRulesStepView({ t, form, update }: StepProps) {
 function Field({ t, label, required, children, full }: { t: QCTokens; label: string; required?: boolean; children: ReactNode; full?: boolean }) {
   return (
     <div style={{ gridColumn: full ? "1 / -1" : "auto" }}>
-      <div style={{
-        fontSize: 10.5,
-        fontWeight: 700,
-        color: t.ink3,
-        letterSpacing: 1.0,
-        textTransform: "uppercase",
-        marginBottom: 6,
-      }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 6 }}>
         {label} {required && <span style={{ color: t.danger }}>*</span>}
       </div>
       {children}
@@ -610,7 +804,71 @@ function Field({ t, label, required, children, full }: { t: QCTokens; label: str
   );
 }
 
-function Input({ t, value, onChange, placeholder, type = "text", prefix, suffix }: {
+function Label({ t, children }: { t: QCTokens; children: ReactNode }) {
+  return (
+    <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 8 }}>
+      {children}
+    </div>
+  );
+}
+
+function SectionHeader({ t, children }: { t: QCTokens; children: ReactNode }) {
+  return (
+    <div style={{ fontSize: 12, fontWeight: 800, color: t.ink, marginBottom: 10, paddingBottom: 6, borderBottom: `1px solid ${t.line}` }}>
+      {children}
+    </div>
+  );
+}
+
+function SideButton({
+  t,
+  active,
+  onClick,
+  children,
+}: {
+  t: QCTokens;
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        all: "unset",
+        cursor: "pointer",
+        padding: "12px 16px",
+        borderRadius: 10,
+        border: `1px solid ${active ? t.petrol : t.line}`,
+        background: active ? t.petrolSoft : t.surface2,
+        color: active ? t.petrol : t.ink2,
+        fontSize: 13,
+        fontWeight: 700,
+        textAlign: "center",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Note({ t, children }: { t: QCTokens; children: ReactNode }) {
+  return (
+    <div style={{ fontSize: 11, color: t.ink3, lineHeight: 1.55, marginTop: 4 }}>
+      {children}
+    </div>
+  );
+}
+
+function Input({
+  t,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  prefix,
+  suffix,
+}: {
   t: QCTokens;
   value: string;
   onChange: (v: string) => void;
@@ -620,32 +878,49 @@ function Input({ t, value, onChange, placeholder, type = "text", prefix, suffix 
   suffix?: string;
 }) {
   return (
-    <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-      {prefix && <span style={{ position: "absolute", left: 10, fontSize: 12.5, color: t.ink3, fontWeight: 600 }}>{prefix}</span>}
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        width: "100%",
+        background: t.surface2,
+        border: `1px solid ${t.line}`,
+        borderRadius: 9,
+      }}
+    >
+      {prefix && (
+        <span style={{ padding: "0 0 0 12px", color: t.ink3, fontSize: 13, fontWeight: 700 }}>{prefix}</span>
+      )}
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         style={{
-          width: "100%",
-          padding: prefix ? "10px 12px 10px 22px" : "10px 12px",
-          paddingRight: suffix ? 50 : 12,
-          background: t.surface2,
-          border: `1px solid ${t.line}`,
-          borderRadius: 9,
+          flex: 1,
+          minWidth: 0,
+          padding: "10px 12px",
+          background: "transparent",
+          border: "none",
           color: t.ink,
           fontSize: 13,
           fontFamily: "inherit",
           outline: "none",
         }}
       />
-      {suffix && <span style={{ position: "absolute", right: 10, fontSize: 11, color: t.ink3, fontWeight: 700 }}>{suffix}</span>}
+      {suffix && (
+        <span style={{ padding: "0 12px 0 0", color: t.ink3, fontSize: 12 }}>{suffix}</span>
+      )}
     </div>
   );
 }
 
-function Select({ t, value, onChange, options }: {
+function Select({
+  t,
+  value,
+  onChange,
+  options,
+}: {
   t: QCTokens;
   value: string;
   onChange: (v: string) => void;
@@ -658,22 +933,30 @@ function Select({ t, value, onChange, options }: {
       style={{
         width: "100%",
         padding: "10px 12px",
+        borderRadius: 9,
         background: t.surface2,
         border: `1px solid ${t.line}`,
-        borderRadius: 9,
         color: t.ink,
         fontSize: 13,
         fontFamily: "inherit",
       }}
     >
       {options.map((o) => (
-        <option key={o.value} value={o.value}>{o.label}</option>
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
       ))}
     </select>
   );
 }
 
-function Toggle({ t, label, sub, value, onChange }: {
+function Toggle({
+  t,
+  label,
+  sub,
+  value,
+  onChange,
+}: {
   t: QCTokens;
   label: string;
   sub?: string;
@@ -682,74 +965,65 @@ function Toggle({ t, label, sub, value, onChange }: {
 }) {
   return (
     <button
-      type="button"
       onClick={() => onChange(!value)}
       style={{
+        all: "unset",
+        cursor: "pointer",
         display: "flex",
         alignItems: "center",
-        justifyContent: "space-between",
-        gap: 10,
+        gap: 12,
         padding: "10px 12px",
-        borderRadius: 9,
-        border: `1px solid ${t.line}`,
-        background: t.surface2,
-        color: t.ink,
-        fontFamily: "inherit",
-        cursor: "pointer",
-        textAlign: "left",
+        borderRadius: 10,
+        border: `1px solid ${value ? t.petrol : t.line}`,
+        background: value ? t.petrolSoft : t.surface2,
+        width: "100%",
       }}
     >
-      <div>
-        <div style={{ fontSize: 12.5, fontWeight: 700 }}>{label}</div>
-        {sub && <div style={{ fontSize: 11, color: t.ink3, marginTop: 2, fontWeight: 500 }}>{sub}</div>}
-      </div>
-      <div style={{
-        width: 34,
-        height: 20,
-        borderRadius: 999,
-        padding: 2,
-        background: value ? t.petrol : t.line,
-        transition: "background 120ms",
-        flexShrink: 0,
-      }}>
-        <div style={{
-          width: 16,
-          height: 16,
+      <div
+        style={{
+          width: 38,
+          height: 22,
           borderRadius: 999,
-          background: "#fff",
-          transform: value ? "translateX(14px)" : "translateX(0)",
-          transition: "transform 120ms",
-        }} />
+          background: value ? t.petrol : t.line,
+          position: "relative",
+          flexShrink: 0,
+          transition: "background .15s ease",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            top: 2,
+            left: value ? 18 : 2,
+            width: 18,
+            height: 18,
+            borderRadius: 999,
+            background: "#fff",
+            transition: "left .15s ease",
+          }}
+        />
+      </div>
+      <div>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink }}>{label}</div>
+        {sub && <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>{sub}</div>}
       </div>
     </button>
   );
 }
 
-function Stat({ t, label, value, accent }: { t: QCTokens; label: string; value: string; accent?: boolean }) {
-  return (
-    <div>
-      <div style={{
-        fontSize: 9.5,
-        fontWeight: 800,
-        color: accent ? t.petrol : t.ink3,
-        letterSpacing: 1.0,
-        textTransform: "uppercase",
-      }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 16, fontWeight: 700, color: t.ink, marginTop: 2, letterSpacing: -0.3 }}>{value}</div>
-    </div>
-  );
-}
-
-function prettyLoanType(t: FormState["loanType"]): string {
-  switch (t) {
-    case LoanType.DSCR: return "DSCR";
-    case LoanType.FIX_AND_FLIP: return "Fix & Flip";
-    case LoanType.GROUND_UP: return "Ground Up";
-    case LoanType.BRIDGE: return "Bridge";
-    case LoanType.PORTFOLIO: return "Portfolio";
-    case LoanType.CASH_OUT_REFI: return "Cash-Out Refi";
-    default: return t;
-  }
+function textareaStyle(t: QCTokens): React.CSSProperties {
+  return {
+    width: "100%",
+    minHeight: 70,
+    resize: "vertical",
+    padding: "10px 12px",
+    background: t.surface2,
+    border: `1px solid ${t.line}`,
+    borderRadius: 9,
+    color: t.ink,
+    fontSize: 13,
+    fontFamily: "inherit",
+    lineHeight: 1.5,
+    outline: "none",
+  };
 }

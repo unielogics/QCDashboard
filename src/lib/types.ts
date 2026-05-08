@@ -209,6 +209,18 @@ export interface AssetStep {
   as_is_value?: number | null;
 }
 
+// Existing-portfolio assets a buyer already owns (collected on the new
+// SmartIntake flow when side="buyer"). Each becomes a property on the
+// Client's experience tab so the AI can reason about liquidity + experience.
+// Sent alongside the primary AssetStep (which represents the subject
+// property of THIS deal, or a placeholder for buyer-no-property-yet).
+export interface OwnedAsset {
+  address: string;
+  ownership: "primary" | "investment";
+  market_value: number | null;
+  balance_owed: number | null;
+}
+
 export interface NumbersStep {
   type: LoanType;
   amount: number;
@@ -217,9 +229,18 @@ export interface NumbersStep {
   arv?: number | null;
   monthly_rent?: number | null;
   base_rate: number;
+  // Deal-side specific. Buyer = future purchase context; Seller = listing
+  // economics. Both populate `amount` above for the Loan row but enrich
+  // downstream reporting + Lender packaging.
+  cash_available?: number | null;        // buyer
+  max_purchase_price?: number | null;    // buyer
+  sales_price?: number | null;           // seller
 }
 
 export interface AIRulesStep {
+  // Original financial-tactical rules — kept for backward compat. The
+  // SmartIntake UI no longer surfaces these directly; sane defaults are
+  // sent until the backend stops requiring them.
   floor_rate: number;
   max_buy_down_points: number;
   require_soft_pull: boolean;
@@ -228,6 +249,12 @@ export interface AIRulesStep {
   escalation_delta_bps: number;
   notify_channel: "push" | "email" | "sms" | "sms+email";
   intro_message?: string | null;
+  // New communication-focused fields. The Agent fills these out in Step 4
+  // of the new SmartIntake flow so the AI knows how to talk to this client.
+  language?: string | null;              // "en" | "es" | etc. (free-text for now)
+  backstory?: string | null;             // free-text context for the AI
+  target_close_date?: string | null;     // ISO date
+  ai_instructions?: string | null;       // freeform "how to speak with this client"
 }
 
 export interface SmartIntakePayload {
@@ -235,6 +262,10 @@ export interface SmartIntakePayload {
   asset: AssetStep;
   numbers: NumbersStep;
   ai_rules: AIRulesStep;
+  // New top-level fields surfaced by the redesigned SmartIntake. Backend
+  // can ignore until support lands; frontend captures regardless.
+  deal_side?: "buyer" | "seller" | null;
+  owned_assets?: OwnedAsset[] | null;
 }
 
 export interface SmartIntakeResponse {
