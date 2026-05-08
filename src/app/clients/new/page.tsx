@@ -7,13 +7,21 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useBrokers, useCreateClient } from "@/hooks/useApi";
+import { useBrokers, useCreateClient, useCurrentUser } from "@/hooks/useApi";
+import { Role } from "@/lib/enums.generated";
 
 export default function NewClientPage() {
   const { t } = useTheme();
   const router = useRouter();
   const createClient = useCreateClient();
+  const { data: user } = useCurrentUser();
   const { data: brokers = [] } = useBrokers();
+
+  // Referral source + Assign broker are management metadata, not Agent-side
+  // intake fields. The Agent is auto-linked as the broker on the new row
+  // server-side (their user_id is the broker_id). Only Super Admin sees and
+  // edits these — they manage attribution + cross-Agent assignment.
+  const isAdmin = user?.role === Role.SUPER_ADMIN;
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -34,8 +42,11 @@ export default function NewClientPage() {
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
         city: city.trim() || undefined,
-        referral_source: referralSource.trim() || undefined,
-        broker_id: brokerId || undefined,
+        // Only forward these when the creator is a Super Admin. For Agents,
+        // the backend auto-stamps broker_id from the JWT and leaves
+        // referral_source null until/unless an admin fills it in later.
+        referral_source: isAdmin ? referralSource.trim() || undefined : undefined,
+        broker_id: isAdmin ? brokerId || undefined : undefined,
       });
       router.push(`/clients/${created.id}`);
     } catch (e) {
@@ -66,24 +77,30 @@ export default function NewClientPage() {
           <Field t={t} label="City">
             <Input t={t} value={city} onChange={setCity} placeholder="Brooklyn, NY" />
           </Field>
-          <Field t={t} label="Referral source" full>
-            <Input t={t} value={referralSource} onChange={setReferralSource} placeholder="Direct, broker network, etc." />
-          </Field>
-          <Field t={t} label="Assign broker" full>
-            <select
-              value={brokerId}
-              onChange={(e) => setBrokerId(e.target.value)}
-              style={{
-                width: "100%", padding: "10px 12px", borderRadius: 9, background: t.surface2,
-                border: `1px solid ${t.line}`, color: t.ink, fontSize: 13, fontFamily: "inherit",
-              }}
-            >
-              <option value="">Auto (your broker if you have one)</option>
-              {brokers.map((b) => (
-                <option key={b.id} value={b.id}>{b.display_name} · {b.tier}</option>
-              ))}
-            </select>
-          </Field>
+          {/* Super-admin-only: referral source + broker assignment are file-
+              management concerns, not intake. Agents auto-link as the broker. */}
+          {isAdmin && (
+            <>
+              <Field t={t} label="Referral source" full>
+                <Input t={t} value={referralSource} onChange={setReferralSource} placeholder="Direct, broker network, etc." />
+              </Field>
+              <Field t={t} label="Assign broker" full>
+                <select
+                  value={brokerId}
+                  onChange={(e) => setBrokerId(e.target.value)}
+                  style={{
+                    width: "100%", padding: "10px 12px", borderRadius: 9, background: t.surface2,
+                    border: `1px solid ${t.line}`, color: t.ink, fontSize: 13, fontFamily: "inherit",
+                  }}
+                >
+                  <option value="">Auto-assign</option>
+                  {brokers.map((b) => (
+                    <option key={b.id} value={b.id}>{b.display_name} · {b.tier}</option>
+                  ))}
+                </select>
+              </Field>
+            </>
+          )}
         </div>
         {error && <div style={{ color: t.danger, fontSize: 12, fontWeight: 700, marginTop: 12 }}>{error}</div>}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>

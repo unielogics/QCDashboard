@@ -40,7 +40,6 @@ const AGENT_NAV: NavItem[] = [
   { href: "/ai-inbox", label: "AI Inbox", icon: "bolt" },
   { href: "/clients", label: "Clients", icon: "clients" },
   { href: "/vault", label: "Documents", icon: "vault" },
-  { href: "/ai-tasks", label: "AI Follow-Up", icon: "spark" },
   { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/reports", label: "Performance", icon: "trend" },
 ];
