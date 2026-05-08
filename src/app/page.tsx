@@ -648,10 +648,19 @@ function RateCard({
   const spreadBps = series?.spread_bps ?? 0;
   const delta = series?.delta_bps ?? null;
   const deltaColor = delta == null ? t.ink3 : delta < 0 ? t.profit : delta > 0 ? t.danger : t.ink3;
-  // 7-day points feed the small inline chart — matches the mobile design.
-  const chartPoints = series?.history_7d ?? [];
-  const hasEnoughHistory =
-    chartPoints.filter((p) => p.value != null).length >= 2;
+  // Inline chart points. DPRIME (Fix & Flip + Ground Up) publishes
+  // weekly so its history_7d window is empty most days — fall back
+  // to the most recent valid points from history_30d so the chart
+  // renders for sparse series too.
+  const chartPoints = (() => {
+    const seven = (series?.history_7d ?? []).filter((p) => p.value != null);
+    if (seven.length >= 2) return seven;
+    const thirty = (series?.history_30d ?? []).filter((p) => p.value != null);
+    // Take the last 7 valid points, regardless of how far back they
+    // span. Keeps the chart shape readable on weekly-published series.
+    return thirty.slice(-7);
+  })();
+  const hasEnoughHistory = chartPoints.length >= 2;
 
   return (
     <button
@@ -683,7 +692,7 @@ function RateCard({
         <FredChart data={chartPoints} width={200} height={44} variant="compact" fill />
       ) : (
         <div style={{ height: 44, fontSize: 11, color: t.ink4, fontStyle: "italic", display: "flex", alignItems: "center" }}>
-          {hasData ? "Building 7-day history…" : "Awaiting first FRED pull"}
+          {hasData ? "Building chart history…" : "Awaiting first FRED pull"}
         </div>
       )}
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
