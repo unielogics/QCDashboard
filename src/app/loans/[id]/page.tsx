@@ -16,6 +16,7 @@ import { OverviewTab } from "./tabs/OverviewTab";
 import { TermsTab } from "./tabs/TermsTab";
 import { Hud1Tab } from "./tabs/Hud1Tab";
 import { DocsTab } from "./tabs/DocsTab";
+import { WorkflowTab } from "./tabs/WorkflowTab";
 import { UnderwritingTab } from "./tabs/UnderwritingTab";
 import { PropertyTab } from "./tabs/PropertyTab";
 import { WireClosingTab } from "./tabs/WireClosingTab";
@@ -36,6 +37,7 @@ const TABS = [
   { id: "terms", label: "Terms", icon: "sliders" as const },
   { id: "hud", label: "HUD-1", icon: "calc" as const },
   { id: "docs", label: "Documents", icon: "doc" as const },
+  { id: "workflow", label: "Workflow", icon: "cal" as const },
   { id: "uw", label: "Underwriting", icon: "shield" as const },
   { id: "property", label: "Property", icon: "building2" as const },
   { id: "wire", label: "Wire & Closing", icon: "send" as const },
@@ -214,6 +216,7 @@ export default function LoanDetailPage() {
         (profile.role === Role.CLIENT ? <LoanSimulator loan={loan} /> : <TermsTab loan={loan} />)}
       {tab === "hud" && <Hud1Tab loan={loan} />}
       {tab === "docs" && <DocsTab loan={loan} canRequest={canRequestDoc} />}
+      {tab === "workflow" && <WorkflowTab loan={loan} canEdit={canRequestDoc} />}
       {tab === "uw" && <UnderwritingTab loan={loan} />}
       {tab === "property" && <PropertyTab loan={loan} canEdit={canTransitionStage} />}
       {tab === "wire" && <WireClosingTab loan={loan} />}

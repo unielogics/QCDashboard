@@ -215,6 +215,81 @@ export function useDocuments(loanId?: string) {
   });
 }
 
+// /loans/{id}/workflow — the AI's collection plan for one loan.
+// One row per Document with computed scenario + days_until_due +
+// editable due_date override. Drives the Workflow tab.
+export interface WorkflowDoc {
+  document_id: string;
+  name: string;
+  status: string;
+  checklist_key: string | null;
+  is_other: boolean;
+  requested_on: string | null;
+  received_on: string | null;
+  due_date: string | null;
+  default_due_date: string | null;
+  effective_due_date: string | null;
+  days_until_due: number | null;
+  scenario: string | null;
+  next_scenario: string | null;
+  next_scenario_in_days: number | null;
+}
+
+export function useLoanWorkflow(loanId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["loanWorkflow", loanId, devUser],
+    queryFn: () => apiCall<WorkflowDoc[]>(`/loans/${loanId}/workflow`),
+    enabled: !!loanId,
+    refetchInterval: 30_000,
+  });
+}
+
+// PATCH /documents/{id}. Today only `due_date` is editable through
+// this — set to YYYY-MM-DD string to override; pass null to clear.
+export function usePatchDocument() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      documentId,
+      due_date,
+    }: {
+      documentId: string;
+      due_date: string | null;
+    }) =>
+      apiCall<Document>(`/documents/${documentId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ due_date }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["loanWorkflow"] });
+      qc.invalidateQueries({ queryKey: ["documents"] });
+    },
+  });
+}
+
+// POST /loans/{id}/run-doc-reminders — manually fires the
+// doc-collection evaluator for this loan. Used by the Workflow
+// tab's "Send reminders now" button.
+export function useRunDocReminders() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (loanId: string) =>
+      apiCall<{ counts: Record<string, number> }>(
+        `/loans/${loanId}/run-doc-reminders`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["loanWorkflow"] });
+      qc.invalidateQueries({ queryKey: ["aiChatThread"] });
+      qc.invalidateQueries({ queryKey: ["aiChatThreads"] });
+    },
+  });
+}
+
 export function useMessages(loanId: string | null | undefined) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
