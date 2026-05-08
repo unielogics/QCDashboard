@@ -17,6 +17,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import {
+  useAddCustomDocument,
   useLoanWorkflow,
   usePatchDocument,
   useRunDocReminders,
@@ -48,16 +49,24 @@ export function WorkflowTab({
   const workflowQ = useLoanWorkflow(loan.id);
   const patchDoc = usePatchDocument();
   const runReminders = useRunDocReminders();
+  const addCustom = useAddCustomDocument();
   const styles = SCENARIO_STYLE(t);
 
   const [shiftDays, setShiftDays] = useState<number>(7);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [showSkipped, setShowSkipped] = useState<boolean>(false);
+  const [showAddModal, setShowAddModal] = useState<boolean>(false);
 
   const docs = workflowQ.data ?? [];
+  const visibleDocs = useMemo(
+    () => (showSkipped ? docs : docs.filter((d) => d.status !== "skipped")),
+    [docs, showSkipped],
+  );
   const requestedDocs = useMemo(
     () => docs.filter((d) => d.status === "requested"),
     [docs],
   );
+  const skippedCount = docs.filter((d) => d.status === "skipped").length;
 
   // Counts for the header pills
   const counts = useMemo(() => {
@@ -146,6 +155,40 @@ export function WorkflowTab({
     }
   };
 
+  // Toggle a doc in/out of the AI's collection plan. Skipped docs
+  // dim in the list and don't contribute to scenario counts.
+  const onToggleSkip = async (doc: WorkflowDoc) => {
+    setFeedback(null);
+    try {
+      const next = doc.status === "skipped" ? "requested" : "skipped";
+      await patchDoc.mutateAsync({ documentId: doc.document_id, status: next });
+      setFeedback(
+        next === "skipped"
+          ? `Skipped ${doc.name} — AI won't chase it.`
+          : `Re-enabled ${doc.name}.`,
+      );
+    } catch (e) {
+      setFeedback(e instanceof Error ? e.message : "Toggle failed.");
+    }
+  };
+
+  // Add a custom one-off doc to this loan's collection plan.
+  const onAddCustom = async (name: string, dueDate: string | null) => {
+    setFeedback(null);
+    try {
+      await addCustom.mutateAsync({
+        loanId: loan.id,
+        name,
+        due_date: dueDate,
+        checklist_key: null,
+      });
+      setShowAddModal(false);
+      setFeedback(`Added "${name}" to the collection plan.`);
+    } catch (e) {
+      setFeedback(e instanceof Error ? e.message : "Add failed.");
+    }
+  };
+
   return (
     <Card pad={0}>
       <div
@@ -177,26 +220,46 @@ export function WorkflowTab({
             })}
           </div>
           {canEdit && (
-            <button
-              onClick={onRunNow}
-              disabled={runReminders.isPending}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 9,
-                background: t.petrol,
-                color: "#fff",
-                fontSize: 13,
-                fontWeight: 700,
-                border: "none",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                cursor: runReminders.isPending ? "wait" : "pointer",
-              }}
-            >
-              <Icon name="bell" size={13} />
-              {runReminders.isPending ? "Sending…" : "Send reminders now"}
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                onClick={() => setShowAddModal(true)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 9,
+                  background: t.surface2,
+                  color: t.ink,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  border: `1px solid ${t.line}`,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  cursor: "pointer",
+                }}
+              >
+                <Icon name="plus" size={13} /> Add custom item
+              </button>
+              <button
+                onClick={onRunNow}
+                disabled={runReminders.isPending}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 9,
+                  background: t.petrol,
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  border: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  cursor: runReminders.isPending ? "wait" : "pointer",
+                }}
+              >
+                <Icon name="bell" size={13} />
+                {runReminders.isPending ? "Sending…" : "Send reminders now"}
+              </button>
+            </div>
           )}
         </div>
         {canEdit && (
@@ -239,6 +302,17 @@ export function WorkflowTab({
             >
               Reset all to defaults
             </button>
+            {skippedCount > 0 && (
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: "auto", fontSize: 11.5, color: t.ink3, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={showSkipped}
+                  onChange={(e) => setShowSkipped(e.target.checked)}
+                  style={{ width: 13, height: 13, cursor: "pointer" }}
+                />
+                Show skipped ({skippedCount})
+              </label>
+            )}
           </div>
         )}
         {feedback && (
@@ -251,23 +325,127 @@ export function WorkflowTab({
         {workflowQ.isLoading && (
           <div style={{ padding: 20, fontSize: 13, color: t.ink3 }}>Loading…</div>
         )}
-        {!workflowQ.isLoading && docs.length === 0 && (
+        {!workflowQ.isLoading && visibleDocs.length === 0 && (
           <div style={{ padding: 20, fontSize: 13, color: t.ink3 }}>
-            No documents on file yet.
+            {docs.length === 0
+              ? "No documents on file yet."
+              : "Everything's been skipped — toggle \"Show skipped\" to see them."}
           </div>
         )}
-        {docs.map((d) => (
+        {visibleDocs.map((d) => (
           <WorkflowRow
             key={d.document_id}
             doc={d}
             canEdit={canEdit}
             onSetDate={(v) => onSetDate(d, v)}
+            onToggleSkip={() => onToggleSkip(d)}
             t={t}
             styles={styles}
           />
         ))}
       </div>
+      {showAddModal && (
+        <AddCustomModal
+          t={t}
+          busy={addCustom.isPending}
+          onClose={() => setShowAddModal(false)}
+          onSave={onAddCustom}
+        />
+      )}
     </Card>
+  );
+}
+
+function AddCustomModal({
+  t,
+  busy,
+  onClose,
+  onSave,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  busy: boolean;
+  onClose: () => void;
+  onSave: (name: string, dueDate: string | null) => void;
+}) {
+  const [name, setName] = useState("");
+  const [dueDate, setDueDate] = useState<string>("");
+  const canSave = name.trim().length > 0 && !busy;
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)",
+        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: t.surface, borderRadius: 12, padding: 20,
+          width: 460, maxWidth: "90vw",
+          boxShadow: `0 20px 50px ${t.line}`,
+          display: "flex", flexDirection: "column", gap: 14,
+        }}
+      >
+        <div style={{ fontSize: 14, fontWeight: 800, color: t.ink }}>Add custom doc to this loan</div>
+        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>
+            Name (what the borrower sees)
+          </span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. HOA Estoppel Letter"
+            autoFocus
+            style={{
+              padding: "8px 10px", borderRadius: 7, border: `1px solid ${t.line}`,
+              background: t.surface2, color: t.ink, fontSize: 13, outline: "none",
+            }}
+          />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>
+            Due date (optional — defaults to firm cadence)
+          </span>
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            style={{
+              padding: "8px 10px", borderRadius: 7, border: `1px solid ${t.line}`,
+              background: t.surface2, color: t.ink, fontSize: 13, outline: "none",
+              fontFamily: "inherit",
+            }}
+          />
+        </label>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "7px 12px", borderRadius: 7, border: `1px solid ${t.line}`,
+              background: t.surface2, color: t.ink, fontSize: 12, fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onSave(name.trim(), dueDate || null)}
+            disabled={!canSave}
+            style={{
+              padding: "7px 14px", borderRadius: 7, border: "none",
+              background: canSave ? t.brand : t.chip,
+              color: canSave ? t.inverse : t.ink4,
+              fontSize: 12, fontWeight: 700,
+              cursor: canSave ? "pointer" : "not-allowed",
+            }}
+          >
+            {busy ? "Adding…" : "Add"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -288,17 +466,20 @@ function WorkflowRow({
   doc,
   canEdit,
   onSetDate,
+  onToggleSkip,
   t,
   styles,
 }: {
   doc: WorkflowDoc;
   canEdit: boolean;
   onSetDate: (value: string | null) => void;
+  onToggleSkip: () => void;
   t: ReturnType<typeof useTheme>["t"];
   styles: ReturnType<typeof SCENARIO_STYLE>;
 }) {
   const sty = doc.scenario ? styles[doc.scenario] : null;
   const dueValue = doc.effective_due_date ?? "";
+  const isSkipped = doc.status === "skipped";
 
   let timeline = "scheduled";
   if (doc.days_until_due !== null && doc.days_until_due !== undefined) {
@@ -318,27 +499,59 @@ function WorkflowRow({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "1.2fr 110px 100px 1fr 110px 80px",
+        gridTemplateColumns: "30px 1.1fr 95px 95px 95px 1fr 110px 80px",
         alignItems: "center",
         gap: 10,
         padding: "11px 16px",
         borderBottom: `1px solid ${t.line}`,
         fontSize: 12.5,
+        opacity: isSkipped ? 0.55 : 1,
+        background: isSkipped ? t.surface2 : "transparent",
       }}
     >
+      <input
+        type="checkbox"
+        checked={!isSkipped}
+        onChange={onToggleSkip}
+        disabled={!canEdit}
+        title={isSkipped ? "Re-enable AI collection" : "Skip — AI won't chase this doc"}
+        style={{ width: 16, height: 16, cursor: canEdit ? "pointer" : "not-allowed" }}
+      />
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
         <Icon name="doc" size={14} style={{ color: t.ink3, flex: "0 0 auto" }} />
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{
+            fontWeight: 700, color: t.ink,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            textDecoration: isSkipped ? "line-through" : "none",
+          }}>
             {doc.name}
           </div>
           <div style={{ fontSize: 11, color: t.ink3, marginTop: 1 }}>
-            {doc.status} {doc.checklist_key ? `· ${doc.checklist_key}` : doc.is_other ? "· Other" : ""}
+            {doc.status} {doc.checklist_key ? `· ${doc.checklist_key}` : doc.is_other ? "· custom" : ""}
           </div>
         </div>
       </div>
       <div>
-        {sty ? (
+        <Pill
+          bg={
+            doc.side === "buyer" ? t.brandSoft :
+            doc.side === "seller" ? t.goldSoft :
+            t.surface2
+          }
+          color={
+            doc.side === "buyer" ? t.brand :
+            doc.side === "seller" ? t.gold :
+            t.ink3
+          }
+        >
+          {doc.side ?? "both"}
+        </Pill>
+      </div>
+      <div>
+        {isSkipped ? (
+          <Pill bg={t.surface2} color={t.ink3}>skipped</Pill>
+        ) : sty ? (
           <Pill bg={sty.bg} color={sty.fg}>
             {sty.label}
           </Pill>

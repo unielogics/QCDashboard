@@ -1,555 +1,670 @@
 "use client";
 
-// Agent Settings — the Agent's personal configuration that drives their
-// client-side AI, the doc list they chase from leads, and the letterhead /
-// signature applied to materials they send (prequal letters, intake links,
-// etc.).
+// Agent Settings — the broker's personal configuration that overlays the
+// firm's checklist + AI cadence for any loan they own. Backed by
+// `brokers.settings_data` (alembic 0023, JSONB) via /me/broker-settings.
 //
-// Architectural rule (see memory: real_estate_domain_rules.md): these
-// settings only affect the AI working the Agent's clients in the EARLY
-// stages (lead / nurturing / ready). When a client transitions to
-// `ready_for_lending` via the Start Funding action, the firm-wide Super
-// Admin AI configuration takes over and these Agent-side settings stop
-// influencing behavior on that file.
+// Three sections that mirror the super-admin /settings page's visual
+// rhythm:
+//   1. Identity & Letterhead — agent's personal signing identity
+//   2. AI Cadence — per-broker overrides for first/second/escalate
+//      reminder windows. NULL field = inherit from firm defaults.
+//   3. Doc Checklist — per (loan_type, side) overlay. Two zones:
+//      "Firm defaults" (read-only with Disable checkbox) and
+//      "Your additions" (full editor).
 //
-// Path lives at /agent-settings instead of /settings so the existing
-// firm-wide /settings page (super-admin-only, hard-denied at middleware)
-// stays untouched.
+// Save uses a single PUT to /me/broker-settings with the full
+// AgentSettingsData. Backend validates that disabled_firm_items
+// references real firm names and that extra_items names don't shadow
+// the firm.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useCurrentUser } from "@/hooks/useApi";
-import { Role } from "@/lib/enums.generated";
+import {
+  useBrokerSettings,
+  useCurrentUser,
+  useSettings,
+  useUpdateBrokerSettings,
+} from "@/hooks/useApi";
+import { LoanType, Role } from "@/lib/enums.generated";
+import type {
+  AgentCadenceOverride,
+  AgentChecklistOverlay,
+  AgentLetterhead,
+  AgentSettingsData,
+  DocChecklistItem,
+  LoanSide,
+} from "@/lib/types";
 
-// ────────────────────────────────────────────────────────────────────────────
-// Local-storage key for persistence until the backend ships agent-settings
-// endpoints. Backend extension lands later — until then this page captures
-// the Agent's preferences locally and surfaces them in the relevant places
-// (compose drafts, prequal letter generation, AI doc-chase rules).
-// TODO(P0A backend): replace with PATCH /users/me/settings (or similar).
-// ────────────────────────────────────────────────────────────────────────────
-const STORAGE_KEY = "qc.agent_settings.v1";
+const LOAN_TYPES: { id: LoanType; label: string }[] = [
+  { id: LoanType.DSCR, label: "DSCR" },
+  { id: LoanType.FIX_AND_FLIP, label: "Fix & Flip" },
+  { id: LoanType.GROUND_UP, label: "Ground Up" },
+  { id: LoanType.BRIDGE, label: "Bridge" },
+  { id: LoanType.PORTFOLIO, label: "Portfolio" },
+  { id: LoanType.CASH_OUT_REFI, label: "Cash-out Refi" },
+];
 
-interface AgentSettings {
-  ai_cadence: AICadence;
-  doc_checklist: ChecklistItem[];
-  letterhead: Letterhead;
+const SIDES: { id: LoanSide; label: string }[] = [
+  { id: "buyer", label: "Buyer" },
+  { id: "seller", label: "Seller" },
+];
+
+const SECTIONS = [
+  { id: "identity", label: "Identity & Letterhead", icon: "user" as const },
+  { id: "cadence", label: "AI Cadence", icon: "bell" as const },
+  { id: "checklists", label: "Doc Checklist", icon: "vault" as const },
+] as const;
+type SectionId = (typeof SECTIONS)[number]["id"];
+
+function emptyOverlay(): AgentChecklistOverlay {
+  return { disabled_firm_items: [], extra_items: [] };
 }
 
-interface AICadence {
-  // Default delays in days for AI follow-ups across the lead funnel.
-  initial_outreach_days: number;       // first touch after Lead is added
-  no_response_nudge_days: number;       // re-nudge if no response
-  stale_lead_revive_days: number;       // revive after long silence
-  max_auto_followups: number;            // safety ceiling on auto-sends
-  preferred_send_window: "anytime" | "business_hours" | "borrower_local";
-  default_voice: "warm" | "concise" | "formal";
+function emptyCadence(): AgentCadenceOverride {
+  return {
+    first_reminder_days: null,
+    second_reminder_days: null,
+    escalate_after_days: null,
+  };
 }
 
-interface ChecklistItem {
-  id: string;
-  label: string;
-  applies_when: "always" | "buyer_only" | "seller_only";
-  enabled: boolean;
-}
-
-interface Letterhead {
-  display_name: string;
-  title: string;
-  phone: string;
-  email: string;
-  license_number: string;     // real estate license (where applicable)
-  brokerage_name: string;
-  headshot_data_url: string | null;  // base64 for now; S3 upload later
-  signature_block: string;            // freeform footer text
-}
-
-const DEFAULTS: AgentSettings = {
-  ai_cadence: {
-    initial_outreach_days: 0,
-    no_response_nudge_days: 3,
-    stale_lead_revive_days: 14,
-    max_auto_followups: 3,
-    preferred_send_window: "business_hours",
-    default_voice: "warm",
-  },
-  doc_checklist: [
-    { id: "purchase_agreement", label: "Purchase Agreement",       applies_when: "buyer_only",  enabled: true },
-    { id: "buyer_agency",       label: "Buyer Agency Agreement",   applies_when: "buyer_only",  enabled: true },
-    { id: "preapproval_letter", label: "Pre-Approval Letter",      applies_when: "buyer_only",  enabled: true },
-    { id: "inspection_report",  label: "Inspection Report",        applies_when: "buyer_only",  enabled: false },
-    { id: "listing_contract",   label: "Listing Contract",         applies_when: "seller_only", enabled: true },
-    { id: "property_disclosure",label: "Property Disclosure Form", applies_when: "seller_only", enabled: true },
-    { id: "lead_paint",         label: "Lead-Based Paint Disclosure (pre-1978)", applies_when: "seller_only", enabled: false },
-    { id: "hoa_docs",           label: "HOA Documents",            applies_when: "seller_only", enabled: false },
-    { id: "agency_disclosure",  label: "Agency Disclosure Form",   applies_when: "always",      enabled: true },
-    { id: "id_verification",    label: "Government ID",            applies_when: "always",      enabled: true },
-  ],
-  letterhead: {
-    display_name: "",
-    title: "Real Estate Agent",
-    phone: "",
-    email: "",
-    license_number: "",
-    brokerage_name: "Qualified Commercial",
+function emptyLetterhead(): AgentLetterhead {
+  return {
+    display_name: null,
+    title: null,
+    phone: null,
+    email: null,
+    license_number: null,
+    brokerage_name: null,
     headshot_data_url: null,
-    signature_block: "",
-  },
-};
-
-function loadSettings(): AgentSettings {
-  if (typeof window === "undefined") return DEFAULTS;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULTS;
-    const parsed = JSON.parse(raw) as Partial<AgentSettings>;
-    return {
-      ai_cadence: { ...DEFAULTS.ai_cadence, ...(parsed.ai_cadence ?? {}) },
-      doc_checklist: parsed.doc_checklist ?? DEFAULTS.doc_checklist,
-      letterhead: { ...DEFAULTS.letterhead, ...(parsed.letterhead ?? {}) },
-    };
-  } catch {
-    return DEFAULTS;
-  }
+    signature_block: null,
+  };
 }
 
-function saveSettings(s: AgentSettings) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+function emptyAgentSettings(): AgentSettingsData {
+  return { checklists: {}, cadence: {}, letterhead: emptyLetterhead() };
 }
 
 export default function AgentSettingsPage() {
   const { t } = useTheme();
   const router = useRouter();
-  const { data: user, isLoading } = useCurrentUser();
-  const [settings, setSettings] = useState<AgentSettings>(DEFAULTS);
-  const [savedNote, setSavedNote] = useState<string | null>(null);
+  const { data: user } = useCurrentUser();
+  const settingsQ = useSettings();
+  const brokerQ = useBrokerSettings();
+  const update = useUpdateBrokerSettings();
 
-  // Hydrate from localStorage on mount + seed letterhead identity from
-  // /auth/me so the Agent doesn't have to retype name + email.
-  useEffect(() => {
-    const loaded = loadSettings();
-    if (user) {
-      if (!loaded.letterhead.display_name) loaded.letterhead.display_name = user.name;
-      if (!loaded.letterhead.email) loaded.letterhead.email = user.email;
-    }
-    setSettings(loaded);
-  }, [user]);
+  const [section, setSection] = useState<SectionId>("identity");
+  const [draft, setDraft] = useState<AgentSettingsData>(emptyAgentSettings());
+  const [originalJson, setOriginalJson] = useState<string>("");
+  const [feedback, setFeedback] = useState<string | null>(null);
 
-  // Hard-redirect non-Agent roles. Super Admin / Underwriter use /settings
-  // (the firm-wide config); Borrowers shouldn't reach this URL.
+  // Auth: brokers + super-admins (super-admin can preview)
   useEffect(() => {
-    if (!isLoading && user && user.role !== Role.BROKER && user.role !== Role.SUPER_ADMIN) {
+    if (!user) return;
+    if (user.role !== Role.BROKER && user.role !== Role.SUPER_ADMIN) {
       router.replace("/");
     }
-  }, [isLoading, user, router]);
+  }, [user, router]);
 
-  const handleSave = () => {
-    saveSettings(settings);
-    setSavedNote("Saved.");
-    setTimeout(() => setSavedNote(null), 2000);
-  };
-
-  const updateCadence = <K extends keyof AICadence>(k: K, v: AICadence[K]) =>
-    setSettings((s) => ({ ...s, ai_cadence: { ...s.ai_cadence, [k]: v } }));
-
-  const updateLetterhead = <K extends keyof Letterhead>(k: K, v: Letterhead[K]) =>
-    setSettings((s) => ({ ...s, letterhead: { ...s.letterhead, [k]: v } }));
-
-  const toggleChecklist = (id: string) =>
-    setSettings((s) => ({
-      ...s,
-      doc_checklist: s.doc_checklist.map((c) => (c.id === id ? { ...c, enabled: !c.enabled } : c)),
-    }));
-
-  const handleHeadshotUpload = async (file: File) => {
-    if (file.size > 1.5 * 1024 * 1024) {
-      alert("Headshot must be under 1.5 MB. Use a smaller file or compress.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      updateLetterhead("headshot_data_url", dataUrl);
+  // Hydrate draft from API
+  useEffect(() => {
+    const data = brokerQ.data?.data;
+    if (!data) return;
+    const seeded: AgentSettingsData = {
+      checklists: data.checklists ?? {},
+      cadence: data.cadence ?? {},
+      letterhead: data.letterhead ?? emptyLetterhead(),
     };
-    reader.readAsDataURL(file);
+    setDraft(seeded);
+    setOriginalJson(JSON.stringify(seeded));
+  }, [brokerQ.data]);
+
+  const dirty = useMemo(
+    () => JSON.stringify(draft) !== originalJson,
+    [draft, originalJson],
+  );
+
+  const onSave = async () => {
+    setFeedback(null);
+    try {
+      const r = await update.mutateAsync(draft);
+      setOriginalJson(JSON.stringify(r.data));
+      setDraft(r.data);
+      setFeedback("Saved.");
+    } catch (e) {
+      setFeedback(e instanceof Error ? e.message : "Save failed.");
+    }
   };
+
+  if (user?.role === Role.CLIENT) return null;
+  if (brokerQ.isLoading || settingsQ.isLoading) {
+    return (
+      <div style={{ padding: 24, color: t.ink3, fontSize: 13 }}>Loading…</div>
+    );
+  }
+  if (brokerQ.isError) {
+    return (
+      <div style={{ padding: 24 }}>
+        <Pill bg={t.dangerBg} color={t.danger}>
+          {brokerQ.error instanceof Error ? brokerQ.error.message : "Couldn't load broker settings."}
+        </Pill>
+      </div>
+    );
+  }
+
+  const firmChecklists = settingsQ.data?.data?.checklists ?? {};
 
   return (
-    <div style={{ padding: 24, maxWidth: 980, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: t.petrol }}>
-            My settings
-          </div>
-          <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: -0.5, color: t.ink, margin: "4px 0 0" }}>
-            Agent Settings
-          </h1>
-          <div style={{ fontSize: 13, color: t.ink3, marginTop: 4, maxWidth: 560 }}>
-            Personal config for your client-side AI, your transaction-doc checklist, and the
-            letterhead applied to materials you send. <strong>Only affects clients in the
-            early stages</strong> (Lead → Nurturing → Ready). Once a client is Ready for
-            Lending, the firm&apos;s funding-side AI takes over.
+    <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 18, height: "100%", minHeight: 0 }}>
+      {/* Sidebar */}
+      <Card pad={0} style={{ overflow: "hidden" }}>
+        <div style={{ padding: 16, borderBottom: `1px solid ${t.line}` }}>
+          <SectionLabel>Agent Settings</SectionLabel>
+          <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 6, lineHeight: 1.5 }}>
+            Your personal overlay on the firm&apos;s checklist + cadence. Affects
+            only loans where you&apos;re the listed broker.
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {savedNote && <span style={{ fontSize: 12, fontWeight: 700, color: t.profit }}>{savedNote}</span>}
-          <button onClick={handleSave} style={qcBtnPrimary(t)}>
-            <Icon name="check" size={13} /> Save
-          </button>
-        </div>
-      </div>
-
-      {/* ─── My AI Cadence ──────────────────────────────────────────────── */}
-      <Card pad={20}>
-        <SectionLabel
-          action={<Pill bg={t.petrolSoft} color={t.petrol}>Early-stage clients only</Pill>}
-        >
-          My AI Cadence
-        </SectionLabel>
-        <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.55, marginBottom: 14 }}>
-          How often and in what voice your AI reaches out to leads + clients on your behalf.
-          The full rule engine that drives this lives in the <Link href="/ai-inbox" style={{ color: t.petrol, fontWeight: 700, textDecoration: "none" }}>AI Inbox → Rules tab</Link>; these are the global defaults for new rules you create.
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <NumField t={t} label="Initial outreach (days after Lead added)" value={settings.ai_cadence.initial_outreach_days} onChange={(v) => updateCadence("initial_outreach_days", v)} suffix="days" />
-          <NumField t={t} label="Re-nudge after no response" value={settings.ai_cadence.no_response_nudge_days} onChange={(v) => updateCadence("no_response_nudge_days", v)} suffix="days" />
-          <NumField t={t} label="Stale lead revival" value={settings.ai_cadence.stale_lead_revive_days} onChange={(v) => updateCadence("stale_lead_revive_days", v)} suffix="days" />
-          <NumField t={t} label="Max auto-sends per client" value={settings.ai_cadence.max_auto_followups} onChange={(v) => updateCadence("max_auto_followups", v)} suffix="messages" />
-          <Field t={t} label="Send window">
-            <Select
-              t={t}
-              value={settings.ai_cadence.preferred_send_window}
-              onChange={(v) => updateCadence("preferred_send_window", v as AICadence["preferred_send_window"])}
-              options={[
-                { value: "business_hours", label: "Business hours (your local)" },
-                { value: "borrower_local", label: "Business hours (client's local)" },
-                { value: "anytime", label: "Anytime" },
-              ]}
-            />
-          </Field>
-          <Field t={t} label="Default voice">
-            <Select
-              t={t}
-              value={settings.ai_cadence.default_voice}
-              onChange={(v) => updateCadence("default_voice", v as AICadence["default_voice"])}
-              options={[
-                { value: "warm", label: "Warm + relational" },
-                { value: "concise", label: "Concise + factual" },
-                { value: "formal", label: "Formal" },
-              ]}
-            />
-          </Field>
-        </div>
-      </Card>
-
-      {/* ─── Doc Checklist ──────────────────────────────────────────────── */}
-      <Card pad={20}>
-        <SectionLabel
-          action={<Pill bg={t.petrolSoft} color={t.petrol}>Transaction-side only</Pill>}
-        >
-          My Doc Checklist
-        </SectionLabel>
-        <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.55, marginBottom: 12 }}>
-          The transaction documents your AI will request from clients on your behalf.
-          Funding-required docs (tax returns, bank statements, appraisal, etc.) are
-          configured by Super Admin firm-wide and aren&apos;t shown here — your list
-          lives next to those, not on top of them.
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {settings.doc_checklist.map((item) => (
-            <div
-              key={item.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: `1px solid ${t.line}`,
-                background: item.enabled ? t.surface : t.surface2,
-                opacity: item.enabled ? 1 : 0.7,
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={item.enabled}
-                onChange={() => toggleChecklist(item.id)}
-                style={{ accentColor: t.petrol, width: 16, height: 16, cursor: "pointer" }}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{item.label}</div>
-              </div>
-              <Pill bg={t.chip} color={t.ink2}>
-                {item.applies_when === "always" ? "All clients" : item.applies_when === "buyer_only" ? "Buyers" : "Sellers"}
-              </Pill>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      {/* ─── Letterhead ──────────────────────────────────────────────────── */}
-      <Card pad={20}>
-        <SectionLabel>Letterhead & Identity</SectionLabel>
-        <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.55, marginBottom: 14 }}>
-          Applied to prequalification letter templates and any materials you send to
-          your clients. Headshot, name, title, contact info, license number.
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 20, alignItems: "start" }}>
-          {/* Headshot uploader */}
-          <div>
-            <Label t={t}>Headshot</Label>
-            <div
-              style={{
-                width: 160,
-                height: 160,
-                borderRadius: 12,
-                border: `1px dashed ${t.line}`,
-                background: t.surface2,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                overflow: "hidden",
-                position: "relative",
-              }}
-            >
-              {settings.letterhead.headshot_data_url ? (
-                // Uses native img since the data: URL isn't supported by next/image's
-                // remote loader without config.
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={settings.letterhead.headshot_data_url}
-                  alt="Headshot"
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
-              ) : (
-                <div style={{ fontSize: 11, color: t.ink3, padding: 12, textAlign: "center", lineHeight: 1.55 }}>
-                  No photo yet.
-                  <br />
-                  Square JPG/PNG, &lt; 1.5 MB.
-                </div>
-              )}
-            </div>
-            <label
-              style={{
-                ...qcBtn(t),
-                marginTop: 10,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                cursor: "pointer",
-              }}
-            >
-              <Icon name="upload" size={12} /> Upload
-              <input
-                type="file"
-                accept="image/jpeg,image/png"
-                style={{ display: "none" }}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleHeadshotUpload(f);
-                }}
-              />
-            </label>
-            {settings.letterhead.headshot_data_url && (
+        <div style={{ display: "flex", flexDirection: "column", padding: 6 }}>
+          {SECTIONS.map((s) => {
+            const active = section === s.id;
+            return (
               <button
-                onClick={() => updateLetterhead("headshot_data_url", null)}
+                key={s.id}
+                onClick={() => setSection(s.id)}
                 style={{
-                  ...qcBtn(t),
-                  marginTop: 6,
-                  marginLeft: 6,
-                  color: t.danger,
-                  borderColor: `${t.danger}40`,
+                  all: "unset",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 9,
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  background: active ? t.brandSoft : "transparent",
+                  color: active ? t.brand : t.ink2,
+                  fontSize: 13,
+                  fontWeight: active ? 700 : 600,
                 }}
               >
-                Remove
+                <Icon name={s.icon} size={14} />
+                {s.label}
               </button>
-            )}
-          </div>
-
-          {/* Identity fields */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            <Field t={t} label="Display name">
-              <Input t={t} value={settings.letterhead.display_name} onChange={(v) => updateLetterhead("display_name", v)} placeholder="Avery Park" />
-            </Field>
-            <Field t={t} label="Title">
-              <Input t={t} value={settings.letterhead.title} onChange={(v) => updateLetterhead("title", v)} placeholder="Real Estate Agent" />
-            </Field>
-            <Field t={t} label="Email">
-              <Input t={t} type="email" value={settings.letterhead.email} onChange={(v) => updateLetterhead("email", v)} placeholder="avery@brokerage.com" />
-            </Field>
-            <Field t={t} label="Phone">
-              <Input t={t} value={settings.letterhead.phone} onChange={(v) => updateLetterhead("phone", v)} placeholder="(917) 555-0148" />
-            </Field>
-            <Field t={t} label="License number">
-              <Input t={t} value={settings.letterhead.license_number} onChange={(v) => updateLetterhead("license_number", v)} placeholder="State + #" />
-            </Field>
-            <Field t={t} label="Brokerage">
-              <Input t={t} value={settings.letterhead.brokerage_name} onChange={(v) => updateLetterhead("brokerage_name", v)} placeholder="Brokerage Name" />
-            </Field>
-            <Field t={t} label="Signature block" full>
-              <textarea
-                value={settings.letterhead.signature_block}
-                onChange={(e) => updateLetterhead("signature_block", e.target.value)}
-                placeholder="Optional closing line — &quot;Looking forward to working with you&quot; etc."
-                rows={2}
-                style={{
-                  width: "100%",
-                  resize: "vertical",
-                  padding: "10px 12px",
-                  background: t.surface2,
-                  border: `1px solid ${t.line}`,
-                  borderRadius: 9,
-                  color: t.ink,
-                  fontSize: 13,
-                  fontFamily: "inherit",
-                  lineHeight: 1.5,
-                  outline: "none",
-                }}
-              />
-            </Field>
-          </div>
+            );
+          })}
         </div>
       </Card>
 
-      <div style={{ fontSize: 11, color: t.ink3, textAlign: "center" }}>
-        Settings are stored locally for now. Backend persistence + sync to prequal-letter
-        templates ships once <code style={{ background: t.chip, padding: "1px 5px", borderRadius: 4 }}>PATCH /users/me/settings</code> lands.
+      {/* Body */}
+      <div style={{ minHeight: 0, display: "flex", flexDirection: "column", gap: 14 }}>
+        {section === "identity" && (
+          <IdentitySection
+            draft={draft}
+            setDraft={setDraft}
+            dirty={dirty}
+            saving={update.isPending}
+            onSave={onSave}
+          />
+        )}
+        {section === "cadence" && (
+          <CadenceSection
+            draft={draft}
+            setDraft={setDraft}
+            firmChecklists={firmChecklists}
+            dirty={dirty}
+            saving={update.isPending}
+            onSave={onSave}
+          />
+        )}
+        {section === "checklists" && (
+          <ChecklistsSection
+            draft={draft}
+            setDraft={setDraft}
+            firmChecklists={firmChecklists}
+            dirty={dirty}
+            saving={update.isPending}
+            onSave={onSave}
+          />
+        )}
+        {feedback && (
+          <Pill bg={feedback === "Saved." ? t.profitBg : t.warnBg} color={feedback === "Saved." ? t.profit : t.warn}>
+            {feedback}
+          </Pill>
+        )}
       </div>
     </div>
   );
 }
 
-// ── Tiny form primitives (local copies — small enough not to deduplicate yet) ──
+// ───────────────────────────────────────────────────────────────────
+// Section 1: Identity & Letterhead
+// ───────────────────────────────────────────────────────────────────
+interface SectionProps {
+  draft: AgentSettingsData;
+  setDraft: React.Dispatch<React.SetStateAction<AgentSettingsData>>;
+  firmChecklists?: Record<string, { docs: DocChecklistItem[] }>;
+  dirty: boolean;
+  saving: boolean;
+  onSave: () => void;
+}
 
-function Field({ t, label, children, full }: { t: ReturnType<typeof useTheme>["t"]; label: string; children: React.ReactNode; full?: boolean }) {
+function IdentitySection({ draft, setDraft, dirty, saving, onSave }: SectionProps) {
+  const { t } = useTheme();
+  const lh = draft.letterhead ?? emptyLetterhead();
+  const update = (patch: Partial<AgentLetterhead>) => {
+    setDraft((d) => ({ ...d, letterhead: { ...lh, ...patch } }));
+  };
   return (
-    <div style={{ gridColumn: full ? "1 / -1" : "auto" }}>
-      <Label t={t}>{label}</Label>
-      {children}
-    </div>
+    <Card>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <SectionLabel>Identity & Letterhead</SectionLabel>
+        <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />
+      </div>
+      <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
+        Renders on prequal letters and intake links you send. Persists to
+        <code style={{ padding: "1px 5px", background: t.surface2, borderRadius: 4, marginLeft: 4 }}>brokers.settings_data</code>.
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <Field label="Display name">
+          <TextInput value={lh.display_name ?? ""} onChange={(v) => update({ display_name: v || null })} />
+        </Field>
+        <Field label="Title">
+          <TextInput value={lh.title ?? ""} onChange={(v) => update({ title: v || null })} placeholder="Real Estate Agent" />
+        </Field>
+        <Field label="Phone">
+          <TextInput value={lh.phone ?? ""} onChange={(v) => update({ phone: v || null })} />
+        </Field>
+        <Field label="Email">
+          <TextInput value={lh.email ?? ""} onChange={(v) => update({ email: v || null })} />
+        </Field>
+        <Field label="License #">
+          <TextInput value={lh.license_number ?? ""} onChange={(v) => update({ license_number: v || null })} />
+        </Field>
+        <Field label="Brokerage">
+          <TextInput value={lh.brokerage_name ?? ""} onChange={(v) => update({ brokerage_name: v || null })} />
+        </Field>
+      </div>
+      <div style={{ marginTop: 14 }}>
+        <Field label="Signature block (free text appended to outbound)">
+          <textarea
+            value={lh.signature_block ?? ""}
+            onChange={(e) => update({ signature_block: e.target.value || null })}
+            rows={3}
+            style={{ ...inputStyle(t), resize: "vertical", fontFamily: "inherit" }}
+          />
+        </Field>
+      </div>
+    </Card>
   );
 }
 
-function Label({ t, children }: { t: ReturnType<typeof useTheme>["t"]; children: React.ReactNode }) {
+// ───────────────────────────────────────────────────────────────────
+// Section 2: AI Cadence (per-broker overrides)
+// ───────────────────────────────────────────────────────────────────
+function CadenceSection({ draft, setDraft, firmChecklists, dirty, saving, onSave }: SectionProps) {
+  const { t } = useTheme();
+  const [activeType, setActiveType] = useState<LoanType>(LoanType.DSCR);
+  const cadence = draft.cadence?.[activeType] ?? emptyCadence();
+  const firm = firmChecklists?.[activeType] as { first_reminder_days?: number; second_reminder_days?: number; escalate_after_days?: number } | undefined;
+  const firmFirst = firm?.first_reminder_days ?? 3;
+  const firmSecond = firm?.second_reminder_days ?? 7;
+  const firmEscalate = firm?.escalate_after_days ?? 14;
+
+  const update = (patch: Partial<AgentCadenceOverride>) => {
+    setDraft((d) => ({
+      ...d,
+      cadence: { ...d.cadence, [activeType]: { ...cadence, ...patch } },
+    }));
+  };
+
   return (
-    <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 6 }}>
-      {children}
-    </div>
+    <Card>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <SectionLabel>AI Cadence — your loans</SectionLabel>
+        <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />
+      </div>
+      <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
+        Override how often the AI nudges borrowers about their docs on YOUR
+        loans. Leave a field blank to inherit the firm default. Per-loan-type.
+      </div>
+      <Tabs t={t} value={activeType} onChange={(v) => setActiveType(v as LoanType)}
+        options={LOAN_TYPES.map((lt) => ({ id: lt.id, label: lt.label }))} />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 14 }}>
+        <Field label={`First reminder (firm: ${firmFirst}d)`}>
+          <NullableNumInput value={cadence.first_reminder_days} onChange={(n) => update({ first_reminder_days: n })} placeholder={`${firmFirst}`} />
+        </Field>
+        <Field label={`Second reminder (firm: ${firmSecond}d)`}>
+          <NullableNumInput value={cadence.second_reminder_days} onChange={(n) => update({ second_reminder_days: n })} placeholder={`${firmSecond}`} />
+        </Field>
+        <Field label={`Escalate (firm: ${firmEscalate}d)`}>
+          <NullableNumInput value={cadence.escalate_after_days} onChange={(n) => update({ escalate_after_days: n })} placeholder={`${firmEscalate}`} />
+        </Field>
+      </div>
+    </Card>
   );
 }
 
-function Input({
-  t,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-}: {
+// ───────────────────────────────────────────────────────────────────
+// Section 3: Doc Checklist (per loan_type × side overlay)
+// ───────────────────────────────────────────────────────────────────
+function ChecklistsSection({ draft, setDraft, firmChecklists, dirty, saving, onSave }: SectionProps) {
+  const { t } = useTheme();
+  const [activeType, setActiveType] = useState<LoanType>(LoanType.DSCR);
+  const [activeSide, setActiveSide] = useState<LoanSide>("buyer");
+
+  const overlayKey = `${activeType}:${activeSide}`;
+  const overlay = draft.checklists?.[overlayKey] ?? emptyOverlay();
+
+  const firmAll: DocChecklistItem[] = useMemo(() => {
+    return (firmChecklists?.[activeType]?.docs ?? []) as DocChecklistItem[];
+  }, [firmChecklists, activeType]);
+
+  // Show firm items where side ∈ (activeSide, "both")
+  const firmForSide = useMemo(
+    () => firmAll.filter((it) => (it.side ?? "both") === activeSide || (it.side ?? "both") === "both"),
+    [firmAll, activeSide],
+  );
+
+  const setOverlay = (next: AgentChecklistOverlay) => {
+    setDraft((d) => ({ ...d, checklists: { ...d.checklists, [overlayKey]: next } }));
+  };
+
+  const toggleDisable = (name: string) => {
+    const has = overlay.disabled_firm_items.includes(name);
+    setOverlay({
+      ...overlay,
+      disabled_firm_items: has
+        ? overlay.disabled_firm_items.filter((n) => n !== name)
+        : [...overlay.disabled_firm_items, name],
+    });
+  };
+
+  const addExtra = () => {
+    const newItem: DocChecklistItem = {
+      name: `Custom doc ${overlay.extra_items.length + 1}`,
+      display_name: null,
+      type: "external",
+      required: false,
+      auto_request: true,
+      due_offset_days: 3,
+      anchor: "loan_created",
+      per_unit: false,
+      side: activeSide,
+    };
+    setOverlay({ ...overlay, extra_items: [...overlay.extra_items, newItem] });
+  };
+
+  const updateExtra = (idx: number, patch: Partial<DocChecklistItem>) => {
+    const next = [...overlay.extra_items];
+    next[idx] = { ...next[idx], ...patch };
+    setOverlay({ ...overlay, extra_items: next });
+  };
+
+  const removeExtra = (idx: number) => {
+    const next = overlay.extra_items.filter((_, i) => i !== idx);
+    setOverlay({ ...overlay, extra_items: next });
+  };
+
+  return (
+    <Card>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <SectionLabel>Doc Checklist — your loans</SectionLabel>
+        <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />
+      </div>
+      <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
+        Tune what the AI collects on YOUR loans. Disable firm defaults you
+        don&apos;t want, and add your own rows. Affects all your future loans
+        of the chosen type and side.
+      </div>
+      <Tabs t={t} value={activeType} onChange={(v) => setActiveType(v as LoanType)}
+        options={LOAN_TYPES.map((lt) => ({ id: lt.id, label: lt.label }))} />
+      <div style={{ marginTop: 10 }}>
+        <Tabs t={t} value={activeSide} onChange={(v) => setActiveSide(v as LoanSide)}
+          options={SIDES.map((s) => ({ id: s.id, label: s.label }))} />
+      </div>
+
+      {/* Firm defaults zone */}
+      <div style={{ marginTop: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: t.ink3, marginBottom: 6 }}>
+          Firm defaults — uncheck to disable on your loans
+        </div>
+        {firmForSide.length === 0 ? (
+          <div style={{ fontSize: 12, color: t.ink3, fontStyle: "italic", padding: "8px 0" }}>
+            No firm defaults for {activeType.replace(/_/g, " ")} ({activeSide}).
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {firmForSide.map((it) => {
+              const disabled = overlay.disabled_firm_items.includes(it.name);
+              return (
+                <label key={it.name} style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "9px 12px", borderRadius: 9, cursor: "pointer",
+                  border: `1px solid ${t.line}`,
+                  background: disabled ? t.surface2 : "transparent",
+                  opacity: disabled ? 0.65 : 1,
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={!disabled}
+                    onChange={() => toggleDisable(it.name)}
+                    style={{ width: 16, height: 16, cursor: "pointer" }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, textDecoration: disabled ? "line-through" : "none" }}>
+                      {it.display_name ?? it.name}
+                    </div>
+                    <div style={{ fontSize: 11, color: t.ink3, marginTop: 1 }}>
+                      {it.type ?? "external"} · due +{it.due_offset_days ?? 3}d
+                      {it.anchor && it.anchor !== "loan_created" ? ` · ${it.anchor}` : ""}
+                      {it.per_unit ? " · per-unit" : ""}
+                    </div>
+                  </div>
+                  <Pill bg={t.surface2} color={t.ink3}>
+                    {it.side ?? "both"}
+                  </Pill>
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Your additions zone */}
+      <div style={{ marginTop: 22 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: t.ink3 }}>
+            Your additions — extras only you will collect
+          </div>
+          <button
+            onClick={addExtra}
+            style={{
+              padding: "5px 10px", borderRadius: 7,
+              border: `1px solid ${t.line}`, background: t.surface2,
+              color: t.ink, fontSize: 12, fontWeight: 600, cursor: "pointer",
+              display: "inline-flex", alignItems: "center", gap: 5,
+            }}
+          >
+            <Icon name="plus" size={11} /> Add row
+          </button>
+        </div>
+        {overlay.extra_items.length === 0 ? (
+          <div style={{ fontSize: 12, color: t.ink3, fontStyle: "italic", padding: "8px 0" }}>
+            No additions yet. Click &quot;Add row&quot; to extend the checklist for
+            this loan type and side.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {overlay.extra_items.map((it, idx) => (
+              <div key={idx} style={{
+                padding: 12, borderRadius: 9, border: `1px solid ${t.line}`,
+                display: "grid", gridTemplateColumns: "1fr 1fr 90px 100px 36px", gap: 10, alignItems: "center",
+              }}>
+                <input
+                  value={it.name}
+                  onChange={(e) => updateExtra(idx, { name: e.target.value })}
+                  placeholder="Internal key (e.g. closing_disclosure)"
+                  style={inputStyle(t)}
+                />
+                <input
+                  value={it.display_name ?? ""}
+                  onChange={(e) => updateExtra(idx, { display_name: e.target.value || null })}
+                  placeholder="What the borrower sees"
+                  style={inputStyle(t)}
+                />
+                <NumInput
+                  value={it.due_offset_days ?? 3}
+                  onChange={(n) => updateExtra(idx, { due_offset_days: n })}
+                />
+                <select
+                  value={it.side ?? "both"}
+                  onChange={(e) => updateExtra(idx, { side: e.target.value as DocChecklistItem["side"] })}
+                  style={inputStyle(t)}
+                >
+                  <option value="buyer">Buyer</option>
+                  <option value="seller">Seller</option>
+                  <option value="both">Both</option>
+                </select>
+                <button
+                  onClick={() => removeExtra(idx)}
+                  aria-label="Remove row"
+                  style={{
+                    width: 36, height: 36, borderRadius: 7,
+                    border: `1px solid ${t.line}`, background: t.surface2,
+                    color: t.danger, cursor: "pointer",
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  }}
+                >
+                  <Icon name="x" size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Primitives (matching super-admin /settings page visual language)
+// ───────────────────────────────────────────────────────────────────
+function Tabs<T extends string>({ t, value, onChange, options }: {
   t: ReturnType<typeof useTheme>["t"];
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  type?: string;
+  value: T;
+  onChange: (v: T) => void;
+  options: { id: T; label: string }[];
 }) {
   return (
+    <div style={{ display: "flex", gap: 4, padding: 3, background: t.surface2, borderRadius: 9, width: "fit-content" }}>
+      {options.map((o) => {
+        const active = value === o.id;
+        return (
+          <button
+            key={o.id}
+            onClick={() => onChange(o.id)}
+            style={{
+              all: "unset", cursor: "pointer",
+              padding: "6px 11px", borderRadius: 7,
+              fontSize: 12, fontWeight: 600,
+              background: active ? t.surface : "transparent",
+              color: active ? t.ink : t.ink3,
+              boxShadow: active ? `0 1px 2px ${t.line}` : "none",
+            }}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const { t } = useTheme();
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function inputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
+  return {
+    width: "100%",
+    padding: "8px 10px",
+    borderRadius: 7,
+    border: `1px solid ${t.line}`,
+    background: t.surface2,
+    color: t.ink,
+    fontSize: 13,
+    outline: "none",
+    boxSizing: "border-box",
+  };
+}
+
+function TextInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const { t } = useTheme();
+  return (
     <input
-      type={type}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      style={{
-        width: "100%",
-        padding: "10px 12px",
-        borderRadius: 9,
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        color: t.ink,
-        fontSize: 13,
-        fontFamily: "inherit",
-        outline: "none",
-      }}
+      style={inputStyle(t)}
     />
   );
 }
 
-function NumField({
-  t,
-  label,
-  value,
-  onChange,
-  suffix,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-  suffix?: string;
-}) {
+function NumInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const { t } = useTheme();
   return (
-    <div>
-      <Label t={t}>{label}</Label>
-      <div style={{ display: "inline-flex", alignItems: "center", width: "100%", background: t.surface2, border: `1px solid ${t.line}`, borderRadius: 9 }}>
-        <input
-          type="number"
-          min={0}
-          value={value}
-          onChange={(e) => onChange(Math.max(0, parseInt(e.target.value) || 0))}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            padding: "10px 12px",
-            background: "transparent",
-            border: "none",
-            color: t.ink,
-            fontSize: 13,
-            fontFamily: "inherit",
-            outline: "none",
-          }}
-        />
-        {suffix && <span style={{ padding: "0 12px 0 0", color: t.ink3, fontSize: 12 }}>{suffix}</span>}
-      </div>
-    </div>
+    <input
+      type="number"
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value) || 0)}
+      style={inputStyle(t)}
+    />
   );
 }
 
-function Select({
-  t,
-  value,
-  onChange,
-  options,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) {
+function NullableNumInput({ value, onChange, placeholder }: { value: number | null; onChange: (n: number | null) => void; placeholder?: string }) {
+  const { t } = useTheme();
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
+    <input
+      type="number"
+      value={value ?? ""}
+      onChange={(e) => {
+        const v = e.target.value;
+        onChange(v === "" ? null : Number(v));
+      }}
+      placeholder={placeholder}
+      style={inputStyle(t)}
+    />
+  );
+}
+
+function SaveBtn({ dirty, saving, onClick }: { dirty: boolean; saving: boolean; onClick: () => void }) {
+  const { t } = useTheme();
+  return (
+    <button
+      onClick={onClick}
+      disabled={!dirty || saving}
       style={{
-        width: "100%",
-        padding: "10px 12px",
-        borderRadius: 9,
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        color: t.ink,
-        fontSize: 13,
-        fontFamily: "inherit",
+        padding: "7px 14px", borderRadius: 8,
+        border: "none",
+        background: dirty && !saving ? t.brand : t.chip,
+        color: dirty && !saving ? t.inverse : t.ink4,
+        fontSize: 12, fontWeight: 700,
+        cursor: dirty && !saving ? "pointer" : "not-allowed",
       }}
     >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+      {saving ? "Saving…" : "Save"}
+    </button>
   );
 }

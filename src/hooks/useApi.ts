@@ -242,6 +242,9 @@ export interface WorkflowDoc {
   scenario: string | null;
   next_scenario: string | null;
   next_scenario_in_days: number | null;
+  // alembic 0023 — which side of the transaction this doc applies to.
+  // Falls back to "both" for is_other / custom rows.
+  side?: string;
 }
 
 export function useLoanWorkflow(loanId: string | null | undefined) {
@@ -264,17 +267,99 @@ export function usePatchDocument() {
     mutationFn: ({
       documentId,
       due_date,
+      status,
+      name,
     }: {
       documentId: string;
-      due_date: string | null;
-    }) =>
-      apiCall<Document>(`/documents/${documentId}`, {
+      // due_date: undefined = leave alone, null = clear, string = set
+      due_date?: string | null;
+      // alembic 0023 — flip in/out of the AI's collection plan
+      status?: "requested" | "skipped";
+      // rename a custom doc
+      name?: string;
+    }) => {
+      const body: Record<string, unknown> = {};
+      if (due_date !== undefined) body.due_date = due_date;
+      if (status !== undefined) body.status = status;
+      if (name !== undefined) body.name = name;
+      return apiCall<Document>(`/documents/${documentId}`, {
         method: "PATCH",
-        body: JSON.stringify({ due_date }),
+        body: JSON.stringify(body),
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["loanWorkflow"] });
+      qc.invalidateQueries({ queryKey: ["documents"] });
+    },
+  });
+}
+
+// POST /loans/{id}/documents/custom — agent adds a one-off doc to
+// this loan's collection plan. Used by WorkflowTab's "+ Add custom
+// item" button.
+export function useAddCustomDocument() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      loanId,
+      name,
+      due_date,
+      checklist_key,
+    }: {
+      loanId: string;
+      name: string;
+      due_date?: string | null;
+      checklist_key?: string | null;
+    }) =>
+      apiCall<Document>(`/loans/${loanId}/documents/custom`, {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          due_date: due_date ?? null,
+          checklist_key: checklist_key ?? null,
+        }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["loanWorkflow"] });
       qc.invalidateQueries({ queryKey: ["documents"] });
+    },
+  });
+}
+
+// /me/broker-settings — agent's per-broker overlay (alembic 0023).
+// GET returns AgentSettingsData (empty defaults if NULL); PUT does
+// a whole-document replacement so the desktop /agent-settings page
+// can save the entire form in one call.
+export function useBrokerSettings() {
+  const apiCall = useAuthedApi();
+  const devUser = useDevUser();
+  return useQuery({
+    queryKey: ["brokerSettings", devUser],
+    queryFn: () =>
+      apiCall<{ data: import("@/lib/types").AgentSettingsData }>(
+        `/me/broker-settings`,
+      ),
+  });
+}
+
+export function useUpdateBrokerSettings() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  const devUser = useDevUser();
+  return useMutation({
+    mutationFn: (data: import("@/lib/types").AgentSettingsData) =>
+      apiCall<{ data: import("@/lib/types").AgentSettingsData }>(
+        `/me/broker-settings`,
+        {
+          method: "PUT",
+          body: JSON.stringify(data),
+        },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["brokerSettings", devUser] });
+      // Resolution changed — re-fetch any open workflow views.
+      qc.invalidateQueries({ queryKey: ["loanWorkflow"] });
     },
   });
 }

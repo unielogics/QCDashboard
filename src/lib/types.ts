@@ -89,7 +89,26 @@ export interface Client {
   // backend will default new rows to stage="lead" and client_type=null.
   stage?: ClientStage | null;
   client_type?: ClientType | null;
+  // Mobile-app experience mode. Optional so the front-end can ship before the
+  // backend column lands — deriveExperienceMode() falls back to broker_id.
+  client_experience_mode?: ClientExperienceMode | null;
+  client_experience_mode_reason?: ClientExperienceModeReason | null;
+  client_experience_mode_locked_by?: ClientExperienceModeLockedBy | null;
 }
+
+export type ClientExperienceMode = "guided" | "self_directed" | "hybrid";
+export type ClientExperienceModeReason =
+  | "agent_referred"
+  | "self_signup"
+  | "funding_team_required"
+  | "underwriting_conditions"
+  | "user_preference"
+  | "super_admin_override";
+export type ClientExperienceModeLockedBy =
+  | "system"
+  | "agent"
+  | "funding_team"
+  | "super_admin";
 
 export interface AITask {
   id: string;
@@ -478,6 +497,44 @@ export interface DocChecklistItem {
   per_unit?: boolean;
   // Operator UI hint for internal items.
   internal_action?: string | null;
+  // Which side of the transaction the item applies to (alembic 0023).
+  side?: "buyer" | "seller" | "both";
+}
+
+// Per-broker overlay shape (alembic 0023). Stored on
+// `brokers.settings_data` JSONB. Layered on top of the firm
+// `AppSettingsData` for any loan owned by the broker. See
+// app/schemas/broker_settings.py for full docs.
+export type LoanSide = "buyer" | "seller";
+
+export interface AgentChecklistOverlay {
+  disabled_firm_items: string[];
+  extra_items: DocChecklistItem[];
+}
+
+export interface AgentCadenceOverride {
+  first_reminder_days: number | null;
+  second_reminder_days: number | null;
+  escalate_after_days: number | null;
+}
+
+export interface AgentLetterhead {
+  display_name: string | null;
+  title: string | null;
+  phone: string | null;
+  email: string | null;
+  license_number: string | null;
+  brokerage_name: string | null;
+  headshot_data_url: string | null;
+  signature_block: string | null;
+}
+
+export interface AgentSettingsData {
+  // Keyed by `${loan_type}:${side}` — e.g. "dscr:buyer".
+  checklists: Record<string, AgentChecklistOverlay>;
+  // Keyed by loan_type only.
+  cadence: Record<string, AgentCadenceOverride>;
+  letterhead: AgentLetterhead | null;
 }
 export interface LoanTypeChecklist {
   docs: DocChecklistItem[];

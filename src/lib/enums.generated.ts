@@ -137,7 +137,8 @@ export const DocStatus = {
   REQUESTED: "requested",
   RECEIVED: "received",
   FLAGGED: "flagged",
-  VERIFIED: "verified"
+  VERIFIED: "verified",
+  SKIPPED: "skipped"
 } as const;
 export type DocStatus = (typeof DocStatus)[keyof typeof DocStatus];
 export const DocStatusOptions = [
@@ -145,7 +146,18 @@ export const DocStatusOptions = [
   { value: "requested", label: "Requested" },
   { value: "received", label: "Received" },
   { value: "flagged", label: "Flagged" },
-  { value: "verified", label: "Verified" }
+  { value: "verified", label: "Verified" },
+  { value: "skipped", label: "Skipped" }
+] as const;
+
+export const LoanSide = {
+  BUYER: "buyer",
+  SELLER: "seller"
+} as const;
+export type LoanSide = (typeof LoanSide)[keyof typeof LoanSide];
+export const LoanSideOptions = [
+  { value: "buyer", label: "Buyer" },
+  { value: "seller", label: "Seller" }
 ] as const;
 
 export const EntityType = {
