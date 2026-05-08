@@ -525,8 +525,9 @@ export interface AgentLetterhead {
   email: string | null;
   license_number: string | null;
   brokerage_name: string | null;
+  logo_data_url?: string | null;
   headshot_data_url: string | null;
-  signature_block: string | null;
+  signature_block?: string | null;
 }
 
 export interface AgentSettingsData {
@@ -1346,4 +1347,3 @@ export type VisibilityScope =
 // useLoans, useLeads, useDeals). Default is "mine" for Agent, "all" for
 // Super Admin / Funding Team. `scope: "mine"` excludes unassigned records.
 export type ListScope = "mine" | "all";
-
