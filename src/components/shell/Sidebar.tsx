@@ -23,32 +23,51 @@ interface NavItem {
 
 // Icons match design (icons.jsx) — `bolt` for AI, `doc` for Documents,
 // `trend` for Reports — not the previously-used aliases.
-const NAV: NavItem[] = [
+//
+// Two NAV variants exist:
+//
+//   AGENT_NAV — the Funding Command Center IA for BROKER (Agent) users.
+//   Reorganized around closing work: My Pipeline · Next Best Actions · Leads ·
+//   Deals · Borrowers · Documents · AI Follow-Up · Messages · Funding
+//   Packages · Performance.
+//
+//   OPERATOR_NAV — the existing firm-wide operator nav for Super Admin /
+//   Underwriter / Borrower. Preserved per Architecture Rule #5: do not break
+//   current operator workflows when reorganizing for Agents.
+const AGENT_NAV: NavItem[] = [
+  { href: "/", label: "Funding Command Center", icon: "home" },
+  { href: "/pipeline", label: "My Pipeline", icon: "layers" },
+  { href: "/ai-inbox", label: "Next Best Actions", icon: "bolt" },
+  { href: "/leads", label: "Leads", icon: "user" },
+  { href: "/deals", label: "Deals", icon: "key" },
+  { href: "/clients", label: "Borrowers", icon: "clients" },
+  { href: "/vault", label: "Documents", icon: "vault" },
+  { href: "/ai-tasks", label: "AI Follow-Up", icon: "spark" },
+  { href: "/messages", label: "Messages", icon: "chat" },
+  { href: "/funding-packages", label: "Funding Packages", icon: "docCheck" },
+  { href: "/reports", label: "Performance", icon: "trend" },
+];
+
+const OPERATOR_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: "home" },
   { href: "/pipeline", label: "Pipeline", icon: "layers" },
-  { href: "/ai-inbox", label: "AI Inbox", icon: "bolt", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
-  // Operator-only — clients should not see the borrower roster.
-  { href: "/clients", label: "Clients", icon: "clients", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
-  // Borrower's personal document vault. Visible to everyone — operators
-  // get a borrower-style view grouped by client (see /vault page comments).
+  { href: "/ai-inbox", label: "AI Inbox", icon: "bolt", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
+  { href: "/clients", label: "Borrowers", icon: "clients", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
   { href: "/vault", label: "Vault", icon: "vault" },
-  // Operator-only firm-wide pre-qualification queue.
-  { href: "/admin/prequal-requests", label: "Pre-Qual Queue", icon: "docCheck", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
-  // Super-admin lender roster — drives the Connect-Lender flow on
-  // each loan and the One-Way Mirror redaction it activates.
+  { href: "/admin/prequal-requests", label: "Pre-Qual Queue", icon: "docCheck", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
   { href: "/admin/lenders", label: "Lenders", icon: "building", roles: [Role.SUPER_ADMIN] },
   { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "cal" },
   { href: "/simulator", label: "Simulate", icon: "calc" },
-  { href: "/rates", label: "Rate Sheet", icon: "sliders", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
-  { href: "/reports", label: "Reports", icon: "trend", roles: [Role.SUPER_ADMIN, Role.BROKER, Role.LOAN_EXEC] },
+  { href: "/rates", label: "Rate Sheet", icon: "sliders", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
+  { href: "/reports", label: "Reports", icon: "trend", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
   { href: "/rewards", label: "Rewards", icon: "trophy", roles: [Role.SUPER_ADMIN] },
   { href: "/settings", label: "Settings", icon: "gear", roles: [Role.SUPER_ADMIN] },
 ];
 
 const ROLE_LABEL: Record<string, string> = {
   super_admin: "Super Admin",
-  broker: "Account Exec",
+  broker: "Agent",
   loan_exec: "Underwriter",
   client: "Borrower",
 };
@@ -64,7 +83,10 @@ export default function Sidebar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  // Until /auth/me resolves, hide role-gated items rather than flicker.
+  // Pick the IA variant by role. Agents get the Funding Command Center IA;
+  // every other role keeps the existing operator nav. Until /auth/me resolves,
+  // hide role-gated items rather than flicker.
+  const NAV = user?.role === Role.BROKER ? AGENT_NAV : OPERATOR_NAV;
   const items = NAV.filter((n) => !n.roles || (user && n.roles.includes(user.role as Role)));
 
   const initials = user?.name

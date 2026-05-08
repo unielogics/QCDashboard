@@ -1098,3 +1098,193 @@ export interface PrequalSellerOutcome {
   // Optional borrower note about the outcome (e.g. "seller countered to 410k").
   note?: string | null;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Agent Funding Command Center — P0A types (frontend-first mocks)
+//
+// Architecture rules (see plan "Architecture Rules Added Before P0A"):
+//   1. Nullable ownership — agent_id / lead_id / deal_id may all be null on
+//      existing/imported records. Agent views (`scope: "mine"`) exclude
+//      unassigned; Super Admin sees all via `scope: "all"`.
+//   2. Smart Intake without a Lead is allowed; lead_id is nullable everywhere.
+//   3. Reassignment: originating_agent_id never changes; current_agent_id
+//      changes only via Super Admin and writes an AgentReassignmentAudit row.
+//      Open AITasks transfer if still relevant; drafted-but-unsent messages
+//      become requires_review_after_reassignment; sent messages keep their
+//      original from_user_id; agent_note rows preserve created_by_agent_id.
+//   4. visibility_scope is enforced at the server-projection layer — these
+//      types describe internal/full shapes; borrower-facing endpoints must
+//      return filtered projections, never raw event/task rows.
+// ────────────────────────────────────────────────────────────────────────────
+
+export type LeadStatus = "new" | "contacted" | "qualified" | "converted" | "lost";
+
+export type LeadSource =
+  | "agent_added"
+  | "self_signup"
+  | "admin_assigned"
+  | "existing_database"
+  | "referral";
+
+export interface Lead {
+  id: string;
+  agent_id: string | null;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  status: LeadStatus;
+  source: LeadSource;
+  created_at: string;
+  // Set when the Lead converts to a Borrower. Until then, null.
+  client_id: string | null;
+  notes: string | null;
+}
+
+export type DealType =
+  | "purchase"
+  | "refi"
+  | "bridge"
+  | "fix_flip"
+  | "ground_up"
+  | "dscr_purchase"
+  | "dscr_refi";
+
+export type DealStatus =
+  | "exploring"
+  | "intake"
+  | "prequalified"
+  | "under_contract"
+  | "submitted"
+  | "in_uw"
+  | "clear_to_close"
+  | "funded"
+  | "lost";
+
+export interface Deal {
+  id: string;
+  // All upstream FKs are nullable per Architecture Rule #1. Backend enforces
+  // a check constraint that at least one of (lead_id, client_id) is non-null
+  // — a Deal must trace to either a Lead or a converted Borrower; both can
+  // be null only transiently if Super Admin creates an orphan record.
+  lead_id: string | null;
+  client_id: string | null;
+  agent_id: string | null;
+  type: DealType;
+  property_address: string | null;
+  status: DealStatus;
+  // Engines come in P1; fields exist from P0A so the data shape is stable.
+  deal_readiness_score: number | null;          // 0–100 — is this real, active, closeable?
+  funding_file_readiness_score: number | null;  // 0–100 — is the lender package ready?
+  created_at: string;
+  last_movement_at: string | null;
+}
+
+// Buyer-intent + funnel-progression signals. Captured from day one so the
+// shared Deal Intelligence Core (P0B) has history to reason over.
+export type EngagementSignalType =
+  | "invite_opened"
+  | "intake_started"
+  | "intake_abandoned_step"
+  | "doc_uploaded"
+  | "document_viewed"
+  | "message_viewed"
+  | "login"
+  | "last_action"
+  | "simulator_used"
+  | "profile_updated"
+  | "credit_pull_started"
+  | "credit_pull_completed"
+  | "calendar_event_viewed";
+
+export interface EngagementSignal {
+  id: string;
+  client_id: string;
+  deal_id: string | null;
+  signal_type: EngagementSignalType;
+  metadata: Record<string, unknown> | null;     // e.g. { abandoned_at_step: "asset" }
+  occurred_at: string;
+}
+
+// Origin stays historical; current_agent_id can change via Super Admin
+// reassignment (Architecture Rule #3). Commission/reward status does NOT
+// auto-change on reassignment — it stays "pending_review" until manual
+// resolution.
+export type AttributionCommissionStatus =
+  | "pending_review"
+  | "originator"
+  | "current_only"
+  | "split"
+  | "waived";
+
+export interface LoanAttribution {
+  loan_id: string;
+  lead_id: string | null;
+  deal_id: string | null;
+  originating_agent_id: string | null;
+  current_agent_id: string | null;
+  source_channel: string | null;
+  referral_partner_id: string | null;
+  commission_status: AttributionCommissionStatus;
+  funded_amount: number | null;
+  revenue: number | null;
+}
+
+export interface AgentReassignmentAudit {
+  id: string;
+  client_id: string;
+  deal_id: string | null;
+  from_agent_id: string | null;
+  to_agent_id: string;
+  changed_by_user_id: string;
+  reason: string | null;
+  created_at: string;
+}
+
+// Top-of-funnel work item for the Agent. P0A surface uses heuristic generation
+// (no-response > N days, missing doc, closing soon, intake stalled). The full
+// LLM-driven engine is P1.
+export type NextBestActionType =
+  | "call_borrower"
+  | "request_doc"
+  | "send_intake"
+  | "submit_to_lender"
+  | "review_dscr_risk"
+  | "respond_to_borrower_question"
+  | "revive_stale_lead"
+  | "confirm_closing_logistics";
+
+export type NextBestActionUrgency = "low" | "med" | "high";
+
+export type NextBestActionScope = "agent" | "lead" | "deal" | "borrower";
+
+export interface NextBestAction {
+  id: string;
+  scope: NextBestActionScope;
+  scope_id: string;
+  action_type: NextBestActionType;
+  reason: string;                                // human-readable trigger
+  urgency: NextBestActionUrgency;
+  suggested_message: string | null;              // pre-drafted; respects ai_compliance_policy
+  required_owner: "agent" | "borrower" | "funding_team" | "underwriter";
+  due_date: string | null;
+  generated_at: string;
+  dismissed_at: string | null;
+}
+
+// Documented for future use by the shared core (P0B). Borrower-facing reads
+// must be server-projection filtered to only borrower_visible content. P0A
+// frontend does not consume raw event rows, so this lives here as a contract
+// note for the eventual API integration.
+export type VisibilityScope =
+  | "internal_only"
+  | "agent_visible"
+  | "funding_visible"
+  | "borrower_visible"
+  | "underwriter_visible"
+  | "all_internal";
+
+// `scope` query param shared across list hooks (useClients, usePipeline,
+// useLoans, useLeads, useDeals). Default is "mine" for Agent, "all" for
+// Super Admin / Funding Team. `scope: "mine"` excludes unassigned records.
+export type ListScope = "mine" | "all";
+

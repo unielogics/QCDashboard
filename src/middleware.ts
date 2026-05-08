@@ -14,8 +14,42 @@ const isPublicPage = createRouteMatcher([
   "/privacy(.*)",
 ]);
 
+// Super-admin-only routes. Edge-level hard-deny so a non-super-admin who
+// guesses a URL is bounced before the page renders, not just hidden in nav.
+//
+// Explicit allowlist (NOT catch-all on /admin/*) because some admin routes
+// must stay accessible to other operator roles per Architecture Rule #5
+// "preserve existing operator workflows":
+//   - `/admin/prequal-requests` — LOAN_EXEC keeps current access
+//   - future `/admin/funding-inbox` — Funding Team (super-admin in P0,
+//     opens to processor / loan_officer / funding_coordinator later)
+const isSuperAdminOnlyPage = createRouteMatcher([
+  "/admin/lenders(.*)",
+  "/admin/borrowers(.*)",
+  "/settings(.*)",
+]);
+
+// Role lives in the backend `User` row (see /auth/me). For edge enforcement
+// the role must also be mirrored into Clerk publicMetadata so it shows up in
+// `sessionClaims`. Until that backend mirroring lands, this check degrades to
+// "let through" — page-level guards (Sidebar nav + per-page role checks) keep
+// the UI hidden in the meantime.
+//
+// TODO(P0A backend): mirror User.role → Clerk publicMetadata.role on every
+// role change so the JWT carries it. Once that lands this becomes a hard gate.
+function getRoleFromClaims(
+  sessionClaims: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!sessionClaims) return null;
+  const meta =
+    (sessionClaims.publicMetadata as Record<string, unknown> | undefined) ??
+    (sessionClaims.metadata as Record<string, unknown> | undefined);
+  const role = meta?.role;
+  return typeof role === "string" ? role : null;
+}
+
 export default clerkMiddleware(async (auth, req) => {
-  const { userId, redirectToSignIn } = await auth();
+  const { userId, sessionClaims, redirectToSignIn } = await auth();
 
   // Already signed in? Don't show them the sign-in / sign-up pages — bounce
   // to the dashboard. Clerk's <SignIn> component renders nothing for signed-in
@@ -39,6 +73,16 @@ export default clerkMiddleware(async (auth, req) => {
   // because req.url is the internal Lambda URL, which Clerk would reject).
   if (!userId) {
     return redirectToSignIn();
+  }
+
+  // Super-admin-only edge gate. If we know the role from the JWT and it isn't
+  // super_admin, bounce to the dashboard. If we don't know the role yet (no
+  // metadata wired), fall through and let the page's own role check handle it.
+  if (isSuperAdminOnlyPage(req)) {
+    const role = getRoleFromClaims(sessionClaims as Record<string, unknown>);
+    if (role && role !== "super_admin") {
+      return NextResponse.redirect(new URL("/", req.nextUrl.origin));
+    }
   }
 });
 

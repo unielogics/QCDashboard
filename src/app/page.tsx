@@ -34,6 +34,7 @@ import type { AITask, Broker, CalendarEvent, FredSeriesSummary, Loan } from "@/l
 import { Role } from "@/lib/enums.generated";
 import { CreditPullModal } from "@/components/CreditPullModal";
 import { RateDetailModal } from "@/components/RateDetailModal";
+import { AgentHomeView } from "./components/AgentHomeView";
 
 const STAGE_KEYS = [
   "prequalified",
@@ -82,6 +83,13 @@ export default function DashboardPage() {
 
   const datelineDate = today.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
   const datelineTime = today.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+
+  // Agent (BROKER) gets the Funding Command Center — a sales-driven personal
+  // dashboard distinct from the firm-wide operator view used by Super Admin /
+  // Underwriter. The existing operator dashboard below stays as-is for them.
+  if (isBroker) {
+    return <AgentHomeView />;
+  }
 
   return (
     <div

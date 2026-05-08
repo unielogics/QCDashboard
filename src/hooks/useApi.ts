@@ -155,12 +155,19 @@ export function useCurrentUser() {
 
 // ── Queries ────────────────────────────────────────────────────────────────
 
-export function useLoans() {
+// `scope` is optional. When omitted, the backend decides based on the JWT
+// role (Agent → "mine", Super Admin / Funding Team → "all"). Pass it
+// explicitly only when a UI needs to assert a non-default filter (e.g.
+// Super Admin's "show me only my own assignments" toggle, or a request to
+// surface unassigned records). Architecture Rule #1 — `scope: "mine"`
+// excludes records with NULL agent_id; only Super Admin gets `scope: "all"`.
+export function useLoans(scope?: import("@/lib/types").ListScope) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
+  const qs = scope ? `?scope=${scope}` : "";
   return useQuery({
-    queryKey: ["loans", devUser],
-    queryFn: () => apiCall<Loan[]>("/loans"),
+    queryKey: ["loans", scope ?? "auto", devUser],
+    queryFn: () => apiCall<Loan[]>(`/loans${qs}`),
   });
 }
 
@@ -178,12 +185,14 @@ export function useLoan(loanId: string | null | undefined) {
   });
 }
 
-export function useClients() {
+// See `useLoans` for the `scope` contract — same rule.
+export function useClients(scope?: import("@/lib/types").ListScope) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
+  const qs = scope ? `?scope=${scope}` : "";
   return useQuery({
-    queryKey: ["clients", devUser],
-    queryFn: () => apiCall<Client[]>("/clients"),
+    queryKey: ["clients", scope ?? "auto", devUser],
+    queryFn: () => apiCall<Client[]>(`/clients${qs}`),
   });
 }
 
@@ -1948,6 +1957,224 @@ export function useDraftLenderSend() {
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["emailDrafts", vars.loanId] });
       qc.invalidateQueries({ queryKey: ["activities", vars.loanId] });
+    },
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Agent Funding Command Center — P0A hooks (frontend-first)
+//
+// Each hook is gated by an env feature flag. While the flag is "false" we use
+// in-memory mocks (src/lib/mocks/*) so the UI is clean — no dev network noise,
+// no 404 storms — and Agents can demo end-to-end on the frontend alone. Once
+// the backend ships the corresponding endpoints, flip the flag in .env.local
+// and the hook switches to real HTTP without any code change.
+//
+// Future endpoints (still pending):
+//   - GET    /leads?scope=mine|all  → Lead[]
+//   - GET    /leads/{id}            → Lead
+//   - POST   /leads                 → Lead
+//   - POST   /leads/{id}/invite     → kicks off Clerk invite + Smart Intake
+//   - PATCH  /clients/{id}/agent    → Super Admin reassignment (audit logged)
+//
+// Server-side ownership filtering enforces Architecture Rule #1: `scope: "mine"`
+// excludes records with NULL agent_id; only Super Admin / Funding Team gets
+// `scope: "all"`.
+// ────────────────────────────────────────────────────────────────────────────
+
+import type { Lead, ListScope, LeadSource } from "@/lib/types";
+import {
+  mockGetLeads,
+  mockGetLead,
+  mockCreateLead,
+  mockInviteLead,
+} from "@/lib/mocks/leads";
+
+// TODO(P0A backend): flip NEXT_PUBLIC_BACKEND_HAS_LEADS=true once
+// GET /leads?scope=mine and POST /leads ship.
+const LEADS_BACKEND_LIVE = process.env.NEXT_PUBLIC_BACKEND_HAS_LEADS === "true";
+
+export function useLeads(scope: ListScope = "mine") {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const { data: me } = useCurrentUser();
+  return useQuery({
+    queryKey: ["leads", scope, devUser],
+    queryFn: () =>
+      LEADS_BACKEND_LIVE
+        ? apiCall<Lead[]>(`/leads?scope=${scope}`)
+        : mockGetLeads(scope, me?.id ?? null),
+    retry: false,
+  });
+}
+
+export function useLead(leadId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lead", leadId, devUser],
+    queryFn: () =>
+      LEADS_BACKEND_LIVE
+        ? apiCall<Lead>(`/leads/${leadId}`)
+        : mockGetLead(leadId as string),
+    enabled: !!leadId,
+    retry: false,
+  });
+}
+
+export function useCreateLead() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  const { data: me } = useCurrentUser();
+  return useMutation({
+    mutationFn: (body: {
+      name: string;
+      email: string | null;
+      phone: string | null;
+      source: LeadSource;
+      notes: string | null;
+    }) =>
+      LEADS_BACKEND_LIVE
+        ? apiCall<Lead>("/leads", {
+            method: "POST",
+            body: JSON.stringify(body),
+          })
+        : mockCreateLead(body, me?.id ?? null),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["leads"] }),
+  });
+}
+
+export function useInviteLead() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (leadId: string) =>
+      LEADS_BACKEND_LIVE
+        ? apiCall<Lead>(`/leads/${leadId}/invite`, { method: "POST" })
+        : mockInviteLead(leadId),
+    onSuccess: (_, leadId) => {
+      qc.invalidateQueries({ queryKey: ["leads"] });
+      qc.invalidateQueries({ queryKey: ["lead", leadId] });
+    },
+  });
+}
+
+// ─── Deals ─────────────────────────────────────────────────────────────────
+// Future endpoints:
+//   - GET    /deals?scope=mine|all  → Deal[]
+//   - GET    /deals/{id}            → Deal
+//   - POST   /deals                 → Deal
+
+import type { Deal, DealType } from "@/lib/types";
+import {
+  mockGetDeals,
+  mockGetDeal,
+  mockCreateDeal,
+} from "@/lib/mocks/deals";
+
+// TODO(P0A backend): flip NEXT_PUBLIC_BACKEND_HAS_DEALS=true once
+// GET /deals?scope=mine and POST /deals ship.
+const DEALS_BACKEND_LIVE = process.env.NEXT_PUBLIC_BACKEND_HAS_DEALS === "true";
+
+export function useDeals(scope: ListScope = "mine") {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const { data: me } = useCurrentUser();
+  return useQuery({
+    queryKey: ["deals", scope, devUser],
+    queryFn: () =>
+      DEALS_BACKEND_LIVE
+        ? apiCall<Deal[]>(`/deals?scope=${scope}`)
+        : mockGetDeals(scope, me?.id ?? null),
+    retry: false,
+  });
+}
+
+export function useDeal(dealId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["deal", dealId, devUser],
+    queryFn: () =>
+      DEALS_BACKEND_LIVE
+        ? apiCall<Deal>(`/deals/${dealId}`)
+        : mockGetDeal(dealId as string),
+    enabled: !!dealId,
+    retry: false,
+  });
+}
+
+export function useCreateDeal() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  const { data: me } = useCurrentUser();
+  return useMutation({
+    mutationFn: (body: {
+      type: DealType;
+      property_address: string | null;
+      lead_id: string | null;
+      client_id: string | null;
+    }) =>
+      DEALS_BACKEND_LIVE
+        ? apiCall<Deal>("/deals", {
+            method: "POST",
+            body: JSON.stringify(body),
+          })
+        : mockCreateDeal(body, me?.id ?? null),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["deals"] }),
+  });
+}
+
+// ─── Engagement signals ────────────────────────────────────────────────────
+// Future endpoint: GET /clients/{id}/engagement → EngagementSignal[]
+//
+// P0A: returns [] when backend isn't live so per-Borrower workspace surfaces
+// the "no engagement signals yet" empty state cleanly.
+
+import type { EngagementSignal } from "@/lib/types";
+
+export function useEngagement(clientId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["engagement", clientId, devUser],
+    queryFn: () =>
+      apiCall<EngagementSignal[]>(`/clients/${clientId}/engagement`).catch(() => [] as EngagementSignal[]),
+    enabled: !!clientId,
+    retry: false,
+  });
+}
+
+// ─── Agent reassignment (Super Admin only) ─────────────────────────────────
+// Future endpoint: PATCH /clients/{id}/agent
+// Body: { to_agent_id: string, reason?: string }
+//
+// Backend writes an AgentReassignmentAudit row per Architecture Rule #3.
+// Open AITasks transfer; sent messages keep their original from_user_id;
+// LoanAttribution.current_agent_id updates while originating_agent_id stays.
+
+export function useReassignAgent() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      clientId,
+      toAgentId,
+      reason,
+    }: {
+      clientId: string;
+      toAgentId: string;
+      reason?: string;
+    }) =>
+      apiCall<Client>(`/clients/${clientId}/agent`, {
+        method: "PATCH",
+        body: JSON.stringify({ to_agent_id: toAgentId, reason }),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.invalidateQueries({ queryKey: ["client", vars.clientId] });
+      qc.invalidateQueries({ queryKey: ["leads"] });
+      qc.invalidateQueries({ queryKey: ["deals"] });
     },
   });
 }
