@@ -10,6 +10,7 @@ import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { useClient, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { RealtorReadinessCard } from "@/components/RealtorReadinessCard";
+import { ClientAIPlanCard } from "@/components/ClientAIPlanCard";
 import { CreditReportDetail } from "@/components/CreditReportDetail";
 import { useActiveProfile } from "@/store/role";
 import { QC_FMT } from "@/components/design-system/tokens";
@@ -221,6 +222,13 @@ export default function ClientDetailPage() {
       />
 
       <ClientStageCard t={t} client={client} canEdit={canEdit} clientLoans={clientLoans} />
+
+      {/* Active AI Plan (alembic 0032). The plan is rebuilt on every
+          chat turn / doc upload / cadence pass; this card lets the
+          agent override individual items + write per-client custom
+          instructions for the AI. Sits ABOVE the Readiness card —
+          plan trumps the raw missing_facts walk. */}
+      <ClientAIPlanCard clientId={client.id} loanId={null} />
 
       {/* Realtor Client Intelligence Profile (alembic 0030). The
           Realtor AI writes this every conversational turn; the card

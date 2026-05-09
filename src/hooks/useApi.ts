@@ -2356,3 +2356,473 @@ export function useStartFunding() {
     },
   });
 }
+
+
+// ── AI Plan / Playbooks / Preview hooks (Phase 2/3/6/7) ─────────────
+
+export interface ClientAIPlanItem {
+  requirement_key: string;
+  label: string;
+  category: string;
+  required_level: string;
+  blocks_stage: string | null;
+  visibility: string[];
+  can_agent_override: boolean;
+  can_underwriter_waive: boolean;
+  verification_required: boolean;
+  expiration_days: number | null;
+  ai_request_message_template: string | null;
+  display_order: number;
+  status: string;
+  source: string;
+  evidence_id: string | null;
+  playbook_id: string;
+  playbook_version: number;
+  playbook_name: string;
+}
+
+export interface ClientAIPlanRead {
+  client_id: string;
+  loan_id: string | null;
+  current_phase: string;
+  custom_instructions: string | null;
+  required_items: ClientAIPlanItem[];
+  waived_items: ClientAIPlanItem[];
+  ai_suggested_items: ClientAIPlanItem[];
+  next_best_question: string | null;
+  next_best_action: { kind: string; requirement_key?: string; label?: string; category?: string } | null;
+  readiness_score: number | null;
+  active_playbook_versions: { playbook_id: string; version: number }[];
+  computed_at: string;
+}
+
+// GET /clients/{id}/ai-plan — resolved active plan + auto-rebuild
+export function useClientAIPlan(clientId: string | null | undefined, loanId?: string | null) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["clientAIPlan", clientId, loanId ?? null],
+    queryFn: () =>
+      apiCall<ClientAIPlanRead>(
+        `/clients/${clientId}/ai-plan${loanId ? `?loan_id=${loanId}` : ""}`,
+      ),
+    enabled: !!clientId,
+  });
+}
+
+// PATCH /clients/{id}/ai-plan — apply per-client overrides
+export function usePatchClientAIPlan() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ clientId, loanId, ...body }: {
+      clientId: string;
+      loanId?: string | null;
+      custom_instructions?: string | null;
+      waive_keys?: string[];
+      unwaive_keys?: string[];
+      rebuild?: boolean;
+    }) =>
+      apiCall<ClientAIPlanRead>(
+        `/clients/${clientId}/ai-plan${loanId ? `?loan_id=${loanId}` : ""}`,
+        { method: "PATCH", body: JSON.stringify(body) },
+      ),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["clientAIPlan", vars.clientId] });
+      qc.invalidateQueries({ queryKey: ["client", vars.clientId] });
+    },
+  });
+}
+
+// AI Preview endpoints (no persistence)
+export function usePreviewAIPlan() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (body: {
+      client_id: string;
+      loan_id?: string | null;
+      waive_keys?: string[];
+      custom_instructions?: string;
+    }) =>
+      apiCall<ClientAIPlanRead>(`/ai-preview/plan`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+export function usePreviewHandoffPacket() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (clientId: string) =>
+      apiCall<{
+        handoff_summary: string | null;
+        realtor_summary: Record<string, unknown> | null;
+        extracted_facts: { field: string; value: unknown; source: string; confidence: number; visibility: string }[];
+        missing_lending_items: string[] | null;
+        first_lending_question: string | null;
+        recommended_lending_path: Record<string, unknown> | null;
+      }>(`/ai-preview/handoff`, {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId }),
+      }),
+  });
+}
+
+export interface CadencePreviewItem {
+  rule_id: string;
+  trigger_event: string;
+  action_type: string;
+  approval_required: boolean;
+  visibility: string;
+  client_id: string;
+  client_name: string;
+  requirement_key: string | null;
+  message_preview: string | null;
+  fires_now: boolean;
+}
+
+export function usePreviewCadence() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (body: { client_id?: string | null }) =>
+      apiCall<CadencePreviewItem[]>(`/ai-preview/cadence`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+// Agent playbook overlay
+export interface PlaybookRequirement {
+  id: string;
+  requirement_key: string;
+  label: string;
+  category: "fact" | "document" | "appointment" | "agreement" | "task";
+  required_level: "required" | "recommended" | "optional";
+  applies_when: Record<string, unknown> | null;
+  blocks_stage: string | null;
+  visibility: string[];
+  can_agent_override: boolean;
+  can_underwriter_waive: boolean;
+  verification_required: boolean;
+  expiration_days: number | null;
+  ai_request_message_template: string | null;
+  display_order: number;
+}
+
+export interface AgentPlaybook {
+  playbook_type: string;
+  platform_id: string | null;
+  platform_version: number | null;
+  agent_id: string | null;
+  agent_version: number | null;
+  rules: Record<string, unknown>;
+  platform_requirements: PlaybookRequirement[];
+  agent_requirements: PlaybookRequirement[];
+}
+
+export function useAgentPlaybook(playbookType: "buyer" | "seller" | "cadence") {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["agentPlaybook", playbookType],
+    queryFn: () => apiCall<AgentPlaybook>(`/me/ai-playbook/${playbookType}`),
+  });
+}
+
+export function useUpsertAgentRequirement(playbookType: "buyer" | "seller") {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<PlaybookRequirement> & { requirement_key: string; label: string; category: string; required_level: string }) =>
+      apiCall<PlaybookRequirement>(`/me/ai-playbook/${playbookType}/requirements`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agentPlaybook", playbookType] });
+    },
+  });
+}
+
+export function useDeleteAgentRequirement(playbookType: "buyer" | "seller") {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (requirementId: string) =>
+      apiCall<{ ok: boolean }>(`/me/ai-playbook/${playbookType}/requirements/${requirementId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agentPlaybook", playbookType] });
+    },
+  });
+}
+
+export function usePatchAgentPlaybookRules(playbookType: "buyer" | "seller" | "cadence") {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rules: Record<string, unknown>) =>
+      apiCall<AgentPlaybook>(`/me/ai-playbook/${playbookType}/rules`, {
+        method: "PATCH",
+        body: JSON.stringify({ rules }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agentPlaybook", playbookType] });
+    },
+  });
+}
+
+// Agent cadence rules
+export interface AgentCadenceRule {
+  id: string;
+  trigger_event: string;
+  applies_to_requirement_key: string | null;
+  condition: Record<string, unknown> | null;
+  wait_hours: number;
+  action_type: string;
+  approval_required: boolean;
+  message_template: string | null;
+  visibility: string;
+  is_active: boolean;
+}
+
+export function useAgentCadenceRules() {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["agentCadenceRules"],
+    queryFn: () => apiCall<AgentCadenceRule[]>(`/me/ai-playbook/cadence/rules`),
+  });
+}
+
+export function useUpsertAgentCadenceRule() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<AgentCadenceRule> & { trigger_event: string; action_type: string }) =>
+      apiCall<AgentCadenceRule>(`/me/ai-playbook/cadence/rules`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agentCadenceRules"] });
+    },
+  });
+}
+
+export function useDeleteAgentCadenceRule() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ruleId: string) =>
+      apiCall<{ ok: boolean }>(`/me/ai-playbook/cadence/rules/${ruleId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agentCadenceRules"] });
+    },
+  });
+}
+
+// ── Lending admin (Phase 3) ────────────────────────────────────────
+
+export interface LendingPlaybook {
+  id: string;
+  owner_type: string;
+  owner_id: string | null;
+  playbook_type: string;
+  product_key: string | null;
+  name: string;
+  description: string | null;
+  rules: Record<string, unknown>;
+  version: number;
+  status: string;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function useLendingPlaybooks(playbookType?: string) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lendingPlaybooks", playbookType ?? null],
+    queryFn: () =>
+      apiCall<LendingPlaybook[]>(
+        `/lending-admin/playbooks${playbookType ? `?playbook_type=${playbookType}` : ""}`,
+      ),
+  });
+}
+
+export function useCreateLendingPlaybook() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<LendingPlaybook>) =>
+      apiCall<LendingPlaybook>(`/lending-admin/playbooks`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["lendingPlaybooks"] }),
+  });
+}
+
+export function useUpdateLendingPlaybook() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name?: string; description?: string; rules?: Record<string, unknown>; fork?: boolean }) =>
+      apiCall<LendingPlaybook>(`/lending-admin/playbooks/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["lendingPlaybooks"] }),
+  });
+}
+
+export function usePublishLendingPlaybook() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (playbookId: string) =>
+      apiCall<LendingPlaybook>(`/lending-admin/playbooks/${playbookId}/publish`, {
+        method: "POST",
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["lendingPlaybooks"] }),
+  });
+}
+
+export function useDuplicatePlatformPlaybook() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ platformPlaybookId, name }: { platformPlaybookId: string; name?: string }) =>
+      apiCall<LendingPlaybook>(
+        `/lending-admin/playbooks/duplicate-from-platform/${platformPlaybookId}${name ? `?name=${encodeURIComponent(name)}` : ""}`,
+        { method: "POST" },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["lendingPlaybooks"] }),
+  });
+}
+
+export function useLendingPlaybookRequirements(playbookId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lendingPlaybookReqs", playbookId],
+    queryFn: () => apiCall<PlaybookRequirement[]>(`/lending-admin/playbooks/${playbookId}/requirements`),
+    enabled: !!playbookId,
+  });
+}
+
+export function useUpsertLendingRequirement(playbookId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<PlaybookRequirement> & { requirement_key: string; label: string; category: string; required_level: string }) =>
+      apiCall<PlaybookRequirement>(`/lending-admin/playbooks/${playbookId}/requirements`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["lendingPlaybookReqs", playbookId] }),
+  });
+}
+
+export function useDeleteLendingRequirement(playbookId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (requirementId: string) =>
+      apiCall<{ ok: boolean }>(
+        `/lending-admin/playbooks/${playbookId}/requirements/${requirementId}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["lendingPlaybookReqs", playbookId] }),
+  });
+}
+
+// Funding cadence rules
+export function useFundingCadenceRules() {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["fundingCadenceRules"],
+    queryFn: () => apiCall<AgentCadenceRule[]>(`/lending-admin/cadence-rules`),
+  });
+}
+
+export function useUpsertFundingCadenceRule() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<AgentCadenceRule> & { trigger_event: string; action_type: string }) =>
+      apiCall<AgentCadenceRule>(`/lending-admin/cadence-rules`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["fundingCadenceRules"] }),
+  });
+}
+
+export function useDeleteFundingCadenceRule() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ruleId: string) =>
+      apiCall<{ ok: boolean }>(`/lending-admin/cadence-rules/${ruleId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["fundingCadenceRules"] }),
+  });
+}
+
+// Verification / Escalation / Communication rules — JSONB blobs
+export function useFundingMetaRules(kind: "verification" | "escalation" | "communication") {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["fundingMetaRules", kind],
+    queryFn: () => apiCall<{ playbook_id: string; rules: Record<string, unknown> }>(`/lending-admin/${kind}-rules`),
+  });
+}
+
+export function usePatchFundingMetaRules(kind: "verification" | "escalation" | "communication") {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rules: Record<string, unknown>) =>
+      apiCall<{ playbook_id: string; rules: Record<string, unknown> }>(`/lending-admin/${kind}-rules`, {
+        method: "PATCH",
+        body: JSON.stringify({ rules }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["fundingMetaRules", kind] }),
+  });
+}
+
+// Audit feed
+export interface AuditEvent {
+  id: string;
+  event_type: string;
+  actor_type: string;
+  actor_id: string | null;
+  client_id: string | null;
+  loan_id: string | null;
+  playbook_id: string | null;
+  requirement_key: string | null;
+  old_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown> | null;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export function useAuditEvents(filter: {
+  client_id?: string;
+  loan_id?: string;
+  playbook_id?: string;
+  event_type?: string;
+  limit?: number;
+} = {}) {
+  const apiCall = useAuthedApi();
+  const qs = new URLSearchParams();
+  Object.entries(filter).forEach(([k, v]) => v !== undefined && v !== null && qs.append(k, String(v)));
+  return useQuery({
+    queryKey: ["auditEvents", filter],
+    queryFn: () => apiCall<AuditEvent[]>(`/lending-admin/audit?${qs.toString()}`),
+  });
+}

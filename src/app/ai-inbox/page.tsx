@@ -9,6 +9,7 @@ import { useAITasks, useAITaskDecision } from "@/hooks/useApi";
 import { FeedbackOutputType } from "@/lib/enums.generated";
 import type { AITask } from "@/lib/types";
 import { FeedbackWidget } from "@/components/FeedbackWidget";
+import { AIInboxCard } from "@/components/AIInboxCard";
 
 const SOURCE_FILTERS = ["all", "underwriting", "messages", "risk", "calendar", "documents", "pipeline", "rates", "broker_suggestion"] as const;
 type SourceFilter = (typeof SOURCE_FILTERS)[number];
@@ -374,6 +375,22 @@ function Detail({ task }: { task: AITask }) {
       </div>
 
       <div style={{ flex: 1, padding: 20, overflowY: "auto" }}>
+        {/* Plain-language card for cadence-spawned tasks (Phase 5).
+            The human-readable framing — What / Why / What happens if I
+            approve — sits ABOVE the technical drafted-artifact view
+            for these. Older tasks (non-cadence) keep the original
+            detail-only layout. */}
+        {task.action?.startsWith("cadence_") || task.action?.startsWith("confirm_") ? (
+          <div style={{ marginBottom: 16 }}>
+            <AIInboxCard
+              task={task}
+              onApprove={handleApprove}
+              onDismiss={handleDismiss}
+              onEdit={() => setEditMode(true)}
+            />
+          </div>
+        ) : null}
+
         <SectionLabel action={
           editMode ? (
             <button onClick={() => setEditMode(false)} style={{ background: "transparent", border: "none", color: t.ink3, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Cancel edit</button>
