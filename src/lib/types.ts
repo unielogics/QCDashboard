@@ -249,6 +249,9 @@ export interface OwnedAsset {
 
 export interface NumbersStep {
   type: LoanType;
+  // Loan purpose set by Step 1 toggle. Persisted on Loan.purpose.
+  // Wire format matches the backend LoanPurpose enum.
+  purpose?: "purchase" | "rate_term_refi" | "cash_out_refi" | null;
   amount: number;
   ltv: number;
   ltc?: number | null;
@@ -283,6 +286,25 @@ export interface AIRulesStep {
   ai_instructions?: string | null;       // freeform "how to speak with this client"
 }
 
+// Optional one-off custom doc the operator typed at Step 4. Mirrors
+// backend IntakeCustomDoc — `due_date` is absolute (frontend converts
+// the inline "+N days" input into today + N before submit).
+export interface IntakeCustomDoc {
+  name: string;
+  due_date?: string | null;
+  checklist_key?: string | null;
+}
+
+// Pre-loan checklist edits captured in Step 4. Mirrors backend
+// IntakeDocumentOverrides — `skip_names` removes firm/agent defaults,
+// `add_items` appends one-offs, `due_offset_overrides` retargets the
+// due date for a default item without skipping it.
+export interface IntakeDocumentOverrides {
+  skip_names?: string[];
+  add_items?: IntakeCustomDoc[];
+  due_offset_overrides?: Record<string, number>;
+}
+
 export interface SmartIntakePayload {
   borrower: BorrowerStep;
   asset: AssetStep;
@@ -292,6 +314,7 @@ export interface SmartIntakePayload {
   // can ignore until support lands; frontend captures regardless.
   deal_side?: "buyer" | "seller" | null;
   owned_assets?: OwnedAsset[] | null;
+  document_overrides?: IntakeDocumentOverrides | null;
 }
 
 export interface SmartIntakeResponse {
@@ -321,6 +344,9 @@ export interface CreditPull {
   fico: number | null;
   pulled_at: string | null;
   expires_at: string | null;
+  // Operator-typed notes from the credit pull. iSoftpull captures
+  // these; the client detail page renders them on an operator-only card.
+  notes?: string | null;
   // Derived (computed in router) — UI uses these directly to render the
   // "expires in 12 days" pill without doing date math.
   is_expired?: boolean;
@@ -631,6 +657,11 @@ export interface LetterheadSettings {
 }
 export interface AppSettingsData {
   checklists: Record<string, LoanTypeChecklist>;
+  // Transaction-side defaults (alembic 0025 / realtor overhaul). Keyed
+  // by "buyer" | "seller". The agent's lead-stage UI (and the
+  // SmartIntakeModal Step 4 doc-preview when role=BROKER) reads from
+  // here and overlays the per-broker checklist overrides on top.
+  transaction_checklists?: Record<string, LoanTypeChecklist>;
   ai_cadence: AICadenceSettings;
   referrals: ReferralSettings;
   pricing: PricingSettings;

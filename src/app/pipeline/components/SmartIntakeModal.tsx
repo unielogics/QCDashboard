@@ -34,8 +34,15 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPetrol } from "@/components/design-system/buttons";
 import { RightPanel } from "@/components/design-system/RightPanel";
-import { useClients, useCreateIntake, useCurrentUser } from "@/hooks/useApi";
-import { parseUSD, parseIntStrict } from "@/lib/formCoerce";
+import {
+  useBrokerSettings,
+  useClient,
+  useClients,
+  useCreateIntake,
+  useCurrentUser,
+  useSettings,
+} from "@/hooks/useApi";
+import { parseUSD } from "@/lib/formCoerce";
 import {
   EntityType,
   ExperienceTier,
@@ -44,11 +51,38 @@ import {
   Role,
 } from "@/lib/enums.generated";
 import { isLoanTypeEnabled } from "@/lib/products";
-import type { SmartIntakePayload, OwnedAsset } from "@/lib/types";
+import { computeSimulator, bindingConstraintLabel } from "@/lib/eligibility";
+import type {
+  AgentChecklistOverlay,
+  AgentSettingsData,
+  AppSettingsData,
+  DocChecklistItem,
+  IntakeDocumentOverrides,
+  OwnedAsset,
+  SmartIntakePayload,
+} from "@/lib/types";
+import type { Role as RoleType } from "@/lib/enums.generated";
 import type { QCTokens } from "@/components/design-system/tokens";
 import { US_STATES } from "@/lib/usStates";
 
 type DealSide = "buyer" | "seller";
+
+// Loan-program options surfaced in Step 1. The `isLoanTypeEnabled`
+// gate from `lib/products` filters out programs the firm doesn't
+// run today — so the wizard never asks for one we can't fulfil.
+const LOAN_PROGRAM_OPTIONS_ALL: { value: typeof LoanType[keyof typeof LoanType]; label: string }[] = [
+  { value: LoanType.DSCR, label: "DSCR Rental" },
+  { value: LoanType.FIX_AND_FLIP, label: "Fix & Flip" },
+  { value: LoanType.BRIDGE, label: "Bridge" },
+  { value: LoanType.GROUND_UP, label: "Ground Up" },
+  { value: LoanType.PORTFOLIO, label: "Portfolio" },
+  { value: LoanType.CASH_OUT_REFI, label: "Cash-Out Refi" },
+];
+
+const LOAN_PROGRAM_LABELS: Record<string, string> = LOAN_PROGRAM_OPTIONS_ALL.reduce(
+  (acc, o) => ({ ...acc, [String(o.value)]: o.label }),
+  {} as Record<string, string>,
+);
 
 // Minimal client shape the modal accepts via prefillClient. Sourced
 // from the existing Client type — kept narrow so callers (clients
@@ -75,8 +109,11 @@ interface AssetEntry {
 }
 
 interface FormState {
-  // ── Step 1: Side + Borrower & Entity ─────────────────────────────────
+  // ── Step 1: Side + Purpose + Loan program + Borrower & Entity ────────
   dealSide: DealSide;
+  // Purchase or refinance — drives DSCR LTV cap (80% purchase / 75% refi)
+  // and the Step 3 calculator branch. Maps to LoanPurpose on submit.
+  loanPurpose: "purchase" | "refinance";
   borrowerName: string;
   borrowerEmail: string;
   borrowerPhone: string;
@@ -95,25 +132,26 @@ interface FormState {
   subjectCity: string;
   subjectState: string;
   subjectPropertyType: typeof PropertyType[keyof typeof PropertyType];
-  subjectMarketValue: string;
-  subjectSqft: string;
-  subjectTaxes: string;
-  subjectInsurance: string;
   buyerOwnsProperties: boolean;
   ownedAssets: AssetEntry[];
 
-  // ── Step 3: Numbers (keyboard-first inputs) ──────────────────────────
+  // ── Step 3: Numbers (calculator-style, program-aware) ───────────────
   loanType: typeof LoanType[keyof typeof LoanType];
-  // Buyer-side
-  cashAvailable: string;
-  maxPurchasePrice: string;
-  // Seller-side
-  salesPrice: string;
-  // Common
-  targetLTV: string;
-  baseRate: string;
+  // Common across programs
+  targetLTV: string;        // % expressed as a string, e.g. "75"
+  baseRate: string;         // % override; defaults via PRODUCT_BASE_RATE
+  // Purchase / current-value inputs
+  purchasePrice: string;    // DSCR purchase + Bridge purchase
+  currentValue: string;     // DSCR refi + Bridge refi (as-is)
+  payoff: string;           // DSCR refi only
+  // DSCR-only
   expectedRent: string;
+  // F&F / GU only
   arv: string;
+  rehabBudget: string;
+  targetLTC: string;        // % string, default "85"
+  // Seller-only — listing price (not a loan number, captured for record)
+  salesPrice: string;
 
   // ── Step 4: AI / Communication ───────────────────────────────────────
   language: string;
@@ -125,6 +163,7 @@ interface FormState {
 
 const INITIAL: FormState = {
   dealSide: "buyer",
+  loanPurpose: "purchase",
   borrowerName: "",
   borrowerEmail: "",
   borrowerPhone: "",
@@ -135,20 +174,19 @@ const INITIAL: FormState = {
   subjectCity: "",
   subjectState: "",
   subjectPropertyType: PropertyType.SFR,
-  subjectMarketValue: "",
-  subjectSqft: "",
-  subjectTaxes: "",
-  subjectInsurance: "",
   buyerOwnsProperties: false,
   ownedAssets: [],
   loanType: LoanType.DSCR,
-  cashAvailable: "",
-  maxPurchasePrice: "",
-  salesPrice: "",
   targetLTV: "75",
   baseRate: "7.5",
+  purchasePrice: "",
+  currentValue: "",
+  payoff: "",
   expectedRent: "",
   arv: "",
+  rehabBudget: "",
+  targetLTC: "85",
+  salesPrice: "",
   language: "en",
   preferredChannel: "sms+email",
   targetCloseDate: "",
@@ -162,6 +200,103 @@ const STEPS = [
   { id: "numbers", label: "Numbers" },
   { id: "ai", label: "AI & Messaging" },
 ] as const;
+
+// ── Step 4 doc-collection preview state + resolver ───────────────────
+
+interface DocOverridesState {
+  skipNames: Set<string>;
+  // Maps checklist item name → days. NaN / 0 means no override; the
+  // UI normalizes to integer day counts.
+  dueOverrides: Record<string, number>;
+}
+
+interface CustomDocDraft {
+  name: string;
+  dueOffsetDays: number;
+}
+
+// Pure-TS port of the agent_checklist resolver — feeds Step 4's
+// preview without needing a new backend endpoint. Mirrors the
+// overlay logic in app/services/agent_checklist.py.
+function resolveDocPreview({
+  role,
+  loanType,
+  side,
+  appSettings,
+  brokerSettings,
+}: {
+  role: RoleType | undefined;
+  loanType: typeof LoanType[keyof typeof LoanType];
+  side: DealSide;
+  appSettings: AppSettingsData | null;
+  brokerSettings: AgentSettingsData | null;
+}): DocChecklistItem[] {
+  if (!appSettings) return [];
+
+  // Agent path — buyer/seller transaction list + per-broker overlay.
+  if (role === "broker") {
+    const baseList = appSettings.transaction_checklists?.[side]?.docs ?? [];
+    const overlay: AgentChecklistOverlay | undefined =
+      brokerSettings?.checklists?.[side];
+    return applyChecklistOverlay(baseList, overlay, side);
+  }
+
+  // Super-admin / underwriter — firm per-loan-type checklist.
+  const firmList = appSettings.checklists?.[String(loanType)]?.docs ?? [];
+  // Filter to items relevant to this side (or "both"). Loan-type
+  // checklists may be side-aware via DocChecklistItem.side.
+  return firmList.filter((it) => !it.side || it.side === "both" || it.side === side);
+}
+
+// Pack Step 4's UI state into the wire-shape IntakeDocumentOverrides.
+// Returns null when there are no overrides at all (omits the field
+// from the payload entirely so backend takes the default checklist).
+function buildDocOverridesPayload(
+  state: DocOverridesState,
+  customs: CustomDocDraft[],
+): IntakeDocumentOverrides | null {
+  const skip_names = Array.from(state.skipNames).filter((n) => n.trim().length > 0);
+  const due_offset_overrides: Record<string, number> = {};
+  for (const [name, days] of Object.entries(state.dueOverrides)) {
+    if (Number.isFinite(days) && days > 0) due_offset_overrides[name] = days;
+  }
+  const today = new Date();
+  const add_items = customs
+    .filter((c) => c.name.trim().length > 0)
+    .map((c) => {
+      const due = new Date(today);
+      due.setDate(due.getDate() + (c.dueOffsetDays > 0 ? c.dueOffsetDays : 7));
+      return {
+        name: c.name.trim(),
+        due_date: due.toISOString().slice(0, 10),
+      };
+    });
+  if (
+    skip_names.length === 0 &&
+    Object.keys(due_offset_overrides).length === 0 &&
+    add_items.length === 0
+  ) {
+    return null;
+  }
+  return { skip_names, due_offset_overrides, add_items };
+}
+
+function applyChecklistOverlay(
+  base: DocChecklistItem[],
+  overlay: AgentChecklistOverlay | undefined,
+  side: DealSide,
+): DocChecklistItem[] {
+  const filtered = base.filter(
+    (it) => !it.side || it.side === "both" || it.side === side,
+  );
+  if (!overlay) return filtered;
+  const disabled = new Set((overlay.disabled_firm_items ?? []).map((n) => n.trim()));
+  const survived = filtered.filter((it) => !disabled.has(it.name));
+  const extras = (overlay.extra_items ?? []).filter(
+    (it) => !it.side || it.side === "both" || it.side === side,
+  );
+  return [...survived, ...extras];
+}
 
 export function SmartIntakeModal({
   open,
@@ -193,6 +328,28 @@ export function SmartIntakeModal({
   // admins / underwriters originate loans directly — for them the
   // wizard runs in pure prequalification mode.
   const showSideToggle = isBroker;
+
+  // Step 4 doc-collection preview state. Loaded from the existing
+  // useSettings (firm) + useBrokerSettings (per-broker overlay) hooks
+  // and resolved to a flat list the UI can toggle / edit.
+  const settingsQ = useSettings();
+  const brokerQ = useBrokerSettings();
+  const [docOverrides, setDocOverrides] = useState<DocOverridesState>({
+    skipNames: new Set(),
+    dueOverrides: {},
+  });
+  const [customDocs, setCustomDocs] = useState<CustomDocDraft[]>([]);
+  const previewItems = useMemo(
+    () =>
+      resolveDocPreview({
+        role: user?.role,
+        loanType: form.loanType,
+        side: form.dealSide,
+        appSettings: settingsQ.data?.data ?? null,
+        brokerSettings: brokerQ.data?.data ?? null,
+      }),
+    [user?.role, form.loanType, form.dealSide, settingsQ.data, brokerQ.data],
+  );
 
   // Sync prefill into form on open. Clears when prefill removed.
   useEffect(() => {
@@ -256,17 +413,21 @@ export function SmartIntakeModal({
       return form.borrowerName.trim().length > 0 && form.borrowerEmail.includes("@");
     }
     if (step === 1) {
-      // Sellers need a subject property + market value.
-      // Buyers can move on without a subject (they may not have a target yet).
+      // Sellers need a subject property address. Buyers can move on
+      // without one (they may not have picked a target yet). Asking-price /
+      // sqft / taxes / insurance moved to the loan-detail editor — not
+      // collected at intake time.
       if (isSeller) {
-        return form.subjectAddress.trim().length > 0 && parseUSD(form.subjectMarketValue) > 0;
+        return form.subjectAddress.trim().length > 0;
       }
       return true;
     }
     if (step === 2) {
-      // Buyer needs cash + max purchase; Seller needs sales price.
-      if (isBuyer) return parseUSD(form.cashAvailable) > 0 && parseUSD(form.maxPurchasePrice) > 0;
-      return parseUSD(form.salesPrice) > 0;
+      // Step 3 is being rebuilt around computeEligibility(). For now
+      // require a positive computed loan amount on submit; for the
+      // canAdvance gate, allow movement to step 4 always — the final
+      // submit will validate via the calculator.
+      return true;
     }
     return true;
   };
@@ -275,9 +436,20 @@ export function SmartIntakeModal({
     setSubmitErr(null);
     try {
       const payload = mapToPayload(form);
+      // Pack Step 4's doc-preview edits into the existing
+      // IntakeDocumentOverrides shape. Empty sets/maps drop out.
+      const docOverridesPayload = buildDocOverridesPayload(
+        docOverrides,
+        customDocs,
+      );
+      if (docOverridesPayload) {
+        payload.document_overrides = docOverridesPayload;
+      }
       const result = await createIntake.mutateAsync(payload);
       setForm(INITIAL);
       setStep(0);
+      setDocOverrides({ skipNames: new Set(), dueOverrides: {} });
+      setCustomDocs([]);
       onClose();
       router.push(`/loans/${result.loan_id}/control-room?just-created=1`);
     } catch (e: unknown) {
@@ -311,11 +483,12 @@ export function SmartIntakeModal({
       open={open}
       onClose={onClose}
       width="min(680px, max(45vw, 520px))"
-      eyebrow={
-        showSideToggle
-          ? `New Deal · Smart Intake · ${isSeller ? "Seller" : "Buyer"}`
-          : "New Deal · Smart Intake"
-      }
+      eyebrow={(() => {
+        const purposeLabel = form.loanPurpose === "refinance" ? "Refinance" : "Purchase";
+        const sideLabel = showSideToggle ? ` · ${isSeller ? "Seller" : "Buyer"}` : "";
+        const programLabel = LOAN_PROGRAM_LABELS[form.loanType] ?? "";
+        return `New Deal · ${purposeLabel}${programLabel ? ` · ${programLabel}` : ""}${sideLabel}`;
+      })()}
       title={STEPS[step].label}
       ariaLabel="Smart Intake — new deal"
       footer={
@@ -410,10 +583,22 @@ export function SmartIntakeModal({
           onAddAsset={handleAddAsset}
           onRemoveAsset={handleRemoveAsset}
           onUpdateAsset={handleUpdateAsset}
+          pickedClientId={pickedClient?.id ?? null}
         />
       )}
       {step === 2 && <NumbersStepView t={t} form={form} update={update} />}
-      {step === 3 && <CommunicationStepView t={t} form={form} update={update} />}
+      {step === 3 && (
+        <CommunicationStepView
+          t={t}
+          form={form}
+          update={update}
+          docOverrides={docOverrides}
+          setDocOverrides={setDocOverrides}
+          customDocs={customDocs}
+          setCustomDocs={setCustomDocs}
+          previewItems={previewItems}
+        />
+      )}
     </RightPanel>
   );
 }
@@ -425,27 +610,44 @@ function mapToPayload(form: FormState): SmartIntakePayload {
 
   // Subject property: for sellers it's the listing; for buyers it's the
   // (optional) target they may have already identified. If buyer with no
-  // subject, send placeholder data — the loan row exists as a working file
-  // until the borrower locks a property. Street + city + state are
-  // split — the backend stores state in its own column (alembic 0028).
+  // subject, send placeholder data — the loan row exists as a working
+  // file until the borrower locks a property. Asking-price / sqft /
+  // taxes / insurance moved to the loan-detail editor (Phase B).
   const subjectAddressRaw = form.subjectAddress.trim();
   const address = subjectAddressRaw || (isSeller ? "" : "Property TBD");
   const city = form.subjectCity.trim();
   const state = form.subjectState.trim().toUpperCase() || null;
 
-  const subjectValue = parseUSD(form.subjectMarketValue);
-  const cashAvailable = parseUSD(form.cashAvailable);
-  const maxPurchase = parseUSD(form.maxPurchasePrice);
-  const salesPrice = parseUSD(form.salesPrice);
-
-  // Loan amount: seller side uses sales price * (1 - target LTV-equivalent)
-  // doesn't make sense; instead, use the Subject value the listing carries
-  // OR the explicit numbers field. For buyers, use max purchase as the basis.
-  const ltvDecimal = (parseFloat(form.targetLTV) || 0) / 100;
-  const baseValue = isSeller
-    ? subjectValue || salesPrice
-    : subjectValue || maxPurchase;
-  const amount = Math.round(baseValue * ltvDecimal);
+  // Step 3 calculator output — re-run computeSimulator() with the same
+  // inputs the UI showed so the persisted Loan amount matches what the
+  // operator saw on screen. Sellers carry no loan number — passes 0.
+  const ltvPctRaw = parseFloat(form.targetLTV) || 0;
+  const ltvFraction = ltvPctRaw / 100;
+  const ltcFraction = (parseFloat(form.targetLTC) || 0) / 100;
+  const isRefi = form.loanPurpose === "refinance";
+  const isReno =
+    form.loanType === LoanType.FIX_AND_FLIP ||
+    form.loanType === LoanType.GROUND_UP;
+  const subjectValueDollars = isRefi
+    ? parseUSD(form.currentValue)
+    : parseUSD(form.purchasePrice);
+  const arvDollars = parseUSD(form.arv);
+  const productKey = loanTypeToProductKey(form.loanType);
+  const sim = isSeller
+    ? null
+    : computeSimulator({
+        arv: isReno ? arvDollars : subjectValueDollars,
+        ltv: isReno ? ltcFraction : ltvFraction,
+        discountPoints: 0,
+        productKey,
+        transactionType: isRefi ? "refi" : "purchase",
+        payoff: isRefi ? parseUSD(form.payoff) || undefined : undefined,
+        brv: isReno ? parseUSD(form.currentValue) || undefined : undefined,
+        rehabBudget: isReno ? parseUSD(form.rehabBudget) || undefined : undefined,
+        monthlyRent: parseUSD(form.expectedRent) || undefined,
+      });
+  const amount = isSeller ? 0 : Math.round(sim?.maxLoan ?? 0);
+  const ltvDecimal = isReno ? ltcFraction : ltvFraction;
   const baseRate = parseFloat(form.baseRate) || 0;
 
   const ownedAssets: OwnedAsset[] | null =
@@ -476,22 +678,28 @@ function mapToPayload(form: FormState): SmartIntakePayload {
       city: city || null,
       state,
       property_type: form.subjectPropertyType,
-      sqft: parseIntStrict(form.subjectSqft) || null,
-      annual_taxes: parseUSD(form.subjectTaxes),
-      annual_insurance: parseUSD(form.subjectInsurance),
-      as_is_value: subjectValue || null,
+      // sqft / annual_taxes / annual_insurance / as_is_value are
+      // captured later via the loan-detail editor — not at intake.
+      annual_taxes: 0,
+      annual_insurance: 0,
     },
     numbers: {
       type: form.loanType,
+      // Map binary toggle → backend LoanPurpose. Refi → cash-out (the
+      // conservative LTV cap). Rate-term as a v2 follow-up.
+      purpose: form.loanPurpose === "refinance" ? "cash_out_refi" : "purchase",
       amount,
       ltv: ltvDecimal,
       ltc: null,
       arv: parseUSD(form.arv) || null,
       monthly_rent: parseUSD(form.expectedRent) || null,
       base_rate: baseRate,
-      cash_available: isSeller ? null : cashAvailable || null,
-      max_purchase_price: isSeller ? null : maxPurchase || null,
-      sales_price: isSeller ? salesPrice || null : null,
+      // Phase C: cash_available / max_purchase_price / sales_price are
+      // no longer collected by the wizard. Kept null for backward compat
+      // until the NumbersStep schema retires them.
+      cash_available: null,
+      max_purchase_price: null,
+      sales_price: isSeller ? parseUSD(form.salesPrice) || null : null,
     },
     ai_rules: {
       // Defaulted financial-tactical rules — kept for backend compat.
@@ -690,6 +898,32 @@ function BorrowerStepView({
         </div>
       )}
 
+      {/* Loan purpose — drives the Step 3 calculator branch + persists
+          on Loan.purpose. Refinance maps to CASH_OUT_REFI on the wire
+          (the conservative LTV cap; rate-term refi is a v2 follow-up). */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <Field t={t} label="Purpose" required>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            <SideButton t={t} active={form.loanPurpose === "purchase"} onClick={() => update("loanPurpose", "purchase")}>
+              Purchase
+            </SideButton>
+            <SideButton t={t} active={form.loanPurpose === "refinance"} onClick={() => update("loanPurpose", "refinance")}>
+              Refinance
+            </SideButton>
+          </div>
+        </Field>
+        <Field t={t} label="Loan program" required>
+          <Select
+            t={t}
+            value={String(form.loanType)}
+            onChange={(v) => update("loanType", v as FormState["loanType"])}
+            options={LOAN_PROGRAM_OPTIONS_ALL
+              .filter((o) => isLoanTypeEnabled(o.value))
+              .map((o) => ({ value: String(o.value), label: o.label }))}
+          />
+        </Field>
+      </div>
+
       {/* Client lookup — pick an existing client OR fall through to
           create a new one. Hidden when prefillClient locked us in. */}
       {!locked && (
@@ -778,6 +1012,82 @@ function BorrowerStepView({
   );
 }
 
+// Read-only summary of a linked client's investor context.
+// Pulled live from /clients/{id} so freshly-edited tier / fico /
+// experience text reflects without the wizard caller passing it.
+function ClientContextCard({
+  t,
+  clientId,
+}: {
+  t: QCTokens;
+  clientId: string;
+}) {
+  const { data: client, isLoading } = useClient(clientId);
+  if (isLoading || !client) return null;
+  const hasContext =
+    !!client.experience ||
+    !!client.properties ||
+    !!client.fico ||
+    (client.tier && client.tier !== "standard");
+  if (!hasContext) return null;
+  return (
+    <div
+      style={{
+        padding: "10px 12px",
+        borderRadius: 9,
+        background: t.surface2,
+        border: `1px solid ${t.line}`,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
+      <div style={{
+        fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
+        textTransform: "uppercase", color: t.ink3,
+      }}>
+        Borrower context
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{client.name}</span>
+        {client.tier && client.tier !== "standard" && (
+          <span style={{
+            fontSize: 10, fontWeight: 700, padding: "2px 8px",
+            borderRadius: 999, background: t.brandSoft, color: t.brand,
+          }}>
+            {client.tier}
+          </span>
+        )}
+        {client.fico != null && (
+          <span style={{
+            fontSize: 10, fontWeight: 700, padding: "2px 8px",
+            borderRadius: 999, background: t.surface, color: t.ink2,
+            border: `1px solid ${t.line}`,
+          }}>
+            FICO {client.fico}
+          </span>
+        )}
+      </div>
+      {client.experience && (
+        <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
+          <strong style={{ color: t.ink3, fontWeight: 700, fontSize: 10.5, letterSpacing: 1, textTransform: "uppercase" }}>
+            Experience
+          </strong>
+          <div style={{ marginTop: 2 }}>{client.experience}</div>
+        </div>
+      )}
+      {client.properties && (
+        <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
+          <strong style={{ color: t.ink3, fontWeight: 700, fontSize: 10.5, letterSpacing: 1, textTransform: "uppercase" }}>
+            Properties
+          </strong>
+          <div style={{ marginTop: 2 }}>{client.properties}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AssetStepView({
   t,
   form,
@@ -785,15 +1095,24 @@ function AssetStepView({
   onAddAsset,
   onRemoveAsset,
   onUpdateAsset,
+  pickedClientId,
 }: StepProps & {
   onAddAsset: () => void;
   onRemoveAsset: (idx: number) => void;
   onUpdateAsset: (idx: number, patch: Partial<AssetEntry>) => void;
+  pickedClientId: string | null;
 }) {
   const isSeller = form.dealSide === "seller";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Auto-display the linked client's investor context. The
+          borrower's experience / properties / tier / FICO live on the
+          Client row already — no need to retype on every new deal. */}
+      {pickedClientId && (
+        <ClientContextCard t={t} clientId={pickedClientId} />
+      )}
+
       {/* Subject property — required for sellers, optional for buyers */}
       <div>
         <SectionHeader t={t}>
@@ -823,15 +1142,9 @@ function AssetStepView({
               ]}
             />
           </Field>
-          <Field t={t} label={isSeller ? "Estimated market value" : "Asking price (if known)"} required={isSeller}>
-            <Input t={t} value={form.subjectMarketValue} onChange={(v) => update("subjectMarketValue", v)} placeholder="485,000" prefix="$" />
-          </Field>
-          <Field t={t} label="Square footage">
-            <Input t={t} value={form.subjectSqft} onChange={(v) => update("subjectSqft", v)} placeholder="2,140" suffix="sqft" />
-          </Field>
-          <Field t={t} label="Annual taxes">
-            <Input t={t} value={form.subjectTaxes} onChange={(v) => update("subjectTaxes", v)} placeholder="8,420" prefix="$" />
-          </Field>
+          {/* Asking price / sqft / taxes / insurance moved to the
+              loan-detail editor — they're not needed at intake time
+              and clutter the wizard. */}
         </div>
       </div>
 
@@ -930,73 +1243,245 @@ function AssetStepView({
   );
 }
 
+// Map LoanType → computeSimulator productKey. Portfolio + Cash-Out
+// Refi land on the DSCR sizing model (the same long-term amortized
+// product family).
+function loanTypeToProductKey(
+  loanType: typeof LoanType[keyof typeof LoanType],
+): "dscr" | "ff" | "gu" | "br" {
+  if (loanType === LoanType.FIX_AND_FLIP) return "ff";
+  if (loanType === LoanType.GROUND_UP) return "gu";
+  if (loanType === LoanType.BRIDGE) return "br";
+  return "dscr";
+}
+
 function NumbersStepView({ t, form, update }: StepProps) {
   const isSeller = form.dealSide === "seller";
-  const isDscr = form.loanType === LoanType.DSCR;
-  const isFlipOrConstruct = form.loanType === LoanType.FIX_AND_FLIP || form.loanType === LoanType.GROUND_UP;
+  const isDscr =
+    form.loanType === LoanType.DSCR ||
+    form.loanType === LoanType.PORTFOLIO ||
+    form.loanType === LoanType.CASH_OUT_REFI;
+  const isReno =
+    form.loanType === LoanType.FIX_AND_FLIP ||
+    form.loanType === LoanType.GROUND_UP;
+  const isBridge = form.loanType === LoanType.BRIDGE;
+  const isRefi = form.loanPurpose === "refinance";
+
+  // Sellers don't have loan numbers — they're listing the property.
+  // Capture the listing price for the record and skip the calculator.
+  if (isSeller) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <Field t={t} label="Listing price" required full>
+            <Input t={t} value={form.salesPrice} onChange={(v) => update("salesPrice", v)} placeholder="485,000" prefix="$" />
+          </Field>
+        </div>
+        <Note t={t}>
+          Listings don&apos;t carry loan terms — submit to create the seller-side
+          deal record.
+        </Note>
+      </div>
+    );
+  }
+
+  // Buyer flow — feed the simulator engine to compute live max-loan +
+  // binding-cap readout. Sliders intentionally absent: this is intake,
+  // operators tune precise numbers on the loan detail post-create.
+  const productKey = loanTypeToProductKey(form.loanType);
+  const ltvPct = parseFloat(form.targetLTV) || 0;
+  const ltvFraction = ltvPct / 100;
+  const ltcPct = parseFloat(form.targetLTC) || 0;
+  const ltcFraction = ltcPct / 100;
+  const subjectValue = isRefi ? parseUSD(form.currentValue) : parseUSD(form.purchasePrice);
+  const arv = parseUSD(form.arv);
+  const brv = parseUSD(form.currentValue);
+  const rehab = parseUSD(form.rehabBudget);
+  const payoffDollars = parseUSD(form.payoff);
+  const monthlyRent = parseUSD(form.expectedRent);
+
+  const simInputs = {
+    arv: isReno ? arv : subjectValue,
+    ltv: isReno ? ltcFraction : ltvFraction,  // Reno: LTC slider drives sizing
+    discountPoints: 0,
+    productKey,
+    transactionType: isRefi ? ("refi" as const) : ("purchase" as const),
+    payoff: isRefi ? payoffDollars || undefined : undefined,
+    brv: isReno ? brv || undefined : undefined,
+    rehabBudget: isReno ? rehab || undefined : undefined,
+    monthlyRent: monthlyRent || undefined,
+  };
+  const sim = computeSimulator(simInputs);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field t={t} label="Loan type">
-          <Select
-            t={t}
-            value={form.loanType}
-            onChange={(v) => update("loanType", v as FormState["loanType"])}
-            options={[
-              { value: LoanType.DSCR, label: "DSCR Rental" },
-              { value: LoanType.FIX_AND_FLIP, label: "Fix & Flip" },
-              { value: LoanType.BRIDGE, label: "Bridge" },
-              { value: LoanType.GROUND_UP, label: "Ground Up" },
-              { value: LoanType.PORTFOLIO, label: "Portfolio" },
-              { value: LoanType.CASH_OUT_REFI, label: "Cash-Out Refi" },
-            ].filter((o) => isLoanTypeEnabled(o.value))}
-          />
-        </Field>
 
-        {isSeller ? (
-          <Field t={t} label="Sales price" required>
-            <Input t={t} value={form.salesPrice} onChange={(v) => update("salesPrice", v)} placeholder="485,000" prefix="$" />
-          </Field>
-        ) : (
+        {/* DSCR purchase: purchase price + monthly rent */}
+        {isDscr && !isRefi && (
           <>
-            <Field t={t} label="Cash available" required>
-              <Input t={t} value={form.cashAvailable} onChange={(v) => update("cashAvailable", v)} placeholder="125,000" prefix="$" />
+            <Field t={t} label="Purchase price" required>
+              <Input t={t} value={form.purchasePrice} onChange={(v) => update("purchasePrice", v)} placeholder="485,000" prefix="$" />
             </Field>
-            <Field t={t} label="Max purchase price" required full>
-              <Input t={t} value={form.maxPurchasePrice} onChange={(v) => update("maxPurchasePrice", v)} placeholder="650,000" prefix="$" />
+            <Field t={t} label="Expected monthly rent">
+              <Input t={t} value={form.expectedRent} onChange={(v) => update("expectedRent", v)} placeholder="3,650" prefix="$" />
             </Field>
           </>
         )}
 
-        <Field t={t} label="Target LTV (%)">
-          <Input t={t} value={form.targetLTV} onChange={(v) => update("targetLTV", v)} placeholder="75" suffix="%" />
-        </Field>
+        {/* DSCR refi: current value + payoff + rent */}
+        {isDscr && isRefi && (
+          <>
+            <Field t={t} label="Current as-is value" required>
+              <Input t={t} value={form.currentValue} onChange={(v) => update("currentValue", v)} placeholder="500,000" prefix="$" />
+            </Field>
+            <Field t={t} label="Existing payoff" required>
+              <Input t={t} value={form.payoff} onChange={(v) => update("payoff", v)} placeholder="320,000" prefix="$" />
+            </Field>
+            <Field t={t} label="Expected monthly rent" full>
+              <Input t={t} value={form.expectedRent} onChange={(v) => update("expectedRent", v)} placeholder="3,650" prefix="$" />
+            </Field>
+          </>
+        )}
+
+        {/* F&F / GU: ARV + BRV + rehab */}
+        {isReno && (
+          <>
+            <Field t={t} label="ARV (after-repair value)" required>
+              <Input t={t} value={form.arv} onChange={(v) => update("arv", v)} placeholder="640,000" prefix="$" />
+            </Field>
+            <Field t={t} label="Current as-is value (BRV)" required>
+              <Input t={t} value={form.currentValue} onChange={(v) => update("currentValue", v)} placeholder="380,000" prefix="$" />
+            </Field>
+            <Field t={t} label="Rehab budget" full>
+              <Input t={t} value={form.rehabBudget} onChange={(v) => update("rehabBudget", v)} placeholder="60,000" prefix="$" />
+            </Field>
+          </>
+        )}
+
+        {/* Bridge: as-is value */}
+        {isBridge && (
+          <Field t={t} label="As-is value" required full>
+            <Input t={t} value={form.currentValue} onChange={(v) => update("currentValue", v)} placeholder="500,000" prefix="$" />
+          </Field>
+        )}
+
+        {/* LTV/LTC slider — labeled per program. DSCR/Bridge use LTV;
+            Reno uses LTC (capped against ARV downstream). */}
+        {isReno ? (
+          <Field t={t} label="Target LTC (%)">
+            <Input t={t} value={form.targetLTC} onChange={(v) => update("targetLTC", v)} placeholder="85" suffix="%" />
+          </Field>
+        ) : (
+          <Field t={t} label={`Target LTV (%) · cap ${isRefi ? "75" : "80"}%`}>
+            <Input t={t} value={form.targetLTV} onChange={(v) => update("targetLTV", v)} placeholder={isRefi ? "70" : "75"} suffix="%" />
+          </Field>
+        )}
         <Field t={t} label="Base rate (%)">
           <Input t={t} value={form.baseRate} onChange={(v) => update("baseRate", v)} placeholder="7.500" suffix="%" />
         </Field>
+      </div>
 
-        {isDscr && (
-          <Field t={t} label="Expected monthly rent" full>
-            <Input t={t} value={form.expectedRent} onChange={(v) => update("expectedRent", v)} placeholder="3,650" prefix="$" />
-          </Field>
-        )}
-        {isFlipOrConstruct && (
-          <Field t={t} label="ARV (after-repair value)" full>
-            <Input t={t} value={form.arv} onChange={(v) => update("arv", v)} placeholder="640,000" prefix="$" />
-          </Field>
-        )}
+      {/* Live readout — mirrors the simulator's eligibility chip */}
+      <div
+        style={{
+          padding: "12px 14px",
+          borderRadius: 10,
+          background: t.brandSoft,
+          border: `1px solid ${t.brand}30`,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        }}
+      >
+        <div style={{
+          fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
+          textTransform: "uppercase", color: t.brand,
+        }}>
+          Live calc · {isRefi ? "Refinance" : "Purchase"} · {LOAN_PROGRAM_LABELS[String(form.loanType)] ?? "—"}
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "baseline" }}>
+          <div>
+            <div style={{ fontSize: 11, color: t.ink3, fontWeight: 600 }}>Max loan</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"' }}>
+              {sim.maxLoan > 0 ? `$${Math.round(sim.maxLoan).toLocaleString("en-US")}` : "—"}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: t.ink3, fontWeight: 600 }}>Binding cap</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: t.ink2 }}>
+              {bindingConstraintLabel(sim.bindingConstraint)}
+            </div>
+          </div>
+          {isDscr && sim.dscr != null && (
+            <div>
+              <div style={{ fontSize: 11, color: t.ink3, fontWeight: 600 }}>DSCR</div>
+              <div style={{
+                fontSize: 13, fontWeight: 700,
+                color: sim.dscr >= 1.20 ? t.profit : sim.dscr >= 1.0 ? t.warn : t.danger,
+              }}>
+                {sim.dscr.toFixed(2)}x
+              </div>
+            </div>
+          )}
+          {isDscr && sim.cashFlow != null && (
+            <div>
+              <div style={{ fontSize: 11, color: t.ink3, fontWeight: 600 }}>Cash flow / mo</div>
+              <div style={{
+                fontSize: 13, fontWeight: 700,
+                color: sim.cashFlow >= 0 ? t.profit : t.danger,
+                fontFeatureSettings: '"tnum"',
+              }}>
+                ${Math.round(sim.cashFlow).toLocaleString("en-US")}
+              </div>
+            </div>
+          )}
+          {isDscr && isRefi && sim.cashToBorrower != null && (
+            <div>
+              <div style={{ fontSize: 11, color: t.ink3, fontWeight: 600 }}>Cash to borrower</div>
+              <div style={{
+                fontSize: 13, fontWeight: 700,
+                color: sim.cashToBorrower >= 0 ? t.profit : t.warn,
+                fontFeatureSettings: '"tnum"',
+              }}>
+                ${Math.round(sim.cashToBorrower).toLocaleString("en-US")}
+              </div>
+            </div>
+          )}
+          <div style={{ flex: 1 }} />
+          <div>
+            <div style={{ fontSize: 11, color: t.ink3, fontWeight: 600 }}>Rate</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: t.ink2 }}>
+              {sim.rate.toFixed(3)}%
+            </div>
+          </div>
+        </div>
       </div>
 
       <Note t={t}>
-        Type the numbers — sliders are gone. The Lender Submission Package generated from
-        a Deal recomputes terms server-side; these inputs are starting estimates.
+        Type the numbers — operators tune precise terms on the loan detail
+        after submit. Caps mirror the firm&apos;s underwriting matrix.
       </Note>
     </div>
   );
 }
 
-function CommunicationStepView({ t, form, update }: StepProps) {
+function CommunicationStepView({
+  t,
+  form,
+  update,
+  docOverrides,
+  setDocOverrides,
+  customDocs,
+  setCustomDocs,
+  previewItems,
+}: StepProps & {
+  docOverrides: DocOverridesState;
+  setDocOverrides: React.Dispatch<React.SetStateAction<DocOverridesState>>;
+  customDocs: CustomDocDraft[];
+  setCustomDocs: React.Dispatch<React.SetStateAction<CustomDocDraft[]>>;
+  previewItems: DocChecklistItem[];
+}) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div
@@ -1085,6 +1570,239 @@ function CommunicationStepView({ t, form, update }: StepProps) {
         Forbidden phrasings (&quot;you are approved&quot;, &quot;guaranteed rate&quot;) are
         enforced at prompt level — these instructions can&apos;t override them.
       </Note>
+
+      <DocPreviewSection
+        t={t}
+        items={previewItems}
+        docOverrides={docOverrides}
+        setDocOverrides={setDocOverrides}
+        customDocs={customDocs}
+        setCustomDocs={setCustomDocs}
+      />
+    </div>
+  );
+}
+
+// Step 4 doc-collection preview — renders the resolved checklist with
+// per-item skip / due-offset edit, plus an "+ Add custom doc" appender.
+function DocPreviewSection({
+  t,
+  items,
+  docOverrides,
+  setDocOverrides,
+  customDocs,
+  setCustomDocs,
+}: {
+  t: QCTokens;
+  items: DocChecklistItem[];
+  docOverrides: DocOverridesState;
+  setDocOverrides: React.Dispatch<React.SetStateAction<DocOverridesState>>;
+  customDocs: CustomDocDraft[];
+  setCustomDocs: React.Dispatch<React.SetStateAction<CustomDocDraft[]>>;
+}) {
+  const toggleSkip = (name: string) => {
+    setDocOverrides((s) => {
+      const next = new Set(s.skipNames);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return { ...s, skipNames: next };
+    });
+  };
+  const setDueOverride = (name: string, days: number) => {
+    setDocOverrides((s) => {
+      const next = { ...s.dueOverrides };
+      if (!Number.isFinite(days) || days <= 0) {
+        delete next[name];
+      } else {
+        next[name] = Math.round(days);
+      }
+      return { ...s, dueOverrides: next };
+    });
+  };
+  const addCustom = () => {
+    setCustomDocs((arr) => [...arr, { name: "", dueOffsetDays: 7 }]);
+  };
+  const updateCustom = (idx: number, patch: Partial<CustomDocDraft>) => {
+    setCustomDocs((arr) =>
+      arr.map((c, i) => (i === idx ? { ...c, ...patch } : c)),
+    );
+  };
+  const removeCustom = (idx: number) => {
+    setCustomDocs((arr) => arr.filter((_, i) => i !== idx));
+  };
+
+  const visibleCount = items.length - docOverrides.skipNames.size + customDocs.length;
+
+  return (
+    <div
+      style={{
+        marginTop: 8,
+        padding: "12px 14px",
+        borderRadius: 10,
+        background: t.surface2,
+        border: `1px solid ${t.line}`,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+      }}
+    >
+      <div>
+        <div style={{
+          fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
+          textTransform: "uppercase", color: t.ink3,
+        }}>
+          Doc collection — preview
+        </div>
+        <div style={{ fontSize: 11.5, color: t.ink2, lineHeight: 1.5, marginTop: 2 }}>
+          The AI will request these {visibleCount} files from the borrower
+          starting at deal kickoff. Toggle off anything you don&apos;t need
+          for this deal. Edit due offsets if you want a tighter / looser
+          cadence. Add custom rows for one-off items unique to this deal.
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div style={{ fontSize: 12, color: t.ink3, fontStyle: "italic", padding: "8px 0" }}>
+          No checklist configured for this loan type yet — the AI will start with no
+          default file list. Add custom rows below if you want to seed it.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {items.map((item) => {
+            const isSkipped = docOverrides.skipNames.has(item.name);
+            const defaultOffset = item.due_offset_days ?? 3;
+            const overrideValue = docOverrides.dueOverrides[item.name];
+            const offsetValue = overrideValue ?? defaultOffset;
+            return (
+              <div
+                key={item.name}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "8px 10px", borderRadius: 8,
+                  background: isSkipped ? "transparent" : t.surface,
+                  border: `1px solid ${t.line}`,
+                  opacity: isSkipped ? 0.55 : 1,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={!isSkipped}
+                  onChange={() => toggleSkip(item.name)}
+                  style={{ width: 15, height: 15, cursor: "pointer" }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 12.5, fontWeight: 700, color: t.ink,
+                    textDecoration: isSkipped ? "line-through" : "none",
+                  }}>
+                    {item.display_name || item.name}
+                  </div>
+                  {item.type === "internal" && (
+                    <div style={{ fontSize: 10.5, color: t.ink3 }}>internal · operator-ordered</div>
+                  )}
+                </div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600 }}>+</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={offsetValue}
+                    onChange={(e) => setDueOverride(item.name, Number(e.target.value))}
+                    disabled={isSkipped}
+                    style={{
+                      width: 44, padding: "4px 6px",
+                      fontSize: 12, borderRadius: 6,
+                      border: `1px solid ${t.line}`,
+                      background: t.surface2, color: t.ink,
+                      textAlign: "center", outline: "none",
+                      fontFamily: "inherit",
+                    }}
+                  />
+                  <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600 }}>d</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {customDocs.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <div style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: 1.2,
+            textTransform: "uppercase", color: t.ink3, marginTop: 6,
+          }}>
+            Custom — this deal only
+          </div>
+          {customDocs.map((c, idx) => (
+            <div
+              key={idx}
+              style={{
+                display: "grid", gridTemplateColumns: "1fr 90px 32px", gap: 8,
+                padding: "8px 10px", borderRadius: 8,
+                background: t.surface, border: `1px solid ${t.line}`,
+                alignItems: "center",
+              }}
+            >
+              <input
+                value={c.name}
+                onChange={(e) => updateCustom(idx, { name: e.target.value })}
+                placeholder="e.g. Notarized power of attorney"
+                style={{
+                  padding: "6px 8px", fontSize: 12, borderRadius: 6,
+                  border: `1px solid ${t.line}`, background: t.surface2,
+                  color: t.ink, outline: "none", fontFamily: "inherit",
+                }}
+              />
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600 }}>+</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={c.dueOffsetDays}
+                  onChange={(e) => updateCustom(idx, { dueOffsetDays: Number(e.target.value) || 7 })}
+                  style={{
+                    width: 44, padding: "4px 6px",
+                    fontSize: 12, borderRadius: 6,
+                    border: `1px solid ${t.line}`,
+                    background: t.surface2, color: t.ink,
+                    textAlign: "center", outline: "none",
+                    fontFamily: "inherit",
+                  }}
+                />
+                <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600 }}>d</span>
+              </div>
+              <button
+                onClick={() => removeCustom(idx)}
+                aria-label="Remove custom doc"
+                style={{
+                  all: "unset", cursor: "pointer",
+                  width: 28, height: 28, borderRadius: 6,
+                  border: `1px solid ${t.line}`, background: "transparent",
+                  color: t.ink3,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <Icon name="x" size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button
+        onClick={addCustom}
+        style={{
+          ...qcBtn(t),
+          alignSelf: "flex-start",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          marginTop: 4,
+        }}
+      >
+        <Icon name="plus" size={11} /> Add custom doc
+      </button>
     </div>
   );
 }

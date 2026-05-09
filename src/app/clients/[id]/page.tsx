@@ -205,6 +205,29 @@ export default function ClientDetailPage() {
       {credit && (
         <>
           <CreditSummaryCard summary={creditSummary} loading={summaryLoading} />
+          {/* Operator-typed credit notes from iSoftpull. Operator-only —
+              borrowers viewing their own page never see this. */}
+          {canEdit && credit.notes && credit.notes.trim().length > 0 && (
+            <Card pad={14}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <SectionLabel>Credit notes (iSoftpull)</SectionLabel>
+                {credit.pulled_at && (
+                  <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600, letterSpacing: 0.6 }}>
+                    PULLED {new Date(credit.pulled_at).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+              <div style={{
+                fontSize: 12.5,
+                color: t.ink2,
+                lineHeight: 1.55,
+                whiteSpace: "pre-wrap",
+                fontFamily: "inherit",
+              }}>
+                {credit.notes}
+              </div>
+            </Card>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button
               onClick={() => setShowFullReport((v) => !v)}
