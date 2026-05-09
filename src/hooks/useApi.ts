@@ -1462,6 +1462,13 @@ export function useRequestPrequalification() {
         prequal_request_id: string;
         client_id: string;
         lead_promotion_status: string;
+        // Lending Handoff Packet (alembic 0031). Returned so the
+        // confirmation modal can show what the AI inherited.
+        handoff_packet_id?: string | null;
+        lending_thread_id?: string | null;
+        handoff_summary?: string | null;
+        first_lending_question?: string | null;
+        missing_lending_items?: string[];
       }>(`/clients/${clientId}/request-prequalification`, {
         method: "POST",
       }),

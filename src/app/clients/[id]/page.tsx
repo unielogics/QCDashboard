@@ -42,12 +42,28 @@ export default function ClientDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [prequalErr, setPrequalErr] = useState<string | null>(null);
+  // Confirmation modal — shows the handoff packet summary before
+  // firing. After fire, the same modal shows the success state with
+  // what the Lending AI inherited + the first message it sent.
+  const [handoffOpen, setHandoffOpen] = useState(false);
+  const [handoffResult, setHandoffResult] = useState<{
+    summary: string | null;
+    firstQuestion: string | null;
+    missingItems: string[];
+    lendingThreadId: string | null;
+  } | null>(null);
 
   const onRequestPrequal = async () => {
     if (!id) return;
     setPrequalErr(null);
     try {
-      await requestPrequal.mutateAsync(id);
+      const result = await requestPrequal.mutateAsync(id);
+      setHandoffResult({
+        summary: result.handoff_summary ?? null,
+        firstQuestion: result.first_lending_question ?? null,
+        missingItems: result.missing_lending_items ?? [],
+        lendingThreadId: result.lending_thread_id ?? null,
+      });
     } catch (e) {
       setPrequalErr(e instanceof Error ? e.message : "Failed to hand off lead");
     }
@@ -124,13 +140,17 @@ export default function ClientDetailPage() {
               <Icon name="plus" size={12} /> New deal
             </button>
           )}
-          {/* Agent's controlled handoff to the funding team. Creates a
-              PrequalRequest + drops an AITask in the funding queue.
-              The agent doesn't pick a loan program — funding does
-              that on review. */}
+          {/* Agent's controlled handoff to the funding team (alembic 0031).
+              Click opens a confirmation modal showing the handoff
+              packet summary. Confirm fires the endpoint which
+              creates a PrequalRequest, builds the Lending Handoff
+              Packet, spawns the lending AI thread with the first
+              memory-aware message, and drops an AITask in the
+              funding queue. The agent doesn't pick a loan program —
+              funding does that on review. */}
           {canRequestPrequal && client.lead_promotion_status !== "agent_requested_review" && (
             <button
-              onClick={() => void onRequestPrequal()}
+              onClick={() => setHandoffOpen(true)}
               disabled={requestPrequal.isPending}
               style={{
                 padding: "8px 12px", borderRadius: 9,
@@ -142,7 +162,7 @@ export default function ClientDetailPage() {
               }}
             >
               <Icon name="bolt" size={12} />
-              {requestPrequal.isPending ? "Handing off…" : "Ready for Prequalification"}
+              {requestPrequal.isPending ? "Handing off…" : "Ready for Lending"}
             </button>
           )}
           {canRequestPrequal && client.lead_promotion_status === "agent_requested_review" && (
@@ -183,6 +203,20 @@ export default function ClientDetailPage() {
           email: client.email ?? null,
           phone: client.phone ?? null,
           client_type: client.client_type ?? null,
+        }}
+      />
+      <LendingHandoffModal
+        t={t}
+        open={handoffOpen}
+        client={client}
+        result={handoffResult}
+        pending={requestPrequal.isPending}
+        error={prequalErr}
+        onConfirm={onRequestPrequal}
+        onClose={() => {
+          setHandoffOpen(false);
+          setHandoffResult(null);
+          setPrequalErr(null);
         }}
       />
 
@@ -956,5 +990,186 @@ function ExperienceModeCard({ t, client }: { t: ReturnType<typeof useTheme>["t"]
         <div style={{ marginTop: 10, fontSize: 12, color: t.danger, fontWeight: 700 }}>{error}</div>
       )}
     </Card>
+  );
+}
+
+// Confirmation modal — shows the Lending Handoff Packet preview
+// before firing, then the success state with what the Lending AI
+// inherited + the first message it sent. Mirrors the spec's
+// "Send to Lending / Review Summary First" flow.
+function LendingHandoffModal({
+  t,
+  open,
+  client,
+  result,
+  pending,
+  error,
+  onConfirm,
+  onClose,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  open: boolean;
+  client: Client;
+  result: { summary: string | null; firstQuestion: string | null; missingItems: string[]; lendingThreadId: string | null } | null;
+  pending: boolean;
+  error: string | null;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+  const succeeded = result !== null;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Ready for Lending"
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 200,
+        background: "rgba(0,0,0,0.45)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: 520, width: "100%",
+          background: t.surface, borderRadius: 14, border: `1px solid ${t.line}`,
+          padding: 24, display: "flex", flexDirection: "column", gap: 14,
+        }}
+      >
+        {!succeeded ? (
+          <>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: t.ink, marginBottom: 6 }}>
+                Ready to send {client.name} to lending?
+              </div>
+              <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.55 }}>
+                The AI will:
+              </div>
+            </div>
+            <ul style={{
+              margin: 0, paddingLeft: 18, fontSize: 12.5, color: t.ink2,
+              lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 3,
+            }}>
+              <li>Summarize the realtor conversation into a structured handoff</li>
+              <li>Carry over relevant facts and uploaded files</li>
+              <li>Identify missing lending items the Lending AI needs to collect</li>
+              <li>Create a prequal quote in the funding queue</li>
+              <li>Spawn a lending-side AI thread that already knows everything</li>
+              <li>Notify the funding team via the AI Inbox</li>
+            </ul>
+            {error && (
+              <div style={{
+                padding: "8px 12px", borderRadius: 8,
+                background: t.dangerBg, color: t.danger,
+                fontSize: 12, fontWeight: 600,
+              }}>
+                {error}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
+              <button
+                onClick={onClose}
+                disabled={pending}
+                style={{
+                  padding: "9px 14px", borderRadius: 9,
+                  background: t.surface2, color: t.ink, border: `1px solid ${t.line}`,
+                  fontSize: 13, fontWeight: 700, cursor: pending ? "wait" : "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => onConfirm()}
+                disabled={pending}
+                style={{
+                  padding: "9px 14px", borderRadius: 9,
+                  background: t.brand, color: t.inverse, border: "none",
+                  fontSize: 13, fontWeight: 700,
+                  cursor: pending ? "wait" : "pointer",
+                  opacity: pending ? 0.7 : 1,
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                }}
+              >
+                <Icon name="bolt" size={12} />
+                {pending ? "Handing off…" : "Send to Lending"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
+                {client.name} moved to Lending Intake
+              </div>
+              <div style={{ fontSize: 13, color: t.ink3 }}>
+                Funding team has been notified. The Lending AI started a fresh thread and already knows the context.
+              </div>
+            </div>
+            {result?.summary && (
+              <div style={{
+                padding: "10px 12px", borderRadius: 9,
+                background: t.brandSoft, color: t.ink2,
+                fontSize: 12.5, lineHeight: 1.55, whiteSpace: "pre-wrap",
+              }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: 1,
+                  textTransform: "uppercase", color: t.brand, marginBottom: 4,
+                }}>
+                  Known from realtor side
+                </div>
+                {result.summary}
+              </div>
+            )}
+            {result && result.missingItems.length > 0 && (
+              <div>
+                <div style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: 1,
+                  textTransform: "uppercase", color: t.ink3, marginBottom: 4,
+                }}>
+                  Lending AI will collect
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
+                  {result.missingItems.map((m) => (
+                    <li key={m}>{m.replace(/_/g, " ")}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {result?.firstQuestion && (
+              <div style={{
+                padding: "10px 12px", borderRadius: 9,
+                border: `1px dashed ${t.line}`, background: t.surface2,
+              }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: 1,
+                  textTransform: "uppercase", color: t.ink3, marginBottom: 4,
+                }}>
+                  Lending AI's first question
+                </div>
+                <div style={{ fontSize: 12.5, color: t.ink, lineHeight: 1.5 }}>
+                  {result.firstQuestion}
+                </div>
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button
+                onClick={onClose}
+                style={{
+                  padding: "9px 14px", borderRadius: 9,
+                  background: t.brand, color: t.inverse, border: "none",
+                  fontSize: 13, fontWeight: 700, cursor: "pointer",
+                }}
+              >
+                Done
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
