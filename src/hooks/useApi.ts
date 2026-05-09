@@ -2069,6 +2069,42 @@ export function useSubmitPrequalRequest() {
   });
 }
 
+// Super-admin manual prequalification creation. Backend dependency:
+// POST /admin/prequal-requests must accept client_id (stamps the
+// requester from the linked Client) and persist manual_credit_override
+// so the approve / PDF path can compute LTV without a real CreditSummary.
+export function useAdminCreateManualPrequal() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      client_id: string;
+      target_property_address: string;
+      purchase_price: number;
+      requested_loan_amount: number;
+      loan_type: PrequalRequestCreate["loan_type"];
+      expected_closing_date: string | null;
+      borrower_notes: string | null;
+      borrower_entity: string | null;
+      arv_estimate: number | null;
+      sow_items: PrequalRequestCreate["sow_items"];
+      manual_credit_override: {
+        fico: number;
+        property_count: number;
+        has_year_of_ownership: boolean;
+      };
+    }) =>
+      apiCall<PrequalRequest>("/admin/prequal-requests", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prequal-requests"] });
+      qc.invalidateQueries({ queryKey: ["loans"] });
+    },
+  });
+}
+
 export function useApprovePrequalRequest() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
@@ -2860,5 +2896,132 @@ export function useAuditEvents(filter: {
     queryKey: ["auditEvents", filter],
     queryFn: () => apiCall<AuditEvent[]>(`/lending-admin/audit?${qs.toString()}`),
     retry: aiQueryRetry,
+  });
+}
+
+
+// ── Client Properties (alembic 0034) ────────────────────────────────
+
+export interface ClientProperty {
+  id: string;
+  client_id: string;
+  side: "buyer_target" | "seller_listing";
+  status: "active" | "offered" | "under_contract" | "listed" | "sold" | "dropped" | "archived";
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  property_type: string | null;
+  target_price: string | null;  // Decimal serialized as string
+  list_price: string | null;
+  sold_price: string | null;
+  bedrooms: number | null;
+  bathrooms: string | null;
+  sqft: number | null;
+  units: number | null;
+  notes: string | null;
+  linked_loan_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientPropertyInput {
+  side: "buyer_target" | "seller_listing";
+  status?: ClientProperty["status"];
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  property_type?: string | null;
+  target_price?: number | null;
+  list_price?: number | null;
+  sold_price?: number | null;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  sqft?: number | null;
+  units?: number | null;
+  notes?: string | null;
+  linked_loan_id?: string | null;
+}
+
+export function useClientProperties(clientId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["clientProperties", clientId],
+    queryFn: () => apiCall<ClientProperty[]>(`/clients/${clientId}/properties`),
+    enabled: !!clientId,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useCreateClientProperty(clientId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ClientPropertyInput) =>
+      apiCall<ClientProperty>(`/clients/${clientId}/properties`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["clientProperties", clientId] }),
+  });
+}
+
+export function useUpdateClientProperty(clientId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ propertyId, ...body }: { propertyId: string } & Partial<ClientPropertyInput>) =>
+      apiCall<ClientProperty>(`/clients/${clientId}/properties/${propertyId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["clientProperties", clientId] }),
+  });
+}
+
+export function useDeleteClientProperty(clientId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (propertyId: string) =>
+      apiCall<void>(`/clients/${clientId}/properties/${propertyId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["clientProperties", clientId] }),
+  });
+}
+
+
+// Free-form agent note — appends a known_fact with source=agent.
+export function useAddAgentNote(clientId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ text, field }: { text: string; field?: string }) =>
+      apiCall<{ ok: boolean }>(`/clients/${clientId}/notes`, {
+        method: "POST",
+        body: JSON.stringify({ text, field }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["client", clientId] });
+    },
+  });
+}
+
+
+// Log a call / SMS / meeting / note against a client.
+export function useLogClientEngagement(clientId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ kind, summary, payload }: { kind: string; summary: string; payload?: Record<string, unknown> }) =>
+      apiCall<unknown>(`/clients/${clientId}/engagement`, {
+        method: "POST",
+        body: JSON.stringify({ kind, summary, payload }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["engagement", clientId] });
+    },
   });
 }

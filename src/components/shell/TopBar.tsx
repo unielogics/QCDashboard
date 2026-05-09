@@ -23,7 +23,11 @@ export default function TopBar() {
   // Operators have the existing AIRail co-pilot for per-loan + AI-task
   // workflows; this is the cross-account, conversational surface
   // borrowers (and operators on borrower-style questions) reach for.
-  const [aiChatOpen, setAiChatOpen] = useState(false);
+  // Open state lives in the UI store so other surfaces (e.g. the
+  // /clients/[id]/workspace "Open AI Chat" button) can trigger it
+  // without local prop drilling.
+  const aiChatOpen = useUI((s) => s.aiOpen);
+  const setAiChatOpen = useUI((s) => s.setAiOpen);
 
   const isClient = user?.role === Role.CLIENT;
   const isAgent = user?.role === Role.BROKER;

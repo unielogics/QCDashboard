@@ -15,24 +15,34 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
+import { useUI } from "@/store/ui";
 import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import {
+  useAddAgentNote,
   useClient,
   useClientAIPlan,
+  useClientProperties,
+  useCreateClientProperty,
+  useDeleteClientProperty,
   useDocumentsForClient,
   useEngagement,
   useFindOrCreateChatThread,
   useLoans,
+  useLogClientEngagement,
   useMarkClientFinanceReady,
   useRequestPrequalification,
   useSendBuyerAgreement,
   useSendListingAgreement,
+  type ClientProperty,
 } from "@/hooks/useApi";
 import { ClientAIPlanCard } from "@/components/ClientAIPlanCard";
 import { RealtorReadinessCard } from "@/components/RealtorReadinessCard";
 import { ClientAuditTrail } from "@/components/ClientAuditTrail";
+import { AddPropertyModal } from "@/components/AddPropertyModal";
+import { StageStepper } from "@/components/StageStepper";
 import type { Client } from "@/lib/types";
+import type { ClientStage } from "@/lib/enums.generated";
 
 
 type TabId = "overview" | "properties" | "activity" | "documents" | "notes";
@@ -54,6 +64,7 @@ export default function ClientWorkspacePage() {
   const findOrCreate = useFindOrCreateChatThread();
   const requestPrequal = useRequestPrequalification();
   const markReady = useMarkClientFinanceReady();
+  const setAiOpen = useUI((s) => s.setAiOpen);
   const [tab, setTab] = useState<TabId>("overview");
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -69,10 +80,14 @@ export default function ClientWorkspacePage() {
     : "Lead";
 
   async function openChat() {
+    // Pre-warm the per-client thread so the AIChatPanel pops open with
+    // the right context already prepared. Then flip the global aiOpen
+    // bit; the panel mounted in TopBar shows the side drawer with the
+    // freshly-resolved thread at the top of its sidebar.
     setBusy("chat");
     try {
-      const thread = await findOrCreate.mutateAsync({ client_id: id, loan_id: null });
-      router.push(`/messages?thread=${thread.id}`);
+      await findOrCreate.mutateAsync({ client_id: id, loan_id: null });
+      setAiOpen(true);
     } finally { setBusy(null); }
   }
 
@@ -143,6 +158,9 @@ export default function ClientWorkspacePage() {
           </div>
         </div>
       </Card>
+
+      {/* Stage pipeline — visual horizontal stepper */}
+      <StageStepper clientId={id} currentStage={client.stage as ClientStage} />
 
       {/* Tab strip */}
       <div style={{
@@ -283,55 +301,103 @@ function OverviewTab({ clientId, client }: { clientId: string; client: Client })
 // ── PROPERTIES ──────────────────────────────────────────────────────
 
 
-function PropertiesTab({ client }: { clientId: string; client: Client }) {
+function PropertiesTab({ clientId, client }: { clientId: string; client: Client }) {
   const { t } = useTheme();
+  const { data: properties = [], isLoading } = useClientProperties(clientId);
+  const create = useCreateClientProperty(clientId);
+  const del = useDeleteClientProperty(clientId);
   const { data: loans = [] } = useLoans();
-  const clientLoans = loans.filter(l => l.client_id === client.id);
+  const clientLoans = loans.filter(l => l.client_id === clientId);
+  const [addOpen, setAddOpen] = useState(false);
 
+  const ctype = client.realtor_profile?.client_type;
+  const clientSide: "buyer" | "seller" | "both" =
+    ctype === "seller" ? "seller" :
+    ctype === "buyer_and_seller" ? "both" : "buyer";
+
+  // Fall back to realtor_profile cards when no explicit properties yet —
+  // gives the agent something to look at on a fresh client until they
+  // add concrete addresses.
   const profile = client.realtor_profile || {};
-  const buyerProfile = (profile as Record<string, unknown>).buyer_profile as Record<string, unknown> | undefined;
-  const sellerProfile = (profile as Record<string, unknown>).seller_profile as Record<string, unknown> | undefined;
-
-  // Buyer "target" property — what the buyer is looking for (criteria, not a specific address yet)
-  const buyerTarget = buyerProfile && (buyerProfile.target_property_type || buyerProfile.target_location || buyerProfile.target_budget) ? {
-    title: "Buyer target criteria",
-    type: String(buyerProfile.target_property_type || "—").replace(/_/g, " "),
-    location: String(buyerProfile.target_location || "—"),
-    budget: buyerProfile.target_budget ? `$${Number(buyerProfile.target_budget).toLocaleString()}` : "—",
-    timeline: String(buyerProfile.purchase_timeline || "—").replace(/_/g, "–"),
-    financing: buyerProfile.financing_needed === true ? "Financing" : buyerProfile.financing_needed === false ? "Cash" : "—",
-    address: null as string | null,
-  } : null;
-
-  // Seller property — concrete listing
-  const sellerListing = sellerProfile && (sellerProfile.property_address || sellerProfile.desired_list_price) ? {
-    title: "Listing",
-    type: String(sellerProfile.property_type || "—").replace(/_/g, " "),
-    location: String(sellerProfile.property_address || "—"),
-    budget: sellerProfile.desired_list_price ? `$${Number(sellerProfile.desired_list_price).toLocaleString()}` : "—",
-    timeline: String(sellerProfile.selling_timeline || "—").replace(/_/g, "–"),
-    financing: "—",
-    address: String(sellerProfile.property_address || ""),
-  } : null;
-
-  const hasAny = buyerTarget || sellerListing || clientLoans.length > 0;
+  const bp = (profile as Record<string, unknown>).buyer_profile as Record<string, unknown> | undefined;
+  const sp = (profile as Record<string, unknown>).seller_profile as Record<string, unknown> | undefined;
+  const buyerTargetFromAI = bp && (bp.target_property_type || bp.target_location || bp.target_budget);
+  const sellerListingFromAI = sp && (sp.property_address || sp.desired_list_price);
+  const showAIFallback = properties.length === 0 && (buyerTargetFromAI || sellerListingFromAI);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {!hasAny ? (
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <SectionLabel>Properties · {properties.length}</SectionLabel>
+        <button
+          onClick={() => setAddOpen(true)}
+          style={{
+            marginLeft: "auto",
+            padding: "8px 14px", fontSize: 12, fontWeight: 700,
+            borderRadius: 8, border: "none",
+            background: t.brand, color: t.inverse, cursor: "pointer",
+            display: "inline-flex", alignItems: "center", gap: 6,
+          }}
+        >
+          <Icon name="plus" size={12} /> Add property
+        </button>
+      </div>
+
+      {isLoading ? (
+        <Card pad={20}><div style={{ color: t.ink3, fontSize: 13 }}>Loading…</div></Card>
+      ) : null}
+
+      {!isLoading && properties.length === 0 && !showAIFallback && clientLoans.length === 0 ? (
         <Card pad={20}>
           <div style={{ fontSize: 13, color: t.ink3 }}>
-            No properties or target criteria captured yet. As you talk with the
-            client, the AI will fill these in via the chat — or you can add
-            properties manually below.
+            No properties yet. Click <strong>Add property</strong> above, or
+            let the AI capture criteria as you chat with the client.
           </div>
         </Card>
       ) : null}
 
-      {buyerTarget ? <PropertyCard p={buyerTarget} t={t} /> : null}
-      {sellerListing ? <PropertyCard p={sellerListing} t={t} /> : null}
+      {properties.map(p => (
+        <RealPropertyCard
+          key={p.id}
+          p={p}
+          t={t}
+          onArchive={() => {
+            if (confirm("Archive this property?")) del.mutate(p.id);
+          }}
+        />
+      ))}
 
-      {/* Loans — concrete properties the AI is already underwriting */}
+      {/* AI-captured criteria as fallback context — only shown if no
+          explicit properties yet. Once the agent adds one, these
+          disappear (the AI's chat continues to maintain
+          realtor_profile but we stop double-rendering). */}
+      {showAIFallback && buyerTargetFromAI ? (
+        <AIFallbackCard
+          t={t}
+          title="Buyer target criteria (from AI chat)"
+          rows={[
+            ["Type", String(bp!.target_property_type || "—").replace(/_/g, " ")],
+            ["Location", String(bp!.target_location || "—")],
+            ["Budget", bp!.target_budget ? `$${Number(bp!.target_budget).toLocaleString()}` : "—"],
+            ["Timeline", String(bp!.purchase_timeline || "—").replace(/_/g, "–")],
+            ["Financing", bp!.financing_needed === true ? "Financing" : bp!.financing_needed === false ? "Cash" : "—"],
+          ]}
+        />
+      ) : null}
+      {showAIFallback && sellerListingFromAI ? (
+        <AIFallbackCard
+          t={t}
+          title="Listing (from AI chat)"
+          rows={[
+            ["Address", String(sp!.property_address || "—")],
+            ["Type", String(sp!.property_type || "—").replace(/_/g, " ")],
+            ["List price", sp!.desired_list_price ? `$${Number(sp!.desired_list_price).toLocaleString()}` : "—"],
+            ["Timeline", String(sp!.selling_timeline || "—").replace(/_/g, "–")],
+          ]}
+        />
+      ) : null}
+
+      {/* Linked loans — properties that have crossed into underwriting */}
       {clientLoans.map(l => (
         <Link key={l.id} href={`/loans/${l.id}`} style={{ textDecoration: "none" }}>
           <Card pad={16}>
@@ -351,37 +417,82 @@ function PropertiesTab({ client }: { clientId: string; client: Client }) {
         </Link>
       ))}
 
-      <button
-        onClick={() => alert("Manual property add — coming next. For now, criteria are captured by the AI from chat.")}
-        style={{
-          padding: "10px 14px", fontSize: 13, fontWeight: 600,
-          borderRadius: 8, border: `1px dashed ${t.line}`,
-          background: "transparent", color: t.ink3, cursor: "pointer",
-          alignSelf: "flex-start",
-        }}
-      >
-        + Add property manually
-      </button>
+      {addOpen ? (
+        <AddPropertyModal
+          clientSide={clientSide}
+          onSubmit={(body) => create.mutateAsync(body)}
+          onClose={() => setAddOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
 
 
-function PropertyCard({
-  p, t,
+function RealPropertyCard({
+  p, t, onArchive,
 }: {
-  p: { title: string; type: string; location: string; budget: string; timeline: string; financing: string; address: string | null };
+  p: ClientProperty;
   t: ReturnType<typeof useTheme>["t"];
+  onArchive: () => void;
 }) {
+  const headline = p.address || `${p.city ?? ""}${p.state ? `, ${p.state}` : ""}` || "(no address)";
+  const sideLabel = p.side === "buyer_target" ? "Buyer target" : "Seller listing";
+  const price = p.list_price || p.target_price || p.sold_price;
+  const priceLabel = p.side === "seller_listing" ? "List price" : "Target price";
+
   return (
     <Card pad={16}>
-      <SectionLabel>{p.title}</SectionLabel>
-      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
-        <KPI label="Type" value={p.type} />
-        <KPI label={p.address ? "Address" : "Location"} value={p.location} />
-        <KPI label={p.address ? "List price" : "Budget"} value={p.budget} />
-        <KPI label="Timeline" value={p.timeline} />
-        {p.financing !== "—" ? <KPI label="Financing" value={p.financing} /> : null}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+        <Pill bg={t.brandSoft} color={t.brand}>{sideLabel}</Pill>
+        <Pill>{p.status}</Pill>
+        <span style={{ fontSize: 14, fontWeight: 700, color: t.ink, flex: 1 }}>
+          {headline}
+        </span>
+        <button
+          onClick={onArchive}
+          style={{
+            background: "transparent", border: `1px solid ${t.line}`,
+            padding: "4px 8px", borderRadius: 4, color: t.danger,
+            cursor: "pointer", fontSize: 11,
+          }}
+        >
+          Archive
+        </button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
+        {p.property_type ? <KPI label="Type" value={p.property_type.replace(/_/g, " ")} /> : null}
+        {price ? <KPI label={priceLabel} value={`$${Number(price).toLocaleString()}`} /> : null}
+        {p.bedrooms ? <KPI label="Beds" value={String(p.bedrooms)} /> : null}
+        {p.bathrooms ? <KPI label="Baths" value={String(p.bathrooms)} /> : null}
+        {p.sqft ? <KPI label="Sq ft" value={Number(p.sqft).toLocaleString()} /> : null}
+        {p.units ? <KPI label="Units" value={String(p.units)} /> : null}
+      </div>
+      {p.notes ? (
+        <div style={{ marginTop: 10, fontSize: 12, color: t.ink3, fontStyle: "italic" }}>
+          {p.notes}
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+
+function AIFallbackCard({
+  t, title, rows,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  title: string;
+  rows: [string, string][];
+}) {
+  return (
+    <Card pad={16} style={{ borderLeft: `3px solid ${t.petrol}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <Icon name="spark" size={13} />
+        <SectionLabel>{title}</SectionLabel>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
+        {rows.map(([k, v]) => <KPI key={k} label={k} value={v} />)}
       </div>
     </Card>
   );
@@ -394,17 +505,104 @@ function PropertyCard({
 function ActivityTab({ clientId }: { clientId: string }) {
   const { t } = useTheme();
   const { data: events = [], isLoading } = useEngagement(clientId);
+  const log = useLogClientEngagement(clientId);
+  const [composeKind, setComposeKind] = useState<string | null>(null);
+  const [composeText, setComposeText] = useState("");
+
+  async function logEvent() {
+    if (!composeKind || !composeText.trim()) return;
+    try {
+      await log.mutateAsync({ kind: composeKind, summary: composeText.trim() });
+      setComposeKind(null);
+      setComposeText("");
+    } catch { /* swallowed */ }
+  }
+
+  function quickAction(kind: string, label: string, icon: "phone" | "chat" | "cal" | "doc") {
+    return (
+      <button
+        onClick={() => { setComposeKind(kind); setComposeText(""); }}
+        style={{
+          padding: "6px 10px", fontSize: 12, fontWeight: 600,
+          borderRadius: 6, border: `1px solid ${t.line}`,
+          background: composeKind === kind ? t.brandSoft : t.surface,
+          color: composeKind === kind ? t.brand : t.ink,
+          cursor: "pointer",
+          display: "inline-flex", alignItems: "center", gap: 6,
+        }}
+      >
+        <Icon name={icon} size={12} /> {label}
+      </button>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <Card pad={16}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <SectionLabel>Log activity</SectionLabel>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+          {quickAction("call_logged", "Log call", "phone")}
+          {quickAction("sms_sent", "Log SMS", "chat")}
+          {quickAction("email_sent", "Log email", "doc")}
+          {quickAction("meeting_held", "Log meeting", "cal")}
+        </div>
+        {composeKind ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <textarea
+              value={composeText}
+              onChange={e => setComposeText(e.target.value)}
+              rows={2}
+              autoFocus
+              placeholder={
+                composeKind === "call_logged" ? "What was discussed on the call?" :
+                composeKind === "sms_sent" ? "What was the SMS about?" :
+                composeKind === "email_sent" ? "Subject + brief context…" :
+                "Meeting summary…"
+              }
+              style={{
+                padding: 10, fontSize: 13, fontFamily: "inherit",
+                borderRadius: 6, border: `1px solid ${t.line}`,
+                background: t.surface, color: t.ink, resize: "vertical",
+              }}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={logEvent}
+                disabled={!composeText.trim() || log.isPending}
+                style={{
+                  padding: "8px 14px", fontSize: 13, fontWeight: 600,
+                  borderRadius: 6, border: "none",
+                  background: t.brand, color: t.inverse, cursor: "pointer",
+                  opacity: composeText.trim() && !log.isPending ? 1 : 0.5,
+                }}
+              >
+                {log.isPending ? "Logging…" : "Save"}
+              </button>
+              <button
+                onClick={() => { setComposeKind(null); setComposeText(""); }}
+                style={{
+                  padding: "8px 14px", fontSize: 13, fontWeight: 600,
+                  borderRadius: 6, border: `1px solid ${t.line}`,
+                  background: t.surface, color: t.ink, cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Card>
+
       <Card pad={16}>
         <SectionLabel>Recent activity</SectionLabel>
         {isLoading ? (
           <div style={{ marginTop: 10, color: t.ink3, fontSize: 13 }}>Loading…</div>
         ) : events.length === 0 ? (
           <div style={{ marginTop: 10, color: t.ink3, fontSize: 13 }}>
-            No activity logged yet. As the AI chats with this client and as
-            you log calls / send messages, events will land here.
+            No activity logged yet. Use the buttons above to log a call,
+            SMS, email, or meeting against this client.
           </div>
         ) : (
           <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -428,6 +626,7 @@ function ActivityTab({ clientId }: { clientId: string }) {
                     </div>
                     <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
                       {ev.created_at ? new Date(String(ev.created_at)).toLocaleString() : ""}
+                      {ev.actor_label ? ` · ${String(ev.actor_label)}` : ""}
                     </div>
                   </div>
                 </div>
@@ -491,33 +690,76 @@ function DocumentsTab({ clientId }: { clientId: string }) {
 // ── NOTES ───────────────────────────────────────────────────────────
 
 
-function NotesTab({ client }: { clientId: string; client: Client }) {
+function NotesTab({ clientId, client }: { clientId: string; client: Client }) {
   const { t } = useTheme();
-  // Surface known_facts where source=agent — these are the agent's own
-  // notes captured by the AI during conversation.
+  const addNote = useAddAgentNote(clientId);
+  const [draft, setDraft] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+
   const profile = client.realtor_profile as Record<string, unknown> | null | undefined;
   const facts = ((profile?.known_facts as Array<Record<string, unknown>> | undefined) || []).filter(
     f => f.source === "agent",
   );
 
+  async function save() {
+    if (!draft.trim()) return;
+    setErr(null);
+    try {
+      await addNote.mutateAsync({ text: draft.trim() });
+      setDraft("");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Couldn't save note.");
+    }
+  }
+
   return (
     <Card pad={16}>
       <SectionLabel>Agent notes</SectionLabel>
       <div style={{ fontSize: 12, color: t.ink3, margin: "6px 0 14px" }}>
-        Free-form notes captured by the AI during your conversations,
-        plus anything you want the AI to remember about this client. Edit
-        the AI&apos;s per-client custom instructions on the Overview tab
-        (Client AI Plan card → Custom Instructions).
+        Free-form notes about this client. Anything you write here flows
+        into the AI&apos;s memory on the next chat turn — when you ask the
+        AI about this client tomorrow, it will reference these.
       </div>
 
+      {/* Compose */}
+      <div style={{ marginBottom: 16 }}>
+        <textarea
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          rows={3}
+          placeholder='e.g. "Marcus mentioned his preferred lender is Chase. Wants to close before Aug 1."'
+          style={{
+            width: "100%", padding: 10, fontSize: 13,
+            borderRadius: 8, border: `1px solid ${t.line}`,
+            background: t.surface, color: t.ink, fontFamily: "inherit",
+            resize: "vertical",
+          }}
+        />
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+          <button
+            onClick={save}
+            disabled={!draft.trim() || addNote.isPending}
+            style={{
+              padding: "8px 14px", fontSize: 13, fontWeight: 600,
+              borderRadius: 6, border: "none",
+              background: t.brand, color: t.inverse, cursor: "pointer",
+              opacity: draft.trim() && !addNote.isPending ? 1 : 0.5,
+            }}
+          >
+            {addNote.isPending ? "Saving…" : "Save note"}
+          </button>
+          {err ? <span style={{ fontSize: 12, color: t.danger }}>{err}</span> : null}
+        </div>
+      </div>
+
+      {/* History */}
       {facts.length === 0 ? (
         <div style={{ fontSize: 13, color: t.ink3 }}>
-          No notes captured yet. As you chat with the AI about this
-          client, anything you tell it will surface here.
+          No notes yet.
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {facts.map((f, i) => (
+          {facts.slice().reverse().map((f, i) => (
             <div key={i} style={{
               padding: 12, borderRadius: 8,
               background: t.surface2, border: `1px solid ${t.line}`,
@@ -525,7 +767,7 @@ function NotesTab({ client }: { clientId: string; client: Client }) {
               <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, marginBottom: 4, textTransform: "uppercase" }}>
                 {String(f.field || "note")}
               </div>
-              <div style={{ fontSize: 13, color: t.ink }}>
+              <div style={{ fontSize: 13, color: t.ink, whiteSpace: "pre-wrap" }}>
                 {String(f.value || "")}
               </div>
               {f.captured_at ? (
