@@ -11,12 +11,13 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn } from "@/components/design-system/buttons";
+import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
 import { useAdminPrequalQueue } from "@/hooks/useApi";
 import { PrequalReviewModal } from "@/components/PrequalReviewModal";
+import { AdminPrequalCreateModal } from "@/components/AdminPrequalCreateModal";
 import { PREQUAL_LOAN_TYPE_LABELS, type PrequalRequest, type PrequalStatus } from "@/lib/types";
 
 type FilterId = PrequalStatus | "all";
@@ -63,6 +64,7 @@ export default function AdminPrequalQueuePage() {
   const [sortKey, setSortKey] = useState<SortKey>("closing");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selected, setSelected] = useState<PrequalRequest | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   // Always pull "all" from the server then filter client-side. Lets the
   // count chips show all-status counts at once.
@@ -156,12 +158,23 @@ export default function AdminPrequalQueuePage() {
 
   return (
     <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Prequalifications</h1>
-        <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
-          Click any row to open the review panel. Headers sort the queue.
-          Pending always groups to the top regardless of sort direction.
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Prequalifications</h1>
+          <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
+            Click any row to open the review panel. Headers sort the queue.
+            Pending always groups to the top regardless of sort direction.
+          </div>
         </div>
+        {profile.role === Role.SUPER_ADMIN ? (
+          <button
+            onClick={() => setCreateOpen(true)}
+            style={{ ...qcBtnPrimary(t), display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}
+          >
+            <Icon name="plus" size={13} stroke={3} />
+            Create prequalification
+          </button>
+        ) : null}
       </div>
 
       {/* Count chips */}
@@ -227,6 +240,11 @@ export default function AdminPrequalQueuePage() {
         open={!!selected}
         onClose={() => setSelected(null)}
         request={selected}
+      />
+
+      <AdminPrequalCreateModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
       />
     </div>
   );
