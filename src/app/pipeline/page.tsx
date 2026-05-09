@@ -17,7 +17,7 @@ type PipelineMode = "leads" | "funding";
 const STAGE_KEYS = ["prequalified", "collecting_docs", "lender_connected", "processing", "closing", "funded"] as const;
 const STAGE_LABELS = ["Prequalified", "Collecting Docs", "Lender Connected", "Processing", "Closing", "Funded"];
 
-type SortKey = "deal_id" | "address" | "type" | "amount" | "stage" | "close_date";
+type SortKey = "deal_id" | "address" | "type" | "amount" | "dscr" | "stage" | "close_date";
 
 export default function PipelinePage() {
   const { t } = useTheme();
@@ -26,7 +26,9 @@ export default function PipelinePage() {
   // Top-level mode: Leads (Agent funnel) vs Funding (loan stages). Each mode
   // independently picks kanban vs table for layout. Agents see Leads by
   // default; non-Agent operators land on Funding.
-  const [mode, setMode] = useState<PipelineMode>(profile.role === "broker" ? "leads" : "funding");
+  const isBroker = profile.role === "broker";
+  const isInternal = profile.role === "super_admin" || profile.role === "loan_exec";
+  const [mode, setMode] = useState<PipelineMode>(isBroker ? "leads" : "funding");
   const [view, setView] = useState<"table" | "kanban">("table");
   const [sortKey, setSortKey] = useState<SortKey>("amount");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -34,8 +36,8 @@ export default function PipelinePage() {
   const [search, setSearch] = useState<string>("");
   const [intakeOpen, setIntakeOpen] = useState(false);
 
-  // Clients can't create loans (mirrors backend role gate at qcbackend/app/routers/loans.py).
-  const canCreate = profile.role !== "client";
+  const canCreateLead = isBroker || profile.role === "super_admin";
+  const canCreateDeal = isInternal;
 
   const sorted = useMemo(() => {
     const filtered = typeFilter === "all" ? loans : loans.filter((l) => l.type === typeFilter);
@@ -73,9 +75,6 @@ export default function PipelinePage() {
           Pipeline
         </h1>
 
-        {/* Mode dropdown — Leads vs Funding. Pipeline does double duty:
-            Leads view shows the Agent's early-funnel clients (lead, contacted,
-            verified); Funding view shows the lender-stage loans. */}
         <select
           value={mode}
           onChange={(e) => setMode(e.target.value as PipelineMode)}
@@ -92,8 +91,8 @@ export default function PipelinePage() {
             marginLeft: 4,
           }}
         >
-          <option value="leads">Leads</option>
-          <option value="funding">Funding</option>
+          <option value="leads">Agent Relationships</option>
+          <option value="funding">Funding Files</option>
         </select>
 
         {mode === "funding" ? (
@@ -120,7 +119,7 @@ export default function PipelinePage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search address or ID…"
+              placeholder={mode === "funding" ? "Search address or ID..." : "Search clients..."}
               style={{
                 flex: 1,
                 border: "none",
@@ -179,11 +178,7 @@ export default function PipelinePage() {
             </button>
           </div>
 
-          {canCreate && (
-            // Single entry point regardless of leads/funding mode.
-            // Opens the SmartIntakeModal which now provisions a User
-            // invite + sets client_experience_mode='guided' on the
-            // backend (alembic 0026 / realtor overhaul).
+          {(mode === "funding" ? canCreateDeal : canCreateLead) && (
             <button
               onClick={() => setIntakeOpen(true)}
               style={{
@@ -200,7 +195,7 @@ export default function PipelinePage() {
                 border: "none",
               }}
             >
-              <Icon name="plus" size={14} /> New deal
+              <Icon name="plus" size={14} /> {mode === "funding" ? "New deal" : "New relationship"}
             </button>
           )}
         </div>
@@ -229,7 +224,7 @@ export default function PipelinePage() {
             <SortHead label="Property" k="address" current={sortKey} dir={sortDir} onClick={setSort} />
             <SortHead label="Type" k="type" current={sortKey} dir={sortDir} onClick={setSort} />
             <SortHead label="Amount" k="amount" current={sortKey} dir={sortDir} onClick={setSort} align="right" />
-            <SortHead label="DSCR" k="amount" current={sortKey} dir={sortDir} onClick={setSort} align="right" />
+            <SortHead label="DSCR" k="dscr" current={sortKey} dir={sortDir} onClick={setSort} align="right" />
             <div>Risk</div>
             <SortHead label="Close" k="close_date" current={sortKey} dir={sortDir} onClick={setSort} />
           </div>

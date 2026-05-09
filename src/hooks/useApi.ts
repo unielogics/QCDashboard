@@ -75,7 +75,7 @@ import type {
   UserRow,
   WorkspaceState,
 } from "@/lib/types";
-import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, PropertyType, Role, DealChatMode, FeedbackOutputType, FeedbackRating } from "@/lib/enums.generated";
+import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurpose, PropertyType, Role, DealChatMode, FeedbackOutputType, FeedbackRating } from "@/lib/enums.generated";
 
 function useDevUser(): string {
   return useActiveProfile().email;
@@ -1125,6 +1125,12 @@ export function useRecalc() {
       annual_insurance?: number;
       monthly_hoa?: number;
       ltv?: number;
+      purpose?: LoanPurpose | null;
+      arv?: number | null;
+      brv?: number | null;
+      rehab_budget?: number | null;
+      payoff?: number | null;
+      ltv_tier_cap?: number | null;
     }) =>
       apiCall<RecalcResponse>(`/loans/${loanId}/recalc`, {
         method: "POST",

@@ -13,6 +13,8 @@ import { useActiveProfile } from "@/store/role";
 import { LoanStageOptions, Role } from "@/lib/enums.generated";
 import { LoanSimulator } from "@/components/LoanSimulator";
 import { OverviewTab } from "./tabs/OverviewTab";
+import { FundingFileTab } from "./tabs/FundingFileTab";
+import { AgentLoanMirror } from "./tabs/AgentLoanMirror";
 import { TermsTab } from "./tabs/TermsTab";
 import { Hud1Tab } from "./tabs/Hud1Tab";
 import { DocsTab } from "./tabs/DocsTab";
@@ -28,25 +30,31 @@ import { LenderConnectCard } from "./components/LenderConnectCard";
 import { ParticipantsCard } from "./components/ParticipantsCard";
 import { EmailDraftsCard } from "./components/EmailDraftsCard";
 
-// Tab icons match design (loan-detail.jsx lines 76–85): home/sliders/calc/doc/
-// shield/building2/send/audit. The "thread" tab is QC-specific (not in
-// canonical design) for the Fintech Orchestrator participant + drafts UI;
-// kept after Wire so the design's 8 main tabs render in the same order.
-const TABS = [
-  { id: "overview", label: "Overview", icon: "home" as const },
-  { id: "terms", label: "Terms", icon: "sliders" as const },
-  { id: "hud", label: "HUD-1", icon: "calc" as const },
-  { id: "docs", label: "Documents", icon: "doc" as const },
-  { id: "workflow", label: "Workflow", icon: "cal" as const },
-  { id: "uw", label: "Underwriting", icon: "shield" as const },
+const INTERNAL_TABS = [
+  { id: "file", label: "Funding File", icon: "file" as const },
+  { id: "terms", label: "Criteria", icon: "sliders" as const },
   { id: "property", label: "Property", icon: "building2" as const },
-  { id: "wire", label: "Wire & Closing", icon: "send" as const },
+  { id: "docs", label: "Documents", icon: "doc" as const },
+  { id: "workflow", label: "Conditions", icon: "cal" as const },
   { id: "prequal", label: "Pre-Qual", icon: "docCheck" as const },
-  { id: "workspace", label: "Deal Workspace", icon: "ai" as const },
-  { id: "thread", label: "Thread", icon: "chat" as const },
+  { id: "uw", label: "Underwriting", icon: "shield" as const },
+  { id: "workspace", label: "AI Workspace", icon: "ai" as const },
+  { id: "thread", label: "Lender", icon: "chat" as const },
   { id: "activity", label: "Activity", icon: "audit" as const },
 ] as const;
-type TabId = (typeof TABS)[number]["id"];
+
+const AGENT_TABS = [
+  { id: "agent", label: "Client Status", icon: "clients" as const },
+  { id: "docs", label: "Documents", icon: "doc" as const },
+  { id: "activity", label: "Updates", icon: "audit" as const },
+] as const;
+
+const CLIENT_TABS = [
+  { id: "overview", label: "Overview", icon: "home" as const },
+  { id: "terms", label: "Simulator", icon: "sliders" as const },
+  { id: "docs", label: "Documents", icon: "doc" as const },
+  { id: "activity", label: "Activity", icon: "audit" as const },
+] as const;
 
 const STAGE_KEYS = ["prequalified", "collecting_docs", "lender_connected", "processing", "closing", "funded"];
 
@@ -59,7 +67,9 @@ export default function LoanDetailPage() {
   const { data: docs = [] } = useDocuments(params.id);
   const { data: activity = [], isLoading: activityLoading } = useLoanActivity(params.id);
   const stageMut = useStageTransition();
-  const [tab, setTab] = useState<TabId>("overview");
+  const [tab, setTab] = useState<string>(
+    profile.role === Role.CLIENT ? "overview" : profile.role === Role.BROKER ? "agent" : "file",
+  );
   const [stageNote, setStageNote] = useState("");
 
   // Subscribe to live message updates so the AI rail / messages are realtime
@@ -67,9 +77,13 @@ export default function LoanDetailPage() {
 
   if (!loan) return <div style={{ color: t.ink3 }}>Loading…</div>;
 
+  const isInternal = profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
+  const isAgent = profile.role === Role.BROKER;
+  const tabs = isInternal ? INTERNAL_TABS : isAgent ? AGENT_TABS : CLIENT_TABS;
+  const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0].id;
   const stageIndex = STAGE_KEYS.indexOf(loan.stage);
-  const canTransitionStage = profile.role !== Role.CLIENT;
-  const canRequestDoc = profile.role !== Role.CLIENT;
+  const canTransitionStage = isInternal;
+  const canRequestDoc = isInternal;
   const docsReceived = docs.filter((d) => d.status === "received" || d.status === "verified").length;
 
   return (
@@ -100,16 +114,26 @@ export default function LoanDetailPage() {
             }}>
               <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>Loan amount</div>
               <div style={{ fontSize: 28, fontWeight: 800, color: t.ink, marginTop: 2, fontFeatureSettings: '"tnum"' }}>{QC_FMT.usd(Number(loan.amount))}</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 12 }}>
-                <Mini t={t} label="Rate" value={loan.final_rate ? `${(loan.final_rate * 100).toFixed(3)}%` : "—"} />
-                <Mini t={t} label="LTV" value={loan.ltv ? `${(loan.ltv * 100).toFixed(0)}%` : "—"} />
-                <Mini t={t} label="Points" value={loan.discount_points.toFixed(2)} />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 8 }}>
-                <Mini t={t} label="Term" value={loan.term_months ? `${loan.term_months}mo` : "—"} />
-                <Mini t={t} label="Close" value={loan.close_date ? new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"} />
-                <Mini t={t} label="Risk" value={loan.risk_score ?? "—"} accent={loan.risk_score && loan.risk_score >= 80 ? t.profit : t.warn} />
-              </div>
+              {isInternal ? (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 12 }}>
+                    <Mini t={t} label="Rate" value={loan.final_rate ? `${(loan.final_rate * 100).toFixed(3)}%` : "—"} />
+                    <Mini t={t} label="LTV" value={loan.ltv ? `${(loan.ltv * 100).toFixed(0)}%` : "—"} />
+                    <Mini t={t} label="Points" value={loan.discount_points.toFixed(2)} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 8 }}>
+                    <Mini t={t} label="Term" value={loan.term_months ? `${loan.term_months}mo` : "—"} />
+                    <Mini t={t} label="Close" value={loan.close_date ? new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"} />
+                    <Mini t={t} label="Risk" value={loan.risk_score ?? "—"} accent={loan.risk_score && loan.risk_score >= 80 ? t.profit : t.warn} />
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 12 }}>
+                  <Mini t={t} label="Docs" value={`${docsReceived}/${docs.length || 0}`} />
+                  <Mini t={t} label="Close" value={loan.close_date ? new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"} />
+                  <Mini t={t} label="Stage" value={stageIndex >= 0 ? `${stageIndex + 1}/6` : "—"} />
+                </div>
+              )}
             </div>
             <button onClick={() => setAiOpen(true)} style={{
               padding: "10px 14px", borderRadius: 10, background: t.petrolSoft, color: t.petrol,
@@ -180,8 +204,8 @@ export default function LoanDetailPage() {
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${t.line}`, overflowX: "auto" }}>
-        {TABS.map((tabDef) => {
-          const active = tab === tabDef.id;
+        {tabs.map((tabDef) => {
+          const active = activeTab === tabDef.id;
           const isDocs = tabDef.id === "docs";
           return (
             <button
@@ -211,25 +235,27 @@ export default function LoanDetailPage() {
         })}
       </div>
 
-      {tab === "overview" && <OverviewTab loan={loan} docs={docs} activity={activity} />}
-      {tab === "terms" &&
+      {activeTab === "file" && <FundingFileTab loan={loan} docs={docs} activity={activity} />}
+      {activeTab === "agent" && <AgentLoanMirror loan={loan} docs={docs} activity={activity} />}
+      {activeTab === "overview" && <OverviewTab loan={loan} docs={docs} activity={activity} />}
+      {activeTab === "terms" &&
         (profile.role === Role.CLIENT ? <LoanSimulator loan={loan} /> : <TermsTab loan={loan} />)}
-      {tab === "hud" && <Hud1Tab loan={loan} />}
-      {tab === "docs" && <DocsTab loan={loan} canRequest={canRequestDoc} />}
-      {tab === "workflow" && <WorkflowTab loan={loan} canEdit={canRequestDoc} />}
-      {tab === "uw" && <UnderwritingTab loan={loan} />}
-      {tab === "property" && <PropertyTab loan={loan} canEdit={canTransitionStage} />}
-      {tab === "wire" && <WireClosingTab loan={loan} />}
-      {tab === "prequal" && <PrequalTab loan={loan} />}
-      {tab === "workspace" && <DealWorkspaceTab loanId={loan.id} />}
-      {tab === "thread" && (
+      {activeTab === "hud" && <Hud1Tab loan={loan} />}
+      {activeTab === "docs" && <DocsTab loan={loan} canRequest={canRequestDoc} />}
+      {activeTab === "workflow" && <WorkflowTab loan={loan} canEdit={canRequestDoc} />}
+      {activeTab === "uw" && <UnderwritingTab loan={loan} />}
+      {activeTab === "property" && <PropertyTab loan={loan} canEdit={canTransitionStage} />}
+      {activeTab === "wire" && <WireClosingTab loan={loan} />}
+      {activeTab === "prequal" && <PrequalTab loan={loan} />}
+      {activeTab === "workspace" && <DealWorkspaceTab loanId={loan.id} />}
+      {activeTab === "thread" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <LenderConnectCard loan={loan} />
           <ParticipantsCard loanId={loan.id} />
           <EmailDraftsCard loanId={loan.id} />
         </div>
       )}
-      {tab === "activity" && <ActivityTab activity={activity} isLoading={activityLoading} />}
+      {activeTab === "activity" && <ActivityTab activity={activity} isLoading={activityLoading} />}
     </div>
   );
 }

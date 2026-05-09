@@ -230,6 +230,16 @@ export default function ClientDetailPage() {
           plan trumps the raw missing_facts walk. */}
       <ClientAIPlanCard clientId={client.id} loanId={null} />
 
+      {isAgent && (
+        <AgentRelationshipWorkspace
+          t={t}
+          client={client}
+          clientLoans={clientLoans}
+          docs={clientDocs}
+          creditFico={credit?.fico ?? client.fico}
+        />
+      )}
+
       {/* Realtor Client Intelligence Profile (alembic 0030). The
           Realtor AI writes this every conversational turn; the card
           surfaces what's known, what's missing, and the AI's next
@@ -423,6 +433,143 @@ export default function ClientDetailPage() {
           REO Schedule = docs tied to funded loans. Backed by the new
           GET /documents?client_id={id} server-side join. */}
       <ClientVaultCard t={t} clientLoans={clientLoans} docs={clientDocs} />
+    </div>
+  );
+}
+
+function AgentRelationshipWorkspace({
+  t,
+  client,
+  clientLoans,
+  docs,
+  creditFico,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  client: Client;
+  clientLoans: Loan[];
+  docs: Document[];
+  creditFico: number | null;
+}) {
+  const side = client.client_type ?? "buyer";
+  const isSeller = side === "seller";
+  const activeLoans = clientLoans.filter((loan) => loan.stage !== "funded");
+  const exposure = activeLoans.reduce((sum, loan) => sum + Number(loan.amount || 0), 0);
+  const receivedDocs = docs.filter((doc) => doc.status === "received" || doc.status === "verified").length;
+  const verifiedDocs = docs.filter((doc) => doc.status === "verified").length;
+  const activeStage = inferStage(client, activeLoans.length);
+
+  const workflow = isSeller
+    ? [
+        { icon: "bldg", title: "Listing intent", detail: "Price target, payoff, timeline, and motivation should be clear before funding handoff." },
+        { icon: "docCheck", title: "Seller package", detail: "Property facts, rent roll when relevant, photos, inspection, and current mortgage context." },
+        { icon: "chat", title: "Offer support", detail: "Keep seller communication internal to the agent while funding validates buyer strength." },
+      ]
+    : [
+        { icon: "shieldChk", title: "Buyer readiness", detail: "Credit, entity, liquidity, buy box, and target close date should be complete." },
+        { icon: "docCheck", title: "Prequal package", detail: "Upload purchase agreement, entity docs, bank statements, and property facts as they arrive." },
+        { icon: "chat", title: "Offer support", detail: "Use status updates to keep the client moving while funding owns loan criteria." },
+      ];
+
+  const nextActions = isSeller
+    ? [
+        activeStage === "lead" ? "Confirm listing timeline and target net." : "Update seller timeline after each funding milestone.",
+        receivedDocs === 0 ? "Add property facts, payoff, and seller-side docs." : "Review seller docs for missing transaction context.",
+        activeLoans.length === 0 ? "Qualify buyer financing path before funding handoff." : "Track funding conditions tied to the offer.",
+      ]
+    : [
+        creditFico ? "Confirm the client's target purchase and close date." : "Ask client to complete credit readiness.",
+        receivedDocs === 0 ? "Collect intake, bank statements, entity docs, and property facts." : "Review received docs before funding handoff.",
+        activeLoans.length === 0 ? "Move to Start Funding once verified." : "Coordinate borrower conditions with funding updates.",
+      ];
+
+  return (
+    <Card pad={18}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 18, flexWrap: "wrap" }}>
+        <div style={{ minWidth: 260, flex: 1 }}>
+          <SectionLabel>Agent Relationship Workspace</SectionLabel>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <Pill bg={isSeller ? t.warnBg : t.brandSoft} color={isSeller ? t.warn : t.brand}>
+              {isSeller ? "Seller workflow" : "Buyer workflow"}
+            </Pill>
+            <Pill>{STAGE_LABEL[activeStage]}</Pill>
+          </div>
+          <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.55, maxWidth: 720 }}>
+            This is the agent-owned client file. Relationship notes, buyer or seller readiness,
+            transaction context, and client follow-up stay here. Funding criteria and loan calculations
+            stay inside the internal funding file after handoff.
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 120px)", gap: 10 }}>
+          <MiniStat t={t} label="Active file" value={activeLoans.length ? `${activeLoans.length}` : "None"} />
+          <MiniStat t={t} label="Exposure" value={exposure ? QC_FMT.short(exposure) : "$0"} />
+          <MiniStat t={t} label="Docs ready" value={`${verifiedDocs}/${docs.length || 0}`} />
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 14, marginTop: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+          {workflow.map((item) => (
+            <div key={item.title} style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: 13, background: t.surface2 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: t.ink, fontWeight: 800, fontSize: 13 }}>
+                <Icon name={item.icon} size={15} style={{ color: t.petrol }} />
+                {item.title}
+              </div>
+              <div style={{ marginTop: 8, fontSize: 12.2, color: t.ink3, lineHeight: 1.45 }}>{item.detail}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: 13 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 10 }}>
+            Next Agent Actions
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {nextActions.map((action, index) => (
+              <div key={action} style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 12.5, color: t.ink2, lineHeight: 1.4 }}>
+                <span
+                  style={{
+                    width: 19,
+                    height: 19,
+                    borderRadius: 999,
+                    background: index === 0 ? t.petrolSoft : t.surface2,
+                    color: index === 0 ? t.petrol : t.ink3,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 10,
+                    fontWeight: 800,
+                    flexShrink: 0,
+                  }}
+                >
+                  {index + 1}
+                </span>
+                <span>{action}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function MiniStat({
+  t,
+  label,
+  value,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  label: string;
+  value: string;
+}) {
+  return (
+    <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: "10px 12px", background: t.surface2 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1.1, textTransform: "uppercase" }}>
+        {label}
+      </div>
+      <div style={{ marginTop: 5, fontSize: 19, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"' }}>
+        {value}
+      </div>
     </div>
   );
 }

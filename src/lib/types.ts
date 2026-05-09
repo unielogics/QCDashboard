@@ -1,7 +1,7 @@
 // Hand-typed mirror of backend response shapes.
 // (When you scale, switch to OpenAPI codegen — for now the surface is small.)
 
-import type { LoanStage, LoanType, PropertyType, Role, AITaskPriority, AITaskSource, AITaskStatus, BrokerTier, MessageFrom, DocStatus, CalendarEventKind, EntityType, ExperienceTier, CreditPullStatus, DealChatMode, DealChatRole, FeedbackOutputType, FeedbackRating } from "./enums.generated";
+import type { LoanStage, LoanType, LoanPurpose, PropertyType, Role, AITaskPriority, AITaskSource, AITaskStatus, BrokerTier, MessageFrom, DocStatus, CalendarEventKind, EntityType, ExperienceTier, CreditPullStatus, DealChatMode, DealChatRole, FeedbackOutputType, FeedbackRating } from "./enums.generated";
 
 export interface User {
   id: string;
@@ -21,6 +21,7 @@ export interface Loan {
   city: string | null;
   property_type: PropertyType;
   type: LoanType;
+  purpose: LoanPurpose | null;
   stage: LoanStage;
   amount: number;
   ltv: number | null;
@@ -246,6 +247,20 @@ export interface RecalcResponse {
   cash_to_close_pricing: number;
   hud_total: number;
   warnings: { code: string; message: string; severity: string }[];
+  loan_amount?: number | null;
+  sizing?: {
+    loan_amount: number;
+    max_allowed: number;
+    binding_constraint: string;
+    clamped: boolean;
+    ltv: number | null;
+    ltc: number | null;
+    arv_ltv: number | null;
+    effective_ltv_cap: number | null;
+    total_cost: number | null;
+    cash_to_borrower: number | null;
+    cash_to_close: number | null;
+  } | null;
 }
 
 // ── SmartIntake ────────────────────────────────────────────────────────────
