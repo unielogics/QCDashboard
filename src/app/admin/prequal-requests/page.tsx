@@ -132,7 +132,7 @@ export default function AdminPrequalQueuePage() {
         <Card pad={28}>
           <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>Operator-only</div>
           <div style={{ fontSize: 13, color: t.ink2, marginTop: 6, lineHeight: 1.5 }}>
-            The pre-qualification queue is for underwriters. Borrowers should submit
+            Prequalifications are for underwriters. Borrowers should submit
             requests from the Simulator&apos;s My Loans tab.
           </div>
           <button onClick={() => router.push("/")} style={{ ...qcBtn(t), marginTop: 14 }}>
@@ -157,7 +157,7 @@ export default function AdminPrequalQueuePage() {
   return (
     <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
       <div>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Pre-Qualification Queue</h1>
+        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Prequalifications</h1>
         <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
           Click any row to open the review panel. Headers sort the queue.
           Pending always groups to the top regardless of sort direction.
