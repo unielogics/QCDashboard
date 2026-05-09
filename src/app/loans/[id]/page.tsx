@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, StageBadge } from "@/components/design-system/primitives";
+import { Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useDocuments, useLoan, useLoanActivity, useStageTransition } from "@/hooks/useApi";
 import { useDealChannel } from "@/hooks/useDealChannel";
@@ -29,6 +29,7 @@ import { DealHealthPill } from "./components/DealHealthPill";
 import { LenderConnectCard } from "./components/LenderConnectCard";
 import { ParticipantsCard } from "./components/ParticipantsCard";
 import { EmailDraftsCard } from "./components/EmailDraftsCard";
+import { FILE_STAGE_KEYS, FILE_STAGE_LABELS, getFileCompletion } from "./fileReadiness";
 
 const INTERNAL_TABS = [
   { id: "file", label: "Funding File", icon: "file" as const },
@@ -56,8 +57,6 @@ const CLIENT_TABS = [
   { id: "activity", label: "Activity", icon: "audit" as const },
 ] as const;
 
-const STAGE_KEYS = ["prequalified", "collecting_docs", "lender_connected", "processing", "closing", "funded"];
-
 export default function LoanDetailPage() {
   const params = useParams<{ id: string }>();
   const { t } = useTheme();
@@ -81,85 +80,148 @@ export default function LoanDetailPage() {
   const isAgent = profile.role === Role.BROKER;
   const tabs = isInternal ? INTERNAL_TABS : isAgent ? AGENT_TABS : CLIENT_TABS;
   const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0].id;
-  const stageIndex = STAGE_KEYS.indexOf(loan.stage);
+  const completion = getFileCompletion(loan, docs);
+  const stageIndex = completion.stage.index;
   const canTransitionStage = isInternal;
   const canRequestDoc = isInternal;
-  const docsReceived = docs.filter((d) => d.status === "received" || d.status === "verified").length;
+  const docsReceived = completion.docs.received;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Hero */}
-      <Card pad={20}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.4, fontFamily: "ui-monospace, SF Mono, monospace" }}>{loan.deal_id}</span>
+      <div
+        style={{
+          border: `1px solid ${t.line}`,
+          borderRadius: 16,
+          background: `linear-gradient(180deg, ${t.surface}, ${t.surface2})`,
+          boxShadow: t.shadow,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) 430px",
+            gap: 18,
+            padding: "14px 16px 12px",
+            alignItems: "center",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 800,
+                  color: t.ink3,
+                  letterSpacing: 1.4,
+                  fontFamily: "ui-monospace, SF Mono, monospace",
+                }}
+              >
+                {loan.deal_id}
+              </span>
               <StageBadge stage={stageIndex} />
               <Pill>{loan.type.replace("_", " ")}</Pill>
               <DealHealthPill health={loan.deal_health} />
             </div>
-            <h1 style={{ fontSize: 28, fontWeight: 800, color: t.ink, margin: "6px 0 4px", letterSpacing: -0.6 }}>
+            <h1
+              style={{
+                fontSize: 21,
+                fontWeight: 850,
+                color: t.ink,
+                margin: "5px 0 3px",
+                letterSpacing: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
               {loan.address}
             </h1>
-            <div style={{ fontSize: 13, color: t.ink2 }}>
-              {loan.city ?? "—"} · {QC_FMT.short(Number(loan.amount))} ·{" "}
-              {loan.close_date ? `Close ${new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "—"}
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: t.ink2 }}>
+              <span>{loan.city ?? "No city"}</span>
+              <span style={{ color: t.ink4 }}>/</span>
+              <span>{QC_FMT.short(Number(loan.amount))}</span>
+              <span style={{ color: t.ink4 }}>/</span>
+              <span>{loan.close_date ? `Close ${new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "No close date"}</span>
+              <span style={{ color: t.ink4 }}>/</span>
+              <span>{docsReceived}/{docs.length || 0} docs received</span>
             </div>
           </div>
 
-          {/* Right rail summary card */}
-          <div style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{
-              border: `1px solid ${t.line}`, borderRadius: 12, padding: 14, background: t.surface2,
-            }}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>Loan amount</div>
-              <div style={{ fontSize: 28, fontWeight: 800, color: t.ink, marginTop: 2, fontFeatureSettings: '"tnum"' }}>{QC_FMT.usd(Number(loan.amount))}</div>
-              {isInternal ? (
-                <>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 12 }}>
-                    <Mini t={t} label="Rate" value={loan.final_rate ? `${(loan.final_rate * 100).toFixed(3)}%` : "—"} />
-                    <Mini t={t} label="LTV" value={loan.ltv ? `${(loan.ltv * 100).toFixed(0)}%` : "—"} />
-                    <Mini t={t} label="Points" value={loan.discount_points.toFixed(2)} />
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 8 }}>
-                    <Mini t={t} label="Term" value={loan.term_months ? `${loan.term_months}mo` : "—"} />
-                    <Mini t={t} label="Close" value={loan.close_date ? new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"} />
-                    <Mini t={t} label="Risk" value={loan.risk_score ?? "—"} accent={loan.risk_score && loan.risk_score >= 80 ? t.profit : t.warn} />
-                  </div>
-                </>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 12 }}>
-                  <Mini t={t} label="Docs" value={`${docsReceived}/${docs.length || 0}`} />
-                  <Mini t={t} label="Close" value={loan.close_date ? new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"} />
-                  <Mini t={t} label="Stage" value={stageIndex >= 0 ? `${stageIndex + 1}/6` : "—"} />
+          <div style={{ display: "grid", gridTemplateColumns: "72px minmax(0, 1fr)", gap: 14, alignItems: "center" }}>
+            <CompletionDial score={completion.score} label={completion.label} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 850, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
+                  File completion
                 </div>
-              )}
+                <div style={{ fontSize: 12, fontWeight: 850, color: completion.score >= 80 ? t.profit : completion.score >= 60 ? t.warn : t.danger }}>
+                  {completion.label}
+                </div>
+              </div>
+              <div style={{ height: 8, borderRadius: 999, background: t.line, overflow: "hidden", marginTop: 8 }}>
+                <div
+                  style={{
+                    width: `${completion.score}%`,
+                    height: "100%",
+                    borderRadius: 999,
+                    background: completion.score >= 80 ? t.profit : completion.score >= 60 ? t.warn : t.brand,
+                  }}
+                />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 9 }}>
+                <HeaderStat label="Criteria" value={`${completion.criteria.ready}/${completion.criteria.total}`} />
+                <HeaderStat label="Docs" value={`${completion.docs.verified}/${completion.docs.total || 0}`} />
+                <HeaderStat label="Stage" value={`${completion.stage.index + 1}/${completion.stage.total}`} />
+              </div>
             </div>
-            <button onClick={() => setAiOpen(true)} style={{
-              padding: "10px 14px", borderRadius: 10, background: t.petrolSoft, color: t.petrol,
-              fontSize: 13, fontWeight: 700,
-              border: `1px solid ${t.petrol}40`, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
-              cursor: "pointer",
-            }}>
-              <Icon name="sparkles" size={14} /> Ask co-pilot about this loan
-            </button>
           </div>
         </div>
 
-        {/* Stage stepper */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6, marginTop: 18 }}>
-          {STAGE_KEYS.map((s, i) => (
-            <div key={s} style={{
-              height: 6, borderRadius: 3,
-              background: i <= stageIndex ? t.brand : t.line,
-            }} />
-          ))}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(72px, 1fr))", gap: 1, borderTop: `1px solid ${t.line}` }}>
+          {FILE_STAGE_KEYS.map((stage, i) => {
+            const active = i <= stageIndex;
+            return (
+              <div
+                key={stage}
+                style={{
+                  padding: "8px 10px",
+                  minWidth: 0,
+                  background: active ? t.brandSoft : "transparent",
+                  borderRight: i === FILE_STAGE_KEYS.length - 1 ? "none" : `1px solid ${t.line}`,
+                }}
+              >
+                <div style={{ height: 4, borderRadius: 999, background: active ? t.brand : t.line }} />
+                <div
+                  style={{
+                    marginTop: 5,
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    color: active ? t.ink : t.ink3,
+                    letterSpacing: 0,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {FILE_STAGE_LABELS[i]}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Stage transition control */}
         {canTransitionStage && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, paddingTop: 14, borderTop: `1px dashed ${t.line}`, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>Move stage</span>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "180px minmax(220px, 1fr) auto",
+              gap: 10,
+              padding: 12,
+              borderTop: `1px solid ${t.line}`,
+              alignItems: "center",
+            }}
+          >
             <select
               value=""
               onChange={(e) => {
@@ -174,11 +236,16 @@ export default function LoanDetailPage() {
               }}
               disabled={stageMut.isPending}
               style={{
-                padding: "8px 10px", borderRadius: 8, background: t.surface2,
-                border: `1px solid ${t.line}`, color: t.ink, fontSize: 12, fontFamily: "inherit",
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: t.surface,
+                border: `1px solid ${t.lineStrong}`,
+                color: t.ink,
+                fontSize: 12,
+                fontFamily: "inherit",
               }}
             >
-              <option value="">Select target stage…</option>
+              <option value="">Move file stage</option>
               {LoanStageOptions
                 .filter((o) => o.value !== loan.stage)
                 .map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -186,24 +253,51 @@ export default function LoanDetailPage() {
             <input
               value={stageNote}
               onChange={(e) => setStageNote(e.target.value)}
-              placeholder="Note (optional)"
+              placeholder="Stage note before moving"
               style={{
-                flex: 1, minWidth: 200, padding: "8px 10px", borderRadius: 8, background: t.surface2,
-                border: `1px solid ${t.line}`, color: t.ink, fontSize: 12, fontFamily: "inherit", outline: "none",
+                minWidth: 0,
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: t.surface,
+                border: `1px solid ${t.line}`,
+                color: t.ink,
+                fontSize: 12,
+                fontFamily: "inherit",
+                outline: "none",
               }}
             />
+            <button
+              onClick={() => setAiOpen(true)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                background: t.petrolSoft,
+                color: t.petrol,
+                fontSize: 12.5,
+                fontWeight: 800,
+                border: `1px solid ${t.petrol}40`,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Icon name="sparkles" size={13} /> Co-pilot
+            </button>
             {stageMut.isError && (
-              <span style={{ fontSize: 11, color: t.danger, fontWeight: 700 }}>
-                {stageMut.error instanceof Error ? stageMut.error.message : "Failed"}
+              <span style={{ gridColumn: "1 / -1", fontSize: 11, color: t.danger, fontWeight: 800 }}>
+                {stageMut.error instanceof Error ? stageMut.error.message : "Failed to move stage"}
               </span>
             )}
-            {stageMut.isPending && <span style={{ fontSize: 11, color: t.ink3, fontWeight: 600 }}>Moving…</span>}
+            {stageMut.isPending && <span style={{ gridColumn: "1 / -1", fontSize: 11, color: t.ink3, fontWeight: 700 }}>Moving stage...</span>}
           </div>
         )}
-      </Card>
+      </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${t.line}`, overflowX: "auto" }}>
+      <div style={{ display: "flex", gap: 6, padding: 6, border: `1px solid ${t.line}`, borderRadius: 14, background: t.surface, boxShadow: t.shadow, overflowX: "auto" }}>
         {tabs.map((tabDef) => {
           const active = activeTab === tabDef.id;
           const isDocs = tabDef.id === "docs";
@@ -212,11 +306,13 @@ export default function LoanDetailPage() {
               key={tabDef.id}
               onClick={() => setTab(tabDef.id)}
               style={{
-                padding: "10px 14px",
-                borderBottom: `2px solid ${active ? t.brand : "transparent"}`,
-                color: active ? t.ink : t.ink3,
+                padding: "9px 12px",
+                borderRadius: 9,
+                color: active ? t.inverse : t.ink3,
                 fontSize: 13, fontWeight: 700,
-                background: "transparent", border: "none", cursor: "pointer",
+                background: active ? t.brand : "transparent",
+                border: `1px solid ${active ? t.brand : "transparent"}`,
+                cursor: "pointer",
                 display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
               }}
             >
@@ -260,11 +356,50 @@ export default function LoanDetailPage() {
   );
 }
 
-function Mini({ t, label, value, accent }: { t: ReturnType<typeof useTheme>["t"]; label: string; value: string | number; accent?: string }) {
+function CompletionDial({ score, label }: { score: number; label: string }) {
+  const { t } = useTheme();
+  const color = score >= 80 ? t.profit : score >= 60 ? t.warn : t.brand;
   return (
-    <div>
-      <div style={{ fontSize: 9.5, fontWeight: 700, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 800, color: accent ?? t.ink, marginTop: 2, fontFeatureSettings: '"tnum"' }}>{value}</div>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+      <div
+        title={label}
+        style={{
+          width: 68,
+          height: 68,
+          borderRadius: 999,
+          background: `conic-gradient(${color} ${score * 3.6}deg, ${t.line} 0deg)`,
+          display: "grid",
+          placeItems: "center",
+          boxShadow: `inset 0 0 0 1px ${t.line}`,
+        }}
+      >
+        <div
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 999,
+            background: t.surface,
+            display: "grid",
+            placeItems: "center",
+            color,
+            fontSize: 18,
+            fontWeight: 900,
+            fontFeatureSettings: '"tnum"',
+          }}
+        >
+          {score}%
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeaderStat({ label, value }: { label: string; value: string | number }) {
+  const { t } = useTheme();
+  return (
+    <div style={{ border: `1px solid ${t.line}`, borderRadius: 8, padding: "6px 8px", background: t.surface }}>
+      <div style={{ fontSize: 9.5, fontWeight: 800, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase" }}>{label}</div>
+      <div style={{ marginTop: 2, fontSize: 13, fontWeight: 900, color: t.ink, fontFeatureSettings: '"tnum"' }}>{value}</div>
     </div>
   );
 }
