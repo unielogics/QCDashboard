@@ -32,14 +32,14 @@ import type {
 import { useInitSignatureUpload } from "@/hooks/useApi";
 
 const SECTIONS = [
-  { id: "checklists", label: "Doc checklists", icon: "vault" as const },
-  { id: "cadence", label: "AI cadence", icon: "ai" as const },
-  { id: "referrals", label: "Referrals", icon: "user" as const },
-  { id: "pricing", label: "Pricing", icon: "rates" as const },
-  { id: "simulator", label: "Simulator", icon: "calc" as const },
-  { id: "letterhead", label: "Firm letterhead", icon: "docCheck" as const },
-  { id: "security", label: "Security", icon: "shield" as const },
-  { id: "team", label: "Team", icon: "clients" as const },
+  { id: "checklists", label: "Doc checklists", icon: "vault" as const, legacy: true },
+  { id: "cadence", label: "AI cadence", icon: "ai" as const, legacy: true },
+  { id: "referrals", label: "Referrals", icon: "user" as const, legacy: false },
+  { id: "pricing", label: "Pricing", icon: "rates" as const, legacy: false },
+  { id: "simulator", label: "Simulator", icon: "calc" as const, legacy: false },
+  { id: "letterhead", label: "Firm letterhead", icon: "docCheck" as const, legacy: false },
+  { id: "security", label: "Security", icon: "shield" as const, legacy: false },
+  { id: "team", label: "Team", icon: "clients" as const, legacy: false },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
@@ -244,18 +244,59 @@ export default function SettingsPage() {
                 width: "100%", display: "flex", alignItems: "center", gap: 10,
                 padding: "10px 12px", borderRadius: 9, border: "none",
                 background: section === s.id ? t.brandSoft : "transparent",
-                color: section === s.id ? t.ink : t.ink2,
+                color: section === s.id ? t.ink : (s.legacy ? t.ink3 : t.ink2),
                 fontSize: 13, fontWeight: section === s.id ? 800 : 600,
                 cursor: "pointer", textAlign: "left",
               }}
             >
               <Icon name={s.icon} size={14} />
-              {s.label}
+              <span style={{ flex: 1 }}>{s.label}</span>
+              {s.legacy ? (
+                <span style={{
+                  fontSize: 9, fontWeight: 800, padding: "1px 5px",
+                  borderRadius: 3, background: t.warnBg, color: t.warn,
+                  letterSpacing: 0.5,
+                }}>
+                  LEGACY
+                </span>
+              ) : null}
             </button>
           ))}
         </Card>
 
-        <div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Legacy banner — shown when a deprecated section is active.
+              Doc Checklists + AI Cadence still write to the legacy
+              app_settings JSON, but the AI itself reads from
+              client_ai_plan (see /admin/lending-ai). */}
+          {SECTIONS.find(s => s.id === section)?.legacy ? (
+            <Card pad={14} style={{ borderLeft: `3px solid ${t.warn}`, background: t.warnBg }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
+                    ⚠ Legacy section — superseded by Lending AI
+                  </div>
+                  <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
+                    {section === "cadence"
+                      ? "Borrower follow-up now runs through Lending AI / Borrower Follow-Up. This preset only feeds the older non-AI doc-reminder pipeline (job_doc_reminders)."
+                      : "Loan-product requirements now live in Lending AI / Lending Playbooks (organized by stage). This list only pre-populates loans.required_docs at loan creation."}
+                    {" "}Edits here keep working but the AI ignores them.
+                  </div>
+                </div>
+                <Link href="/admin/lending-ai" style={{ textDecoration: "none" }}>
+                  <span style={{
+                    fontSize: 12, fontWeight: 700, color: t.petrol,
+                    padding: "6px 12px", borderRadius: 6,
+                    border: `1px solid ${t.petrol}`, background: t.surface,
+                    whiteSpace: "nowrap",
+                  }}>
+                    Open Lending AI →
+                  </span>
+                </Link>
+              </div>
+            </Card>
+          ) : null}
+
           {section === "checklists" && (
             <ChecklistsSection
               draft={draft}

@@ -77,9 +77,9 @@ const SIDES: { id: LoanSide; label: string }[] = [
 ];
 
 const SECTIONS = [
-  { id: "identity", label: "Identity & Letterhead", icon: "user" as const },
-  { id: "cadence", label: "AI Cadence", icon: "bell" as const },
-  { id: "checklists", label: "Doc Checklist", icon: "vault" as const },
+  { id: "identity", label: "Identity & Letterhead", icon: "user" as const, legacy: false },
+  { id: "cadence", label: "AI Cadence", icon: "bell" as const, legacy: true },
+  { id: "checklists", label: "Doc Checklist", icon: "vault" as const, legacy: true },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
@@ -231,13 +231,22 @@ export default function AgentSettingsPage() {
                   padding: "10px 12px",
                   borderRadius: 8,
                   background: active ? t.brandSoft : "transparent",
-                  color: active ? t.brand : t.ink2,
+                  color: active ? t.brand : (s.legacy ? t.ink3 : t.ink2),
                   fontSize: 13,
                   fontWeight: active ? 700 : 600,
                 }}
               >
                 <Icon name={s.icon} size={14} />
-                {s.label}
+                <span style={{ flex: 1 }}>{s.label}</span>
+                {s.legacy ? (
+                  <span style={{
+                    fontSize: 9, fontWeight: 800, padding: "1px 5px",
+                    borderRadius: 3, background: t.warnBg, color: t.warn,
+                    letterSpacing: 0.5,
+                  }}>
+                    LEGACY
+                  </span>
+                ) : null}
               </button>
             );
           })}
@@ -282,6 +291,38 @@ export default function AgentSettingsPage() {
             </div>
           </Card>
         </Link>
+
+        {/* Legacy banner — shows when a deprecated section is open. The
+            old AI Cadence + Doc Checklist sections still write to the
+            old broker-settings JSON, but the AI itself reads from
+            client_ai_plan (Lending AI). */}
+        {SECTIONS.find(s => s.id === section)?.legacy ? (
+          <Card pad={14} style={{ borderLeft: `3px solid ${t.warn}`, background: t.warnBg }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
+                  ⚠ Legacy section — superseded by AI Assistant
+                </div>
+                <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
+                  {section === "cadence"
+                    ? "Your AI now follows the conditional rules in AI Assistant → Follow-Up. This preset only feeds the older non-AI doc-reminder pipeline."
+                    : "Your AI now reads requirements from AI Assistant → Buyer / Seller Rules. This list only pre-populates the legacy loans.required_docs field at loan creation."}
+                  {" "}Edits here keep working but the AI ignores them.
+                </div>
+              </div>
+              <Link href="/agent-settings/ai" style={{ textDecoration: "none" }}>
+                <span style={{
+                  fontSize: 12, fontWeight: 700, color: t.petrol,
+                  padding: "6px 12px", borderRadius: 6,
+                  border: `1px solid ${t.petrol}`, background: t.surface,
+                  whiteSpace: "nowrap",
+                }}>
+                  Open AI Assistant →
+                </span>
+              </Link>
+            </div>
+          </Card>
+        ) : null}
 
         {section === "identity" && (
           <IdentitySection
