@@ -97,6 +97,28 @@ function useDevUser(): string {
  * tokenless 401. Once Clerk resolves, the useCallback deps change and the
  * query refetches with a real Bearer token.
  */
+/**
+ * True when the error indicates the AI backend routes (Phases 1–7,
+ * /me/ai-playbook/*, /clients/{id}/ai-plan, /lending-admin/*,
+ * /ai-preview/*) aren't deployed yet. Components use this to swap in
+ * a "Backend not deployed" banner instead of a broken loading state.
+ */
+export function isAINotDeployed(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 404;
+}
+
+/**
+ * Default react-query retry policy used by every AI hook below.
+ * Without this, react-query retries 3 times on 404 — which produces
+ * the storm of failing requests we see in the console when the
+ * backend isn't deployed yet.
+ */
+function aiQueryRetry(failureCount: number, err: unknown): boolean {
+  if (err instanceof ApiError && err.status === 404) return false;
+  if (err instanceof ApiError && err.status === 403) return false;
+  return failureCount < 1;
+}
+
 function useAuthedApi() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const devUser = useDevUser();
@@ -2412,6 +2434,7 @@ export function useClientAIPlan(clientId: string | null | undefined, loanId?: st
         `/clients/${clientId}/ai-plan${loanId ? `?loan_id=${loanId}` : ""}`,
       ),
     enabled: !!clientId,
+    retry: aiQueryRetry,
   });
 }
 
@@ -2532,6 +2555,7 @@ export function useAgentPlaybook(playbookType: "buyer" | "seller" | "cadence") {
   return useQuery({
     queryKey: ["agentPlaybook", playbookType],
     queryFn: () => apiCall<AgentPlaybook>(`/me/ai-playbook/${playbookType}`),
+    retry: aiQueryRetry,
   });
 }
 
@@ -2598,6 +2622,7 @@ export function useAgentCadenceRules() {
   return useQuery({
     queryKey: ["agentCadenceRules"],
     queryFn: () => apiCall<AgentCadenceRule[]>(`/me/ai-playbook/cadence/rules`),
+    retry: aiQueryRetry,
   });
 }
 
@@ -2656,6 +2681,7 @@ export function useLendingPlaybooks(playbookType?: string) {
       apiCall<LendingPlaybook[]>(
         `/lending-admin/playbooks${playbookType ? `?playbook_type=${playbookType}` : ""}`,
       ),
+    retry: aiQueryRetry,
   });
 }
 
@@ -2716,6 +2742,7 @@ export function useLendingPlaybookRequirements(playbookId: string | null | undef
     queryKey: ["lendingPlaybookReqs", playbookId],
     queryFn: () => apiCall<PlaybookRequirement[]>(`/lending-admin/playbooks/${playbookId}/requirements`),
     enabled: !!playbookId,
+    retry: aiQueryRetry,
   });
 }
 
@@ -2751,6 +2778,7 @@ export function useFundingCadenceRules() {
   return useQuery({
     queryKey: ["fundingCadenceRules"],
     queryFn: () => apiCall<AgentCadenceRule[]>(`/lending-admin/cadence-rules`),
+    retry: aiQueryRetry,
   });
 }
 
@@ -2785,6 +2813,7 @@ export function useFundingMetaRules(kind: "verification" | "escalation" | "commu
   return useQuery({
     queryKey: ["fundingMetaRules", kind],
     queryFn: () => apiCall<{ playbook_id: string; rules: Record<string, unknown> }>(`/lending-admin/${kind}-rules`),
+    retry: aiQueryRetry,
   });
 }
 
@@ -2830,5 +2859,6 @@ export function useAuditEvents(filter: {
   return useQuery({
     queryKey: ["auditEvents", filter],
     queryFn: () => apiCall<AuditEvent[]>(`/lending-admin/audit?${qs.toString()}`),
+    retry: aiQueryRetry,
   });
 }

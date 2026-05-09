@@ -9,7 +9,9 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card } from "@/components/design-system/primitives";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { AIPreviewPanel } from "@/components/AIPreviewPanel";
+import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 import {
+  isAINotDeployed,
   useDeleteFundingCadenceRule,
   useFundingCadenceRules,
   useUpsertFundingCadenceRule,
@@ -34,7 +36,7 @@ const ACTIONS = [
 
 export default function FundingCadencePage() {
   const { t } = useTheme();
-  const { data: rules = [] } = useFundingCadenceRules();
+  const { data: rules = [], error: cadErr } = useFundingCadenceRules();
   const upsert = useUpsertFundingCadenceRule();
   const del = useDeleteFundingCadenceRule();
   const [draft, setDraft] = useState<Partial<AgentCadenceRule> | null>(null);
@@ -45,6 +47,10 @@ export default function FundingCadencePage() {
         title="Borrower Follow-Up Cadence"
         subtitle="Conditional follow-up rules for borrowers in the lending phase. Draft-first by default — auto-send is opt-in per rule."
       />
+
+      {isAINotDeployed(cadErr) ? (
+        <AINotDeployedBanner surface="Lending AI" />
+      ) : null}
 
       <Card pad={20}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>

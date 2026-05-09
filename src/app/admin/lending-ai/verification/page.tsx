@@ -8,7 +8,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
-import { useFundingMetaRules, usePatchFundingMetaRules } from "@/hooks/useApi";
+import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
+import { isAINotDeployed, useFundingMetaRules, usePatchFundingMetaRules } from "@/hooks/useApi";
 
 type DocChecks = Record<string, boolean>;
 
@@ -89,7 +90,7 @@ const DOC_TYPE_CATALOG: { key: string; label: string; checks: { id: string; labe
 
 export default function VerificationRulesPage() {
   const { t } = useTheme();
-  const { data, isLoading } = useFundingMetaRules("verification");
+  const { data, isLoading, error: vfError } = useFundingMetaRules("verification");
   const patch = usePatchFundingMetaRules("verification");
 
   const [val, setVal] = useState<VerificationRules>({});
@@ -153,6 +154,10 @@ export default function VerificationRulesPage() {
         title="Document Verification"
         subtitle="For each document type, choose what the AI should check."
       />
+
+      {isAINotDeployed(vfError) ? (
+        <AINotDeployedBanner surface="Lending AI" />
+      ) : null}
 
       <Card pad={20}>
         {isLoading ? (

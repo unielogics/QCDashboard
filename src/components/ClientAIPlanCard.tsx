@@ -19,6 +19,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  isAINotDeployed,
   useClient,
   useClientAIPlan,
   useMarkClientFinanceReady,
@@ -28,6 +29,7 @@ import {
 } from "@/hooks/useApi";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
+import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 
 interface Props {
   clientId: string;
@@ -38,7 +40,7 @@ interface Props {
 
 export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
   const { t } = useTheme();
-  const { data: plan, isLoading } = useClientAIPlan(clientId, loanId ?? null);
+  const { data: plan, isLoading, error: planErr } = useClientAIPlan(clientId, loanId ?? null);
   const { data: client } = useClient(clientId);
   const patch = usePatchClientAIPlan();
   const preview = usePreviewAIPlan();
@@ -60,6 +62,9 @@ export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
   const appts = open.filter(i => i.category === "appointment" || i.category === "task");
   const known = useMemo(() => collectKnown(client?.realtor_profile, plan), [client?.realtor_profile, plan]);
 
+  if (isAINotDeployed(planErr)) {
+    return <AINotDeployedBanner surface="Client AI Plan" />;
+  }
   if (isLoading) {
     return (
       <Card pad={16}>

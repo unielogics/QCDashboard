@@ -13,7 +13,9 @@ import { useEffect, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
+import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 import {
+  isAINotDeployed,
   useFundingMetaRules,
   usePatchFundingMetaRules,
 } from "@/hooks/useApi";
@@ -46,7 +48,7 @@ const SUGGESTED_RULES = [
 
 export default function AIIdentityPage() {
   const { t } = useTheme();
-  const { data, isLoading } = useFundingMetaRules("communication");
+  const { data, isLoading, error: idErr } = useFundingMetaRules("communication");
   const patch = usePatchFundingMetaRules("communication");
 
   const [identity, setIdentity] = useState<Identity>({});
@@ -81,7 +83,9 @@ export default function AIIdentityPage() {
         subtitle="The AI's name, voice, and the hard rules that apply across every conversation. These take precedence over per-agent or per-client overrides."
       />
 
-      {isLoading ? (
+      {isAINotDeployed(idErr) ? (
+        <AINotDeployedBanner surface="Lending AI" />
+      ) : isLoading ? (
         <Card pad={20}><div style={{ color: t.ink3 }}>Loading…</div></Card>
       ) : (
         <>

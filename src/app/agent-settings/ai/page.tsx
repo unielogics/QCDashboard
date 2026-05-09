@@ -14,12 +14,14 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { AIPreviewPanel } from "@/components/AIPreviewPanel";
 import {
+  isAINotDeployed,
   useAgentPlaybook,
   useDeleteAgentRequirement,
   usePatchAgentPlaybookRules,
   useUpsertAgentRequirement,
   type PlaybookRequirement,
 } from "@/hooks/useApi";
+import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 
 type TabId = "buyer" | "seller" | "followup" | "handoff" | "style";
 
@@ -109,7 +111,7 @@ function SellerRulesTab() {
  * (locked items show a 🔒 chip and can't be unchecked). */
 function SidedRulesTab({ side, leadLabel }: { side: "buyer" | "seller"; leadLabel: string }) {
   const { t } = useTheme();
-  const { data, isLoading } = useAgentPlaybook(side);
+  const { data, isLoading, error } = useAgentPlaybook(side);
   const upsert = useUpsertAgentRequirement(side);
   const del = useDeleteAgentRequirement(side);
 
@@ -130,39 +132,48 @@ function SidedRulesTab({ side, leadLabel }: { side: "buyer" | "seller"; leadLabe
 
   async function setLevel(req: PlaybookRequirement, owner: "platform" | "agent", newLevel: "required" | "recommended" | "optional" | "disable") {
     if (owner === "platform" && !req.can_agent_override) return;  // Locked
-    if (newLevel === "disable") {
-      if (owner === "agent") await del.mutateAsync(req.id);
-      // For platform rows, the way to "disable" is to clone an agent
-      // overlay with required_level=optional. The agent has the toggle
-      // in their UI but we reflect intent via overlay presence.
-      else {
-        await upsert.mutateAsync({
-          requirement_key: req.requirement_key,
-          label: req.label,
-          category: req.category,
-          required_level: "optional",
-        });
+    try {
+      if (newLevel === "disable") {
+        if (owner === "agent") await del.mutateAsync(req.id);
+        // For platform rows, the way to "disable" is to clone an agent
+        // overlay with required_level=optional. The agent has the toggle
+        // in their UI but we reflect intent via overlay presence.
+        else {
+          await upsert.mutateAsync({
+            requirement_key: req.requirement_key,
+            label: req.label,
+            category: req.category,
+            required_level: "optional",
+          });
+        }
+        return;
       }
-      return;
+      await upsert.mutateAsync({
+        id: owner === "agent" ? req.id : undefined,
+        requirement_key: req.requirement_key,
+        label: req.label,
+        category: req.category,
+        required_level: newLevel,
+      });
+    } catch {
+      // The next query refetch will surface AINotDeployedBanner if it's a 404;
+      // any other error gets swallowed here rather than crashing the event handler.
     }
-    await upsert.mutateAsync({
-      id: owner === "agent" ? req.id : undefined,
-      requirement_key: req.requirement_key,
-      label: req.label,
-      category: req.category,
-      required_level: newLevel,
-    });
   }
 
   async function addCustom() {
     if (!draft || !draft.label.trim()) return;
-    await upsert.mutateAsync({
-      requirement_key: draft.label.trim().toLowerCase().replace(/\s+/g, "_"),
-      label: draft.label.trim(),
-      category: draft.isDoc ? "document" : "fact",
-      required_level: draft.level,
-    });
-    setDraft(null);
+    try {
+      await upsert.mutateAsync({
+        requirement_key: draft.label.trim().toLowerCase().replace(/\s+/g, "_"),
+        label: draft.label.trim(),
+        category: draft.isDoc ? "document" : "fact",
+        required_level: draft.level,
+      });
+      setDraft(null);
+    } catch {
+      // 404 / 403 swallowed — the banner above already explains why.
+    }
   }
 
   return (
@@ -171,7 +182,9 @@ function SidedRulesTab({ side, leadLabel }: { side: "buyer" | "seller"; leadLabe
         When you get a {leadLabel}, your AI should collect:
       </p>
 
-      {isLoading ? (
+      {isAINotDeployed(error) ? (
+        <AINotDeployedBanner surface="AI Assistant" />
+      ) : isLoading ? (
         <Card pad={20}><div style={{ color: t.ink3, fontSize: 13 }}>Loading…</div></Card>
       ) : (
         <Card pad={20}>
@@ -369,7 +382,11 @@ function FollowUpTab() {
 
   async function save() {
     const next = { ...(cadence.data?.rules || {}), followup: val };
-    await patch.mutateAsync(next);
+    try { await patch.mutateAsync(next); } catch { /* banner covers it */ }
+  }
+
+  if (isAINotDeployed(cadence.error)) {
+    return <AINotDeployedBanner surface="AI Assistant" />;
   }
 
   return (
@@ -531,7 +548,11 @@ function ReadyForLendingTab() {
 
   async function save() {
     const next = { ...(buyer.data?.rules || {}), before_handoff: Array.from(chosen) };
-    await patch.mutateAsync(next);
+    try { await patch.mutateAsync(next); } catch { /* banner covers it */ }
+  }
+
+  if (isAINotDeployed(buyer.error)) {
+    return <AINotDeployedBanner surface="AI Assistant" />;
   }
 
   return (
@@ -613,7 +634,11 @@ function MessageStyleTab() {
 
   async function save() {
     const next = { ...(cadence.data?.rules || {}), style: s };
-    await patch.mutateAsync(next);
+    try { await patch.mutateAsync(next); } catch { /* banner covers it */ }
+  }
+
+  if (isAINotDeployed(cadence.error)) {
+    return <AINotDeployedBanner surface="AI Assistant" />;
   }
 
   return (

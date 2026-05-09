@@ -14,7 +14,9 @@ import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { StageChecklist } from "@/components/StageChecklist";
 import { AIPreviewPanel } from "@/components/AIPreviewPanel";
+import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 import {
+  isAINotDeployed,
   useDeleteLendingRequirement,
   useDuplicatePlatformPlaybook,
   useFundingMetaRules,
@@ -38,7 +40,7 @@ const PRODUCT_LABELS: Record<string, string> = {
 
 export default function LendingPlaybooksPage() {
   const { t } = useTheme();
-  const { data: allLoanProducts = [] } = useLendingPlaybooks("loan_product");
+  const { data: allLoanProducts = [], error: lpError } = useLendingPlaybooks("loan_product");
 
   // For each product key, prefer the funding-owned version; fall back
   // to the platform default (read-only).
@@ -72,6 +74,10 @@ export default function LendingPlaybooksPage() {
         title="Lending Playbooks"
         subtitle="What the AI collects on every loan, organized by the stage that item blocks. Funding-required items are locked from the agent side; everything else can be overridden per agent or per client."
       />
+
+      {isAINotDeployed(lpError) ? (
+        <AINotDeployedBanner surface="Lending AI" />
+      ) : null}
 
       {/* Loan product picker */}
       <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>

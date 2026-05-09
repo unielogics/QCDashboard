@@ -7,7 +7,8 @@ import { useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card } from "@/components/design-system/primitives";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
-import { useAuditEvents } from "@/hooks/useApi";
+import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
+import { isAINotDeployed, useAuditEvents } from "@/hooks/useApi";
 
 const EVENT_TYPES = [
   "",
@@ -26,7 +27,7 @@ export default function AuditFeedPage() {
   const { t } = useTheme();
   const [eventType, setEventType] = useState<string>("");
   const [clientId, setClientId] = useState<string>("");
-  const { data: events = [], isLoading } = useAuditEvents({
+  const { data: events = [], isLoading, error: auditErr } = useAuditEvents({
     event_type: eventType || undefined,
     client_id: clientId || undefined,
     limit: 200,
@@ -38,6 +39,10 @@ export default function AuditFeedPage() {
         title="Audit Log"
         subtitle="Every AI-behavior-changing event is appended here. Filter by type, client, or playbook."
       />
+
+      {isAINotDeployed(auditErr) ? (
+        <AINotDeployedBanner surface="Lending AI" />
+      ) : null}
 
       <Card pad={20}>
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
