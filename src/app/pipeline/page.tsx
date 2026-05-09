@@ -237,7 +237,31 @@ export default function PipelinePage() {
               <div style={{ fontWeight: 700, color: t.ink2 }}>{loan.deal_id}</div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{loan.address}</div>
-                <div style={{ fontSize: 11.5, color: t.ink3 }}>{loan.city}</div>
+                <div style={{ fontSize: 11.5, color: t.ink3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span>{loan.city}</span>
+                  {/* Owner reference — visible only to operators (super_admin /
+                      loan_exec). Agents only see their own files so the name
+                      is implicit. */}
+                  {isInternal && loan.broker_name ? (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span style={{
+                        display: "inline-flex", alignItems: "center", gap: 4,
+                        padding: "1px 6px", borderRadius: 4,
+                        background: t.brandSoft, color: t.brand,
+                        fontSize: 10.5, fontWeight: 700, letterSpacing: 0.3,
+                      }}>
+                        Agent: {loan.broker_name}
+                      </span>
+                    </>
+                  ) : null}
+                  {isInternal && loan.client_name ? (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span style={{ fontWeight: 600 }}>{loan.client_name}</span>
+                    </>
+                  ) : null}
+                </div>
               </div>
               <div><Pill>{loan.type.replace("_", " ")}</Pill></div>
               <div style={{ textAlign: "right", fontWeight: 700, fontFeatureSettings: '"tnum"' }}>{QC_FMT.short(Number(loan.amount))}</div>
@@ -265,6 +289,28 @@ export default function PipelinePage() {
                       <div style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>{loan.deal_id}</div>
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink, marginTop: 2 }}>{loan.address}</div>
                       <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>{QC_FMT.short(Number(loan.amount))} · {loan.type.replace("_", " ")}</div>
+                      {isInternal && (loan.broker_name || loan.client_name) ? (
+                        <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {loan.broker_name ? (
+                            <span style={{
+                              fontSize: 10, fontWeight: 700,
+                              padding: "1px 5px", borderRadius: 3,
+                              background: t.brandSoft, color: t.brand,
+                            }}>
+                              {loan.broker_name}
+                            </span>
+                          ) : null}
+                          {loan.client_name ? (
+                            <span style={{
+                              fontSize: 10, fontWeight: 600,
+                              padding: "1px 5px", borderRadius: 3,
+                              background: t.surface2, color: t.ink2,
+                            }}>
+                              {loan.client_name}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </Link>
                   ))}
                 </div>

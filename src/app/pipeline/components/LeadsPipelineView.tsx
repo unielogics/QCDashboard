@@ -6,6 +6,7 @@ import { Card, Pill } from "@/components/design-system/primitives";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { useClients, useLoans } from "@/hooks/useApi";
+import { useActiveProfile } from "@/store/role";
 import type { Client, ClientStage, ClientType, Loan } from "@/lib/types";
 
 const RELATIONSHIP_STAGES = [
@@ -97,8 +98,16 @@ interface Props {
 
 export function LeadsPipelineView({ view, search }: Props) {
   const { t } = useTheme();
-  const { data: clients = [] } = useClients("mine");
-  const { data: loans = [] } = useLoans("mine");
+  const profile = useActiveProfile();
+  const isAgent = profile.role === "broker";
+  const isInternal = profile.role === "super_admin" || profile.role === "loan_exec";
+  // Scope hint: agents always run "mine" so the network surface matches
+  // the backend's role-based filter. Operators (super_admin / loan_exec)
+  // see every relationship and can identify the owning agent via the
+  // broker_name pill rendered below.
+  const scope = isAgent ? "mine" : undefined;
+  const { data: clients = [] } = useClients(scope);
+  const { data: loans = [] } = useLoans(scope);
 
   const enriched = useMemo<EnrichedClient[]>(() => {
     const loansByClient = new Map<string, Loan[]>();
@@ -204,8 +213,24 @@ export function LeadsPipelineView({ view, search }: Props) {
                   </div>
                   <SidePill type={clientSide(client)} />
                 </div>
-                <div style={{ marginTop: 3, fontSize: 11.5, color: t.ink3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {client.email ?? "No email"}{client.city ? ` · ${client.city}` : ""}
+                <div style={{ marginTop: 3, fontSize: 11.5, color: t.ink3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {client.email ?? "No email"}{client.city ? ` · ${client.city}` : ""}
+                  </span>
+                  {/* Owner reference — operator-only. Helps super-admin /
+                      UW see which agent owns each relationship without
+                      drilling in. Agents see only their own clients so
+                      this is implicit for them. */}
+                  {isInternal && client.broker_name ? (
+                    <span style={{
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                      padding: "1px 6px", borderRadius: 4,
+                      background: t.brandSoft, color: t.brand,
+                      fontSize: 10.5, fontWeight: 700, letterSpacing: 0.3,
+                    }}>
+                      Agent: {client.broker_name}
+                    </span>
+                  ) : null}
                 </div>
               </div>
               <StagePill stage={client._stage} />
@@ -281,6 +306,19 @@ export function LeadsPipelineView({ view, search }: Props) {
                       </div>
                       <SidePill type={clientSide(client)} />
                     </div>
+                    {/* Owner reference — operator-only. */}
+                    {isInternal && client.broker_name ? (
+                      <div style={{ marginTop: 4 }}>
+                        <span style={{
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                          padding: "1px 6px", borderRadius: 4,
+                          background: t.brandSoft, color: t.brand,
+                          fontSize: 10, fontWeight: 700, letterSpacing: 0.3,
+                        }}>
+                          {client.broker_name}
+                        </span>
+                      </div>
+                    ) : null}
                     <div style={{ marginTop: 7, fontSize: 11.5, color: t.ink3, lineHeight: 1.35 }}>
                       {workflowLabel(clientSide(client))}
                     </div>

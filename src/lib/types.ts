@@ -16,6 +16,12 @@ export interface Loan {
   deal_id: string;
   client_id: string;
   broker_id: string | null;
+  /** Display name of the agent who owns the loan, joined from the
+   *  brokers table by the list endpoint. Used by operator pipelines
+   *  to show the owner reference; null when the loan is unassigned. */
+  broker_name?: string | null;
+  /** Borrower display name joined from the clients table. */
+  client_name?: string | null;
   lender_id?: string | null;
   address: string;
   city: string | null;
@@ -71,6 +77,10 @@ export interface Client {
   id: string;
   user_id: string | null;
   broker_id: string | null;
+  /** Display name of the agent owning this relationship, joined from
+   *  brokers.display_name by the list endpoint. Used by operator
+   *  pipelines to show the owner reference. */
+  broker_name?: string | null;
   name: string;
   email: string | null;
   phone: string | null;
