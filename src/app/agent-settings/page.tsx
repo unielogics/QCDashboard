@@ -253,44 +253,9 @@ export default function AgentSettingsPage() {
         </div>
       </Card>
 
-      {/* Body */}
+      {/* Body — banner removed; the AI Assistant sidebar entry above
+          is the canonical entry point. */}
       <div style={{ minHeight: 0, display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* Persistent banner — the new AI Assistant home. Visible from
-            every section, especially "AI Cadence" and "Doc Checklist"
-            which are now redundant with the new tabbed page. */}
-        <Link
-          href="/agent-settings/ai"
-          style={{ textDecoration: "none" }}
-        >
-          <Card
-            pad={16}
-            style={{
-              borderLeft: `3px solid ${t.petrol}`,
-              background: t.petrolSoft,
-              cursor: "pointer",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
-                  ✨ AI Assistant — your AI&apos;s configuration lives here
-                </div>
-                <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
-                  Buyer Rules · Seller Rules · Follow-Up · Ready for Lending · Message Style.
-                  Tell your AI what to collect, when to follow up, and what it&apos;s allowed to do.
-                </div>
-              </div>
-              <span style={{
-                fontSize: 13, fontWeight: 700, color: t.petrol,
-                padding: "8px 14px", borderRadius: 8,
-                border: `1px solid ${t.petrol}`, background: t.surface,
-                whiteSpace: "nowrap",
-              }}>
-                Open AI Assistant →
-              </span>
-            </div>
-          </Card>
-        </Link>
 
         {/* Legacy banner — shows when a deprecated section is open. The
             old AI Cadence + Doc Checklist sections still write to the

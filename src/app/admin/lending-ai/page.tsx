@@ -8,7 +8,14 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card } from "@/components/design-system/primitives";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 
-const TILES = [
+interface Tile {
+  href: string;
+  title: string;
+  subtitle: string;
+  legacy?: boolean;
+}
+
+const TILES: Tile[] = [
   {
     href: "/admin/lending-ai/identity",
     title: "AI Identity & Global Rules",
@@ -34,6 +41,21 @@ const TILES = [
     title: "Audit Log",
     subtitle: "Every AI-behavior-changing event, searchable.",
   },
+  // Legacy items — kept reachable from this umbrella since they
+  // belong to the AI/loan domain, but tagged so admins know the
+  // canonical home is the new tiles above.
+  {
+    href: "/settings?section=checklists&from=lending-ai",
+    title: "Doc Checklists",
+    subtitle: "Per loan-type doc list that pre-populates loans.required_docs at loan creation. The new playbooks (above) drive the AI; this drives the legacy non-AI reminder pipeline.",
+    legacy: true,
+  },
+  {
+    href: "/settings?section=cadence&from=lending-ai",
+    title: "AI Cadence (preset)",
+    subtitle: "Gentle / Standard / Aggressive preset that times the legacy job_doc_reminders. The new Borrower Follow-Up rules (above) drive the AI; this only feeds the older reminder cadence.",
+    legacy: true,
+  },
 ];
 
 export default function LendingAILanding() {
@@ -55,8 +77,22 @@ export default function LendingAILanding() {
         {TILES.map(t2 => (
           <Link key={t2.href} href={t2.href} style={{ textDecoration: "none" }}>
             <Card pad={16}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: t.ink, marginBottom: 4 }}>
-                {t2.title}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8,
+                marginBottom: 4,
+              }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: t.ink, flex: 1 }}>
+                  {t2.title}
+                </div>
+                {t2.legacy ? (
+                  <span style={{
+                    fontSize: 9, fontWeight: 800, padding: "2px 6px",
+                    borderRadius: 3, background: t.warnBg, color: t.warn,
+                    letterSpacing: 0.5,
+                  }}>
+                    LEGACY
+                  </span>
+                ) : null}
               </div>
               <div style={{ fontSize: 12, color: t.ink3 }}>
                 {t2.subtitle}

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -31,15 +32,18 @@ import type {
 } from "@/lib/types";
 import { useInitSignatureUpload } from "@/hooks/useApi";
 
+// Doc Checklists + AI Cadence are reachable via deep-link from the
+// Lending AI portal (/admin/lending-ai → Legacy tiles) but no longer
+// surfaced in this sidebar — they belong under the Lending AI umbrella.
 const SECTIONS = [
-  { id: "checklists", label: "Doc checklists", icon: "vault" as const, legacy: true },
-  { id: "cadence", label: "AI cadence", icon: "ai" as const, legacy: true },
-  { id: "referrals", label: "Referrals", icon: "user" as const, legacy: false },
-  { id: "pricing", label: "Pricing", icon: "rates" as const, legacy: false },
-  { id: "simulator", label: "Simulator", icon: "calc" as const, legacy: false },
-  { id: "letterhead", label: "Firm letterhead", icon: "docCheck" as const, legacy: false },
-  { id: "security", label: "Security", icon: "shield" as const, legacy: false },
-  { id: "team", label: "Team", icon: "clients" as const, legacy: false },
+  { id: "checklists", label: "Doc checklists", icon: "vault" as const, hidden: true },
+  { id: "cadence", label: "AI cadence", icon: "ai" as const, hidden: true },
+  { id: "referrals", label: "Referrals", icon: "user" as const, hidden: false },
+  { id: "pricing", label: "Pricing", icon: "rates" as const, hidden: false },
+  { id: "simulator", label: "Simulator", icon: "calc" as const, hidden: false },
+  { id: "letterhead", label: "Firm letterhead", icon: "docCheck" as const, hidden: false },
+  { id: "security", label: "Security", icon: "shield" as const, hidden: false },
+  { id: "team", label: "Team", icon: "clients" as const, hidden: false },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
@@ -69,7 +73,20 @@ function defaultChecklist(loanType: string): LoanTypeChecklist {
 export default function SettingsPage() {
   const { t } = useTheme();
   const profile = useActiveProfile();
-  const [section, setSection] = useState<SectionId>("checklists");
+  const searchParams = useSearchParams();
+  // Deep-link: /settings?section=cadence opens that section directly.
+  // Used by /admin/lending-ai legacy tiles to route into the right
+  // form. Defaults to first visible (non-hidden) section so people
+  // hitting plain /settings don't land on a now-hidden legacy.
+  const initialSection = (() => {
+    const fromUrl = searchParams.get("section");
+    if (fromUrl && SECTIONS.some(s => s.id === fromUrl)) {
+      return fromUrl as SectionId;
+    }
+    return SECTIONS.find(s => !s.hidden)?.id ?? "checklists";
+  })();
+  const fromLendingAI = searchParams.get("from") === "lending-ai";
+  const [section, setSection] = useState<SectionId>(initialSection);
   const { data: settingsData, isLoading, error } = useSettings();
   const update = useUpdateSettings();
 
@@ -198,45 +215,53 @@ export default function SettingsPage() {
         {errFlash && <Pill bg={t.dangerBg} color={t.danger}>{errFlash}</Pill>}
       </div>
 
-      {/* Persistent banner — the new Lending AI Settings home (alembic
-          0032 / 0033). Visible above the legacy section grid; the
-          older Doc Checklists + AI Cadence sections below are
-          functionally redundant with the new playbook UI. */}
-      <Link href="/admin/lending-ai" style={{ textDecoration: "none" }}>
-        <Card
-          pad={16}
-          style={{
-            borderLeft: `3px solid ${t.petrol}`,
-            background: t.petrolSoft,
-            cursor: "pointer",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
-                ✨ Lending AI — playbooks, verification, follow-up, audit
-              </div>
-              <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
-                Configure what the funding-side AI collects per loan product
-                (organized by stage), how it verifies documents, when it follows
-                up with borrowers, and review every AI-behavior-changing event.
-              </div>
-            </div>
-            <span style={{
-              fontSize: 13, fontWeight: 700, color: t.petrol,
-              padding: "8px 14px", borderRadius: 8,
-              border: `1px solid ${t.petrol}`, background: t.surface,
-              whiteSpace: "nowrap",
-            }}>
-              Open Lending AI →
-            </span>
-          </div>
-        </Card>
-      </Link>
+      {/* Lending AI breadcrumb — shown when an admin arrives via a
+          legacy tile in the Lending AI portal. Lets them step back. */}
+      {fromLendingAI ? (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          fontSize: 12, color: t.ink3,
+        }}>
+          <Link
+            href="/admin/lending-ai"
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              fontSize: 12, fontWeight: 600, color: t.ink3,
+              textDecoration: "none",
+              padding: "4px 8px", borderRadius: 6,
+              border: `1px solid ${t.line}`, background: t.surface,
+            }}
+          >
+            <Icon name="chevL" size={11} /> Lending AI
+          </Link>
+          <span>·</span>
+          <span>Legacy section</span>
+        </div>
+      ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 16, alignItems: "flex-start" }}>
         <Card pad={6}>
-          {SECTIONS.map((s) => (
+          {/* Lending AI — the canonical home for AI configuration.
+              Routes away (not an in-page section). Sits at the top of
+              the sidebar so it's the first thing admins reach for. */}
+          <Link
+            href="/admin/lending-ai"
+            style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 10,
+              padding: "10px 12px", borderRadius: 9, border: "none",
+              background: t.petrolSoft, color: t.petrol,
+              fontSize: 13, fontWeight: 800, cursor: "pointer",
+              textDecoration: "none",
+              borderLeft: `3px solid ${t.petrol}`,
+            }}
+          >
+            <Icon name="spark" size={14} />
+            <span style={{ flex: 1 }}>Lending AI</span>
+            <span style={{ fontSize: 11, opacity: 0.7 }}>→</span>
+          </Link>
+          <div style={{ height: 1, background: t.line, margin: "6px 4px" }} />
+
+          {SECTIONS.filter(s => !s.hidden).map((s) => (
             <button
               key={s.id}
               onClick={() => setSection(s.id)}
@@ -244,22 +269,13 @@ export default function SettingsPage() {
                 width: "100%", display: "flex", alignItems: "center", gap: 10,
                 padding: "10px 12px", borderRadius: 9, border: "none",
                 background: section === s.id ? t.brandSoft : "transparent",
-                color: section === s.id ? t.ink : (s.legacy ? t.ink3 : t.ink2),
+                color: section === s.id ? t.ink : t.ink2,
                 fontSize: 13, fontWeight: section === s.id ? 800 : 600,
                 cursor: "pointer", textAlign: "left",
               }}
             >
               <Icon name={s.icon} size={14} />
               <span style={{ flex: 1 }}>{s.label}</span>
-              {s.legacy ? (
-                <span style={{
-                  fontSize: 9, fontWeight: 800, padding: "1px 5px",
-                  borderRadius: 3, background: t.warnBg, color: t.warn,
-                  letterSpacing: 0.5,
-                }}>
-                  LEGACY
-                </span>
-              ) : null}
             </button>
           ))}
         </Card>
@@ -269,30 +285,20 @@ export default function SettingsPage() {
               Doc Checklists + AI Cadence still write to the legacy
               app_settings JSON, but the AI itself reads from
               client_ai_plan (see /admin/lending-ai). */}
-          {SECTIONS.find(s => s.id === section)?.legacy ? (
+          {(section === "checklists" || section === "cadence") ? (
             <Card pad={14} style={{ borderLeft: `3px solid ${t.warn}`, background: t.warnBg }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
-                    ⚠ Legacy section — superseded by Lending AI
+                    ⚠ Legacy section — kept for the non-AI loan plumbing
                   </div>
                   <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
                     {section === "cadence"
-                      ? "Borrower follow-up now runs through Lending AI / Borrower Follow-Up. This preset only feeds the older non-AI doc-reminder pipeline (job_doc_reminders)."
-                      : "Loan-product requirements now live in Lending AI / Lending Playbooks (organized by stage). This list only pre-populates loans.required_docs at loan creation."}
+                      ? "Borrower follow-up now runs through Lending AI → Borrower Follow-Up. This preset only feeds the older non-AI doc-reminder pipeline (job_doc_reminders)."
+                      : "Loan-product requirements now live in Lending AI → Lending Playbooks (organized by stage). This list only pre-populates loans.required_docs at loan creation."}
                     {" "}Edits here keep working but the AI ignores them.
                   </div>
                 </div>
-                <Link href="/admin/lending-ai" style={{ textDecoration: "none" }}>
-                  <span style={{
-                    fontSize: 12, fontWeight: 700, color: t.petrol,
-                    padding: "6px 12px", borderRadius: 6,
-                    border: `1px solid ${t.petrol}`, background: t.surface,
-                    whiteSpace: "nowrap",
-                  }}>
-                    Open Lending AI →
-                  </span>
-                </Link>
               </div>
             </Card>
           ) : null}
