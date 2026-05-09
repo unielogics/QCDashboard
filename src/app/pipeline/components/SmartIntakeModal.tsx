@@ -41,6 +41,7 @@ import {
   useCreateIntake,
   useCurrentUser,
   useSettings,
+  useUsers,
 } from "@/hooks/useApi";
 import { parseUSD } from "@/lib/formCoerce";
 import {
@@ -108,9 +109,17 @@ interface AssetEntry {
   balanceOwed: string;
 }
 
+type SourceAttribution = "direct_borrower" | "agent_referral" | "existing_client" | "website" | "phone_call" | "other";
+type InviteBehavior = "send_immediately" | "save_draft" | "send_after_review";
+
 interface FormState {
   // ── Step 1: Side + Purpose + Loan program + Borrower & Entity ────────
   dealSide: DealSide;
+  // Source attribution (alembic 0029) — captured by Step 1 alongside
+  // borrower fields. Drives downstream rev-share when source is
+  // agent_referral.
+  sourceAttribution: SourceAttribution;
+  referringAgentId: string;  // populated when sourceAttribution = agent_referral
   // Purchase or refinance — drives DSCR LTV cap (80% purchase / 75% refi)
   // and the Step 3 calculator branch. Maps to LoanPurpose on submit.
   loanPurpose: "purchase" | "refinance";
@@ -141,7 +150,8 @@ interface FormState {
   targetLTV: string;        // % expressed as a string, e.g. "75"
   baseRate: string;         // % override; defaults via PRODUCT_BASE_RATE
   // Purchase / current-value inputs
-  purchasePrice: string;    // DSCR purchase + Bridge purchase
+  purchasePrice: string;    // Required on every BUYER (purchase) flow
+  depositAvailable: string; // Buyer's cash to close (down payment + earnest)
   currentValue: string;     // DSCR refi + Bridge refi (as-is)
   payoff: string;           // DSCR refi only
   // DSCR-only
@@ -159,10 +169,17 @@ interface FormState {
   targetCloseDate: string;
   backstory: string;
   aiInstructions: string;
+  // Step 4 ownership + invite behavior (alembic 0029).
+  // assignedOwnerId blank → backend defaults to creator. invite_behavior
+  // gates whether the Clerk invite fires at submit time.
+  assignedOwnerId: string;
+  inviteBehavior: InviteBehavior;
 }
 
 const INITIAL: FormState = {
   dealSide: "buyer",
+  sourceAttribution: "direct_borrower",
+  referringAgentId: "",
   loanPurpose: "purchase",
   borrowerName: "",
   borrowerEmail: "",
@@ -180,6 +197,7 @@ const INITIAL: FormState = {
   targetLTV: "75",
   baseRate: "7.5",
   purchasePrice: "",
+  depositAvailable: "",
   currentValue: "",
   payoff: "",
   expectedRent: "",
@@ -192,6 +210,8 @@ const INITIAL: FormState = {
   targetCloseDate: "",
   backstory: "",
   aiInstructions: "",
+  assignedOwnerId: "",
+  inviteBehavior: "send_immediately",
 };
 
 const STEPS = [
@@ -350,6 +370,17 @@ export function SmartIntakeModal({
       }),
     [user?.role, form.loanType, form.dealSide, settingsQ.data, brokerQ.data],
   );
+
+  // Refinance is DSCR-only today (F&F / Bridge / Ground Up / Portfolio
+  // are purchase-only or construction-tied). When the user flips the
+  // purpose to Refinance, snap any non-DSCR program selection to DSCR
+  // so they don't carry an invalid combination into Step 3.
+  useEffect(() => {
+    if (form.loanPurpose !== "refinance") return;
+    if (form.loanType !== LoanType.DSCR) {
+      setForm((f) => ({ ...f, loanType: LoanType.DSCR }));
+    }
+  }, [form.loanPurpose, form.loanType]);
 
   // Sync prefill into form on open. Clears when prefill removed.
   useEffect(() => {
@@ -700,6 +731,7 @@ function mapToPayload(form: FormState): SmartIntakePayload {
       cash_available: null,
       max_purchase_price: null,
       sales_price: isSeller ? parseUSD(form.salesPrice) || null : null,
+      deposit_available: isSeller ? null : parseUSD(form.depositAvailable) || null,
     },
     ai_rules: {
       // Defaulted financial-tactical rules — kept for backend compat.
@@ -719,6 +751,17 @@ function mapToPayload(form: FormState): SmartIntakePayload {
     },
     deal_side: form.dealSide,
     owned_assets: ownedAssets,
+    // Source attribution + ownership + invite-behavior (alembic 0029).
+    // Backend accepts these on SmartIntakePayload — set via Step 1 +
+    // Step 4 dropdowns. referring_agent_id only sent when source is
+    // agent_referral.
+    source_attribution: form.sourceAttribution,
+    referring_agent_id:
+      form.sourceAttribution === "agent_referral" && form.referringAgentId
+        ? form.referringAgentId
+        : null,
+    assigned_owner_id: form.assignedOwnerId || null,
+    invite_behavior: form.inviteBehavior,
   };
 }
 
@@ -919,6 +962,12 @@ function BorrowerStepView({
             onChange={(v) => update("loanType", v as FormState["loanType"])}
             options={LOAN_PROGRAM_OPTIONS_ALL
               .filter((o) => isLoanTypeEnabled(o.value))
+              // DSCR is the only program that supports refinance today —
+              // F&F / Bridge / Ground Up / Portfolio are purchase-only or
+              // construction-tied, so hide them when the purpose toggle
+              // is set to Refinance to keep operators from picking an
+              // invalid combination.
+              .filter((o) => form.loanPurpose !== "refinance" || o.value === LoanType.DSCR)
               .map((o) => ({ value: String(o.value), label: o.label }))}
           />
         </Field>
@@ -1005,10 +1054,82 @@ function BorrowerStepView({
           />
         </Field>
       </div>
+
+      {/* Source attribution (alembic 0029). When set to agent_referral
+          surfaces the broker picker so the originating agent gets
+          credit on the resulting Loan row. */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <Field t={t} label="Source attribution" required>
+          <Select
+            t={t}
+            value={form.sourceAttribution}
+            onChange={(v) => update("sourceAttribution", v as SourceAttribution)}
+            options={[
+              { value: "direct_borrower", label: "Direct borrower" },
+              { value: "agent_referral", label: "Agent referral" },
+              { value: "existing_client", label: "Existing client" },
+              { value: "website", label: "Website" },
+              { value: "phone_call", label: "Phone call" },
+              { value: "other", label: "Other" },
+            ]}
+          />
+        </Field>
+        {form.sourceAttribution === "agent_referral" && (
+          <Field t={t} label="Referring agent" required>
+            <AgentPicker
+              t={t}
+              value={form.referringAgentId}
+              onChange={(v) => update("referringAgentId", v)}
+            />
+          </Field>
+        )}
+      </div>
+
       <Note t={t}>
         Submitting Step 1 creates the Client record. The rest of the flow enriches it.
       </Note>
     </div>
+  );
+}
+
+// Picker for users with role=BROKER. Used by SmartIntakeModal Step 1
+// when source_attribution = agent_referral, and Step 4's assigned-owner
+// dropdown which spans operators broadly. Filtering happens client-side.
+function AgentPicker({
+  t,
+  value,
+  onChange,
+  filterRoles,
+  emptyLabel = "Select agent…",
+}: {
+  t: QCTokens;
+  value: string;
+  onChange: (id: string) => void;
+  filterRoles?: Role[];
+  emptyLabel?: string;
+}) {
+  const { data: users = [] } = useUsers();
+  const filtered = useMemo(() => {
+    if (!filterRoles || filterRoles.length === 0) {
+      return users.filter((u) => u.role === Role.BROKER);
+    }
+    return users.filter((u) => filterRoles.includes(u.role));
+  }, [users, filterRoles]);
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        width: "100%", padding: "10px 12px", borderRadius: 9,
+        background: t.surface2, border: `1px solid ${t.line}`,
+        color: value ? t.ink : t.ink3, fontSize: 13, fontFamily: "inherit", outline: "none",
+      }}
+    >
+      <option value="">{emptyLabel}</option>
+      {filtered.map((u) => (
+        <option key={u.id} value={u.id}>{u.name} · {u.email}</option>
+      ))}
+    </select>
   );
 }
 
@@ -1293,9 +1414,12 @@ function NumbersStepView({ t, form, update }: StepProps) {
   const ltvFraction = ltvPct / 100;
   const ltcPct = parseFloat(form.targetLTC) || 0;
   const ltcFraction = ltcPct / 100;
-  const subjectValue = isRefi ? parseUSD(form.currentValue) : parseUSD(form.purchasePrice);
+  // Purchase price drives sizing on every BUYER program. Refis use
+  // current as-is value instead since there's no acquisition. F&F /
+  // GU's BRV is just the purchase price (you buy it then renovate).
+  const purchasePriceDollars = parseUSD(form.purchasePrice);
+  const subjectValue = isRefi ? parseUSD(form.currentValue) : purchasePriceDollars;
   const arv = parseUSD(form.arv);
-  const brv = parseUSD(form.currentValue);
   const rehab = parseUSD(form.rehabBudget);
   const payoffDollars = parseUSD(form.payoff);
   const monthlyRent = parseUSD(form.expectedRent);
@@ -1307,7 +1431,8 @@ function NumbersStepView({ t, form, update }: StepProps) {
     productKey,
     transactionType: isRefi ? ("refi" as const) : ("purchase" as const),
     payoff: isRefi ? payoffDollars || undefined : undefined,
-    brv: isReno ? brv || undefined : undefined,
+    // BRV = the purchase price for F&F / GU (you buy then renovate).
+    brv: isReno ? purchasePriceDollars || undefined : undefined,
     rehabBudget: isReno ? rehab || undefined : undefined,
     monthlyRent: monthlyRent || undefined,
   };
@@ -1315,72 +1440,83 @@ function NumbersStepView({ t, form, update }: StepProps) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-
-        {/* DSCR purchase: purchase price + monthly rent */}
-        {isDscr && !isRefi && (
-          <>
+      {/* BANKING DETAILS — required for every buyer (purchase) flow.
+          Captures the price they're buying at + the cash they have on
+          hand to bring to closing. Listings (seller side) never see
+          these — that path is short-circuited above. */}
+      {!isRefi && (
+        <div>
+          <SectionHeader t={t}>
+            {isReno ? "Acquisition" : "Purchase & banking"}
+          </SectionHeader>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <Field t={t} label="Purchase price" required>
               <Input t={t} value={form.purchasePrice} onChange={(v) => update("purchasePrice", v)} placeholder="485,000" prefix="$" />
             </Field>
-            <Field t={t} label="Expected monthly rent">
+            <Field t={t} label="Deposit available">
+              <Input t={t} value={form.depositAvailable} onChange={(v) => update("depositAvailable", v)} placeholder="125,000" prefix="$" />
+            </Field>
+          </div>
+        </div>
+      )}
+
+      {/* PROGRAM-SPECIFIC inputs — what the simulator needs to size
+          the loan beyond price + deposit. */}
+      <div>
+        <SectionHeader t={t}>
+          {isRefi ? "Refinance terms" : "Loan terms"}
+        </SectionHeader>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+
+          {/* DSCR refi: current value + payoff replace purchase price */}
+          {isDscr && isRefi && (
+            <>
+              <Field t={t} label="Current as-is value" required>
+                <Input t={t} value={form.currentValue} onChange={(v) => update("currentValue", v)} placeholder="500,000" prefix="$" />
+              </Field>
+              <Field t={t} label="Existing payoff" required>
+                <Input t={t} value={form.payoff} onChange={(v) => update("payoff", v)} placeholder="320,000" prefix="$" />
+              </Field>
+            </>
+          )}
+
+          {/* DSCR (purchase or refi): monthly rent drives the DSCR calc */}
+          {isDscr && (
+            <Field t={t} label="Expected monthly rent" full={isRefi}>
               <Input t={t} value={form.expectedRent} onChange={(v) => update("expectedRent", v)} placeholder="3,650" prefix="$" />
             </Field>
-          </>
-        )}
+          )}
 
-        {/* DSCR refi: current value + payoff + rent */}
-        {isDscr && isRefi && (
-          <>
-            <Field t={t} label="Current as-is value" required>
-              <Input t={t} value={form.currentValue} onChange={(v) => update("currentValue", v)} placeholder="500,000" prefix="$" />
-            </Field>
-            <Field t={t} label="Existing payoff" required>
-              <Input t={t} value={form.payoff} onChange={(v) => update("payoff", v)} placeholder="320,000" prefix="$" />
-            </Field>
-            <Field t={t} label="Expected monthly rent" full>
-              <Input t={t} value={form.expectedRent} onChange={(v) => update("expectedRent", v)} placeholder="3,650" prefix="$" />
-            </Field>
-          </>
-        )}
+          {/* F&F / GU purchase: ARV + rehab. BRV = purchase price above. */}
+          {isReno && (
+            <>
+              <Field t={t} label="ARV (after-repair value)" required>
+                <Input t={t} value={form.arv} onChange={(v) => update("arv", v)} placeholder="640,000" prefix="$" />
+              </Field>
+              <Field t={t} label="Rehab budget">
+                <Input t={t} value={form.rehabBudget} onChange={(v) => update("rehabBudget", v)} placeholder="60,000" prefix="$" />
+              </Field>
+            </>
+          )}
 
-        {/* F&F / GU: ARV + BRV + rehab */}
-        {isReno && (
-          <>
-            <Field t={t} label="ARV (after-repair value)" required>
-              <Input t={t} value={form.arv} onChange={(v) => update("arv", v)} placeholder="640,000" prefix="$" />
+          {/* LTV / LTC selector — DSCR / Bridge use LTV; Reno uses LTC. */}
+          {isReno ? (
+            <Field t={t} label="Target LTC (%)">
+              <Input t={t} value={form.targetLTC} onChange={(v) => update("targetLTC", v)} placeholder="85" suffix="%" />
             </Field>
-            <Field t={t} label="Current as-is value (BRV)" required>
-              <Input t={t} value={form.currentValue} onChange={(v) => update("currentValue", v)} placeholder="380,000" prefix="$" />
+          ) : (
+            <Field t={t} label={`Target LTV (%) · cap ${isRefi ? "75" : "80"}%`}>
+              <Input t={t} value={form.targetLTV} onChange={(v) => update("targetLTV", v)} placeholder={isRefi ? "70" : "75"} suffix="%" />
             </Field>
-            <Field t={t} label="Rehab budget" full>
-              <Input t={t} value={form.rehabBudget} onChange={(v) => update("rehabBudget", v)} placeholder="60,000" prefix="$" />
-            </Field>
-          </>
-        )}
-
-        {/* Bridge: as-is value */}
-        {isBridge && (
-          <Field t={t} label="As-is value" required full>
-            <Input t={t} value={form.currentValue} onChange={(v) => update("currentValue", v)} placeholder="500,000" prefix="$" />
+          )}
+          <Field t={t} label="Base rate (%)">
+            <Input t={t} value={form.baseRate} onChange={(v) => update("baseRate", v)} placeholder="7.500" suffix="%" />
           </Field>
-        )}
-
-        {/* LTV/LTC slider — labeled per program. DSCR/Bridge use LTV;
-            Reno uses LTC (capped against ARV downstream). */}
-        {isReno ? (
-          <Field t={t} label="Target LTC (%)">
-            <Input t={t} value={form.targetLTC} onChange={(v) => update("targetLTC", v)} placeholder="85" suffix="%" />
-          </Field>
-        ) : (
-          <Field t={t} label={`Target LTV (%) · cap ${isRefi ? "75" : "80"}%`}>
-            <Input t={t} value={form.targetLTV} onChange={(v) => update("targetLTV", v)} placeholder={isRefi ? "70" : "75"} suffix="%" />
-          </Field>
-        )}
-        <Field t={t} label="Base rate (%)">
-          <Input t={t} value={form.baseRate} onChange={(v) => update("baseRate", v)} placeholder="7.500" suffix="%" />
-        </Field>
+        </div>
       </div>
+
+      {/* Bridge purchase carries no extra fields beyond the banking
+          block + LTV — the simulator sizes off purchase price × LTV. */}
 
       {/* Live readout — mirrors the simulator's eligibility chip */}
       <div
@@ -1570,6 +1706,33 @@ function CommunicationStepView({
         Forbidden phrasings (&quot;you are approved&quot;, &quot;guaranteed rate&quot;) are
         enforced at prompt level — these instructions can&apos;t override them.
       </Note>
+
+      {/* Ownership + invite behavior (alembic 0029). assigned_owner_id
+          blank → backend defaults to the creator. invite_behavior gates
+          whether the Clerk invite fires at submit time. */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <Field t={t} label="Assigned funding owner">
+          <AgentPicker
+            t={t}
+            value={form.assignedOwnerId}
+            onChange={(v) => update("assignedOwnerId", v)}
+            filterRoles={[Role.SUPER_ADMIN, Role.LOAN_EXEC]}
+            emptyLabel="Funding Team queue"
+          />
+        </Field>
+        <Field t={t} label="Borrower invite behavior">
+          <Select
+            t={t}
+            value={form.inviteBehavior}
+            onChange={(v) => update("inviteBehavior", v as InviteBehavior)}
+            options={[
+              { value: "send_immediately", label: "Send invite immediately" },
+              { value: "save_draft", label: "Save draft only" },
+              { value: "send_after_review", label: "Send after review" },
+            ]}
+          />
+        </Field>
+      </div>
 
       <DocPreviewSection
         t={t}

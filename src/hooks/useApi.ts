@@ -1426,12 +1426,47 @@ export function useCreateClient() {
       lead_intake?: Record<string, unknown> | null;
       checklist_overrides?: Record<string, unknown> | null;
       ai_cadence_override?: Record<string, unknown> | null;
+      // Lead routing / ownership / attribution (alembic 0029).
+      lead_source?: string;
+      lead_temperature?: string;
+      financing_support_needed?: string;
+      contact_permission?: string;
+      relationship_context?: string;
+      originating_agent_id?: string;
+      current_agent_id?: string;
+      source_channel?: string;
     }) =>
       apiCall<Client>("/clients", {
         method: "POST",
         body: JSON.stringify(payload),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["clients"] }),
+  });
+}
+
+// Hand a lead off to the funding team for prequalification review.
+// Creates a PrequalRequest server-side + spawns an AITask in the
+// funding queue. Used by:
+//   - "Ready for Prequalification" button on /clients/[id]
+//   - AI Secretary action card (kind: "request_prequalification")
+export function useRequestPrequalification() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    // invalidates: ["client", clientId], ["clients"], ["ai-tasks"]
+    mutationFn: (clientId: string) =>
+      apiCall<{
+        prequal_request_id: string;
+        client_id: string;
+        lead_promotion_status: string;
+      }>(`/clients/${clientId}/request-prequalification`, {
+        method: "POST",
+      }),
+    onSuccess: (_data, clientId) => {
+      qc.invalidateQueries({ queryKey: ["client", clientId] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.invalidateQueries({ queryKey: ["ai-tasks"] });
+    },
   });
 }
 

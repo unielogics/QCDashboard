@@ -24,6 +24,7 @@ import {
   useFindOrCreateChatThread,
   useLoans,
   useMarkThreadSeen,
+  useRequestPrequalification,
   useRouteDocument,
   useSendAIChatMessage,
 } from "@/hooks/useApi";
@@ -50,6 +51,7 @@ export function AIChatPanel({ open, onClose }: Props) {
   const sendMessage = useSendAIChatMessage();
   const attachmentInit = useChatAttachmentInit();
   const routeDocument = useRouteDocument();
+  const requestPrequal = useRequestPrequalification();
   const markSeen = useMarkThreadSeen();
 
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -188,6 +190,16 @@ export function AIChatPanel({ open, onClose }: Props) {
           return;
         case "open_calendar_event":
           return;
+        case "request_prequalification": {
+          // AI Secretary path — agent typed something like "Marcus is
+          // ready for prequal" → AI emits this action card → click
+          // confirms → fires the same endpoint as the
+          // "Ready for Prequalification" button on /clients/[id].
+          if (!action.client_id) return;
+          await requestPrequal.mutateAsync(action.client_id);
+          activeThreadQ.refetch();
+          return;
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed.");

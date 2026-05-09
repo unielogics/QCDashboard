@@ -94,7 +94,45 @@ export interface Client {
   client_experience_mode?: ClientExperienceMode | null;
   client_experience_mode_reason?: ClientExperienceModeReason | null;
   client_experience_mode_locked_by?: ClientExperienceModeLockedBy | null;
+  // Lead routing / ownership / attribution (alembic 0029).
+  lead_source?: LeadSource | null;
+  lead_temperature?: LeadTemperature | null;
+  financing_support_needed?: FinancingSupportNeeded | null;
+  contact_permission?: ContactPermission | null;
+  relationship_context?: RelationshipContext | null;
+  lead_promotion_status?: LeadPromotionStatus;
+  originating_agent_id?: string | null;
+  current_agent_id?: string | null;
+  source_channel?: string | null;
 }
+
+// Lead-routing enum values mirror app/schemas/client.py.
+export type LeadSource =
+  | "manual_entry"
+  | "open_house"
+  | "referral"
+  | "listing_inquiry"
+  | "buyer_consultation"
+  | "existing_database"
+  | "other";
+export type LeadTemperature = "hot" | "warm" | "nurture";
+export type FinancingSupportNeeded = "yes" | "maybe" | "no" | "unknown";
+export type ContactPermission =
+  | "send_invite_now"
+  | "save_lead_only"
+  | "agent_will_introduce_first";
+export type RelationshipContext =
+  | "new_lead"
+  | "existing_client"
+  | "past_client"
+  | "referral_from_other"
+  | "other";
+export type LeadPromotionStatus =
+  | "not_ready"
+  | "agent_requested_review"
+  | "funding_reviewing"
+  | "promoted_to_intake"
+  | "declined";
 
 export type ClientExperienceMode = "guided" | "self_directed" | "hybrid";
 export type ClientExperienceModeReason =
@@ -261,9 +299,12 @@ export interface NumbersStep {
   // Deal-side specific. Buyer = future purchase context; Seller = listing
   // economics. Both populate `amount` above for the Loan row but enrich
   // downstream reporting + Lender packaging.
-  cash_available?: number | null;        // buyer
-  max_purchase_price?: number | null;    // buyer
-  sales_price?: number | null;           // seller
+  cash_available?: number | null;        // buyer (legacy)
+  max_purchase_price?: number | null;    // buyer (legacy)
+  sales_price?: number | null;           // seller listing
+  // Buyer cash on hand for closing — Phase 2 of the SmartIntakeModal
+  // redesign captures this on every purchase flow.
+  deposit_available?: number | null;
 }
 
 export interface AIRulesStep {
@@ -315,6 +356,19 @@ export interface SmartIntakePayload {
   deal_side?: "buyer" | "seller" | null;
   owned_assets?: OwnedAsset[] | null;
   document_overrides?: IntakeDocumentOverrides | null;
+  // Source attribution + ownership + invite behavior (alembic 0029).
+  // Captured by Step 1 + Step 4. Backend persists on Loan row.
+  source_attribution?:
+    | "direct_borrower"
+    | "agent_referral"
+    | "existing_client"
+    | "website"
+    | "phone_call"
+    | "other"
+    | null;
+  referring_agent_id?: string | null;
+  assigned_owner_id?: string | null;
+  invite_behavior?: "send_immediately" | "save_draft" | "send_after_review";
 }
 
 export interface SmartIntakeResponse {
@@ -758,11 +812,17 @@ export interface ChatAction {
     | "upload_document"
     | "confirm_document_routing"
     | "complete_property_intake"
-    | "open_calendar_event";
+    | "open_calendar_event"
+    // AI Secretary action: when an agent says "Marcus is ready for
+    // prequal" or similar, the AI emits this card. Click → fires
+    // POST /clients/{id}/request-prequalification.
+    | "request_prequalification";
   label: string;
   document_id?: string | null;
   checklist_key?: string | null;
   calendar_event_id?: string | null;
+  // Set when kind=request_prequalification — which client to hand off.
+  client_id?: string | null;
   confirm?: boolean;
 }
 

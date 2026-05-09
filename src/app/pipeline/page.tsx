@@ -8,6 +8,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { useLoans } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { SmartIntakeModal } from "./components/SmartIntakeModal";
+import { AgentLeadModal } from "./components/AgentLeadModal";
 import { LeadsPipelineView } from "./components/LeadsPipelineView";
 import { useActiveProfile } from "@/store/role";
 
@@ -205,7 +206,15 @@ export default function PipelinePage() {
         </div>
       </div>
 
-      <SmartIntakeModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
+      {/* Role-aware container split: agents capture a real-estate lead
+          (no Loan); super-admin / underwriter originate a Loan. The
+          two modals share field shapes but model different mental
+          surfaces — never merge them. */}
+      {profile.role === "broker" ? (
+        <AgentLeadModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
+      ) : (
+        <SmartIntakeModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
+      )}
 
       {mode === "leads" ? (
         <LeadsPipelineView view={view} search={search} />

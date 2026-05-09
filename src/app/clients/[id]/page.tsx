@@ -7,7 +7,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel, VerifiedBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useClient, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
+import { useClient, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { CreditReportDetail } from "@/components/CreditReportDetail";
 import { useActiveProfile } from "@/store/role";
@@ -35,15 +35,32 @@ export default function ClientDetailPage() {
   // already loaded above (clientLoans below).
   const { data: engagement = [] } = useEngagement(id);
   const updateClient = useUpdateClient();
+  const requestPrequal = useRequestPrequalification();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<Client>>({});
   const [error, setError] = useState<string | null>(null);
   const [intakeOpen, setIntakeOpen] = useState(false);
+  const [prequalErr, setPrequalErr] = useState<string | null>(null);
+
+  const onRequestPrequal = async () => {
+    if (!id) return;
+    setPrequalErr(null);
+    try {
+      await requestPrequal.mutateAsync(id);
+    } catch (e) {
+      setPrequalErr(e instanceof Error ? e.message : "Failed to hand off lead");
+    }
+  };
 
   const canEdit = profile.role !== "client";
   // CLIENT-role users can't kick off deals from inside their own page;
   // every other role gets the "+ New deal" affordance.
-  const canStartDeal = canEdit;
+  // Agents (BROKER) see "Ready for Prequalification" instead — that's
+  // their controlled handoff to the funding team. Direct loan creation
+  // is super-admin / underwriter territory.
+  const isAgent = profile.role === "broker";
+  const canStartDeal = canEdit && !isAgent;
+  const canRequestPrequal = isAgent && client?.stage === "lead";
 
   useEffect(() => {
     if (client) {
@@ -105,6 +122,42 @@ export default function ClientDetailPage() {
             >
               <Icon name="plus" size={12} /> New deal
             </button>
+          )}
+          {/* Agent's controlled handoff to the funding team. Creates a
+              PrequalRequest + drops an AITask in the funding queue.
+              The agent doesn't pick a loan program — funding does
+              that on review. */}
+          {canRequestPrequal && client.lead_promotion_status !== "agent_requested_review" && (
+            <button
+              onClick={() => void onRequestPrequal()}
+              disabled={requestPrequal.isPending}
+              style={{
+                padding: "8px 12px", borderRadius: 9,
+                background: t.brand, color: t.inverse, border: "none",
+                fontSize: 12, fontWeight: 700,
+                display: "inline-flex", alignItems: "center", gap: 5,
+                cursor: requestPrequal.isPending ? "wait" : "pointer",
+                opacity: requestPrequal.isPending ? 0.7 : 1,
+              }}
+            >
+              <Icon name="bolt" size={12} />
+              {requestPrequal.isPending ? "Handing off…" : "Ready for Prequalification"}
+            </button>
+          )}
+          {canRequestPrequal && client.lead_promotion_status === "agent_requested_review" && (
+            <span
+              style={{
+                padding: "6px 10px", borderRadius: 999,
+                background: t.brandSoft, color: t.brand,
+                fontSize: 11, fontWeight: 700,
+                display: "inline-flex", alignItems: "center", gap: 5,
+              }}
+            >
+              <Icon name="check" size={11} /> Funding review requested
+            </span>
+          )}
+          {prequalErr && (
+            <span style={{ fontSize: 11, color: t.danger, fontWeight: 700 }}>{prequalErr}</span>
           )}
           {canEdit && !editing && (
             <button
