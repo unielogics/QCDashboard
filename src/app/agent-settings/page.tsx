@@ -19,6 +19,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -190,7 +191,31 @@ export default function AgentSettingsPage() {
             Per-lead overrides happen when you add a lead.
           </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", padding: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", padding: 6, gap: 2 }}>
+          {/* AI Assistant — routes to the new page; the four other items
+              still use the existing in-page section state. */}
+          <Link
+            href="/agent-settings/ai"
+            style={{
+              all: "unset",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              padding: "10px 12px",
+              borderRadius: 8,
+              background: t.petrolSoft,
+              color: t.petrol,
+              fontSize: 13,
+              fontWeight: 700,
+              border: `1px solid ${t.petrol}33`,
+            }}
+          >
+            <Icon name="spark" size={14} />
+            AI Assistant
+            <span style={{ marginLeft: "auto", fontSize: 11, opacity: 0.7 }}>→</span>
+          </Link>
+          <div style={{ height: 1, background: t.line, margin: "6px 8px" }} />
           {SECTIONS.map((s) => {
             const active = section === s.id;
             return (
@@ -221,6 +246,43 @@ export default function AgentSettingsPage() {
 
       {/* Body */}
       <div style={{ minHeight: 0, display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* Persistent banner — the new AI Assistant home. Visible from
+            every section, especially "AI Cadence" and "Doc Checklist"
+            which are now redundant with the new tabbed page. */}
+        <Link
+          href="/agent-settings/ai"
+          style={{ textDecoration: "none" }}
+        >
+          <Card
+            pad={16}
+            style={{
+              borderLeft: `3px solid ${t.petrol}`,
+              background: t.petrolSoft,
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
+                  ✨ AI Assistant — your AI&apos;s configuration lives here
+                </div>
+                <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
+                  Buyer Rules · Seller Rules · Follow-Up · Ready for Lending · Message Style.
+                  Tell your AI what to collect, when to follow up, and what it&apos;s allowed to do.
+                </div>
+              </div>
+              <span style={{
+                fontSize: 13, fontWeight: 700, color: t.petrol,
+                padding: "8px 14px", borderRadius: 8,
+                border: `1px solid ${t.petrol}`, background: t.surface,
+                whiteSpace: "nowrap",
+              }}>
+                Open AI Assistant →
+              </span>
+            </div>
+          </Card>
+        </Link>
+
         {section === "identity" && (
           <IdentitySection
             draft={draft}
