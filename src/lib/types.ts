@@ -104,6 +104,10 @@ export interface Client {
   originating_agent_id?: string | null;
   current_agent_id?: string | null;
   source_channel?: string | null;
+  // Realtor Client Intelligence Profile (alembic 0030). Free-shape
+  // JSONB written by the Realtor AI. Drives the Client Readiness Map
+  // card on /clients/[id].
+  realtor_profile?: RealtorClientProfile | null;
 }
 
 // Lead-routing enum values mirror app/schemas/client.py.
@@ -813,17 +817,87 @@ export interface ChatAction {
     | "confirm_document_routing"
     | "complete_property_intake"
     | "open_calendar_event"
-    // AI Secretary action: when an agent says "Marcus is ready for
-    // prequal" or similar, the AI emits this card. Click → fires
-    // POST /clients/{id}/request-prequalification.
-    | "request_prequalification";
+    // AI Secretary actions emitted by the Realtor AI. Each maps to
+    // a backend confirm-endpoint; the agent's tap fires the side
+    // effect. The AI never writes state without operator approval.
+    | "request_prequalification"
+    | "send_buyer_agreement"
+    | "send_listing_agreement"
+    | "create_buyer_intake"
+    | "create_seller_intake"
+    | "schedule_showing"
+    | "schedule_picture_day"
+    | "prepare_cma_task"
+    | "create_listing_prep_checklist"
+    | "send_property_matches"
+    | "draft_follow_up_text"
+    | "draft_follow_up_email"
+    | "mark_client_finance_ready"
+    | "update_realtor_pipeline_stage";
   label: string;
   document_id?: string | null;
   checklist_key?: string | null;
   calendar_event_id?: string | null;
-  // Set when kind=request_prequalification — which client to hand off.
+  // Set on Realtor AI action cards — which client this targets.
   client_id?: string | null;
+  // For draft_follow_up_text / draft_follow_up_email / send_property_matches —
+  // the AI pre-drafts a message body the agent reviews + edits before sending.
+  draft_body?: string | null;
+  draft_subject?: string | null;
   confirm?: boolean;
+}
+
+// ── Realtor Client Intelligence Profile (alembic 0030) ─────────────────────
+// Free-shape JSONB on Client.realtor_profile written by the Realtor AI on
+// every conversational turn. Mirrors app/services/ai/realtor_profile.py.
+export interface RealtorClientProfile {
+  client_id: string;
+  agent_id: string;
+  client_type: "buyer" | "seller" | "buyer_and_seller" | "unknown";
+  relationship_stage:
+    | "new_lead"
+    | "contacted"
+    | "needs_discovery"
+    | "agreement_pending"
+    | "active_client"
+    | "finance_ready"
+    | "handoff_to_lending"
+    | "under_contract"
+    | "closed"
+    | "lost";
+  intent_summary: string;
+  buyer_profile?: {
+    target_property_type?: string | null;
+    target_location?: string | null;
+    target_budget?: number | null;
+    target_budget_range?: { low: number; high: number } | null;
+    purchase_timeline?: "asap" | "0_30" | "30_60" | "60_plus" | null;
+    financing_needed?: boolean | null;
+    prequalified?: boolean;
+    buyer_agreement_status?: "not_sent" | "sent" | "signed" | "n/a";
+    proof_of_funds_status?: "not_collected" | "verbal" | "received";
+    urgency_level?: "high" | "medium" | "low";
+    showing_activity?: { date: string; address: string; outcome: string }[];
+  } | null;
+  seller_profile?: {
+    property_address?: string | null;
+    property_type?: string | null;
+    desired_list_price?: number | null;
+    selling_timeline?: string | null;
+    listing_agreement_status?: "not_sent" | "sent" | "signed";
+    photos_status?: "not_scheduled" | "scheduled" | "complete";
+    cma_status?: "not_started" | "in_progress" | "complete";
+    showing_instructions?: string | null;
+    occupancy_status?: "owner" | "tenant" | "vacant" | null;
+    payoff_amount?: number | null;
+  } | null;
+  known_facts?: { field: string; value: string; source: string; captured_at: string }[];
+  missing_facts?: string[];
+  documents?: { name: string; status: string; document_id?: string }[];
+  open_tasks?: { title: string; due_date?: string; reason: string }[];
+  next_best_question?: string | null;
+  next_best_action?: string | null;
+  readiness_score?: number;
 }
 
 // Files riding on a chat message. Borrower attaches via the

@@ -9,6 +9,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { useClient, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
+import { RealtorReadinessCard } from "@/components/RealtorReadinessCard";
 import { CreditReportDetail } from "@/components/CreditReportDetail";
 import { useActiveProfile } from "@/store/role";
 import { QC_FMT } from "@/components/design-system/tokens";
@@ -186,6 +187,14 @@ export default function ClientDetailPage() {
       />
 
       <ClientStageCard t={t} client={client} canEdit={canEdit} clientLoans={clientLoans} />
+
+      {/* Realtor Client Intelligence Profile (alembic 0030). The
+          Realtor AI writes this every conversational turn; the card
+          surfaces what's known, what's missing, and the AI's next
+          best action. Only renders when the AI has populated something. */}
+      {client.realtor_profile && client.realtor_profile.client_type !== "unknown" && (
+        <RealtorReadinessCard profile={client.realtor_profile} />
+      )}
 
       <ExperienceModeCard t={t} client={client} />
 

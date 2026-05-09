@@ -1293,10 +1293,13 @@ export function useFindOrCreateChatThread() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ loan_id }: { loan_id: string | null }) =>
+    // alembic 0030 added client_id alongside loan_id for the Realtor AI's
+    // per-client threads. Routing precedence: loan_id wins over client_id;
+    // both null = account-wide thread.
+    mutationFn: ({ loan_id, client_id }: { loan_id?: string | null; client_id?: string | null }) =>
       apiCall<AIChatThread>("/ai/chat/threads/find-or-create", {
         method: "POST",
-        body: JSON.stringify({ loan_id }),
+        body: JSON.stringify({ loan_id: loan_id ?? null, client_id: client_id ?? null }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["aiChatThreads", devUser] }),
   });
@@ -1468,6 +1471,42 @@ export function useRequestPrequalification() {
       qc.invalidateQueries({ queryKey: ["ai-tasks"] });
     },
   });
+}
+
+// Realtor AI ChatAction confirm-endpoints (alembic 0030). Each fires
+// when the agent taps a card the AI emitted in chat. v1 stubs record
+// intent + spawn an AITask; full integrations land in follow-up.
+
+interface RealtorActionResult {
+  client_id: string;
+  action_kind: string;
+  ai_task_id: string | null;
+}
+
+function useRealtorAction(path: (id: string) => string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (clientId: string) =>
+      apiCall<RealtorActionResult>(path(clientId), { method: "POST" }),
+    onSuccess: (_data, clientId) => {
+      qc.invalidateQueries({ queryKey: ["client", clientId] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.invalidateQueries({ queryKey: ["ai-tasks"] });
+    },
+  });
+}
+
+export function useSendBuyerAgreement() {
+  return useRealtorAction((id) => `/clients/${id}/send-buyer-agreement`);
+}
+
+export function useSendListingAgreement() {
+  return useRealtorAction((id) => `/clients/${id}/send-listing-agreement`);
+}
+
+export function useMarkClientFinanceReady() {
+  return useRealtorAction((id) => `/clients/${id}/mark-finance-ready`);
 }
 
 export function useUpdateClient() {
