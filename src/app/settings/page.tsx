@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -196,6 +197,42 @@ export default function SettingsPage() {
         {savedFlash && <Pill bg={t.profitBg} color={t.profit}>✓ {savedFlash}</Pill>}
         {errFlash && <Pill bg={t.dangerBg} color={t.danger}>{errFlash}</Pill>}
       </div>
+
+      {/* Persistent banner — the new Lending AI Settings home (alembic
+          0032 / 0033). Visible above the legacy section grid; the
+          older Doc Checklists + AI Cadence sections below are
+          functionally redundant with the new playbook UI. */}
+      <Link href="/admin/lending-ai" style={{ textDecoration: "none" }}>
+        <Card
+          pad={16}
+          style={{
+            borderLeft: `3px solid ${t.petrol}`,
+            background: t.petrolSoft,
+            cursor: "pointer",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
+                ✨ Lending AI — playbooks, verification, follow-up, audit
+              </div>
+              <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
+                Configure what the funding-side AI collects per loan product
+                (organized by stage), how it verifies documents, when it follows
+                up with borrowers, and review every AI-behavior-changing event.
+              </div>
+            </div>
+            <span style={{
+              fontSize: 13, fontWeight: 700, color: t.petrol,
+              padding: "8px 14px", borderRadius: 8,
+              border: `1px solid ${t.petrol}`, background: t.surface,
+              whiteSpace: "nowrap",
+            }}>
+              Open Lending AI →
+            </span>
+          </div>
+        </Card>
+      </Link>
 
       <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 16, alignItems: "flex-start" }}>
         <Card pad={6}>
