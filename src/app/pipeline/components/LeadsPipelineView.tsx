@@ -184,7 +184,7 @@ export function LeadsPipelineView({ view, search }: Props) {
           {visible.map((client) => (
             <Link
               key={client.id}
-              href={`/clients/${client.id}`}
+              href={`/clients/${client.id}/workspace`}
               style={{
                 display: "grid",
                 gridTemplateColumns: "minmax(0, 1.45fr) 132px 150px 150px minmax(220px, 1fr)",
@@ -264,7 +264,7 @@ export function LeadsPipelineView({ view, search }: Props) {
                 {stageClients.map((client) => (
                   <Link
                     key={client.id}
-                    href={`/clients/${client.id}`}
+                    href={`/clients/${client.id}/workspace`}
                     style={{
                       background: t.surface,
                       padding: 11,
