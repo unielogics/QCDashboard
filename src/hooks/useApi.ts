@@ -357,12 +357,24 @@ export function useAddCustomDocument() {
 export function useBrokerSettings() {
   const apiCall = useAuthedApi();
   const devUser = useDevUser();
+  // /me/broker-settings is BROKER-only (returns 403 for super-admin /
+  // loan-exec / borrower roles). Gate the query so non-brokers don't
+  // spam the network with 403s. We use the activeProfile from the
+  // role store; before the profile resolves we default to disabled.
+  const role = useActiveProfile().role;
+  const enabled = role === "broker";
   return useQuery({
-    queryKey: ["brokerSettings", devUser],
+    queryKey: ["brokerSettings", devUser, role],
     queryFn: () =>
       apiCall<{ data: import("@/lib/types").AgentSettingsData }>(
         `/me/broker-settings`,
       ),
+    enabled,
+    retry: (failureCount, err) => {
+      // Don't retry on 403 — role mismatch, not a transient failure.
+      if (err instanceof ApiError && (err.status === 403 || err.status === 404)) return false;
+      return failureCount < 1;
+    },
   });
 }
 

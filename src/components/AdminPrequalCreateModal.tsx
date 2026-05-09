@@ -119,6 +119,9 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
   const purchaseNum = Number(purchaseText.replace(/[^0-9.]/g, "")) || 0;
   const loanNum = Number(loanText.replace(/[^0-9.]/g, "")) || 0;
   const arvNum = Number(arvText.replace(/[^0-9.]/g, "")) || 0;
+  // Standard LTV (loan / purchase) — used for DSCR purchase / refi /
+  // bridge. For fix-and-flip we display loan/ARV instead since ARV is
+  // the regulating value (see maxLoan + the LTV pill below).
   const ltv = purchaseNum > 0 ? loanNum / purchaseNum : 0;
 
   const overrideFico = (() => {
@@ -150,8 +153,6 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
   // (so they see the LTV pill), but submit is gated on a non-zero cap.
   const tierConstrained = tierCap > 0 && tierCap < programCap;
   const effectiveCap = tierCap > 0 ? Math.min(programCap, tierCap) : programCap;
-  const maxLoan = purchaseNum > 0 ? purchaseNum * effectiveCap : 0;
-  const ltvOverCap = ltv > effectiveCap + 1e-6;
   const isFixFlip = loanType === "fix_flip";
 
   const totalConstruction = sowItems.reduce(
@@ -159,6 +160,35 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
     0,
   );
   const allInBasis = purchaseNum + totalConstruction;
+
+  // Max loan is regulated by ARV for fix-and-flip — the lender caps
+  // the loan at FF_LTARV_CAP (75%) of the After Repair Value, not the
+  // BRV (purchase price). For DSCR purchase / refi / bridge the cap
+  // still applies to purchase price (the standard LTV math).
+  //
+  // For F&F we ALSO honor the LTC ceiling (loan-to-cost on all-in
+  // basis) since some lenders use both — final cap is the lower of
+  // the two. ARV-based number is the binding constraint in practice.
+  const maxLoan = isFixFlip
+    ? (() => {
+        if (arvNum <= 0) return 0;
+        const arvCap = arvNum * FF_LTARV_CAP;
+        const ltcCap = allInBasis > 0 ? allInBasis * effectiveCap : Infinity;
+        return Math.min(arvCap, ltcCap);
+      })()
+    : purchaseNum > 0 ? purchaseNum * effectiveCap : 0;
+
+  // The "loan / regulating value" ratio shown in the LTV pill. For
+  // fix-and-flip this is loan/ARV (the binding constraint); for
+  // everything else it's the standard loan/purchase LTV.
+  const displayLtvRatio = isFixFlip
+    ? (arvNum > 0 ? loanNum / arvNum : 0)
+    : ltv;
+  const displayLtvCap = isFixFlip ? FF_LTARV_CAP : effectiveCap;
+  const ltvOverCap = displayLtvRatio > displayLtvCap + 1e-6;
+
+  // All-in basis vs ARV — fix-and-flip "project viability" check.
+  // Surfaced separately on the F&F SOW step.
   const ltarv = arvNum > 0 ? allInBasis / arvNum : 0;
   const ltarvOverCap = ltarv > FF_LTARV_CAP + 1e-6;
 
@@ -555,16 +585,16 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
                   </>
                 ) : null}
 
-                {purchaseNum > 0 && loanNum > 0 ? (
+                {((isFixFlip ? arvNum : purchaseNum) > 0 && loanNum > 0) ? (
                   <div style={{ marginTop: 8 }}>
                     <Pill
                       bg={ltvOverCap ? t.dangerBg : t.profitBg}
                       color={ltvOverCap ? t.danger : t.profit}
                     >
-                      Requested LTV {(ltv * 100).toFixed(1)}% ·{" "}
+                      {isFixFlip ? "Requested LTARV" : "Requested LTV"} {(displayLtvRatio * 100).toFixed(1)}% ·{" "}
                       {ltvOverCap
-                        ? `over ${Math.round(effectiveCap * 100)}% cap${tierConstrained ? " (tier)" : ""} — adjust loan or override`
-                        : `within ${Math.round(effectiveCap * 100)}% cap${tierConstrained ? " (tier-adjusted)" : ""}`}
+                        ? `over ${Math.round(displayLtvCap * 100)}% cap${!isFixFlip && tierConstrained ? " (tier)" : ""} — adjust loan${isFixFlip ? " or ARV" : " or override"}`
+                        : `within ${Math.round(displayLtvCap * 100)}% cap${!isFixFlip && tierConstrained ? " (tier-adjusted)" : ""}`}
                     </Pill>
                   </div>
                 ) : null}
