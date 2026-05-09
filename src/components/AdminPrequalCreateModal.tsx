@@ -31,6 +31,7 @@ import {
   useAdminCreateManualPrequal,
   useCreateClient,
 } from "@/hooks/useApi";
+import { ApiError } from "@/lib/api";
 import {
   ClientSearchBlock,
   type ClientPickResult,
@@ -262,6 +263,18 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
       setDoneFlash(true);
       setTimeout(() => onClose(), 1200);
     } catch (e) {
+      // 405 Method Not Allowed / 404 Not Found here means the qcbackend
+      // production deploy is older than commit 778dad9 — POST handler
+      // for /admin/prequal-requests + alembic 0036 (client_id +
+      // manual_credit_override columns) haven't shipped yet. Surface
+      // a clear "deploy the backend" message instead of a generic
+      // retry prompt so the operator knows it isn't a data error.
+      if (e instanceof ApiError && (e.status === 405 || e.status === 404)) {
+        setError(
+          "Manual prequal isn't live on the backend yet. Trigger a qcbackend deploy and run alembic upgrade head, then retry.",
+        );
+        return;
+      }
       setError(e instanceof Error ? e.message : "Submission failed — please retry.");
     }
   };
