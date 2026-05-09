@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card } from "@/components/design-system/primitives";
+import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { AIPreviewPanel } from "@/components/AIPreviewPanel";
 import {
   useDeleteFundingCadenceRule,
@@ -40,13 +41,10 @@ export default function FundingCadencePage() {
 
   return (
     <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: "0 0 6px" }}>
-        Borrower Follow-Up Cadence
-      </h1>
-      <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 20px", maxWidth: 640 }}>
-        Conditional follow-up rules for borrowers in the lending phase.
-        Draft-first by default — auto-send is opt-in per rule.
-      </p>
+      <LendingAIHeader
+        title="Borrower Follow-Up Cadence"
+        subtitle="Conditional follow-up rules for borrowers in the lending phase. Draft-first by default — auto-send is opt-in per rule."
+      />
 
       <Card pad={20}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>

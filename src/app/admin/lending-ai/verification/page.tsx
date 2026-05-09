@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
+import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { useFundingMetaRules, usePatchFundingMetaRules } from "@/hooks/useApi";
 
 type DocChecks = Record<string, boolean>;
@@ -148,12 +149,10 @@ export default function VerificationRulesPage() {
 
   return (
     <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: "0 0 6px" }}>
-        Document Verification
-      </h1>
-      <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 20px", maxWidth: 640 }}>
-        For each document type, choose what the AI should check.
-      </p>
+      <LendingAIHeader
+        title="Document Verification"
+        subtitle="For each document type, choose what the AI should check."
+      />
 
       <Card pad={20}>
         {isLoading ? (

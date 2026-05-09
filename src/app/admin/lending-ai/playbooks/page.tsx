@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
+import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { StageChecklist } from "@/components/StageChecklist";
 import { AIPreviewPanel } from "@/components/AIPreviewPanel";
 import {
@@ -67,14 +68,10 @@ export default function LendingPlaybooksPage() {
 
   return (
     <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: "0 0 6px" }}>
-        Lending Playbooks
-      </h1>
-      <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 16px", maxWidth: 720 }}>
-        What the AI collects on every loan, organized by the stage that
-        item blocks. Funding-required items are locked from the agent
-        side; everything else can be overridden per agent or per client.
-      </p>
+      <LendingAIHeader
+        title="Lending Playbooks"
+        subtitle="What the AI collects on every loan, organized by the stage that item blocks. Funding-required items are locked from the agent side; everything else can be overridden per agent or per client."
+      />
 
       {/* Loan product picker */}
       <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>

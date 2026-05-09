@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card } from "@/components/design-system/primitives";
+import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { useAuditEvents } from "@/hooks/useApi";
 
 const EVENT_TYPES = [
@@ -33,13 +34,10 @@ export default function AuditFeedPage() {
 
   return (
     <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: "0 0 6px" }}>
-        Audit Log
-      </h1>
-      <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 20px", maxWidth: 640 }}>
-        Every AI-behavior-changing event is appended here. Filter by
-        type, client, or playbook.
-      </p>
+      <LendingAIHeader
+        title="Audit Log"
+        subtitle="Every AI-behavior-changing event is appended here. Filter by type, client, or playbook."
+      />
 
       <Card pad={20}>
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>

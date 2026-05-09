@@ -6,8 +6,14 @@
 import Link from "next/link";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card } from "@/components/design-system/primitives";
+import { LendingAIHeader } from "@/components/LendingAIHeader";
 
 const TILES = [
+  {
+    href: "/admin/lending-ai/identity",
+    title: "AI Identity & Global Rules",
+    subtitle: "The AI's name, voice, and the hard rules it follows on every conversation (never quote rates, always identify itself, etc.).",
+  },
   {
     href: "/admin/lending-ai/playbooks",
     title: "Lending Playbooks",
@@ -34,14 +40,12 @@ export default function LendingAILanding() {
   const { t } = useTheme();
   return (
     <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: "0 0 6px" }}>
-        Lending AI Settings
-      </h1>
-      <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 20px", maxWidth: 640 }}>
-        Configure what the funding-side AI collects, how it follows up,
-        and what it accepts as verified evidence. Funding-required items
-        agents cannot waive.
-      </p>
+      <LendingAIHeader
+        title="Lending AI Settings"
+        subtitle="Configure what the funding-side AI collects, how it follows up, and what it accepts as verified evidence. Funding-required items agents cannot waive."
+        backHref="/settings"
+        backLabel="Settings"
+      />
 
       <div style={{
         display: "grid",
