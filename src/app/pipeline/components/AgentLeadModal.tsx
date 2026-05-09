@@ -30,7 +30,8 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPetrol } from "@/components/design-system/buttons";
 import { RightPanel } from "@/components/design-system/RightPanel";
-import { useClient, useClients, useCreateClient } from "@/hooks/useApi";
+import { useClient, useCreateClient } from "@/hooks/useApi";
+import { ClientSearchBlock } from "@/components/ClientSearchBlock";
 import { US_STATES } from "@/lib/usStates";
 import type { QCTokens } from "@/components/design-system/tokens";
 
@@ -332,13 +333,13 @@ function LeadStep({ t, form, update }: StepProps) {
 
       <ClientSearchBlock
         t={t}
+        label="Find an existing client (optional)"
         onPick={(c) => {
           update("clientPickedId", c.id);
           update("name", c.name);
           update("email", c.email ?? "");
           update("phone", c.phone ?? "");
         }}
-        clearAfterPick
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -686,96 +687,6 @@ function parseDollars(s: string): number | null {
   if (!cleaned) return null;
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
-}
-
-function ClientSearchBlock({
-  t,
-  onPick,
-  clearAfterPick,
-}: {
-  t: QCTokens;
-  onPick: (c: { id: string; name: string; email: string | null; phone: string | null }) => void;
-  clearAfterPick?: boolean;
-}) {
-  const { data: clients = [] } = useClients();
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (q.length < 2) return [];
-    return clients
-      .filter((c) =>
-        c.name.toLowerCase().includes(q) ||
-        (c.email ?? "").toLowerCase().includes(q),
-      )
-      .slice(0, 6);
-  }, [clients, query]);
-
-  return (
-    <div>
-      <Label t={t}>Find an existing client (optional)</Label>
-      <div style={{ position: "relative" }}>
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "0 12px",
-          background: t.surface2,
-          border: `1px solid ${t.line}`,
-          borderRadius: 9,
-        }}>
-          <Icon name="search" size={14} />
-          <input
-            value={query}
-            onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
-            onFocus={() => setOpen(true)}
-            placeholder="Search by name or email…"
-            style={{
-              flex: 1, minWidth: 0,
-              padding: "10px 0",
-              background: "transparent", border: "none",
-              color: t.ink, fontSize: 13, outline: "none",
-              fontFamily: "inherit",
-            }}
-          />
-        </div>
-        {open && matches.length > 0 && (
-          <div style={{
-            position: "absolute", top: "100%", left: 0, right: 0,
-            marginTop: 4, background: t.surface,
-            border: `1px solid ${t.line}`, borderRadius: 9,
-            boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
-            zIndex: 10, maxHeight: 240, overflow: "auto",
-          }}>
-            {matches.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => {
-                  onPick({ id: c.id, name: c.name, email: c.email ?? null, phone: c.phone ?? null });
-                  setOpen(false);
-                  if (clearAfterPick) setQuery("");
-                }}
-                style={{
-                  all: "unset", cursor: "pointer",
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "9px 12px", borderBottom: `1px solid ${t.line}`,
-                  width: "calc(100% - 24px)",
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.name}
-                  </div>
-                  <div style={{ fontSize: 11, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.email ?? "—"}
-                  </div>
-                </div>
-                <Icon name="arrowR" size={11} />
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 function ClientContextCard({ t, clientId }: { t: QCTokens; clientId: string }) {

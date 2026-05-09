@@ -37,12 +37,12 @@ import { RightPanel } from "@/components/design-system/RightPanel";
 import {
   useBrokerSettings,
   useClient,
-  useClients,
   useCreateIntake,
   useCurrentUser,
   useSettings,
   useUsers,
 } from "@/hooks/useApi";
+import { ClientSearchBlock } from "@/components/ClientSearchBlock";
 import { parseUSD } from "@/lib/formCoerce";
 import {
   EntityType,
@@ -771,126 +771,6 @@ function isBuyerWithAssets(form: FormState): boolean {
 
 // ── Step views ────────────────────────────────────────────────────────────
 
-// Searches the calling user's accessible clients (broker → their book;
-// super-admin → firm-wide via the existing useClients scope rules) and
-// surfaces hits as picker rows. The user can ALWAYS skip this and just
-// type a new borrower in the form below — falling through is the
-// "client doesn't exist yet" path.
-function ClientSearchBlock({
-  t,
-  onPick,
-}: {
-  t: QCTokens;
-  onPick: (c: IntakePrefillClient) => void;
-}) {
-  const { data: clients = [] } = useClients();
-  const [query, setQuery] = useState("");
-  const [showResults, setShowResults] = useState(false);
-  const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (q.length < 2) return [];
-    return clients
-      .filter((c) =>
-        c.name.toLowerCase().includes(q) ||
-        (c.email ?? "").toLowerCase().includes(q),
-      )
-      .slice(0, 6);
-  }, [clients, query]);
-
-  return (
-    <div>
-      <Label t={t}>Find an existing client</Label>
-      <div style={{ position: "relative" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "0 12px",
-            background: t.surface2,
-            border: `1px solid ${t.line}`,
-            borderRadius: 9,
-          }}
-        >
-          <Icon name="search" size={14} />
-          <input
-            value={query}
-            onChange={(e) => { setQuery(e.target.value); setShowResults(true); }}
-            onFocus={() => setShowResults(true)}
-            placeholder="Search by name or email…"
-            style={{
-              flex: 1, minWidth: 0,
-              padding: "10px 0",
-              background: "transparent",
-              border: "none",
-              color: t.ink,
-              fontSize: 13,
-              outline: "none",
-              fontFamily: "inherit",
-            }}
-          />
-        </div>
-        {showResults && matches.length > 0 && (
-          <div
-            style={{
-              position: "absolute",
-              top: "100%", left: 0, right: 0,
-              marginTop: 4,
-              background: t.surface,
-              border: `1px solid ${t.line}`,
-              borderRadius: 9,
-              boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
-              zIndex: 10,
-              maxHeight: 240,
-              overflow: "auto",
-            }}
-          >
-            {matches.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => {
-                  onPick({
-                    id: c.id,
-                    name: c.name,
-                    email: c.email ?? null,
-                    phone: c.phone ?? null,
-                    client_type: c.client_type ?? null,
-                  });
-                  setQuery("");
-                  setShowResults(false);
-                }}
-                style={{
-                  all: "unset",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "9px 12px",
-                  borderBottom: `1px solid ${t.line}`,
-                  width: "calc(100% - 24px)",
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.name}
-                  </div>
-                  <div style={{ fontSize: 11, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.email ?? "—"}
-                  </div>
-                </div>
-                <Icon name="arrowR" size={11} />
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      <div style={{ fontSize: 11, color: t.ink3, marginTop: 6 }}>
-        Don&apos;t see them? Skip the search and fill the borrower fields below — we&apos;ll create a new client.
-      </div>
-    </div>
-  );
-}
-
 interface StepProps {
   t: QCTokens;
   form: FormState;
@@ -976,7 +856,11 @@ function BorrowerStepView({
       {/* Client lookup — pick an existing client OR fall through to
           create a new one. Hidden when prefillClient locked us in. */}
       {!locked && (
-        <ClientSearchBlock t={t} onPick={onPickClient} />
+        <ClientSearchBlock
+          t={t}
+          onPick={onPickClient}
+          helperText="Don't see them? Skip the search and fill the borrower fields below — we'll create a new client."
+        />
       )}
 
       {locked && pickedClient && (
