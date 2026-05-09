@@ -37,7 +37,7 @@ export function AIInboxCard({ task, onApprove, onEdit, onDismiss }: Props) {
   const accent =
     severity === "high" ? "#c14444"
     : severity === "low" ? "#888"
-    : t.accent;
+    : t.petrol;
 
   return (
     <Card pad={16}>
@@ -163,7 +163,7 @@ function Section({ label, children, t }: { label: string; children: React.ReactN
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={{
-        fontSize: 11, fontWeight: 700, color: t.muted,
+        fontSize: 11, fontWeight: 700, color: t.ink3,
         marginBottom: 4, textTransform: "uppercase",
       }}>{label}</div>
       <div style={{ fontSize: 13, color: t.ink, lineHeight: 1.5 }}>
@@ -177,8 +177,8 @@ function Section({ label, children, t }: { label: string; children: React.ReactN
 function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: "8px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.border}`,
-    background: t.accent, color: "#fff", cursor: "pointer",
+    borderRadius: 6, border: `1px solid ${t.line}`,
+    background: t.petrol, color: "#fff", cursor: "pointer",
   } as const;
 }
 
@@ -186,7 +186,7 @@ function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
 function btnSecondary(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: "8px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.border}`,
+    borderRadius: 6, border: `1px solid ${t.line}`,
     background: t.surface, color: t.ink, cursor: "pointer",
   } as const;
 }

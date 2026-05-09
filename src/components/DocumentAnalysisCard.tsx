@@ -46,17 +46,17 @@ export function DocumentAnalysisCard({
         }}>
           {detectedDocumentType || "Unknown type"}
         </span>
-        <span style={{ fontSize: 12, color: t.muted, marginLeft: "auto" }}>
+        <span style={{ fontSize: 12, color: t.ink3, marginLeft: "auto" }}>
           confidence {(conf * 100).toFixed(0)}%
         </span>
       </div>
-      <div style={{ fontSize: 12, color: t.muted, marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: t.ink3, marginBottom: 10 }}>
         {documentName}
       </div>
 
       {extractedFacts && Object.keys(extractedFacts).length > 0 ? (
         <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: t.muted, marginBottom: 4, textTransform: "uppercase" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, marginBottom: 4, textTransform: "uppercase" }}>
             Extracted facts
           </div>
           {Object.entries(extractedFacts).map(([k, v]) => (
@@ -111,7 +111,7 @@ export function DocumentAnalysisCard({
       ) : null}
 
       {recommendedAction && !issues?.length ? (
-        <div style={{ fontSize: 12, color: t.muted }}>
+        <div style={{ fontSize: 12, color: t.ink3 }}>
           Recommended: <code>{recommendedAction}</code>
         </div>
       ) : null}
@@ -122,7 +122,7 @@ export function DocumentAnalysisCard({
 function btn(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: "4px 10px", fontSize: 11, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.border}`,
+    borderRadius: 6, border: `1px solid ${t.line}`,
     background: t.surface, color: t.ink, cursor: "pointer",
   } as const;
 }

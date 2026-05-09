@@ -43,35 +43,35 @@ export default function FundingCadencePage() {
       <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: "0 0 6px" }}>
         Borrower Follow-Up Cadence
       </h1>
-      <p style={{ fontSize: 13, color: t.muted, margin: "0 0 20px", maxWidth: 640 }}>
+      <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 20px", maxWidth: 640 }}>
         Conditional follow-up rules for borrowers in the lending phase.
         Draft-first by default — auto-send is opt-in per rule.
       </p>
 
       <Card pad={20}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 13, color: t.muted }}>{rules.length} rule(s)</div>
+          <div style={{ fontSize: 13, color: t.ink3 }}>{rules.length} rule(s)</div>
           <button
             onClick={() => setDraft({ trigger_event: "requirement_missing", action_type: "draft_message", approval_required: true, wait_hours: 24, visibility: "borrower", is_active: true })}
-            style={{ padding: "6px 12px", fontSize: 12, fontWeight: 600, borderRadius: 6, border: `1px solid ${t.border}`, background: t.accent, color: "#fff", cursor: "pointer" }}
+            style={{ padding: "6px 12px", fontSize: 12, fontWeight: 600, borderRadius: 6, border: `1px solid ${t.line}`, background: t.petrol, color: "#fff", cursor: "pointer" }}
           >
             + Add rule
           </button>
         </div>
         {rules.map(r => (
-          <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${t.border}` }}>
+          <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${t.line}` }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, color: t.ink, fontWeight: 600 }}>
                 {TRIGGERS.find(x => x.value === r.trigger_event)?.label || r.trigger_event}
-                {r.applies_to_requirement_key ? <span style={{ color: t.muted, fontWeight: 400 }}> · {r.applies_to_requirement_key}</span> : null}
+                {r.applies_to_requirement_key ? <span style={{ color: t.ink3, fontWeight: 400 }}> · {r.applies_to_requirement_key}</span> : null}
               </div>
-              <div style={{ fontSize: 12, color: t.muted }}>
+              <div style={{ fontSize: 12, color: t.ink3 }}>
                 → {ACTIONS.find(x => x.value === r.action_type)?.label || r.action_type}
                 {r.wait_hours > 0 ? `, after ${r.wait_hours}h` : ""}
                 {r.approval_required ? " · awaits approval" : " · auto-sends"}
               </div>
             </div>
-            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: t.surface2, color: t.muted, textTransform: "uppercase" }}>
+            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: t.surface2, color: t.ink3, textTransform: "uppercase" }}>
               {r.visibility}
             </span>
             <button onClick={() => setDraft(r)} style={btn(t)}>Edit</button>
@@ -79,7 +79,7 @@ export default function FundingCadencePage() {
           </div>
         ))}
         {draft ? (
-          <div style={{ padding: 14, marginTop: 12, border: `1px solid ${t.border}`, borderRadius: 8, background: t.surface2, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div style={{ padding: 14, marginTop: 12, border: `1px solid ${t.line}`, borderRadius: 8, background: t.surface2, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <select value={draft.trigger_event} onChange={e => setDraft({ ...draft, trigger_event: e.target.value })} style={input(t)}>
               {TRIGGERS.map(x => <option key={x.value} value={x.value}>{x.label}</option>)}
             </select>
@@ -100,7 +100,7 @@ export default function FundingCadencePage() {
             <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
               <button
                 onClick={async () => { await upsert.mutateAsync(draft as Parameters<typeof upsert.mutateAsync>[0]); setDraft(null); }}
-                style={{ ...btn(t), background: t.accent, color: "#fff" }}
+                style={{ ...btn(t), background: t.petrol, color: "#fff" }}
               >
                 Save rule
               </button>
@@ -118,8 +118,8 @@ export default function FundingCadencePage() {
 }
 
 function btn(t: ReturnType<typeof useTheme>["t"]) {
-  return { padding: "4px 8px", fontSize: 11, fontWeight: 600, borderRadius: 6, border: `1px solid ${t.border}`, background: t.surface, color: t.ink, cursor: "pointer" } as const;
+  return { padding: "4px 8px", fontSize: 11, fontWeight: 600, borderRadius: 6, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, cursor: "pointer" } as const;
 }
 function input(t: ReturnType<typeof useTheme>["t"]) {
-  return { padding: 8, fontSize: 13, fontFamily: "inherit", borderRadius: 6, border: `1px solid ${t.border}`, background: t.surface, color: t.ink, width: "100%" } as const;
+  return { padding: 8, fontSize: 13, fontFamily: "inherit", borderRadius: 6, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, width: "100%" } as const;
 }

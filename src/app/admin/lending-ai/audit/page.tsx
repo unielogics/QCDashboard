@@ -36,7 +36,7 @@ export default function AuditFeedPage() {
       <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: "0 0 6px" }}>
         Audit Log
       </h1>
-      <p style={{ fontSize: 13, color: t.muted, margin: "0 0 20px", maxWidth: 640 }}>
+      <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 20px", maxWidth: 640 }}>
         Every AI-behavior-changing event is appended here. Filter by
         type, client, or playbook.
       </p>
@@ -48,7 +48,7 @@ export default function AuditFeedPage() {
             onChange={e => setEventType(e.target.value)}
             style={{
               flex: 1, padding: 8, fontSize: 13,
-              borderRadius: 6, border: `1px solid ${t.border}`,
+              borderRadius: 6, border: `1px solid ${t.line}`,
               background: t.surface, color: t.ink,
             }}
           >
@@ -62,19 +62,19 @@ export default function AuditFeedPage() {
             onChange={e => setClientId(e.target.value)}
             style={{
               flex: 1, padding: 8, fontSize: 13,
-              borderRadius: 6, border: `1px solid ${t.border}`,
+              borderRadius: 6, border: `1px solid ${t.line}`,
               background: t.surface, color: t.ink,
             }}
           />
         </div>
 
         {isLoading ? (
-          <div style={{ color: t.muted }}>Loading…</div>
+          <div style={{ color: t.ink3 }}>Loading…</div>
         ) : events.length === 0 ? (
-          <div style={{ color: t.muted, fontSize: 13 }}>No events match those filters.</div>
+          <div style={{ color: t.ink3, fontSize: 13 }}>No events match those filters.</div>
         ) : events.map(e => (
           <div key={e.id} style={{
-            padding: "8px 0", borderBottom: `1px solid ${t.border}`,
+            padding: "8px 0", borderBottom: `1px solid ${t.line}`,
             fontSize: 12,
           }}>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -84,19 +84,19 @@ export default function AuditFeedPage() {
               }}>
                 {e.event_type}
               </span>
-              <span style={{ color: t.muted }}>{e.actor_type}</span>
-              <span style={{ flex: 1, color: t.muted, fontFamily: "monospace", fontSize: 11 }}>
+              <span style={{ color: t.ink3 }}>{e.actor_type}</span>
+              <span style={{ flex: 1, color: t.ink3, fontFamily: "monospace", fontSize: 11 }}>
                 {e.requirement_key || ""}
               </span>
-              <span style={{ color: t.muted, fontSize: 11 }}>
+              <span style={{ color: t.ink3, fontSize: 11 }}>
                 {new Date(e.created_at).toLocaleString()}
               </span>
             </div>
             {(e.old_value || e.new_value || e.payload) ? (
               <div style={{ marginTop: 4 }}>
-                {e.old_value ? <span style={{ color: t.muted, marginRight: 12 }}>old: {JSON.stringify(e.old_value)}</span> : null}
+                {e.old_value ? <span style={{ color: t.ink3, marginRight: 12 }}>old: {JSON.stringify(e.old_value)}</span> : null}
                 {e.new_value ? <span style={{ color: t.ink }}>new: {JSON.stringify(e.new_value)}</span> : null}
-                {!e.old_value && !e.new_value && e.payload ? <span style={{ color: t.muted }}>{JSON.stringify(e.payload)}</span> : null}
+                {!e.old_value && !e.new_value && e.payload ? <span style={{ color: t.ink3 }}>{JSON.stringify(e.payload)}</span> : null}
               </div>
             ) : null}
           </div>

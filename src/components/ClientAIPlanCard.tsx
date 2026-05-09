@@ -63,14 +63,14 @@ export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
   if (isLoading) {
     return (
       <Card pad={16}>
-        <div style={{ color: t.muted, fontSize: 13 }}>Loading AI plan…</div>
+        <div style={{ color: t.ink3, fontSize: 13 }}>Loading AI plan…</div>
       </Card>
     );
   }
   if (!plan) {
     return (
       <Card pad={16}>
-        <div style={{ color: t.muted, fontSize: 13 }}>No AI plan yet for this client.</div>
+        <div style={{ color: t.ink3, fontSize: 13 }}>No AI plan yet for this client.</div>
       </Card>
     );
   }
@@ -121,7 +121,7 @@ export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
         <SectionLabel>Client AI Plan</SectionLabel>
         <span style={{
-          fontSize: 12, fontWeight: 600, color: t.muted,
+          fontSize: 12, fontWeight: 600, color: t.ink3,
         }}>
           {leadKind} · {phaseLabel} · {plan.readiness_score ?? 0}% Ready
         </span>
@@ -134,7 +134,7 @@ export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
           background: t.surface2,
         }}>
           <div style={{
-            fontSize: 11, fontWeight: 700, color: t.muted, marginBottom: 6,
+            fontSize: 11, fontWeight: 700, color: t.ink3, marginBottom: 6,
             textTransform: "uppercase",
           }}>
             AI&apos;s Next Move
@@ -194,7 +194,7 @@ export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
           {plan.waived_items.map(w => (
             <div key={w.requirement_key} style={{
               display: "flex", alignItems: "center", gap: 8,
-              padding: "4px 0", fontSize: 13, color: t.muted,
+              padding: "4px 0", fontSize: 13, color: t.ink3,
             }}>
               <span style={{ flex: 1, textDecoration: "line-through" }}>{w.label}</span>
               <button
@@ -217,7 +217,7 @@ export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
           placeholder='e.g. "For this client, don&apos;t push prequal too hard yet."'
           style={{
             width: "100%", padding: 10, fontSize: 13,
-            borderRadius: 8, border: `1px solid ${t.border}`,
+            borderRadius: 8, border: `1px solid ${t.line}`,
             background: t.surface, color: t.ink, fontFamily: "inherit",
             resize: "vertical",
           }}
@@ -228,9 +228,9 @@ export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
       {previewQuestion ? (
         <div style={{
           marginTop: 12, padding: 10, borderRadius: 8,
-          border: `1px dashed ${t.border}`, fontSize: 13, color: t.ink,
+          border: `1px dashed ${t.line}`, fontSize: 13, color: t.ink,
         }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: t.muted, marginBottom: 4, textTransform: "uppercase" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, marginBottom: 4, textTransform: "uppercase" }}>
             AI Preview
           </div>
           {previewQuestion}
@@ -240,7 +240,7 @@ export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
       {/* ── Block 8: Buttons ────────────────────────────────────── */}
       <div style={{
         display: "flex", gap: 8, flexWrap: "wrap",
-        marginTop: 16, paddingTop: 14, borderTop: `1px solid ${t.border}`,
+        marginTop: 16, paddingTop: 14, borderTop: `1px solid ${t.line}`,
       }}>
         <button
           onClick={saveInstr}
@@ -285,7 +285,7 @@ function PlainRow({
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 10,
-      padding: "6px 0", borderBottom: `1px solid ${t.border}`,
+      padding: "6px 0", borderBottom: `1px solid ${t.line}`,
     }}>
       <span style={{ flex: 1, fontSize: 13, color: t.ink }}>{item.label}</span>
       <span style={{
@@ -298,8 +298,8 @@ function PlainRow({
         <button
           onClick={() => onToggleWaiver(item)}
           style={{
-            background: "transparent", border: `1px solid ${t.border}`,
-            padding: "2px 8px", borderRadius: 4, color: t.muted,
+            background: "transparent", border: `1px solid ${t.line}`,
+            padding: "2px 8px", borderRadius: 4, color: t.ink3,
             cursor: "pointer", fontSize: 11,
           }}
           title="Don't ask for this item on this client"
@@ -328,7 +328,7 @@ function chipFor(item: ClientAIPlanItem): { label: string; bg: string; color: st
 
 /** "What We Know" data — pull plain-English bullets from the realtor
  * profile + verified facts on the plan. Cap at ~10 lines. */
-function collectKnown(profile: unknown, plan: { required_items?: ClientAIPlanItem[] } | null): string[] {
+function collectKnown(profile: unknown, plan: { required_items?: ClientAIPlanItem[] } | null | undefined): string[] {
   const out: string[] = [];
   const p = (profile || {}) as Record<string, unknown>;
   const bp = (p.buyer_profile || {}) as Record<string, unknown>;
@@ -362,8 +362,8 @@ function collectKnown(profile: unknown, plan: { required_items?: ClientAIPlanIte
 function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: "8px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.border}`,
-    background: t.accent, color: "#fff", cursor: "pointer",
+    borderRadius: 6, border: `1px solid ${t.line}`,
+    background: t.petrol, color: "#fff", cursor: "pointer",
   } as const;
 }
 
@@ -371,7 +371,7 @@ function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
 function btnSecondary(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: "8px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.border}`,
+    borderRadius: 6, border: `1px solid ${t.line}`,
     background: t.surface, color: t.ink, cursor: "pointer",
   } as const;
 }
@@ -380,8 +380,8 @@ function btnSecondary(t: ReturnType<typeof useTheme>["t"]) {
 function btnGhost(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: "4px 10px", fontSize: 11, fontWeight: 600,
-    borderRadius: 4, border: `1px solid ${t.border}`,
-    background: "transparent", color: t.muted, cursor: "pointer",
+    borderRadius: 4, border: `1px solid ${t.line}`,
+    background: "transparent", color: t.ink3, cursor: "pointer",
   } as const;
 }
 
@@ -396,7 +396,7 @@ function Bucket({
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{
-        fontSize: 11, fontWeight: 700, color: t.muted,
+        fontSize: 11, fontWeight: 700, color: t.ink3,
         marginBottom: 6, textTransform: "uppercase",
       }}>
         {title}

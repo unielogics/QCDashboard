@@ -111,13 +111,13 @@ function StageBucket({
       </div>
 
       {requirements.length === 0 && !draft ? (
-        <div style={{ fontSize: 13, color: t.muted, padding: "4px 0" }}>—</div>
+        <div style={{ fontSize: 13, color: t.ink3, padding: "4px 0" }}>—</div>
       ) : null}
 
       {requirements.map(r => (
         <div key={r.id} style={{
           display: "flex", alignItems: "center", gap: 10,
-          padding: "8px 0", borderBottom: `1px solid ${t.border}`,
+          padding: "8px 0", borderBottom: `1px solid ${t.line}`,
         }}>
           <input type="checkbox" checked readOnly disabled={readOnly} style={{ width: 18, height: 18 }} />
           <span style={{ flex: 1, fontSize: 13, color: t.ink }}>{r.label}</span>
@@ -131,7 +131,7 @@ function StageBucket({
             <button
               onClick={() => onDelete(r.id)}
               style={{
-                background: "transparent", border: `1px solid ${t.border}`,
+                background: "transparent", border: `1px solid ${t.line}`,
                 padding: "2px 8px", borderRadius: 4, color: "#c14444",
                 cursor: "pointer", fontSize: 11,
               }}
@@ -156,8 +156,8 @@ function StageBucket({
           style={{
             marginTop: 8,
             padding: "6px 12px", fontSize: 12, fontWeight: 600,
-            borderRadius: 6, border: `1px dashed ${t.border}`,
-            background: "transparent", color: t.muted, cursor: "pointer",
+            borderRadius: 6, border: `1px dashed ${t.line}`,
+            background: "transparent", color: t.ink3, cursor: "pointer",
           }}
         >
           + Add
@@ -214,7 +214,7 @@ function InlineAddForm({
   return (
     <div style={{
       marginTop: 10, padding: 14,
-      borderRadius: 8, border: `1px dashed ${t.border}`,
+      borderRadius: 8, border: `1px dashed ${t.line}`,
       background: t.surface2, display: "grid", gap: 8,
     }}>
       <input
@@ -236,7 +236,7 @@ function InlineAddForm({
         </label>
         <select
           value={draft.category || "fact"}
-          onChange={e => setDraft({ ...draft, category: e.target.value })}
+          onChange={e => setDraft({ ...draft, category: e.target.value as PlaybookRequirement["category"] })}
           style={inputStyle(t)}
         >
           <option value="fact">fact</option>
@@ -272,7 +272,7 @@ function InlineAddForm({
 function inputStyle(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: 8, fontSize: 13, fontFamily: "inherit",
-    borderRadius: 6, border: `1px solid ${t.border}`,
+    borderRadius: 6, border: `1px solid ${t.line}`,
     background: t.surface, color: t.ink,
   } as const;
 }
@@ -289,8 +289,8 @@ function radio(t: ReturnType<typeof useTheme>["t"]) {
 function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: "6px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.border}`,
-    background: t.accent, color: "#fff", cursor: "pointer",
+    borderRadius: 6, border: `1px solid ${t.line}`,
+    background: t.petrol, color: "#fff", cursor: "pointer",
   } as const;
 }
 
@@ -298,7 +298,7 @@ function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
 function btnSecondary(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: "6px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.border}`,
+    borderRadius: 6, border: `1px solid ${t.line}`,
     background: t.surface, color: t.ink, cursor: "pointer",
   } as const;
 }

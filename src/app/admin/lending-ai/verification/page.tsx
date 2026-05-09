@@ -151,13 +151,13 @@ export default function VerificationRulesPage() {
       <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: "0 0 6px" }}>
         Document Verification
       </h1>
-      <p style={{ fontSize: 13, color: t.muted, margin: "0 0 20px", maxWidth: 640 }}>
+      <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 20px", maxWidth: 640 }}>
         For each document type, choose what the AI should check.
       </p>
 
       <Card pad={20}>
         {isLoading ? (
-          <div style={{ color: t.muted }}>Loading…</div>
+          <div style={{ color: t.ink3 }}>Loading…</div>
         ) : (
           <>
             {docTypes.map(d => (
@@ -183,7 +183,7 @@ export default function VerificationRulesPage() {
                 {d.hasExpiration ? (
                   <div style={{
                     display: "flex", alignItems: "center", gap: 10,
-                    marginTop: 8, fontSize: 13, color: t.muted,
+                    marginTop: 8, fontSize: 13, color: t.ink3,
                   }}>
                     Expiration window:
                     <input
@@ -192,7 +192,7 @@ export default function VerificationRulesPage() {
                       onChange={e => setExpiration(d.key, parseInt(e.target.value || "0", 10) || null)}
                       style={{
                         width: 70, padding: 6, fontSize: 13,
-                        borderRadius: 6, border: `1px solid ${t.border}`,
+                        borderRadius: 6, border: `1px solid ${t.line}`,
                         background: t.surface, color: t.ink,
                       }}
                     />
@@ -207,12 +207,12 @@ export default function VerificationRulesPage() {
             </button>
 
             {/* Advanced disclosure */}
-            <div style={{ marginTop: 28, paddingTop: 16, borderTop: `1px solid ${t.border}` }}>
+            <div style={{ marginTop: 28, paddingTop: 16, borderTop: `1px solid ${t.line}` }}>
               <button
                 onClick={() => setAdvanced(o => !o)}
                 style={{
                   background: "transparent", border: "none",
-                  padding: 0, color: t.muted, fontSize: 12, fontWeight: 700,
+                  padding: 0, color: t.ink3, fontSize: 12, fontWeight: 700,
                   cursor: "pointer",
                 }}
               >
@@ -226,7 +226,7 @@ export default function VerificationRulesPage() {
                     rows={20}
                     style={{
                       width: "100%", fontFamily: "ui-monospace, SF Mono, monospace", fontSize: 12,
-                      padding: 10, borderRadius: 8, border: `1px solid ${t.border}`,
+                      padding: 10, borderRadius: 8, border: `1px solid ${t.line}`,
                       background: t.surface, color: t.ink, resize: "vertical",
                     }}
                   />
@@ -247,7 +247,7 @@ export default function VerificationRulesPage() {
 function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: "8px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.border}`,
-    background: t.accent, color: "#fff", cursor: "pointer",
+    borderRadius: 6, border: `1px solid ${t.line}`,
+    background: t.petrol, color: "#fff", cursor: "pointer",
   } as const;
 }

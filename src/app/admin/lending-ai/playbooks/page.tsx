@@ -70,7 +70,7 @@ export default function LendingPlaybooksPage() {
       <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: "0 0 6px" }}>
         Lending Playbooks
       </h1>
-      <p style={{ fontSize: 13, color: t.muted, margin: "0 0 16px", maxWidth: 720 }}>
+      <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 16px", maxWidth: 720 }}>
         What the AI collects on every loan, organized by the stage that
         item blocks. Funding-required items are locked from the agent
         side; everything else can be overridden per agent or per client.
@@ -84,8 +84,8 @@ export default function LendingPlaybooksPage() {
             onClick={() => setActiveKey(key)}
             style={{
               padding: "8px 14px", fontSize: 13, fontWeight: 600,
-              borderRadius: 8, border: `1px solid ${activeKey === key ? t.accent : t.border}`,
-              background: activeKey === key ? t.accent : t.surface,
+              borderRadius: 8, border: `1px solid ${activeKey === key ? t.petrol : t.line}`,
+              background: activeKey === key ? t.petrol : t.surface,
               color: activeKey === key ? "#fff" : t.ink,
               cursor: "pointer",
             }}
@@ -135,7 +135,7 @@ function PlaybookPanel({
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
         <SectionLabel>{playbook.name}</SectionLabel>
         <StatusPill status={playbook.status} version={playbook.version} t={t} />
-        <span style={{ fontSize: 11, color: t.muted, marginLeft: 4 }}>
+        <span style={{ fontSize: 11, color: t.ink3, marginLeft: 4 }}>
           {isPlatform ? "Platform default — read-only" : "Funding-owned"}
         </span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
@@ -209,12 +209,12 @@ function StatusPill({ status, version, t }: { status: string; version: number; t
 function Advanced({ t }: { playbookId: string; t: ReturnType<typeof useTheme>["t"] }) {
   const [open, setOpen] = useState(false);
   return (
-    <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${t.border}` }}>
+    <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${t.line}` }}>
       <button
         onClick={() => setOpen(o => !o)}
         style={{
           background: "transparent", border: "none",
-          padding: 0, color: t.muted, fontSize: 12, fontWeight: 700,
+          padding: 0, color: t.ink3, fontSize: 12, fontWeight: 700,
           cursor: "pointer",
         }}
       >
@@ -242,11 +242,11 @@ function EscalationEditor({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
       <div style={{ fontSize: 12, fontWeight: 700, color: t.ink, marginBottom: 6 }}>
         Underwriter escalation rules
       </div>
-      <div style={{ fontSize: 12, color: t.muted, marginBottom: 6 }}>
+      <div style={{ fontSize: 12, color: t.ink3, marginBottom: 6 }}>
         When the AI should escalate vs. continue collecting (DSCR below min, LTV exceeds max, doc contradiction, etc.).
       </div>
       {isLoading ? (
-        <div style={{ color: t.muted, fontSize: 12 }}>Loading…</div>
+        <div style={{ color: t.ink3, fontSize: 12 }}>Loading…</div>
       ) : (
         <>
           <textarea
@@ -255,7 +255,7 @@ function EscalationEditor({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
             rows={10}
             style={{
               width: "100%", fontFamily: "ui-monospace, SF Mono, monospace", fontSize: 12,
-              padding: 10, borderRadius: 8, border: `1px solid ${t.border}`,
+              padding: 10, borderRadius: 8, border: `1px solid ${t.line}`,
               background: t.surface, color: t.ink, resize: "vertical",
             }}
           />
@@ -287,11 +287,11 @@ function CommunicationEditor({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
       <div style={{ fontSize: 12, fontWeight: 700, color: t.ink, marginBottom: 6 }}>
         Borrower communication tone + templates
       </div>
-      <div style={{ fontSize: 12, color: t.muted, marginBottom: 6 }}>
+      <div style={{ fontSize: 12, color: t.ink3, marginBottom: 6 }}>
         Tone, opening line templates, when to copy the agent on a borrower message.
       </div>
       {isLoading ? (
-        <div style={{ color: t.muted, fontSize: 12 }}>Loading…</div>
+        <div style={{ color: t.ink3, fontSize: 12 }}>Loading…</div>
       ) : (
         <>
           <textarea
@@ -300,7 +300,7 @@ function CommunicationEditor({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
             rows={10}
             style={{
               width: "100%", fontFamily: "ui-monospace, SF Mono, monospace", fontSize: 12,
-              padding: 10, borderRadius: 8, border: `1px solid ${t.border}`,
+              padding: 10, borderRadius: 8, border: `1px solid ${t.line}`,
               background: t.surface, color: t.ink, resize: "vertical",
             }}
           />
@@ -324,8 +324,8 @@ function CommunicationEditor({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
 function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: "6px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.border}`,
-    background: t.accent, color: "#fff", cursor: "pointer",
+    borderRadius: 6, border: `1px solid ${t.line}`,
+    background: t.petrol, color: "#fff", cursor: "pointer",
   } as const;
 }
 
@@ -333,7 +333,7 @@ function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
 function btnSecondary(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: "6px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.border}`,
+    borderRadius: 6, border: `1px solid ${t.line}`,
     background: t.surface, color: t.ink, cursor: "pointer",
   } as const;
 }

@@ -37,7 +37,7 @@ export function AIPreviewPanel({ mode }: Props) {
   return (
     <Card pad={16}>
       <SectionLabel>AI Preview</SectionLabel>
-      <div style={{ fontSize: 12, color: t.muted, marginTop: 4, marginBottom: 12 }}>
+      <div style={{ fontSize: 12, color: t.ink3, marginTop: 4, marginBottom: 12 }}>
         Run the AI's logic against a real (or test) client without saving anything.
       </div>
 
@@ -47,7 +47,7 @@ export function AIPreviewPanel({ mode }: Props) {
           onChange={e => setClientId(e.target.value)}
           style={{
             width: "100%", padding: 8, fontSize: 13,
-            borderRadius: 6, border: `1px solid ${t.border}`,
+            borderRadius: 6, border: `1px solid ${t.line}`,
             background: t.surface, color: t.ink,
           }}
         >
@@ -98,7 +98,7 @@ export function AIPreviewPanel({ mode }: Props) {
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {plan.data.required_items.map(i => (
                   <li key={i.requirement_key} style={{ fontSize: 12 }}>
-                    {i.label} <span style={{ color: t.muted }}>({i.required_level}, src={i.source}, status={i.status})</span>
+                    {i.label} <span style={{ color: t.ink3 }}>({i.required_level}, src={i.source}, status={i.status})</span>
                   </li>
                 ))}
               </ul>
@@ -121,12 +121,12 @@ export function AIPreviewPanel({ mode }: Props) {
       {cadence.data ? (
         <PreviewBlock title="Cadence actions that would fire today" t={t}>
           {cadence.data.length === 0 ? (
-            <div style={{ fontSize: 12, color: t.muted }}>No rules fire right now.</div>
+            <div style={{ fontSize: 12, color: t.ink3 }}>No rules fire right now.</div>
           ) : cadence.data.map((c, i) => (
-            <div key={i} style={{ padding: 8, borderBottom: `1px solid ${t.border}`, fontSize: 12 }}>
+            <div key={i} style={{ padding: 8, borderBottom: `1px solid ${t.line}`, fontSize: 12 }}>
               <strong>{c.action_type}</strong> for {c.client_name} ({c.trigger_event})
               {c.message_preview ? (
-                <div style={{ color: t.muted, marginTop: 4 }}>{c.message_preview}</div>
+                <div style={{ color: t.ink3, marginTop: 4 }}>{c.message_preview}</div>
               ) : null}
             </div>
           ))}
@@ -140,10 +140,10 @@ function PreviewBlock({ title, children, t }: { title: string; children: React.R
   return (
     <div style={{
       marginTop: 14, padding: 12,
-      border: `1px dashed ${t.border}`, borderRadius: 8,
+      border: `1px dashed ${t.line}`, borderRadius: 8,
       background: t.surface2,
     }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: t.muted, marginBottom: 8, textTransform: "uppercase" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, marginBottom: 8, textTransform: "uppercase" }}>
         {title}
       </div>
       {children}
@@ -163,7 +163,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function btn(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: "6px 12px", fontSize: 12, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.border}`,
+    borderRadius: 6, border: `1px solid ${t.line}`,
     background: t.surface, color: t.ink, cursor: "pointer",
   } as const;
 }
@@ -172,7 +172,7 @@ function preStyle(t: ReturnType<typeof useTheme>["t"]) {
   return {
     background: t.surface, padding: 8, borderRadius: 6,
     fontSize: 11, lineHeight: 1.4, overflowX: "auto" as const,
-    border: `1px solid ${t.border}`, color: t.ink,
+    border: `1px solid ${t.line}`, color: t.ink,
     margin: 0, whiteSpace: "pre-wrap" as const,
   } as const;
 }

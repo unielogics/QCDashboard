@@ -50,7 +50,7 @@ export default function AIAssistantPage() {
       <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: "0 0 6px" }}>
         AI Assistant
       </h1>
-      <p style={{ fontSize: 13, color: t.muted, margin: "0 0 20px", maxWidth: 640 }}>
+      <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 20px", maxWidth: 640 }}>
         Tell your AI what to collect, when to follow up, and what it&apos;s
         allowed to do. Everything here is your default — per-client
         adjustments live on each client page.
@@ -59,7 +59,7 @@ export default function AIAssistantPage() {
       {/* Tab strip */}
       <div style={{
         display: "flex", gap: 4, marginBottom: 20,
-        borderBottom: `1px solid ${t.border}`, paddingBottom: 0,
+        borderBottom: `1px solid ${t.line}`, paddingBottom: 0,
         flexWrap: "wrap",
       }}>
         {TABS.map(x => (
@@ -69,8 +69,8 @@ export default function AIAssistantPage() {
             style={{
               padding: "10px 16px", fontSize: 13, fontWeight: 600,
               border: "none", background: "transparent",
-              color: tab === x.id ? t.ink : t.muted,
-              borderBottom: `2px solid ${tab === x.id ? t.accent : "transparent"}`,
+              color: tab === x.id ? t.ink : t.ink3,
+              borderBottom: `2px solid ${tab === x.id ? t.petrol : "transparent"}`,
               cursor: "pointer",
               marginBottom: -1,
             }}
@@ -167,12 +167,12 @@ function SidedRulesTab({ side, leadLabel }: { side: "buyer" | "seller"; leadLabe
 
   return (
     <div>
-      <p style={{ fontSize: 13, color: t.muted, marginTop: 0, marginBottom: 16 }}>
+      <p style={{ fontSize: 13, color: t.ink3, marginTop: 0, marginBottom: 16 }}>
         When you get a {leadLabel}, your AI should collect:
       </p>
 
       {isLoading ? (
-        <Card pad={20}><div style={{ color: t.muted, fontSize: 13 }}>Loading…</div></Card>
+        <Card pad={20}><div style={{ color: t.ink3, fontSize: 13 }}>Loading…</div></Card>
       ) : (
         <Card pad={20}>
           <Group title="Required" t={t} rows={groups.required} onSetLevel={setLevel} />
@@ -182,7 +182,7 @@ function SidedRulesTab({ side, leadLabel }: { side: "buyer" | "seller"; leadLabe
           {draft ? (
             <div style={{
               marginTop: 16, padding: 14,
-              borderRadius: 8, border: `1px dashed ${t.border}`,
+              borderRadius: 8, border: `1px dashed ${t.line}`,
               background: t.surface2, display: "grid", gap: 8,
             }}>
               <input
@@ -245,7 +245,7 @@ function Group({
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{
-        fontSize: 11, fontWeight: 700, color: t.muted,
+        fontSize: 11, fontWeight: 700, color: t.ink3,
         marginBottom: 8, textTransform: "uppercase",
       }}>
         {title}
@@ -255,7 +255,7 @@ function Group({
         return (
           <div key={`${owner}-${req.id}`} style={{
             display: "flex", alignItems: "center", gap: 10,
-            padding: "8px 0", borderBottom: `1px solid ${t.border}`,
+            padding: "8px 0", borderBottom: `1px solid ${t.line}`,
           }}>
             <input
               type="checkbox"
@@ -275,7 +275,7 @@ function Group({
                 🔒 Locked by Funding
               </span>
             ) : owner === "agent" ? (
-              <span style={{ fontSize: 10, fontWeight: 700, color: t.accent }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: t.petrol }}>
                 YOUR ADDITION
               </span>
             ) : null}
@@ -337,7 +337,6 @@ function FollowUpTab() {
   const cadence = useAgentPlaybook("cadence");
   const patch = usePatchAgentPlaybookRules("cadence");
 
-  type Preset = { wait_hours: number; action: "draft_message" | "create_task" | "mark_stalled" | "mark_lead_cold" };
   type Followup = {
     new_lead?: Preset[];
     buyer_agreement?: Preset[];
@@ -393,7 +392,7 @@ function FollowUpTab() {
         onChange={(rows) => setVal({ ...val, seller_listing: rows })}
         t={t}
       />
-      <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${t.border}` }}>
+      <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${t.line}` }}>
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: t.ink, marginBottom: 6 }}>
           <input
             type="checkbox"
@@ -423,16 +422,20 @@ function FollowUpTab() {
 }
 
 
+type PresetAction = "draft_message" | "create_task" | "mark_stalled" | "mark_lead_cold";
+type Preset = { wait_hours: number; action: PresetAction };
+
+
 function PresetSection({
   label, rows, onChange, t,
 }: {
   label: string;
-  rows: { wait_hours: number; action: string }[];
-  onChange: (rows: { wait_hours: number; action: string }[]) => void;
+  rows: Preset[];
+  onChange: (rows: Preset[]) => void;
   t: ReturnType<typeof useTheme>["t"];
 }) {
   const HOUR_PRESETS = [12, 24, 48, 72, 120, 168, 336];
-  const ACTION_LABELS: Record<string, string> = {
+  const ACTION_LABELS: Record<PresetAction, string> = {
     draft_message: "Draft follow-up message",
     create_task: "Create call task",
     mark_stalled: "Mark stalled",
@@ -458,12 +461,12 @@ function PresetSection({
               <option key={h} value={h}>{formatHours(h)}</option>
             ))}
           </select>
-          <span style={{ color: t.muted }}>→</span>
+          <span style={{ color: t.ink3 }}>→</span>
           <select
             value={row.action}
             onChange={e => {
               const next = [...rows];
-              next[i] = { ...next[i], action: e.target.value };
+              next[i] = { ...next[i], action: e.target.value as PresetAction };
               onChange(next);
             }}
             style={{ ...inputStyle(t), flex: 1 }}
@@ -534,7 +537,7 @@ function ReadyForLendingTab() {
   return (
     <div>
       <Card pad={20}>
-        <p style={{ fontSize: 13, color: t.muted, margin: "0 0 16px" }}>
+        <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 16px" }}>
           Before your AI suggests sending a buyer to lending, require:
         </p>
 
@@ -542,7 +545,7 @@ function ReadyForLendingTab() {
           {overridable.map(r => (
             <label key={r.id} style={{
               display: "flex", alignItems: "center", gap: 10,
-              padding: "8px 0", borderBottom: `1px solid ${t.border}`,
+              padding: "8px 0", borderBottom: `1px solid ${t.line}`,
               fontSize: 13, color: t.ink, cursor: "pointer",
             }}>
               <input
@@ -559,7 +562,7 @@ function ReadyForLendingTab() {
         {lockedItems.length > 0 ? (
           <div style={{
             padding: 14, borderRadius: 8, background: t.surface2,
-            border: `1px solid ${t.border}`, marginBottom: 16,
+            border: `1px solid ${t.line}`, marginBottom: 16,
           }}>
             <div style={{
               fontSize: 11, fontWeight: 700, color: "#a06000",
@@ -567,7 +570,7 @@ function ReadyForLendingTab() {
             }}>
               🔒 Funding-required items (always)
             </div>
-            <div style={{ fontSize: 12, color: t.muted, marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: t.ink3, marginBottom: 8 }}>
               Locked by the funding team. These cannot be changed here.
             </div>
             {lockedItems.map(r => (
@@ -702,7 +705,7 @@ function Field({ label, children, t }: { label: string; children: React.ReactNod
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{
-        fontSize: 11, fontWeight: 700, color: t.muted,
+        fontSize: 11, fontWeight: 700, color: t.ink3,
         marginBottom: 6, textTransform: "uppercase",
       }}>{label}</div>
       {children}
@@ -727,8 +730,8 @@ function ChipRow({
           onClick={() => onChange(o.value)}
           style={{
             padding: "6px 14px", fontSize: 13, fontWeight: 600,
-            borderRadius: 18, border: `1px solid ${value === o.value ? t.accent : t.border}`,
-            background: value === o.value ? t.accent : t.surface,
+            borderRadius: 18, border: `1px solid ${value === o.value ? t.petrol : t.line}`,
+            background: value === o.value ? t.petrol : t.surface,
             color: value === o.value ? "#fff" : t.ink,
             cursor: "pointer",
           }}
@@ -744,7 +747,7 @@ function ChipRow({
 function inputStyle(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: 8, fontSize: 13, fontFamily: "inherit",
-    borderRadius: 6, border: `1px solid ${t.border}`,
+    borderRadius: 6, border: `1px solid ${t.line}`,
     background: t.surface, color: t.ink, width: "100%",
   } as const;
 }
@@ -761,8 +764,8 @@ function radioLabel(t: ReturnType<typeof useTheme>["t"]) {
 function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: "8px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.border}`,
-    background: t.accent, color: "#fff", cursor: "pointer",
+    borderRadius: 6, border: `1px solid ${t.line}`,
+    background: t.petrol, color: "#fff", cursor: "pointer",
   } as const;
 }
 
@@ -770,7 +773,7 @@ function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
 function btnSecondary(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: "8px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.border}`,
+    borderRadius: 6, border: `1px solid ${t.line}`,
     background: t.surface, color: t.ink, cursor: "pointer",
   } as const;
 }

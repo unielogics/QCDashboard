@@ -37,7 +37,7 @@ export default function LendingAILanding() {
       <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: "0 0 6px" }}>
         Lending AI Settings
       </h1>
-      <p style={{ fontSize: 13, color: t.muted, margin: "0 0 20px", maxWidth: 640 }}>
+      <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 20px", maxWidth: 640 }}>
         Configure what the funding-side AI collects, how it follows up,
         and what it accepts as verified evidence. Funding-required items
         agents cannot waive.
@@ -54,7 +54,7 @@ export default function LendingAILanding() {
               <div style={{ fontSize: 14, fontWeight: 700, color: t.ink, marginBottom: 4 }}>
                 {t2.title}
               </div>
-              <div style={{ fontSize: 12, color: t.muted }}>
+              <div style={{ fontSize: 12, color: t.ink3 }}>
                 {t2.subtitle}
               </div>
             </Card>

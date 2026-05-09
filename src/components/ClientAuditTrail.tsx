@@ -25,7 +25,7 @@ export function ClientAuditTrail({ clientId, limit = 25 }: Props) {
     return (
       <Card pad={16}>
         <SectionLabel>Activity log</SectionLabel>
-        <div style={{ fontSize: 13, color: t.muted, marginTop: 8 }}>Loading…</div>
+        <div style={{ fontSize: 13, color: t.ink3, marginTop: 8 }}>Loading…</div>
       </Card>
     );
   }
@@ -33,7 +33,7 @@ export function ClientAuditTrail({ clientId, limit = 25 }: Props) {
     return (
       <Card pad={16}>
         <SectionLabel>Activity log</SectionLabel>
-        <div style={{ fontSize: 13, color: t.muted, marginTop: 8 }}>No audit events yet.</div>
+        <div style={{ fontSize: 13, color: t.ink3, marginTop: 8 }}>No audit events yet.</div>
       </Card>
     );
   }
@@ -44,7 +44,7 @@ export function ClientAuditTrail({ clientId, limit = 25 }: Props) {
       <div style={{ marginTop: 8 }}>
         {events.map(e => (
           <div key={e.id} style={{
-            padding: "8px 0", borderBottom: `1px solid ${t.border}`, fontSize: 12,
+            padding: "8px 0", borderBottom: `1px solid ${t.line}`, fontSize: 12,
           }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <span style={{
@@ -53,8 +53,8 @@ export function ClientAuditTrail({ clientId, limit = 25 }: Props) {
               }}>
                 {e.event_type}
               </span>
-              <span style={{ color: t.muted, fontSize: 11 }}>{e.actor_type}</span>
-              <span style={{ marginLeft: "auto", color: t.muted, fontSize: 11 }}>
+              <span style={{ color: t.ink3, fontSize: 11 }}>{e.actor_type}</span>
+              <span style={{ marginLeft: "auto", color: t.ink3, fontSize: 11 }}>
                 {new Date(e.created_at).toLocaleString()}
               </span>
             </div>
@@ -64,7 +64,7 @@ export function ClientAuditTrail({ clientId, limit = 25 }: Props) {
               </div>
             ) : null}
             {e.new_value ? (
-              <div style={{ color: t.muted, marginTop: 2 }}>
+              <div style={{ color: t.ink3, marginTop: 2 }}>
                 {JSON.stringify(e.new_value)}
               </div>
             ) : null}
