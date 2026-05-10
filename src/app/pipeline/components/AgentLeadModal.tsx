@@ -167,8 +167,15 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
 
   const canAdvance = (): boolean => {
     if (step === 0) {
-      // Email mandatory, phone optional.
-      return form.name.trim().length > 0 && form.email.trim().includes("@");
+      // Real-estate leads commonly land via phone first — name + ANY
+      // contact channel (email or phone) is the bar. If both are present
+      // we still validate email shape; phone-only is fine.
+      const hasName = form.name.trim().length > 0;
+      const emailTrimmed = form.email.trim();
+      const phoneTrimmed = form.phone.trim();
+      const emailLooksValid = emailTrimmed.length === 0 || emailTrimmed.includes("@");
+      const hasContact = emailTrimmed.length > 0 || phoneTrimmed.length > 0;
+      return hasName && hasContact && emailLooksValid;
     }
     if (step === 1) {
       // Sellers must have a property; buyers can be still-searching.
@@ -191,7 +198,10 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
           : form.contactPermission;
       const created = await create.mutateAsync({
         name: form.name.trim(),
-        email: form.email.trim(),
+        // email + phone are both optional individually; Continue gate
+        // upstream guarantees at least one is present. Send undefined
+        // for empties so the backend stores NULL rather than "".
+        email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
         stage: "lead",
         client_type: form.side,
@@ -346,12 +356,18 @@ function LeadStep({ t, form, update }: StepProps) {
         <Field t={t} label="Name" required>
           <Input t={t} value={form.name} onChange={(v) => update("name", v)} placeholder="Marcus Holloway" disabled={!!form.clientPickedId} />
         </Field>
-        <Field t={t} label="Email" required>
+        {/* Email + phone are individually optional, but the Continue gate
+            requires AT LEAST ONE of them — phone-only leads are common
+            in real estate. The helper line under the row spells this out. */}
+        <Field t={t} label="Email">
           <Input t={t} type="email" value={form.email} onChange={(v) => update("email", v)} placeholder="marcus@holloway.cap" disabled={!!form.clientPickedId} />
         </Field>
         <Field t={t} label="Phone">
           <Input t={t} value={form.phone} onChange={(v) => update("phone", v)} placeholder="(917) 555-0148" disabled={!!form.clientPickedId} />
         </Field>
+        <div style={{ gridColumn: "1 / -1", fontSize: 11, color: t.ink3, marginTop: -4 }}>
+          Provide at least one contact channel — email or phone.
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>

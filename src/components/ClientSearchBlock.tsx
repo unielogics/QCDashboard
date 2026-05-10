@@ -37,15 +37,20 @@ export function ClientSearchBlock({
   const { data: clients = [] } = useClients(scope);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  // Empty query → show the agent's whole book (capped) so clicking the
+  // field is enough to surface clients without typing. Once the user
+  // starts typing we filter by name OR email substring (case-insensitive).
+  // Cap at 8 visible — list scrolls inside the dropdown beyond that.
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (q.length < 2) return [];
+    if (!q) return clients.slice(0, 8);
     return clients
       .filter((c) =>
         c.name.toLowerCase().includes(q) ||
-        (c.email ?? "").toLowerCase().includes(q),
+        (c.email ?? "").toLowerCase().includes(q) ||
+        (c.phone ?? "").toLowerCase().includes(q),
       )
-      .slice(0, 6);
+      .slice(0, 8);
   }, [clients, query]);
 
   return (
@@ -76,14 +81,47 @@ export function ClientSearchBlock({
             }}
           />
         </div>
+        {open && matches.length === 0 && clients.length === 0 ? (
+          <div style={{
+            position: "absolute", top: "100%", left: 0, right: 0,
+            marginTop: 4, background: t.surface,
+            border: `1px solid ${t.line}`, borderRadius: 9,
+            boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
+            zIndex: 10, padding: "10px 12px", fontSize: 12, color: t.ink3,
+          }}>
+            You don&apos;t have any clients yet — fill out the form below to add your first one.
+          </div>
+        ) : null}
+        {open && matches.length === 0 && clients.length > 0 && query.trim() ? (
+          <div style={{
+            position: "absolute", top: "100%", left: 0, right: 0,
+            marginTop: 4, background: t.surface,
+            border: `1px solid ${t.line}`, borderRadius: 9,
+            boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
+            zIndex: 10, padding: "10px 12px", fontSize: 12, color: t.ink3,
+          }}>
+            No clients match &ldquo;{query.trim()}&rdquo;. You can still create a new one below.
+          </div>
+        ) : null}
         {open && matches.length > 0 && (
           <div style={{
             position: "absolute", top: "100%", left: 0, right: 0,
             marginTop: 4, background: t.surface,
             border: `1px solid ${t.line}`, borderRadius: 9,
             boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
-            zIndex: 10, maxHeight: 240, overflow: "auto",
+            zIndex: 10, maxHeight: 280, overflow: "auto",
           }}>
+            {!query.trim() ? (
+              <div style={{
+                padding: "8px 12px",
+                fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
+                textTransform: "uppercase", color: t.ink3,
+                borderBottom: `1px solid ${t.line}`,
+                background: t.surface2,
+              }}>
+                Your clients
+              </div>
+            ) : null}
             {matches.map((c) => (
               <button
                 key={c.id}
