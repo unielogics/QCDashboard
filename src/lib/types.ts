@@ -1316,6 +1316,26 @@ export const PREQUAL_LOAN_TYPE_LABELS: Record<PrequalLoanType, { title: string; 
   bridge:        { title: "Bridge", sub: "Short-term · purchase / value-add" },
 };
 
+// Compact display labels for the canonical LoanType (loans.type column).
+// These are short pill-friendly strings — DSCR / F&F / GU / Bridge / etc. —
+// used on the pipeline table, kanban cards, and any other surface that
+// shows the deal's product at a glance. Distinct from PREQUAL_LOAN_TYPE_LABELS
+// which is keyed on the prequal-flow product picker (more granular: purchase
+// vs refi, fix_flip vs bridge as the only short-term products).
+export const LOAN_TYPE_LABELS: Record<LoanType, string> = {
+  dscr:          "DSCR",
+  fix_and_flip:  "F&F",
+  ground_up:     "GU",
+  bridge:        "Bridge",
+  portfolio:     "Portfolio",
+  cash_out_refi: "Cash-Out Refi",
+};
+
+export function loanTypeLabel(t: LoanType | string | null | undefined): string {
+  if (!t) return "—";
+  return (LOAN_TYPE_LABELS as Record<string, string>)[t] ?? String(t).replace(/_/g, " ");
+}
+
 // Fix & Flip scope-of-work line. Backend validates total_usd >= 0,
 // category 1-80 chars, description 0-500 chars (alembic 0014).
 export interface PrequalSowLineItem {

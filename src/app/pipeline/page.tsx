@@ -7,6 +7,7 @@ import { Card, Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useLoans } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
+import { loanTypeLabel } from "@/lib/types";
 import { SmartIntakeModal } from "./components/SmartIntakeModal";
 import { AgentLeadModal } from "./components/AgentLeadModal";
 import { LeadsPipelineView } from "./components/LeadsPipelineView";
@@ -214,65 +215,79 @@ export default function PipelinePage() {
       {mode === "leads" ? (
         <LeadsPipelineView view={view} search={search} />
       ) : view === "table" ? (
-        <Card pad={0}>
-          <div style={{
-            display: "grid", gridTemplateColumns: "80px minmax(0, 2fr) 120px 100px 90px 80px 90px",
-            padding: "12px 16px", fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 1.2,
-            borderBottom: `1px solid ${t.line}`,
-          }}>
-            <SortHead label="ID" k="deal_id" current={sortKey} dir={sortDir} onClick={setSort} />
-            <SortHead label="Property" k="address" current={sortKey} dir={sortDir} onClick={setSort} />
-            <SortHead label="Type" k="type" current={sortKey} dir={sortDir} onClick={setSort} />
-            <SortHead label="Amount" k="amount" current={sortKey} dir={sortDir} onClick={setSort} align="right" />
-            <SortHead label="DSCR" k="dscr" current={sortKey} dir={sortDir} onClick={setSort} align="right" />
-            <div>Risk</div>
-            <SortHead label="Close" k="close_date" current={sortKey} dir={sortDir} onClick={setSort} />
-          </div>
-          {visibleLoans.map((loan) => (
-            <Link key={loan.id} href={`/loans/${loan.id}`} style={{
-              display: "grid", gridTemplateColumns: "80px minmax(0, 2fr) 120px 100px 90px 80px 90px",
-              padding: "12px 16px", borderBottom: `1px solid ${t.line}`, alignItems: "center",
-              fontSize: 13, color: t.ink,
-            }}>
-              <div style={{ fontWeight: 700, color: t.ink2 }}>{loan.deal_id}</div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{loan.address}</div>
-                <div style={{ fontSize: 11.5, color: t.ink3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                  <span>{loan.city}</span>
-                  {/* Owner reference — visible only to operators (super_admin /
-                      loan_exec). Agents only see their own files so the name
-                      is implicit. */}
-                  {isInternal && loan.broker_name ? (
-                    <>
-                      <span aria-hidden>·</span>
-                      <span style={{
-                        display: "inline-flex", alignItems: "center", gap: 4,
-                        padding: "1px 6px", borderRadius: 4,
-                        background: t.brandSoft, color: t.brand,
-                        fontSize: 10.5, fontWeight: 700, letterSpacing: 0.3,
-                      }}>
-                        Agent: {loan.broker_name}
-                      </span>
-                    </>
-                  ) : null}
-                  {isInternal && loan.client_name ? (
-                    <>
-                      <span aria-hidden>·</span>
-                      <span style={{ fontWeight: 600 }}>{loan.client_name}</span>
-                    </>
-                  ) : null}
-                </div>
+        // Operators (super_admin / loan_exec) get an extra "Agent" column —
+        // brokers don't see it because their list is implicitly scoped to
+        // themselves. Grid template flexes accordingly so the row layout
+        // doesn't shift between roles.
+        (() => {
+          const gridCols = isInternal
+            ? "80px minmax(0, 2fr) 140px 110px 110px 90px 80px 90px"   // ID Property Agent Type Amount DSCR Risk Close
+            : "80px minmax(0, 2fr) 110px 110px 90px 80px 90px";        // ID Property Type  Amount DSCR Risk Close
+          return (
+            <Card pad={0}>
+              <div style={{
+                display: "grid", gridTemplateColumns: gridCols,
+                padding: "12px 16px", fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 1.2,
+                borderBottom: `1px solid ${t.line}`,
+              }}>
+                <SortHead label="ID" k="deal_id" current={sortKey} dir={sortDir} onClick={setSort} />
+                <SortHead label="Property" k="address" current={sortKey} dir={sortDir} onClick={setSort} />
+                {isInternal ? <div>Agent</div> : null}
+                <SortHead label="Type" k="type" current={sortKey} dir={sortDir} onClick={setSort} />
+                <SortHead label="Amount" k="amount" current={sortKey} dir={sortDir} onClick={setSort} align="right" />
+                <SortHead label="DSCR" k="dscr" current={sortKey} dir={sortDir} onClick={setSort} align="right" />
+                <div>Risk</div>
+                <SortHead label="Close" k="close_date" current={sortKey} dir={sortDir} onClick={setSort} />
               </div>
-              <div><Pill>{loan.type.replace("_", " ")}</Pill></div>
-              <div style={{ textAlign: "right", fontWeight: 700, fontFeatureSettings: '"tnum"' }}>{QC_FMT.short(Number(loan.amount))}</div>
-              <div style={{ textAlign: "right", color: loan.dscr && loan.dscr >= 1.25 ? t.profit : loan.dscr && loan.dscr >= 1.0 ? t.warn : t.ink3, fontWeight: 700 }}>
-                {loan.dscr ? loan.dscr.toFixed(2) : "—"}
-              </div>
-              <div style={{ color: t.ink3 }}>{loan.risk_score ?? "—"}</div>
-              <div style={{ color: t.ink3, fontSize: 12 }}>{loan.close_date ? new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}</div>
-            </Link>
-          ))}
-        </Card>
+              {visibleLoans.map((loan) => (
+                <Link key={loan.id} href={`/loans/${loan.id}`} style={{
+                  display: "grid", gridTemplateColumns: gridCols,
+                  padding: "12px 16px", borderBottom: `1px solid ${t.line}`, alignItems: "center",
+                  fontSize: 13, color: t.ink,
+                }}>
+                  <div style={{ fontWeight: 700, color: t.ink2 }}>{loan.deal_id}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{loan.address}</div>
+                    <div style={{ fontSize: 11.5, color: t.ink3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span>{loan.city}</span>
+                      {/* Client reference — visible only to operators. The
+                          Agent identity now lives in its own column so we
+                          dropped the inline pill that used to sit here. */}
+                      {isInternal && loan.client_name ? (
+                        <>
+                          <span aria-hidden>·</span>
+                          <span style={{ fontWeight: 600 }}>{loan.client_name}</span>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                  {/* Agent column — operators only. "Not assigned" displayed
+                      explicitly when the loan has no broker so the row never
+                      looks blank. */}
+                  {isInternal ? (
+                    <div style={{
+                      fontSize: 12.5,
+                      fontWeight: loan.broker_name ? 700 : 500,
+                      color: loan.broker_name ? t.ink2 : t.ink3,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}>
+                      {loan.broker_name ?? "Not assigned"}
+                    </div>
+                  ) : null}
+                  <div><Pill>{loanTypeLabel(loan.type)}</Pill></div>
+                  <div style={{ textAlign: "right", fontWeight: 700, fontFeatureSettings: '"tnum"' }}>{QC_FMT.short(Number(loan.amount))}</div>
+                  <div style={{ textAlign: "right", color: loan.dscr && loan.dscr >= 1.25 ? t.profit : loan.dscr && loan.dscr >= 1.0 ? t.warn : t.ink3, fontWeight: 700 }}>
+                    {loan.dscr ? loan.dscr.toFixed(2) : "—"}
+                  </div>
+                  <div style={{ color: t.ink3 }}>{loan.risk_score ?? "—"}</div>
+                  <div style={{ color: t.ink3, fontSize: 12 }}>{loan.close_date ? new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}</div>
+                </Link>
+              ))}
+            </Card>
+          );
+        })()
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
           {STAGE_KEYS.map((k, i) => {
@@ -288,7 +303,7 @@ export default function PipelinePage() {
                     <Link key={loan.id} href={`/loans/${loan.id}`} style={{ background: t.surface, padding: 10, borderRadius: 10, border: `1px solid ${t.line}` }}>
                       <div style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>{loan.deal_id}</div>
                       <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink, marginTop: 2 }}>{loan.address}</div>
-                      <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>{QC_FMT.short(Number(loan.amount))} · {loan.type.replace("_", " ")}</div>
+                      <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>{QC_FMT.short(Number(loan.amount))} · {loanTypeLabel(loan.type)}</div>
                       {isInternal && (loan.broker_name || loan.client_name) ? (
                         <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
                           {loan.broker_name ? (
