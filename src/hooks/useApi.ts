@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
-import { ApiError, api, type ApiOptions } from "@/lib/api";
+import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { useActiveProfile } from "@/store/role";
 import type { User } from "@/lib/types";
 import type {
@@ -1442,6 +1442,36 @@ export function useUpdateLoan() {
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["loan", vars.loanId] });
       qc.invalidateQueries({ queryKey: ["loans"] });
+    },
+  });
+}
+
+// Download a generated PDF term sheet for a loan. Goes through a raw
+// fetch (not the JSON-typed api helper) so we get the binary blob,
+// then turns it into a Blob URL the caller can open / save.
+export function useDownloadTermSheet() {
+  const { getToken, isSignedIn } = useAuth();
+  const devUser = useDevUser();
+  return useMutation({
+    mutationFn: async ({ loanId, interestOnlyMonths }: { loanId: string; interestOnlyMonths?: number }) => {
+      const qs = interestOnlyMonths ? `?interest_only_months=${interestOnlyMonths}` : "";
+      let token: string | null = null;
+      if (isSignedIn) {
+        try { token = await getToken(); } catch { token = null; }
+      }
+      const res = await fetch(`${apiBase}/api/v1/loans/${loanId}/term-sheet.pdf${qs}`, {
+        method: "GET",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(devUser ? { "X-Dev-User": devUser } : {}),
+        },
+      });
+      if (!res.ok) {
+        let body: unknown = null;
+        try { body = await res.json(); } catch { /* ignore */ }
+        throw new ApiError(res.status, `${res.status} ${res.statusText}`, body);
+      }
+      return await res.blob();
     },
   });
 }

@@ -6,7 +6,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { QC_FMT } from "@/components/design-system/tokens";
-import { useRecalc, useUpdateLoan, useDealWorkspace } from "@/hooks/useApi";
+import { useDownloadTermSheet, useRecalc, useUpdateLoan, useDealWorkspace } from "@/hooks/useApi";
 import { LoanPurpose, LoanPurposeOptions } from "@/lib/enums.generated";
 import type { Loan } from "@/lib/types";
 // LoanScenarioSimulator lives natively on the Criteria tab now — moved
@@ -199,6 +199,7 @@ export function TermsTab({ loan }: { loan: Loan }) {
           </div>
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <DownloadTermSheetButton loan={loan} />
           <button onClick={() => setDraft(fromLoan(loan))} style={{ ...qcBtn(t), padding: "8px 11px", borderRadius: 8 }}>
             Reset
           </button>
@@ -563,4 +564,50 @@ function constraintLabel(value: string) {
   return value
     .replace(/_/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+
+// ── Term sheet PDF download ────────────────────────────────────────────
+//
+// Renders a small button that hits /loans/{id}/term-sheet.pdf, gets the
+// binary blob back, and triggers a Save-As download. Operator can also
+// share the file directly with the borrower.
+
+function DownloadTermSheetButton({ loan }: { loan: Loan }) {
+  const { t } = useTheme();
+  const dl = useDownloadTermSheet();
+  const handle = async () => {
+    try {
+      const blob = await dl.mutateAsync({ loanId: loan.id });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `term-sheet-${loan.deal_id || loan.id.slice(0, 8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } catch (err) {
+      console.error("Term sheet PDF failed", err);
+      alert("Could not generate term sheet. Check that the loan has a rate and term configured.");
+    }
+  };
+  return (
+    <button
+      onClick={handle}
+      disabled={dl.isPending}
+      title="Download a PDF term sheet + amortization schedule. Shareable with the borrower."
+      style={{
+        ...qcBtn(t),
+        padding: "8px 11px",
+        borderRadius: 8,
+        opacity: dl.isPending ? 0.6 : 1,
+        cursor: dl.isPending ? "wait" : "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <Icon name="doc" size={12} />
+      {dl.isPending ? "Generating…" : "Download PDF"}
+    </button>
+  );
 }
