@@ -164,6 +164,10 @@ function SidedRulesTab({ side, leadLabel }: { side: "buyer" | "seller"; leadLabe
 
   // Inline new-item form state.
   const [draft, setDraft] = useState<{ label: string; level: "required" | "recommended" | "optional"; isDoc: boolean } | null>(null);
+  // Per-row Configure editor — opens an inline panel under the chosen
+  // requirement with the new Deal Secretary fields (owner / link /
+  // objective / cadence). null = closed.
+  const [configureFor, setConfigureFor] = useState<{ req: PlaybookRequirement; owner: "platform" | "agent" } | null>(null);
 
   async function setLevel(req: PlaybookRequirement, owner: "platform" | "agent", newLevel: "required" | "recommended" | "optional" | "disable") {
     if (owner === "platform" && !req.can_agent_override) return;  // Locked
@@ -234,9 +238,33 @@ function SidedRulesTab({ side, leadLabel }: { side: "buyer" | "seller"; leadLabe
         <Card pad={20}><div style={{ color: t.ink3, fontSize: 13 }}>Loading…</div></Card>
       ) : (
         <Card pad={20}>
-          <Group title="Required" t={t} rows={groups.required} onSetLevel={setLevel} />
-          <Group title="Recommended" t={t} rows={groups.recommended} onSetLevel={setLevel} />
-          <Group title="Optional" t={t} rows={groups.optional} onSetLevel={setLevel} />
+          <Group title="Required" t={t} rows={groups.required} onSetLevel={setLevel} onConfigure={(req, owner) => setConfigureFor({ req, owner })} side={side} />
+          <Group title="Recommended" t={t} rows={groups.recommended} onSetLevel={setLevel} onConfigure={(req, owner) => setConfigureFor({ req, owner })} side={side} />
+          <Group title="Optional" t={t} rows={groups.optional} onSetLevel={setLevel} onConfigure={(req, owner) => setConfigureFor({ req, owner })} side={side} />
+
+          {configureFor ? (
+            <RequirementConfigurePopup
+              t={t}
+              row={configureFor.req}
+              owner={configureFor.owner}
+              onClose={() => setConfigureFor(null)}
+              onSave={async (changes) => {
+                try {
+                  await upsert.mutateAsync({
+                    id: configureFor.owner === "agent" ? configureFor.req.id : undefined,
+                    requirement_key: configureFor.req.requirement_key,
+                    label: configureFor.req.label,
+                    category: configureFor.req.category,
+                    required_level: configureFor.req.required_level,
+                    ...changes,
+                  });
+                  setConfigureFor(null);
+                } catch {
+                  // swallow — AINotDeployedBanner above will explain
+                }
+              }}
+            />
+          ) : null}
 
           {draft ? (
             <div style={{
@@ -293,13 +321,16 @@ function SidedRulesTab({ side, leadLabel }: { side: "buyer" | "seller"; leadLabe
  * checkbox list. Each row toggles ON/OFF + (when enabled) shows the
  * row label plus the source/locked chip. */
 function Group({
-  title, t, rows, onSetLevel,
+  title, t, rows, onSetLevel, onConfigure, side,
 }: {
   title: string;
   t: ReturnType<typeof useTheme>["t"];
   rows: { req: PlaybookRequirement; owner: "platform" | "agent"; enabled: boolean }[];
   onSetLevel: (req: PlaybookRequirement, owner: "platform" | "agent", level: "required" | "recommended" | "optional" | "disable") => Promise<void>;
+  onConfigure: (req: PlaybookRequirement, owner: "platform" | "agent") => void;
+  side: "buyer" | "seller";
 }) {
+  void side; // reserved for future "applies_when" hints; keeps signature stable
   if (rows.length === 0) return null;
   return (
     <div style={{ marginBottom: 16 }}>
@@ -311,10 +342,20 @@ function Group({
       </div>
       {rows.map(({ req, owner, enabled }) => {
         const locked = owner === "platform" && !req.can_agent_override;
+        const ownerTone = req.default_owner_type === "ai"
+          ? { bg: t.brandSoft, fg: t.brand }
+          : req.default_owner_type === "shared"
+          ? { bg: t.warnBg, fg: t.warn }
+          : { bg: t.surface2, fg: t.ink3 };
+        const hasBrief = (req.objective_text && req.objective_text.length > 0) || (req.completion_criteria && req.completion_criteria.length > 0);
         return (
           <div key={`${owner}-${req.id}`} style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "8px 0", borderBottom: `1px solid ${t.line}`,
+            display: "grid",
+            gridTemplateColumns: "22px minmax(0, 1fr) auto",
+            gap: 10,
+            padding: "10px 0",
+            borderBottom: `1px solid ${t.line}`,
+            alignItems: "center",
           }}>
             <input
               type="checkbox"
@@ -323,26 +364,108 @@ function Group({
               onChange={() => onSetLevel(req, owner, enabled ? "disable" : title.toLowerCase() as "required" | "recommended" | "optional")}
               style={{ width: 18, height: 18 }}
             />
-            <span style={{
-              flex: 1, fontSize: 13, color: t.ink,
-              opacity: enabled ? 1 : 0.5,
-            }}>
-              {req.label}
-            </span>
-            {locked ? (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#a06000" }} title="Locked by funding team">
-                <Icon name="lock" size={10} stroke={2.5} /> Locked by Funding
-              </span>
-            ) : owner === "agent" ? (
-              <span style={{ fontSize: 10, fontWeight: 700, color: t.petrol }}>
-                YOUR ADDITION
-              </span>
-            ) : null}
+            <div style={{ minWidth: 0, opacity: enabled ? 1 : 0.5 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, lineHeight: 1.25 }}>
+                {req.label}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                <ChipText t={t}>{categoryShort(req.category)}</ChipText>
+                <ChipText t={t} bg={ownerTone.bg} fg={ownerTone.fg}>
+                  {ownerLabel(req.default_owner_type)}
+                </ChipText>
+                {req.default_cadence_hours ? (
+                  <ChipText t={t}>{req.default_cadence_hours}h cadence</ChipText>
+                ) : null}
+                {req.link_kind === "docusign" ? (
+                  <ChipText t={t} bg={t.profitBg} fg={t.profit}>✍ DocuSign</ChipText>
+                ) : req.link_url ? (
+                  <ChipText t={t} bg={t.profitBg} fg={t.profit}>🔗 Link set</ChipText>
+                ) : null}
+                {hasBrief ? <ChipText t={t}>AI brief set</ChipText> : null}
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {locked ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#a06000" }} title="Locked by funding team">
+                  <Icon name="lock" size={10} stroke={2.5} /> Locked
+                </span>
+              ) : owner === "agent" ? (
+                <span style={{ fontSize: 10, fontWeight: 700, color: t.petrol }}>
+                  YOURS
+                </span>
+              ) : null}
+              {!locked ? (
+                <button
+                  type="button"
+                  onClick={() => onConfigure(req, owner)}
+                  style={{
+                    padding: "5px 9px",
+                    borderRadius: 7,
+                    border: `1px solid ${t.line}`,
+                    background: t.surface2,
+                    color: t.ink2,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Configure
+                </button>
+              ) : null}
+            </div>
           </div>
         );
       })}
     </div>
   );
+}
+
+function ChipText({ children, t, bg, fg }: { children: React.ReactNode; t: ReturnType<typeof useTheme>["t"]; bg?: string; fg?: string }) {
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700,
+      padding: "2px 6px", borderRadius: 4,
+      background: bg ?? t.chip,
+      color: fg ?? t.ink3,
+      letterSpacing: 0.3, textTransform: "uppercase",
+    }}>
+      {children}
+    </span>
+  );
+}
+
+function categoryShort(category: string): string {
+  const map: Record<string, string> = {
+    borrower_info: "Borrower",
+    property_data: "Property",
+    financials: "Financials",
+    credit: "Credit",
+    agreements: "Agreement",
+    insurance: "Insurance",
+    title_and_escrow: "Title",
+    appraisal_and_inspection: "Appraisal",
+    scheduling: "Schedule",
+    compliance: "Compliance",
+    communication: "Comms",
+    ai_internal: "Internal",
+    // Legacy
+    fact: "Borrower",
+    document: "Document",
+    appointment: "Schedule",
+    agreement: "Agreement",
+    task: "Task",
+  };
+  return map[category] ?? category;
+}
+
+function ownerLabel(owner?: string): string {
+  switch (owner) {
+    case "ai": return "AI handles";
+    case "shared": return "Shared";
+    case "funding_locked": return "🔒 Funding";
+    default: return "Human handles";
+  }
 }
 
 
@@ -970,4 +1093,259 @@ function btnSecondary(t: ReturnType<typeof useTheme>["t"]) {
     borderRadius: 6, border: `1px solid ${t.line}`,
     background: t.surface, color: t.ink, cursor: "pointer",
   } as const;
+}
+
+// ─── Per-requirement configuration popup ─────────────────────────────
+//
+// Opens when the operator clicks "Configure" on a row. Exposes the
+// new Deal Secretary fields (owner / DocuSign link / AI objective /
+// cadence) so the agent can tell the AI exactly what to do for this
+// requirement on every future deal. Saves via the upsert hook —
+// platform rows fork to an agent-overlay row on first edit.
+
+function RequirementConfigurePopup({
+  t, row, owner, onClose, onSave,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  row: PlaybookRequirement;
+  owner: "platform" | "agent";
+  onClose: () => void;
+  onSave: (changes: Partial<{
+    default_owner_type: "human" | "ai" | "shared" | "funding_locked";
+    default_channels: string[];
+    default_cadence_hours: number;
+    link_url: string | null;
+    link_label: string | null;
+    link_kind: "docusign" | "esign" | "external_form" | "reference" | null;
+    objective_text: string;
+    completion_criteria: string;
+  }>) => Promise<void>;
+}) {
+  const [ownerType, setOwnerType] = useState<"human" | "ai" | "shared">(
+    (row.default_owner_type as "human" | "ai" | "shared") ?? "human",
+  );
+  const [cadenceHours, setCadenceHours] = useState<number>(row.default_cadence_hours ?? 48);
+  const [linkUrl, setLinkUrl] = useState<string>(row.link_url ?? "");
+  const [linkLabel, setLinkLabel] = useState<string>(row.link_label ?? "");
+  const [linkKind, setLinkKind] = useState<"docusign" | "esign" | "external_form" | "reference" | "">(
+    (row.link_kind as "docusign" | "esign" | "external_form" | "reference") ?? "",
+  );
+  const [objective, setObjective] = useState<string>(row.objective_text ?? "");
+  const [completion, setCompletion] = useState<string>(row.completion_criteria ?? "");
+  const [includeEmail, setIncludeEmail] = useState<boolean>(
+    Array.isArray(row.default_channels) ? row.default_channels.includes("email") : false,
+  );
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const channels = includeEmail ? ["portal", "email"] : ["portal"];
+      await onSave({
+        default_owner_type: ownerType,
+        default_channels: channels,
+        default_cadence_hours: cadenceHours,
+        link_url: linkUrl.trim() || null,
+        link_label: linkLabel.trim() || null,
+        link_kind: linkKind || null,
+        objective_text: objective,
+        completion_criteria: completion,
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 200,
+        background: "rgba(0,0,0,0.55)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: t.surface, color: t.ink,
+          border: `1px solid ${t.line}`, borderRadius: 14,
+          boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
+          width: "min(560px, 100%)", maxHeight: "90vh", overflow: "auto",
+          display: "flex", flexDirection: "column",
+        }}
+      >
+        <div style={{ padding: "14px 16px", borderBottom: `1px solid ${t.line}` }}>
+          <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
+            Configure baseline
+          </div>
+          <div style={{ marginTop: 2, fontSize: 17, fontWeight: 900, color: t.ink }}>
+            {row.label}
+          </div>
+          <div style={{ marginTop: 2, fontSize: 11, color: t.ink3 }}>
+            {owner === "platform"
+              ? "Editing forks a personal copy — your changes won't affect the firm-wide default."
+              : "Your personal default. Applies to every new lead going forward."}
+          </div>
+        </div>
+
+        <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
+              Who handles this by default
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+              {(["human", "ai", "shared"] as const).map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setOwnerType(opt)}
+                  style={{
+                    padding: "9px 10px",
+                    borderRadius: 9,
+                    border: `1px solid ${ownerType === opt ? t.brand : t.line}`,
+                    background: ownerType === opt ? t.brandSoft : t.surface2,
+                    color: ownerType === opt ? t.brand : t.ink2,
+                    cursor: "pointer",
+                    fontSize: 12, fontWeight: 800, fontFamily: "inherit",
+                  }}
+                >
+                  {opt === "human" ? "Human handles" : opt === "ai" ? "AI handles" : "Shared"}
+                </button>
+              ))}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 11, color: t.ink3 }}>
+              When AI handles: it will reach out to the client on your behalf for every new lead with this requirement.
+            </div>
+          </div>
+
+          <FieldBlock label="AI objective (one line)" t={t}>
+            <input
+              value={objective}
+              onChange={(e) => setObjective(e.target.value)}
+              placeholder="e.g. Collect a signed buyer agency agreement."
+              style={inputStyle(t)}
+            />
+          </FieldBlock>
+
+          <FieldBlock label="What 'done' looks like" t={t}>
+            <textarea
+              value={completion}
+              onChange={(e) => setCompletion(e.target.value)}
+              placeholder="e.g. Signed PDF uploaded; all parties on the agreement."
+              style={{ ...inputStyle(t), minHeight: 64, resize: "vertical" }}
+            />
+          </FieldBlock>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <FieldBlock label="Cadence (hours between attempts)" t={t}>
+              <input
+                type="number"
+                min={6}
+                max={336}
+                value={cadenceHours}
+                onChange={(e) => setCadenceHours(Math.max(6, Math.min(336, Number(e.target.value) || 48)))}
+                style={inputStyle(t)}
+              />
+            </FieldBlock>
+            <FieldBlock label="Email channel" t={t}>
+              <button
+                type="button"
+                onClick={() => setIncludeEmail((v) => !v)}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: 9,
+                  border: `1px solid ${includeEmail ? t.brand : t.line}`,
+                  background: includeEmail ? t.brandSoft : t.surface2,
+                  color: includeEmail ? t.brand : t.ink2,
+                  fontSize: 12, fontWeight: 800, cursor: "pointer",
+                  fontFamily: "inherit", width: "100%",
+                }}
+              >
+                {includeEmail ? "Portal + Email" : "Portal only"}
+              </button>
+            </FieldBlock>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
+              Optional link (DocuSign, intake form, etc.)
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 8, marginBottom: 6 }}>
+              <select
+                value={linkKind}
+                onChange={(e) => setLinkKind(e.target.value as typeof linkKind)}
+                style={inputStyle(t)}
+              >
+                <option value="">No link</option>
+                <option value="docusign">DocuSign</option>
+                <option value="esign">E-Sign</option>
+                <option value="external_form">Form</option>
+                <option value="reference">Reference</option>
+              </select>
+              <input
+                value={linkLabel}
+                onChange={(e) => setLinkLabel(e.target.value)}
+                placeholder="Display label"
+                style={inputStyle(t)}
+              />
+            </div>
+            <input
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              placeholder="https://docusign.example/envelope/123"
+              style={inputStyle(t)}
+            />
+          </div>
+        </div>
+
+        <div style={{
+          display: "flex", justifyContent: "flex-end", gap: 8,
+          padding: "12px 14px", borderTop: `1px solid ${t.line}`,
+        }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: "8px 14px", borderRadius: 9,
+              background: t.surface2, color: t.ink2,
+              border: `1px solid ${t.line}`, cursor: "pointer",
+              fontSize: 12, fontWeight: 800, fontFamily: "inherit",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            style={{
+              padding: "8px 14px", borderRadius: 9,
+              background: t.brand, color: t.inverse,
+              border: "none",
+              cursor: saving ? "wait" : "pointer",
+              fontSize: 12, fontWeight: 800, fontFamily: "inherit",
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FieldBlock({ label, children, t }: { label: string; children: React.ReactNode; t: ReturnType<typeof useTheme>["t"] }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <span style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>
+        {label}
+      </span>
+      {children}
+    </label>
+  );
 }
