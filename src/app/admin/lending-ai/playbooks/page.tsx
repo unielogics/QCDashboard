@@ -18,9 +18,11 @@ import { AIPreviewPanel } from "@/components/AIPreviewPanel";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 import {
   isAINotDeployed,
+  useConfirmInferredDeps,
   useDeleteLendingRequirement,
   useDuplicatePlatformPlaybook,
   useFundingMetaRules,
+  useInferPlaybookDeps,
   useLendingPlaybookRequirements,
   useLendingPlaybooks,
   usePatchFundingMetaRules,
@@ -28,6 +30,7 @@ import {
   useUpdateLendingPlaybook,
   useUpsertLendingRequirement,
   type LendingPlaybook,
+  type PlaybookRequirement,
 } from "@/hooks/useApi";
 
 const PRODUCT_LABELS: Record<string, string> = {
@@ -153,8 +156,18 @@ function PlaybookPanel({
   const publish = usePublishLendingPlaybook();
   const dup = useDuplicatePlatformPlaybook();
 
+  const inferDeps = useInferPlaybookDeps(playbook.id);
+  const confirmInferred = useConfirmInferredDeps(playbook.id);
+
   const isPlatform = playbook.owner_type === "platform";
   const fundingExists = !!slot?.funding;
+  const editable = !isPlatform && playbook.status === "draft";
+
+  // Rows that have inferred suggestions waiting for operator review.
+  const pendingReview = useMemo(
+    () => reqs.filter(r => (r.inferred_depends_on || []).length > 0 && !r.deps_confirmed),
+    [reqs],
+  );
 
   return (
     <Card pad={20}>
@@ -166,6 +179,20 @@ function PlaybookPanel({
           {isPlatform ? "Platform default — read-only" : "Funding-owned"}
         </span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          {editable && reqs.length > 0 ? (
+            <button
+              onClick={() => {
+                if (confirm("Run AI inference to suggest task dependencies + grouping for this playbook? This overwrites previous suggestions but never your manual depends_on / parent_key.")) {
+                  inferDeps.mutate();
+                }
+              }}
+              disabled={inferDeps.isPending}
+              style={btnSecondary(t)}
+              title="Ask Claude to suggest task dependencies + parent grouping. Suggestions land in a review panel below — nothing is applied until you confirm per row."
+            >
+              {inferDeps.isPending ? "Inferring…" : "Run AI inference"}
+            </button>
+          ) : null}
           {isPlatform && !fundingExists ? (
             <button
               onClick={() => dup.mutate({ platformPlaybookId: playbook.id })}
@@ -212,11 +239,97 @@ function PlaybookPanel({
         readOnly={isPlatform || playbook.status === "published"}
       />
 
+      {editable && pendingReview.length > 0 ? (
+        <ReviewSuggestionsPanel
+          rows={pendingReview}
+          allRequirements={reqs}
+          onAccept={(key) => confirmInferred.mutate({ requirement_key: key, accept_depends_on: true, accept_parent_key: true })}
+          onDismiss={(key) => confirmInferred.mutate({ requirement_key: key, accept_depends_on: false, accept_parent_key: false })}
+          t={t}
+        />
+      ) : null}
+
       {/* Advanced disclosure — escalations / communication / raw conditions */}
       <Advanced playbookId={playbook.id} t={t} />
     </Card>
   );
 }
+
+function ReviewSuggestionsPanel({
+  rows, allRequirements, onAccept, onDismiss, t,
+}: {
+  rows: PlaybookRequirement[];
+  allRequirements: PlaybookRequirement[];
+  onAccept: (requirement_key: string) => void;
+  onDismiss: (requirement_key: string) => void;
+  t: ReturnType<typeof useTheme>["t"];
+}) {
+  const labelOf = (k: string) => allRequirements.find(r => r.requirement_key === k)?.label || k;
+  return (
+    <div style={{
+      marginTop: 20,
+      padding: 14,
+      borderRadius: 10,
+      border: `1px solid #d4a02488`,
+      background: "#fffae0",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <Icon name="bolt" size={14} stroke={2.4} />
+        <span style={{ fontSize: 13, fontWeight: 800, color: "#7a5e22" }}>
+          AI suggestions — {rows.length} row{rows.length === 1 ? "" : "s"} pending review
+        </span>
+      </div>
+      <div style={{ fontSize: 12, color: "#7a5e22", marginBottom: 10 }}>
+        Claude proposed dependencies + parent groupings based on each task&apos;s objective and completion criteria.
+        Nothing is applied to the live playbook until you click <strong>Accept</strong> per row.
+      </div>
+      <div style={{ display: "grid", gap: 8 }}>
+        {rows.map(r => (
+          <div key={r.id} style={{
+            background: t.surface,
+            border: `1px solid ${t.line}`,
+            borderRadius: 8,
+            padding: 10,
+            display: "grid",
+            gap: 6,
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{r.label}</div>
+            {(r.inferred_depends_on || []).length > 0 ? (
+              <div style={{ fontSize: 12, color: t.ink3 }}>
+                Suggest <strong>after</strong>: {(r.inferred_depends_on || []).map(labelOf).join(", ")}
+              </div>
+            ) : null}
+            {r.parent_key && !(r.depends_on || []).length ? (
+              <div style={{ fontSize: 12, color: t.ink3 }}>
+                Suggest grouping <strong>under</strong>: {labelOf(r.parent_key)}
+              </div>
+            ) : null}
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <button onClick={() => onAccept(r.requirement_key)} style={pillAccept(t)}>Accept</button>
+              <button onClick={() => onDismiss(r.requirement_key)} style={pillDismiss(t)}>Dismiss</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function pillAccept(t: ReturnType<typeof useTheme>["t"]) {
+  return {
+    padding: "4px 12px", fontSize: 12, fontWeight: 700,
+    borderRadius: 6, border: `1px solid ${t.line}`,
+    background: t.petrol, color: "#fff", cursor: "pointer",
+  } as const;
+}
+function pillDismiss(t: ReturnType<typeof useTheme>["t"]) {
+  return {
+    padding: "4px 12px", fontSize: 12, fontWeight: 700,
+    borderRadius: 6, border: `1px solid ${t.line}`,
+    background: "transparent", color: t.ink3, cursor: "pointer",
+  } as const;
+}
+
 
 function OutcomeNote({ icon, title, body }: { icon: string; title: string; body: string }) {
   const { t } = useTheme();

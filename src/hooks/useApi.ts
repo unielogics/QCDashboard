@@ -2631,6 +2631,8 @@ export interface PlaybookRequirement {
   // Timeline + grouping (alembic 0040)
   depends_on?: string[];
   parent_key?: string | null;
+  inferred_depends_on?: string[];
+  deps_confirmed?: boolean;
 }
 
 export interface AgentPlaybook {
@@ -2862,6 +2864,49 @@ export function useDeleteLendingRequirement(playbookId: string) {
       apiCall<{ ok: boolean }>(
         `/lending-admin/playbooks/${playbookId}/requirements/${requirementId}`,
         { method: "DELETE" },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["lendingPlaybookReqs", playbookId] }),
+  });
+}
+
+// AI Deal Secretary — Phase B: Claude-driven dependency inference
+// against a whole playbook. Operator clicks "Run AI inference" → backend
+// asks Claude to suggest depends_on + parent_key per row, writes those
+// into inferred_depends_on / parent_key + flips deps_confirmed=false.
+// Operator then accepts/rejects per row via useConfirmInferredDeps.
+export interface InferredDepsRow {
+  requirement_key: string;
+  suggested_depends_on: string[];
+  suggested_parent_key: string | null;
+  rationale: string | null;
+}
+export interface InferDepsResponse {
+  playbook_id: string;
+  inferred: InferredDepsRow[];
+  applied_to_db: boolean;
+}
+
+export function useInferPlaybookDeps(playbookId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiCall<InferDepsResponse>(
+        `/lending-admin/playbooks/${playbookId}/infer-deps`,
+        { method: "POST" },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["lendingPlaybookReqs", playbookId] }),
+  });
+}
+
+export function useConfirmInferredDeps(playbookId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { requirement_key: string; accept_depends_on?: boolean; accept_parent_key?: boolean }) =>
+      apiCall<{ ok: boolean }>(
+        `/lending-admin/playbooks/${playbookId}/confirm-inferred`,
+        { method: "POST", body: JSON.stringify(body) },
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["lendingPlaybookReqs", playbookId] }),
   });

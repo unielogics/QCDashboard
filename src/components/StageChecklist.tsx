@@ -74,6 +74,7 @@ export function StageChecklist({ requirements, onUpsert, onDelete, readOnly }: P
           key={stage.id}
           stage={stage}
           requirements={buckets[stage.id]}
+          allRequirements={requirements}
           onUpsert={onUpsert}
           onDelete={onDelete}
           readOnly={readOnly}
@@ -83,6 +84,7 @@ export function StageChecklist({ requirements, onUpsert, onDelete, readOnly }: P
         <StageBucket
           stage={{ id: "unscoped" as never, label: "Other (no stage gate)" }}
           requirements={buckets.unscoped}
+          allRequirements={requirements}
           onUpsert={onUpsert}
           onDelete={onDelete}
           readOnly={readOnly}
@@ -94,10 +96,11 @@ export function StageChecklist({ requirements, onUpsert, onDelete, readOnly }: P
 
 
 function StageBucket({
-  stage, requirements, onUpsert, onDelete, readOnly,
+  stage, requirements, allRequirements, onUpsert, onDelete, readOnly,
 }: {
   stage: { id: Stage | "unscoped"; label: string };
   requirements: PlaybookRequirement[];
+  allRequirements: PlaybookRequirement[];
   onUpsert: Props["onUpsert"];
   onDelete: Props["onDelete"];
   readOnly?: boolean;
@@ -149,6 +152,20 @@ function StageBucket({
               <SmallChip t={t}>{ownerLabel(r.default_owner_type)}</SmallChip>
               <SmallChip t={t}>{r.default_cadence_hours ?? 48}h cadence</SmallChip>
               {r.objective_text || r.completion_criteria ? <SmallChip t={t}>AI brief set</SmallChip> : null}
+              {r.parent_key ? (
+                <SmallChip t={t}>↳ under {labelFor(r.parent_key, allRequirements)}</SmallChip>
+              ) : null}
+              {(r.depends_on || []).length > 0 ? (
+                <SmallChip t={t}>after {(r.depends_on || []).map(k => labelFor(k, allRequirements)).join(", ")}</SmallChip>
+              ) : null}
+              {(r.inferred_depends_on || []).length > 0 && !r.deps_confirmed ? (
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+                  background: "#fff5cc", color: "#85661a",
+                }}>
+                  AI suggested: after {(r.inferred_depends_on || []).map(k => labelFor(k, allRequirements)).join(", ")}
+                </span>
+              ) : null}
             </span>
           </span>
           <ConditionChips applies_when={r.applies_when} t={t} />
@@ -182,6 +199,7 @@ function StageBucket({
           setDraft={setDraft}
           onSave={save}
           onCancel={() => setDraft(null)}
+          allRequirements={allRequirements}
           t={t}
         />
       ) : !readOnly ? (
@@ -246,12 +264,13 @@ function ConditionChips({
 
 
 function InlineAddForm({
-  draft, setDraft, onSave, onCancel, t,
+  draft, setDraft, onSave, onCancel, allRequirements, t,
 }: {
   draft: Partial<PlaybookRequirement>;
   setDraft: (d: Partial<PlaybookRequirement>) => void;
   onSave: () => void;
   onCancel: () => void;
+  allRequirements: PlaybookRequirement[];
   t: ReturnType<typeof useTheme>["t"];
 }) {
   const aw = (draft.applies_when || {}) as Record<string, unknown>;
@@ -393,6 +412,36 @@ function InlineAddForm({
         />
       </div>
 
+      <FieldBlock label="Group under (parent task)" t={t}>
+        <select
+          value={draft.parent_key || ""}
+          onChange={e => setDraft({ ...draft, parent_key: e.target.value || null })}
+          style={{ ...inputStyle(t), width: "100%" }}
+        >
+          <option value="">— No parent (top-level) —</option>
+          {allRequirements
+            .filter(r => r.requirement_key !== draft.requirement_key && !r.parent_key)
+            .map(r => (
+              <option key={r.id} value={r.requirement_key}>{r.label}</option>
+            ))}
+        </select>
+        <div style={{ fontSize: 11, color: t.ink3, marginTop: 4 }}>
+          Sub-tasks roll up under their parent in the timeline (e.g. all entity docs under "Entity formation").
+        </div>
+      </FieldBlock>
+
+      <FieldBlock label="Depends on (do these first)" t={t}>
+        <DependsOnChipPicker
+          value={draft.depends_on || []}
+          onChange={(next) => setDraft({ ...draft, depends_on: next })}
+          options={allRequirements.filter(r => r.requirement_key !== draft.requirement_key)}
+          t={t}
+        />
+        <div style={{ fontSize: 11, color: t.ink3, marginTop: 4 }}>
+          Timeline shows this task as "Upcoming" until every dependency is verified. Empty = "Next up" immediately.
+        </div>
+      </FieldBlock>
+
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <label style={radio(t)}>
           <input type="checkbox" checked={aw.under_contract === true} onChange={() => toggleCondition("under_contract", true)} />
@@ -413,6 +462,63 @@ function InlineAddForm({
       </div>
     </div>
   );
+}
+
+
+function DependsOnChipPicker({
+  value, onChange, options, t,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+  options: PlaybookRequirement[];
+  t: ReturnType<typeof useTheme>["t"];
+}) {
+  const selected = new Set(value);
+  const remaining = options.filter(r => !selected.has(r.requirement_key));
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+      {value.map(key => {
+        const lbl = options.find(r => r.requirement_key === key)?.label || key;
+        return (
+          <span
+            key={key}
+            style={{
+              fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 12,
+              background: t.surface, border: `1px solid ${t.line}`, color: t.ink,
+              display: "inline-flex", alignItems: "center", gap: 6,
+            }}
+          >
+            {lbl}
+            <button
+              onClick={() => onChange(value.filter(v => v !== key))}
+              style={{
+                border: 0, background: "transparent", cursor: "pointer",
+                color: t.ink3, fontSize: 14, lineHeight: 1, padding: 0,
+              }}
+              aria-label={`Remove ${lbl}`}
+            >×</button>
+          </span>
+        );
+      })}
+      <select
+        value=""
+        onChange={e => {
+          if (e.target.value) onChange([...value, e.target.value]);
+        }}
+        style={{ ...inputStyle(t), fontSize: 12, padding: "4px 6px" }}
+      >
+        <option value="">+ Add dependency</option>
+        {remaining.map(r => (
+          <option key={r.id} value={r.requirement_key}>{r.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+
+function labelFor(key: string, requirements: PlaybookRequirement[]): string {
+  return requirements.find(r => r.requirement_key === key)?.label || key;
 }
 
 
