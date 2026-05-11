@@ -153,14 +153,10 @@ export function DealChatInput({ loanId, user, pausedUntil }: Props) {
           resize: "vertical",
         }}
       />
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ fontSize: 11, color: t.ink3 }}>
-          {flash ? (
-            <Pill bg={t.profitBg} color={t.profit}>{flash}</Pill>
-          ) : (
-            <span>{activeMode.hint}</span>
-          )}
-        </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10 }}>
+        {flash ? (
+          <Pill bg={t.profitBg} color={t.profit}>{flash}</Pill>
+        ) : null}
         <button
           onClick={submit}
           disabled={!body.trim() || send.isPending}

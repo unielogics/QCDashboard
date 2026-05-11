@@ -17,7 +17,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { QC_FMT } from "@/components/design-system/tokens";
 import {
   useAssignToAI,
   useBootstrapDealSecretary,
@@ -28,16 +27,14 @@ import {
   useLoan,
   useLoanWorkflow,
   useRecalc,
-  useSendDealChat,
   useUnassignFromAI,
   useUpdateAssignment,
   useUpdateFileSettings,
   type WorkflowDoc,
 } from "@/hooks/useApi";
-import { DealChatMode, Role } from "@/lib/enums.generated";
+import { Role } from "@/lib/enums.generated";
 import {
   DS_CATEGORY_META,
-  DS_OUTREACH_MODE_LABELS,
   type Document,
   type DSDealSecretaryView,
   type DSOutreachMode,
@@ -272,9 +269,7 @@ function SecretaryConsole({
 }) {
   const { t } = useTheme();
   const createCustomTask = useCreateCustomTask(loan.id);
-  const send = useSendDealChat();
   const [filter, setFilter] = useState<"borrower" | "required" | "human" | "all">("borrower");
-  const [busyDraft, setBusyDraft] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
 
   const missingCriteria = useMemo(() => getCriteriaItems(loan).filter((item) => !item.ready), [loan]);
@@ -291,7 +286,6 @@ function SecretaryConsole({
   const waiting = aiTasks.filter((r) => r.status === "asked" || r.status === "waiting_on_borrower").length;
   const collectionTargets = humanTasks.filter((r) => canControlTask(r, isOperator) && r.visibility?.includes("borrower"));
   const requiredTargets = humanTasks.filter((r) => canControlTask(r, isOperator) && r.required_level === "required");
-  const sensitiveAssigned = aiTasks.filter((r) => canControlTask(r, isOperator) && r.completion_mode === "requires_human_verify");
   const visibleHumanTasks = humanTasks.filter((r) => {
     if (filter === "borrower") return r.visibility?.includes("borrower");
     if (filter === "required") return r.required_level === "required";
@@ -299,28 +293,51 @@ function SecretaryConsole({
     return true;
   });
   const mode = secretary.file_settings.outreach_mode;
-  const modeLabel = DS_OUTREACH_MODE_LABELS[mode];
-  const canDraft = user.role === Role.SUPER_ADMIN || user.role === Role.LOAN_EXEC || user.role === Role.BROKER;
+
+  // Drag-from-Resolution-Queue → drop-on-AI-Secretary wiring.
+  // Pointer sensor with a 4px activation distance so a click on a row
+  // (which navigates) still works without triggering drag.
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  // Build a key set of timeline rows so we can short-circuit a drag of
+  // a Resolution Queue item that maps to an existing CRS row (e.g. a
+  // workflow condition for "Bank statements" that's already on the
+  // timeline as a human task — drop = onAssign instead of new custom).
+  const timelineKeys = useMemo(
+    () => new Set<string>([...humanTasks, ...aiTasks].map((r) => r.requirement_key)),
+    [humanTasks, aiTasks],
+  );
+  const handleQueueDragEnd = (e: DragEndEvent) => {
+    const over = e.over?.id;
+    if (over !== "ai-secretary-zone") return;
+    const payload = e.active.data?.current as
+      | { kind?: string; label?: string; source_id?: string; requirement_key?: string }
+      | undefined;
+    if (!payload) return;
+    // Existing CRS row? Just flip ownership to AI — fastest path.
+    if (payload.requirement_key && timelineKeys.has(payload.requirement_key)) {
+      onAssign(payload.requirement_key);
+      setFlash(`Delegated "${payload.label ?? payload.requirement_key}" to AI.`);
+      window.setTimeout(() => setFlash(null), 2400);
+      return;
+    }
+    // Otherwise spin up a custom task on the file with AI as the owner.
+    const label = payload.label || "Follow up";
+    createCustomTask.mutate(
+      { label, owner_type: "ai", objective_text: undefined },
+      {
+        onSuccess: () => {
+          setFlash(`Added "${label}" to AI Secretary.`);
+          window.setTimeout(() => setFlash(null), 2400);
+        },
+        onError: (err) => {
+          setFlash(err instanceof Error ? err.message : "Could not add task.");
+          window.setTimeout(() => setFlash(null), 3200);
+        },
+      },
+    );
+  };
 
   const assignMany = (rows: DSTaskRow[]) => rows.forEach((r) => onAssign(r.requirement_key));
-  const sendDraft = async (kind: "borrower" | "underwriting" | "closing") => {
-    if (!canDraft) return;
-    setBusyDraft(kind);
-    setFlash(null);
-    try {
-      await send.mutateAsync({
-        loanId: loan.id,
-        mode: DealChatMode.BROKER_QUESTION,
-        body: buildDraftPrompt(kind, loan, missingCriteria, openDocs, flaggedDocs, primaryConditions, warnings),
-      });
-      setFlash(kind === "borrower" ? "Borrower draft requested." : kind === "underwriting" ? "UW memo requested." : "Closing checklist requested.");
-    } catch (error) {
-      setFlash(error instanceof Error ? error.message : "Draft request failed.");
-    } finally {
-      setBusyDraft(null);
-      window.setTimeout(() => setFlash(null), 2600);
-    }
-  };
 
   // Slimmer layout — dropped the entire left status column (status card
   // + 4 KPI tiles + 3 ModeButtons + advanced dropdown). The pipeline
@@ -397,19 +414,20 @@ function SecretaryConsole({
         ) : null}
       </div>
 
+      <DndContext sensors={sensors} onDragEnd={handleQueueDragEnd}>
       <div style={{
         display: "grid",
         gridTemplateColumns: "minmax(360px, 1.3fr) minmax(280px, 0.85fr)",
         gap: 12,
         alignItems: "stretch",
       }}>
-        <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface, padding: 12, minWidth: 0 }}>
+        <AISecretaryDropZone>
           {/* Compact header: tiny eyebrow + presets + filter inline */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
             <span style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
               Delegation
             </span>
-            <span style={{ fontSize: 11, color: t.ink3 }}>· drag rows to assign</span>
+            <span style={{ fontSize: 11, color: t.ink3 }}>· drag any row from the Resolution Queue here to delegate</span>
             <div style={{ flex: 1 }} />
             <select
               value={filter}
@@ -449,7 +467,7 @@ function SecretaryConsole({
               await createCustomTask.mutateAsync(input);
             }}
           />
-        </div>
+        </AISecretaryDropZone>
 
         <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface, padding: 12, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -459,35 +477,94 @@ function SecretaryConsole({
             <Pill bg={openDocs.length || missingCriteria.length || warnings.length ? t.warnBg : t.profitBg} color={openDocs.length || missingCriteria.length || warnings.length ? t.warn : t.profit}>
               {openDocs.length + missingCriteria.length + warnings.length} open
             </Pill>
+            <span style={{ marginLeft: "auto", fontSize: 10.5, color: t.ink3, fontWeight: 700 }}>Drag a row → AI Secretary to delegate</span>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflow: "auto", paddingRight: 2 }}>
             {warnings.slice(0, 3).map((warning) => (
-              <ResolutionRow key={`${warning.code}-${warning.message}`} icon="alert" tone="danger" title={warning.message} meta={warning.code.replace(/_/g, " ")} action="Open UW" onClick={() => onOpenTab?.("uw")} />
+              <ResolutionRow
+                key={`${warning.code}-${warning.message}`}
+                icon="alert"
+                tone="danger"
+                title={warning.message}
+                meta={warning.code.replace(/_/g, " ")}
+                action="Open UW"
+                onClick={() => onOpenTab?.("uw")}
+                dragId={`queue:warning:${warning.code}`}
+                dragData={{ kind: "warning", label: warning.message, source_id: warning.code }}
+              />
             ))}
             {missingCriteria.slice(0, 4).map((item) => (
-              <ResolutionRow key={item.id} icon="sliders" tone="watch" title={`${item.label} is missing`} meta={item.value} action="Fix field" onClick={() => onOpenTab?.("terms", criteriaTarget(item.id))} />
+              <ResolutionRow
+                key={item.id}
+                icon="sliders"
+                tone="watch"
+                title={`${item.label} is missing`}
+                meta={item.value}
+                action="Fix field"
+                onClick={() => onOpenTab?.("terms", criteriaTarget(item.id))}
+                dragId={`queue:criteria:${item.id}`}
+                dragData={{ kind: "criteria", label: `Collect ${item.label.toLowerCase()}`, source_id: item.id }}
+              />
             ))}
             {flaggedDocs.slice(0, 3).map((doc) => (
-              <ResolutionRow key={doc.id} icon="doc" tone="danger" title={doc.name} meta="Flagged document" action="Open doc" onClick={() => onOpenTab?.("docs")} />
+              <ResolutionRow
+                key={doc.id}
+                icon="doc"
+                tone="danger"
+                title={doc.name}
+                meta="Flagged document"
+                action="Open doc"
+                onClick={() => onOpenTab?.("docs")}
+                dragId={`queue:flagged_doc:${doc.id}`}
+                dragData={{ kind: "flagged_doc", label: `Resolve flag on ${doc.name}`, source_id: doc.id }}
+              />
             ))}
             {primaryConditions.slice(0, 5).map((item) => (
-              <ResolutionRow key={item.document_id} icon="docCheck" tone={item.days_until_due != null && item.days_until_due < 0 ? "danger" : "watch"} title={item.name} meta={conditionMeta(item)} action="Schedule" onClick={() => onOpenTab?.("workflow")} />
+              <ResolutionRow
+                key={item.document_id}
+                icon="docCheck"
+                tone={item.days_until_due != null && item.days_until_due < 0 ? "danger" : "watch"}
+                title={item.name}
+                meta={conditionMeta(item)}
+                action="Schedule"
+                onClick={() => onOpenTab?.("workflow")}
+                dragId={`queue:condition:${item.document_id}`}
+                dragData={{ kind: "condition", label: `Collect ${item.name}`, requirement_key: item.checklist_key ?? undefined, source_id: item.document_id }}
+              />
             ))}
             {warnings.length === 0 && missingCriteria.length === 0 && openDocs.length === 0 ? (
               <ResolutionRow icon="check" tone="ready" title="No open criteria, conditions, or warnings" meta="Package can move to review" action="Open UW" onClick={() => onOpenTab?.("uw")} />
             ) : null}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 7, marginTop: 12 }}>
-            <DraftButton icon="send" label="Draft borrower follow-up" busy={busyDraft === "borrower"} onClick={() => sendDraft("borrower")} />
-            <DraftButton icon="shield" label="Draft UW memo" busy={busyDraft === "underwriting"} onClick={() => sendDraft("underwriting")} />
-            <DraftButton icon="docCheck" label="Draft closing checklist" busy={busyDraft === "closing"} onClick={() => sendDraft("closing")} />
-          </div>
           {flash ? <div style={{ marginTop: 9, fontSize: 11.5, color: flash.includes("failed") ? t.danger : t.ink3, fontWeight: 800 }}>{flash}</div> : null}
         </div>
       </div>
+      </DndContext>
     </Card>
+  );
+}
+
+// Drop zone wrapping the AI Secretary timeline. Receives drags from
+// the Resolution Queue + (later) outside drops.
+function AISecretaryDropZone({ children }: { children: React.ReactNode }) {
+  const { t } = useTheme();
+  const drop = useDroppable({ id: "ai-secretary-zone" });
+  return (
+    <div
+      ref={drop.setNodeRef}
+      style={{
+        border: `1.5px ${drop.isOver ? "dashed" : "solid"} ${drop.isOver ? t.brand : t.line}`,
+        borderRadius: 12,
+        background: drop.isOver ? t.brandSoft : t.surface,
+        padding: 12,
+        minWidth: 0,
+        transition: "background 0.12s, border-color 0.12s",
+      }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -754,25 +831,52 @@ function EmptyWork({ note }: { note: string }) {
   );
 }
 
-function ResolutionRow({ icon, tone, title, meta, action, onClick }: { icon: string; tone: "ready" | "watch" | "danger"; title: string; meta: string; action: string; onClick: () => void }) {
+function ResolutionRow({
+  icon, tone, title, meta, action, onClick, dragId, dragData,
+}: {
+  icon: string;
+  tone: "ready" | "watch" | "danger";
+  title: string;
+  meta: string;
+  action: string;
+  onClick: () => void;
+  /** Pass to make the row draggable into the AI Secretary drop zone.
+   *  Omit for the empty-state placeholder row. */
+  dragId?: string;
+  dragData?: Record<string, unknown>;
+}) {
   const { t } = useTheme();
   const color = tone === "ready" ? t.profit : tone === "danger" ? t.danger : t.warn;
   const bg = tone === "ready" ? t.profitBg : tone === "danger" ? t.dangerBg : t.warnBg;
+  // useDraggable must run unconditionally; pass a sentinel id when not draggable.
+  const drag = useDraggable({ id: dragId ?? "_resolution_row_inert", disabled: !dragId, data: dragData });
+  const draggable = !!dragId;
   return (
-    <button type="button" onClick={onClick} style={{
-      display: "grid",
-      gridTemplateColumns: "28px minmax(0, 1fr) auto",
-      gap: 8,
-      alignItems: "center",
-      padding: 9,
-      borderRadius: 11,
-      border: `1px solid ${t.line}`,
-      background: t.surface2,
-      color: t.ink,
-      cursor: "pointer",
-      textAlign: "left",
-      fontFamily: "inherit",
-    }}>
+    <div
+      ref={draggable ? drag.setNodeRef : undefined}
+      {...(draggable ? { ...drag.attributes, ...drag.listeners } : {})}
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "28px minmax(0, 1fr) auto",
+        gap: 8,
+        alignItems: "center",
+        padding: 9,
+        borderRadius: 11,
+        border: `1px solid ${t.line}`,
+        background: t.surface2,
+        color: t.ink,
+        cursor: draggable ? "grab" : "pointer",
+        textAlign: "left",
+        fontFamily: "inherit",
+        opacity: drag.isDragging ? 0.4 : 1,
+        userSelect: "none",
+      }}
+      title={draggable ? "Drag onto AI Secretary to delegate, or click for details" : undefined}
+    >
       <span style={{ width: 28, height: 28, borderRadius: 9, display: "grid", placeItems: "center", color, background: bg }}>
         <Icon name={icon} size={13} />
       </span>
@@ -781,7 +885,7 @@ function ResolutionRow({ icon, tone, title, meta, action, onClick }: { icon: str
         <span style={{ display: "block", marginTop: 1, fontSize: 10.8, color: t.ink3, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta}</span>
       </span>
       <span style={{ fontSize: 10.5, fontWeight: 900, color, whiteSpace: "nowrap" }}>{action}</span>
-    </button>
+    </div>
   );
 }
 
@@ -832,88 +936,11 @@ function criteriaTarget(id: string) {
   return "criteria-pricing";
 }
 
-function DraftButton({ icon, label, busy, onClick }: { icon: string; label: string; busy: boolean; onClick: () => void }) {
-  const { t } = useTheme();
-  return (
-    <button
-      onClick={onClick}
-      disabled={busy}
-      style={{
-        border: `1px solid ${t.lineStrong}`,
-        background: t.surface,
-        color: t.ink,
-        borderRadius: 9,
-        padding: "8px 7px",
-        fontSize: 11.5,
-        fontWeight: 850,
-        cursor: busy ? "wait" : "pointer",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 5,
-        minWidth: 0,
-        whiteSpace: "nowrap",
-      }}
-    >
-      <Icon name={icon} size={12} />
-      {busy ? "Drafting" : label}
-    </button>
-  );
-}
-
 function conditionMeta(item: WorkflowDoc) {
   if (item.days_until_due == null) return item.status.replace(/_/g, " ");
   if (item.days_until_due < 0) return `${Math.abs(item.days_until_due)}d overdue`;
   if (item.days_until_due === 0) return "Due today";
   return `Due in ${item.days_until_due}d`;
-}
-
-function buildDraftPrompt(
-  kind: "borrower" | "underwriting" | "closing",
-  loan: Loan,
-  missingCriteria: ReturnType<typeof getCriteriaItems>,
-  openDocs: Document[],
-  flaggedDocs: Document[],
-  conditions: WorkflowDoc[],
-  warnings: NonNullable<RecalcResponse["warnings"]>,
-) {
-  const missing = missingCriteria.map((item) => `${item.label}: ${item.value}`).join("; ") || "none";
-  const docs = openDocs.slice(0, 8).map((doc) => `${doc.name} (${doc.status})`).join("; ") || "none";
-  const flagged = flaggedDocs.map((doc) => doc.name).join("; ") || "none";
-  const conditionLines = conditions.map((item) => `${item.name}: ${conditionMeta(item)}`).join("; ") || "none";
-  const warningLines = warnings.map((warning) => `${warning.code}: ${warning.message}`).join("; ") || "none";
-  const header = `Loan ${loan.deal_id} / ${loan.address} / ${loan.type.replace(/_/g, " ")} / amount ${QC_FMT.usd(Number(loan.amount), 0)}.`;
-
-  if (kind === "borrower") {
-    return [
-      "Draft a borrower-facing follow-up message for this loan file. Do not send it. Keep it plain, specific, and low-friction.",
-      header,
-      `Missing criteria: ${missing}.`,
-      `Open document conditions: ${docs}.`,
-      `Due/overdue queue: ${conditionLines}.`,
-      `Flagged documents: ${flagged}.`,
-    ].join("\n");
-  }
-
-  if (kind === "underwriting") {
-    return [
-      "Draft an internal underwriting condition memo. Group issues into loan structure, missing evidence, document quality, and blockers before submission.",
-      header,
-      `Missing criteria: ${missing}.`,
-      `Open document conditions: ${docs}.`,
-      `Flagged documents: ${flagged}.`,
-      `Calculation warnings: ${warningLines}.`,
-    ].join("\n");
-  }
-
-  return [
-    "Draft a closing-readiness checklist for the file team. Include what is complete, what blocks closing, and the next three actions.",
-    header,
-    `Missing criteria: ${missing}.`,
-    `Open document conditions: ${docs}.`,
-    `Due/overdue queue: ${conditionLines}.`,
-    `Calculation warnings: ${warningLines}.`,
-  ].join("\n");
 }
 
 // ─── AIQuestionsPanel ──────────────────────────────────────────────
