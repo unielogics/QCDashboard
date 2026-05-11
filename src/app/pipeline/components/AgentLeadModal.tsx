@@ -30,8 +30,10 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPetrol } from "@/components/design-system/buttons";
 import { RightPanel } from "@/components/design-system/RightPanel";
-import { useClient, useCreateClient } from "@/hooks/useApi";
+import { useClient, useCreateClient, useBufferWizardIntent } from "@/hooks/useApi";
 import { ClientSearchBlock } from "@/components/ClientSearchBlock";
+import { WizardSecretaryStep } from "@/components/WizardSecretaryStep";
+import type { DSOutreachMode } from "@/lib/types";
 import { US_STATES } from "@/lib/usStates";
 import type { QCTokens } from "@/components/design-system/tokens";
 
@@ -143,6 +145,10 @@ const STEPS = [
   { id: "lead", label: "Lead" },
   { id: "property", label: "Property" },
   { id: "numbers", label: "Numbers" },
+  // AI Deal Secretary Step 4 — agent picks which playbook items the AI
+  // should handle on this deal. Buffered as wizard intent until the
+  // prequal eventually spawns a Loan (materialize_pending_assignments).
+  { id: "secretary", label: "AI Workbench" },
   { id: "handoff", label: "Handoff" },
 ] as const;
 
@@ -150,9 +156,14 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
   const { t } = useTheme();
   const router = useRouter();
   const create = useCreateClient();
+  const bufferWizardIntent = useBufferWizardIntent();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(INITIAL);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
+  // AI Deal Secretary step state — buffered until the parent client
+  // is created, then POSTed to /clients/{id}/deal-secretary/wizard-intent.
+  const [aiOutreachMode, setAiOutreachMode] = useState<DSOutreachMode>("draft_first");
+  const [aiAssignedKeys, setAiAssignedKeys] = useState<string[]>([]);
 
   const update = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -216,7 +227,27 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
         relationship_context: form.relationshipContext,
         source_channel: "agent_dashboard",
       });
+      // Buffer the AI Deal Secretary intent on the new Client's
+      // realtor-phase ClientAIPlan row. Materializes into real
+      // AITaskAssignment rows when the prequal spawns a Loan.
+      // Best-effort — failure here doesn't block the lead.
+      if (aiAssignedKeys.length > 0 || aiOutreachMode !== "draft_first") {
+        try {
+          await bufferWizardIntent.mutateAsync({
+            clientId: created.id,
+            body: {
+              assignments: aiAssignedKeys.map((k) => ({ requirement_key: k })),
+              file_settings: { outreach_mode: aiOutreachMode },
+            },
+          });
+        } catch (e) {
+          // Non-fatal — the agent can fix this on the workbench tab later.
+          console.warn("wizard-intent buffer failed", e);
+        }
+      }
       setForm(INITIAL);
+      setAiAssignedKeys([]);
+      setAiOutreachMode("draft_first");
       setStep(0);
       onClose();
       router.push(`/clients/${created.id}`);
@@ -313,7 +344,16 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
       {step === 0 && <LeadStep t={t} form={form} update={update} />}
       {step === 1 && <PropertyStep t={t} form={form} update={update} />}
       {step === 2 && <NumbersStep t={t} form={form} update={update} />}
-      {step === 3 && <HandoffStep t={t} form={form} update={update} />}
+      {step === 3 && (
+        <WizardSecretaryStep
+          side={form.side}
+          outreachMode={aiOutreachMode}
+          onChangeOutreachMode={setAiOutreachMode}
+          aiAssignedKeys={aiAssignedKeys}
+          onChangeAssignments={setAiAssignedKeys}
+        />
+      )}
+      {step === 4 && <HandoffStep t={t} form={form} update={update} />}
     </RightPanel>
   );
 }

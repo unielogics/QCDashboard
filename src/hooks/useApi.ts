@@ -2598,7 +2598,11 @@ export interface PlaybookRequirement {
   id: string;
   requirement_key: string;
   label: string;
-  category: "fact" | "document" | "appointment" | "agreement" | "task";
+  // Widened to the 12-value closed taxonomy in alembic 0038 (the old
+  // narrow set fact/document/appointment/agreement/task is remapped
+  // by the migration). Treat as opaque string in the type; render with
+  // DS_CATEGORY_META from lib/types for display.
+  category: string;
   required_level: "required" | "recommended" | "optional";
   applies_when: Record<string, unknown> | null;
   blocks_stage: string | null;
@@ -2609,6 +2613,18 @@ export interface PlaybookRequirement {
   expiration_days: number | null;
   ai_request_message_template: string | null;
   display_order: number;
+  // AI Deal Secretary fields (alembic 0038). Optional on the wire so
+  // older Settings responses still type-check.
+  default_owner_type?: string;
+  default_channels?: string[];
+  default_cadence_hours?: number;
+  link_url?: string | null;
+  link_label?: string | null;
+  link_kind?: string | null;
+  objective_text?: string;
+  completion_criteria?: string;
+  completion_mode?: string;
+  wrong_upload_response_template?: string | null;
 }
 
 export interface AgentPlaybook {
@@ -3059,5 +3075,149 @@ export function useLogClientEngagement(clientId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["engagement", clientId] });
     },
+  });
+}
+
+
+// ────────────────────────────────────────────────────────────────────
+// AI Deal Secretary (Phase 1) — workbench picker, wizard step 4,
+// pipeline summary. Mirrors /api/v1 deal-secretary endpoints.
+// ────────────────────────────────────────────────────────────────────
+
+import type {
+  DSAssignRequest,
+  DSAssignmentUpdateRequest,
+  DSBootstrapResponse,
+  DSDealSecretaryView,
+  DSFileSettings,
+  DSFileSettingsUpdate,
+  DSTaskRow,
+  DSWizardIntentRequest,
+  DSWizardIntentResponse,
+} from "@/lib/types";
+
+export function useDealSecretary(loanId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["deal-secretary", loanId ?? "", devUser],
+    queryFn: () => apiCall<DSDealSecretaryView>(`/loans/${loanId}/deal-secretary`),
+    enabled: !!loanId,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useAssignToAI(loanId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DSAssignRequest) =>
+      apiCall<DSTaskRow>(`/loans/${loanId}/deal-secretary/assign`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deal-secretary", loanId] });
+    },
+  });
+}
+
+export function useUnassignFromAI(loanId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (requirement_key: string) =>
+      apiCall<DSTaskRow>(`/loans/${loanId}/deal-secretary/unassign`, {
+        method: "POST",
+        body: JSON.stringify({ requirement_key }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deal-secretary", loanId] });
+    },
+  });
+}
+
+export function useUpdateAssignment(loanId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ assignment_id, ...body }: DSAssignmentUpdateRequest & { assignment_id: string }) =>
+      apiCall<DSTaskRow>(
+        `/loans/${loanId}/deal-secretary/assignments/${assignment_id}`,
+        { method: "PATCH", body: JSON.stringify(body) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deal-secretary", loanId] });
+    },
+  });
+}
+
+export function useUpdateFileSettings(loanId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DSFileSettingsUpdate) =>
+      apiCall<DSFileSettings>(`/loans/${loanId}/deal-secretary/file-settings`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deal-secretary", loanId] });
+    },
+  });
+}
+
+export function useBootstrapDealSecretary(loanId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiCall<DSBootstrapResponse>(`/loans/${loanId}/deal-secretary/bootstrap`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deal-secretary", loanId] });
+    },
+  });
+}
+
+export interface DSPipelineSummaryItem {
+  loan_id: string;
+  outreach_mode: string;
+  ai_task_count: number;
+  ai_completed_count: number;
+  blocked_count: number;
+  next_outreach_at: string | null;
+  current_blocker: string | null;
+  state: "setup" | "active_work" | "waiting_borrower" | "blocked";
+}
+
+export function useDealSecretarySummary(loanIds: string[]) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const csv = loanIds.join(",");
+  return useQuery({
+    queryKey: ["deal-secretary-summary", csv, devUser],
+    queryFn: () =>
+      apiCall<DSPipelineSummaryItem[]>(`/pipeline/deal-secretary-summary?loan_ids=${csv}`),
+    enabled: loanIds.length > 0,
+    retry: aiQueryRetry,
+  });
+}
+
+// Used by AgentLeadModal Step 4 + SmartIntakeModal Step 3 to buffer
+// pre-loan picks. The client_id only exists AFTER the parent create
+// call succeeds, so it's a mutation arg rather than a hook param.
+// Materializes into real AITaskAssignment rows when the prequal
+// eventually spawns a Loan (see qcbackend's
+// app/services/ai/deal_secretary.materialize_pending_assignments).
+export function useBufferWizardIntent() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: ({ clientId, body }: { clientId: string; body: DSWizardIntentRequest }) =>
+      apiCall<DSWizardIntentResponse>(
+        `/clients/${clientId}/deal-secretary/wizard-intent`,
+        { method: "POST", body: JSON.stringify(body) },
+      ),
   });
 }

@@ -1588,3 +1588,224 @@ export type VisibilityScope =
 // useLoans, useLeads, useDeals). Default is "mine" for Agent, "all" for
 // Super Admin / Funding Team. `scope: "mine"` excludes unassigned records.
 export type ListScope = "mine" | "all";
+
+
+// ────────────────────────────────────────────────────────────────────
+// AI Deal Secretary — mirrors app/schemas/deal_secretary.py exactly.
+// Drives the workbench picker, Step 4 wizard, pipeline badge strip.
+// ────────────────────────────────────────────────────────────────────
+
+export type DSTaskOwnerType = "human" | "ai" | "shared" | "funding_locked";
+
+export type DSOutreachChannel = "portal" | "email" | "sms" | "voice";
+
+export type DSOutreachMode =
+  | "off"
+  | "draft_first"
+  | "portal_auto"
+  | "portal_email"
+  | "portal_email_sms";
+
+export type DSApprovalMode =
+  | "draft_first"
+  | "auto_send_portal"
+  | "require_per_message";
+
+export type DSCompletionMode =
+  | "ai_can_complete"
+  | "requires_human_verify"
+  | "borrower_self_attest";
+
+export type DSLinkKind =
+  | "docusign"
+  | "esign"
+  | "external_form"
+  | "reference";
+
+export type DSRequirementCategory =
+  | "borrower_info"
+  | "property_data"
+  | "financials"
+  | "credit"
+  | "agreements"
+  | "insurance"
+  | "title_and_escrow"
+  | "appraisal_and_inspection"
+  | "scheduling"
+  | "compliance"
+  | "communication"
+  | "ai_internal";
+
+export interface DSCadencePolicy {
+  hours_between_attempts: number;
+  max_attempts: number;
+  escalation_user_id?: string | null;
+  quiet_hours_start?: string | null;
+  quiet_hours_end?: string | null;
+}
+
+export interface DSSmsConsent {
+  state: "granted" | "not_granted" | "revoked";
+  captured_at?: string | null;
+  language?: string | null;
+}
+
+export interface DSEmailOptOut {
+  opted_out_at?: string | null;
+  reason?: string | null;
+}
+
+export interface DSConsentState {
+  sms?: DSSmsConsent | null;
+  email?: DSEmailOptOut | null;
+  voice?: "disabled";
+}
+
+export interface DSFileSettings {
+  outreach_mode: DSOutreachMode;
+  complete_file_by?: string | null;
+  sms_consent?: DSSmsConsent | null;
+  email_opt_out?: DSEmailOptOut | null;
+  default_cadence?: DSCadencePolicy | null;
+}
+
+export interface DSTaskRow {
+  client_requirement_status_id: string;
+  requirement_key: string;
+  label: string;
+  category: DSRequirementCategory;
+  required_level: "required" | "recommended" | "optional";
+  status: string;
+  owner_type: DSTaskOwnerType;
+  source: string;
+  objective_text: string;
+  completion_criteria: string;
+  completion_mode: DSCompletionMode;
+  visibility: string[];
+  can_agent_override: boolean;
+  can_underwriter_waive: boolean;
+  blocks_stage: string | null;
+  display_order: number;
+  link_url: string | null;
+  link_label: string | null;
+  link_kind: DSLinkKind | null;
+  due_at: string | null;
+  last_requested_at: string | null;
+  last_response_at: string | null;
+  // Present only when owner_type='ai'.
+  assignment_id: string | null;
+  instructions: string | null;
+  instructions_visibility: string | null;
+  channels: DSOutreachChannel[] | null;
+  cadence: DSCadencePolicy | null;
+  approval_mode: DSApprovalMode | null;
+  complete_file_by: string | null;
+  consent_state: DSConsentState | null;
+  attempts_made: number | null;
+  next_run_at: string | null;
+}
+
+export interface DSDealSecretaryView {
+  loan_id: string;
+  client_id: string;
+  left: DSTaskRow[];
+  right: DSTaskRow[];
+  file_settings: DSFileSettings;
+  funding_locked_count: number;
+}
+
+export interface DSAssignRequest {
+  requirement_key: string;
+  instructions?: string | null;
+  instructions_visibility?: "internal" | "agent" | "borrower";
+  channels?: DSOutreachChannel[] | null;
+  cadence?: DSCadencePolicy | null;
+  approval_mode?: DSApprovalMode | null;
+  complete_file_by?: string | null;
+  link_url?: string | null;
+  link_label?: string | null;
+  link_kind?: DSLinkKind | null;
+  objective_text?: string | null;
+  completion_criteria?: string | null;
+  completion_mode?: DSCompletionMode | null;
+}
+
+export interface DSAssignmentUpdateRequest {
+  instructions?: string | null;
+  instructions_visibility?: "internal" | "agent" | "borrower";
+  channels?: DSOutreachChannel[] | null;
+  cadence?: DSCadencePolicy | null;
+  approval_mode?: DSApprovalMode | null;
+  complete_file_by?: string | null;
+  link_url?: string | null;
+  link_label?: string | null;
+  link_kind?: DSLinkKind | null;
+  objective_text?: string | null;
+  completion_criteria?: string | null;
+  completion_mode?: DSCompletionMode | null;
+}
+
+export interface DSFileSettingsUpdate {
+  outreach_mode?: DSOutreachMode;
+  complete_file_by?: string | null;
+  sms_consent?: DSSmsConsent | null;
+  email_opt_out?: DSEmailOptOut | null;
+  default_cadence?: DSCadencePolicy | null;
+}
+
+export interface DSWizardAssignmentIntent {
+  requirement_key: string;
+  instructions?: string | null;
+  channels?: DSOutreachChannel[] | null;
+  cadence?: DSCadencePolicy | null;
+  approval_mode?: DSApprovalMode | null;
+  complete_file_by?: string | null;
+  link_url?: string | null;
+  link_label?: string | null;
+  link_kind?: DSLinkKind | null;
+}
+
+export interface DSWizardIntentRequest {
+  assignments: DSWizardAssignmentIntent[];
+  file_settings?: DSFileSettings | null;
+}
+
+export interface DSBootstrapResponse {
+  crs_inserted: number;
+  crs_skipped: number;
+  plan_created: boolean;
+}
+
+export interface DSWizardIntentResponse {
+  pending_count: number;
+  file_settings: DSFileSettings;
+}
+
+// Display metadata for the closed category taxonomy. Single source of
+// truth — picker filter chips, CategoryChip primitive, pipeline filters
+// all read from this map.
+export const DS_CATEGORY_META: Record<
+  DSRequirementCategory,
+  { label: string; short: string }
+> = {
+  borrower_info:            { label: "Borrower Info", short: "Borrower" },
+  property_data:            { label: "Property",      short: "Property" },
+  financials:               { label: "Financials",    short: "Financials" },
+  credit:                   { label: "Credit",        short: "Credit" },
+  agreements:               { label: "Agreements",    short: "Agreements" },
+  insurance:                { label: "Insurance",     short: "Insurance" },
+  title_and_escrow:         { label: "Title & Escrow", short: "Title" },
+  appraisal_and_inspection: { label: "Appraisal",     short: "Appraisal" },
+  scheduling:               { label: "Scheduling",    short: "Schedule" },
+  compliance:               { label: "Compliance",    short: "Compliance" },
+  communication:            { label: "Communication", short: "Comms" },
+  ai_internal:              { label: "AI Internal",   short: "Internal" },
+};
+
+export const DS_OUTREACH_MODE_LABELS: Record<DSOutreachMode, { title: string; sub: string }> = {
+  off:              { title: "Off",              sub: "Plan only — nothing sends" },
+  draft_first:      { title: "Draft first",      sub: "Drafts land in AI Inbox" },
+  portal_auto:      { title: "Portal auto-send", sub: "Safest default" },
+  portal_email:     { title: "Portal + Email",   sub: "Email also auto-sends" },
+  portal_email_sms: { title: "Portal + Email + SMS", sub: "SMS only with consent" },
+};

@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useLoans } from "@/hooks/useApi";
+import { useLoans, useDealSecretarySummary, type DSPipelineSummaryItem } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { loanTypeLabel } from "@/lib/types";
 import { SmartIntakeModal } from "./components/SmartIntakeModal";
@@ -23,6 +23,13 @@ type SortKey = "deal_id" | "address" | "type" | "amount" | "dscr" | "stage" | "c
 export default function PipelinePage() {
   const { t } = useTheme();
   const { data: loans = [] } = useLoans();
+  const loanIds = useMemo(() => loans.map((l) => l.id), [loans]);
+  const { data: secretarySummaries = [] } = useDealSecretarySummary(loanIds);
+  const summaryByLoanId = useMemo(() => {
+    const map = new Map<string, DSPipelineSummaryItem>();
+    secretarySummaries.forEach((s) => map.set(s.loan_id, s));
+    return map;
+  }, [secretarySummaries]);
   const profile = useActiveProfile();
   // Top-level mode: Leads (Agent funnel) vs Funding (loan stages). Each mode
   // independently picks kanban vs table for layout. Agents see Leads by
@@ -259,6 +266,10 @@ export default function PipelinePage() {
                           <span style={{ fontWeight: 600 }}>{loan.client_name}</span>
                         </>
                       ) : null}
+                      {/* AI Deal Secretary badge — shows current state +
+                          blocker. Operators always see it; brokers see
+                          it for their own loans. */}
+                      <DealSecretaryBadge summary={summaryByLoanId.get(loan.id)} />
                     </div>
                   </div>
                   {/* Agent column — operators only. "Not assigned" displayed
@@ -367,4 +378,48 @@ function segBtn(t: ReturnType<typeof useTheme>["t"], active: boolean): React.CSS
     cursor: "pointer",
     fontFamily: "inherit",
   };
+}
+
+function DealSecretaryBadge({ summary }: { summary: DSPipelineSummaryItem | undefined }) {
+  const { t } = useTheme();
+  if (!summary || summary.ai_task_count === 0) return null;
+
+  // Map state → icon + tone.
+  let icon = "🤖";
+  let bg = t.brandSoft;
+  let color = t.brand;
+  let label = "";
+  if (summary.state === "blocked") {
+    icon = "⚠️"; bg = t.warnBg; color = t.warn;
+    label = summary.current_blocker
+      ? `Blocked · ${summary.current_blocker}`
+      : `Blocked · ${summary.blocked_count} task${summary.blocked_count === 1 ? "" : "s"}`;
+  } else if (summary.state === "waiting_borrower") {
+    label = "Waiting on borrower";
+    if (summary.next_outreach_at) {
+      const t = new Date(summary.next_outreach_at);
+      label += ` · next ${t.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+    }
+  } else if (summary.state === "active_work") {
+    label = `AI working · ${summary.ai_task_count} task${summary.ai_task_count === 1 ? "" : "s"}`;
+  } else {
+    // setup
+    icon = "🕒"; bg = t.surface2; color = t.ink3;
+    label = `Setup · ${summary.ai_task_count} assigned, outreach off`;
+  }
+
+  return (
+    <>
+      <span aria-hidden>·</span>
+      <span style={{
+        display: "inline-flex", alignItems: "center", gap: 4,
+        padding: "1px 6px", borderRadius: 4,
+        background: bg, color, fontWeight: 700,
+        fontSize: 10.5, letterSpacing: 0.2,
+      }}>
+        <span aria-hidden>{icon}</span>
+        {label}
+      </span>
+    </>
+  );
 }

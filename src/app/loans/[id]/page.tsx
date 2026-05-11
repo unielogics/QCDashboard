@@ -44,7 +44,7 @@ const INTERNAL_TABS = [
   // Hud1Tab.tsx was already wired at activeTab === "hud" below but had
   // no entry in this array, so it was unreachable from the UI.
   { id: "hud", label: "HUD-1", icon: "file" as const },
-  { id: "workspace", label: "AI Workspace", icon: "ai" as const },
+  { id: "workspace", label: "AI Workbench", icon: "ai" as const },
   { id: "thread", label: "Lender", icon: "chat" as const },
   { id: "activity", label: "Activity", icon: "audit" as const },
 ] as const;
