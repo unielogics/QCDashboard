@@ -46,6 +46,7 @@ import type {
   FredSeriesSummary,
   GroupedResults,
   HudLine,
+  HudShareLink,
   InboundEmailRequest,
   InboundEmailResponse,
   LenderSpread,
@@ -1766,6 +1767,8 @@ export function useUpdateHudLine() {
       label?: string;
       amount?: number;
       category?: string;
+      payee?: string | null;
+      note?: string | null;
     }) =>
       apiCall<HudLine>(`/loans/${loanId}/hud/${lineId}`, {
         method: "PATCH",
@@ -1774,7 +1777,94 @@ export function useUpdateHudLine() {
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["workspace", vars.loanId] });
       qc.invalidateQueries({ queryKey: ["loan", vars.loanId] });
+      qc.invalidateQueries({ queryKey: ["hudLines", vars.loanId] });
     },
+  });
+}
+
+// ── HUD list + create + delete (alembic 0042) ─────────────────────────
+
+export function useHudLines(loanId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["hudLines", loanId ?? ""],
+    queryFn: () => apiCall<HudLine[]>(`/loans/${loanId}/hud`),
+    enabled: !!loanId,
+  });
+}
+
+export function useCreateHudLine(loanId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      label: string;
+      amount?: number;
+      category?: string;
+      code?: string;
+      payee?: string | null;
+      note?: string | null;
+    }) =>
+      apiCall<HudLine>(`/loans/${loanId}/hud`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["hudLines", loanId] });
+      qc.invalidateQueries({ queryKey: ["workspace", loanId] });
+    },
+  });
+}
+
+export function useDeleteHudLine(loanId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (lineId: string) =>
+      apiCall<void>(`/loans/${loanId}/hud/${lineId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["hudLines", loanId] });
+      qc.invalidateQueries({ queryKey: ["workspace", loanId] });
+    },
+  });
+}
+
+// ── HUD share links (alembic 0042) ─────────────────────────────────────
+
+export function useHudShareLinks(loanId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["hudShares", loanId ?? ""],
+    queryFn: () => apiCall<HudShareLink[]>(`/loans/${loanId}/hud/shares`),
+    enabled: !!loanId,
+  });
+}
+
+export function useCreateHudShareLink(loanId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      label?: string | null;
+      invitee_email?: string | null;
+      invitee_role?: string | null;
+      expires_at?: string | null;
+    }) =>
+      apiCall<HudShareLink>(`/loans/${loanId}/hud/shares`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["hudShares", loanId] }),
+  });
+}
+
+export function useRevokeHudShareLink(loanId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (shareId: string) =>
+      apiCall<void>(`/loans/${loanId}/hud/shares/${shareId}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["hudShares", loanId] }),
   });
 }
 
@@ -2748,6 +2838,98 @@ export function useDeleteAgentCadenceRule() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["agentCadenceRules"] });
+    },
+  });
+}
+
+// ── Agent AI Knowledge (PDF / FAQ) ─────────────────────────────────
+//
+// Backs the "Knowledge & Voice" section of /agent-settings/ai. Two-step
+// upload — backend mints a presigned PUT URL, frontend does the PUT to
+// S3 directly, then upload-complete kicks off parsing.
+
+export interface AgentKnowledgeDocument {
+  id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  status: "uploading" | "parsing" | "ready" | "failed";
+  error: string | null;
+  created_at: string | null;
+}
+
+interface KnowledgeUploadInitResponse {
+  document: AgentKnowledgeDocument;
+  upload_url: string | null;
+  s3_key: string;
+}
+
+export function useAgentKnowledge() {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["agentKnowledge"],
+    queryFn: () => apiCall<AgentKnowledgeDocument[]>(`/me/ai-knowledge`),
+    retry: aiQueryRetry,
+  });
+}
+
+export function useUploadAgentKnowledge() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (file: File): Promise<AgentKnowledgeDocument> => {
+      const content_type = file.type || "application/pdf";
+      const init = await apiCall<KnowledgeUploadInitResponse>(
+        `/me/ai-knowledge/upload-init`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            filename: file.name,
+            content_type,
+            size_bytes: file.size,
+          }),
+        },
+      );
+      if (init.upload_url) {
+        // Direct PUT to S3 — outside our authed wrapper so the Clerk
+        // bearer token doesn't get forwarded to AWS.
+        const putRes = await fetch(init.upload_url, {
+          method: "PUT",
+          headers: {
+            "Content-Type": content_type,
+            "x-amz-server-side-encryption": "AES256",
+          },
+          body: file,
+        });
+        if (!putRes.ok) {
+          throw new Error(`S3 upload failed (HTTP ${putRes.status})`);
+        }
+      }
+      const done = await apiCall<AgentKnowledgeDocument>(
+        `/me/ai-knowledge/upload-complete`,
+        {
+          method: "POST",
+          body: JSON.stringify({ document_id: init.document.id }),
+        },
+      );
+      return done;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agentKnowledge"] });
+    },
+  });
+}
+
+export function useDeleteAgentKnowledge() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (docId: string) =>
+      apiCall<{ ok: boolean }>(`/me/ai-knowledge/${docId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agentKnowledge"] });
     },
   });
 }

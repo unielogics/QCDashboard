@@ -18,7 +18,7 @@ import { OverviewTab } from "./tabs/OverviewTab";
 import { FundingFileTab } from "./tabs/FundingFileTab";
 import { AgentLoanMirror } from "./tabs/AgentLoanMirror";
 import { TermsTab } from "./tabs/TermsTab";
-import { Hud1Tab } from "./tabs/Hud1Tab";
+import { HudTab } from "./tabs/HudTab";
 import { DocsTab } from "./tabs/DocsTab";
 import { WorkflowTab } from "./tabs/WorkflowTab";
 // Underwriting tab folded into Funding File — UW sizing + warnings live there now.
@@ -44,7 +44,7 @@ const INTERNAL_TABS = [
   { id: "docs", label: "Documents", icon: "doc" as const },
   { id: "workflow", label: "Conditions", icon: "cal" as const },
   { id: "prequal", label: "Pre-Qual", icon: "docCheck" as const },
-  { id: "hud", label: "HUD-1", icon: "file" as const },
+  { id: "hud", label: "HUD", icon: "file" as const },
   { id: "workspace", label: "AI Secretary", icon: "ai" as const },
   { id: "thread", label: "Lender", icon: "chat" as const },
   { id: "activity", label: "Activity", icon: "audit" as const },
@@ -473,7 +473,7 @@ export default function LoanDetailPage() {
       {activeTab === "overview" && <OverviewTab loan={loan} docs={docs} activity={activity} />}
       {activeTab === "terms" &&
         (profile.role === Role.CLIENT ? <LoanSimulator loan={loan} /> : <TermsTab loan={loan} />)}
-      {activeTab === "hud" && <Hud1Tab loan={loan} />}
+      {activeTab === "hud" && <HudTab loan={loan} />}
       {activeTab === "docs" && <DocsTab loan={loan} canRequest={canRequestDoc} />}
       {activeTab === "workflow" && <WorkflowTab loan={loan} canEdit={canRequestDoc} />}
       {/* "uw" tab removed — Underwriting content lives in Funding File. */}

@@ -68,7 +68,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/sign-up") ||
     pathname.startsWith("/terms") ||
-    pathname.startsWith("/privacy");
+    pathname.startsWith("/privacy") ||
+    // Token-resolved HUD shares — opened by title / escrow / insurance
+    // contacts without an account, so we render them bare.
+    pathname.startsWith("/hud/share");
   if (isBareRoute) {
     return <div style={{ background: t.bg, minHeight: "100vh" }}>{children}</div>;
   }

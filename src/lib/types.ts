@@ -1141,6 +1141,33 @@ export interface HudLine {
   amount: number;
   category: string;
   editable: boolean;
+  // Alembic 0042 — settlement-statement-style extras.
+  payee?: string | null;
+  note?: string | null;
+  created_by_share_link_id?: string | null;
+}
+
+export interface HudShareLink {
+  id: string;
+  loan_id: string;
+  token: string;
+  label: string | null;
+  invitee_email: string | null;
+  invitee_role: string | null;
+  created_at: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  last_used_at: string | null;
+}
+
+export interface PublicHudView {
+  loan_label: string;
+  loan_address: string;
+  invitee_label: string | null;
+  invitee_role: string | null;
+  revoked: boolean;
+  expired: boolean;
+  lines: HudLine[];
 }
 
 export interface WorkspaceState {
