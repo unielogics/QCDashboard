@@ -516,48 +516,61 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
           </button>
         </div>
 
-        {/* Body */}
+        {/* Body — form stack on the left, live letter preview on the right.
+            Single-column form per #facelift (the previous 2-col internal
+            split made fields feel cramped); preview pane mirrors the actual
+            PDF and updates as the operator types. */}
         <div style={{
           flex: "1 1 auto",
-          overflowY: "auto",
-          padding: "20px 28px 24px",
+          overflow: "hidden",
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1.05fr) minmax(0, 1fr)",
-          gap: 18,
-          alignItems: "start",
+          gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 0.9fr)",
+          alignItems: "stretch",
         }}>
-          {/* ── LEFT: borrower submission + calculator ─────────────── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-            {/* Borrower's submission — read-only */}
-            <Card pad={16} style={{ background: t.surface2 }}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 8 }}>
-                Borrower&apos;s submission
+          {/* ── FORM COLUMN: offer numbers → calculator → SOW (F&F) → letter terms → context ── */}
+          <div style={{
+            overflowY: "auto",
+            padding: "22px 28px 22px 32px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+            minWidth: 0,
+          }}>
+            {/* Offer numbers — primary action; previously "Approval values" */}
+            <Card pad={16}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 10 }}>
+                Offer numbers
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 12.5, color: t.ink2, fontFeatureSettings: '"tnum"' }}>
-                <ReadRow t={t} label="Requested purchase" value={QC_FMT.usd(Number(request.purchase_price), 0)} />
-                <ReadRow t={t} label="Requested loan" value={QC_FMT.usd(Number(request.requested_loan_amount), 0)} />
-                <ReadRow t={t} label="Requested LTV" value={
-                  Number(request.purchase_price) > 0
-                    ? `${((Number(request.requested_loan_amount) / Number(request.purchase_price)) * 100).toFixed(1)}%`
-                    : "—"
-                } />
-                <ReadRow t={t} label="Matrix cap" value={`${Math.round(cap * 100)}% LTV`} />
-                <ReadRow t={t} label="Expected closing" value={
-                  request.expected_closing_date
-                    ? new Date(request.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                    : "—"
-                } />
-                <ReadRow t={t} label="LLC / entity" value={request.borrower_entity ?? "TBD"} />
-                {borrowerFico != null ? (
-                  <ReadRow t={t} label="Borrower FICO" value={String(borrowerFico)} accent={borrowerFico >= 680 ? t.profit : t.warn} />
-                ) : null}
-                <ReadRow t={t} label="Submitted" value={new Date(request.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <Field
+                  t={t}
+                  label={isFixFlip ? "Approved BRV (purchase price)" : "Approved purchase price"}
+                  value={purchaseText}
+                  onChange={setPurchaseText}
+                />
+                <Field t={t} label="Approved loan amount" value={loanText} onChange={setLoanText} />
               </div>
-              {request.borrower_notes ? (
-                <div style={{ marginTop: 12, padding: "10px 12px", borderLeft: `3px solid ${t.brand}`, background: t.bg, fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
-                  <strong style={{ color: t.ink }}>Borrower notes:</strong> {request.borrower_notes}
-                </div>
-              ) : null}
+              <div style={{ marginTop: 10 }}>
+                <Pill bg={ltvOverCap ? t.dangerBg : t.profitBg} color={ltvOverCap ? t.danger : t.profit}>
+                  {isFixFlip ? (
+                    arvNumLive > 0
+                      ? <>
+                          LTARV {(ltv * 100).toFixed(1)}% (loan ÷ ARV) ·{" "}
+                          {ltvOverCap
+                            ? `over ${Math.round(cap * 100)}% cap — lower the loan amount`
+                            : `within ${Math.round(cap * 100)}% cap — OK to approve`}
+                        </>
+                      : <>Add an ARV in the Scope of Work card to compute LTARV</>
+                  ) : (
+                    <>
+                      LTV {(ltv * 100).toFixed(1)}% ·{" "}
+                      {ltvOverCap
+                        ? `over ${Math.round(cap * 100)}% cap — lower the loan amount`
+                        : `within ${Math.round(cap * 100)}% cap — OK to approve`}
+                    </>
+                  )}
+                </Pill>
+              </div>
             </Card>
 
             {/* Calculator scenario — product-aware */}
@@ -603,10 +616,7 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
               )}
             </Card>
 
-            {/* F&F-specific — Scope of Work + ARV. Admin can edit
-                every line, override ARV, and the LTARV pill
-                re-validates live. Lives only on F&F prequals; other
-                products skip the entire card. */}
+            {/* F&F-specific — Scope of Work + ARV admin overrides */}
             {request.loan_type === "fix_flip" ? (
               <Card pad={16}>
                 <div style={{
@@ -635,7 +645,6 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
                   />
                 </div>
                 <PrequalSowEditor items={sowItems} onChange={setSowItems} />
-                {/* Live LTARV pill — informational. */}
                 {(() => {
                   const arvNum = Number(arvText.replace(/[^0-9.]/g, "")) || 0;
                   const total = sowItems.reduce(
@@ -661,51 +670,13 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
                 })()}
               </Card>
             ) : null}
-          </div>
 
-          {/* ── RIGHT: approval fields ─────────────────────────────── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+            {/* Letter terms — LLC, validity, underwriter notes. Renamed
+                from "Letter details" per #facelift section grouping. */}
             <Card pad={16}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 8 }}>
-                Approval values
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 10 }}>
+                Letter terms
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <Field
-                  t={t}
-                  label={isFixFlip ? "Approved BRV (purchase price)" : "Approved purchase price"}
-                  value={purchaseText}
-                  onChange={setPurchaseText}
-                />
-                <Field t={t} label="Approved loan amount" value={loanText} onChange={setLoanText} />
-              </div>
-              <div style={{ marginTop: 8 }}>
-                <Pill bg={ltvOverCap ? t.dangerBg : t.profitBg} color={ltvOverCap ? t.danger : t.profit}>
-                  {isFixFlip ? (
-                    arvNumLive > 0
-                      ? <>
-                          LTARV {(ltv * 100).toFixed(1)}% (loan ÷ ARV) ·{" "}
-                          {ltvOverCap
-                            ? `over ${Math.round(cap * 100)}% cap — lower the loan amount`
-                            : `within ${Math.round(cap * 100)}% cap — OK to approve`}
-                        </>
-                      : <>Add an ARV in the Scope of Work card to compute LTARV</>
-                  ) : (
-                    <>
-                      LTV {(ltv * 100).toFixed(1)}% ·{" "}
-                      {ltvOverCap
-                        ? `over ${Math.round(cap * 100)}% cap — lower the loan amount`
-                        : `within ${Math.round(cap * 100)}% cap — OK to approve`}
-                    </>
-                  )}
-                </Pill>
-              </div>
-            </Card>
-
-            <Card pad={16}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 8 }}>
-                Letter details
-              </div>
-              {/* LLC override */}
               <div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
                   <span style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
@@ -740,9 +711,8 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
                 )}
               </div>
 
-              <div style={{ height: 12 }} />
+              <div style={{ height: 14 }} />
 
-              {/* Expiration override */}
               <div>
                 <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
                   Letter validity
@@ -768,9 +738,9 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
                   Default 90 days. Capped at 365.
                 </div>
               </div>
-            </Card>
 
-            <Card pad={16}>
+              <div style={{ height: 14 }} />
+
               <Textarea
                 t={t}
                 label="Underwriter notes (visible to borrower in-app · NEVER on the PDF)"
@@ -780,125 +750,213 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
               />
             </Card>
 
-            {error ? <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill> : null}
-
-            {isSuperseded ? (
-              <div style={{
-                fontSize: 12,
-                color: t.ink2,
-                background: t.warnBg,
-                border: `1px solid ${t.warn}40`,
-                padding: "8px 12px",
-                borderRadius: 8,
-                lineHeight: 1.5,
-              }}>
-                <strong style={{ color: t.warn }}>
-                  This version has been superseded.
-                </strong>{" "}
-                A newer Updated Version has been created. Open the latest
-                version from the queue to make further changes — editing
-                this row is disabled to keep the revision chain consistent.
+            {/* Borrower's submission — context, moved to bottom as reference */}
+            <Card pad={16} style={{ background: t.surface2 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 8 }}>
+                Borrower&apos;s submission
               </div>
-            ) : null}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 12.5, color: t.ink2, fontFeatureSettings: '"tnum"' }}>
+                <ReadRow t={t} label="Requested purchase" value={QC_FMT.usd(Number(request.purchase_price), 0)} />
+                <ReadRow t={t} label="Requested loan" value={QC_FMT.usd(Number(request.requested_loan_amount), 0)} />
+                <ReadRow t={t} label="Requested LTV" value={
+                  Number(request.purchase_price) > 0
+                    ? `${((Number(request.requested_loan_amount) / Number(request.purchase_price)) * 100).toFixed(1)}%`
+                    : "—"
+                } />
+                <ReadRow t={t} label="Matrix cap" value={`${Math.round(cap * 100)}% LTV`} />
+                <ReadRow t={t} label="Expected closing" value={
+                  request.expected_closing_date
+                    ? new Date(request.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                    : "—"
+                } />
+                <ReadRow t={t} label="LLC / entity" value={request.borrower_entity ?? "TBD"} />
+                {borrowerFico != null ? (
+                  <ReadRow t={t} label="Borrower FICO" value={String(borrowerFico)} accent={borrowerFico >= 680 ? t.profit : t.warn} />
+                ) : null}
+                <ReadRow t={t} label="Submitted" value={new Date(request.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} />
+              </div>
+              {request.borrower_notes ? (
+                <div style={{ marginTop: 12, padding: "10px 12px", borderLeft: `3px solid ${t.brand}`, background: t.bg, fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
+                  <strong style={{ color: t.ink }}>Borrower notes:</strong> {request.borrower_notes}
+                </div>
+              ) : null}
+            </Card>
 
-            {/* Action bar */}
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 4 }}>
-              {confirmReject ? (
+          </div>
+
+          {/* ── PREVIEW COLUMN: live letter mock that mirrors the PDF and
+              updates as the operator types. Sits to the right of the form
+              column, scrolls independently, and shows what the borrower
+              will actually receive. */}
+          <div style={{
+            overflowY: "auto",
+            padding: "22px 28px 22px 16px",
+            borderLeft: `1px solid ${t.line}`,
+            background: t.surface2,
+            minWidth: 0,
+          }}>
+            <div style={{
+              fontSize: 10.5,
+              fontWeight: 700,
+              color: t.ink3,
+              letterSpacing: 1.2,
+              textTransform: "uppercase",
+              marginBottom: 10,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}>
+              <span>Live letter preview</span>
+              <span style={{ fontSize: 10, color: t.ink4, textTransform: "none", letterSpacing: 0, fontWeight: 600 }}>
+                Updates as you type
+              </span>
+            </div>
+            <LetterPreview
+              t={t}
+              request={request}
+              isFixFlip={isFixFlip}
+              purchase={purchaseNum}
+              loan={loanNum}
+              ltv={ltv}
+              cap={cap}
+              scenario={scenario}
+              entityName={entityTBD ? null : entityName}
+              expirationDays={expirationNum}
+              borrowerFico={borrowerFico ?? null}
+              arvOverride={Number(arvText.replace(/[^0-9.]/g, "")) || null}
+            />
+          </div>
+        </div>
+
+        {/* ── FOOTER: action bar + status banners. Pinned below the body
+            grid so the primary CTA stays visible no matter how long the
+            form column scrolls. ── */}
+        <div style={{
+          flex: "0 0 auto",
+          padding: "14px 28px 16px 32px",
+          borderTop: `1px solid ${t.line}`,
+          background: t.surface,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+        }}>
+          {error ? <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill> : null}
+
+          {isSuperseded ? (
+            <div style={{
+              fontSize: 12,
+              color: t.ink2,
+              background: t.warnBg,
+              border: `1px solid ${t.warn}40`,
+              padding: "8px 12px",
+              borderRadius: 8,
+              lineHeight: 1.5,
+            }}>
+              <strong style={{ color: t.warn }}>
+                This version has been superseded.
+              </strong>{" "}
+              A newer Updated Version has been created. Open the latest
+              version from the queue to make further changes — editing
+              this row is disabled to keep the revision chain consistent.
+            </div>
+          ) : null}
+
+          {request.status === "approved" && request.pdf_url ? (
+            <div style={{ fontSize: 12, color: t.ink3 }}>
+              Letter already issued.{" "}
+              <a href={request.pdf_url} target="_blank" rel="noopener noreferrer" style={{ color: t.petrol, fontWeight: 700 }}>
+                Open the current PDF →
+              </a>
+              {"  "}Edit any field above and click <em>Save changes &amp; regenerate PDF</em>{" "}
+              to re-issue.
+            </div>
+          ) : null}
+          {request.status === "offer_accepted" ? (
+            <div style={{
+              fontSize: 12,
+              color: t.ink2,
+              background: t.brandSoft,
+              border: `1px solid ${t.brand}30`,
+              padding: "8px 12px",
+              borderRadius: 8,
+              lineHeight: 1.5,
+            }}>
+              <strong style={{ color: t.brand }}>Loan {request.quote_number ?? ""} is already opened.</strong>{" "}
+              Editing fields here will regenerate the printed letter only — the
+              spawned loan record is left untouched. Update the loan file from
+              the loans page if you also need to change the underlying deal.
+            </div>
+          ) : null}
+          {request.status === "offer_declined" ? (
+            <div style={{ fontSize: 12, color: t.ink3 }}>
+              Borrower walked away — request is closed and no longer editable.
+              If they come back with the same property, ask them to submit a
+              new pre-qualification.
+            </div>
+          ) : null}
+          {request.status === "rejected" ? (
+            <div style={{ fontSize: 12, color: t.ink3 }}>
+              This request was rejected. Editing isn&apos;t supported — the
+              borrower can submit a new request whenever they&apos;re ready.
+            </div>
+          ) : null}
+
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+            {confirmReject ? (
+              <button
+                onClick={onReject}
+                disabled={reject.isPending}
+                style={{ ...qcBtnPrimary(t), background: t.danger, opacity: reject.isPending ? 0.5 : 1 }}
+              >
+                {reject.isPending ? "Rejecting…" : "Confirm reject"}
+              </button>
+            ) : (
+              <button
+                onClick={() => setConfirmReject(true)}
+                disabled={isSuperseded}
+                style={{
+                  ...qcBtn(t),
+                  color: t.danger,
+                  borderColor: `${t.danger}40`,
+                  opacity: isSuperseded ? 0.4 : 1,
+                  cursor: isSuperseded ? "not-allowed" : "pointer",
+                }}
+              >
+                Reject
+              </button>
+            )}
+
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button onClick={onClose} style={qcBtn(t)}>Cancel</button>
+              {request.status === "approved" && !isSuperseded ? (
                 <button
-                  onClick={onReject}
-                  disabled={reject.isPending}
-                  style={{ ...qcBtnPrimary(t), background: t.danger, opacity: reject.isPending ? 0.5 : 1 }}
-                >
-                  {reject.isPending ? "Rejecting…" : "Confirm reject"}
-                </button>
-              ) : (
-                <button
-                  onClick={() => setConfirmReject(true)}
-                  disabled={isSuperseded}
+                  onClick={onRevise}
+                  disabled={!canRevise}
+                  title="Spawn a new versioned letter (v2, v3, …) linked to this one. The original PDF is preserved."
                   style={{
                     ...qcBtn(t),
-                    color: t.danger,
-                    borderColor: `${t.danger}40`,
-                    opacity: isSuperseded ? 0.4 : 1,
-                    cursor: isSuperseded ? "not-allowed" : "pointer",
+                    borderColor: `${t.petrol}50`,
+                    color: t.petrol,
+                    fontWeight: 700,
+                    opacity: canRevise ? 1 : 0.5,
+                    cursor: canRevise ? "pointer" : "not-allowed",
                   }}
                 >
-                  Reject
+                  {reviseLabel}
                 </button>
-              )}
-
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={onClose} style={qcBtn(t)}>Cancel</button>
-                {request.status === "approved" && !isSuperseded ? (
-                  <button
-                    onClick={onRevise}
-                    disabled={!canRevise}
-                    title="Spawn a new versioned letter (v2, v3, …) linked to this one. The original PDF is preserved."
-                    style={{
-                      ...qcBtn(t),
-                      borderColor: `${t.petrol}50`,
-                      color: t.petrol,
-                      fontWeight: 700,
-                      opacity: canRevise ? 1 : 0.5,
-                      cursor: canRevise ? "pointer" : "not-allowed",
-                    }}
-                  >
-                    {reviseLabel}
-                  </button>
-                ) : null}
-                <button
-                  onClick={onApprove}
-                  disabled={!canApprove}
-                  style={{
-                    ...qcBtnPrimary(t),
-                    opacity: canApprove ? 1 : 0.5,
-                    cursor: canApprove ? "pointer" : "not-allowed",
-                  }}
-                >
-                  {approveLabel}
-                </button>
-              </div>
+              ) : null}
+              <button
+                onClick={onApprove}
+                disabled={!canApprove}
+                style={{
+                  ...qcBtnPrimary(t),
+                  opacity: canApprove ? 1 : 0.5,
+                  cursor: canApprove ? "pointer" : "not-allowed",
+                }}
+              >
+                {approveLabel}
+              </button>
             </div>
-
-            {request.status === "approved" && request.pdf_url ? (
-              <div style={{ fontSize: 12, color: t.ink3 }}>
-                Letter already issued.{" "}
-                <a href={request.pdf_url} target="_blank" rel="noopener noreferrer" style={{ color: t.petrol, fontWeight: 700 }}>
-                  Open the current PDF →
-                </a>
-                {"  "}Edit any field above and click <em>Save changes &amp; regenerate PDF</em>{" "}
-                to re-issue.
-              </div>
-            ) : null}
-            {request.status === "offer_accepted" ? (
-              <div style={{
-                fontSize: 12,
-                color: t.ink2,
-                background: t.brandSoft,
-                border: `1px solid ${t.brand}30`,
-                padding: "8px 12px",
-                borderRadius: 8,
-                lineHeight: 1.5,
-              }}>
-                <strong style={{ color: t.brand }}>Loan {request.quote_number ?? ""} is already opened.</strong>{" "}
-                Editing fields here will regenerate the printed letter only — the
-                spawned loan record is left untouched. Update the loan file from
-                the loans page if you also need to change the underlying deal.
-              </div>
-            ) : null}
-            {request.status === "offer_declined" ? (
-              <div style={{ fontSize: 12, color: t.ink3 }}>
-                Borrower walked away — request is closed and no longer editable.
-                If they come back with the same property, ask them to submit a
-                new pre-qualification.
-              </div>
-            ) : null}
-            {request.status === "rejected" ? (
-              <div style={{ fontSize: 12, color: t.ink3 }}>
-                This request was rejected. Editing isn&apos;t supported — the
-                borrower can submit a new request whenever they&apos;re ready.
-              </div>
-            ) : null}
           </div>
         </div>
       </div>
@@ -1058,4 +1116,266 @@ function Textarea({ t, label, value, onChange, placeholder }: { t: ReturnType<ty
       />
     </div>
   );
+}
+
+// ── Live letter preview ────────────────────────────────────────────────
+//
+// Mirrors app/templates/prequal_{dscr,bridge,fix_flip}.html visually so
+// the underwriter can see what the borrower will receive BEFORE clicking
+// Save. The render is intentionally not pixel-perfect to WeasyPrint —
+// goal is "looks like the letter", not "byte-identical." On save the
+// server-side WeasyPrint render still produces the canonical PDF and
+// replaces what's shown here on the next refetch.
+function LetterPreview({
+  t,
+  request,
+  isFixFlip,
+  purchase,
+  loan,
+  ltv,
+  cap,
+  scenario,
+  entityName,
+  expirationDays,
+  borrowerFico,
+  arvOverride,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  request: PrequalRequest;
+  isFixFlip: boolean;
+  purchase: number;
+  loan: number;
+  ltv: number;            // ratio, e.g. 0.75
+  cap: number;            // ratio, e.g. 0.80
+  scenario: Record<string, unknown> | null;
+  entityName: string | null;
+  expirationDays: number;
+  borrowerFico: number | null;
+  arvOverride: number | null;
+}) {
+  // Match the template's date rendering. Server formats as "Month D, YYYY".
+  const today = new Date();
+  const expiry = new Date(today.getTime() + expirationDays * 86_400_000);
+  const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const isRefi = request.loan_type === "dscr_refi";
+  const isDscr = request.loan_type === "dscr_purchase" || isRefi;
+  const titleLabel = isRefi ? "Refinance" : isFixFlip || request.loan_type === "bridge" ? "Bridge" : "Purchase";
+  const programLabel = (() => {
+    if (isFixFlip) return "Commercial Fix & Flip — Short-Term Bridge";
+    if (request.loan_type === "bridge") return "Commercial Bridge — Short-Term";
+    return `Commercial DSCR — 30 Year Fixed${isRefi ? " (Refinance)" : ""}`;
+  })();
+  const issuedTo = entityName ?? "Borrower's individual legal name";
+  const versionLabel = (request.version_num ?? 1) > 1 ? ` · Updated v${request.version_num}` : "";
+  const arv = arvOverride ?? request.approved_arv ?? request.arv_estimate ?? null;
+  const ltvPct = ltv * 100;
+  const ltvBasisLabel = isFixFlip ? "Loan-to-After-Repair-Value (LTARV)" : "Maximum Loan-to-Value (LTV)";
+
+  // Paper-like card framing.
+  return (
+    <div style={{
+      background: "#FFFFFF",
+      color: "#0B1629",
+      borderRadius: 8,
+      border: `1px solid ${t.line}`,
+      padding: 24,
+      fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+      fontSize: 11,
+      lineHeight: 1.45,
+      boxShadow: t.shadowLg,
+    }}>
+      {/* Header */}
+      <div style={{
+        borderBottom: "2px solid #0B1F3A",
+        paddingBottom: 8,
+        marginBottom: 12,
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        position: "relative",
+      }}>
+        <div style={{
+          width: 36, height: 36,
+          background: "#0B1F3A",
+          color: "#FFFFFF",
+          fontSize: 14,
+          fontWeight: 800,
+          borderRadius: 6,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}>QC</div>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: "#0B1F3A", letterSpacing: 0.5 }}>QUALIFIED COMMERCIAL</div>
+          <div style={{ fontSize: 8, color: "#6B7891", textTransform: "uppercase", letterSpacing: 1.4, marginTop: 1 }}>
+            Financing &amp; Capital Advisory
+          </div>
+        </div>
+      </div>
+
+      {/* Title */}
+      <div style={{
+        textAlign: "center",
+        fontSize: 12,
+        fontWeight: 800,
+        marginBottom: 8,
+        textTransform: "uppercase",
+        letterSpacing: 1,
+        color: "#0B1F3A",
+      }}>
+        {titleLabel} Pre-Qualification
+        {request.quote_number ? <span style={{ fontSize: 9, fontWeight: 600, color: "#6B7891", letterSpacing: 0.3, marginLeft: 4 }}>({request.quote_number}{versionLabel})</span> : null}
+      </div>
+
+      {/* Dates */}
+      <div style={{ marginBottom: 10, fontSize: 9.5 }}>
+        <div><strong>Date Issued:</strong> <span style={{ fontWeight: 400 }}>{fmtDate(today)}</span></div>
+        <div><strong>Expiration Date:</strong> <span style={{ fontWeight: 400 }}>{fmtDate(expiry)}</span></div>
+      </div>
+
+      {/* Intro */}
+      <div style={{ marginBottom: 10, fontSize: 10, textAlign: "justify" }}>
+        To Whom It May Concern:<br /><br />
+        Based on the preliminary information and credit data provided,
+        <strong> Qualified Commercial LLC </strong> is pleased to issue this Pre-Qualification
+        for the borrower and subject property listed below. The borrower&apos;s credit profile{borrowerFico ? <> (FICO <strong>{borrowerFico}</strong>)</> : null},
+        preliminary cash flow estimates, and stated liquidity meet the initial underwriting
+        guidelines for our commercial lending programs.
+      </div>
+
+      {/* Section: Transaction summary */}
+      <div style={{ fontSize: 10.5, fontWeight: 800, color: "#0B1F3A", marginBottom: 4, borderBottom: "1px solid rgba(11, 22, 41, 0.10)", paddingBottom: 2 }}>
+        TRANSACTION SUMMARY
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12, fontSize: 9.5 }}>
+        <tbody>
+          <PreviewRow label="Borrower / Entity Name" value={issuedTo} />
+          <PreviewRow label="Subject Property Address" value={request.target_property_address} />
+          <PreviewRow label={isRefi ? "Property Value" : isFixFlip ? "Acquisition Price (BRV)" : "Purchase Price"} value={purchase > 0 ? fmtUsd(purchase) : <em style={{ color: "#A2ABBD" }}>—</em>} />
+          <PreviewRow label="Maximum Loan Amount" value={loan > 0 ? fmtUsd(loan) : <em style={{ color: "#A2ABBD" }}>—</em>} />
+          {isFixFlip && arv && arv > 0 ? (
+            <PreviewRow label="After-Repair Value (ARV)" value={fmtUsd(arv)} />
+          ) : null}
+          <PreviewRow
+            label={ltvBasisLabel}
+            value={
+              <span style={{
+                color: ltv > cap + 1e-6 ? "#B0322F" : "#0B7A3E",
+                fontWeight: 700,
+              }}>
+                {ltvPct.toFixed(1)}%
+                <span style={{ color: "#6B7891", fontWeight: 400, fontSize: 9, marginLeft: 6 }}>
+                  (cap {(cap * 100).toFixed(0)}%)
+                </span>
+              </span>
+            }
+          />
+          <PreviewRow label="Loan Program" value={programLabel} />
+        </tbody>
+      </table>
+
+      {/* Section: Status & conditions */}
+      <div style={{ fontSize: 10.5, fontWeight: 800, color: "#0B1F3A", marginBottom: 4, borderBottom: "1px solid rgba(11, 22, 41, 0.10)", paddingBottom: 2 }}>
+        STATUS &amp; CONDITIONS OF ISSUANCE
+      </div>
+      <ul style={{ paddingLeft: 18, marginTop: 4, marginBottom: 10, fontSize: 9.5 }}>
+        <li style={{ marginBottom: 3 }}>
+          <strong>Credit Review:</strong> Soft credit inquiry completed{borrowerFico ? <> at FICO <strong>{borrowerFico}</strong></> : null}; meets minimum FICO requirements.
+        </li>
+        <li style={{ marginBottom: 3 }}>
+          {isDscr ? (
+            <>
+              <strong>Preliminary Cash Flow:</strong> Subject property projected rents meet the minimum
+              Debt Service Coverage Ratio (DSCR){scenario && typeof (scenario as Record<string, unknown>)?.dscr === "number"
+                ? <> of <strong>{((scenario as { dscr: number }).dscr).toFixed(2)}x</strong></>
+                : " of 1.20x"}.
+            </>
+          ) : isFixFlip ? (
+            <>
+              <strong>Project Viability:</strong> Acquisition + rehab budget within LTARV cap for the program;
+              SOW and reserves under review for final approval.
+            </>
+          ) : (
+            <>
+              <strong>Bridge Sizing:</strong> Loan amount supported by as-is property value;
+              interest reserve structured to cover the bridge term.
+            </>
+          )}
+        </li>
+        <li style={{ marginBottom: 3 }}>
+          <strong>Next Steps for Final Approval:</strong> Clear title, acceptable third-party appraisal,
+          verification of liquid reserves, entity document review, and final underwriter sign-off.
+        </li>
+      </ul>
+
+      {/* Signature + disclaimer block — compressed for preview */}
+      <div style={{
+        display: "flex",
+        gap: 10,
+        alignItems: "stretch",
+        marginTop: 8,
+      }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 10, marginBottom: 12 }}>Sincerely,</div>
+          <div style={{ width: 160, borderBottom: "1px solid #0B1629", marginBottom: 4 }} />
+          <div style={{ fontSize: 8, color: "#6B7891" }}>Signed: {fmtDate(today)}</div>
+          <div style={{ fontSize: 10, fontWeight: 700, marginTop: 2 }}>Authorized Officer</div>
+          <div style={{ fontSize: 8.5, color: "#3C4A60" }}>Qualified Commercial LLC</div>
+        </div>
+        <div style={{
+          flex: 1,
+          background: "#fdfbf7",
+          border: "1px solid #e0dcd3",
+          padding: "6px 8px",
+          fontSize: 7.5,
+          color: "#555",
+          textAlign: "justify",
+          lineHeight: 1.3,
+        }}>
+          <strong>DISCLAIMER:</strong> Preliminary pre-qualification based on a soft-inquiry credit
+          review and unverified, self-reported financial data. <strong>NOT a commitment to lend</strong>.
+          Subject to final underwriting, appraisal, title, reserves verification, and final approval.
+          Terms and rates subject to market changes; not locked until a rate lock agreement is executed.
+        </div>
+      </div>
+
+      {/* Footer matches the WeasyPrint @bottom-left content. */}
+      <div style={{
+        marginTop: 10,
+        paddingTop: 6,
+        borderTop: "1px solid rgba(11, 22, 41, 0.08)",
+        fontSize: 7.5,
+        color: "#6B7891",
+        textAlign: "left",
+      }}>
+        Qualified Commercial LLC{request.quote_number ? ` | ${request.quote_number}${versionLabel ? versionLabel.replace(" · Updated ", "-") : ""}` : ""}
+      </div>
+    </div>
+  );
+}
+
+function PreviewRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <tr>
+      <th style={{
+        background: "#FAF7F1",
+        border: "1px solid rgba(11, 22, 41, 0.16)",
+        padding: "4px 8px",
+        textAlign: "left",
+        width: "50%",
+        fontWeight: 700,
+        fontSize: 9.5,
+      }}>{label}</th>
+      <td style={{
+        border: "1px solid rgba(11, 22, 41, 0.16)",
+        padding: "4px 8px",
+        fontSize: 9.5,
+        fontFeatureSettings: '"tnum"',
+      }}>{value}</td>
+    </tr>
+  );
+}
+
+function fmtUsd(n: number): string {
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }

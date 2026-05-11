@@ -18,7 +18,7 @@ import { Role } from "@/lib/enums.generated";
 import { useAdminPrequalQueue } from "@/hooks/useApi";
 import { PrequalReviewModal } from "@/components/PrequalReviewModal";
 import { AdminPrequalCreateModal } from "@/components/AdminPrequalCreateModal";
-import { PREQUAL_LOAN_TYPE_LABELS, type PrequalRequest, type PrequalStatus } from "@/lib/types";
+import { PREQUAL_LOAN_TYPE_LABELS, PREQUAL_LTV_CAPS, type PrequalRequest, type PrequalStatus } from "@/lib/types";
 
 type FilterId = PrequalStatus | "all";
 const FILTERS: { id: FilterId; label: string }[] = [
@@ -228,19 +228,21 @@ export default function AdminPrequalQueuePage() {
         ) : null}
       </div>
 
-      {/* Count chips */}
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <CountChip t={t} label="Pending" value={counts.pending} accent={t.warn} bg={t.warnBg} />
-        <CountChip t={t} label="Approved" value={counts.approved} accent={t.profit} bg={t.profitBg} />
-        <CountChip t={t} label="Loan opened" value={counts.offer_accepted} accent={t.brand} bg={t.brandSoft} />
-        <CountChip t={t} label="Closed" value={counts.offer_declined} accent={t.ink3} bg={t.surface2} />
-        <CountChip t={t} label="Rejected" value={counts.rejected} accent={t.danger} bg={t.dangerBg} />
-      </div>
-
-      {/* Filter pills */}
+      {/* Filter bar — counts live inside each pill so the toolbar carries
+          both navigation and status-at-a-glance without duplicating chrome.
+          Active pill: full status accent fill; inactive: subdued surface. */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {FILTERS.map((f) => {
           const active = filter === f.id;
+          const count = f.id === "all" ? allRequests.length : (counts[f.id as PrequalStatus] ?? 0);
+          const accent = (() => {
+            if (f.id === "approved") return { fg: t.profit, bg: t.profitBg };
+            if (f.id === "pending") return { fg: t.warn, bg: t.warnBg };
+            if (f.id === "offer_accepted") return { fg: t.brand, bg: t.brandSoft };
+            if (f.id === "rejected") return { fg: t.danger, bg: t.dangerBg };
+            if (f.id === "offer_declined") return { fg: t.ink3, bg: t.surface2 };
+            return { fg: t.ink, bg: t.surface2 };
+          })();
           return (
             <button
               key={f.id}
@@ -249,14 +251,30 @@ export default function AdminPrequalQueuePage() {
                 all: "unset",
                 cursor: "pointer",
                 padding: "8px 14px",
-                borderRadius: 9,
-                background: active ? t.ink : t.surface2,
-                color: active ? t.inverse : t.ink2,
+                borderRadius: 999,
+                background: active ? accent.bg : "transparent",
+                border: `1px solid ${active ? accent.fg + "30" : t.line}`,
+                color: active ? accent.fg : t.ink2,
                 fontSize: 12,
                 fontWeight: 700,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 7,
+                transition: "background .12s, color .12s, border-color .12s",
               }}
             >
-              {f.label}
+              <span>{f.label}</span>
+              <span style={{
+                fontSize: 10.5,
+                fontWeight: 800,
+                fontFeatureSettings: '"tnum"',
+                padding: "1px 6px",
+                borderRadius: 999,
+                background: active ? accent.fg + "22" : t.surface2,
+                color: active ? accent.fg : t.ink3,
+                minWidth: 18,
+                textAlign: "center",
+              }}>{count}</span>
             </button>
           );
         })}
@@ -447,7 +465,40 @@ function MenuItem({
   );
 }
 
-const GRID_COLS = "110px minmax(0, 2fr) minmax(0, 1fr) 120px 120px 80px 100px 110px";
+// 4px color stripe + status column + the rest. Each row's first column
+// is a colored stripe per status; the legend stays inside the Status
+// pill so the stripe carries the at-a-glance signal.
+const GRID_COLS = "4px 110px minmax(0, 2fr) minmax(0, 1fr) 130px 130px 110px 100px 90px";
+
+function statusStripe(t: ReturnType<typeof useTheme>["t"], s: PrequalStatus): string {
+  if (s === "approved") return t.profit;
+  if (s === "offer_accepted") return t.brand;
+  if (s === "rejected") return t.danger;
+  if (s === "offer_declined") return t.ink4;
+  return t.warn;
+}
+
+// Friendly short relative-time. "in 8 days" / "today" / "2 wks ago".
+// Pure formatting — does NOT change the semantic date column.
+function relativeDays(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const target = new Date(iso);
+  if (Number.isNaN(target.getTime())) return null;
+  const now = new Date();
+  // Whole-day delta in the user's local timezone — matches the date
+  // they'd read off the row's secondary text.
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOfDay(target) - startOfDay(now)) / 86_400_000);
+  if (days === 0) return "today";
+  if (days === 1) return "tomorrow";
+  if (days === -1) return "yesterday";
+  if (days > 0 && days < 14) return `in ${days}d`;
+  if (days < 0 && days > -14) return `${-days}d ago`;
+  const weeks = Math.round(days / 7);
+  if (weeks > 0 && weeks < 8) return `in ${weeks} wks`;
+  if (weeks < 0 && weeks > -8) return `${-weeks} wks ago`;
+  return target.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
 function HeaderRow({
   t,
@@ -489,12 +540,13 @@ function HeaderRow({
       style={{
         display: "grid",
         gridTemplateColumns: GRID_COLS,
-        gap: 10,
-        padding: "12px 16px",
+        gap: 12,
+        padding: "12px 16px 12px 12px",
         borderBottom: `1px solid ${t.line}`,
         background: t.surface2,
       }}
     >
+      <div />
       <div>{cell("Status", "status")}</div>
       <div>{cell("Property", "address")}</div>
       <div>{cell("Issued to", "entity")}</div>
@@ -503,27 +555,6 @@ function HeaderRow({
       <div>{cell("LTV", "ltv")}</div>
       <div>{cell("Closing", "closing")}</div>
       <div>{cell("Submitted", "submitted")}</div>
-    </div>
-  );
-}
-
-function CountChip({
-  t,
-  label,
-  value,
-  accent,
-  bg,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  label: string;
-  value: number;
-  accent: string;
-  bg: string;
-}) {
-  return (
-    <div style={{ background: bg, borderRadius: 10, padding: "10px 14px", minWidth: 110 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase" }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 800, color: accent, marginTop: 2 }}>{value}</div>
     </div>
   );
 }
@@ -546,11 +577,21 @@ function Row({
   // and on requested when still pending.
   const ltvBase = approved ?? requested;
   const ltv = purchase > 0 ? (ltvBase / purchase) * 100 : 0;
+  const ltvCap = PREQUAL_LTV_CAPS[req.loan_type] * 100;
+  const ltvPctOfCap = ltvCap > 0 ? Math.min(1, ltv / ltvCap) : 0;
+  // Green well within cap, amber close, red over.
+  const ltvColor = ltv > ltvCap + 0.05
+    ? t.danger
+    : ltv > ltvCap * 0.92
+      ? t.warn
+      : t.profit;
 
   const s = statusInfo(t, req.status);
-  const submittedAt = new Date(req.created_at);
   const isSuperseded = req.superseded_by_id != null;
   const isRevision = (req.version_num ?? 1) > 1;
+  const stripe = isSuperseded ? t.ink4 : statusStripe(t, req.status);
+  const closingRel = relativeDays(req.expected_closing_date);
+  const submittedRel = relativeDays(req.created_at);
 
   return (
     <div
@@ -562,23 +603,27 @@ function Row({
       style={{
         display: "grid",
         gridTemplateColumns: GRID_COLS,
-        gap: 10,
-        padding: "14px 16px",
+        gap: 12,
+        padding: "16px 16px 16px 12px",
         borderBottom: `1px solid ${t.line}`,
         alignItems: "center",
         fontSize: 13,
         color: isSuperseded ? t.ink3 : t.ink,
         cursor: "pointer",
         transition: "background 0.12s",
-        opacity: isSuperseded ? 0.6 : 1,
+        opacity: isSuperseded ? 0.55 : 1,
       }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = t.surface2; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
     >
+      {/* Status stripe — colored left border. Carries the status signal
+          even when the operator is scanning quickly without reading pills. */}
+      <div style={{ alignSelf: "stretch", background: stripe, borderRadius: 2 }} />
+
       <div>
         <Pill bg={s.bg} color={s.fg}>{s.label}</Pill>
         {req.quote_number ? (
-          <div style={{ fontSize: 10, color: t.ink3, fontWeight: 600, marginTop: 4, fontFeatureSettings: '"tnum"', display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ fontSize: 10, color: t.ink3, fontWeight: 600, marginTop: 6, fontFeatureSettings: '"tnum"', display: "flex", alignItems: "center", gap: 4 }}>
             <span style={{ textDecoration: isSuperseded ? "line-through" : undefined }}>
               {req.quote_number}
             </span>
@@ -587,7 +632,7 @@ function Row({
                 fontSize: 9,
                 fontWeight: 800,
                 color: t.petrol,
-                background: t.petrolSoft ?? t.brandSoft,
+                background: t.petrolSoft,
                 padding: "1px 5px",
                 borderRadius: 4,
                 letterSpacing: 0.4,
@@ -598,33 +643,93 @@ function Row({
           </div>
         ) : null}
       </div>
-      <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        <div style={{ fontWeight: 700 }}>{req.target_property_address}</div>
-        <div style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600, marginTop: 2, textTransform: "uppercase", letterSpacing: 0.6 }}>
+
+      <div style={{ minWidth: 0 }}>
+        <div style={{
+          fontSize: 14.5,
+          fontWeight: 700,
+          color: isSuperseded ? t.ink3 : t.ink,
+          letterSpacing: -0.1,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}>
+          {req.target_property_address}
+        </div>
+        <div style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600, marginTop: 3, textTransform: "uppercase", letterSpacing: 0.7 }}>
           {PREQUAL_LOAN_TYPE_LABELS[req.loan_type]?.title ?? req.loan_type}
         </div>
       </div>
-      <div style={{ fontSize: 12, color: req.borrower_entity ? t.ink2 : t.ink4, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {req.borrower_entity ?? "TBD"}
+
+      <div style={{ fontSize: 12, color: req.borrower_entity ? t.ink2 : t.ink4, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontStyle: req.borrower_entity ? "normal" : "italic" }}>
+        {req.borrower_entity ?? "Entity TBD"}
       </div>
-      <div style={{ fontSize: 12, fontFeatureSettings: '"tnum"' }}>{QC_FMT.usd(requested, 0)}</div>
-      <div style={{ fontSize: 12, fontFeatureSettings: '"tnum"' }}>
+
+      <div style={{ fontSize: 13, fontFeatureSettings: '"tnum"', color: t.ink2 }}>
+        {QC_FMT.usd(requested, 0)}
+      </div>
+
+      <div style={{ fontSize: 13, fontFeatureSettings: '"tnum"' }}>
         {approved != null ? (
-          <span style={{ color: approved !== requested ? t.profit : t.ink, fontWeight: approved !== requested ? 700 : 400 }}>
+          <span style={{
+            color: approved !== requested ? t.profit : t.ink,
+            fontWeight: approved !== requested ? 800 : 600,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}>
+            {approved > requested ? <Icon name="arrowR" size={11} /> : null}
             {QC_FMT.usd(approved, 0)}
           </span>
         ) : (
-          <span style={{ color: t.ink3 }}>—</span>
+          <span style={{ color: t.ink4 }}>—</span>
         )}
       </div>
-      <div style={{ fontSize: 12, fontFeatureSettings: '"tnum"' }}>{ltv.toFixed(1)}%</div>
-      <div style={{ fontSize: 12, color: t.ink2 }}>
-        {req.expected_closing_date
-          ? new Date(req.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-          : <span style={{ color: t.ink4 }}>—</span>}
+
+      {/* LTV bar — width is share of the matrix cap; color stages green→amber→red. */}
+      <div style={{ minWidth: 0 }}>
+        <div style={{
+          fontSize: 11.5,
+          fontWeight: 700,
+          fontFeatureSettings: '"tnum"',
+          color: ltvColor,
+          marginBottom: 4,
+        }}>
+          {ltv.toFixed(1)}%
+        </div>
+        <div style={{
+          height: 5,
+          width: "100%",
+          background: t.surface2,
+          borderRadius: 3,
+          overflow: "hidden",
+        }}>
+          <div style={{
+            height: "100%",
+            width: `${Math.max(2, Math.round(ltvPctOfCap * 100))}%`,
+            background: ltvColor,
+            transition: "width .25s ease, background .25s",
+          }} />
+        </div>
       </div>
+
+      <div style={{ minWidth: 0 }}>
+        {req.expected_closing_date ? (
+          <>
+            <div style={{ fontSize: 12, color: t.ink2, fontWeight: 700 }}>
+              {closingRel ?? new Date(req.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            </div>
+            <div style={{ fontSize: 10.5, color: t.ink3, marginTop: 2, fontFeatureSettings: '"tnum"' }}>
+              {new Date(req.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            </div>
+          </>
+        ) : (
+          <span style={{ color: t.ink4 }}>—</span>
+        )}
+      </div>
+
       <div style={{ fontSize: 12, color: t.ink3, fontFeatureSettings: '"tnum"' }}>
-        {submittedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+        {submittedRel ?? "—"}
       </div>
     </div>
   );
