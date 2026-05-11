@@ -46,7 +46,6 @@ import {
   type RecalcResponse,
   type User,
 } from "@/lib/types";
-import { AISecretaryControl } from "@/components/AISecretaryControl";
 import {
   DndContext,
   PointerSensor,
@@ -121,13 +120,6 @@ export function DealWorkspaceTab({ loanId, onOpenTab }: { loanId: string; onOpen
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-      {/* Headline Start/Pause CTA — the user-facing primitive for
-          "make the AI actually contact the borrower". Sits above
-          everything else so it's the first thing operators see. */}
-      {secretary ? (
-        <AISecretaryControl loanId={loanId} view={secretary} />
-      ) : null}
-
       {secretaryLoading ? (
         <div style={{ padding: 16, color: t.ink3, fontSize: 13 }}>Loading AI Secretary…</div>
       ) : !secretary ? (
@@ -176,25 +168,36 @@ export function DealWorkspaceTab({ loanId, onOpenTab }: { loanId: string; onOpen
 
       {workspace && !workspaceLoading ? (
         <Card pad={12}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <TogglePanelButton active={openPanel === "instructions"} icon="sliders" label="Instructions" onClick={() => setOpenPanel(openPanel === "instructions" ? null : "instructions")} />
-            <TogglePanelButton active={openPanel === "chat"} icon="chat" label="Loan chat" onClick={() => setOpenPanel(openPanel === "chat" ? null : "chat")} />
-            <span style={{ marginLeft: "auto", color: t.ink3, fontSize: 11.5, fontWeight: 750 }}>
-              Keep these surfaces hidden until you need to change instructions or talk to the file AI.
+          {/* Merged Instructions + Loan Chat in one tabbed container.
+              Chat is the default since that's where the most interactive
+              work happens. Toggle between them with no expand/collapse. */}
+          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 10 }}>
+            <TogglePanelButton
+              active={(openPanel ?? "chat") === "chat"}
+              icon="chat"
+              label="Loan chat"
+              onClick={() => setOpenPanel("chat")}
+            />
+            <TogglePanelButton
+              active={openPanel === "instructions"}
+              icon="sliders"
+              label="Instructions"
+              onClick={() => setOpenPanel("instructions")}
+            />
+            <span style={{ marginLeft: "auto", color: t.ink3, fontSize: 11, fontWeight: 700 }}>
+              {openPanel === "instructions"
+                ? "Edit standing rules the AI honors on this file"
+                : "Talk to the file AI"}
             </span>
           </div>
           {openPanel === "instructions" ? (
-            <div style={{ marginTop: 12 }}>
-              <InstructionStrip
-                loanId={loanId}
-                instructions={workspace.instructions}
-                canEdit={isInternal}
-              />
-            </div>
-          ) : null}
-          {openPanel === "chat" ? (
-            <div style={{ marginTop: 12 }}>
-              <SectionLabel>Loan chat</SectionLabel>
+            <InstructionStrip
+              loanId={loanId}
+              instructions={workspace.instructions}
+              canEdit={isInternal}
+            />
+          ) : (
+            <>
               <DealChatThread
                 loanId={loanId}
                 user={user}
@@ -207,8 +210,8 @@ export function DealWorkspaceTab({ loanId, onOpenTab }: { loanId: string; onOpen
                 user={user}
                 pausedUntil={workspace.ai_paused_until}
               />
-            </div>
-          ) : null}
+            </>
+          )}
         </Card>
       ) : null}
     </div>
@@ -295,104 +298,116 @@ function SecretaryConsole({
     }
   };
 
+  // Slimmer layout — dropped the entire left status column (status card
+  // + 4 KPI tiles + 3 ModeButtons + advanced dropdown). The pipeline
+  // badge + DealHealthPill in the loan header already cover the same
+  // status info. What's left is a tight inline header with the
+  // status + a single Pause toggle, and the 2-column delegation grid
+  // beside the Resolution Queue.
+  const aiIsLive = mode === "portal_auto" || mode === "portal_email" || mode === "portal_email_sms";
   return (
-    <Card pad={14}>
+    <Card pad={12}>
+      {/* Tight header strip — replaces the entire left status column */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+        marginBottom: 12,
+      }}>
+        <span style={{ fontSize: 18 }} aria-hidden>🤖</span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
+            AI Secretary
+          </div>
+          <div style={{ marginTop: 1, fontSize: 13.5, fontWeight: 900, color: t.ink, lineHeight: 1.2 }}>
+            {mode === "off"
+              ? "Paused — drop tasks into AI to start"
+              : aiTasks.length === 0
+                ? "Standing by — drop tasks into AI to start"
+                : `${aiIsLive ? "Working" : "Drafting"} · ${aiTasks.length} task${aiTasks.length === 1 ? "" : "s"} active${waiting ? ` · ${waiting} waiting` : ""}${stalled ? ` · ${stalled} stalled` : ""}`}
+          </div>
+        </div>
+        <SecretaryStatus mode={mode} stalled={stalled} aiTasks={aiTasks.length} waiting={waiting} />
+        <div style={{ flex: 1 }} />
+        <button
+          type="button"
+          onClick={() => onChangeOutreachMode(mode === "off" ? "portal_auto" : "off")}
+          style={{
+            padding: "6px 12px",
+            borderRadius: 9,
+            border: `1px solid ${t.line}`,
+            background: t.surface2,
+            color: t.ink2,
+            fontSize: 11.5,
+            fontWeight: 800,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <Icon name={mode === "off" ? "send" : "pause"} size={12} />
+          {mode === "off" ? "Resume" : "Pause"}
+        </button>
+        {isOperator ? (
+          <select
+            value={mode}
+            onChange={(event) => onChangeOutreachMode(event.target.value as DSOutreachMode)}
+            title="Advanced outreach mode"
+            style={{
+              padding: "6px 8px",
+              borderRadius: 9,
+              border: `1px solid ${t.line}`,
+              background: t.surface,
+              color: t.ink2,
+              fontSize: 11,
+              fontFamily: "inherit",
+              cursor: "pointer",
+            }}
+          >
+            <option value="off">Off</option>
+            <option value="draft_first">Draft first</option>
+            <option value="portal_auto">Portal</option>
+            <option value="portal_email">Portal + Email</option>
+            <option value="portal_email_sms">Portal + Email + SMS</option>
+          </select>
+        ) : null}
+      </div>
+
       <div style={{
         display: "grid",
-        gridTemplateColumns: "minmax(240px, 0.85fr) minmax(360px, 1.2fr) minmax(320px, 0.95fr)",
-        gap: 14,
+        gridTemplateColumns: "minmax(360px, 1.3fr) minmax(280px, 0.85fr)",
+        gap: 12,
         alignItems: "stretch",
       }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-          <div style={{ padding: 13, borderRadius: 13, border: `1px solid ${t.line}`, background: t.surface2 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-              <div>
-                <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
-                  AI Secretary
-                </div>
-                <div style={{ marginTop: 4, fontSize: 18, fontWeight: 950, color: t.ink }}>
-                  Collection control
-                </div>
-              </div>
-              <SecretaryStatus mode={mode} stalled={stalled} aiTasks={aiTasks.length} waiting={waiting} />
-            </div>
-            <div style={{ marginTop: 10, fontSize: 12.5, color: t.ink3, lineHeight: 1.45 }}>
-              {mode === "off"
-                ? "AI is only tracking the plan. Turn on draft-first when you want it to prepare outreach."
-                : `${modeLabel.title}: ${modeLabel.sub}. Assigned tasks below are the only items the AI can chase.`}
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <SecretaryKpi label="AI tasks" value={aiTasks.length} tone={aiTasks.length ? "brand" : "muted"} />
-            <SecretaryKpi label="Open docs" value={openDocs.length} tone={openDocs.length ? "watch" : "ready"} />
-            <SecretaryKpi label="Criteria" value={missingCriteria.length} tone={missingCriteria.length ? "watch" : "ready"} />
-            <SecretaryKpi label="UW issues" value={recalcPending ? "..." : warnings.length} tone={warnings.length ? "danger" : "ready"} />
-          </div>
-
-          <div style={{ padding: 12, borderRadius: 13, border: `1px solid ${t.line}`, background: t.surface }}>
-            <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase", marginBottom: 8 }}>
-              Outreach mode
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 7 }}>
-              <ModeButton active={mode === "off"} title="Pause AI" detail="Plan only" icon="pause" onClick={() => onChangeOutreachMode("off")} />
-              <ModeButton active={mode === "draft_first"} title="Draft inbox" detail="Safest operating mode" icon="doc" onClick={() => onChangeOutreachMode("draft_first")} />
-              <ModeButton active={mode === "portal_auto"} title="Portal send" detail="Auto-send in portal" icon="send" onClick={() => onChangeOutreachMode("portal_auto")} />
-            </div>
+        <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface, padding: 12, minWidth: 0 }}>
+          {/* Compact header: tiny eyebrow + presets + filter inline */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            <span style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
+              Delegation
+            </span>
+            <span style={{ fontSize: 11, color: t.ink3 }}>· drag rows to assign</span>
+            <div style={{ flex: 1 }} />
             <select
-              value={mode}
-              onChange={(event) => onChangeOutreachMode(event.target.value as DSOutreachMode)}
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as typeof filter)}
               style={{
-                marginTop: 8,
-                width: "100%",
-                padding: "7px 9px",
+                padding: "5px 8px",
                 borderRadius: 8,
                 border: `1px solid ${t.line}`,
                 background: t.surface2,
                 color: t.ink2,
-                fontSize: 11.5,
+                fontSize: 11,
                 fontFamily: "inherit",
+                cursor: "pointer",
               }}
             >
-              <option value="off">Advanced: Off</option>
-              <option value="draft_first">Advanced: Draft first</option>
-              <option value="portal_auto">Advanced: Portal auto-send</option>
-              <option value="portal_email">Advanced: Portal + Email</option>
-              <option value="portal_email_sms">Advanced: Portal + Email + SMS</option>
+              <option value="borrower">Borrower-facing</option>
+              <option value="required">Required only</option>
+              <option value="human">Needs human review</option>
+              <option value="all">All</option>
             </select>
-          </div>
-        </div>
-
-        <div style={{ border: `1px solid ${t.line}`, borderRadius: 14, background: t.surface, padding: 13, minWidth: 0 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
-            <div>
-              <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
-                Delegation plan
-              </div>
-              <div style={{ marginTop: 3, fontSize: 17, fontWeight: 950, color: t.ink }}>
-                Choose what the secretary should chase
-              </div>
-            </div>
-            <Pill bg={t.brandSoft} color={t.brand} style={{ fontWeight: 850 }}>
-              {humanTasks.length} available
-            </Pill>
-          </div>
-
-          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
-            <PresetAction label="Start borrower collection" disabled={collectionTargets.length === 0} onClick={() => assignMany(collectionTargets)} />
             <PresetAction label="Assign required" disabled={requiredTargets.length === 0} onClick={() => assignMany(requiredTargets)} />
-            <PresetAction label="Pull sensitive back" tone="danger" disabled={sensitiveAssigned.length === 0} onClick={() => sensitiveAssigned.forEach((r) => onUnassign(r.requirement_key))} />
-          </div>
-
-          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-            {([
-              ["borrower", "Borrower-facing"],
-              ["required", "Required"],
-              ["human", "Human review"],
-              ["all", "All"],
-            ] as const).map(([key, label]) => (
-              <FilterChip key={key} active={filter === key} label={label} onClick={() => setFilter(key)} />
-            ))}
+            <PresetAction label="Start collection" disabled={collectionTargets.length === 0} onClick={() => assignMany(collectionTargets)} />
           </div>
 
           {/* Drag-drop: SecretaryTaskRow is draggable, TaskColumn is
@@ -409,22 +424,17 @@ function SecretaryConsole({
           />
         </div>
 
-        <div style={{ border: `1px solid ${t.line}`, borderRadius: 14, background: t.surface, padding: 13, minWidth: 0 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
-            <div>
-              <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
-                Resolution queue
-              </div>
-              <div style={{ marginTop: 3, fontSize: 17, fontWeight: 950, color: t.ink }}>
-                File blockers
-              </div>
-            </div>
+        <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface, padding: 12, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
+              Resolution Queue
+            </span>
             <Pill bg={openDocs.length || missingCriteria.length || warnings.length ? t.warnBg : t.profitBg} color={openDocs.length || missingCriteria.length || warnings.length ? t.warn : t.profit}>
               {openDocs.length + missingCriteria.length + warnings.length} open
             </Pill>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 342, overflow: "auto", paddingRight: 2 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflow: "auto", paddingRight: 2 }}>
             {warnings.slice(0, 3).map((warning) => (
               <ResolutionRow key={`${warning.code}-${warning.message}`} icon="alert" tone="danger" title={warning.message} meta={warning.code.replace(/_/g, " ")} action="Open UW" onClick={() => onOpenTab?.("uw")} />
             ))}
