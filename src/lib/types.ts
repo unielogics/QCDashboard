@@ -1689,6 +1689,13 @@ export interface DSTaskRow {
   link_url: string | null;
   link_label: string | null;
   link_kind: DSLinkKind | null;
+  // Timeline + grouping (alembic 0040). Set by the resolver.
+  depends_on?: string[];
+  parent_key?: string | null;
+  inferred_depends_on?: string[];
+  deps_confirmed?: boolean;
+  timeline_state?: DSTimelineState | null;
+  blocked_by?: string[];
   due_at: string | null;
   last_requested_at: string | null;
   last_response_at: string | null;
@@ -1705,6 +1712,8 @@ export interface DSTaskRow {
   next_run_at: string | null;
 }
 
+export type DSTimelineState = "next_up" | "in_progress" | "upcoming" | "done" | "waived";
+
 export interface DSDealSecretaryView {
   loan_id: string;
   client_id: string;
@@ -1712,6 +1721,11 @@ export interface DSDealSecretaryView {
   right: DSTaskRow[];
   file_settings: DSFileSettings;
   funding_locked_count: number;
+  // Timeline sections — same TaskRow shapes, bucketed by timeline_state.
+  next_up?: DSTaskRow[];
+  in_progress?: DSTaskRow[];
+  upcoming?: DSTaskRow[];
+  done?: DSTaskRow[];
 }
 
 export interface DSAssignRequest {

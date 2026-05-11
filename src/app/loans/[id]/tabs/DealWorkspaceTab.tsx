@@ -55,6 +55,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
+import { AISecretaryTimeline } from "@/components/AISecretaryTimeline";
 import { getCriteriaItems } from "../fileReadiness";
 import { InstructionStrip } from "../components/InstructionStrip";
 import { DealChatThread } from "../components/DealChatThread";
@@ -410,13 +411,13 @@ function SecretaryConsole({
             <PresetAction label="Start collection" disabled={collectionTargets.length === 0} onClick={() => assignMany(collectionTargets)} />
           </div>
 
-          {/* Drag-drop: SecretaryTaskRow is draggable, TaskColumn is
-              droppable. On drop, we route to onAssign or onUnassign
-              based on which column the row lands in. The buttons on
-              each row stay as a keyboard/mobile-friendly fallback. */}
-          <DealSecretaryDnd
-            visibleHumanTasks={visibleHumanTasks}
-            aiTasks={aiTasks}
+          {/* Timeline view — replaces the old Human / AI two-column
+              layout. Sections (Next Up / In Progress / Upcoming /
+              Done) are computed server-side from dependencies + CRS
+              status. Per-task: just an Owner button (click to flip
+              Human ↔ AI). The system sequences everything else. */}
+          <AISecretaryTimeline
+            view={secretary}
             isOperator={isOperator}
             onAssign={onAssign}
             onUnassign={onUnassign}
