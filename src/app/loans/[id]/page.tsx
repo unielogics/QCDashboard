@@ -19,7 +19,7 @@ import { TermsTab } from "./tabs/TermsTab";
 import { Hud1Tab } from "./tabs/Hud1Tab";
 import { DocsTab } from "./tabs/DocsTab";
 import { WorkflowTab } from "./tabs/WorkflowTab";
-import { UnderwritingTab } from "./tabs/UnderwritingTab";
+// Underwriting tab folded into Funding File — UW sizing + warnings live there now.
 // PropertyTab is no longer a standalone tab — its content is embedded
 // inside FundingFileTab, which owns the import now.
 import { WireClosingTab } from "./tabs/WireClosingTab";
@@ -34,15 +34,14 @@ import { FILE_STAGE_KEYS, FILE_STAGE_LABELS, getFileCompletion } from "./fileRea
 
 const INTERNAL_TABS = [
   // Property tab merged into Funding File — property details now sit
-  // between the calc snapshot and the criteria matrix inside Funding File.
+  // inside the funding file alongside the rest of the deal foundation.
+  // Underwriting tab also folded into Funding File since the UW
+  // sizing + warnings panel is already part of the file-readiness view.
   { id: "file", label: "Funding File", icon: "file" as const },
   { id: "terms", label: "Criteria", icon: "sliders" as const },
   { id: "docs", label: "Documents", icon: "doc" as const },
   { id: "workflow", label: "Conditions", icon: "cal" as const },
   { id: "prequal", label: "Pre-Qual", icon: "docCheck" as const },
-  { id: "uw", label: "Underwriting", icon: "shield" as const },
-  // Hud1Tab.tsx was already wired at activeTab === "hud" below but had
-  // no entry in this array, so it was unreachable from the UI.
   { id: "hud", label: "HUD-1", icon: "file" as const },
   { id: "workspace", label: "AI Secretary", icon: "ai" as const },
   { id: "thread", label: "Lender", icon: "chat" as const },
@@ -353,7 +352,7 @@ export default function LoanDetailPage() {
       {activeTab === "hud" && <Hud1Tab loan={loan} />}
       {activeTab === "docs" && <DocsTab loan={loan} canRequest={canRequestDoc} />}
       {activeTab === "workflow" && <WorkflowTab loan={loan} canEdit={canRequestDoc} />}
-      {activeTab === "uw" && <UnderwritingTab loan={loan} />}
+      {/* "uw" tab removed — Underwriting content lives in Funding File. */}
       {/* Property tab removed — content now embedded in FundingFileTab. */}
       {activeTab === "wire" && <WireClosingTab loan={loan} />}
       {activeTab === "prequal" && <PrequalTab loan={loan} />}

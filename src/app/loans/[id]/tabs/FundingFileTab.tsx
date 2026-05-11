@@ -7,7 +7,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { useLoanPrequalRequests, useRecalc } from "@/hooks/useApi";
 import type { Activity, Document, Loan } from "@/lib/types";
-import { getCriteriaItems, getFileCompletion } from "../fileReadiness";
+import { getCriteriaItems, getFileCompletion, FILE_STAGE_KEYS, FILE_STAGE_LABELS } from "../fileReadiness";
 // PropertyTab is now embedded inside FundingFileTab instead of living
 // on its own tab — property details belong with the rest of the deal
 // foundation (address, beds/baths, taxes/insurance, ARV/LTV).
@@ -30,6 +30,7 @@ export function FundingFileTab({
   const recalc = useRecalc();
   const { data: prequalRequests = [] } = useLoanPrequalRequests(loan.id);
   const [activePanel, setActivePanel] = useState<"math" | "criteria" | "documents" | "property" | "activity">("math");
+  const [showBlockers, setShowBlockers] = useState(false);
 
   useEffect(() => {
     recalc.mutate({
@@ -134,79 +135,39 @@ export function FundingFileTab({
     },
   ] as const;
 
+  // Two helper data structures for the blockers popup.
+  const totalBlockers = warnings.length + missingCriteria.length + flaggedDocs.length;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <OperationalHeader
-        score={completion.score}
-        label={completion.label}
-        nextAction={nextAction}
-        amount={sizedAmount}
-        finalRate={finalRate}
-        dscr={dscr}
-        openDocs={openDocs.length}
-        warnings={warnings.length}
+      {/* Visual loan-stage stepper — replaces the giant OperationalHeader. */}
+      <LoanStageStepper
+        currentIndex={completion.stage.index}
+        totalStages={completion.stage.total}
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "240px minmax(0, 1fr) 330px", gap: 14 }}>
-        <Panel compact>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-            <CompletionGauge score={completion.score} label={completion.label} />
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 11, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
-                Funding file
-              </div>
-              <div style={{ marginTop: 4, fontSize: 18, fontWeight: 900, color: t.ink }}>{completion.label}</div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, width: "100%" }}>
-              <MiniTile label="Criteria" value={`${completion.criteria.ready}/${completion.criteria.total}`} />
-              <MiniTile label="Docs" value={`${verifiedDocs.length}/${docs.length || 0}`} />
-              <MiniTile label="Warnings" value={warnings.length} tone={warnings.length ? "watch" : "ready"} />
-              <MiniTile label="Stage" value={`${completion.stage.index + 1}/${completion.stage.total}`} />
-            </div>
-          </div>
-        </Panel>
-
-        <Panel>
-          <HeaderRow eyebrow="Critical path" title="File readiness map" action={`${openDocs.length} open condition${openDocs.length === 1 ? "" : "s"}`} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 10 }}>
-            {criticalPath.map((step) => (
-              <PathTile
-                key={step.label}
-                step={step}
-                onClick={() => {
-                  setActivePanel(step.panel);
-                  onOpenTab?.(step.tab, "targetId" in step ? step.targetId : undefined);
-                }}
-              />
-            ))}
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 10, marginTop: 12 }}>
-            <Track label="Document collection" value={completion.docs.score} detail={`${receivedDocs.length} received / ${flaggedDocs.length} flagged`} />
-            <Track label="Criteria build" value={completion.criteria.score} detail={`${completion.criteria.ready} ready fields`} />
-          </div>
-        </Panel>
-
-        <Panel>
-          <HeaderRow eyebrow="Blockers" title="Needs attention" />
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {warnings.slice(0, 3).map((warning) => (
-              <AttentionRow key={`${warning.code}-${warning.message}`} tone="watch" icon="alert" title={warning.message} meta={warning.code.replace(/_/g, " ")} onClick={() => onOpenTab?.("uw")} />
-            ))}
-            {missingCriteria.slice(0, 3).map((item) => (
-              <AttentionRow key={item.id} tone="open" icon="sliders" title={`${item.label} is missing`} meta={item.group} onClick={() => onOpenTab?.("terms", criteriaTarget(item.id))} />
-            ))}
-            {flaggedDocs.slice(0, 3).map((doc) => (
-              <AttentionRow key={doc.id} tone="danger" icon="doc" title={doc.name} meta={doc.category ?? "Flagged document"} onClick={() => onOpenTab?.("docs")} />
-            ))}
-            {warnings.length === 0 && flaggedDocs.length === 0 && missingCriteria.length === 0 ? (
-              <AttentionRow tone="ready" icon="check" title="No calculation warnings or flagged documents" meta="Ready for internal review" />
-            ) : null}
-            {openDocs.length > 0 ? (
-              <AttentionRow tone="open" icon="docCheck" title={`${openDocs.length} document condition${openDocs.length === 1 ? "" : "s"} still open`} meta="Review Documents or Conditions" onClick={() => onOpenTab?.("workflow")} />
-            ) : null}
-          </div>
-        </Panel>
-      </div>
+      {/* Clickable file-completion strip — opens a popup with blockers. */}
+      <FileCompletionStrip
+        score={completion.score}
+        label={completion.label}
+        openDocs={openDocs.length}
+        warnings={warnings.length}
+        missingCriteria={missingCriteria.length}
+        flaggedDocs={flaggedDocs.length}
+        totalBlockers={totalBlockers}
+        onClick={() => setShowBlockers(true)}
+      />
+      {showBlockers ? (
+        <BlockersPopup
+          onClose={() => setShowBlockers(false)}
+          warnings={warnings}
+          missingCriteria={missingCriteria}
+          flaggedDocs={flaggedDocs}
+          openDocs={openDocs}
+          onOpenTab={onOpenTab}
+          onCriteriaJump={(id) => onOpenTab?.("terms", criteriaTarget(id))}
+        />
+      ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "220px minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
         <Panel compact>
@@ -748,4 +709,220 @@ function inlineAction(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties 
     cursor: "pointer",
     fontFamily: "inherit",
   };
+}
+
+// ── New components for the slim header ─────────────────────────────
+
+function LoanStageStepper({ currentIndex, totalStages: _t }: { currentIndex: number; totalStages: number }) {
+  const { t } = useTheme();
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: `repeat(${FILE_STAGE_KEYS.length}, 1fr)`,
+      gap: 0,
+      background: t.surface,
+      border: `1px solid ${t.line}`,
+      borderRadius: 14,
+      padding: "14px 18px",
+      boxShadow: t.shadow,
+    }}>
+      {FILE_STAGE_KEYS.map((_stage, i) => {
+        const done = i < currentIndex;
+        const active = i === currentIndex;
+        const dotBg = done ? t.profit : active ? t.brand : t.surface2;
+        const dotColor = done || active ? t.inverse : t.ink3;
+        const lineColor = done ? t.profit : active ? t.brand : t.line;
+        return (
+          <div key={FILE_STAGE_KEYS[i]} style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 0, position: "relative" }}>
+            {/* Connecting line behind the dot */}
+            {i > 0 ? (
+              <div style={{
+                position: "absolute", top: 16, left: 0, width: "50%",
+                height: 3, background: done ? t.profit : i === currentIndex ? t.brand : t.line,
+                borderRadius: 2,
+              }} />
+            ) : null}
+            {i < FILE_STAGE_KEYS.length - 1 ? (
+              <div style={{
+                position: "absolute", top: 16, right: 0, width: "50%",
+                height: 3, background: done ? t.profit : t.line,
+                borderRadius: 2,
+              }} />
+            ) : null}
+            {/* The dot */}
+            <div style={{
+              position: "relative", zIndex: 1,
+              width: 34, height: 34, borderRadius: 999,
+              background: dotBg, color: dotColor,
+              border: `2px solid ${lineColor}`,
+              display: "grid", placeItems: "center",
+              fontSize: 14, fontWeight: 900,
+              boxShadow: active ? `0 0 0 4px ${t.brandSoft}` : "none",
+            }}>
+              {done ? "✓" : i + 1}
+            </div>
+            <div style={{
+              marginTop: 7,
+              fontSize: 11,
+              fontWeight: 900,
+              color: active ? t.brand : done ? t.ink : t.ink3,
+              letterSpacing: 0.4,
+              textAlign: "center",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              maxWidth: "100%",
+            }}>
+              {FILE_STAGE_LABELS[i]}
+            </div>
+            {active ? (
+              <div style={{ marginTop: 2, fontSize: 9.5, fontWeight: 800, color: t.brand, letterSpacing: 0.6, textTransform: "uppercase" }}>
+                Current
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FileCompletionStrip({
+  score, label, openDocs, warnings, missingCriteria, flaggedDocs, totalBlockers, onClick,
+}: {
+  score: number; label: string; openDocs: number; warnings: number;
+  missingCriteria: number; flaggedDocs: number; totalBlockers: number;
+  onClick: () => void;
+}) {
+  const { t } = useTheme();
+  const tone = totalBlockers === 0 ? t.profit : totalBlockers > 5 ? t.danger : t.warn;
+  const toneBg = totalBlockers === 0 ? t.profitBg : totalBlockers > 5 ? t.dangerBg : t.warnBg;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        all: "unset",
+        cursor: "pointer",
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1fr) auto",
+        gap: 14,
+        alignItems: "center",
+        padding: "12px 16px",
+        borderRadius: 14,
+        background: t.surface,
+        border: `1px solid ${t.line}`,
+        boxShadow: t.shadow,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 22, fontWeight: 950, color: t.ink, fontFeatureSettings: '"tnum"' }}>
+            {Math.round(score)}%
+          </span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: t.ink2 }}>{label}</span>
+          <span style={{ fontSize: 11, color: t.ink3 }}>· click to see what's left</span>
+        </div>
+        <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: t.surface2, overflow: "hidden" }}>
+          <div style={{ width: `${Math.max(0, Math.min(100, score))}%`, height: "100%", background: tone, borderRadius: 999 }} />
+        </div>
+      </div>
+      <div style={{
+        display: "inline-flex", alignItems: "center", gap: 6,
+        padding: "9px 13px", borderRadius: 11,
+        background: toneBg, color: tone,
+        fontSize: 13, fontWeight: 900,
+      }}>
+        {totalBlockers > 0 ? "⚠" : "✓"}
+        <span>
+          {totalBlockers === 0
+            ? "All clear"
+            : `${totalBlockers} blocker${totalBlockers === 1 ? "" : "s"} · ${warnings} warn · ${missingCriteria} crit · ${flaggedDocs} flag · ${openDocs} open`}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function BlockersPopup({
+  onClose, warnings, missingCriteria, flaggedDocs, openDocs, onOpenTab, onCriteriaJump,
+}: {
+  onClose: () => void;
+  warnings: { code: string; message: string }[];
+  missingCriteria: { id: string; label: string; group: string; value: string }[];
+  flaggedDocs: Document[];
+  openDocs: Document[];
+  onOpenTab?: (tab: string, targetId?: string) => void;
+  onCriteriaJump: (id: string) => void;
+}) {
+  const { t } = useTheme();
+  const total = warnings.length + missingCriteria.length + flaggedDocs.length + (openDocs.length > 0 ? 1 : 0);
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 100,
+        background: "rgba(0,0,0,0.55)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: t.surface, color: t.ink,
+          border: `1px solid ${t.line}`, borderRadius: 14,
+          boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
+          width: "min(640px, 100%)", maxHeight: "85vh", overflow: "hidden",
+          display: "flex", flexDirection: "column",
+        }}
+      >
+        <div style={{
+          padding: "14px 16px",
+          borderBottom: `1px solid ${t.line}`,
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+        }}>
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
+              File Blockers
+            </div>
+            <div style={{ marginTop: 2, fontSize: 16, fontWeight: 900, color: t.ink }}>
+              {total === 0 ? "Nothing to fix — this file is clear" : `${total} item${total === 1 ? "" : "s"} need attention`}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: "6px 10px", borderRadius: 9,
+              background: t.surface2, color: t.ink2,
+              border: `1px solid ${t.line}`, cursor: "pointer",
+              fontSize: 11.5, fontWeight: 800, fontFamily: "inherit",
+            }}
+          >
+            Close
+          </button>
+        </div>
+        <div style={{ padding: 14, overflow: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+          {warnings.map((warning) => (
+            <AttentionRow key={`${warning.code}-${warning.message}`} tone="watch" icon="alert" title={warning.message} meta={warning.code.replace(/_/g, " ")} onClick={() => { onClose(); onOpenTab?.("uw"); }} />
+          ))}
+          {missingCriteria.map((item) => (
+            <AttentionRow key={item.id} tone="open" icon="sliders" title={`${item.label} is missing`} meta={item.group} onClick={() => { onClose(); onCriteriaJump(item.id); }} />
+          ))}
+          {flaggedDocs.map((doc) => (
+            <AttentionRow key={doc.id} tone="danger" icon="doc" title={doc.name} meta={doc.category ?? "Flagged document"} onClick={() => { onClose(); onOpenTab?.("docs"); }} />
+          ))}
+          {openDocs.length > 0 ? (
+            <AttentionRow tone="open" icon="docCheck" title={`${openDocs.length} document condition${openDocs.length === 1 ? "" : "s"} still open`} meta="Review Documents or Conditions" onClick={() => { onClose(); onOpenTab?.("workflow"); }} />
+          ) : null}
+          {total === 0 ? (
+            <AttentionRow tone="ready" icon="check" title="No calculation warnings or flagged documents" meta="Ready for internal review" />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
 }
