@@ -1,113 +1,344 @@
 "use client";
 
-// Agent Settings → AI Assistant — single page, 5 tabs.
+// Agent Settings → AI — single scrollable page, 5 stacked sections.
 //
-// Plain-language vocabulary throughout — Required / Recommended /
-// Optional / Locked by Funding. No raw playbook concepts (category,
-// applies_when, blocks_stage, display_order) on this surface.
+// 1. Sending Control          — agent's default for new deals
+// 2. Lead Creation Templates  — buyer + seller checklist editors
+// 3. Attempt Limit & Schedule — attempts before escalation + working hours
+// 4. Ready for Lending        — handoff gate (buyer-side requirements)
+// 5. Knowledge & Voice        — PDFs / FAQ + tone / style / signature
 //
-// Replaces the earlier 6 sub-routes. Tab state is in-memory + URL
-// hash for deep-link, no nested routes.
+// X close button in the top-right returns to /agent-settings. The
+// page uses the QC design-system primitives (Card, SectionLabel,
+// Icon, useTheme) — no shadcn, no new color tokens.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { AIPreviewPanel } from "@/components/AIPreviewPanel";
 import {
   isAINotDeployed,
+  useAgentKnowledge,
   useAgentPlaybook,
+  useDeleteAgentKnowledge,
   useDeleteAgentRequirement,
   usePatchAgentPlaybookRules,
+  useUploadAgentKnowledge,
   useUpsertAgentRequirement,
+  type AgentKnowledgeDocument,
   type PlaybookRequirement,
 } from "@/hooks/useApi";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
+import {
+  AFTER_HOURS_LABEL,
+  DEFAULT_WORKING_HOURS,
+  TIMEZONE_OPTIONS,
+  WEEKDAYS_ORDER,
+  formatScheduleSummary,
+  normalizeWorkingHours,
+  type AfterHoursRule,
+  type WeekdayCode,
+  type WorkingHours,
+} from "./scheduleFormat";
 
-type TabId = "buyer" | "seller" | "followup" | "handoff" | "style";
+// ── Rules JSONB shapes (mirror what backend reads in services/ai) ─────
 
-const TABS: { id: TabId; label: string; sub: string }[] = [
-  { id: "buyer", label: "Buyer Rules", sub: "What the AI collects from buyer leads." },
-  { id: "seller", label: "Seller Rules", sub: "What the AI collects from seller / listing leads." },
-  { id: "followup", label: "Follow-Up", sub: "When the AI nudges + drafts." },
-  { id: "handoff", label: "Ready for Lending", sub: "Your gate before lending hand-off." },
-  { id: "style", label: "Message Style", sub: "Tone, signature, follow-up style." },
-];
+type SendingControl = "draft_only" | "ask_before_sending" | "auto_send_portal";
+
+type AttemptLimit = {
+  max_attempts?: number;
+  create_task_when_reached?: boolean;
+  mark_stalled?: boolean;
+};
+
+type VoiceStyle = {
+  tone?: "professional" | "warm" | "concise" | "friendly";
+  follow_up_style?: "soft" | "balanced" | "direct";
+  signature?: string;
+};
+
+type AgentRulesShape = {
+  sending_control?: SendingControl;
+  working_hours?: Partial<WorkingHours>;
+  attempt_limit?: AttemptLimit;
+  voice?: VoiceStyle;
+  knowledge?: { faq_text?: string };
+  // legacy buckets retained as-is on save so other surfaces don't break
+  followup?: Record<string, unknown>;
+  style?: VoiceStyle;
+};
 
 
-export default function AIAssistantPage() {
+export default function AgentAISettingsPage() {
   const { t } = useTheme();
-  const [tab, setTab] = useState<TabId>("buyer");
+  const router = useRouter();
+  const cadence = useAgentPlaybook("cadence");
+  const buyer = useAgentPlaybook("buyer");
+  const seller = useAgentPlaybook("seller");
+  const patchCadence = usePatchAgentPlaybookRules("cadence");
 
-  // Deep-linkable via #buyer / #seller / etc.
+  // Local snapshot of the agent's cadence-playbook rules. Loaded once,
+  // edited section-by-section. Single Save button at the top pushes
+  // back through PATCH /me/ai-playbook/cadence/rules.
+  const [rules, setRules] = useState<AgentRulesShape>({});
+  const [dirty, setDirty] = useState(false);
+  const loadedRef = useRef(false);
+
   useEffect(() => {
-    const hash = (typeof window !== "undefined" ? window.location.hash : "").replace("#", "");
-    if (hash && TABS.some(t2 => t2.id === hash)) setTab(hash as TabId);
-  }, []);
-  useEffect(() => {
-    if (typeof window !== "undefined") window.location.hash = tab;
-  }, [tab]);
+    if (loadedRef.current) return;
+    if (cadence.data?.rules) {
+      setRules((cadence.data.rules as AgentRulesShape) || {});
+      loadedRef.current = true;
+    }
+  }, [cadence.data?.rules]);
+
+  function mutate(next: AgentRulesShape) {
+    setRules(next);
+    setDirty(true);
+  }
+
+  async function save() {
+    try {
+      await patchCadence.mutateAsync(rules as Record<string, unknown>);
+      setDirty(false);
+    } catch {
+      // AINotDeployedBanner below renders if it's a 404. No toast lib
+      // wired in this surface — same pattern as the rest of the page.
+    }
+  }
+
+  const wh = useMemo(
+    () => normalizeWorkingHours(rules.working_hours),
+    [rules.working_hours],
+  );
+  const attempts = rules.attempt_limit?.max_attempts ?? 3;
+  const sendingControl: SendingControl = rules.sending_control ?? "draft_only";
+
+  if (isAINotDeployed(cadence.error)) {
+    return (
+      <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
+        <PageHeader t={t} dirty={false} saving={false} onClose={() => router.push("/agent-settings")} onSave={save} />
+        <AINotDeployedBanner surface="AI Assistant" />
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: "0 0 6px" }}>
-        Agent AI Base Template
-      </h1>
-      <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 20px", maxWidth: 640 }}>
-        Configure the relationship assistant for buyer and seller workflows.
-        These defaults stay agent-side until a buyer is deliberately handed to
-        the lending workflow.
-      </p>
+      <PageHeader
+        t={t}
+        dirty={dirty}
+        saving={patchCadence.isPending}
+        onClose={() => router.push("/agent-settings")}
+        onSave={save}
+      />
 
-      <AgentAIOperatingStrip />
-      <AgentAIWorkflowMap />
+      <Snapshot
+        t={t}
+        sendingControl={sendingControl}
+        attempts={attempts}
+        wh={wh}
+      />
 
-      {/* Tab strip */}
-      <div style={{
-        display: "flex", gap: 4, marginBottom: 20,
-        borderBottom: `1px solid ${t.line}`, paddingBottom: 0,
-        flexWrap: "wrap",
-      }}>
-        {TABS.map(x => (
-          <button
-            key={x.id}
-            onClick={() => setTab(x.id)}
-            style={{
-              padding: "10px 16px", fontSize: 13, fontWeight: 600,
-              border: "none", background: "transparent",
-              color: tab === x.id ? t.ink : t.ink3,
-              borderBottom: `2px solid ${tab === x.id ? t.petrol : "transparent"}`,
-              cursor: "pointer",
-              marginBottom: -1,
-            }}
-          >
-            {x.label}
-          </button>
-        ))}
+      <Section
+        t={t}
+        kicker="Step 1"
+        title="Sending control"
+        copy="Your default for new deals. You can still change this per file in Deal Secretary."
+      >
+        <SendingControlSection
+          t={t}
+          value={sendingControl}
+          onChange={(v) => mutate({ ...rules, sending_control: v })}
+        />
+      </Section>
+
+      <Section
+        t={t}
+        kicker="Step 2"
+        title="Lead creation templates"
+        copy="When you create a Buyer or Seller lead, this checklist becomes the starting point. AI works only on the items marked AI or Shared."
+      >
+        <LeadTemplatesSection t={t} />
+      </Section>
+
+      <Section
+        t={t}
+        kicker="Step 3"
+        title="AI attempt limit & working schedule"
+        copy="Set the AI's working hours and how many tries before it escalates to you. The AI never initiates outside these hours."
+      >
+        <AttemptAndScheduleSection
+          t={t}
+          attempts={attempts}
+          createTask={rules.attempt_limit?.create_task_when_reached ?? true}
+          markStalled={rules.attempt_limit?.mark_stalled ?? false}
+          wh={wh}
+          onAttempts={(n) =>
+            mutate({
+              ...rules,
+              attempt_limit: {
+                ...(rules.attempt_limit || {}),
+                max_attempts: n,
+              },
+            })
+          }
+          onCreateTask={(v) =>
+            mutate({
+              ...rules,
+              attempt_limit: {
+                ...(rules.attempt_limit || {}),
+                create_task_when_reached: v,
+              },
+            })
+          }
+          onMarkStalled={(v) =>
+            mutate({
+              ...rules,
+              attempt_limit: {
+                ...(rules.attempt_limit || {}),
+                mark_stalled: v,
+              },
+            })
+          }
+          onWorkingHours={(next) =>
+            mutate({ ...rules, working_hours: next })
+          }
+        />
+      </Section>
+
+      <Section
+        t={t}
+        kicker="Step 4"
+        title="Ready for lending"
+        copy="When these buyer-side items are satisfied, your AI may suggest the lending handoff."
+      >
+        <ReadyForLendingSection t={t} buyer={buyer} seller={seller} />
+      </Section>
+
+      <Section
+        t={t}
+        kicker="Step 5"
+        title="Knowledge & voice"
+        copy="Upload PDFs and paste FAQ the AI should know. Set tone, follow-up style, and signature."
+      >
+        <KnowledgeAndVoiceSection
+          t={t}
+          voice={rules.voice ?? rules.style ?? {}}
+          faqText={rules.knowledge?.faq_text ?? ""}
+          onVoice={(v) => mutate({ ...rules, voice: v })}
+          onFaq={(text) =>
+            mutate({
+              ...rules,
+              knowledge: { ...(rules.knowledge || {}), faq_text: text },
+            })
+          }
+        />
+      </Section>
+
+      <div style={{ marginTop: 24 }}>
+        <AIPreviewPanel mode="plan" />
       </div>
-
-      {tab === "buyer" ? <BuyerRulesTab /> : null}
-      {tab === "seller" ? <SellerRulesTab /> : null}
-      {tab === "followup" ? <FollowUpTab /> : null}
-      {tab === "handoff" ? <ReadyForLendingTab /> : null}
-      {tab === "style" ? <MessageStyleTab /> : null}
     </div>
   );
 }
 
-function AgentAIOperatingStrip() {
-  const { t } = useTheme();
+
+// ─── Page chrome ─────────────────────────────────────────────────────
+
+
+function PageHeader({
+  t, dirty, saving, onClose, onSave,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  dirty: boolean;
+  saving: boolean;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <div style={{
+      position: "relative",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: 16,
+      marginBottom: 16,
+    }}>
+      <div style={{ minWidth: 0 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: "0 0 6px" }}>
+          Agent AI Settings
+        </h1>
+        <p style={{ fontSize: 13, color: t.ink3, margin: 0, maxWidth: 640 }}>
+          Configure your AI assistant — how it sends, when it works,
+          what it collects, and the knowledge it speaks from.
+        </p>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving || !dirty}
+          style={{
+            padding: "8px 14px", fontSize: 13, fontWeight: 700,
+            borderRadius: 6, border: `1px solid ${t.line}`,
+            background: dirty ? t.petrol : t.surface2,
+            color: dirty ? "#fff" : t.ink3,
+            cursor: saving || !dirty ? "default" : "pointer",
+            opacity: saving ? 0.7 : 1,
+          }}
+        >
+          {saving ? "Saving…" : dirty ? "Save settings" : "Saved"}
+        </button>
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={onClose}
+          style={{
+            width: 36, height: 36, borderRadius: 8,
+            border: `1px solid ${t.line}`, background: t.surface,
+            color: t.ink2, cursor: "pointer",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <Icon name="x" size={16} stroke={2.4} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+function Snapshot({
+  t, sendingControl, attempts, wh,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  sendingControl: SendingControl;
+  attempts: number;
+  wh: WorkingHours;
+}) {
   const items = [
-    { label: "Buyer", body: "Collect intent, criteria, agreement status, and handoff readiness." },
-    { label: "Seller", body: "Track listing prep, seller agreement, pricing context, and follow-up." },
-    { label: "Handoff", body: "Only finance-ready buyer work crosses into Lending AI." },
+    {
+      label: "Sending",
+      body:
+        sendingControl === "auto_send_portal"
+          ? "Auto-send portal only"
+          : sendingControl === "ask_before_sending"
+          ? "Ask before sending"
+          : "Draft only",
+    },
+    { label: "Attempts", body: `${attempts} tries → task` },
+    { label: "Working hours", body: formatScheduleSummary(wh) },
+    { label: "After hours", body: AFTER_HOURS_LABEL[wh.after_hours_rule] },
   ];
   return (
     <div style={{
       display: "grid",
       gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
       gap: 8,
-      marginBottom: 12,
+      marginBottom: 20,
     }}>
       {items.map(item => (
         <div key={item.label} style={{
@@ -119,7 +350,7 @@ function AgentAIOperatingStrip() {
           <div style={{ fontSize: 11, fontWeight: 900, color: t.petrol, marginBottom: 4, textTransform: "uppercase" }}>
             {item.label}
           </div>
-          <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.4 }}>{item.body}</div>
+          <div style={{ fontSize: 12, color: t.ink, lineHeight: 1.4 }}>{item.body}</div>
         </div>
       ))}
     </div>
@@ -127,585 +358,471 @@ function AgentAIOperatingStrip() {
 }
 
 
-// ─── BUYER RULES ────────────────────────────────────────────────────
-
-
-function BuyerRulesTab() {
-  return <SidedRulesTab side="buyer" leadLabel="buyer lead" />;
+function Section({
+  t, kicker, title, copy, children,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  kicker: string;
+  title: string;
+  copy: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <Card pad={20}>
+        <div style={{ marginBottom: 14 }}>
+          <div style={{
+            fontSize: 11, fontWeight: 900, color: t.petrol,
+            textTransform: "uppercase", letterSpacing: 0.8,
+            marginBottom: 4,
+          }}>
+            {kicker}
+          </div>
+          <SectionLabel>{title}</SectionLabel>
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: t.ink3, lineHeight: 1.55, maxWidth: 720 }}>
+            {copy}
+          </p>
+        </div>
+        {children}
+      </Card>
+    </div>
+  );
 }
 
 
-function SellerRulesTab() {
-  return <SidedRulesTab side="seller" leadLabel="seller / listing lead" />;
+// ─── Section 1: Sending Control ──────────────────────────────────────
+
+
+function SendingControlSection({
+  t, value, onChange,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  value: SendingControl;
+  onChange: (v: SendingControl) => void;
+}) {
+  const options: { value: SendingControl; title: string; body: string }[] = [
+    {
+      value: "draft_only",
+      title: "Draft only",
+      body: "Writes messages into the AI Inbox. Nothing sends without your approval.",
+    },
+    {
+      value: "ask_before_sending",
+      title: "Ask before sending",
+      body: "Suggests the message and asks you to approve each send.",
+    },
+    {
+      value: "auto_send_portal",
+      title: "Auto-send portal only",
+      body: "Sends low-risk portal reminders automatically. Email and SMS still require approval.",
+    },
+  ];
+  return (
+    <>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        {options.map(opt => {
+          const selected = value === opt.value;
+          return (
+            <label
+              key={opt.value}
+              style={{
+                position: "relative",
+                display: "block",
+                padding: 14,
+                borderRadius: 12,
+                border: `1px solid ${selected ? t.petrol : t.line}`,
+                background: selected ? t.petrolSoft : t.surface,
+                cursor: "pointer",
+                minHeight: 110,
+              }}
+            >
+              <input
+                type="radio"
+                checked={selected}
+                onChange={() => onChange(opt.value)}
+                style={{ position: "absolute", opacity: 0, pointerEvents: "none" }}
+              />
+              <div style={{ fontSize: 13, fontWeight: 800, color: t.ink, marginBottom: 6 }}>
+                {opt.title}
+              </div>
+              <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45 }}>
+                {opt.body}
+              </div>
+            </label>
+          );
+        })}
+      </div>
+      <BehaviorNote
+        icon="lightbulb"
+        title="Per-file overrides stay easy"
+        body="Open a deal's AI Secretary and change its outreach mode any time. This setting only affects new deals."
+        style={{ marginTop: 12 }}
+      />
+    </>
+  );
 }
 
 
-/** Shared shape between Buyer + Seller tabs — both render a checklist
- * grouped by Required / Recommended / Optional, plus an inline "+ Add
- * my own" form. The platform defaults appear as pre-checked rows
- * (locked items show a 🔒 chip and can't be unchecked). */
-function SidedRulesTab({ side, leadLabel }: { side: "buyer" | "seller"; leadLabel: string }) {
-  const { t } = useTheme();
+// ─── Section 2: Lead Creation Templates ──────────────────────────────
+
+
+function LeadTemplatesSection({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <TemplateCard t={t} side="buyer" />
+      <TemplateCard t={t} side="seller" />
+    </div>
+  );
+}
+
+
+function TemplateCard({
+  t, side,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  side: "buyer" | "seller";
+}) {
   const { data, isLoading, error } = useAgentPlaybook(side);
   const upsert = useUpsertAgentRequirement(side);
   const del = useDeleteAgentRequirement(side);
-
-  // Local "disabled" set for platform overridable items — we treat the
-  // agent's overlay as the source of truth: a presence of an
-  // overlay-row with required_level=optional means "agent disabled it".
-  // For the agent UI we just show the checkbox; saving toggles via
-  // the upsert/delete hooks.
+  const [expanded, setExpanded] = useState(false);
+  const [configureFor, setConfigureFor] = useState<{ req: PlaybookRequirement; owner: "platform" | "agent" } | null>(null);
 
   const platform = data?.platform_requirements || [];
   const overlay = data?.agent_requirements || [];
-
-  // Group platform rows by plain level.
   const groups = useMemo(() => groupByLevel(platform, overlay), [platform, overlay]);
 
-  // Inline new-item form state.
-  const [draft, setDraft] = useState<{ label: string; level: "required" | "recommended" | "optional"; isDoc: boolean } | null>(null);
-  // Per-row Configure editor — opens an inline panel under the chosen
-  // requirement with the new Deal Secretary fields (owner / link /
-  // objective / cadence). null = closed.
-  const [configureFor, setConfigureFor] = useState<{ req: PlaybookRequirement; owner: "platform" | "agent" } | null>(null);
+  const allRows = [...groups.required, ...groups.recommended, ...groups.optional];
 
   async function setLevel(req: PlaybookRequirement, owner: "platform" | "agent", newLevel: "required" | "recommended" | "optional" | "disable") {
-    if (owner === "platform" && !req.can_agent_override) return;  // Locked
+    if (owner === "platform" && !req.can_agent_override) return;
     try {
       if (newLevel === "disable") {
         if (owner === "agent") await del.mutateAsync(req.id);
-        // For platform rows, the way to "disable" is to clone an agent
-        // overlay with required_level=optional. The agent has the toggle
-        // in their UI but we reflect intent via overlay presence.
         else {
           await upsert.mutateAsync({
-            requirement_key: req.requirement_key,
-            label: req.label,
-            category: req.category,
-            required_level: "optional",
+            requirement_key: req.requirement_key, label: req.label,
+            category: req.category, required_level: "optional",
           });
         }
         return;
       }
       await upsert.mutateAsync({
         id: owner === "agent" ? req.id : undefined,
-        requirement_key: req.requirement_key,
-        label: req.label,
-        category: req.category,
-        required_level: newLevel,
+        requirement_key: req.requirement_key, label: req.label,
+        category: req.category, required_level: newLevel,
       });
-    } catch {
-      // The next query refetch will surface AINotDeployedBanner if it's a 404;
-      // any other error gets swallowed here rather than crashing the event handler.
-    }
+    } catch {/* banner shown elsewhere */}
   }
 
-  async function addCustom() {
-    if (!draft || !draft.label.trim()) return;
-    try {
-      await upsert.mutateAsync({
-        requirement_key: draft.label.trim().toLowerCase().replace(/\s+/g, "_"),
-        label: draft.label.trim(),
-        category: draft.isDoc ? "document" : "fact",
-        required_level: draft.level,
-      });
-      setDraft(null);
-    } catch {
-      // 404 / 403 swallowed — the banner above already explains why.
-    }
-  }
-
-  return (
-    <div>
-      <div style={{ marginBottom: 16 }}>
-        <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 10px" }}>
-          When you get a {leadLabel}, your AI should collect:
-        </p>
-        <BehaviorNote
-          icon={side === "buyer" ? "clients" : "building2"}
-          title={side === "buyer" ? "Agent-side collection only" : "Seller-side collection only"}
-          body={
-            side === "buyer"
-              ? "These items drive the Realtor AI's questions and client readiness map. They do not create lending document due dates until the buyer is marked ready for lending and a loan-side workflow starts."
-              : "Seller items help the agent manage listing work. They are intentionally ignored by the lending handoff unless a buyer is also finance-ready."
-          }
-        />
-      </div>
-
-      {isAINotDeployed(error) ? (
-        <AINotDeployedBanner surface="AI Assistant" />
-      ) : isLoading ? (
-        <Card pad={20}><div style={{ color: t.ink3, fontSize: 13 }}>Loading…</div></Card>
-      ) : (
-        <Card pad={20}>
-          <Group title="Required" t={t} rows={groups.required} onSetLevel={setLevel} onConfigure={(req, owner) => setConfigureFor({ req, owner })} side={side} />
-          <Group title="Recommended" t={t} rows={groups.recommended} onSetLevel={setLevel} onConfigure={(req, owner) => setConfigureFor({ req, owner })} side={side} />
-          <Group title="Optional" t={t} rows={groups.optional} onSetLevel={setLevel} onConfigure={(req, owner) => setConfigureFor({ req, owner })} side={side} />
-
-          {configureFor ? (
-            <RequirementConfigurePopup
-              t={t}
-              row={configureFor.req}
-              owner={configureFor.owner}
-              candidates={[...platform, ...overlay].filter((r) => r.requirement_key !== configureFor.req.requirement_key)}
-              onClose={() => setConfigureFor(null)}
-              onSave={async (changes) => {
-                try {
-                  await upsert.mutateAsync({
-                    id: configureFor.owner === "agent" ? configureFor.req.id : undefined,
-                    requirement_key: configureFor.req.requirement_key,
-                    label: configureFor.req.label,
-                    category: configureFor.req.category,
-                    required_level: configureFor.req.required_level,
-                    ...changes,
-                  });
-                  setConfigureFor(null);
-                } catch {
-                  // swallow — AINotDeployedBanner above will explain
-                }
-              }}
-            />
-          ) : null}
-
-          {draft ? (
-            <div style={{
-              marginTop: 16, padding: 14,
-              borderRadius: 8, border: `1px dashed ${t.line}`,
-              background: t.surface2, display: "grid", gap: 8,
-            }}>
-              <input
-                value={draft.label}
-                onChange={e => setDraft({ ...draft, label: e.target.value })}
-                placeholder="e.g. Inspection contingency"
-                autoFocus
-                style={inputStyle(t)}
-              />
-              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                <label style={radioLabel(t)}>
-                  <input type="radio" checked={draft.level === "required"} onChange={() => setDraft({ ...draft, level: "required" })} /> Required
-                </label>
-                <label style={radioLabel(t)}>
-                  <input type="radio" checked={draft.level === "recommended"} onChange={() => setDraft({ ...draft, level: "recommended" })} /> Recommended
-                </label>
-                <label style={radioLabel(t)}>
-                  <input type="radio" checked={draft.level === "optional"} onChange={() => setDraft({ ...draft, level: "optional" })} /> Optional
-                </label>
-                <label style={{ ...radioLabel(t), marginLeft: "auto" }}>
-                  <input type="checkbox" checked={draft.isDoc} onChange={e => setDraft({ ...draft, isDoc: e.target.checked })} /> Document / agreement
-                </label>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={addCustom} style={btnPrimary(t)}>Add</button>
-                <button onClick={() => setDraft(null)} style={btnSecondary(t)}>Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => setDraft({ label: "", level: "recommended", isDoc: false })}
-              style={{ ...btnSecondary(t), marginTop: 12 }}
-            >
-              + Add my own
-            </button>
-          )}
-        </Card>
-      )}
-
-      <div style={{ marginTop: 20 }}>
-        <AIPreviewPanel mode="plan" />
-      </div>
-    </div>
-  );
-}
-
-
-/** Render one level-group (Required / Recommended / Optional) as a
- * checkbox list. Each row toggles ON/OFF + (when enabled) shows the
- * row label plus the source/locked chip. */
-function Group({
-  title, t, rows, onSetLevel, onConfigure, side,
-}: {
-  title: string;
-  t: ReturnType<typeof useTheme>["t"];
-  rows: { req: PlaybookRequirement; owner: "platform" | "agent"; enabled: boolean }[];
-  onSetLevel: (req: PlaybookRequirement, owner: "platform" | "agent", level: "required" | "recommended" | "optional" | "disable") => Promise<void>;
-  onConfigure: (req: PlaybookRequirement, owner: "platform" | "agent") => void;
-  side: "buyer" | "seller";
-}) {
-  void side; // reserved for future "applies_when" hints; keeps signature stable
-  if (rows.length === 0) return null;
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{
-        fontSize: 11, fontWeight: 700, color: t.ink3,
-        marginBottom: 8, textTransform: "uppercase",
-      }}>
-        {title}
-      </div>
-      {rows.map(({ req, owner, enabled }) => {
-        const locked = owner === "platform" && !req.can_agent_override;
-        const ownerTone = req.default_owner_type === "ai"
-          ? { bg: t.brandSoft, fg: t.brand }
-          : req.default_owner_type === "shared"
-          ? { bg: t.warnBg, fg: t.warn }
-          : { bg: t.surface2, fg: t.ink3 };
-        const hasBrief = (req.objective_text && req.objective_text.length > 0) || (req.completion_criteria && req.completion_criteria.length > 0);
-        return (
-          <div key={`${owner}-${req.id}`} style={{
-            display: "grid",
-            gridTemplateColumns: "22px minmax(0, 1fr) auto",
-            gap: 10,
-            padding: "10px 0",
-            borderBottom: `1px solid ${t.line}`,
-            alignItems: "center",
-          }}>
-            <input
-              type="checkbox"
-              checked={enabled}
-              disabled={locked}
-              onChange={() => onSetLevel(req, owner, enabled ? "disable" : title.toLowerCase() as "required" | "recommended" | "optional")}
-              style={{ width: 18, height: 18 }}
-            />
-            <div style={{ minWidth: 0, opacity: enabled ? 1 : 0.5 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, lineHeight: 1.25 }}>
-                {req.label}
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
-                <ChipText t={t}>{categoryShort(req.category)}</ChipText>
-                <ChipText t={t} bg={ownerTone.bg} fg={ownerTone.fg}>
-                  {ownerLabel(req.default_owner_type)}
-                </ChipText>
-                {req.link_kind === "docusign" ? (
-                  <ChipText t={t} bg={t.profitBg} fg={t.profit}>✍ DocuSign</ChipText>
-                ) : req.link_url ? (
-                  <ChipText t={t} bg={t.profitBg} fg={t.profit}>🔗 Link set</ChipText>
-                ) : null}
-                {hasBrief ? <ChipText t={t}>AI brief set</ChipText> : null}
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              {locked ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#a06000" }} title="Locked by funding team">
-                  <Icon name="lock" size={10} stroke={2.5} /> Locked
-                </span>
-              ) : owner === "agent" ? (
-                <span style={{ fontSize: 10, fontWeight: 700, color: t.petrol }}>
-                  YOURS
-                </span>
-              ) : null}
-              {!locked ? (
-                <button
-                  type="button"
-                  onClick={() => onConfigure(req, owner)}
-                  style={{
-                    padding: "5px 9px",
-                    borderRadius: 7,
-                    border: `1px solid ${t.line}`,
-                    background: t.surface2,
-                    color: t.ink2,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  Configure
-                </button>
-              ) : null}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function ChipText({ children, t, bg, fg }: { children: React.ReactNode; t: ReturnType<typeof useTheme>["t"]; bg?: string; fg?: string }) {
-  return (
-    <span style={{
-      fontSize: 10, fontWeight: 700,
-      padding: "2px 6px", borderRadius: 4,
-      background: bg ?? t.chip,
-      color: fg ?? t.ink3,
-      letterSpacing: 0.3, textTransform: "uppercase",
-    }}>
-      {children}
-    </span>
-  );
-}
-
-function categoryShort(category: string): string {
-  const map: Record<string, string> = {
-    borrower_info: "Borrower",
-    property_data: "Property",
-    financials: "Financials",
-    credit: "Credit",
-    agreements: "Agreement",
-    insurance: "Insurance",
-    title_and_escrow: "Title",
-    appraisal_and_inspection: "Appraisal",
-    scheduling: "Schedule",
-    compliance: "Compliance",
-    communication: "Comms",
-    ai_internal: "Internal",
-    // Legacy
-    fact: "Borrower",
-    document: "Document",
-    appointment: "Schedule",
-    agreement: "Agreement",
-    task: "Task",
-  };
-  return map[category] ?? category;
-}
-
-function ownerLabel(owner?: string): string {
-  switch (owner) {
-    case "ai": return "AI handles";
-    case "shared": return "Shared";
-    case "funding_locked": return "🔒 Funding";
-    default: return "Human handles";
-  }
-}
-
-
-/** Bucket platform + agent rows into Required / Recommended / Optional
- * groups. Agent rows for the same key as a platform row override the
- * platform's level. */
-function groupByLevel(
-  platform: PlaybookRequirement[],
-  overlay: PlaybookRequirement[],
-): {
-  required: { req: PlaybookRequirement; owner: "platform" | "agent"; enabled: boolean }[];
-  recommended: { req: PlaybookRequirement; owner: "platform" | "agent"; enabled: boolean }[];
-  optional: { req: PlaybookRequirement; owner: "platform" | "agent"; enabled: boolean }[];
-} {
-  const overlayByKey = new Map(overlay.map(r => [r.requirement_key, r]));
-  const required: { req: PlaybookRequirement; owner: "platform" | "agent"; enabled: boolean }[] = [];
-  const recommended: typeof required = [];
-  const optional: typeof required = [];
-
-  // Walk platform rows; overlay supersedes level when present.
-  for (const p of platform) {
-    const o = overlayByKey.get(p.requirement_key);
-    const effective = o ? o.required_level : p.required_level;
-    const enabled = !o || o.required_level !== "optional" || p.required_level === "optional";
-    const row = { req: o ?? p, owner: (o ? "agent" : "platform") as "platform" | "agent", enabled: enabled };
-    if (effective === "required") required.push(row);
-    else if (effective === "recommended") recommended.push(row);
-    else optional.push(row);
-  }
-  // Then any overlay-only rows the agent added themselves.
-  const platKeys = new Set(platform.map(p => p.requirement_key));
-  for (const o of overlay) {
-    if (platKeys.has(o.requirement_key)) continue;
-    const row = { req: o, owner: "agent" as const, enabled: true };
-    if (o.required_level === "required") required.push(row);
-    else if (o.required_level === "recommended") recommended.push(row);
-    else optional.push(row);
-  }
-  return { required, recommended, optional };
-}
-
-
-// ─── FOLLOW-UP ──────────────────────────────────────────────────────
-
-
-/** Plain-English preset rows: wait time → action. No trigger/event
- * picker. Stored as a JSONB blob on the agent's `cadence` playbook
- * rules; the existing cadence engine consumes whatever is there. */
-function FollowUpTab() {
-  const { t } = useTheme();
-  const cadence = useAgentPlaybook("cadence");
-  const patch = usePatchAgentPlaybookRules("cadence");
-
-  type Followup = {
-    new_lead?: Preset[];
-    buyer_agreement?: Preset[];
-    seller_listing?: Preset[];
-    require_approval?: boolean;
-    drafts_to_inbox?: boolean;
-  };
-
-  const initial: Followup = (cadence.data?.rules?.followup as Followup) || {
-    new_lead: [
-      { wait_hours: 24, action: "draft_message" },
-      { wait_hours: 72, action: "create_task" },
-      { wait_hours: 168, action: "mark_lead_cold" },
-    ],
-    buyer_agreement: [
-      { wait_hours: 24, action: "draft_message" },
-      { wait_hours: 72, action: "create_task" },
-    ],
-    seller_listing: [
-      { wait_hours: 48, action: "draft_message" },
-      { wait_hours: 120, action: "mark_stalled" },
-    ],
-    require_approval: true,
-    drafts_to_inbox: true,
-  };
-  const [val, setVal] = useState<Followup>(initial);
-  useEffect(() => {
-    if (cadence.data?.rules?.followup) setVal(cadence.data.rules.followup as Followup);
-  }, [cadence.data?.rules?.followup]);
-
-  async function save() {
-    const next = { ...(cadence.data?.rules || {}), followup: val };
-    try { await patch.mutateAsync(next); } catch { /* banner covers it */ }
-  }
-
-  if (isAINotDeployed(cadence.error)) {
+  if (isAINotDeployed(error)) {
     return <AINotDeployedBanner surface="AI Assistant" />;
   }
 
   return (
-    <Card pad={20}>
-      <BehaviorNote
-        icon="bell"
-        title="Follow-up rules create drafts and reminders, not silent sends"
-        body="The agent AI can draft outreach, create follow-up work, or mark a lead stalled based on these presets. Message sending still routes through your approval unless you explicitly change that behavior."
-        style={{ marginBottom: 18 }}
-      />
-      <PresetSection
-        label="New Lead — if no response after:"
-        rows={val.new_lead || []}
-        onChange={(rows) => setVal({ ...val, new_lead: rows })}
-        t={t}
-      />
-      <PresetSection
-        label="Buyer Agreement — if not signed after:"
-        rows={val.buyer_agreement || []}
-        onChange={(rows) => setVal({ ...val, buyer_agreement: rows })}
-        t={t}
-      />
-      <PresetSection
-        label="Seller Listing — if listing agreement not signed after:"
-        rows={val.seller_listing || []}
-        onChange={(rows) => setVal({ ...val, seller_listing: rows })}
-        t={t}
-      />
-      <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${t.line}` }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: t.ink, marginBottom: 6 }}>
-          <input
-            type="checkbox"
-            checked={val.require_approval !== false}
-            onChange={e => setVal({ ...val, require_approval: e.target.checked })}
-          />
-          Always ask me before sending messages
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: t.ink }}>
-          <input
-            type="checkbox"
-            checked={val.drafts_to_inbox !== false}
-            onChange={e => setVal({ ...val, drafts_to_inbox: e.target.checked })}
-          />
-          Put drafts in AI Inbox
-        </label>
-      </div>
-      <button onClick={save} disabled={patch.isPending} style={{ ...btnPrimary(t), marginTop: 16 }}>
-        {patch.isPending ? "Saving…" : "Save follow-up rules"}
-      </button>
-
-      <div style={{ marginTop: 20 }}>
-        <AIPreviewPanel mode="cadence" />
-      </div>
-    </Card>
-  );
-}
-
-
-type PresetAction = "draft_message" | "create_task" | "mark_stalled" | "mark_lead_cold";
-type Preset = { wait_hours: number; action: PresetAction };
-
-
-function PresetSection({
-  label, rows, onChange, t,
-}: {
-  label: string;
-  rows: Preset[];
-  onChange: (rows: Preset[]) => void;
-  t: ReturnType<typeof useTheme>["t"];
-}) {
-  const HOUR_PRESETS = [12, 24, 48, 72, 120, 168, 336];
-  const ACTION_LABELS: Record<PresetAction, string> = {
-    draft_message: "Draft follow-up message",
-    create_task: "Create call task",
-    mark_stalled: "Mark stalled",
-    mark_lead_cold: "Mark lead cold",
-  };
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: t.ink, marginBottom: 8 }}>
-        {label}
-      </div>
-      {rows.map((row, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-          <select
-            value={row.wait_hours}
-            onChange={e => {
-              const next = [...rows];
-              next[i] = { ...next[i], wait_hours: parseInt(e.target.value, 10) };
-              onChange(next);
-            }}
-            style={{ ...inputStyle(t), width: 140 }}
-          >
-            {HOUR_PRESETS.map(h => (
-              <option key={h} value={h}>{formatHours(h)}</option>
-            ))}
-          </select>
-          <span style={{ color: t.ink3 }}>→</span>
-          <select
-            value={row.action}
-            onChange={e => {
-              const next = [...rows];
-              next[i] = { ...next[i], action: e.target.value as PresetAction };
-              onChange(next);
-            }}
-            style={{ ...inputStyle(t), flex: 1 }}
-          >
-            {Object.entries(ACTION_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </select>
-          <button
-            onClick={() => onChange(rows.filter((_, j) => j !== i))}
-            style={{ ...btnSecondary(t), color: "#c14444" }}
-          >
-            Remove
-          </button>
+    <div style={{
+      border: `1px solid ${t.line}`,
+      borderRadius: 12,
+      background: t.surface,
+      overflow: "hidden",
+    }}>
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        gap: 12, padding: "14px 16px", borderBottom: `1px solid ${t.line}`,
+        background: t.surface2,
+      }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 2 }}>
+            {side === "buyer" ? "Buyer Lead Template" : "Seller Lead Template"}
+          </div>
+          <div style={{ fontSize: 12, color: t.ink3 }}>
+            Applies automatically when the lead is labeled <b>{side === "buyer" ? "Buyer" : "Seller"}</b>.
+          </div>
         </div>
-      ))}
-      <button
-        onClick={() => onChange([...rows, { wait_hours: 24, action: "draft_message" }])}
-        style={{ ...btnSecondary(t), marginTop: 4 }}
-      >
-        + Add another step
-      </button>
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          style={{
+            padding: "7px 12px", fontSize: 12, fontWeight: 700,
+            borderRadius: 7, border: `1px solid ${t.line}`,
+            background: t.surface, color: t.ink2, cursor: "pointer",
+          }}
+        >
+          {expanded ? "Collapse" : "Edit"}
+        </button>
+      </div>
+
+      <div style={{ padding: "10px 16px 14px" }}>
+        {isLoading ? (
+          <div style={{ color: t.ink3, fontSize: 13, padding: 8 }}>Loading…</div>
+        ) : !expanded ? (
+          // Compact preview — first 5 rows with chips.
+          <div>
+            {allRows.slice(0, 5).map(({ req }) => (
+              <div key={req.id} style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                gap: 12, padding: "10px 0", borderBottom: `1px solid ${t.line}`,
+                fontSize: 13,
+              }}>
+                <div>
+                  <div style={{ color: t.ink, fontWeight: 700 }}>{req.label}</div>
+                </div>
+                <ChipText t={t}>{ownerLabel(req.default_owner_type)}</ChipText>
+              </div>
+            ))}
+            {allRows.length > 5 ? (
+              <div style={{ fontSize: 11, color: t.ink3, marginTop: 8 }}>
+                + {allRows.length - 5} more — click Edit to manage.
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div>
+            <Group title="Required" t={t} rows={groups.required} onSetLevel={setLevel} onConfigure={(req, owner) => setConfigureFor({ req, owner })} />
+            <Group title="Recommended" t={t} rows={groups.recommended} onSetLevel={setLevel} onConfigure={(req, owner) => setConfigureFor({ req, owner })} />
+            <Group title="Optional" t={t} rows={groups.optional} onSetLevel={setLevel} onConfigure={(req, owner) => setConfigureFor({ req, owner })} />
+          </div>
+        )}
+      </div>
+
+      {configureFor ? (
+        <RequirementConfigurePopup
+          t={t}
+          row={configureFor.req}
+          owner={configureFor.owner}
+          candidates={[...platform, ...overlay].filter((r) => r.requirement_key !== configureFor.req.requirement_key)}
+          onClose={() => setConfigureFor(null)}
+          onSave={async (changes) => {
+            try {
+              await upsert.mutateAsync({
+                id: configureFor.owner === "agent" ? configureFor.req.id : undefined,
+                requirement_key: configureFor.req.requirement_key,
+                label: configureFor.req.label,
+                category: configureFor.req.category,
+                required_level: configureFor.req.required_level,
+                ...changes,
+              });
+              setConfigureFor(null);
+            } catch {/* banner */}
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
 
-function formatHours(h: number): string {
-  if (h < 24) return `${h} hours`;
-  if (h % 168 === 0) return `${h / 168} weeks`;
-  return `${h / 24} days`;
+// ─── Section 3: Attempt Limit & Working Schedule ─────────────────────
+
+
+function AttemptAndScheduleSection({
+  t, attempts, createTask, markStalled, wh,
+  onAttempts, onCreateTask, onMarkStalled, onWorkingHours,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  attempts: number;
+  createTask: boolean;
+  markStalled: boolean;
+  wh: WorkingHours;
+  onAttempts: (n: number) => void;
+  onCreateTask: (v: boolean) => void;
+  onMarkStalled: (v: boolean) => void;
+  onWorkingHours: (next: WorkingHours) => void;
+}) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 14 }}>
+      <div style={{
+        border: `1px solid ${t.line}`, borderRadius: 12,
+        background: t.surface, padding: 16,
+      }}>
+        <Label t={t}>After how many AI attempts should a task be assigned to you?</Label>
+        <input
+          type="number"
+          min={1}
+          max={8}
+          value={attempts}
+          onChange={(e) => onAttempts(Math.max(1, Math.min(8, parseInt(e.target.value || "3", 10))))}
+          style={{
+            width: "100%", padding: "12px 14px", fontSize: 24, fontWeight: 800,
+            color: t.ink, textAlign: "center",
+            border: `1px solid ${t.line}`, borderRadius: 10, background: t.surface,
+            outline: "none",
+          }}
+        />
+        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+          <ToggleRow t={t} value={createTask} onChange={onCreateTask} title="Create task for me" body="When the limit is reached, drop a task in my AI Inbox." />
+          <ToggleRow t={t} value={markStalled} onChange={onMarkStalled} title="Mark lead stalled" body="Also flag the lead as stalled so it leaves your active list." />
+        </div>
+      </div>
+
+      <div style={{
+        border: `1px solid ${t.line}`, borderRadius: 12,
+        background: t.surface, padding: 16,
+      }}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
+          Working schedule
+        </div>
+        <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, marginBottom: 12 }}>
+          The AI can think and prepare anytime, but only starts new outreach during these hours.
+        </div>
+
+        <div style={{ display: "grid", gap: 10 }}>
+          <FieldBlock label="Timezone" t={t}>
+            <select
+              value={wh.timezone}
+              onChange={(e) => onWorkingHours({ ...wh, timezone: e.target.value })}
+              style={inputStyle(t)}
+            >
+              {TIMEZONE_OPTIONS.map((tz) => (
+                <option key={tz.value} value={tz.value}>{tz.label}</option>
+              ))}
+            </select>
+          </FieldBlock>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <FieldBlock label="Start time" t={t}>
+              <input
+                type="time"
+                value={wh.start_time}
+                onChange={(e) => onWorkingHours({ ...wh, start_time: e.target.value })}
+                style={inputStyle(t)}
+              />
+            </FieldBlock>
+            <FieldBlock label="End time" t={t}>
+              <input
+                type="time"
+                value={wh.end_time}
+                onChange={(e) => onWorkingHours({ ...wh, end_time: e.target.value })}
+                style={inputStyle(t)}
+              />
+            </FieldBlock>
+          </div>
+
+          <FieldBlock label="Working days" t={t}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+              {WEEKDAYS_ORDER.map((d) => {
+                const active = wh.working_days.includes(d);
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() =>
+                      onWorkingHours({
+                        ...wh,
+                        working_days: active
+                          ? wh.working_days.filter((x) => x !== d)
+                          : ([...wh.working_days, d] as WeekdayCode[]),
+                      })
+                    }
+                    style={{
+                      padding: "8px 0", fontSize: 12, fontWeight: 800,
+                      borderRadius: 9,
+                      border: `1px solid ${active ? t.petrol : t.line}`,
+                      background: active ? t.petrolSoft : t.surface,
+                      color: active ? t.petrol : t.ink3,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {d.charAt(0)}
+                  </button>
+                );
+              })}
+            </div>
+          </FieldBlock>
+
+          <FieldBlock label="After-hours rule" t={t}>
+            <select
+              value={wh.after_hours_rule}
+              onChange={(e) =>
+                onWorkingHours({
+                  ...wh,
+                  after_hours_rule: e.target.value as AfterHoursRule,
+                })
+              }
+              style={inputStyle(t)}
+            >
+              {(Object.keys(AFTER_HOURS_LABEL) as AfterHoursRule[]).map((rule) => (
+                <option key={rule} value={rule}>{AFTER_HOURS_LABEL[rule]}</option>
+              ))}
+            </select>
+          </FieldBlock>
+        </div>
+
+        <ScheduleSummary t={t} wh={wh} />
+      </div>
+    </div>
+  );
 }
 
 
-// ─── READY FOR LENDING ──────────────────────────────────────────────
+function ScheduleSummary({ t, wh }: { t: ReturnType<typeof useTheme>["t"]; wh: WorkingHours }) {
+  return (
+    <div style={{
+      marginTop: 14, padding: 12,
+      border: `1px solid ${t.petrol}`, borderRadius: 10,
+      background: t.petrolSoft, color: t.petrol,
+      fontSize: 13, lineHeight: 1.45,
+    }}>
+      <div>
+        <b style={{ color: t.ink }}>Active schedule:</b> {formatScheduleSummary(wh)}
+      </div>
+      <div style={{ marginTop: 4 }}>
+        <b style={{ color: t.ink }}>After hours:</b> {AFTER_HOURS_LABEL[wh.after_hours_rule]}
+      </div>
+    </div>
+  );
+}
 
 
-function ReadyForLendingTab() {
-  const { t } = useTheme();
-  const buyer = useAgentPlaybook("buyer");
+function ToggleRow({
+  t, value, onChange, title, body,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  value: boolean;
+  onChange: (v: boolean) => void;
+  title: string;
+  body: string;
+}) {
+  return (
+    <label style={{
+      display: "flex", justifyContent: "space-between", alignItems: "center",
+      gap: 12, padding: "9px 0",
+      borderTop: `1px solid ${t.line}`,
+      cursor: "pointer",
+    }}>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, marginBottom: 2 }}>{title}</div>
+        <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.4 }}>{body}</div>
+      </div>
+      <input
+        type="checkbox"
+        checked={value}
+        onChange={(e) => onChange(e.target.checked)}
+        style={{ width: 18, height: 18 }}
+      />
+    </label>
+  );
+}
+
+
+// ─── Section 4: Ready for Lending ────────────────────────────────────
+
+
+function ReadyForLendingSection({
+  t, buyer, seller,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  buyer: ReturnType<typeof useAgentPlaybook>;
+  seller: ReturnType<typeof useAgentPlaybook>;
+}) {
+  // Reuse the existing semantics from the previous ReadyForLending tab.
+  void seller; // referenced for future "seller-side hand off" symmetry
   const patch = usePatchAgentPlaybookRules("buyer");
-
-  // Funding-locked items: the platform requirements where can_agent_override=false.
   const lockedItems = (buyer.data?.platform_requirements || []).filter(r => !r.can_agent_override);
-  // Agent-controllable: every overridable platform + agent-overlay row.
   const overridable = (buyer.data?.platform_requirements || [])
     .filter(r => r.can_agent_override)
     .concat(buyer.data?.agent_requirements || []);
-  // Saved gate selection.
+
   const savedGate = useMemo(() => {
     const r = (buyer.data?.rules?.before_handoff as string[]) || [];
     return new Set(r);
@@ -715,13 +832,12 @@ function ReadyForLendingTab() {
 
   function toggle(key: string) {
     const next = new Set(chosen);
-    next.has(key) ? next.delete(key) : next.add(key);
+    if (next.has(key)) next.delete(key); else next.add(key);
     setChosen(next);
   }
-
   async function save() {
     const next = { ...(buyer.data?.rules || {}), before_handoff: Array.from(chosen) };
-    try { await patch.mutateAsync(next); } catch { /* banner covers it */ }
+    try { await patch.mutateAsync(next); } catch {/* banner */}
   }
 
   if (isAINotDeployed(buyer.error)) {
@@ -730,105 +846,233 @@ function ReadyForLendingTab() {
 
   return (
     <div>
-      <Card pad={20}>
-        <BehaviorNote
-          icon="arrowR"
-          title="This is the buyer-to-lending gate"
-          body="When these buyer-side requirements are satisfied, the AI can suggest the handoff. After the agent confirms, the funding-side Lending AI takes over with loan requirements, document verification, underwriter tasks, and calendar due dates."
-          style={{ marginBottom: 16 }}
-        />
-        <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 16px" }}>
-          Before your AI suggests sending a buyer to lending, require:
-        </p>
+      <div style={{ marginBottom: 12 }}>
+        {overridable.map(r => (
+          <label key={r.id} style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "8px 0", borderBottom: `1px solid ${t.line}`,
+            fontSize: 13, color: t.ink, cursor: "pointer",
+          }}>
+            <input
+              type="checkbox"
+              checked={chosen.has(r.requirement_key)}
+              onChange={() => toggle(r.requirement_key)}
+              style={{ width: 18, height: 18 }}
+            />
+            <span style={{ flex: 1 }}>{r.label}</span>
+          </label>
+        ))}
+      </div>
 
-        <div style={{ marginBottom: 18 }}>
-          {overridable.map(r => (
-            <label key={r.id} style={{
-              display: "flex", alignItems: "center", gap: 10,
-              padding: "8px 0", borderBottom: `1px solid ${t.line}`,
-              fontSize: 13, color: t.ink, cursor: "pointer",
-            }}>
-              <input
-                type="checkbox"
-                checked={chosen.has(r.requirement_key)}
-                onChange={() => toggle(r.requirement_key)}
-                style={{ width: 18, height: 18 }}
-              />
-              <span style={{ flex: 1 }}>{r.label}</span>
-            </label>
+      {lockedItems.length > 0 ? (
+        <div style={{
+          padding: 14, borderRadius: 8, background: t.surface2,
+          border: `1px solid ${t.line}`, marginBottom: 12,
+        }}>
+          <div style={{
+            fontSize: 11, fontWeight: 700, color: "#a06000",
+            marginBottom: 6, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5,
+          }}>
+            <Icon name="lock" size={12} stroke={2.5} /> Funding-required items (always)
+          </div>
+          <div style={{ fontSize: 12, color: t.ink3, marginBottom: 8 }}>
+            Locked by the funding team. These cannot be changed here.
+          </div>
+          {lockedItems.map(r => (
+            <div key={r.id} style={{ fontSize: 13, color: t.ink, padding: "4px 0" }}>
+              · {r.label}
+            </div>
           ))}
         </div>
+      ) : null}
 
-        {lockedItems.length > 0 ? (
-          <div style={{
-            padding: 14, borderRadius: 8, background: t.surface2,
-            border: `1px solid ${t.line}`, marginBottom: 16,
-          }}>
-            <div style={{
-              fontSize: 11, fontWeight: 700, color: "#a06000",
-              marginBottom: 6, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5,
-            }}>
-              <Icon name="lock" size={12} stroke={2.5} /> Funding-required items (always)
-            </div>
-            <div style={{ fontSize: 12, color: t.ink3, marginBottom: 8 }}>
-              Locked by the funding team. These cannot be changed here.
-            </div>
-            {lockedItems.map(r => (
-              <div key={r.id} style={{ fontSize: 13, color: t.ink, padding: "4px 0" }}>
-                · {r.label}
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        <button onClick={save} disabled={patch.isPending} style={btnPrimary(t)}>
-          {patch.isPending ? "Saving…" : "Save handoff gates"}
-        </button>
-      </Card>
-
-      <div style={{ marginTop: 20 }}>
-        <AIPreviewPanel mode="handoff" />
-      </div>
+      <button onClick={save} disabled={patch.isPending} style={btnPrimary(t)}>
+        {patch.isPending ? "Saving…" : "Save handoff gates"}
+      </button>
     </div>
   );
 }
 
 
-// ─── MESSAGE STYLE ──────────────────────────────────────────────────
+// ─── Section 5: Knowledge & Voice ────────────────────────────────────
 
 
-function MessageStyleTab() {
-  const { t } = useTheme();
-  const cadence = useAgentPlaybook("cadence");
-  const patch = usePatchAgentPlaybookRules("cadence");
+function KnowledgeAndVoiceSection({
+  t, voice, faqText, onVoice, onFaq,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  voice: VoiceStyle;
+  faqText: string;
+  onVoice: (v: VoiceStyle) => void;
+  onFaq: (text: string) => void;
+}) {
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <KnowledgeUploadCard t={t} faqText={faqText} onFaq={onFaq} />
+      <VoiceCard t={t} voice={voice} onVoice={onVoice} />
+    </div>
+  );
+}
 
-  type Style = {
-    tone?: "professional" | "warm" | "concise" | "friendly";
-    follow_up_style?: "soft" | "balanced" | "direct";
-    signature?: string;
-  };
-  const initial: Style = (cadence.data?.rules?.style as Style) || {};
-  const [s, setS] = useState<Style>(initial);
-  useEffect(() => { setS((cadence.data?.rules?.style as Style) || {}); }, [cadence.data?.rules?.style]);
 
-  async function save() {
-    const next = { ...(cadence.data?.rules || {}), style: s };
-    try { await patch.mutateAsync(next); } catch { /* banner covers it */ }
-  }
+function KnowledgeUploadCard({
+  t, faqText, onFaq,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  faqText: string;
+  onFaq: (text: string) => void;
+}) {
+  const list = useAgentKnowledge();
+  const upload = useUploadAgentKnowledge();
+  const del = useDeleteAgentKnowledge();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [dragOver, setDragOver] = useState(false);
 
-  if (isAINotDeployed(cadence.error)) {
-    return <AINotDeployedBanner surface="AI Assistant" />;
+  async function handleFiles(files: FileList | File[] | null) {
+    if (!files) return;
+    for (const f of Array.from(files)) {
+      try { await upload.mutateAsync(f); } catch {/* banner / row will show failed */}
+    }
   }
 
   return (
-    <Card pad={20}>
-      <BehaviorNote
-        icon="chat"
-        title="This changes how the agent AI talks, not what lending requires"
-        body="Use this for the relationship assistant's tone and signature. Funding-side borrower messaging is controlled in Lending AI Settings."
-        style={{ marginBottom: 18 }}
-      />
-      <Field label="Tone" t={t}>
+    <div style={{
+      border: `1px solid ${t.line}`, borderRadius: 12,
+      background: t.surface, padding: 16,
+    }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 4 }}>Knowledge</div>
+      <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, marginBottom: 12 }}>
+        The AI uses your FAQ text and any uploaded documents as context whenever it speaks for you.
+      </div>
+
+      {/* Dropzone */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          handleFiles(e.dataTransfer.files);
+        }}
+        onClick={() => fileInputRef.current?.click()}
+        role="button"
+        tabIndex={0}
+        style={{
+          display: "grid", placeItems: "center",
+          minHeight: 100, padding: 16,
+          border: `1.5px dashed ${dragOver ? t.petrol : t.line}`,
+          borderRadius: 12,
+          background: dragOver ? t.petrolSoft : t.surface2,
+          textAlign: "center", cursor: "pointer",
+          marginBottom: 12,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, marginBottom: 4 }}>
+            {upload.isPending ? "Uploading…" : "Drop PDFs here or click to browse"}
+          </div>
+          <div style={{ fontSize: 12, color: t.ink3 }}>
+            PDFs and plain text up to ~10MB each.
+          </div>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf,text/plain,text/markdown"
+          multiple
+          style={{ display: "none" }}
+          onChange={(e) => handleFiles(e.target.files)}
+        />
+      </div>
+
+      {/* Document list */}
+      {isAINotDeployed(list.error) ? (
+        <AINotDeployedBanner surface="AI Assistant" />
+      ) : list.data && list.data.length > 0 ? (
+        <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+          {list.data.map((doc) => (
+            <KnowledgeRow key={doc.id} t={t} doc={doc} onDelete={() => del.mutate(doc.id)} />
+          ))}
+        </div>
+      ) : null}
+
+      {/* FAQ paste */}
+      <FieldBlock label="FAQ / talking points" t={t}>
+        <textarea
+          value={faqText}
+          onChange={(e) => onFaq(e.target.value)}
+          placeholder="Paste anything the AI should know — product details, company background, common questions and answers."
+          style={{ ...inputStyle(t), minHeight: 120, resize: "vertical" }}
+        />
+      </FieldBlock>
+    </div>
+  );
+}
+
+
+function KnowledgeRow({
+  t, doc, onDelete,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  doc: AgentKnowledgeDocument;
+  onDelete: () => void;
+}) {
+  const statusTone =
+    doc.status === "ready" ? { bg: t.profitBg, fg: t.profit } :
+    doc.status === "failed" ? { bg: "#fdecea", fg: "#b42318" } :
+    { bg: t.surface2, fg: t.ink3 };
+  return (
+    <div style={{
+      display: "flex", justifyContent: "space-between", alignItems: "center",
+      gap: 10, padding: "8px 11px",
+      borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface2,
+      fontSize: 13,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+        <Icon name="file" size={14} />
+        <span style={{ color: t.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {doc.filename}
+        </span>
+        <span style={{ color: t.ink3, fontSize: 11 }}>
+          {Math.max(1, Math.round(doc.size_bytes / 1024))} KB
+        </span>
+      </div>
+      <ChipText t={t} bg={statusTone.bg} fg={statusTone.fg}>{doc.status}</ChipText>
+      <button
+        type="button"
+        onClick={onDelete}
+        style={{
+          all: "unset", cursor: "pointer",
+          padding: "4px 8px", fontSize: 11, fontWeight: 700,
+          color: t.ink3, borderRadius: 6,
+        }}
+        aria-label={`Delete ${doc.filename}`}
+      >
+        Remove
+      </button>
+    </div>
+  );
+}
+
+
+function VoiceCard({
+  t, voice, onVoice,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  voice: VoiceStyle;
+  onVoice: (v: VoiceStyle) => void;
+}) {
+  return (
+    <div style={{
+      border: `1px solid ${t.line}`, borderRadius: 12,
+      background: t.surface, padding: 16,
+    }}>
+      <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 4 }}>Voice</div>
+      <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, marginBottom: 12 }}>
+        How the AI talks for you. Funding-side borrower messaging is configured in Lending AI Settings.
+      </div>
+
+      <FieldBlock label="Tone" t={t}>
         <ChipRow
           options={[
             { value: "professional", label: "Professional" },
@@ -836,49 +1080,45 @@ function MessageStyleTab() {
             { value: "concise", label: "Concise" },
             { value: "friendly", label: "Friendly" },
           ]}
-          value={s.tone || "professional"}
-          onChange={(v) => setS({ ...s, tone: v as Style["tone"] })}
+          value={voice.tone || "professional"}
+          onChange={(v) => onVoice({ ...voice, tone: v as VoiceStyle["tone"] })}
           t={t}
         />
-      </Field>
-      <Field label="Follow-up style" t={t}>
+      </FieldBlock>
+      <FieldBlock label="Follow-up style" t={t}>
         <ChipRow
           options={[
             { value: "soft", label: "Soft" },
             { value: "balanced", label: "Balanced" },
             { value: "direct", label: "Direct" },
           ]}
-          value={s.follow_up_style || "balanced"}
-          onChange={(v) => setS({ ...s, follow_up_style: v as Style["follow_up_style"] })}
+          value={voice.follow_up_style || "balanced"}
+          onChange={(v) => onVoice({ ...voice, follow_up_style: v as VoiceStyle["follow_up_style"] })}
           t={t}
         />
-      </Field>
-      <Field label="Signature" t={t}>
+      </FieldBlock>
+      <FieldBlock label="Signature" t={t}>
         <input
-          value={s.signature || ""}
-          onChange={e => setS({ ...s, signature: e.target.value })}
+          value={voice.signature || ""}
+          onChange={(e) => onVoice({ ...voice, signature: e.target.value })}
           placeholder="— [Your name], Qualified Commercial"
           style={inputStyle(t)}
         />
-      </Field>
-      <Field label="Example message preview" t={t}>
+      </FieldBlock>
+      <FieldBlock label="Preview" t={t}>
         <div style={{
           padding: 12, borderRadius: 8, background: t.surface2,
-          fontSize: 13, color: t.ink, lineHeight: 1.5,
-          fontStyle: "italic",
+          fontSize: 13, color: t.ink, lineHeight: 1.5, fontStyle: "italic",
         }}>
-          {previewMessage(s)}
+          {previewMessage(voice)}
         </div>
-      </Field>
-      <button onClick={save} disabled={patch.isPending} style={btnPrimary(t)}>
-        {patch.isPending ? "Saving…" : "Save style"}
-      </button>
-    </Card>
+      </FieldBlock>
+    </div>
   );
 }
 
 
-function previewMessage(s: { tone?: string; follow_up_style?: string; signature?: string }): string {
+function previewMessage(s: VoiceStyle): string {
   const tone = s.tone || "professional";
   const fu = s.follow_up_style || "balanced";
   const examples: Record<string, Record<string, string>> = {
@@ -908,93 +1148,19 @@ function previewMessage(s: { tone?: string; follow_up_style?: string; signature?
 }
 
 
-// ─── shared primitives ──────────────────────────────────────────────
-
-
-function AgentAIWorkflowMap() {
-  const { t } = useTheme();
-  const steps = [
-    {
-      icon: "clients",
-      label: "Agent AI",
-      title: "Buyer / seller relationship",
-      body: "Collects intent, agreements, preferences, listing prep, and follow-up context.",
-    },
-    {
-      icon: "check",
-      label: "Handoff gate",
-      title: "Buyer ready for lending",
-      body: "Seller work stops here. Buyer requirements decide whether the AI can suggest the funding handoff.",
-    },
-    {
-      icon: "shieldChk",
-      label: "Lending AI",
-      title: "Funding workflow",
-      body: "Collects loan facts, requests documents, verifies evidence, creates AI tasks, and emits calendar due dates.",
-    },
-  ];
-  return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-      gap: 10,
-      marginBottom: 20,
-    }}>
-      {steps.map((step, i) => (
-        <div key={step.label} style={{
-          border: `1px solid ${i === 1 ? t.petrol : t.line}`,
-          borderRadius: 8,
-          padding: 14,
-          background: i === 1 ? t.petrolSoft : t.surface,
-          minHeight: 132,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: i === 1 ? t.petrol : t.surface2,
-              color: i === 1 ? "#fff" : t.petrol,
-            }}>
-              <Icon name={step.icon} size={15} />
-            </span>
-            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: t.ink3 }}>
-              {step.label}
-            </span>
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 5 }}>
-            {step.title}
-          </div>
-          <div style={{ fontSize: 12, lineHeight: 1.45, color: t.ink3 }}>
-            {step.body}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+// ─── Shared primitives ───────────────────────────────────────────────
 
 
 function BehaviorNote({
-  icon,
-  title,
-  body,
-  style,
+  icon, title, body, style,
 }: {
-  icon: string;
-  title: string;
-  body: string;
+  icon: string; title: string; body: string;
   style?: React.CSSProperties;
 }) {
   const { t } = useTheme();
   return (
     <div style={{
-      display: "flex",
-      gap: 10,
-      padding: 12,
+      display: "flex", gap: 10, padding: 12,
       borderRadius: 8,
       border: `1px solid ${t.line}`,
       background: t.surface2,
@@ -1004,25 +1170,170 @@ function BehaviorNote({
         <Icon name={icon} size={16} />
       </span>
       <div>
-        <div style={{ fontSize: 12, fontWeight: 800, color: t.ink, marginBottom: 3 }}>
-          {title}
-        </div>
-        <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45 }}>
-          {body}
-        </div>
+        <div style={{ fontSize: 12, fontWeight: 800, color: t.ink, marginBottom: 3 }}>{title}</div>
+        <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45 }}>{body}</div>
       </div>
     </div>
   );
 }
 
 
-function Field({ label, children, t }: { label: string; children: React.ReactNode; t: ReturnType<typeof useTheme>["t"] }) {
+function Group({
+  title, t, rows, onSetLevel, onConfigure,
+}: {
+  title: string;
+  t: ReturnType<typeof useTheme>["t"];
+  rows: { req: PlaybookRequirement; owner: "platform" | "agent"; enabled: boolean }[];
+  onSetLevel: (req: PlaybookRequirement, owner: "platform" | "agent", level: "required" | "recommended" | "optional" | "disable") => Promise<void>;
+  onConfigure: (req: PlaybookRequirement, owner: "platform" | "agent") => void;
+}) {
+  if (rows.length === 0) return null;
   return (
-    <div style={{ marginBottom: 16 }}>
+    <div style={{ marginBottom: 12 }}>
       <div style={{
         fontSize: 11, fontWeight: 700, color: t.ink3,
         marginBottom: 6, textTransform: "uppercase",
-      }}>{label}</div>
+      }}>
+        {title}
+      </div>
+      {rows.map(({ req, owner, enabled }) => {
+        const locked = owner === "platform" && !req.can_agent_override;
+        const ownerTone = req.default_owner_type === "ai"
+          ? { bg: t.brandSoft, fg: t.brand }
+          : req.default_owner_type === "shared"
+          ? { bg: t.warnBg, fg: t.warn }
+          : { bg: t.surface2, fg: t.ink3 };
+        return (
+          <div key={`${owner}-${req.id}`} style={{
+            display: "grid",
+            gridTemplateColumns: "22px minmax(0, 1fr) auto",
+            gap: 10, padding: "8px 0",
+            borderBottom: `1px solid ${t.line}`, alignItems: "center",
+          }}>
+            <input
+              type="checkbox"
+              checked={enabled}
+              disabled={locked}
+              onChange={() => onSetLevel(req, owner, enabled ? "disable" : title.toLowerCase() as "required" | "recommended" | "optional")}
+              style={{ width: 18, height: 18 }}
+            />
+            <div style={{ minWidth: 0, opacity: enabled ? 1 : 0.5 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, lineHeight: 1.25 }}>
+                {req.label}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                <ChipText t={t} bg={ownerTone.bg} fg={ownerTone.fg}>
+                  {ownerLabel(req.default_owner_type)}
+                </ChipText>
+                {req.link_kind === "docusign" ? (
+                  <ChipText t={t} bg={t.profitBg} fg={t.profit}>DocuSign</ChipText>
+                ) : null}
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {locked ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#a06000" }}>
+                  <Icon name="lock" size={10} stroke={2.5} /> Locked
+                </span>
+              ) : !locked ? (
+                <button
+                  type="button"
+                  onClick={() => onConfigure(req, owner)}
+                  style={{
+                    padding: "5px 9px", borderRadius: 7,
+                    border: `1px solid ${t.line}`,
+                    background: t.surface2, color: t.ink2,
+                    fontSize: 11, fontWeight: 700, cursor: "pointer",
+                  }}
+                >
+                  Configure
+                </button>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
+function ChipText({ children, t, bg, fg }: { children: React.ReactNode; t: ReturnType<typeof useTheme>["t"]; bg?: string; fg?: string }) {
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700,
+      padding: "2px 6px", borderRadius: 4,
+      background: bg ?? t.chip, color: fg ?? t.ink3,
+      letterSpacing: 0.3, textTransform: "uppercase",
+    }}>
+      {children}
+    </span>
+  );
+}
+
+
+function ownerLabel(owner?: string): string {
+  switch (owner) {
+    case "ai": return "AI handles";
+    case "shared": return "Shared";
+    case "funding_locked": return "Locked";
+    default: return "Human handles";
+  }
+}
+
+
+function groupByLevel(
+  platform: PlaybookRequirement[],
+  overlay: PlaybookRequirement[],
+): {
+  required: { req: PlaybookRequirement; owner: "platform" | "agent"; enabled: boolean }[];
+  recommended: { req: PlaybookRequirement; owner: "platform" | "agent"; enabled: boolean }[];
+  optional: { req: PlaybookRequirement; owner: "platform" | "agent"; enabled: boolean }[];
+} {
+  const overlayByKey = new Map(overlay.map(r => [r.requirement_key, r]));
+  const required: { req: PlaybookRequirement; owner: "platform" | "agent"; enabled: boolean }[] = [];
+  const recommended: typeof required = [];
+  const optional: typeof required = [];
+
+  for (const p of platform) {
+    const o = overlayByKey.get(p.requirement_key);
+    const effective = o ? o.required_level : p.required_level;
+    const enabled = !o || o.required_level !== "optional" || p.required_level === "optional";
+    const row = { req: o ?? p, owner: (o ? "agent" : "platform") as "platform" | "agent", enabled };
+    if (effective === "required") required.push(row);
+    else if (effective === "recommended") recommended.push(row);
+    else optional.push(row);
+  }
+  const platKeys = new Set(platform.map(p => p.requirement_key));
+  for (const o of overlay) {
+    if (platKeys.has(o.requirement_key)) continue;
+    const row = { req: o, owner: "agent" as const, enabled: true };
+    if (o.required_level === "required") required.push(row);
+    else if (o.required_level === "recommended") recommended.push(row);
+    else optional.push(row);
+  }
+  return { required, recommended, optional };
+}
+
+
+function FieldBlock({ label, children, t }: { label: string; children: React.ReactNode; t: ReturnType<typeof useTheme>["t"] }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <span style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+
+function Label({ children, t }: { children: React.ReactNode; t: ReturnType<typeof useTheme>["t"] }) {
+  return (
+    <div style={{
+      fontSize: 12, color: t.ink2,
+      marginBottom: 8, lineHeight: 1.4,
+    }}>
       {children}
     </div>
   );
@@ -1042,6 +1353,7 @@ function ChipRow({
       {options.map(o => (
         <button
           key={o.value}
+          type="button"
           onClick={() => onChange(o.value)}
           style={{
             padding: "6px 14px", fontSize: 13, fontWeight: 600,
@@ -1061,45 +1373,25 @@ function ChipRow({
 
 function inputStyle(t: ReturnType<typeof useTheme>["t"]) {
   return {
-    padding: 8, fontSize: 13, fontFamily: "inherit",
-    borderRadius: 6, border: `1px solid ${t.line}`,
+    padding: "10px 12px", fontSize: 13, fontFamily: "inherit",
+    borderRadius: 8, border: `1px solid ${t.line}`,
     background: t.surface, color: t.ink, width: "100%",
-  } as const;
-}
-
-
-function radioLabel(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    fontSize: 13, color: t.ink, display: "flex",
-    alignItems: "center", gap: 6, cursor: "pointer",
+    outline: "none",
   } as const;
 }
 
 
 function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
   return {
-    padding: "8px 14px", fontSize: 13, fontWeight: 600,
+    padding: "8px 14px", fontSize: 13, fontWeight: 700,
     borderRadius: 6, border: `1px solid ${t.line}`,
     background: t.petrol, color: "#fff", cursor: "pointer",
   } as const;
 }
 
 
-function btnSecondary(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    padding: "8px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.surface, color: t.ink, cursor: "pointer",
-  } as const;
-}
+// ─── Per-requirement configuration popup (kept from prior version) ───
 
-// ─── Per-requirement configuration popup ─────────────────────────────
-//
-// Opens when the operator clicks "Configure" on a row. Exposes the
-// new Deal Secretary fields (owner / DocuSign link / AI objective /
-// cadence) so the agent can tell the AI exactly what to do for this
-// requirement on every future deal. Saves via the upsert hook —
-// platform rows fork to an agent-overlay row on first edit.
 
 function RequirementConfigurePopup({
   t, row, owner, candidates, onClose, onSave,
@@ -1107,7 +1399,6 @@ function RequirementConfigurePopup({
   t: ReturnType<typeof useTheme>["t"];
   row: PlaybookRequirement;
   owner: "platform" | "agent";
-  /** Other rows on the same playbook — used for depends_on + parent_key pickers. */
   candidates: PlaybookRequirement[];
   onClose: () => void;
   onSave: (changes: Partial<{
@@ -1123,11 +1414,6 @@ function RequirementConfigurePopup({
     parent_key: string | null;
   }>) => Promise<void>;
 }) {
-  // Per the user direction: per-task config is just owner + what + done.
-  // Cadence hours and channel picker were dropped — the system itself
-  // sequences work via a single timeline so the user doesn't have to
-  // hand-tune times. Channels are inferred at dispatch time from the
-  // borrower's contact prefs + consent state.
   const [ownerType, setOwnerType] = useState<"human" | "ai" | "shared">(
     (row.default_owner_type as "human" | "ai" | "shared") ?? "human",
   );
@@ -1138,7 +1424,6 @@ function RequirementConfigurePopup({
   );
   const [objective, setObjective] = useState<string>(row.objective_text ?? "");
   const [completion, setCompletion] = useState<string>(row.completion_criteria ?? "");
-  const [dependsOn, setDependsOn] = useState<string[]>(row.depends_on ?? []);
   const [parentKey, setParentKey] = useState<string>(row.parent_key ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -1152,12 +1437,9 @@ function RequirementConfigurePopup({
         link_kind: linkKind || null,
         objective_text: objective,
         completion_criteria: completion,
-        depends_on: dependsOn,
         parent_key: parentKey || null,
       });
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
   return (
@@ -1184,7 +1466,7 @@ function RequirementConfigurePopup({
       >
         <div style={{ padding: "14px 16px", borderBottom: `1px solid ${t.line}` }}>
           <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
-            Configure baseline
+            Configure
           </div>
           <div style={{ marginTop: 2, fontSize: 17, fontWeight: 900, color: t.ink }}>
             {row.label}
@@ -1208,8 +1490,7 @@ function RequirementConfigurePopup({
                   type="button"
                   onClick={() => setOwnerType(opt)}
                   style={{
-                    padding: "9px 10px",
-                    borderRadius: 9,
+                    padding: "9px 10px", borderRadius: 9,
                     border: `1px solid ${ownerType === opt ? t.brand : t.line}`,
                     background: ownerType === opt ? t.brandSoft : t.surface2,
                     color: ownerType === opt ? t.brand : t.ink2,
@@ -1220,9 +1501,6 @@ function RequirementConfigurePopup({
                   {opt === "human" ? "Human handles" : opt === "ai" ? "AI handles" : "Shared"}
                 </button>
               ))}
-            </div>
-            <div style={{ marginTop: 6, fontSize: 11, color: t.ink3 }}>
-              When AI handles: it will reach out to the client on your behalf for every new lead with this requirement.
             </div>
           </div>
 
@@ -1244,9 +1522,6 @@ function RequirementConfigurePopup({
             />
           </FieldBlock>
 
-          {/* Timeline + grouping pickers (alembic 0040). Determines
-              where this task lands in Next Up / In Progress / Upcoming
-              on the AI Secretary tab. */}
           <FieldBlock label="Group under (optional)" t={t}>
             <select
               value={parentKey}
@@ -1258,15 +1533,6 @@ function RequirementConfigurePopup({
                 <option key={c.requirement_key} value={c.requirement_key}>{c.label}</option>
               ))}
             </select>
-          </FieldBlock>
-
-          <FieldBlock label="Depends on (must finish first)" t={t}>
-            <DependsOnPicker
-              t={t}
-              candidates={candidates.filter((c) => c.requirement_key !== parentKey)}
-              value={dependsOn}
-              onChange={setDependsOn}
-            />
           </FieldBlock>
 
           <div>
@@ -1305,151 +1571,25 @@ function RequirementConfigurePopup({
           display: "flex", justifyContent: "flex-end", gap: 8,
           padding: "12px 14px", borderTop: `1px solid ${t.line}`,
         }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: "8px 14px", borderRadius: 9,
-              background: t.surface2, color: t.ink2,
-              border: `1px solid ${t.line}`, cursor: "pointer",
-              fontSize: 12, fontWeight: 800, fontFamily: "inherit",
-            }}
-          >
+          <button type="button" onClick={onClose} style={{
+            padding: "8px 14px", borderRadius: 9,
+            background: t.surface2, color: t.ink2,
+            border: `1px solid ${t.line}`, cursor: "pointer",
+            fontSize: 12, fontWeight: 800, fontFamily: "inherit",
+          }}>
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving}
-            style={{
-              padding: "8px 14px", borderRadius: 9,
-              background: t.brand, color: t.inverse,
-              border: "none",
-              cursor: saving ? "wait" : "pointer",
-              fontSize: 12, fontWeight: 800, fontFamily: "inherit",
-              opacity: saving ? 0.7 : 1,
-            }}
-          >
+          <button type="button" onClick={save} disabled={saving} style={{
+            padding: "8px 14px", borderRadius: 9,
+            background: t.brand, color: t.inverse, border: "none",
+            cursor: saving ? "wait" : "pointer",
+            fontSize: 12, fontWeight: 800, fontFamily: "inherit",
+            opacity: saving ? 0.7 : 1,
+          }}>
             {saving ? "Saving…" : "Save"}
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function FieldBlock({ label, children, t }: { label: string; children: React.ReactNode; t: ReturnType<typeof useTheme>["t"] }) {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <span style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-// ─── DependsOnPicker — chip-style multi-select for prerequisite tasks
-//
-// User adds dependency rows by typing in a search box (filters
-// candidates). Selected deps render as removable chips above the
-// box. Used inside RequirementConfigurePopup to set the
-// requirement's depends_on array.
-
-function DependsOnPicker({
-  t, candidates, value, onChange,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  candidates: PlaybookRequirement[];
-  value: string[];
-  onChange: (next: string[]) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const labelByKey = useMemo(() => {
-    const m = new Map<string, string>();
-    candidates.forEach((c) => m.set(c.requirement_key, c.label));
-    return m;
-  }, [candidates]);
-  const available = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return candidates
-      .filter((c) => !value.includes(c.requirement_key))
-      .filter((c) => !q || c.label.toLowerCase().includes(q) || c.requirement_key.toLowerCase().includes(q))
-      .slice(0, 6);
-  }, [candidates, value, query]);
-
-  return (
-    <div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 6 }}>
-        {value.length === 0 ? (
-          <span style={{ fontSize: 11, color: t.ink3 }}>No dependencies — this task is ready on day one.</span>
-        ) : null}
-        {value.map((key) => (
-          <span
-            key={key}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 5,
-              padding: "3px 8px", borderRadius: 999,
-              background: t.brandSoft, color: t.brand,
-              fontSize: 11, fontWeight: 800,
-            }}
-          >
-            {labelByKey.get(key) ?? key}
-            <button
-              type="button"
-              onClick={() => onChange(value.filter((k) => k !== key))}
-              style={{
-                all: "unset", cursor: "pointer",
-                width: 14, height: 14, borderRadius: 999,
-                background: t.surface, color: t.brand,
-                display: "inline-grid", placeItems: "center",
-                fontSize: 10, fontWeight: 900, lineHeight: 1,
-              }}
-              aria-label={`Remove ${key}`}
-            >
-              ×
-            </button>
-          </span>
-        ))}
-      </div>
-      <input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Type to search and add a prerequisite…"
-        style={inputStyle(t)}
-      />
-      {query.trim() ? (
-        <div style={{
-          marginTop: 6,
-          border: `1px solid ${t.line}`,
-          borderRadius: 8,
-          background: t.surface,
-          maxHeight: 200, overflow: "auto",
-        }}>
-          {available.length === 0 ? (
-            <div style={{ padding: 9, fontSize: 11, color: t.ink3 }}>No matches.</div>
-          ) : available.map((c) => (
-            <button
-              key={c.requirement_key}
-              type="button"
-              onClick={() => {
-                onChange([...value, c.requirement_key]);
-                setQuery("");
-              }}
-              style={{
-                all: "unset", cursor: "pointer",
-                display: "block", width: "calc(100% - 24px)",
-                padding: "8px 12px",
-                fontSize: 12, color: t.ink,
-                borderBottom: `1px solid ${t.line}`,
-              }}
-            >
-              <div style={{ fontWeight: 700 }}>{c.label}</div>
-              <div style={{ fontSize: 10, color: t.ink3, marginTop: 2 }}>{c.requirement_key}</div>
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
