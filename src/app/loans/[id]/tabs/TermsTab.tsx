@@ -6,9 +6,12 @@ import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { QC_FMT } from "@/components/design-system/tokens";
-import { useRecalc, useUpdateLoan } from "@/hooks/useApi";
+import { useRecalc, useUpdateLoan, useDealWorkspace } from "@/hooks/useApi";
 import { LoanPurpose, LoanPurposeOptions } from "@/lib/enums.generated";
 import type { Loan } from "@/lib/types";
+// LoanScenarioSimulator lives natively on the Criteria tab now — moved
+// out of the AI Workspace tab where it had no business being.
+import { LoanScenarioSimulator } from "../components/LoanScenarioSimulator";
 
 type Draft = {
   amount: string;
@@ -30,6 +33,10 @@ export function TermsTab({ loan }: { loan: Loan }) {
   const { t } = useTheme();
   const recalc = useRecalc();
   const updateLoan = useUpdateLoan();
+  // Pull saved scenarios for the simulator block at the bottom. The hook
+  // is cached per-loan, so this is shared with any other tab that also
+  // reads workspace state — no double-fetch penalty.
+  const { data: workspace } = useDealWorkspace(loan.id);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => fromLoan(loan));
@@ -315,6 +322,13 @@ export function TermsTab({ loan }: { loan: Loan }) {
           {saved ? <div style={{ marginTop: 12, color: t.profit, fontSize: 12, fontWeight: 850 }}>Criteria saved to loan file.</div> : null}
         </WorkbenchPanel>
       </div>
+
+      {/* Scenario simulator — moved here from the old AI Workspace tab.
+          Sits at the bottom of Criteria so operators can sweep what-if
+          scenarios against the saved baseline above. */}
+      {workspace?.scenarios ? (
+        <LoanScenarioSimulator loan={loan} scenarios={workspace.scenarios} />
+      ) : null}
     </div>
   );
 }
