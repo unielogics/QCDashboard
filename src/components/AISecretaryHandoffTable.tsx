@@ -117,40 +117,51 @@ export function AISecretaryHandoffTable({
     [view, placedKeys],
   );
 
-  // When a new task appears (e.g. dragged from the queue and just got
-  // assigned), auto-append it to the last empty row OR add a new row
-  // for it so it shows up immediately.
+  // Single absorber effect that keeps the table consistent:
+  //   1) place any orphan tasks (just created / just unplaced) into a
+  //      trailing empty row, owner inferred from server CRS state;
+  //   2) guarantee exactly one trailing empty row so the operator
+  //      always has a fresh drop target — no manual "+ Add row" needed.
   useEffect(() => {
-    if (orphanTasks.length === 0) return;
-    const next = [...rows];
+    let changed = false;
+    let next = [...rows];
     for (const orphan of orphanTasks) {
-      const ownerCol: "ai" | "human" =
-        orphan.owner_type === "ai" ? "ai" : "human";
-      // Find a trailing empty row to absorb the orphan first.
-      const lastEmpty = next.findIndex(
+      const ownerCol: "ai" | "human" = orphan.owner_type === "ai" ? "ai" : "human";
+      const lastEmptyIdx = next.findIndex(
         (r) => r.taskKeys.length === 0 && (r.owner === null || r.owner === ownerCol),
       );
-      if (lastEmpty !== -1) {
-        next[lastEmpty] = {
-          ...next[lastEmpty],
+      if (lastEmptyIdx !== -1) {
+        next[lastEmptyIdx] = {
+          ...next[lastEmptyIdx],
           owner: ownerCol,
           taskKeys: [orphan.requirement_key],
         };
       } else {
         next.push({
-          id: `row_${next.length + 1}`,
+          id: `row_${next.length + 1}_${Date.now().toString(36)}`,
           owner: ownerCol,
           taskKeys: [orphan.requirement_key],
         });
       }
+      changed = true;
     }
-    // Always keep one trailing empty row for "Add work" affordance.
+    // Trim trailing empty rows down to exactly one. We never want a
+    // stack of empties and we always want exactly one open slot.
+    while (next.length >= 2 && next[next.length - 1].taskKeys.length === 0 && next[next.length - 2].taskKeys.length === 0) {
+      next = next.slice(0, -1);
+      changed = true;
+    }
     if (next.length === 0 || next[next.length - 1].taskKeys.length > 0) {
-      next.push({ id: `row_${next.length + 1}`, owner: null, taskKeys: [] });
+      next.push({
+        id: `row_${next.length + 1}_${Date.now().toString(36)}`,
+        owner: null,
+        taskKeys: [],
+      });
+      changed = true;
     }
-    setRows(next);
+    if (changed) setRows(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orphanTasks.length]);
+  }, [orphanTasks.length, rows.length, rows.map((r) => r.taskKeys.length).join(",")]);
 
   const removeKeyFromRow = (rowId: string, key: string) => {
     const next = rows.map((r) =>
@@ -163,13 +174,6 @@ export function AISecretaryHandoffTable({
 
   const deleteRow = (rowId: string) => {
     setRows(rows.filter((r) => r.id !== rowId));
-  };
-
-  const addRow = () => {
-    setRows([
-      ...rows,
-      { id: `row_${Date.now().toString(36)}`, owner: null, taskKeys: [] },
-    ]);
   };
 
   return (
@@ -191,25 +195,6 @@ export function AISecretaryHandoffTable({
           onUnplaceTask={onUnplaceTask}
         />
       ))}
-      <button
-        type="button"
-        onClick={addRow}
-        style={{
-          marginTop: 4,
-          padding: "8px 12px",
-          borderRadius: 9,
-          background: t.surface2,
-          color: t.ink3,
-          border: `1px dashed ${t.line}`,
-          fontSize: 12,
-          fontWeight: 800,
-          cursor: "pointer",
-          fontFamily: "inherit",
-          alignSelf: "flex-start",
-        }}
-      >
-        + Add row
-      </button>
     </div>
   );
 }
@@ -291,7 +276,12 @@ function HandoffCell({
 }) {
   const { t } = useTheme();
   const dropId = `handoff:${rowId}:${owner}`;
-  const drop = useDroppable({ id: dropId, disabled: !active });
+  // Every cell is a drop target — including the "owned by the other
+  // party" column. Dropping there flips the whole row's owner (the
+  // "one party per row" rule means a cross-column drop is an explicit
+  // hand-off, not a split), which the parent's handler handles.
+  const drop = useDroppable({ id: dropId });
+  void active;
   const accent = owner === "ai" ? t.brand : t.ink2;
   const tint = owner === "ai" ? t.brandSoft : t.surface2;
   const borderColor = drop.isOver
@@ -303,24 +293,30 @@ function HandoffCell({
         : t.line;
   return (
     <div
-      ref={active ? drop.setNodeRef : undefined}
+      ref={drop.setNodeRef}
       style={{
         minHeight: 56,
         borderRadius: 10,
         border: `1.5px ${drop.isOver ? "dashed" : "solid"} ${borderColor}`,
-        background: ownedByOther ? "transparent" : drop.isOver ? tint : t.surface,
-        opacity: ownedByOther ? 0.35 : 1,
+        background: ownedByOther
+          ? drop.isOver ? tint : "transparent"
+          : drop.isOver ? tint : t.surface,
+        opacity: ownedByOther && !drop.isOver ? 0.4 : 1,
         padding: 8,
         display: "flex",
         flexDirection: "column",
         gap: 6,
         position: "relative",
-        transition: "background 0.12s, border-color 0.12s",
+        transition: "background 0.12s, border-color 0.12s, opacity 0.12s",
       }}
     >
-      {ownedByOther ? (
+      {ownedByOther && !drop.isOver ? (
         <span style={{ position: "absolute", top: 6, right: 8, fontSize: 9, fontWeight: 800, color: t.ink3, letterSpacing: 0.5 }}>
           —
+        </span>
+      ) : ownedByOther && drop.isOver ? (
+        <span style={{ fontSize: 10.5, color: accent, fontWeight: 800, fontStyle: "italic" }}>
+          Drop to flip row → {owner === "ai" ? "AI handles" : "Human handles"}
         </span>
       ) : taskKeys.length === 0 ? (
         <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700, fontStyle: "italic" }}>

@@ -388,6 +388,15 @@ function SecretaryConsole({
       // Resolve the dragged task. Either it already maps to a CRS row,
       // or we need to spin up a custom task first.
       const placeIntoRow = (key: string, label?: string) => {
+        // "One party per row" → if the target row was previously owned
+        // by the OTHER column, flipping it carries every chip already
+        // in that row across as well. Capture those siblings before we
+        // overwrite the row so we can flip their server-side owner.
+        const target = handoffRows.find((r) => r.id === rowId);
+        const targetWasOtherOwner = target?.owner && target.owner !== owner;
+        const siblingsToFlip = targetWasOtherOwner
+          ? (target?.taskKeys ?? []).filter((k) => k !== key)
+          : [];
         const next = handoffRows.map((r) =>
           r.id === rowId
             ? { ...r, owner, taskKeys: r.taskKeys.includes(key) ? r.taskKeys : [...r.taskKeys.filter((x) => x !== key), key] }
@@ -396,7 +405,16 @@ function SecretaryConsole({
         setHandoffRows(next);
         if (owner === "ai") onAssign(key);
         else onUnassign(key);
-        setFlash(`Placed "${label ?? key}" in row ${rowId.replace("row_", "")} (${owner.toUpperCase()}).`);
+        for (const sib of siblingsToFlip) {
+          if (owner === "ai") onAssign(sib);
+          else onUnassign(sib);
+        }
+        const rowLabel = rowId.replace(/^row_/, "").split("_")[0];
+        if (siblingsToFlip.length > 0) {
+          setFlash(`Row ${rowLabel} flipped → ${owner.toUpperCase()} (${siblingsToFlip.length + 1} task${siblingsToFlip.length ? "s" : ""}).`);
+        } else {
+          setFlash(`Placed "${label ?? key}" in row ${rowLabel} (${owner.toUpperCase()}).`);
+        }
         window.setTimeout(() => setFlash(null), 2400);
       };
 
