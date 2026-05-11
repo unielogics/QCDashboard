@@ -482,7 +482,11 @@ export function SmartIntakeModal({
       setDocOverrides({ skipNames: new Set(), dueOverrides: {} });
       setCustomDocs([]);
       onClose();
-      router.push(`/loans/${result.loan_id}/control-room?just-created=1`);
+      // Land the operator on the AI Secretary tab so they can confirm
+      // the playbook-derived baseline before the AI starts its 30-min
+      // first-touch tick. The `tab=workspace` query param is honored
+      // once at mount (loans/[id]/page.tsx).
+      router.push(`/loans/${result.loan_id}?tab=workspace&just-created=1`);
     } catch (e: unknown) {
       setSubmitErr(e instanceof Error ? e.message : "Failed to create deal");
     }

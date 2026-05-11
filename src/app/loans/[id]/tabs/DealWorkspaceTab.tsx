@@ -56,6 +56,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { AISecretaryTimeline } from "@/components/AISecretaryTimeline";
+import { useAIQuestions, useAnswerAIQuestion, useCreateCustomTask, type DSAIQuestion } from "@/hooks/useApi";
 import { getCriteriaItems } from "../fileReadiness";
 import { InstructionStrip } from "../components/InstructionStrip";
 import { DealChatThread } from "../components/DealChatThread";
@@ -75,7 +76,10 @@ export function DealWorkspaceTab({ loanId, onOpenTab }: { loanId: string; onOpen
   const updateAssignment = useUpdateAssignment(loanId);
   const updateFileSettings = useUpdateFileSettings(loanId);
   const bootstrap = useBootstrapDealSecretary(loanId);
-  const [openPanel, setOpenPanel] = useState<"instructions" | "chat" | null>(null);
+  const [openPanel, setOpenPanel] = useState<"instructions" | "chat" | "ai-questions" | null>(null);
+  // AI clarifying questions — Phase A empty stub; Phase B populates.
+  const { data: aiQuestions = [] } = useAIQuestions(loanId);
+  const answerAIQuestion = useAnswerAIQuestion(loanId);
 
   useEffect(() => {
     if (!loan) return;
@@ -169,10 +173,12 @@ export function DealWorkspaceTab({ loanId, onOpenTab }: { loanId: string; onOpen
 
       {workspace && !workspaceLoading ? (
         <Card pad={12}>
-          {/* Merged Instructions + Loan Chat in one tabbed container.
-              Chat is the default since that's where the most interactive
-              work happens. Toggle between them with no expand/collapse. */}
-          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 10 }}>
+          {/* Merged Instructions + Loan Chat + AI Questions in one
+              tabbed container. Chat is the default since that's where
+              the most interactive work happens. AI Questions is where
+              the AI asks the operator for context before contacting
+              the borrower (Phase B populates; for now an empty state). */}
+          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
             <TogglePanelButton
               active={(openPanel ?? "chat") === "chat"}
               icon="chat"
@@ -185,9 +191,17 @@ export function DealWorkspaceTab({ loanId, onOpenTab }: { loanId: string; onOpen
               label="Instructions"
               onClick={() => setOpenPanel("instructions")}
             />
+            <TogglePanelButton
+              active={openPanel === "ai-questions"}
+              icon="alert"
+              label={`AI questions${aiQuestions.length ? ` · ${aiQuestions.length}` : ""}`}
+              onClick={() => setOpenPanel("ai-questions")}
+            />
             <span style={{ marginLeft: "auto", color: t.ink3, fontSize: 11, fontWeight: 700 }}>
               {openPanel === "instructions"
                 ? "Edit standing rules the AI honors on this file"
+                : openPanel === "ai-questions"
+                ? "Answer what the AI doesn't know before it engages the client"
                 : "Talk to the file AI"}
             </span>
           </div>
@@ -196,6 +210,14 @@ export function DealWorkspaceTab({ loanId, onOpenTab }: { loanId: string; onOpen
               loanId={loanId}
               instructions={workspace.instructions}
               canEdit={isInternal}
+            />
+          ) : openPanel === "ai-questions" ? (
+            <AIQuestionsPanel
+              loanId={loanId}
+              questions={aiQuestions}
+              onAnswer={async (id, answer) => {
+                await answerAIQuestion.mutateAsync({ question_id: id, answer });
+              }}
             />
           ) : (
             <>
@@ -249,6 +271,7 @@ function SecretaryConsole({
   onOpenTab?: (tab: string, targetId?: string) => void;
 }) {
   const { t } = useTheme();
+  const createCustomTask = useCreateCustomTask(loan.id);
   const send = useSendDealChat();
   const [filter, setFilter] = useState<"borrower" | "required" | "human" | "all">("borrower");
   const [busyDraft, setBusyDraft] = useState<string | null>(null);
@@ -422,6 +445,9 @@ function SecretaryConsole({
             onAssign={onAssign}
             onUnassign={onUnassign}
             onOpenAssignment={onOpenAssignment}
+            onCreateCustomTask={async (input) => {
+              await createCustomTask.mutateAsync(input);
+            }}
           />
         </div>
 
@@ -888,4 +914,143 @@ function buildDraftPrompt(
     `Due/overdue queue: ${conditionLines}.`,
     `Calculation warnings: ${warningLines}.`,
   ].join("\n");
+}
+
+// ─── AIQuestionsPanel ──────────────────────────────────────────────
+//
+// Third mode in the merged Loan Chat container. Renders the AI's
+// open questions as chat bubbles; operator types an answer per
+// question. Empty state explains what the panel is for.
+
+function AIQuestionsPanel({
+  loanId: _loanId,
+  questions,
+  onAnswer,
+}: {
+  loanId: string;
+  questions: DSAIQuestion[];
+  onAnswer: (questionId: string, answer: string) => Promise<void>;
+}) {
+  const { t } = useTheme();
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [sending, setSending] = useState<string | null>(null);
+
+  if (questions.length === 0) {
+    return (
+      <div style={{
+        padding: "24px 18px",
+        textAlign: "center",
+        color: t.ink3,
+        fontSize: 13,
+        lineHeight: 1.55,
+      }}>
+        <div style={{ fontSize: 32, marginBottom: 10 }} aria-hidden>💭</div>
+        <div style={{ fontWeight: 800, color: t.ink2, marginBottom: 4 }}>
+          No questions waiting for you
+        </div>
+        <div style={{ maxWidth: 420, margin: "0 auto" }}>
+          When the AI Secretary spots something unclear about how to engage
+          this borrower — tone, timing, a specific item to mention — it will
+          ask here before sending anything. Your answers shape every
+          outreach message from then on.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {questions.map((q) => {
+        const answered = !!q.answered_at;
+        const draft = answers[q.id] ?? "";
+        const isSending = sending === q.id;
+        return (
+          <div key={q.id} style={{
+            border: `1px solid ${t.line}`,
+            borderRadius: 11,
+            background: answered ? t.surface2 : t.surface,
+            padding: 12,
+            opacity: answered ? 0.85 : 1,
+          }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <span style={{
+                fontSize: 9.5, fontWeight: 900,
+                padding: "2px 6px", borderRadius: 4,
+                background: t.brandSoft, color: t.brand,
+                letterSpacing: 0.4, textTransform: "uppercase",
+              }}>
+                AI asks
+              </span>
+              {q.requirement_key ? (
+                <span style={{
+                  fontSize: 9.5, fontWeight: 800,
+                  padding: "2px 6px", borderRadius: 4,
+                  background: t.chip, color: t.ink3,
+                  letterSpacing: 0.3, textTransform: "uppercase",
+                }}>
+                  {q.requirement_key}
+                </span>
+              ) : null}
+              <span style={{ flex: 1 }} />
+              <span style={{ fontSize: 10, color: t.ink3 }}>
+                {new Date(q.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+              </span>
+            </div>
+            <div style={{ marginTop: 7, fontSize: 13.5, fontWeight: 700, color: t.ink, lineHeight: 1.35 }}>
+              {q.question}
+            </div>
+            {q.context ? (
+              <div style={{ marginTop: 4, fontSize: 11, color: t.ink3, lineHeight: 1.4 }}>
+                {q.context}
+              </div>
+            ) : null}
+            {answered ? (
+              <div style={{ marginTop: 9, padding: 9, borderRadius: 9, background: t.profitBg, color: t.profit, fontSize: 12, fontWeight: 700 }}>
+                ✓ Answer: {q.answer ?? "—"}
+              </div>
+            ) : (
+              <div style={{ marginTop: 9, display: "flex", gap: 6 }}>
+                <input
+                  value={draft}
+                  onChange={(e) => setAnswers((m) => ({ ...m, [q.id]: e.target.value }))}
+                  placeholder="Type your answer…"
+                  style={{
+                    flex: 1,
+                    padding: "8px 11px", borderRadius: 8,
+                    background: t.surface2, color: t.ink,
+                    border: `1px solid ${t.line}`, fontSize: 12.5,
+                    outline: "none", fontFamily: "inherit",
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={!draft.trim() || isSending}
+                  onClick={async () => {
+                    setSending(q.id);
+                    try {
+                      await onAnswer(q.id, draft.trim());
+                      setAnswers((m) => ({ ...m, [q.id]: "" }));
+                    } finally {
+                      setSending(null);
+                    }
+                  }}
+                  style={{
+                    padding: "8px 14px", borderRadius: 8,
+                    background: t.brand, color: t.inverse,
+                    border: "none",
+                    fontSize: 12, fontWeight: 900,
+                    cursor: !draft.trim() || isSending ? "not-allowed" : "pointer",
+                    opacity: !draft.trim() || isSending ? 0.55 : 1,
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {isSending ? "Sending…" : "Answer"}
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }

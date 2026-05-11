@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -73,8 +73,15 @@ export default function LoanDetailPage() {
   const { data: activity = [], isLoading: activityLoading } = useLoanActivity(params.id);
   const stageMut = useStageTransition();
   const recalc = useRecalc();
+  // Post-creation redirects (SmartIntakeModal, prequal accept) can deep-
+  // link with `?tab=workspace` so the operator lands directly on the
+  // AI Secretary tab to configure the new file before doing anything
+  // else. Honored once at mount; subsequent tab switches are user-driven.
+  const searchParams = useSearchParams();
+  const initialTabHint = searchParams?.get("tab") || null;
   const [tab, setTab] = useState<string>(
-    profile.role === Role.CLIENT ? "overview" : profile.role === Role.BROKER ? "agent" : "file",
+    initialTabHint ||
+    (profile.role === Role.CLIENT ? "overview" : profile.role === Role.BROKER ? "agent" : "file"),
   );
   const [stageNote, setStageNote] = useState("");
   const [showBlockers, setShowBlockers] = useState(false);

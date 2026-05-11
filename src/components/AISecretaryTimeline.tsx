@@ -41,12 +41,21 @@ export interface AISecretaryTimelineProps {
   onAssign: (key: string) => void;
   onUnassign: (key: string) => void;
   onOpenAssignment?: (row: DSTaskRow) => void;
+  /** Called when the user fills out the "+ New task" form. Returns
+   *  a Promise so the button can show a loading state. */
+  onCreateCustomTask?: (input: {
+    label: string;
+    owner_type: "human" | "ai";
+    objective_text?: string;
+  }) => Promise<void>;
 }
 
 export function AISecretaryTimeline({
-  view, isOperator, onAssign, onUnassign, onOpenAssignment,
+  view, isOperator, onAssign, onUnassign, onOpenAssignment, onCreateCustomTask,
 }: AISecretaryTimelineProps) {
   const { t } = useTheme();
+  const [adhoc, setAdhoc] = useState<{ label: string; owner: "human" | "ai"; objective: string } | null>(null);
+  const [creating, setCreating] = useState(false);
 
   // Group tasks by parent_key. Parent rows render the card; children
   // are nested. Orphan children (parent doesn't exist as a CRS row)
@@ -95,8 +104,130 @@ export function AISecretaryTimeline({
     return byState;
   }, [topLevel]);
 
+  const handleCreate = async () => {
+    if (!adhoc || !adhoc.label.trim() || !onCreateCustomTask) return;
+    setCreating(true);
+    try {
+      await onCreateCustomTask({
+        label: adhoc.label.trim(),
+        owner_type: adhoc.owner,
+        objective_text: adhoc.objective.trim() || undefined,
+      });
+      setAdhoc(null);
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* "+ New task" — ad-hoc one-off work not in the playbook.
+          Lands as a real CRS row so it shows on the timeline. */}
+      {onCreateCustomTask ? (
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          {adhoc ? (
+            <div style={{
+              flex: 1,
+              border: `1px solid ${t.line}`,
+              borderRadius: 11,
+              background: t.surface,
+              padding: 11,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}>
+              <input
+                value={adhoc.label}
+                onChange={(e) => setAdhoc({ ...adhoc, label: e.target.value })}
+                autoFocus
+                placeholder="e.g. Follow up about tenant leaving on the 1st"
+                style={{
+                  padding: "9px 11px", borderRadius: 8,
+                  background: t.surface2, color: t.ink,
+                  border: `1px solid ${t.line}`, fontSize: 13,
+                  outline: "none", fontFamily: "inherit",
+                }}
+              />
+              <input
+                value={adhoc.objective}
+                onChange={(e) => setAdhoc({ ...adhoc, objective: e.target.value })}
+                placeholder="What needs to happen (optional)"
+                style={{
+                  padding: "9px 11px", borderRadius: 8,
+                  background: t.surface2, color: t.ink,
+                  border: `1px solid ${t.line}`, fontSize: 12.5,
+                  outline: "none", fontFamily: "inherit",
+                }}
+              />
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>Owner:</span>
+                {(["human", "ai"] as const).map((o) => (
+                  <button
+                    key={o}
+                    type="button"
+                    onClick={() => setAdhoc({ ...adhoc, owner: o })}
+                    style={{
+                      padding: "5px 10px", borderRadius: 7,
+                      background: adhoc.owner === o ? t.brandSoft : t.surface2,
+                      border: `1px solid ${adhoc.owner === o ? t.brand : t.line}`,
+                      color: adhoc.owner === o ? t.brand : t.ink2,
+                      fontSize: 11, fontWeight: 800,
+                      cursor: "pointer", fontFamily: "inherit",
+                    }}
+                  >
+                    {o === "ai" ? "AI handles" : "Human handles"}
+                  </button>
+                ))}
+                <div style={{ flex: 1 }} />
+                <button
+                  type="button"
+                  onClick={() => setAdhoc(null)}
+                  style={{
+                    padding: "6px 11px", borderRadius: 8,
+                    background: t.surface2, color: t.ink2,
+                    border: `1px solid ${t.line}`,
+                    fontSize: 11, fontWeight: 800, cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreate}
+                  disabled={creating || !adhoc.label.trim()}
+                  style={{
+                    padding: "6px 13px", borderRadius: 8,
+                    background: t.brand, color: t.inverse,
+                    border: "none",
+                    fontSize: 11, fontWeight: 900,
+                    cursor: creating || !adhoc.label.trim() ? "not-allowed" : "pointer",
+                    opacity: creating || !adhoc.label.trim() ? 0.55 : 1,
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {creating ? "Adding…" : "Add task"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAdhoc({ label: "", owner: "human", objective: "" })}
+              style={{
+                padding: "8px 14px", borderRadius: 9,
+                background: t.surface2, color: t.ink2,
+                border: `1px dashed ${t.line}`,
+                fontSize: 12, fontWeight: 800,
+                cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              + New task
+            </button>
+          )}
+        </div>
+      ) : null}
+
       <Section
         title="Next up"
         eyebrow={`${buckets.next_up.length} ready`}

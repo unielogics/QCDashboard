@@ -3174,6 +3174,74 @@ export function useUpdateFileSettings(loanId: string) {
   });
 }
 
+// AI clarifying questions — the 3rd mode in the Loan Chat container.
+// Phase A returns []; Phase B has Claude populate when the AI needs
+// context before contacting the borrower.
+export interface DSAIQuestion {
+  id: string;
+  requirement_key: string | null;
+  question: string;
+  context: string | null;
+  created_at: string;
+  answered_at: string | null;
+  answer: string | null;
+}
+export function useAIQuestions(loanId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["ai-questions", loanId ?? "", devUser],
+    queryFn: () => apiCall<DSAIQuestion[]>(`/loans/${loanId}/deal-secretary/ai-questions`),
+    enabled: !!loanId,
+    retry: aiQueryRetry,
+  });
+}
+export function useAnswerAIQuestion(loanId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ question_id, answer }: { question_id: string; answer: string }) =>
+      apiCall<{ ok: boolean }>(
+        `/loans/${loanId}/deal-secretary/ai-questions/${question_id}/answer`,
+        { method: "POST", body: JSON.stringify({ answer }) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ai-questions", loanId] });
+    },
+  });
+}
+
+// Create an ad-hoc task on a loan — NOT tied to a playbook. Useful for
+// one-off workflow items the agent/operator adds mid-deal ("follow up
+// about tenant leaving on the 1st", "confirm construction finish").
+// Lands as a real CRS row with source='client_custom' so it shows on
+// the timeline alongside playbook tasks.
+export interface DSCustomTaskCreate {
+  label: string;
+  owner_type?: "human" | "ai" | "shared";
+  objective_text?: string;
+  completion_criteria?: string;
+  parent_key?: string | null;
+  depends_on?: string[];
+  category?: import("@/lib/types").DSRequirementCategory;
+  due_at?: string | null;
+}
+export function useCreateCustomTask(loanId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DSCustomTaskCreate) =>
+      apiCall<import("@/lib/types").DSTaskRow>(
+        `/loans/${loanId}/deal-secretary/custom-task`,
+        { method: "POST", body: JSON.stringify(body) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deal-secretary", loanId] });
+      qc.invalidateQueries({ queryKey: ["deal-secretary-summary"] });
+    },
+  });
+}
+
 export function useBootstrapDealSecretary(loanId: string) {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
