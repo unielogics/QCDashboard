@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card } from "@/components/design-system/primitives";
+import { Icon } from "@/components/design-system/Icon";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { AIPreviewPanel } from "@/components/AIPreviewPanel";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
@@ -51,6 +52,17 @@ export default function FundingCadencePage() {
       {isAINotDeployed(cadErr) ? (
         <AINotDeployedBanner surface="Lending AI" />
       ) : null}
+
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+        gap: 10,
+        marginBottom: 18,
+      }}>
+        <CadenceNote icon="doc" title="Requirement missing" body="Targets open lending requirements and can draft a borrower reminder after the wait period." />
+        <CadenceNote icon="cal" title="Create task" body="Creates an approval-track AI task; approval can schedule or route the work depending on the action." />
+        <CadenceNote icon="shield" title="Auto-send is explicit" body="Rules stay draft-first unless the action is set to auto-send and approval is disabled." />
+      </div>
 
       <Card pad={20}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -116,6 +128,28 @@ export default function FundingCadencePage() {
 
       <div style={{ marginTop: 20 }}>
         <AIPreviewPanel mode="cadence" />
+      </div>
+    </div>
+  );
+}
+
+function CadenceNote({ icon, title, body }: { icon: string; title: string; body: string }) {
+  const { t } = useTheme();
+  return (
+    <div style={{
+      display: "flex",
+      gap: 10,
+      padding: 12,
+      borderRadius: 8,
+      border: `1px solid ${t.line}`,
+      background: t.surface2,
+    }}>
+      <span style={{ color: t.petrol, display: "inline-flex", paddingTop: 1 }}>
+        <Icon name={icon} size={16} />
+      </span>
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 800, color: t.ink, marginBottom: 3 }}>{title}</div>
+        <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45 }}>{body}</div>
       </div>
     </div>
   );

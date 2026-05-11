@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
+import { Icon } from "@/components/design-system/Icon";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { StageChecklist } from "@/components/StageChecklist";
 import { AIPreviewPanel } from "@/components/AIPreviewPanel";
@@ -78,6 +79,29 @@ export default function LendingPlaybooksPage() {
       {isAINotDeployed(lpError) ? (
         <AINotDeployedBanner surface="Lending AI" />
       ) : null}
+
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+        gap: 10,
+        marginBottom: 20,
+      }}>
+        <OutcomeNote
+          icon="doc"
+          title="External document items"
+          body="Create requested document rows and document-due calendar events when the loan checklist materializes."
+        />
+        <OutcomeNote
+          icon="shieldChk"
+          title="Internal funding items"
+          body="Create AI tasks for the funding team, such as appraisal, title, insurance, or PFS follow-up."
+        />
+        <OutcomeNote
+          icon="cal"
+          title="AI next actions"
+          body="Loan summaries can also emit calendar events or approval-required AI tasks based on ownership."
+        />
+      </div>
 
       {/* Loan product picker */}
       <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
@@ -174,9 +198,10 @@ function PlaybookPanel({
         <div style={{
           padding: 12, marginBottom: 20, borderRadius: 8,
           background: "#fff8e0", border: "1px solid #d4a02488",
-          fontSize: 12, color: "#7a5e22",
+          fontSize: 12, color: "#7a5e22", display: "flex", gap: 8, alignItems: "flex-start",
         }}>
-          ℹ Platform defaults are read-only. Click <strong>Duplicate to edit</strong> above to fork a funding-owned copy you can customize.
+          <Icon name="lock" size={14} stroke={2.4} />
+          <span>Platform defaults are read-only. Click <strong>Duplicate to edit</strong> above to fork a funding-owned copy you can customize.</span>
         </div>
       ) : null}
 
@@ -190,6 +215,28 @@ function PlaybookPanel({
       {/* Advanced disclosure — escalations / communication / raw conditions */}
       <Advanced playbookId={playbook.id} t={t} />
     </Card>
+  );
+}
+
+function OutcomeNote({ icon, title, body }: { icon: string; title: string; body: string }) {
+  const { t } = useTheme();
+  return (
+    <div style={{
+      display: "flex",
+      gap: 10,
+      padding: 12,
+      borderRadius: 8,
+      border: `1px solid ${t.line}`,
+      background: t.surface2,
+    }}>
+      <span style={{ color: t.petrol, display: "inline-flex", paddingTop: 1 }}>
+        <Icon name={icon} size={16} />
+      </span>
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 800, color: t.ink, marginBottom: 3 }}>{title}</div>
+        <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45 }}>{body}</div>
+      </div>
+    </div>
   );
 }
 

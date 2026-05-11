@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
+import { Icon } from "@/components/design-system/Icon";
 import { AIPreviewPanel } from "@/components/AIPreviewPanel";
 import {
   isAINotDeployed,
@@ -57,6 +58,8 @@ export default function AIAssistantPage() {
         allowed to do. Everything here is your default — per-client
         adjustments live on each client page.
       </p>
+
+      <AgentAIWorkflowMap />
 
       {/* Tab strip */}
       <div style={{
@@ -178,9 +181,20 @@ function SidedRulesTab({ side, leadLabel }: { side: "buyer" | "seller"; leadLabe
 
   return (
     <div>
-      <p style={{ fontSize: 13, color: t.ink3, marginTop: 0, marginBottom: 16 }}>
-        When you get a {leadLabel}, your AI should collect:
-      </p>
+      <div style={{ marginBottom: 16 }}>
+        <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 10px" }}>
+          When you get a {leadLabel}, your AI should collect:
+        </p>
+        <BehaviorNote
+          icon={side === "buyer" ? "clients" : "building2"}
+          title={side === "buyer" ? "Agent-side collection only" : "Seller-side collection only"}
+          body={
+            side === "buyer"
+              ? "These items drive the Realtor AI's questions and client readiness map. They do not create lending document due dates until the buyer is marked ready for lending and a loan-side workflow starts."
+              : "Seller items help the agent manage listing work. They are intentionally ignored by the lending handoff unless a buyer is also finance-ready."
+          }
+        />
+      </div>
 
       {isAINotDeployed(error) ? (
         <AINotDeployedBanner surface="AI Assistant" />
@@ -284,8 +298,8 @@ function Group({
               {req.label}
             </span>
             {locked ? (
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#a06000" }} title="Locked by funding team">
-                🔒 Locked by Funding
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#a06000" }} title="Locked by funding team">
+                <Icon name="lock" size={10} stroke={2.5} /> Locked by Funding
               </span>
             ) : owner === "agent" ? (
               <span style={{ fontSize: 10, fontWeight: 700, color: t.petrol }}>
@@ -391,6 +405,12 @@ function FollowUpTab() {
 
   return (
     <Card pad={20}>
+      <BehaviorNote
+        icon="bell"
+        title="Follow-up rules create drafts and reminders, not silent sends"
+        body="The agent AI can draft outreach, create follow-up work, or mark a lead stalled based on these presets. Message sending still routes through your approval unless you explicitly change that behavior."
+        style={{ marginBottom: 18 }}
+      />
       <PresetSection
         label="New Lead — if no response after:"
         rows={val.new_lead || []}
@@ -558,6 +578,12 @@ function ReadyForLendingTab() {
   return (
     <div>
       <Card pad={20}>
+        <BehaviorNote
+          icon="arrowR"
+          title="This is the buyer-to-lending gate"
+          body="When these buyer-side requirements are satisfied, the AI can suggest the handoff. After the agent confirms, the funding-side Lending AI takes over with loan requirements, document verification, underwriter tasks, and calendar due dates."
+          style={{ marginBottom: 16 }}
+        />
         <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 16px" }}>
           Before your AI suggests sending a buyer to lending, require:
         </p>
@@ -587,9 +613,9 @@ function ReadyForLendingTab() {
           }}>
             <div style={{
               fontSize: 11, fontWeight: 700, color: "#a06000",
-              marginBottom: 6, textTransform: "uppercase",
+              marginBottom: 6, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5,
             }}>
-              🔒 Funding-required items (always)
+              <Icon name="lock" size={12} stroke={2.5} /> Funding-required items (always)
             </div>
             <div style={{ fontSize: 12, color: t.ink3, marginBottom: 8 }}>
               Locked by the funding team. These cannot be changed here.
@@ -643,6 +669,12 @@ function MessageStyleTab() {
 
   return (
     <Card pad={20}>
+      <BehaviorNote
+        icon="chat"
+        title="This changes how the agent AI talks, not what lending requires"
+        body="Use this for the relationship assistant's tone and signature. Funding-side borrower messaging is controlled in Lending AI Settings."
+        style={{ marginBottom: 18 }}
+      />
       <Field label="Tone" t={t}>
         <ChipRow
           options={[
@@ -724,6 +756,111 @@ function previewMessage(s: { tone?: string; follow_up_style?: string; signature?
 
 
 // ─── shared primitives ──────────────────────────────────────────────
+
+
+function AgentAIWorkflowMap() {
+  const { t } = useTheme();
+  const steps = [
+    {
+      icon: "clients",
+      label: "Agent AI",
+      title: "Buyer / seller relationship",
+      body: "Collects intent, agreements, preferences, listing prep, and follow-up context.",
+    },
+    {
+      icon: "check",
+      label: "Handoff gate",
+      title: "Buyer ready for lending",
+      body: "Seller work stops here. Buyer requirements decide whether the AI can suggest the funding handoff.",
+    },
+    {
+      icon: "shieldChk",
+      label: "Lending AI",
+      title: "Funding workflow",
+      body: "Collects loan facts, requests documents, verifies evidence, creates AI tasks, and emits calendar due dates.",
+    },
+  ];
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+      gap: 10,
+      marginBottom: 20,
+    }}>
+      {steps.map((step, i) => (
+        <div key={step.label} style={{
+          border: `1px solid ${i === 1 ? t.petrol : t.line}`,
+          borderRadius: 8,
+          padding: 14,
+          background: i === 1 ? t.petrolSoft : t.surface,
+          minHeight: 132,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: i === 1 ? t.petrol : t.surface2,
+              color: i === 1 ? "#fff" : t.petrol,
+            }}>
+              <Icon name={step.icon} size={15} />
+            </span>
+            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: t.ink3 }}>
+              {step.label}
+            </span>
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 5 }}>
+            {step.title}
+          </div>
+          <div style={{ fontSize: 12, lineHeight: 1.45, color: t.ink3 }}>
+            {step.body}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+function BehaviorNote({
+  icon,
+  title,
+  body,
+  style,
+}: {
+  icon: string;
+  title: string;
+  body: string;
+  style?: React.CSSProperties;
+}) {
+  const { t } = useTheme();
+  return (
+    <div style={{
+      display: "flex",
+      gap: 10,
+      padding: 12,
+      borderRadius: 8,
+      border: `1px solid ${t.line}`,
+      background: t.surface2,
+      ...style,
+    }}>
+      <span style={{ color: t.petrol, display: "inline-flex", paddingTop: 1 }}>
+        <Icon name={icon} size={16} />
+      </span>
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 800, color: t.ink, marginBottom: 3 }}>
+          {title}
+        </div>
+        <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45 }}>
+          {body}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 
 function Field({ label, children, t }: { label: string; children: React.ReactNode; t: ReturnType<typeof useTheme>["t"] }) {
