@@ -2138,6 +2138,30 @@ export function useApprovePrequalRequest() {
   });
 }
 
+// Create an Updated Version of an approved prequal — same payload shape
+// as approve, but the backend spawns a new linked row instead of mutating
+// the source. Returns the new (v2/v3/...) request.
+export function useRevisePrequalRequest() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      requestId,
+      payload,
+    }: {
+      requestId: string;
+      payload: PrequalRequestApprove;
+    }) =>
+      apiCall<PrequalRequest>(
+        `/admin/prequal-requests/${requestId}/revise`,
+        { method: "POST", body: JSON.stringify(payload) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prequal-requests"] });
+    },
+  });
+}
+
 export function useRejectPrequalRequest() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();

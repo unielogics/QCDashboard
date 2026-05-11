@@ -65,8 +65,11 @@ function RequestRow({ req }: { req: PrequalRequest }) {
   const [outcomeNote, setOutcomeNote] = useState("");
   const [outcomeError, setOutcomeError] = useState<string | null>(null);
 
+  const isSuperseded = req.superseded_by_id != null;
+  const isRevision = (req.version_num ?? 1) > 1;
   const statusInfo = (() => {
-    if (req.status === "approved") return { label: "Ready", bg: t.profitBg, fg: t.profit, icon: "check" as const };
+    if (isSuperseded) return { label: "Updated — see latest version", bg: t.surface2, fg: t.ink3, icon: "audit" as const };
+    if (req.status === "approved") return { label: isRevision ? `Ready · v${req.version_num}` : "Ready", bg: t.profitBg, fg: t.profit, icon: "check" as const };
     if (req.status === "offer_accepted") return { label: req.quote_number ? `Loan opened · ${req.quote_number}` : "Loan opened", bg: t.brandSoft, fg: t.brand, icon: "check" as const };
     if (req.status === "offer_declined") return { label: "Closed — seller declined", bg: t.surface2, fg: t.ink3, icon: "x" as const };
     if (req.status === "rejected") return { label: "Returned", bg: t.dangerBg, fg: t.danger, icon: "x" as const };

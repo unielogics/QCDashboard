@@ -103,6 +103,8 @@ function Row({ req, onOpen }: { req: PrequalRequest; onOpen: () => void }) {
   const requested = Number(req.requested_loan_amount);
   const approved = req.approved_loan_amount != null ? Number(req.approved_loan_amount) : null;
   const ltv = purchase > 0 ? (requested / purchase) * 100 : 0;
+  const isSuperseded = req.superseded_by_id != null;
+  const isRevision = (req.version_num ?? 1) > 1;
   const statusInfo = (() => {
     if (req.status === "approved") return { label: "Approved", bg: t.profitBg, fg: t.profit };
     if (req.status === "rejected") return { label: "Rejected", bg: t.dangerBg, fg: t.danger };
@@ -119,10 +121,35 @@ function Row({ req, onOpen }: { req: PrequalRequest; onOpen: () => void }) {
         borderBottom: `1px solid ${t.line}`,
         alignItems: "center",
         fontSize: 13,
-        color: t.ink,
+        color: isSuperseded ? t.ink3 : t.ink,
+        opacity: isSuperseded ? 0.6 : 1,
       }}
     >
-      <div><Pill bg={statusInfo.bg} color={statusInfo.fg}>{statusInfo.label}</Pill></div>
+      <div>
+        <Pill bg={statusInfo.bg} color={statusInfo.fg}>{statusInfo.label}</Pill>
+        {isRevision || isSuperseded ? (
+          <div style={{ fontSize: 10, color: t.ink3, fontWeight: 600, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>
+            {req.quote_number ? (
+              <span style={{ textDecoration: isSuperseded ? "line-through" : undefined, fontFeatureSettings: '"tnum"' }}>
+                {req.quote_number}
+              </span>
+            ) : null}
+            {isRevision ? (
+              <span style={{
+                fontSize: 9,
+                fontWeight: 800,
+                color: t.petrol,
+                background: t.petrolSoft,
+                padding: "1px 5px",
+                borderRadius: 4,
+                letterSpacing: 0.4,
+              }}>
+                v{req.version_num}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
       <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700 }}>
         {req.target_property_address}
         <div style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600, marginTop: 2, textTransform: "uppercase", letterSpacing: 0.6 }}>

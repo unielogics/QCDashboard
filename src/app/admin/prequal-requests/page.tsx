@@ -350,6 +350,8 @@ function Row({
 
   const s = statusInfo(t, req.status);
   const submittedAt = new Date(req.created_at);
+  const isSuperseded = req.superseded_by_id != null;
+  const isRevision = (req.version_num ?? 1) > 1;
 
   return (
     <div
@@ -365,9 +367,10 @@ function Row({
         borderBottom: `1px solid ${t.line}`,
         alignItems: "center",
         fontSize: 13,
-        color: t.ink,
+        color: isSuperseded ? t.ink3 : t.ink,
         cursor: "pointer",
         transition: "background 0.12s",
+        opacity: isSuperseded ? 0.6 : 1,
       }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = t.surface2; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
@@ -375,8 +378,23 @@ function Row({
       <div>
         <Pill bg={s.bg} color={s.fg}>{s.label}</Pill>
         {req.quote_number ? (
-          <div style={{ fontSize: 10, color: t.ink3, fontWeight: 600, marginTop: 4, fontFeatureSettings: '"tnum"' }}>
-            {req.quote_number}
+          <div style={{ fontSize: 10, color: t.ink3, fontWeight: 600, marginTop: 4, fontFeatureSettings: '"tnum"', display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ textDecoration: isSuperseded ? "line-through" : undefined }}>
+              {req.quote_number}
+            </span>
+            {isRevision ? (
+              <span style={{
+                fontSize: 9,
+                fontWeight: 800,
+                color: t.petrol,
+                background: t.petrolSoft ?? t.brandSoft,
+                padding: "1px 5px",
+                borderRadius: 4,
+                letterSpacing: 0.4,
+              }}>
+                v{req.version_num}
+              </span>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -409,29 +427,37 @@ function Row({
         <span style={{ fontSize: 11.5, color: t.ink3, fontFeatureSettings: '"tnum"' }}>
           {submittedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
         </span>
-        <ActionPill t={t} status={req.status} />
+        <ActionPill t={t} status={req.status} isSuperseded={isSuperseded} />
       </div>
     </div>
   );
 }
 
 // Status-aware row action label so admins know what clicking the row
-// will do — Review (pending), Edit (approved / loan-opened), Reopen
-// (the static reasoning for closed/rejected: still openable read-only).
+// will do — Review (pending), Edit / Revise (approved, where the modal
+// exposes both in-place save and the new "Create updated version"
+// button), Edit (loan-opened, where revision isn't allowed), Open
+// (closed/rejected/superseded — read-only).
 function ActionPill({
   t,
   status,
+  isSuperseded,
 }: {
   t: ReturnType<typeof useTheme>["t"];
   status: PrequalStatus;
+  isSuperseded: boolean;
 }) {
   const label = (() => {
+    if (isSuperseded) return "Open";
     if (status === "pending") return "Review";
-    if (status === "approved") return "Edit";
+    if (status === "approved") return "Edit / Revise";
     if (status === "offer_accepted") return "Edit";
     return "Open";
   })();
-  const accent = status === "approved" || status === "offer_accepted" ? t.brand : t.ink3;
+  const canRevise = status === "approved" && !isSuperseded;
+  const isAction = status === "approved" || status === "offer_accepted";
+  const accent = isSuperseded ? t.ink3 : (canRevise ? t.petrol : (isAction ? t.brand : t.ink3));
+  const bg = isSuperseded ? t.surface2 : (canRevise ? (t.petrolSoft ?? t.brandSoft) : (isAction ? t.brandSoft : t.surface2));
   return (
     <span style={{
       display: "inline-flex",
@@ -439,7 +465,7 @@ function ActionPill({
       gap: 3,
       padding: "3px 8px",
       borderRadius: 7,
-      background: status === "approved" || status === "offer_accepted" ? t.brandSoft : t.surface2,
+      background: bg,
       color: accent,
       fontSize: 11,
       fontWeight: 800,

@@ -1384,6 +1384,13 @@ export interface PrequalRequest {
   reviewed_at: string | null;
   created_at: string;
   updated_at: string;
+  // Revision chain (alembic 0037). parent_prequal_request_id points to
+  // the predecessor in the chain; superseded_by_id is the next link
+  // forward (NULL on the chain head). version_num is 1 for originals,
+  // 2/3/... for each successive Updated Version.
+  parent_prequal_request_id: string | null;
+  superseded_by_id: string | null;
+  version_num: number;
 }
 
 export interface PrequalRequestCreate {

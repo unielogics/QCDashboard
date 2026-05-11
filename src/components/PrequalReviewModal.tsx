@@ -27,6 +27,7 @@ import { QC_FMT } from "@/components/design-system/tokens";
 import {
   useApprovePrequalRequest,
   useRejectPrequalRequest,
+  useRevisePrequalRequest,
 } from "@/hooks/useApi";
 import {
   PREQUAL_LOAN_TYPE_LABELS,
@@ -99,6 +100,7 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
   const { t } = useTheme();
   const approve = useApprovePrequalRequest();
   const reject = useRejectPrequalRequest();
+  const revise = useRevisePrequalRequest();
 
   // ── Approval fields ───────────────────────────────────────────────────
   const [purchaseText, setPurchaseText] = useState("");
@@ -255,13 +257,31 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
     request.status === "pending" ||
     request.status === "approved" ||
     request.status === "offer_accepted";
+  // A revision spawns a new versioned row; only allowed on approved
+  // requests that haven't been superseded yet. offer_accepted /
+  // offer_declined / rejected need different flows (spawned-Loan update
+  // or fresh request) and are excluded here.
+  const isSuperseded = request.superseded_by_id != null;
+  const canRevise =
+    purchaseNum > 0 &&
+    loanNum > 0 &&
+    !ltvOverCap &&
+    request.status === "approved" &&
+    !isSuperseded &&
+    !revise.isPending &&
+    !approve.isPending;
   const canApprove =
     purchaseNum > 0 &&
     loanNum > 0 &&
     !ltvOverCap &&
     isEditableStatus &&
+    !isSuperseded &&
     !approve.isPending;
   const isReissue = request.status === "approved" || request.status === "offer_accepted";
+  const nextVersionNum = (request.version_num ?? 1) + 1;
+  const reviseLabel = revise.isPending
+    ? "Saving updated version…"
+    : `Create updated version (v${nextVersionNum})`;
   const approveLabel = (() => {
     if (approve.isPending) return isReissue ? "Regenerating PDF…" : "Generating PDF…";
     if (request.status === "offer_accepted") return "Save changes & regenerate letter";
@@ -295,6 +315,39 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Approval failed.");
+    }
+  };
+
+  // Create Updated Version: spawn a new revision linked to this one
+  // instead of mutating the source. The payload is identical to approve
+  // — the backend distinguishes by endpoint and writes a new row with
+  // parent_prequal_request_id set + version_num bumped. Only available
+  // on approved requests that haven't been superseded yet.
+  const onRevise = async () => {
+    setError(null);
+    try {
+      const arvNum = Number(arvText.replace(/[^0-9.]/g, "")) || 0;
+      const totalConstruction = sowItems.reduce(
+        (sum, item) => sum + (Number(item.total_usd) || 0),
+        0,
+      );
+      await revise.mutateAsync({
+        requestId: request.id,
+        payload: {
+          approved_purchase_price: purchaseNum,
+          approved_loan_amount: loanNum,
+          admin_notes: notes.trim() || null,
+          approved_scenario: scenario,
+          expiration_days: expirationNum,
+          borrower_entity: entityTBD ? null : (entityName.trim() || null),
+          approved_arv: request.loan_type === "fix_flip" && arvNum > 0 ? arvNum : null,
+          approved_sow_items: request.loan_type === "fix_flip" && sowItems.length > 0 ? sowItems : null,
+          approved_total_construction: request.loan_type === "fix_flip" && totalConstruction > 0 ? totalConstruction : null,
+        },
+      });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create updated version.");
     }
   };
 
@@ -361,6 +414,11 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: t.petrol }}>
               Pre-qualification review · {programLabel}
               {request.quote_number ? <span style={{ color: t.ink3 }}>{" · "}{request.quote_number}</span> : null}
+              {(request.version_num ?? 1) > 1 ? (
+                <span style={{ color: t.petrol, marginLeft: 8, fontWeight: 800 }}>
+                  · Updated v{request.version_num}
+                </span>
+              ) : null}
             </div>
             <div style={{ fontSize: 20, fontWeight: 800, color: t.ink, marginTop: 2, letterSpacing: -0.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {request.target_property_address}
@@ -637,6 +695,25 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
 
             {error ? <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill> : null}
 
+            {isSuperseded ? (
+              <div style={{
+                fontSize: 12,
+                color: t.ink2,
+                background: t.warnBg,
+                border: `1px solid ${t.warn}40`,
+                padding: "8px 12px",
+                borderRadius: 8,
+                lineHeight: 1.5,
+              }}>
+                <strong style={{ color: t.warn }}>
+                  This version has been superseded.
+                </strong>{" "}
+                A newer Updated Version has been created. Open the latest
+                version from the queue to make further changes — editing
+                this row is disabled to keep the revision chain consistent.
+              </div>
+            ) : null}
+
             {/* Action bar */}
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 4 }}>
               {confirmReject ? (
@@ -650,7 +727,14 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
               ) : (
                 <button
                   onClick={() => setConfirmReject(true)}
-                  style={{ ...qcBtn(t), color: t.danger, borderColor: `${t.danger}40` }}
+                  disabled={isSuperseded}
+                  style={{
+                    ...qcBtn(t),
+                    color: t.danger,
+                    borderColor: `${t.danger}40`,
+                    opacity: isSuperseded ? 0.4 : 1,
+                    cursor: isSuperseded ? "not-allowed" : "pointer",
+                  }}
                 >
                   Reject
                 </button>
@@ -658,6 +742,23 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
 
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={onClose} style={qcBtn(t)}>Cancel</button>
+                {request.status === "approved" && !isSuperseded ? (
+                  <button
+                    onClick={onRevise}
+                    disabled={!canRevise}
+                    title="Spawn a new versioned letter (v2, v3, …) linked to this one. The original PDF is preserved."
+                    style={{
+                      ...qcBtn(t),
+                      borderColor: `${t.petrol}50`,
+                      color: t.petrol,
+                      fontWeight: 700,
+                      opacity: canRevise ? 1 : 0.5,
+                      cursor: canRevise ? "pointer" : "not-allowed",
+                    }}
+                  >
+                    {reviseLabel}
+                  </button>
+                ) : null}
                 <button
                   onClick={onApprove}
                   disabled={!canApprove}
