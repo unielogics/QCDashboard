@@ -24,7 +24,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { useDroppable } from "@dnd-kit/core";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Icon } from "@/components/design-system/Icon";
 import type { DSDealSecretaryView, DSTaskRow } from "@/lib/types";
 
@@ -44,6 +44,11 @@ export interface AISecretaryHandoffTableProps {
   /** Row state, mirrored from the parent for drag-end routing. */
   rows: HandoffRow[];
   setRows: (next: HandoffRow[]) => void;
+  /** Right-click on a cell-task → send back to Resolution Queue.
+   *  Removes from the handoff config + flips the owner_type back to
+   *  human server-side (and frees the row owner if this was the last
+   *  task in the cell). */
+  onUnplaceTask?: (taskKey: string) => void;
 }
 
 const STORAGE_PREFIX = "qc.secretary.handoff.";
@@ -86,7 +91,7 @@ export function defaultHandoffRows(view: DSDealSecretaryView): HandoffRow[] {
 }
 
 export function AISecretaryHandoffTable({
-  view, loanId: _loanId, isOperator: _isOperator, onAssign: _onAssign, onUnassign: _onUnassign, rows, setRows,
+  view, loanId: _loanId, isOperator: _isOperator, onAssign: _onAssign, onUnassign: _onUnassign, rows, setRows, onUnplaceTask,
 }: AISecretaryHandoffTableProps) {
   const { t } = useTheme();
 
@@ -183,6 +188,7 @@ export function AISecretaryHandoffTable({
           onRemoveKey={(key) => removeKeyFromRow(row.id, key)}
           onDeleteRow={() => deleteRow(row.id)}
           showDelete={rows.length > 1}
+          onUnplaceTask={onUnplaceTask}
         />
       ))}
       <button
@@ -209,7 +215,7 @@ export function AISecretaryHandoffTable({
 }
 
 function HandoffRowView({
-  rowNumber, row, tasksByKey, onRemoveKey, onDeleteRow, showDelete,
+  rowNumber, row, tasksByKey, onRemoveKey, onDeleteRow, showDelete, onUnplaceTask,
 }: {
   rowNumber: number;
   row: HandoffRow;
@@ -217,6 +223,7 @@ function HandoffRowView({
   onRemoveKey: (key: string) => void;
   onDeleteRow: () => void;
   showDelete: boolean;
+  onUnplaceTask?: (taskKey: string) => void;
 }) {
   const { t } = useTheme();
   const aiActive = row.owner === "ai";
@@ -254,6 +261,7 @@ function HandoffRowView({
         tasksByKey={tasksByKey}
         taskKeys={aiActive ? row.taskKeys : []}
         onRemoveKey={onRemoveKey}
+        onUnplaceTask={onUnplaceTask}
       />
       <HandoffCell
         rowId={row.id}
@@ -263,13 +271,14 @@ function HandoffRowView({
         tasksByKey={tasksByKey}
         taskKeys={humanActive ? row.taskKeys : []}
         onRemoveKey={onRemoveKey}
+        onUnplaceTask={onUnplaceTask}
       />
     </div>
   );
 }
 
 function HandoffCell({
-  rowId, owner, active, ownedByOther, tasksByKey, taskKeys, onRemoveKey,
+  rowId, owner, active, ownedByOther, tasksByKey, taskKeys, onRemoveKey, onUnplaceTask,
 }: {
   rowId: string;
   owner: "ai" | "human";
@@ -278,6 +287,7 @@ function HandoffCell({
   tasksByKey: Map<string, DSTaskRow>;
   taskKeys: string[];
   onRemoveKey: (key: string) => void;
+  onUnplaceTask?: (taskKey: string) => void;
 }) {
   const { t } = useTheme();
   const dropId = `handoff:${rowId}:${owner}`;
@@ -317,56 +327,122 @@ function HandoffCell({
           {drop.isOver ? `Drop here → ${owner === "ai" ? "AI handles" : "Human handles"}` : `Drag work here`}
         </span>
       ) : (
-        taskKeys.map((k) => {
-          const task = tasksByKey.get(k);
-          const label = task?.label ?? k;
-          const cat = task?.category ?? "";
-          return (
-            <div
-              key={k}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "5px 8px",
-                borderRadius: 7,
-                background: t.surface2,
-                border: `1px solid ${t.line}`,
-                minWidth: 0,
-              }}
-            >
-              <Icon name={owner === "ai" ? "ai" : "user"} size={11} stroke={2.2} />
-              <span style={{
-                flex: 1, minWidth: 0,
-                fontSize: 11.5, fontWeight: 700, color: t.ink,
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }}>
-                {label}
-              </span>
-              {cat ? (
-                <span style={{
-                  fontSize: 9, fontWeight: 800, padding: "1px 5px", borderRadius: 4,
-                  background: t.chip, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.4,
-                  whiteSpace: "nowrap",
-                }}>
-                  {String(cat).slice(0, 12)}
-                </span>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => onRemoveKey(k)}
-                title="Move out of this row"
-                style={{
-                  all: "unset", cursor: "pointer", color: t.ink3, fontSize: 12, fontWeight: 800, padding: 0, lineHeight: 1,
-                }}
-              >×</button>
-            </div>
-          );
-        })
+        taskKeys.map((k) => (
+          <HandoffTaskChip
+            key={k}
+            taskKey={k}
+            task={tasksByKey.get(k)}
+            owner={owner}
+            onRemove={() => onRemoveKey(k)}
+            onUnplace={onUnplaceTask ? () => onUnplaceTask(k) : undefined}
+          />
+        ))
       )}
     </div>
   );
 }
+
+function HandoffTaskChip({
+  taskKey, task, owner, onRemove, onUnplace,
+}: {
+  taskKey: string;
+  task?: DSTaskRow;
+  owner: "ai" | "human";
+  onRemove: () => void;
+  onUnplace?: () => void;
+}) {
+  const { t } = useTheme();
+  const label = task?.label ?? taskKey;
+  const cat = task?.category ?? "";
+  // Task chip is draggable so users can drag from one cell into another
+  // (Human → AI in the same row, or AI in row 1 → Human in row 3, etc.).
+  // The drag payload carries requirement_key so the parent DndContext
+  // routes it through the existing handoff-drop handler.
+  const drag = useDraggable({
+    id: `chip:${taskKey}`,
+    data: { kind: "chip", requirement_key: taskKey, label },
+  });
+  return (
+    <div
+      ref={drag.setNodeRef}
+      {...drag.attributes}
+      {...drag.listeners}
+      onContextMenu={(e) => {
+        if (!onUnplace) return;
+        e.preventDefault();
+        onUnplace();
+      }}
+      title="Drag to move. Right-click to send back to the Resolution Queue."
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "5px 8px",
+        borderRadius: 7,
+        background: t.surface2,
+        border: `1px solid ${t.line}`,
+        minWidth: 0,
+        cursor: "grab",
+        userSelect: "none",
+        opacity: drag.isDragging ? 0.4 : 1,
+      }}
+    >
+      <Icon name={owner === "ai" ? "ai" : "user"} size={11} stroke={2.2} />
+      <span style={{
+        flex: 1, minWidth: 0,
+        fontSize: 11.5, fontWeight: 700, color: t.ink,
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>
+        {label}
+      </span>
+      {cat ? (
+        <span style={{
+          fontSize: 9, fontWeight: 800, padding: "1px 5px", borderRadius: 4,
+          background: t.chip, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.4,
+          whiteSpace: "nowrap",
+        }}>
+          {String(cat).slice(0, 12)}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onRemove(); }}
+        onPointerDown={(e) => e.stopPropagation()}
+        title="Take out of this row (returns to a fresh row)"
+        style={{
+          all: "unset", cursor: "pointer", color: t.ink3, fontSize: 12, fontWeight: 800, padding: 0, lineHeight: 1,
+        }}
+      >×</button>
+    </div>
+  );
+}
+
+/** Read-only preview rendered inside the parent's <DragOverlay /> so the
+ *  user sees what they're dragging follow the cursor. */
+export function HandoffChipPreview({ label, owner }: { label: string; owner: "ai" | "human" }) {
+  const { t } = useTheme();
+  return (
+    <div style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      padding: "6px 10px",
+      borderRadius: 8,
+      background: owner === "ai" ? t.brandSoft : t.surface,
+      border: `1.5px solid ${owner === "ai" ? t.brand : t.line}`,
+      boxShadow: "0 6px 16px rgba(0,0,0,0.18)",
+      fontSize: 12, fontWeight: 800, color: t.ink,
+      pointerEvents: "none",
+      maxWidth: 320,
+    }}>
+      <Icon name={owner === "ai" ? "ai" : "user"} size={12} stroke={2.2} />
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
 
 function cellHeader(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
   return {

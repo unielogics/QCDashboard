@@ -45,16 +45,19 @@ import {
 } from "@/lib/types";
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
   useDroppable,
   useDraggable,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import { AISecretaryTimeline } from "@/components/AISecretaryTimeline";
 import {
   AISecretaryHandoffTable,
+  HandoffChipPreview,
   defaultHandoffRows,
   loadHandoffRows,
   saveHandoffRows,
@@ -271,6 +274,12 @@ function SecretaryConsole({
   // Pointer sensor with a 4px activation distance so a click on a row
   // (which navigates) still works without triggering drag.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  // Track the currently-dragged item so we can render a floating
+  // preview under the cursor via <DragOverlay/>.
+  const [activeDrag, setActiveDrag] = useState<
+    | { kind: string; label: string; owner: "ai" | "human" }
+    | null
+  >(null);
   // Build a key set of timeline rows so we can short-circuit a drag of
   // a Resolution Queue item that maps to an existing CRS row (e.g. a
   // workflow condition for "Bank statements" that's already on the
@@ -279,7 +288,43 @@ function SecretaryConsole({
     () => new Set<string>([...humanTasks, ...aiTasks].map((r) => r.requirement_key)),
     [humanTasks, aiTasks],
   );
+  // Look up the owner of an in-table chip so the DragOverlay shows the
+  // right color while the user is dragging it.
+  const ownerByKey = useMemo(() => {
+    const m = new Map<string, "ai" | "human">();
+    for (const r of humanTasks) m.set(r.requirement_key, "human");
+    for (const r of aiTasks) m.set(r.requirement_key, "ai");
+    return m;
+  }, [humanTasks, aiTasks]);
+  const handleQueueDragStart = (e: DragStartEvent) => {
+    const data = e.active.data?.current as
+      | { kind?: string; label?: string; requirement_key?: string }
+      | undefined;
+    if (!data) return;
+    const ownerGuess: "ai" | "human" =
+      data.requirement_key
+        ? (ownerByKey.get(data.requirement_key) ?? "human")
+        : "ai";
+    setActiveDrag({
+      kind: data.kind ?? "queue",
+      label: data.label ?? data.requirement_key ?? "Task",
+      owner: ownerGuess,
+    });
+  };
+  const handleQueueDragCancel = () => setActiveDrag(null);
+  // Right-click on a chip in the table → take it out of every row +
+  // flip server-side ownership back to human. The task then re-appears
+  // in the orphan absorber's "fresh row" so it's still visible.
+  const handleUnplaceTask = (key: string) => {
+    setHandoffRows((rows) =>
+      rows.map((r) => ({ ...r, taskKeys: r.taskKeys.filter((k) => k !== key) })),
+    );
+    onUnassign(key);
+    setFlash(`Sent task back — flipped to Human.`);
+    window.setTimeout(() => setFlash(null), 2400);
+  };
   const handleQueueDragEnd = (e: DragEndEvent) => {
+    setActiveDrag(null);
     const overId = e.over?.id;
     if (overId === undefined) return;
     const payload = e.active.data?.current as
@@ -461,7 +506,12 @@ function SecretaryConsole({
         </span>
       </div>
 
-      <DndContext sensors={sensors} onDragEnd={handleQueueDragEnd}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleQueueDragStart}
+        onDragEnd={handleQueueDragEnd}
+        onDragCancel={handleQueueDragCancel}
+      >
       {/* Two-column body: Resolution Queue (LEFT) | Handoff table or Timeline (RIGHT) */}
       <div style={{
         display: "grid",
@@ -595,6 +645,7 @@ function SecretaryConsole({
               onUnassign={onUnassign}
               rows={handoffRows}
               setRows={setHandoffRows}
+              onUnplaceTask={handleUnplaceTask}
             />
           ) : (
             <AISecretaryTimeline
@@ -610,6 +661,13 @@ function SecretaryConsole({
           )}
         </AISecretaryDropZone>
       </div>
+      {/* Floating preview of the dragged element under the cursor.
+          dnd-kit's DragOverlay handles auto-positioning + cleanup. */}
+      <DragOverlay dropAnimation={null}>
+        {activeDrag ? (
+          <HandoffChipPreview label={activeDrag.label} owner={activeDrag.owner} />
+        ) : null}
+      </DragOverlay>
       </DndContext>
 
       {/* Overlay surfaces — Loan chat (slide-out), Instructions (modal),
