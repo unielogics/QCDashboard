@@ -1,0 +1,377 @@
+"use client";
+
+// AISecretaryHandoffTable — operator-configured handoff sequence.
+//
+// Numbered rows × 2 columns (AI | Human). Each row is one synchronized
+// "step" in the deal flow, owned by exactly one party. Multiple tasks
+// can live in the same cell — they all happen together at that step.
+//
+// Storage: per-loan client-side (localStorage). The handoff sequence is
+// pure UI configuration on top of the existing CRS rows; the underlying
+// owner_type writes through to the backend on drop so the AI/cadence
+// engine sees the right ownership immediately. Row ordering itself is
+// presentational — Phase B will add a `sequence_index` server-side.
+//
+// Drag sources accepted:
+//   • ResolutionRow (Resolution Queue items) — payload { kind, label,
+//     requirement_key? }. If requirement_key matches an existing CRS
+//     row we assign + slot; otherwise we create a new custom task.
+//   • Timeline TaskCards — payload { task: "<requirement_key>" }. We
+//     re-slot the row + flip ownership.
+//
+// Drop targets: each (row, owner) cell uses id "handoff:<row_id>:<owner>"
+// so the parent DndContext (in DealWorkspaceTab) can route on drag-end.
+
+import { useEffect, useMemo, useState } from "react";
+import { useTheme } from "@/components/design-system/ThemeProvider";
+import { useDroppable } from "@dnd-kit/core";
+import { Icon } from "@/components/design-system/Icon";
+import type { DSDealSecretaryView, DSTaskRow } from "@/lib/types";
+
+export interface HandoffRow {
+  id: string;
+  owner: "ai" | "human" | null;
+  taskKeys: string[];
+}
+
+export interface AISecretaryHandoffTableProps {
+  view: DSDealSecretaryView;
+  loanId: string;
+  isOperator: boolean;
+  /** When the user drops a queue/timeline task on a cell. */
+  onAssign: (key: string) => void;
+  onUnassign: (key: string) => void;
+  /** Row state, mirrored from the parent for drag-end routing. */
+  rows: HandoffRow[];
+  setRows: (next: HandoffRow[]) => void;
+}
+
+const STORAGE_PREFIX = "qc.secretary.handoff.";
+
+export function loadHandoffRows(loanId: string): HandoffRow[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_PREFIX + loanId);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed as HandoffRow[];
+  } catch {
+    return null;
+  }
+}
+
+export function saveHandoffRows(loanId: string, rows: HandoffRow[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_PREFIX + loanId, JSON.stringify(rows));
+  } catch {
+    // Quota / private-mode — ignore. Worst case the next reload starts fresh.
+  }
+}
+
+export function defaultHandoffRows(view: DSDealSecretaryView): HandoffRow[] {
+  // Seed with all existing tasks, distributed by their current owner type.
+  // Each task gets its own row so the operator sees the full inventory
+  // and can collapse rows by dragging tasks together.
+  const allTasks = [...view.left, ...view.right];
+  const rows: HandoffRow[] = allTasks.map((t, i) => ({
+    id: `row_${i + 1}`,
+    owner: t.owner_type === "ai" ? "ai" : t.owner_type === "shared" ? "ai" : "human",
+    taskKeys: [t.requirement_key],
+  }));
+  // Always end with at least one empty row so the user can add new work.
+  rows.push({ id: `row_${allTasks.length + 1}`, owner: null, taskKeys: [] });
+  return rows;
+}
+
+export function AISecretaryHandoffTable({
+  view, loanId: _loanId, isOperator: _isOperator, onAssign: _onAssign, onUnassign: _onUnassign, rows, setRows,
+}: AISecretaryHandoffTableProps) {
+  const { t } = useTheme();
+
+  // Build a key → task map so each cell can render the full task labels.
+  const tasksByKey = useMemo(() => {
+    const m = new Map<string, DSTaskRow>();
+    for (const r of [...view.left, ...view.right]) {
+      m.set(r.requirement_key, r);
+    }
+    return m;
+  }, [view]);
+
+  // Track tasks NOT yet placed in any row so the operator knows the
+  // table is in sync with the underlying data. New CRS rows that
+  // appear after a drop land here until placed.
+  const placedKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of rows) for (const k of r.taskKeys) s.add(k);
+    return s;
+  }, [rows]);
+  const orphanTasks = useMemo(
+    () => [...view.left, ...view.right].filter((t) => !placedKeys.has(t.requirement_key)),
+    [view, placedKeys],
+  );
+
+  // When a new task appears (e.g. dragged from the queue and just got
+  // assigned), auto-append it to the last empty row OR add a new row
+  // for it so it shows up immediately.
+  useEffect(() => {
+    if (orphanTasks.length === 0) return;
+    const next = [...rows];
+    for (const orphan of orphanTasks) {
+      const ownerCol: "ai" | "human" =
+        orphan.owner_type === "ai" ? "ai" : "human";
+      // Find a trailing empty row to absorb the orphan first.
+      const lastEmpty = next.findIndex(
+        (r) => r.taskKeys.length === 0 && (r.owner === null || r.owner === ownerCol),
+      );
+      if (lastEmpty !== -1) {
+        next[lastEmpty] = {
+          ...next[lastEmpty],
+          owner: ownerCol,
+          taskKeys: [orphan.requirement_key],
+        };
+      } else {
+        next.push({
+          id: `row_${next.length + 1}`,
+          owner: ownerCol,
+          taskKeys: [orphan.requirement_key],
+        });
+      }
+    }
+    // Always keep one trailing empty row for "Add work" affordance.
+    if (next.length === 0 || next[next.length - 1].taskKeys.length > 0) {
+      next.push({ id: `row_${next.length + 1}`, owner: null, taskKeys: [] });
+    }
+    setRows(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orphanTasks.length]);
+
+  const removeKeyFromRow = (rowId: string, key: string) => {
+    const next = rows.map((r) =>
+      r.id === rowId
+        ? { ...r, taskKeys: r.taskKeys.filter((k) => k !== key) }
+        : r,
+    );
+    setRows(next);
+  };
+
+  const deleteRow = (rowId: string) => {
+    setRows(rows.filter((r) => r.id !== rowId));
+  };
+
+  const addRow = () => {
+    setRows([
+      ...rows,
+      { id: `row_${Date.now().toString(36)}`, owner: null, taskKeys: [] },
+    ]);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "44px 1fr 1fr", gap: 6, paddingBottom: 4 }}>
+        <span style={cellHeader(t)}>#</span>
+        <span style={cellHeader(t)}>AI</span>
+        <span style={cellHeader(t)}>Human</span>
+      </div>
+      {rows.map((row, i) => (
+        <HandoffRowView
+          key={row.id}
+          rowNumber={i + 1}
+          row={row}
+          tasksByKey={tasksByKey}
+          onRemoveKey={(key) => removeKeyFromRow(row.id, key)}
+          onDeleteRow={() => deleteRow(row.id)}
+          showDelete={rows.length > 1}
+        />
+      ))}
+      <button
+        type="button"
+        onClick={addRow}
+        style={{
+          marginTop: 4,
+          padding: "8px 12px",
+          borderRadius: 9,
+          background: t.surface2,
+          color: t.ink3,
+          border: `1px dashed ${t.line}`,
+          fontSize: 12,
+          fontWeight: 800,
+          cursor: "pointer",
+          fontFamily: "inherit",
+          alignSelf: "flex-start",
+        }}
+      >
+        + Add row
+      </button>
+    </div>
+  );
+}
+
+function HandoffRowView({
+  rowNumber, row, tasksByKey, onRemoveKey, onDeleteRow, showDelete,
+}: {
+  rowNumber: number;
+  row: HandoffRow;
+  tasksByKey: Map<string, DSTaskRow>;
+  onRemoveKey: (key: string) => void;
+  onDeleteRow: () => void;
+  showDelete: boolean;
+}) {
+  const { t } = useTheme();
+  const aiActive = row.owner === "ai";
+  const humanActive = row.owner === "human";
+  const empty = row.owner === null;
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "44px 1fr 1fr", gap: 6, alignItems: "stretch" }}>
+      <div style={{
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        gap: 4,
+        padding: "8px 4px", borderRadius: 9,
+        background: t.surface2, color: t.ink2,
+        fontSize: 13, fontWeight: 900,
+        border: `1px solid ${t.line}`,
+      }}>
+        <span>{rowNumber}</span>
+        {showDelete ? (
+          <button
+            type="button"
+            onClick={onDeleteRow}
+            title="Remove this row"
+            style={{
+              all: "unset", cursor: "pointer", color: t.ink3, fontSize: 10, fontWeight: 700,
+              padding: 0, lineHeight: 1,
+            }}
+          >×</button>
+        ) : null}
+      </div>
+      <HandoffCell
+        rowId={row.id}
+        owner="ai"
+        active={aiActive || empty}
+        ownedByOther={humanActive}
+        tasksByKey={tasksByKey}
+        taskKeys={aiActive ? row.taskKeys : []}
+        onRemoveKey={onRemoveKey}
+      />
+      <HandoffCell
+        rowId={row.id}
+        owner="human"
+        active={humanActive || empty}
+        ownedByOther={aiActive}
+        tasksByKey={tasksByKey}
+        taskKeys={humanActive ? row.taskKeys : []}
+        onRemoveKey={onRemoveKey}
+      />
+    </div>
+  );
+}
+
+function HandoffCell({
+  rowId, owner, active, ownedByOther, tasksByKey, taskKeys, onRemoveKey,
+}: {
+  rowId: string;
+  owner: "ai" | "human";
+  active: boolean;
+  ownedByOther: boolean;
+  tasksByKey: Map<string, DSTaskRow>;
+  taskKeys: string[];
+  onRemoveKey: (key: string) => void;
+}) {
+  const { t } = useTheme();
+  const dropId = `handoff:${rowId}:${owner}`;
+  const drop = useDroppable({ id: dropId, disabled: !active });
+  const accent = owner === "ai" ? t.brand : t.ink2;
+  const tint = owner === "ai" ? t.brandSoft : t.surface2;
+  const borderColor = drop.isOver
+    ? accent
+    : ownedByOther
+      ? `${t.line}`
+      : taskKeys.length
+        ? accent
+        : t.line;
+  return (
+    <div
+      ref={active ? drop.setNodeRef : undefined}
+      style={{
+        minHeight: 56,
+        borderRadius: 10,
+        border: `1.5px ${drop.isOver ? "dashed" : "solid"} ${borderColor}`,
+        background: ownedByOther ? "transparent" : drop.isOver ? tint : t.surface,
+        opacity: ownedByOther ? 0.35 : 1,
+        padding: 8,
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        position: "relative",
+        transition: "background 0.12s, border-color 0.12s",
+      }}
+    >
+      {ownedByOther ? (
+        <span style={{ position: "absolute", top: 6, right: 8, fontSize: 9, fontWeight: 800, color: t.ink3, letterSpacing: 0.5 }}>
+          —
+        </span>
+      ) : taskKeys.length === 0 ? (
+        <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700, fontStyle: "italic" }}>
+          {drop.isOver ? `Drop here → ${owner === "ai" ? "AI handles" : "Human handles"}` : `Drag work here`}
+        </span>
+      ) : (
+        taskKeys.map((k) => {
+          const task = tasksByKey.get(k);
+          const label = task?.label ?? k;
+          const cat = task?.category ?? "";
+          return (
+            <div
+              key={k}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "5px 8px",
+                borderRadius: 7,
+                background: t.surface2,
+                border: `1px solid ${t.line}`,
+                minWidth: 0,
+              }}
+            >
+              <Icon name={owner === "ai" ? "ai" : "user"} size={11} stroke={2.2} />
+              <span style={{
+                flex: 1, minWidth: 0,
+                fontSize: 11.5, fontWeight: 700, color: t.ink,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>
+                {label}
+              </span>
+              {cat ? (
+                <span style={{
+                  fontSize: 9, fontWeight: 800, padding: "1px 5px", borderRadius: 4,
+                  background: t.chip, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.4,
+                  whiteSpace: "nowrap",
+                }}>
+                  {String(cat).slice(0, 12)}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => onRemoveKey(k)}
+                title="Move out of this row"
+                style={{
+                  all: "unset", cursor: "pointer", color: t.ink3, fontSize: 12, fontWeight: 800, padding: 0, lineHeight: 1,
+                }}
+              >×</button>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+function cellHeader(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
+  return {
+    fontSize: 10, fontWeight: 900, letterSpacing: 1.1,
+    textTransform: "uppercase", color: t.ink3,
+    padding: "0 4px",
+  };
+}

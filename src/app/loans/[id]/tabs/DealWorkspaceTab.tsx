@@ -53,11 +53,18 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { AISecretaryTimeline } from "@/components/AISecretaryTimeline";
+import {
+  AISecretaryHandoffTable,
+  defaultHandoffRows,
+  loadHandoffRows,
+  saveHandoffRows,
+  type HandoffRow,
+} from "@/components/AISecretaryHandoffTable";
 import { useAIQuestions, useAnswerAIQuestion, useCreateCustomTask, type DSAIQuestion } from "@/hooks/useApi";
 import { getCriteriaItems } from "../fileReadiness";
-import { InstructionStrip } from "../components/InstructionStrip";
-import { DealChatThread } from "../components/DealChatThread";
-import { DealChatInput } from "../components/DealChatInput";
+import { LoanChatSlideOut } from "../components/LoanChatSlideOut";
+import { InstructionsModal } from "../components/InstructionsModal";
+import { AIQuestionsPopover } from "../components/AIQuestionsPopover";
 
 export function DealWorkspaceTab({ loanId, onOpenTab }: { loanId: string; onOpenTab?: (tab: string, targetId?: string) => void }) {
   const { t } = useTheme();
@@ -73,7 +80,6 @@ export function DealWorkspaceTab({ loanId, onOpenTab }: { loanId: string; onOpen
   const updateAssignment = useUpdateAssignment(loanId);
   const updateFileSettings = useUpdateFileSettings(loanId);
   const bootstrap = useBootstrapDealSecretary(loanId);
-  const [openPanel, setOpenPanel] = useState<"instructions" | "chat" | "ai-questions" | null>(null);
   // AI clarifying questions — Phase A empty stub; Phase B populates.
   const { data: aiQuestions = [] } = useAIQuestions(loanId);
   const answerAIQuestion = useAnswerAIQuestion(loanId);
@@ -165,75 +171,15 @@ export function DealWorkspaceTab({ loanId, onOpenTab }: { loanId: string; onOpen
           onChangeOutreachMode={handleOutreachMode}
           onOpenAssignment={handleOpenAssignment}
           onOpenTab={onOpenTab}
+          workspace={workspace}
+          workspaceLoading={workspaceLoading}
+          aiQuestions={aiQuestions}
+          onAnswerAIQuestion={async (id, answer) => {
+            await answerAIQuestion.mutateAsync({ question_id: id, answer });
+          }}
+          canEditInstructions={isInternal}
         />
       )}
-
-      {workspace && !workspaceLoading ? (
-        <Card pad={12}>
-          {/* Merged Instructions + Loan Chat + AI Questions in one
-              tabbed container. Chat is the default since that's where
-              the most interactive work happens. AI Questions is where
-              the AI asks the operator for context before contacting
-              the borrower (Phase B populates; for now an empty state). */}
-          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
-            <TogglePanelButton
-              active={(openPanel ?? "chat") === "chat"}
-              icon="chat"
-              label="Loan chat"
-              onClick={() => setOpenPanel("chat")}
-            />
-            <TogglePanelButton
-              active={openPanel === "instructions"}
-              icon="sliders"
-              label="Instructions"
-              onClick={() => setOpenPanel("instructions")}
-            />
-            <TogglePanelButton
-              active={openPanel === "ai-questions"}
-              icon="alert"
-              label={`AI questions${aiQuestions.length ? ` · ${aiQuestions.length}` : ""}`}
-              onClick={() => setOpenPanel("ai-questions")}
-            />
-            <span style={{ marginLeft: "auto", color: t.ink3, fontSize: 11, fontWeight: 700 }}>
-              {openPanel === "instructions"
-                ? "Edit standing rules the AI honors on this file"
-                : openPanel === "ai-questions"
-                ? "Answer what the AI doesn't know before it engages the client"
-                : "Talk to the file AI"}
-            </span>
-          </div>
-          {openPanel === "instructions" ? (
-            <InstructionStrip
-              loanId={loanId}
-              instructions={workspace.instructions}
-              canEdit={isInternal}
-            />
-          ) : openPanel === "ai-questions" ? (
-            <AIQuestionsPanel
-              loanId={loanId}
-              questions={aiQuestions}
-              onAnswer={async (id, answer) => {
-                await answerAIQuestion.mutateAsync({ question_id: id, answer });
-              }}
-            />
-          ) : (
-            <>
-              <DealChatThread
-                loanId={loanId}
-                user={user}
-                messages={workspace.chat_messages}
-                pausedUntil={workspace.ai_paused_until}
-              />
-              <div style={{ height: 10 }} />
-              <DealChatInput
-                loanId={loanId}
-                user={user}
-                pausedUntil={workspace.ai_paused_until}
-              />
-            </>
-          )}
-        </Card>
-      ) : null}
     </div>
   );
 }
@@ -252,6 +198,11 @@ function SecretaryConsole({
   onChangeOutreachMode,
   onOpenAssignment,
   onOpenTab,
+  workspace,
+  workspaceLoading,
+  aiQuestions,
+  onAnswerAIQuestion,
+  canEditInstructions,
 }: {
   loan: Loan;
   user: User;
@@ -266,11 +217,33 @@ function SecretaryConsole({
   onChangeOutreachMode: (mode: DSOutreachMode) => void;
   onOpenAssignment: (row: DSTaskRow) => void;
   onOpenTab?: (tab: string, targetId?: string) => void;
+  workspace?: import("@/lib/types").WorkspaceState;
+  workspaceLoading: boolean;
+  aiQuestions: DSAIQuestion[];
+  onAnswerAIQuestion: (questionId: string, answer: string) => Promise<void>;
+  canEditInstructions: boolean;
 }) {
   const { t } = useTheme();
   const createCustomTask = useCreateCustomTask(loan.id);
   const [filter, setFilter] = useState<"borrower" | "required" | "human" | "all">("borrower");
   const [flash, setFlash] = useState<string | null>(null);
+  // Right-pane view toggle. "handoff" = sequenced AI/Human assignment
+  // table; "current" = the live timeline (Next up / In progress / etc.).
+  const [rightView, setRightView] = useState<"handoff" | "current">("handoff");
+  // Side panel state — Instructions / Loan chat / AI questions affordances
+  // now live in the AI Secretary header. Single-modal-at-a-time.
+  const [panel, setPanel] = useState<"chat" | "instructions" | "ai-questions" | null>(null);
+  // Handoff table rows (per-loan localStorage).
+  const [handoffRows, setHandoffRows] = useState<HandoffRow[]>([]);
+  useEffect(() => {
+    const stored = loadHandoffRows(loan.id);
+    if (stored) setHandoffRows(stored);
+    else setHandoffRows(defaultHandoffRows(secretary));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loan.id]);
+  useEffect(() => {
+    if (handoffRows.length > 0) saveHandoffRows(loan.id, handoffRows);
+  }, [loan.id, handoffRows]);
 
   const missingCriteria = useMemo(() => getCriteriaItems(loan).filter((item) => !item.ready), [loan]);
   const openDocs = docs.filter((doc) => doc.status !== "verified" && doc.status !== "skipped");
@@ -307,34 +280,82 @@ function SecretaryConsole({
     [humanTasks, aiTasks],
   );
   const handleQueueDragEnd = (e: DragEndEvent) => {
-    const over = e.over?.id;
-    if (over !== "ai-secretary-zone") return;
+    const overId = e.over?.id;
+    if (overId === undefined) return;
     const payload = e.active.data?.current as
       | { kind?: string; label?: string; source_id?: string; requirement_key?: string }
       | undefined;
     if (!payload) return;
-    // Existing CRS row? Just flip ownership to AI — fastest path.
-    if (payload.requirement_key && timelineKeys.has(payload.requirement_key)) {
-      onAssign(payload.requirement_key);
-      setFlash(`Delegated "${payload.label ?? payload.requirement_key}" to AI.`);
-      window.setTimeout(() => setFlash(null), 2400);
+
+    // Handoff cell drop: target id looks like "handoff:<row_id>:<owner>".
+    // We commit two side-effects:
+    //   1) Pin the task to that row in the local handoff config so the
+    //      operator's sequencing sticks across reloads.
+    //   2) Flip ownership server-side via onAssign / onUnassign so the
+    //      cadence engine + visual timeline stay in sync.
+    const overStr = String(overId);
+    if (overStr.startsWith("handoff:")) {
+      const [, rowId, ownerStr] = overStr.split(":");
+      const owner: "ai" | "human" = ownerStr === "ai" ? "ai" : "human";
+
+      // Resolve the dragged task. Either it already maps to a CRS row,
+      // or we need to spin up a custom task first.
+      const placeIntoRow = (key: string, label?: string) => {
+        const next = handoffRows.map((r) =>
+          r.id === rowId
+            ? { ...r, owner, taskKeys: r.taskKeys.includes(key) ? r.taskKeys : [...r.taskKeys.filter((x) => x !== key), key] }
+            : { ...r, taskKeys: r.taskKeys.filter((x) => x !== key) }, // remove from other rows
+        );
+        setHandoffRows(next);
+        if (owner === "ai") onAssign(key);
+        else onUnassign(key);
+        setFlash(`Placed "${label ?? key}" in row ${rowId.replace("row_", "")} (${owner.toUpperCase()}).`);
+        window.setTimeout(() => setFlash(null), 2400);
+      };
+
+      if (payload.requirement_key && timelineKeys.has(payload.requirement_key)) {
+        placeIntoRow(payload.requirement_key, payload.label);
+        return;
+      }
+      const label = payload.label || "Follow up";
+      createCustomTask.mutate(
+        { label, owner_type: owner, objective_text: undefined },
+        {
+          onSuccess: (created) => {
+            placeIntoRow(created.requirement_key, label);
+          },
+          onError: (err) => {
+            setFlash(err instanceof Error ? err.message : "Could not add task.");
+            window.setTimeout(() => setFlash(null), 3200);
+          },
+        },
+      );
       return;
     }
-    // Otherwise spin up a custom task on the file with AI as the owner.
-    const label = payload.label || "Follow up";
-    createCustomTask.mutate(
-      { label, owner_type: "ai", objective_text: undefined },
-      {
-        onSuccess: () => {
-          setFlash(`Added "${label}" to AI Secretary.`);
-          window.setTimeout(() => setFlash(null), 2400);
+
+    // Legacy whole-zone drop (current-activity timeline view) — always AI.
+    if (overStr === "ai-secretary-zone") {
+      if (payload.requirement_key && timelineKeys.has(payload.requirement_key)) {
+        onAssign(payload.requirement_key);
+        setFlash(`Delegated "${payload.label ?? payload.requirement_key}" to AI.`);
+        window.setTimeout(() => setFlash(null), 2400);
+        return;
+      }
+      const label = payload.label || "Follow up";
+      createCustomTask.mutate(
+        { label, owner_type: "ai", objective_text: undefined },
+        {
+          onSuccess: () => {
+            setFlash(`Added "${label}" to AI Secretary.`);
+            window.setTimeout(() => setFlash(null), 2400);
+          },
+          onError: (err) => {
+            setFlash(err instanceof Error ? err.message : "Could not add task.");
+            window.setTimeout(() => setFlash(null), 3200);
+          },
         },
-        onError: (err) => {
-          setFlash(err instanceof Error ? err.message : "Could not add task.");
-          window.setTimeout(() => setFlash(null), 3200);
-        },
-      },
-    );
+      );
+    }
   };
 
   const assignMany = (rows: DSTaskRow[]) => rows.forEach((r) => onAssign(r.requirement_key));
@@ -414,61 +435,41 @@ function SecretaryConsole({
         ) : null}
       </div>
 
+      {/* New header action row: Instructions / Loan chat / AI questions */}
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+        <ActionButton
+          icon="sliders"
+          label="Instructions"
+          onClick={() => setPanel("instructions")}
+          disabled={!workspace}
+        />
+        <ActionButton
+          icon="chat"
+          label="Loan chat"
+          hint="AI ↔ client"
+          onClick={() => setPanel("chat")}
+          disabled={!workspace}
+        />
+        <ActionButton
+          icon="alert"
+          label={aiQuestions.length ? `AI questions (${aiQuestions.length})` : "AI questions"}
+          attention={aiQuestions.length > 0}
+          onClick={() => setPanel("ai-questions")}
+        />
+        <span style={{ marginLeft: "auto", fontSize: 11, color: t.ink3, fontWeight: 700 }}>
+          {workspaceLoading ? "Loading workspace…" : aiQuestions.length ? "AI is waiting on context — open AI questions" : "Drag work between the queue and AI / Human columns"}
+        </span>
+      </div>
+
       <DndContext sensors={sensors} onDragEnd={handleQueueDragEnd}>
+      {/* Two-column body: Resolution Queue (LEFT) | Handoff table or Timeline (RIGHT) */}
       <div style={{
         display: "grid",
-        gridTemplateColumns: "minmax(360px, 1.3fr) minmax(280px, 0.85fr)",
+        gridTemplateColumns: "minmax(280px, 0.85fr) minmax(420px, 1.3fr)",
         gap: 12,
         alignItems: "stretch",
       }}>
-        <AISecretaryDropZone>
-          {/* Compact header: tiny eyebrow + presets + filter inline */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
-              Delegation
-            </span>
-            <span style={{ fontSize: 11, color: t.ink3 }}>· drag any row from the Resolution Queue here to delegate</span>
-            <div style={{ flex: 1 }} />
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value as typeof filter)}
-              style={{
-                padding: "5px 8px",
-                borderRadius: 8,
-                border: `1px solid ${t.line}`,
-                background: t.surface2,
-                color: t.ink2,
-                fontSize: 11,
-                fontFamily: "inherit",
-                cursor: "pointer",
-              }}
-            >
-              <option value="borrower">Borrower-facing</option>
-              <option value="required">Required only</option>
-              <option value="human">Needs human review</option>
-              <option value="all">All</option>
-            </select>
-            <PresetAction label="Assign required" disabled={requiredTargets.length === 0} onClick={() => assignMany(requiredTargets)} />
-            <PresetAction label="Start collection" disabled={collectionTargets.length === 0} onClick={() => assignMany(collectionTargets)} />
-          </div>
-
-          {/* Timeline view — replaces the old Human / AI two-column
-              layout. Sections (Next Up / In Progress / Upcoming /
-              Done) are computed server-side from dependencies + CRS
-              status. Per-task: just an Owner button (click to flip
-              Human ↔ AI). The system sequences everything else. */}
-          <AISecretaryTimeline
-            view={secretary}
-            isOperator={isOperator}
-            onAssign={onAssign}
-            onUnassign={onUnassign}
-            onOpenAssignment={onOpenAssignment}
-            onCreateCustomTask={async (input) => {
-              await createCustomTask.mutateAsync(input);
-            }}
-          />
-        </AISecretaryDropZone>
-
+        {/* LEFT — Resolution Queue (was on the right) */}
         <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface, padding: 12, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <span style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
@@ -477,10 +478,10 @@ function SecretaryConsole({
             <Pill bg={openDocs.length || missingCriteria.length || warnings.length ? t.warnBg : t.profitBg} color={openDocs.length || missingCriteria.length || warnings.length ? t.warn : t.profit}>
               {openDocs.length + missingCriteria.length + warnings.length} open
             </Pill>
-            <span style={{ marginLeft: "auto", fontSize: 10.5, color: t.ink3, fontWeight: 700 }}>Drag a row → AI Secretary to delegate</span>
+            <span style={{ marginLeft: "auto", fontSize: 10.5, color: t.ink3, fontWeight: 700 }}>Drag → row cell</span>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflow: "auto", paddingRight: 2 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 540, overflow: "auto", paddingRight: 2 }}>
             {warnings.slice(0, 3).map((warning) => (
               <ResolutionRow
                 key={`${warning.code}-${warning.message}`}
@@ -538,10 +539,105 @@ function SecretaryConsole({
             ) : null}
           </div>
 
-          {flash ? <div style={{ marginTop: 9, fontSize: 11.5, color: flash.includes("failed") ? t.danger : t.ink3, fontWeight: 800 }}>{flash}</div> : null}
+          {flash ? <div style={{ marginTop: 9, fontSize: 11.5, color: flash.includes("failed") || flash.includes("Could not") ? t.danger : t.ink3, fontWeight: 800 }}>{flash}</div> : null}
         </div>
+
+        {/* RIGHT — Toggle between Work-handoff and Current-activity views */}
+        <AISecretaryDropZone>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            <span style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
+              Delegation
+            </span>
+            <ViewToggle
+              value={rightView}
+              onChange={setRightView}
+              options={[
+                { value: "handoff", label: "Work handoff" },
+                { value: "current", label: "Current activity" },
+              ]}
+            />
+            <div style={{ flex: 1 }} />
+            {rightView === "handoff" ? (
+              <span style={{ fontSize: 11, color: t.ink3 }}>Drop tasks into a numbered row's AI or Human column</span>
+            ) : (
+              <>
+                <select
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value as typeof filter)}
+                  style={{
+                    padding: "5px 8px",
+                    borderRadius: 8,
+                    border: `1px solid ${t.line}`,
+                    background: t.surface2,
+                    color: t.ink2,
+                    fontSize: 11,
+                    fontFamily: "inherit",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="borrower">Borrower-facing</option>
+                  <option value="required">Required only</option>
+                  <option value="human">Needs human review</option>
+                  <option value="all">All</option>
+                </select>
+                <PresetAction label="Assign required" disabled={requiredTargets.length === 0} onClick={() => assignMany(requiredTargets)} />
+                <PresetAction label="Start collection" disabled={collectionTargets.length === 0} onClick={() => assignMany(collectionTargets)} />
+              </>
+            )}
+          </div>
+
+          {rightView === "handoff" ? (
+            <AISecretaryHandoffTable
+              view={secretary}
+              loanId={loan.id}
+              isOperator={isOperator}
+              onAssign={onAssign}
+              onUnassign={onUnassign}
+              rows={handoffRows}
+              setRows={setHandoffRows}
+            />
+          ) : (
+            <AISecretaryTimeline
+              view={secretary}
+              isOperator={isOperator}
+              onAssign={onAssign}
+              onUnassign={onUnassign}
+              onOpenAssignment={onOpenAssignment}
+              onCreateCustomTask={async (input) => {
+                await createCustomTask.mutateAsync(input);
+              }}
+            />
+          )}
+        </AISecretaryDropZone>
       </div>
       </DndContext>
+
+      {/* Overlay surfaces — Loan chat (slide-out), Instructions (modal),
+          AI questions (popover). Single-modal-at-a-time. */}
+      {workspace ? (
+        <LoanChatSlideOut
+          open={panel === "chat"}
+          onClose={() => setPanel(null)}
+          loanId={loan.id}
+          user={user}
+          workspace={workspace}
+        />
+      ) : null}
+      {workspace ? (
+        <InstructionsModal
+          open={panel === "instructions"}
+          onClose={() => setPanel(null)}
+          loanId={loan.id}
+          instructions={workspace.instructions}
+          canEdit={canEditInstructions}
+        />
+      ) : null}
+      <AIQuestionsPopover
+        open={panel === "ai-questions"}
+        onClose={() => setPanel(null)}
+        questions={aiQuestions}
+        onAnswer={onAnswerAIQuestion}
+      />
     </Card>
   );
 }
@@ -619,6 +715,89 @@ function ModeButton({ active, icon, title, detail, onClick }: { active: boolean;
     </button>
   );
 }
+
+function ActionButton({
+  icon, label, onClick, hint, disabled, attention,
+}: {
+  icon: string;
+  label: string;
+  onClick: () => void;
+  hint?: string;
+  disabled?: boolean;
+  attention?: boolean;
+}) {
+  const { t } = useTheme();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={hint}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 6,
+        padding: "7px 11px",
+        borderRadius: 9,
+        border: `1px solid ${attention ? t.warn : t.line}`,
+        background: attention ? t.warnBg : t.surface2,
+        color: attention ? t.warn : t.ink2,
+        fontSize: 12,
+        fontWeight: 850,
+        fontFamily: "inherit",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <Icon name={icon} size={13} />
+      {label}
+      {hint ? (
+        <span style={{ fontSize: 10, fontWeight: 700, color: attention ? t.warn : t.ink3, marginLeft: 2 }}>{hint}</span>
+      ) : null}
+    </button>
+  );
+}
+
+function ViewToggle<T extends string>({
+  value, onChange, options,
+}: {
+  value: T;
+  onChange: (next: T) => void;
+  options: { value: T; label: string }[];
+}) {
+  const { t } = useTheme();
+  return (
+    <div style={{
+      display: "inline-flex", padding: 3, borderRadius: 9,
+      background: t.surface2, border: `1px solid ${t.line}`,
+    }}>
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            style={{
+              padding: "4px 11px",
+              borderRadius: 7,
+              border: "none",
+              background: active ? t.surface : "transparent",
+              color: active ? t.ink : t.ink3,
+              fontSize: 11.5,
+              fontWeight: 900,
+              fontFamily: "inherit",
+              cursor: "pointer",
+              boxShadow: active ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 
 function PresetAction({ label, onClick, disabled, tone }: { label: string; onClick: () => void; disabled?: boolean; tone?: "danger" }) {
   const { t } = useTheme();
@@ -889,29 +1068,6 @@ function ResolutionRow({
   );
 }
 
-function TogglePanelButton({ active, icon, label, onClick }: { active: boolean; icon: string; label: string; onClick: () => void }) {
-  const { t } = useTheme();
-  return (
-    <button type="button" onClick={onClick} style={{
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 6,
-      padding: "7px 10px",
-      borderRadius: 9,
-      border: `1px solid ${active ? t.brand : t.line}`,
-      background: active ? t.brandSoft : t.surface2,
-      color: active ? t.brand : t.ink2,
-      fontSize: 12,
-      fontWeight: 850,
-      cursor: "pointer",
-      fontFamily: "inherit",
-    }}>
-      <Icon name={icon} size={13} />
-      {label}
-    </button>
-  );
-}
-
 function canControlTask(row: DSTaskRow, isOperator: boolean) {
   if (row.owner_type === "funding_locked" && !isOperator) return false;
   return isOperator || row.can_agent_override;
@@ -943,141 +1099,3 @@ function conditionMeta(item: WorkflowDoc) {
   return `Due in ${item.days_until_due}d`;
 }
 
-// ─── AIQuestionsPanel ──────────────────────────────────────────────
-//
-// Third mode in the merged Loan Chat container. Renders the AI's
-// open questions as chat bubbles; operator types an answer per
-// question. Empty state explains what the panel is for.
-
-function AIQuestionsPanel({
-  loanId: _loanId,
-  questions,
-  onAnswer,
-}: {
-  loanId: string;
-  questions: DSAIQuestion[];
-  onAnswer: (questionId: string, answer: string) => Promise<void>;
-}) {
-  const { t } = useTheme();
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [sending, setSending] = useState<string | null>(null);
-
-  if (questions.length === 0) {
-    return (
-      <div style={{
-        padding: "24px 18px",
-        textAlign: "center",
-        color: t.ink3,
-        fontSize: 13,
-        lineHeight: 1.55,
-      }}>
-        <div style={{ fontSize: 32, marginBottom: 10 }} aria-hidden>💭</div>
-        <div style={{ fontWeight: 800, color: t.ink2, marginBottom: 4 }}>
-          No questions waiting for you
-        </div>
-        <div style={{ maxWidth: 420, margin: "0 auto" }}>
-          When the AI Secretary spots something unclear about how to engage
-          this borrower — tone, timing, a specific item to mention — it will
-          ask here before sending anything. Your answers shape every
-          outreach message from then on.
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {questions.map((q) => {
-        const answered = !!q.answered_at;
-        const draft = answers[q.id] ?? "";
-        const isSending = sending === q.id;
-        return (
-          <div key={q.id} style={{
-            border: `1px solid ${t.line}`,
-            borderRadius: 11,
-            background: answered ? t.surface2 : t.surface,
-            padding: 12,
-            opacity: answered ? 0.85 : 1,
-          }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-              <span style={{
-                fontSize: 9.5, fontWeight: 900,
-                padding: "2px 6px", borderRadius: 4,
-                background: t.brandSoft, color: t.brand,
-                letterSpacing: 0.4, textTransform: "uppercase",
-              }}>
-                AI asks
-              </span>
-              {q.requirement_key ? (
-                <span style={{
-                  fontSize: 9.5, fontWeight: 800,
-                  padding: "2px 6px", borderRadius: 4,
-                  background: t.chip, color: t.ink3,
-                  letterSpacing: 0.3, textTransform: "uppercase",
-                }}>
-                  {q.requirement_key}
-                </span>
-              ) : null}
-              <span style={{ flex: 1 }} />
-              <span style={{ fontSize: 10, color: t.ink3 }}>
-                {new Date(q.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-              </span>
-            </div>
-            <div style={{ marginTop: 7, fontSize: 13.5, fontWeight: 700, color: t.ink, lineHeight: 1.35 }}>
-              {q.question}
-            </div>
-            {q.context ? (
-              <div style={{ marginTop: 4, fontSize: 11, color: t.ink3, lineHeight: 1.4 }}>
-                {q.context}
-              </div>
-            ) : null}
-            {answered ? (
-              <div style={{ marginTop: 9, padding: 9, borderRadius: 9, background: t.profitBg, color: t.profit, fontSize: 12, fontWeight: 700 }}>
-                ✓ Answer: {q.answer ?? "—"}
-              </div>
-            ) : (
-              <div style={{ marginTop: 9, display: "flex", gap: 6 }}>
-                <input
-                  value={draft}
-                  onChange={(e) => setAnswers((m) => ({ ...m, [q.id]: e.target.value }))}
-                  placeholder="Type your answer…"
-                  style={{
-                    flex: 1,
-                    padding: "8px 11px", borderRadius: 8,
-                    background: t.surface2, color: t.ink,
-                    border: `1px solid ${t.line}`, fontSize: 12.5,
-                    outline: "none", fontFamily: "inherit",
-                  }}
-                />
-                <button
-                  type="button"
-                  disabled={!draft.trim() || isSending}
-                  onClick={async () => {
-                    setSending(q.id);
-                    try {
-                      await onAnswer(q.id, draft.trim());
-                      setAnswers((m) => ({ ...m, [q.id]: "" }));
-                    } finally {
-                      setSending(null);
-                    }
-                  }}
-                  style={{
-                    padding: "8px 14px", borderRadius: 8,
-                    background: t.brand, color: t.inverse,
-                    border: "none",
-                    fontSize: 12, fontWeight: 900,
-                    cursor: !draft.trim() || isSending ? "not-allowed" : "pointer",
-                    opacity: !draft.trim() || isSending ? 0.55 : 1,
-                    fontFamily: "inherit",
-                  }}
-                >
-                  {isSending ? "Sending…" : "Answer"}
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
