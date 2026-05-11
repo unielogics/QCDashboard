@@ -47,6 +47,15 @@ import {
   type User,
 } from "@/lib/types";
 import { AISecretaryControl } from "@/components/AISecretaryControl";
+import {
+  DndContext,
+  PointerSensor,
+  useDroppable,
+  useDraggable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import { getCriteriaItems } from "../fileReadiness";
 import { InstructionStrip } from "../components/InstructionStrip";
 import { DealChatThread } from "../components/DealChatThread";
@@ -386,18 +395,18 @@ function SecretaryConsole({
             ))}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, minHeight: 360 }}>
-            <TaskColumn title="Human owns" count={visibleHumanTasks.length}>
-              {visibleHumanTasks.length ? visibleHumanTasks.slice(0, 10).map((row) => (
-                <SecretaryTaskRow key={row.requirement_key} row={row} side="human" isOperator={isOperator} onAssign={onAssign} onUnassign={onUnassign} onOpenAssignment={onOpenAssignment} />
-              )) : <EmptyWork note="No matching human-owned tasks." />}
-            </TaskColumn>
-            <TaskColumn title="AI owns" count={aiTasks.length}>
-              {aiTasks.length ? aiTasks.slice(0, 10).map((row) => (
-                <SecretaryTaskRow key={row.requirement_key} row={row} side="ai" isOperator={isOperator} onAssign={onAssign} onUnassign={onUnassign} onOpenAssignment={onOpenAssignment} />
-              )) : <EmptyWork note="No AI tasks yet. Use a preset or assign a row." />}
-            </TaskColumn>
-          </div>
+          {/* Drag-drop: SecretaryTaskRow is draggable, TaskColumn is
+              droppable. On drop, we route to onAssign or onUnassign
+              based on which column the row lands in. The buttons on
+              each row stay as a keyboard/mobile-friendly fallback. */}
+          <DealSecretaryDnd
+            visibleHumanTasks={visibleHumanTasks}
+            aiTasks={aiTasks}
+            isOperator={isOperator}
+            onAssign={onAssign}
+            onUnassign={onUnassign}
+            onOpenAssignment={onOpenAssignment}
+          />
         </div>
 
         <div style={{ border: `1px solid ${t.line}`, borderRadius: 14, background: t.surface, padding: 13, minWidth: 0 }}>
@@ -536,10 +545,87 @@ function FilterChip({ active, label, onClick }: { active: boolean; label: string
   );
 }
 
-function TaskColumn({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
-  const { t } = useTheme();
+// ── Drag-drop wrapper around the two task columns ──────────────────
+//
+// SecretaryTaskRow becomes draggable (id = requirement_key). TaskColumn
+// becomes droppable (id = "human-column" | "ai-column"). On drop we
+// call onAssign or onUnassign based on which column the row lands in.
+// The existing "Give to AI" / "Keep human" buttons on each row stay
+// as a keyboard- and mobile-friendly fallback path.
+
+function DealSecretaryDnd({
+  visibleHumanTasks,
+  aiTasks,
+  isOperator,
+  onAssign,
+  onUnassign,
+  onOpenAssignment,
+}: {
+  visibleHumanTasks: DSTaskRow[];
+  aiTasks: DSTaskRow[];
+  isOperator: boolean;
+  onAssign: (key: string) => void;
+  onUnassign: (key: string) => void;
+  onOpenAssignment: (row: DSTaskRow) => void;
+}) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const allByKey = useMemo(() => {
+    const m = new Map<string, DSTaskRow>();
+    [...visibleHumanTasks, ...aiTasks].forEach((r) => m.set(r.requirement_key, r));
+    return m;
+  }, [visibleHumanTasks, aiTasks]);
+
+  const handleDragEnd = (e: DragEndEvent) => {
+    const id = String(e.active.id);
+    const over = e.over?.id;
+    const row = allByKey.get(id);
+    if (!row || over === undefined) return;
+    if (row.owner_type === "funding_locked" && !isOperator) return;
+    if (over === "ai-column" && row.owner_type !== "ai") {
+      onAssign(row.requirement_key);
+    } else if (over === "human-column" && row.owner_type === "ai") {
+      onUnassign(row.requirement_key);
+    }
+  };
+
   return (
-    <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface2, padding: 10, minWidth: 0 }}>
+    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, minHeight: 360 }}>
+        <TaskColumn dropId="human-column" title="Human owns" count={visibleHumanTasks.length}>
+          {visibleHumanTasks.length ? visibleHumanTasks.slice(0, 10).map((row) => (
+            <SecretaryTaskRow key={row.requirement_key} row={row} side="human" isOperator={isOperator} onAssign={onAssign} onUnassign={onUnassign} onOpenAssignment={onOpenAssignment} />
+          )) : <EmptyWork note="No matching human-owned tasks." />}
+        </TaskColumn>
+        <TaskColumn dropId="ai-column" title="AI owns" count={aiTasks.length}>
+          {aiTasks.length ? aiTasks.slice(0, 10).map((row) => (
+            <SecretaryTaskRow key={row.requirement_key} row={row} side="ai" isOperator={isOperator} onAssign={onAssign} onUnassign={onUnassign} onOpenAssignment={onOpenAssignment} />
+          )) : <EmptyWork note="No AI tasks yet. Drag a row here or use a preset above." />}
+        </TaskColumn>
+      </div>
+    </DndContext>
+  );
+}
+
+function TaskColumn({ title, count, children, dropId }: { title: string; count: number; children: React.ReactNode; dropId?: string }) {
+  const { t } = useTheme();
+  // useDroppable is only called when dropId is provided (the column
+  // is wired into a DndContext). Hooks must run unconditionally — we
+  // pass a sentinel id when undefined so the call is stable, and
+  // we only honor isOver when dropId is a real one.
+  const droppable = useDroppable({ id: dropId ?? "_unused_" });
+  const isOver = !!dropId && droppable.isOver;
+  return (
+    <div
+      ref={dropId ? droppable.setNodeRef : undefined}
+      style={{
+        border: `1.5px ${isOver ? "dashed" : "solid"} ${isOver ? t.brand : t.line}`,
+        borderRadius: 12,
+        background: isOver ? t.brandSoft : t.surface2,
+        padding: 10,
+        minWidth: 0,
+        transition: "background 0.12s, border-color 0.12s",
+      }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.1, textTransform: "uppercase" }}>{title}</div>
         <span style={{ fontSize: 11, fontWeight: 900, color: t.ink3 }}>{count}</span>
@@ -568,8 +654,24 @@ function SecretaryTaskRow({
   const canControl = canControlTask(row, isOperator);
   const cat = DS_CATEGORY_META[row.category]?.short ?? row.category;
   const isSensitive = row.completion_mode === "requires_human_verify";
+  // Drag handle on the card itself. Click-controls (the "Give to AI"
+  // button) stay as a fallback for keyboard + mobile users.
+  const drag = useDraggable({ id: row.requirement_key, disabled: !canControl });
   return (
-    <div style={{ padding: 10, borderRadius: 11, border: `1px solid ${side === "ai" ? t.brand : t.line}`, background: t.surface, minWidth: 0 }}>
+    <div
+      ref={drag.setNodeRef}
+      {...(canControl ? { ...drag.attributes, ...drag.listeners } : {})}
+      style={{
+        padding: 10,
+        borderRadius: 11,
+        border: `1px solid ${side === "ai" ? t.brand : t.line}`,
+        background: t.surface,
+        minWidth: 0,
+        opacity: drag.isDragging ? 0.4 : 1,
+        cursor: canControl ? "grab" : "not-allowed",
+        userSelect: "none",
+      }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
         <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: 0.8, textTransform: "uppercase", color: t.ink3 }}>{cat}</span>
         <span style={{ fontSize: 9.5, fontWeight: 900, padding: "2px 5px", borderRadius: 4, background: row.required_level === "required" ? t.dangerBg : row.required_level === "recommended" ? t.warnBg : t.surface2, color: row.required_level === "required" ? t.danger : row.required_level === "recommended" ? t.warn : t.ink3 }}>
