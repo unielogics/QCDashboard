@@ -13,6 +13,7 @@
 
 import { useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
+import { Icon } from "@/components/design-system/Icon";
 import type { PlaybookRequirement } from "@/hooks/useApi";
 
 type Stage = "prequalification" | "term_sheet" | "underwriting" | "closing";
@@ -22,6 +23,21 @@ const STAGE_ORDER: { id: Stage; label: string }[] = [
   { id: "term_sheet", label: "Before Term Sheet" },
   { id: "underwriting", label: "Before Underwriting" },
   { id: "closing", label: "Before Closing" },
+];
+
+const CATEGORY_OPTIONS = [
+  { value: "borrower_info", label: "Borrower info" },
+  { value: "property_data", label: "Property data" },
+  { value: "financials", label: "Financials" },
+  { value: "credit", label: "Credit" },
+  { value: "agreements", label: "Agreements" },
+  { value: "insurance", label: "Insurance" },
+  { value: "title_and_escrow", label: "Title / escrow" },
+  { value: "appraisal_and_inspection", label: "Appraisal / inspection" },
+  { value: "scheduling", label: "Scheduling" },
+  { value: "compliance", label: "Compliance" },
+  { value: "communication", label: "Communication" },
+  { value: "ai_internal", label: "AI internal" },
 ];
 
 
@@ -95,9 +111,15 @@ function StageBucket({
       ...draft,
       requirement_key: draft.requirement_key || draft.label.trim().toLowerCase().replace(/\s+/g, "_"),
       label: draft.label,
-      category: draft.category || "fact",
+      category: normalizeCategory(draft.category),
       required_level: draft.required_level || "required",
       blocks_stage: stage.id === "unscoped" ? null : stage.id,
+      can_agent_override: draft.can_agent_override ?? true,
+      can_underwriter_waive: draft.can_underwriter_waive ?? true,
+      default_owner_type: draft.default_owner_type || "human",
+      default_channels: draft.default_channels || ["portal"],
+      default_cadence_hours: draft.default_cadence_hours ?? 48,
+      completion_mode: draft.completion_mode || "ai_can_complete",
     });
     setDraft(null);
   }
@@ -120,24 +142,36 @@ function StageBucket({
           padding: "8px 0", borderBottom: `1px solid ${t.line}`,
         }}>
           <input type="checkbox" checked readOnly disabled={readOnly} style={{ width: 18, height: 18 }} />
-          <span style={{ flex: 1, fontSize: 13, color: t.ink }}>{r.label}</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: "block", fontSize: 13, color: t.ink, fontWeight: 700 }}>{r.label}</span>
+            <span style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+              <SmallChip t={t}>{categoryLabel(r.category)}</SmallChip>
+              <SmallChip t={t}>{ownerLabel(r.default_owner_type)}</SmallChip>
+              <SmallChip t={t}>{r.default_cadence_hours ?? 48}h cadence</SmallChip>
+              {r.objective_text || r.completion_criteria ? <SmallChip t={t}>AI brief set</SmallChip> : null}
+            </span>
+          </span>
           <ConditionChips applies_when={r.applies_when} t={t} />
           {!r.can_agent_override ? (
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#a06000" }} title="Agents cannot waive">
-              🔒
+            <span style={{ color: "#a06000", display: "inline-flex" }} title="Agents cannot waive">
+              <Icon name="lock" size={12} stroke={2.5} />
             </span>
           ) : null}
           {!readOnly ? (
-            <button
-              onClick={() => onDelete(r.id)}
-              style={{
-                background: "transparent", border: `1px solid ${t.line}`,
-                padding: "2px 8px", borderRadius: 4, color: "#c14444",
-                cursor: "pointer", fontSize: 11,
-              }}
-            >
-              Remove
-            </button>
+            <>
+              <button
+                onClick={() => setDraft({ ...r })}
+                style={rowBtn(t)}
+              >
+                Configure
+              </button>
+              <button
+                onClick={() => onDelete(r.id)}
+                style={{ ...rowBtn(t), color: "#c14444" }}
+              >
+                Remove
+              </button>
+            </>
           ) : null}
         </div>
       ))}
@@ -152,7 +186,7 @@ function StageBucket({
         />
       ) : !readOnly ? (
         <button
-          onClick={() => setDraft({ required_level: "required", category: "fact", label: "" })}
+          onClick={() => setDraft({ required_level: "required", category: "borrower_info", label: "", default_owner_type: "human", default_channels: ["portal"], default_cadence_hours: 48 })}
           style={{
             marginTop: 8,
             padding: "6px 12px", fontSize: 12, fontWeight: 600,
@@ -164,6 +198,23 @@ function StageBucket({
         </button>
       ) : null}
     </div>
+  );
+}
+
+
+function SmallChip({ children, t }: { children: React.ReactNode; t: ReturnType<typeof useTheme>["t"] }) {
+  return (
+    <span style={{
+      fontSize: 10,
+      fontWeight: 700,
+      padding: "2px 6px",
+      borderRadius: 4,
+      background: t.surface2,
+      color: t.ink3,
+      whiteSpace: "nowrap",
+    }}>
+      {children}
+    </span>
   );
 }
 
@@ -210,6 +261,12 @@ function InlineAddForm({
     else next[key] = value;
     setDraft({ ...draft, applies_when: Object.keys(next).length ? next : null });
   }
+  const channels = draft.default_channels || ["portal"];
+  function toggleChannel(value: string) {
+    const next = new Set(channels);
+    next.has(value) ? next.delete(value) : next.add(value);
+    setDraft({ ...draft, default_channels: Array.from(next) });
+  }
 
   return (
     <div style={{
@@ -235,17 +292,107 @@ function InlineAddForm({
           <input type="radio" checked={draft.required_level === "optional"} onChange={() => setDraft({ ...draft, required_level: "optional" })} /> Optional
         </label>
         <select
-          value={draft.category || "fact"}
+          value={normalizeCategory(draft.category)}
           onChange={e => setDraft({ ...draft, category: e.target.value as PlaybookRequirement["category"] })}
           style={inputStyle(t)}
         >
-          <option value="fact">fact</option>
-          <option value="document">document</option>
-          <option value="agreement">agreement</option>
-          <option value="appointment">appointment</option>
-          <option value="task">task</option>
+          {CATEGORY_OPTIONS.map(x => (
+            <option key={x.value} value={x.value}>{x.label}</option>
+          ))}
         </select>
       </div>
+
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+        gap: 8,
+        paddingTop: 6,
+      }}>
+        <FieldBlock label="Default owner" t={t}>
+          <select
+            value={draft.default_owner_type || "human"}
+            onChange={e => setDraft({ ...draft, default_owner_type: e.target.value })}
+            style={inputStyle(t)}
+          >
+            <option value="human">Human</option>
+            <option value="ai">AI secretary</option>
+            <option value="shared">Shared</option>
+            <option value="funding_locked">Funding locked</option>
+          </select>
+        </FieldBlock>
+        <FieldBlock label="Cadence" t={t}>
+          <input
+            type="number"
+            min={1}
+            value={draft.default_cadence_hours ?? 48}
+            onChange={e => setDraft({ ...draft, default_cadence_hours: parseInt(e.target.value || "48", 10) })}
+            style={inputStyle(t)}
+          />
+        </FieldBlock>
+        <FieldBlock label="Completion" t={t}>
+          <select
+            value={draft.completion_mode || "ai_can_complete"}
+            onChange={e => setDraft({ ...draft, completion_mode: e.target.value })}
+            style={inputStyle(t)}
+          >
+            <option value="ai_can_complete">AI can complete</option>
+            <option value="requires_human_verify">Human verifies</option>
+            <option value="borrower_self_attest">Borrower attests</option>
+          </select>
+        </FieldBlock>
+      </div>
+
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        {["portal", "email", "sms"].map(ch => (
+          <label key={ch} style={radio(t)}>
+            <input type="checkbox" checked={channels.includes(ch)} onChange={() => toggleChannel(ch)} />
+            {ch.toUpperCase()}
+          </label>
+        ))}
+        <label style={{ ...radio(t), marginLeft: "auto" }}>
+          <input
+            type="checkbox"
+            checked={draft.can_agent_override !== false}
+            onChange={e => setDraft({ ...draft, can_agent_override: e.target.checked })}
+          />
+          Agent can adjust
+        </label>
+      </div>
+
+      <FieldBlock label="AI objective" t={t}>
+        <textarea
+          placeholder="What the AI is trying to collect or resolve."
+          value={draft.objective_text || ""}
+          onChange={e => setDraft({ ...draft, objective_text: e.target.value })}
+          rows={2}
+          style={{ ...inputStyle(t), resize: "vertical", width: "100%" }}
+        />
+      </FieldBlock>
+      <FieldBlock label="Completion criteria" t={t}>
+        <textarea
+          placeholder="How the AI knows this item is complete enough for underwriting."
+          value={draft.completion_criteria || ""}
+          onChange={e => setDraft({ ...draft, completion_criteria: e.target.value })}
+          rows={2}
+          style={{ ...inputStyle(t), resize: "vertical", width: "100%" }}
+        />
+      </FieldBlock>
+
+      <div style={{ display: "grid", gridTemplateColumns: "160px minmax(0, 1fr)", gap: 8 }}>
+        <input
+          placeholder="Link label"
+          value={draft.link_label || ""}
+          onChange={e => setDraft({ ...draft, link_label: e.target.value || null })}
+          style={inputStyle(t)}
+        />
+        <input
+          placeholder="Link URL"
+          value={draft.link_url || ""}
+          onChange={e => setDraft({ ...draft, link_url: e.target.value || null })}
+          style={inputStyle(t)}
+        />
+      </div>
+
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <label style={radio(t)}>
           <input type="checkbox" checked={aw.under_contract === true} onChange={() => toggleCondition("under_contract", true)} />
@@ -269,6 +416,26 @@ function InlineAddForm({
 }
 
 
+function FieldBlock({
+  label,
+  children,
+  t,
+}: {
+  label: string;
+  children: React.ReactNode;
+  t: ReturnType<typeof useTheme>["t"];
+}) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 800, color: t.ink3, textTransform: "uppercase", marginBottom: 4 }}>
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+
 function inputStyle(t: ReturnType<typeof useTheme>["t"]) {
   return {
     padding: 8, fontSize: 13, fontFamily: "inherit",
@@ -283,6 +450,38 @@ function radio(t: ReturnType<typeof useTheme>["t"]) {
     fontSize: 13, color: t.ink, display: "flex",
     alignItems: "center", gap: 6, cursor: "pointer",
   } as const;
+}
+
+function rowBtn(t: ReturnType<typeof useTheme>["t"]) {
+  return {
+    background: "transparent",
+    border: `1px solid ${t.line}`,
+    padding: "4px 8px",
+    borderRadius: 4,
+    color: t.ink3,
+    cursor: "pointer",
+    fontSize: 11,
+    fontWeight: 700,
+  } as const;
+}
+
+function categoryLabel(value?: string) {
+  return CATEGORY_OPTIONS.find(x => x.value === normalizeCategory(value))?.label || "Borrower info";
+}
+
+function normalizeCategory(value?: string) {
+  if (CATEGORY_OPTIONS.some(x => x.value === value)) return value || "borrower_info";
+  if (value === "agreement") return "agreements";
+  if (value === "appointment") return "scheduling";
+  if (value === "task") return "ai_internal";
+  return "borrower_info";
+}
+
+function ownerLabel(value?: string) {
+  if (value === "ai") return "AI";
+  if (value === "shared") return "Shared";
+  if (value === "funding_locked") return "Funding locked";
+  return "Human";
 }
 
 

@@ -46,7 +46,7 @@ export default function FundingCadencePage() {
     <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
       <LendingAIHeader
         title="Borrower Follow-Up Cadence"
-        subtitle="Conditional follow-up rules for borrowers in the lending phase. Draft-first by default — auto-send is opt-in per rule."
+        subtitle="Base execution policy for the Lending AI secretary. These rules decide when assigned loan tasks produce drafts, borrower outreach, underwriter tasks, or escalation."
       />
 
       {isAINotDeployed(cadErr) ? (
@@ -59,39 +59,54 @@ export default function FundingCadencePage() {
         gap: 10,
         marginBottom: 18,
       }}>
-        <CadenceNote icon="doc" title="Requirement missing" body="Targets open lending requirements and can draft a borrower reminder after the wait period." />
-        <CadenceNote icon="cal" title="Create task" body="Creates an approval-track AI task; approval can schedule or route the work depending on the action." />
-        <CadenceNote icon="shield" title="Auto-send is explicit" body="Rules stay draft-first unless the action is set to auto-send and approval is disabled." />
+        <CadenceNote icon="doc" title="Assigned tasks only" body="Default rules fire only after a requirement is assigned to the Lending AI, so global settings do not chase every open item." />
+        <CadenceNote icon="cal" title="Due-date aware" body="The cadence engine reads assignment due dates, next-run windows, and max attempts before drafting or sending." />
+        <CadenceNote icon="shield" title="Human-safe by default" body="Draft-first stays the default. Auto-send still requires file-level outreach mode, consent, and a rule that explicitly allows it." />
       </div>
 
       <Card pad={20}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div style={{ fontSize: 13, color: t.ink3 }}>{rules.length} rule(s)</div>
           <button
-            onClick={() => setDraft({ trigger_event: "requirement_missing", action_type: "draft_message", approval_required: true, wait_hours: 24, visibility: "borrower", is_active: true })}
+            onClick={() => setDraft({ trigger_event: "requirement_missing", action_type: "draft_message", approval_required: true, wait_hours: 24, visibility: "borrower", is_active: true, requires_ai_owner: true })}
             style={{ padding: "6px 12px", fontSize: 12, fontWeight: 600, borderRadius: 6, border: `1px solid ${t.line}`, background: t.petrol, color: "#fff", cursor: "pointer" }}
           >
             + Add rule
           </button>
         </div>
         {rules.map(r => (
-          <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${t.line}` }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, color: t.ink, fontWeight: 600 }}>
+          <div key={r.id} style={{
+            display: "grid",
+            gridTemplateColumns: "28px minmax(0, 1fr) auto",
+            alignItems: "center",
+            gap: 12,
+            padding: "12px 0",
+            borderBottom: `1px solid ${t.line}`,
+          }}>
+            <span style={{
+              width: 28, height: 28, borderRadius: 8,
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              color: t.petrol, background: t.surface2,
+            }}>
+              <Icon name={r.requires_ai_owner === false ? "bell" : "spark"} size={15} />
+            </span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, color: t.ink, fontWeight: 700 }}>
                 {TRIGGERS.find(x => x.value === r.trigger_event)?.label || r.trigger_event}
                 {r.applies_to_requirement_key ? <span style={{ color: t.ink3, fontWeight: 400 }}> · {r.applies_to_requirement_key}</span> : null}
               </div>
-              <div style={{ fontSize: 12, color: t.ink3 }}>
+              <div style={{ fontSize: 12, color: t.ink3, marginTop: 3 }}>
                 → {ACTIONS.find(x => x.value === r.action_type)?.label || r.action_type}
                 {r.wait_hours > 0 ? `, after ${r.wait_hours}h` : ""}
                 {r.approval_required ? " · awaits approval" : " · auto-sends"}
               </div>
             </div>
-            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: t.surface2, color: t.ink3, textTransform: "uppercase" }}>
-              {r.visibility}
-            </span>
-            <button onClick={() => setDraft(r)} style={btn(t)}>Edit</button>
-            <button onClick={() => del.mutate(r.id)} style={{ ...btn(t), color: "#c14444" }}>Delete</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <RuleChip t={t}>{r.requires_ai_owner === false ? "Global" : "AI-owned only"}</RuleChip>
+              <RuleChip t={t}>{r.visibility}</RuleChip>
+              <button onClick={() => setDraft(r)} style={btn(t)}>Edit</button>
+              <button onClick={() => del.mutate(r.id)} style={{ ...btn(t), color: "#c14444" }}>Delete</button>
+            </div>
           </div>
         ))}
         {draft ? (
@@ -108,6 +123,10 @@ export default function FundingCadencePage() {
             <label style={{ fontSize: 12, color: t.ink, display: "flex", alignItems: "center", gap: 6 }}>
               <input type="checkbox" checked={!!draft.approval_required} onChange={e => setDraft({ ...draft, approval_required: e.target.checked })} />
               Require approval (draft-first)
+            </label>
+            <label style={{ fontSize: 12, color: t.ink, display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="checkbox" checked={draft.requires_ai_owner !== false} onChange={e => setDraft({ ...draft, requires_ai_owner: e.target.checked })} />
+              Only run after this requirement is assigned to AI
             </label>
             <label style={{ fontSize: 12, color: t.ink, display: "flex", alignItems: "center", gap: 6 }}>
               <input type="checkbox" checked={draft.is_active !== false} onChange={e => setDraft({ ...draft, is_active: e.target.checked })} />
@@ -152,6 +171,29 @@ function CadenceNote({ icon, title, body }: { icon: string; title: string; body:
         <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45 }}>{body}</div>
       </div>
     </div>
+  );
+}
+
+function RuleChip({
+  children,
+  t,
+}: {
+  children: React.ReactNode;
+  t: ReturnType<typeof useTheme>["t"];
+}) {
+  return (
+    <span style={{
+      fontSize: 10,
+      fontWeight: 800,
+      padding: "3px 7px",
+      borderRadius: 4,
+      background: t.surface2,
+      color: t.ink3,
+      textTransform: "uppercase",
+      whiteSpace: "nowrap",
+    }}>
+      {children}
+    </span>
   );
 }
 

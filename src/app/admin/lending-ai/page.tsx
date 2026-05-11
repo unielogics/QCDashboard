@@ -81,10 +81,32 @@ export default function LendingAILanding() {
     <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
       <LendingAIHeader
         title="Lending AI Settings"
-        subtitle="Configure what the funding-side AI collects, how it follows up, and what it accepts as verified evidence. Funding-required items agents cannot waive."
+        subtitle="Configure the funding-side AI base template: what it collects, how it follows up, what it verifies, and when it escalates to underwriting."
         backHref="/settings"
         backLabel="Settings"
       />
+
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+        gap: 12,
+        marginBottom: 18,
+      }}>
+        <SystemCard
+          icon="shieldChk"
+          title="Lending AI base template"
+          body="Owns loan criteria, borrower document collection, verification, underwriting blockers, due dates, and file-closing readiness."
+          href="/admin/lending-ai/playbooks"
+          action="Manage lending template"
+        />
+        <SystemCard
+          icon="clients"
+          title="Agent AI stays separate"
+          body="Buyer and seller relationship work stays agent-side until a buyer is ready for lending. Seller-only items do not become funding due dates."
+          href="/agent-settings/ai"
+          action="Open agent AI settings"
+        />
+      </div>
 
       <div style={{
         display: "grid",
@@ -143,6 +165,47 @@ export default function LendingAILanding() {
         ))}
       </div>
     </div>
+  );
+}
+
+function SystemCard({
+  icon,
+  title,
+  body,
+  href,
+  action,
+}: {
+  icon: string;
+  title: string;
+  body: string;
+  href: string;
+  action: string;
+}) {
+  const { t } = useTheme();
+  return (
+    <Link href={href} style={{ textDecoration: "none" }}>
+      <Card pad={16} style={{ borderRadius: 8, minHeight: 138 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
+          <span style={{
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#fff",
+            background: t.petrol,
+          }}>
+            <Icon name={icon} size={16} />
+          </span>
+          <div style={{ fontSize: 14, fontWeight: 800, color: t.ink }}>{title}</div>
+        </div>
+        <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45 }}>{body}</div>
+        <div style={{ marginTop: 12, fontSize: 12, color: t.petrol, fontWeight: 800 }}>
+          {action}
+        </div>
+      </Card>
+    </Link>
   );
 }
 

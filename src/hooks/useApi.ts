@@ -2706,6 +2706,7 @@ export interface AgentCadenceRule {
   message_template: string | null;
   visibility: string;
   is_active: boolean;
+  requires_ai_owner?: boolean;
 }
 
 export function useAgentCadenceRules() {

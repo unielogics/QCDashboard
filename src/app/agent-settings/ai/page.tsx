@@ -51,14 +51,15 @@ export default function AIAssistantPage() {
   return (
     <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
       <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: "0 0 6px" }}>
-        AI Assistant
+        Agent AI Base Template
       </h1>
       <p style={{ fontSize: 13, color: t.ink3, margin: "0 0 20px", maxWidth: 640 }}>
-        Tell your AI what to collect, when to follow up, and what it&apos;s
-        allowed to do. Everything here is your default — per-client
-        adjustments live on each client page.
+        Configure the relationship assistant for buyer and seller workflows.
+        These defaults stay agent-side until a buyer is deliberately handed to
+        the lending workflow.
       </p>
 
+      <AgentAIOperatingStrip />
       <AgentAIWorkflowMap />
 
       {/* Tab strip */}
@@ -90,6 +91,37 @@ export default function AIAssistantPage() {
       {tab === "followup" ? <FollowUpTab /> : null}
       {tab === "handoff" ? <ReadyForLendingTab /> : null}
       {tab === "style" ? <MessageStyleTab /> : null}
+    </div>
+  );
+}
+
+function AgentAIOperatingStrip() {
+  const { t } = useTheme();
+  const items = [
+    { label: "Buyer", body: "Collect intent, criteria, agreement status, and handoff readiness." },
+    { label: "Seller", body: "Track listing prep, seller agreement, pricing context, and follow-up." },
+    { label: "Handoff", body: "Only finance-ready buyer work crosses into Lending AI." },
+  ];
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+      gap: 8,
+      marginBottom: 12,
+    }}>
+      {items.map(item => (
+        <div key={item.label} style={{
+          border: `1px solid ${t.line}`,
+          borderRadius: 8,
+          padding: 12,
+          background: t.surface2,
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 900, color: t.petrol, marginBottom: 4, textTransform: "uppercase" }}>
+            {item.label}
+          </div>
+          <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.4 }}>{item.body}</div>
+        </div>
+      ))}
     </div>
   );
 }
