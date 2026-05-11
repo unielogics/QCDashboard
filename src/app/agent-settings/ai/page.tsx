@@ -373,9 +373,6 @@ function Group({
                 <ChipText t={t} bg={ownerTone.bg} fg={ownerTone.fg}>
                   {ownerLabel(req.default_owner_type)}
                 </ChipText>
-                {req.default_cadence_hours ? (
-                  <ChipText t={t}>{req.default_cadence_hours}h cadence</ChipText>
-                ) : null}
                 {req.link_kind === "docusign" ? (
                   <ChipText t={t} bg={t.profitBg} fg={t.profit}>✍ DocuSign</ChipText>
                 ) : req.link_url ? (
@@ -1121,10 +1118,14 @@ function RequirementConfigurePopup({
     completion_criteria: string;
   }>) => Promise<void>;
 }) {
+  // Per the user direction: per-task config is just owner + what + done.
+  // Cadence hours and channel picker were dropped — the system itself
+  // sequences work via a single timeline so the user doesn't have to
+  // hand-tune times. Channels are inferred at dispatch time from the
+  // borrower's contact prefs + consent state.
   const [ownerType, setOwnerType] = useState<"human" | "ai" | "shared">(
     (row.default_owner_type as "human" | "ai" | "shared") ?? "human",
   );
-  const [cadenceHours, setCadenceHours] = useState<number>(row.default_cadence_hours ?? 48);
   const [linkUrl, setLinkUrl] = useState<string>(row.link_url ?? "");
   const [linkLabel, setLinkLabel] = useState<string>(row.link_label ?? "");
   const [linkKind, setLinkKind] = useState<"docusign" | "esign" | "external_form" | "reference" | "">(
@@ -1132,19 +1133,13 @@ function RequirementConfigurePopup({
   );
   const [objective, setObjective] = useState<string>(row.objective_text ?? "");
   const [completion, setCompletion] = useState<string>(row.completion_criteria ?? "");
-  const [includeEmail, setIncludeEmail] = useState<boolean>(
-    Array.isArray(row.default_channels) ? row.default_channels.includes("email") : false,
-  );
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
     setSaving(true);
     try {
-      const channels = includeEmail ? ["portal", "email"] : ["portal"];
       await onSave({
         default_owner_type: ownerType,
-        default_channels: channels,
-        default_cadence_hours: cadenceHours,
         link_url: linkUrl.trim() || null,
         link_label: linkLabel.trim() || null,
         link_kind: linkKind || null,
@@ -1239,36 +1234,6 @@ function RequirementConfigurePopup({
               style={{ ...inputStyle(t), minHeight: 64, resize: "vertical" }}
             />
           </FieldBlock>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <FieldBlock label="Cadence (hours between attempts)" t={t}>
-              <input
-                type="number"
-                min={6}
-                max={336}
-                value={cadenceHours}
-                onChange={(e) => setCadenceHours(Math.max(6, Math.min(336, Number(e.target.value) || 48)))}
-                style={inputStyle(t)}
-              />
-            </FieldBlock>
-            <FieldBlock label="Email channel" t={t}>
-              <button
-                type="button"
-                onClick={() => setIncludeEmail((v) => !v)}
-                style={{
-                  padding: "9px 12px",
-                  borderRadius: 9,
-                  border: `1px solid ${includeEmail ? t.brand : t.line}`,
-                  background: includeEmail ? t.brandSoft : t.surface2,
-                  color: includeEmail ? t.brand : t.ink2,
-                  fontSize: 12, fontWeight: 800, cursor: "pointer",
-                  fontFamily: "inherit", width: "100%",
-                }}
-              >
-                {includeEmail ? "Portal + Email" : "Portal only"}
-              </button>
-            </FieldBlock>
-          </div>
 
           <div>
             <div style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
