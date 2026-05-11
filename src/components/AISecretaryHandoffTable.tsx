@@ -177,11 +177,17 @@ export function AISecretaryHandoffTable({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "44px 1fr 1fr", gap: 6, paddingBottom: 4 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "48px 1fr 1fr", gap: 7, paddingBottom: 2 }}>
         <span style={cellHeader(t)}>#</span>
-        <span style={cellHeader(t)}>AI</span>
-        <span style={cellHeader(t)}>Human</span>
+        <span style={{ ...cellHeader(t), color: t.brand, display: "flex", alignItems: "center", gap: 5 }}>
+          <Icon name="ai" size={11} stroke={2.2} />
+          AI
+        </span>
+        <span style={{ ...cellHeader(t), display: "flex", alignItems: "center", gap: 5 }}>
+          <Icon name="user" size={11} stroke={2.2} />
+          Human
+        </span>
       </div>
       {rows.map((row, i) => (
         <HandoffRowView
@@ -215,26 +221,47 @@ function HandoffRowView({
   const humanActive = row.owner === "human";
   const empty = row.owner === null;
 
+  const accent = aiActive ? t.brand : humanActive ? t.ink2 : t.ink3;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "44px 1fr 1fr", gap: 6, alignItems: "stretch" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "48px 1fr 1fr", gap: 7, alignItems: "stretch" }}>
       <div style={{
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        gap: 4,
-        padding: "8px 4px", borderRadius: 9,
-        background: t.surface2, color: t.ink2,
-        fontSize: 13, fontWeight: 900,
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between",
+        padding: "10px 4px", borderRadius: 10,
+        background: t.surface2,
         border: `1px solid ${t.line}`,
+        position: "relative",
       }}>
-        <span>{rowNumber}</span>
+        <span style={{
+          fontSize: 15, fontWeight: 900, color: t.ink, lineHeight: 1,
+        }}>
+          {rowNumber}
+        </span>
+        <span style={{
+          fontSize: 8.5, fontWeight: 900, letterSpacing: 0.6,
+          textTransform: "uppercase", color: accent,
+          marginTop: 4, marginBottom: 4,
+        }}>
+          {aiActive ? "AI" : humanActive ? "HUMAN" : "OPEN"}
+        </span>
         {showDelete ? (
           <button
             type="button"
             onClick={onDeleteRow}
+            aria-label={`Remove row ${rowNumber}`}
             title="Remove this row"
             style={{
-              all: "unset", cursor: "pointer", color: t.ink3, fontSize: 10, fontWeight: 700,
-              padding: 0, lineHeight: 1,
+              all: "unset",
+              cursor: "pointer",
+              color: t.ink3,
+              fontSize: 14,
+              fontWeight: 700,
+              lineHeight: 1,
+              padding: "4px 8px",
+              borderRadius: 6,
+              background: "transparent",
             }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = t.dangerBg; e.currentTarget.style.color = t.danger; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = t.ink3; }}
           >×</button>
         ) : null}
       </div>
@@ -295,13 +322,13 @@ function HandoffCell({
     <div
       ref={drop.setNodeRef}
       style={{
-        minHeight: 56,
+        minHeight: 60,
         borderRadius: 10,
-        border: `1.5px ${drop.isOver ? "dashed" : "solid"} ${borderColor}`,
+        border: `1.5px ${drop.isOver ? "dashed" : ownedByOther ? "dashed" : "solid"} ${borderColor}`,
         background: ownedByOther
           ? drop.isOver ? tint : "transparent"
-          : drop.isOver ? tint : t.surface,
-        opacity: ownedByOther && !drop.isOver ? 0.4 : 1,
+          : drop.isOver ? tint : taskKeys.length ? t.surface : t.surface2,
+        opacity: ownedByOther && !drop.isOver ? 0.45 : 1,
         padding: 8,
         display: "flex",
         flexDirection: "column",
@@ -311,15 +338,31 @@ function HandoffCell({
       }}
     >
       {ownedByOther && !drop.isOver ? (
-        <span style={{ position: "absolute", top: 6, right: 8, fontSize: 9, fontWeight: 800, color: t.ink3, letterSpacing: 0.5 }}>
-          —
+        <span style={{
+          position: "absolute", inset: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 11, fontWeight: 800, color: t.ink3,
+          letterSpacing: 0.5,
+        }}>
+          ⤺ row handed to other party
         </span>
       ) : ownedByOther && drop.isOver ? (
-        <span style={{ fontSize: 10.5, color: accent, fontWeight: 800, fontStyle: "italic" }}>
+        <span style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          minHeight: 44,
+          fontSize: 11.5, color: accent, fontWeight: 900, letterSpacing: 0.2,
+        }}>
           Drop to flip row → {owner === "ai" ? "AI handles" : "Human handles"}
         </span>
       ) : taskKeys.length === 0 ? (
-        <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700, fontStyle: "italic" }}>
+        <span style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          minHeight: 44,
+          fontSize: 11.5, color: drop.isOver ? accent : t.ink3,
+          fontWeight: drop.isOver ? 900 : 700,
+          fontStyle: drop.isOver ? "normal" : "italic",
+          letterSpacing: 0.2,
+        }}>
           {drop.isOver ? `Drop here → ${owner === "ai" ? "AI handles" : "Human handles"}` : `Drag work here`}
         </span>
       ) : (
@@ -348,67 +391,110 @@ function HandoffTaskChip({
   onUnplace?: () => void;
 }) {
   const { t } = useTheme();
+  const [hover, setHover] = useState(false);
   const label = task?.label ?? taskKey;
   const cat = task?.category ?? "";
   // Task chip is draggable so users can drag from one cell into another
   // (Human → AI in the same row, or AI in row 1 → Human in row 3, etc.).
-  // The drag payload carries requirement_key so the parent DndContext
-  // routes it through the existing handoff-drop handler.
+  // CRITICAL: drag.listeners is applied ONLY to the inner handle, NOT to
+  // the whole chip. Putting listeners on the whole chip lets dnd-kit
+  // intercept pointer events on the × button — even with stopPropagation
+  // the click was inconsistent because the pointer sensor's 4px
+  // activation could promote a click into a drag and swallow the
+  // onClick. With a dedicated drag handle the × button is a normal
+  // <button> that always fires.
   const drag = useDraggable({
     id: `chip:${taskKey}`,
     data: { kind: "chip", requirement_key: taskKey, label },
   });
+  const accent = owner === "ai" ? t.brand : t.ink2;
   return (
     <div
       ref={drag.setNodeRef}
-      {...drag.attributes}
-      {...drag.listeners}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       onContextMenu={(e) => {
         if (!onUnplace) return;
         e.preventDefault();
         onUnplace();
       }}
-      title="Drag to move. Right-click to send back to the Resolution Queue."
       style={{
         display: "flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "5px 8px",
-        borderRadius: 7,
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
+        alignItems: "stretch",
+        gap: 0,
+        borderRadius: 8,
+        background: hover ? t.surface : t.surface2,
+        border: `1px solid ${hover ? accent : t.line}`,
         minWidth: 0,
-        cursor: "grab",
         userSelect: "none",
         opacity: drag.isDragging ? 0.4 : 1,
+        overflow: "hidden",
+        transition: "background 0.12s, border-color 0.12s",
       }}
     >
-      <Icon name={owner === "ai" ? "ai" : "user"} size={11} stroke={2.2} />
-      <span style={{
-        flex: 1, minWidth: 0,
-        fontSize: 11.5, fontWeight: 700, color: t.ink,
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
-        {label}
-      </span>
-      {cat ? (
+      {/* DRAG HANDLE — everything except the × is the grab area */}
+      <div
+        {...drag.attributes}
+        {...drag.listeners}
+        title="Drag to move. Right-click to send back to the Resolution Queue."
+        style={{
+          flex: 1,
+          minWidth: 0,
+          display: "flex",
+          alignItems: "center",
+          gap: 7,
+          padding: "7px 9px",
+          cursor: "grab",
+        }}
+      >
+        <Icon name={owner === "ai" ? "ai" : "user"} size={12} stroke={2.2} />
         <span style={{
-          fontSize: 9, fontWeight: 800, padding: "1px 5px", borderRadius: 4,
-          background: t.chip, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.4,
-          whiteSpace: "nowrap",
+          flex: 1, minWidth: 0,
+          fontSize: 12, fontWeight: 700, color: t.ink,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          lineHeight: 1.3,
         }}>
-          {String(cat).slice(0, 12)}
+          {label}
         </span>
-      ) : null}
+        {cat ? (
+          <span style={{
+            fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 4,
+            background: t.chip, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.4,
+            whiteSpace: "nowrap",
+          }}>
+            {String(cat).slice(0, 12)}
+          </span>
+        ) : null}
+      </div>
+
+      {/* REMOVE BUTTON — separate hit zone, outside dnd-kit listeners */}
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
-        onPointerDown={(e) => e.stopPropagation()}
-        title="Take out of this row (returns to a fresh row)"
+        aria-label="Remove from this row"
+        title="Remove from this row (returns to an empty slot)"
         style={{
-          all: "unset", cursor: "pointer", color: t.ink3, fontSize: 12, fontWeight: 800, padding: 0, lineHeight: 1,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 32,
+          minHeight: 32,
+          padding: 0,
+          background: hover ? t.dangerBg : "transparent",
+          color: hover ? t.danger : t.ink3,
+          border: "none",
+          borderLeft: `1px solid ${t.line}`,
+          fontSize: 18,
+          fontWeight: 700,
+          lineHeight: 1,
+          cursor: "pointer",
+          fontFamily: "inherit",
+          flexShrink: 0,
+          transition: "background 0.12s, color 0.12s",
         }}
-      >×</button>
+      >
+        ×
+      </button>
     </div>
   );
 }
@@ -421,17 +507,18 @@ export function HandoffChipPreview({ label, owner }: { label: string; owner: "ai
     <div style={{
       display: "inline-flex",
       alignItems: "center",
-      gap: 6,
-      padding: "6px 10px",
-      borderRadius: 8,
+      gap: 7,
+      padding: "8px 12px",
+      borderRadius: 9,
       background: owner === "ai" ? t.brandSoft : t.surface,
-      border: `1.5px solid ${owner === "ai" ? t.brand : t.line}`,
-      boxShadow: "0 6px 16px rgba(0,0,0,0.18)",
-      fontSize: 12, fontWeight: 800, color: t.ink,
+      border: `1.5px solid ${owner === "ai" ? t.brand : t.lineStrong}`,
+      boxShadow: "0 10px 24px rgba(0,0,0,0.22), 0 2px 6px rgba(0,0,0,0.12)",
+      fontSize: 12.5, fontWeight: 800, color: t.ink,
       pointerEvents: "none",
-      maxWidth: 320,
+      maxWidth: 360,
+      transform: "rotate(-1deg)",
     }}>
-      <Icon name={owner === "ai" ? "ai" : "user"} size={12} stroke={2.2} />
+      <Icon name={owner === "ai" ? "ai" : "user"} size={13} stroke={2.2} />
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {label}
       </span>
