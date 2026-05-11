@@ -1446,6 +1446,25 @@ export function useUpdateLoan() {
   });
 }
 
+// Dedicated property/listing patch — open to brokers as well as the
+// funding team. Backend gates the field set so this can't accidentally
+// be used to escalate (e.g. modify ltv).
+export function useUpdateProperty() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ loanId, ...patch }: { loanId: string } & Partial<Loan>) =>
+      apiCall<Loan>(`/loans/${loanId}/property`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["loan", vars.loanId] });
+      qc.invalidateQueries({ queryKey: ["loans"] });
+    },
+  });
+}
+
 export function useCreateClient() {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();

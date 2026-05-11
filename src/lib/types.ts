@@ -25,6 +25,7 @@ export interface Loan {
   lender_id?: string | null;
   address: string;
   city: string | null;
+  state?: string | null;
   property_type: PropertyType;
   type: LoanType;
   purpose: LoanPurpose | null;
@@ -51,6 +52,16 @@ export interface Loan {
   baths?: number | null;
   year_built?: number | null;
   unit_count?: number | null;
+  // Listing-style property fields (alembic 0043).
+  description?: string | null;
+  lot_size_sqft?: number | null;
+  zoning?: string | null;
+  parcel_id?: string | null;
+  listing_status?: string | null;
+  highlight_features?: string[] | null;
+  street_view_url?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   // Living Loan File
   status_summary?: string | null;
   deal_health?: "on_track" | "at_risk" | "stuck";
