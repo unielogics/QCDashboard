@@ -4,11 +4,10 @@
 // detail page — shows the requests scoped to this single loan + the
 // same review modal the firm-wide queue uses.
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtnPrimary } from "@/components/design-system/buttons";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { useLoanPrequalRequests } from "@/hooks/useApi";
 import { PrequalReviewModal } from "@/components/PrequalReviewModal";
@@ -18,6 +17,46 @@ export function PrequalTab({ loan }: { loan: Loan }) {
   const { t } = useTheme();
   const { data: requests = [], isLoading } = useLoanPrequalRequests(loan.id);
   const [selected, setSelected] = useState<PrequalRequest | null>(null);
+  const [menu, setMenu] = useState<{ req: PrequalRequest; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!menu) return;
+    const dismiss = () => setMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(null); };
+    window.addEventListener("mousedown", dismiss);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", dismiss);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
+  const requestById = useMemo(() => {
+    const m = new Map<string, PrequalRequest>();
+    for (const r of requests) m.set(r.id, r);
+    return m;
+  }, [requests]);
+
+  const findChainHead = (req: PrequalRequest): PrequalRequest => {
+    let cur = req;
+    const seen = new Set<string>([cur.id]);
+    while (cur.superseded_by_id) {
+      const next = requestById.get(cur.superseded_by_id);
+      if (!next || seen.has(next.id)) break;
+      seen.add(next.id);
+      cur = next;
+    }
+    return cur;
+  };
+
+  const onPrintLatest = (req: PrequalRequest) => {
+    const head = findChainHead(req);
+    if (head.pdf_url) {
+      window.open(head.pdf_url, "_blank", "noopener,noreferrer");
+    } else {
+      setSelected(head);
+    }
+  };
 
   const pendingCount = requests.filter((r) => r.status === "pending").length;
 
@@ -62,7 +101,7 @@ export function PrequalTab({ loan }: { loan: Loan }) {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "120px minmax(0, 2fr) 130px 130px 100px 90px 90px",
+              gridTemplateColumns: "120px minmax(0, 2fr) 130px 130px 100px 90px",
               gap: 10,
               padding: "12px 16px",
               fontSize: 11,
@@ -80,10 +119,17 @@ export function PrequalTab({ loan }: { loan: Loan }) {
             <div>Approved</div>
             <div>LTV</div>
             <div>Closing</div>
-            <div>Action</div>
           </div>
           {requests.map((r) => (
-            <Row key={r.id} req={r} onOpen={() => setSelected(r)} />
+            <Row
+              key={r.id}
+              req={r}
+              onOpen={() => setSelected(r)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ req: r, x: e.clientX, y: e.clientY });
+              }}
+            />
           ))}
         </Card>
       )}
@@ -93,11 +139,144 @@ export function PrequalTab({ loan }: { loan: Loan }) {
         onClose={() => setSelected(null)}
         request={selected}
       />
+
+      {menu ? (
+        <TabContextMenu
+          t={t}
+          x={menu.x}
+          y={menu.y}
+          req={menu.req}
+          head={findChainHead(menu.req)}
+          onOpen={() => { setSelected(menu.req); setMenu(null); }}
+          onOpenLatest={() => { setSelected(findChainHead(menu.req)); setMenu(null); }}
+          onPrintLatest={() => { onPrintLatest(menu.req); setMenu(null); }}
+        />
+      ) : null}
     </div>
   );
 }
 
-function Row({ req, onOpen }: { req: PrequalRequest; onOpen: () => void }) {
+function TabContextMenu({
+  t,
+  x,
+  y,
+  req,
+  head,
+  onOpen,
+  onOpenLatest,
+  onPrintLatest,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  x: number;
+  y: number;
+  req: PrequalRequest;
+  head: PrequalRequest;
+  onOpen: () => void;
+  onOpenLatest: () => void;
+  onPrintLatest: () => void;
+}) {
+  const isSuperseded = req.superseded_by_id != null;
+  const MENU_W = 240;
+  const MENU_H = 200;
+  const left = typeof window !== "undefined" ? Math.min(x, window.innerWidth - MENU_W - 8) : x;
+  const top = typeof window !== "undefined" ? Math.min(y, window.innerHeight - MENU_H - 8) : y;
+  return (
+    <div
+      role="menu"
+      onMouseDown={(e) => e.stopPropagation()}
+      style={{
+        position: "fixed",
+        left,
+        top,
+        width: MENU_W,
+        background: t.surface,
+        border: `1px solid ${t.line}`,
+        borderRadius: 10,
+        boxShadow: t.shadowLg,
+        zIndex: 300,
+        padding: 6,
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+      }}
+    >
+      <div style={{ padding: "6px 10px 8px", borderBottom: `1px solid ${t.line}`, marginBottom: 4 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
+          {req.quote_number ?? "Pre-qualification"}
+          {(req.version_num ?? 1) > 1 ? <span style={{ color: t.petrol, marginLeft: 6 }}>· v{req.version_num}</span> : null}
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: t.ink, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {req.target_property_address}
+        </div>
+      </div>
+      <TabMenuItem t={t} icon="docCheck" label={isSuperseded ? "Open this version" : "Open"} onClick={onOpen} />
+      {isSuperseded ? (
+        <TabMenuItem t={t} icon="arrowR" label={`Open latest (v${head.version_num})`} onClick={onOpenLatest} />
+      ) : null}
+      <TabMenuItem
+        t={t}
+        icon="docCheck"
+        label="Print latest letter"
+        sublabel={head.pdf_url ? head.quote_number ?? undefined : "no PDF yet"}
+        disabled={!head.pdf_url}
+        onClick={onPrintLatest}
+      />
+    </div>
+  );
+}
+
+function TabMenuItem({
+  t,
+  icon,
+  label,
+  sublabel,
+  onClick,
+  disabled,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  icon: React.ComponentProps<typeof Icon>["name"];
+  label: string;
+  sublabel?: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      role="menuitem"
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      style={{
+        all: "unset",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 10px",
+        borderRadius: 6,
+        fontSize: 13,
+        fontWeight: 600,
+        color: disabled ? t.ink3 : t.ink,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.55 : 1,
+      }}
+      onMouseEnter={(e) => { if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = t.surface2; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+    >
+      <Icon name={icon} size={14} />
+      <span style={{ flex: 1 }}>{label}</span>
+      {sublabel ? <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600 }}>{sublabel}</span> : null}
+    </button>
+  );
+}
+
+function Row({
+  req,
+  onOpen,
+  onContextMenu,
+}: {
+  req: PrequalRequest;
+  onOpen: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
+}) {
   const { t } = useTheme();
   const purchase = Number(req.purchase_price);
   const requested = Number(req.requested_loan_amount);
@@ -113,9 +292,14 @@ function Row({ req, onOpen }: { req: PrequalRequest; onOpen: () => void }) {
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onContextMenu={onContextMenu}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
       style={{
         display: "grid",
-        gridTemplateColumns: "120px minmax(0, 2fr) 130px 130px 100px 90px 90px",
+        gridTemplateColumns: "120px minmax(0, 2fr) 130px 130px 100px 90px",
         gap: 10,
         padding: "14px 16px",
         borderBottom: `1px solid ${t.line}`,
@@ -123,7 +307,11 @@ function Row({ req, onOpen }: { req: PrequalRequest; onOpen: () => void }) {
         fontSize: 13,
         color: isSuperseded ? t.ink3 : t.ink,
         opacity: isSuperseded ? 0.6 : 1,
+        cursor: "pointer",
+        transition: "background 0.12s",
       }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = t.surface2; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
     >
       <div>
         <Pill bg={statusInfo.bg} color={statusInfo.fg}>{statusInfo.label}</Pill>
@@ -165,34 +353,6 @@ function Row({ req, onOpen }: { req: PrequalRequest; onOpen: () => void }) {
         {req.expected_closing_date
           ? new Date(req.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
           : <span style={{ color: t.ink4 }}>—</span>}
-      </div>
-      <div>
-        {req.status === "approved" && req.pdf_url ? (
-          <a
-            href={req.pdf_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ ...qcBtnPrimary(t), padding: "6px 10px", fontSize: 11, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}
-          >
-            <Icon name="docCheck" size={11} /> PDF
-          </a>
-        ) : (
-          <button
-            onClick={onOpen}
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              padding: "6px 12px",
-              borderRadius: 7,
-              background: t.brandSoft,
-              color: t.brand,
-              fontSize: 11.5,
-              fontWeight: 700,
-            }}
-          >
-            Review
-          </button>
-        )}
       </div>
     </div>
   );

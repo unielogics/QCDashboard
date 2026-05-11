@@ -20,6 +20,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
+import { useUI } from "@/store/ui";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
@@ -98,6 +99,11 @@ function computeBridge(loan: number, i: BridgeInputs): BridgeOutputs {
 
 export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Props) {
   const { t } = useTheme();
+  // Read sidebar state so the panel can start just to the right of it
+  // instead of covering the global nav (per #facelift — the modal is a
+  // "full experience" but the operator should still see their context).
+  const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
+  const sidebarOffset = sidebarCollapsed ? 68 : 232;
   const approve = useApprovePrequalRequest();
   const reject = useRejectPrequalRequest();
   const revise = useRevisePrequalRequest();
@@ -380,52 +386,133 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
       aria-label="Review pre-qualification request"
       style={{
         position: "fixed",
-        inset: 0,
-        background: "rgba(6, 7, 11, 0.65)",
-        backdropFilter: "blur(2px)",
+        // Leave the global sidebar visible — the operator should keep
+        // their navigation context. Below the topbar we still cover
+        // (the topbar lives in a separate column above main content).
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: sidebarOffset,
+        background: t.bg,
         zIndex: 200,
         display: "flex",
-        alignItems: "stretch",
-        justifyContent: "center",
-        padding: 24,
+        flexDirection: "column",
+        overflow: "hidden",
+        boxShadow: `-12px 0 32px ${t.shadowLg ? "" : ""}rgba(6,7,11,0.18)`,
       }}
     >
       <div
         style={{
-          width: "min(1280px, 100%)",
+          width: "100%",
+          height: "100%",
           background: t.bg,
-          boxShadow: t.shadowLg,
-          borderRadius: 18,
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
         }}
       >
-        {/* Header */}
+        {/* Header — full-bleed title row with prominent X */}
         <div style={{
           flex: "0 0 auto",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "18px 28px",
+          gap: 16,
+          padding: "20px 32px",
           borderBottom: `1px solid ${t.line}`,
+          background: t.surface,
         }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: t.petrol }}>
-              Pre-qualification review · {programLabel}
-              {request.quote_number ? <span style={{ color: t.ink3 }}>{" · "}{request.quote_number}</span> : null}
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{
+                fontSize: 10.5,
+                fontWeight: 800,
+                letterSpacing: 1.6,
+                textTransform: "uppercase",
+                color: t.petrol,
+                padding: "3px 8px",
+                background: t.petrolSoft,
+                borderRadius: 6,
+              }}>
+                {programLabel}
+              </span>
+              {request.quote_number ? (
+                <span style={{
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: t.ink2,
+                  fontFeatureSettings: '"tnum"',
+                  letterSpacing: 0.3,
+                }}>
+                  {request.quote_number}
+                </span>
+              ) : null}
               {(request.version_num ?? 1) > 1 ? (
-                <span style={{ color: t.petrol, marginLeft: 8, fontWeight: 800 }}>
-                  · Updated v{request.version_num}
+                <span style={{
+                  fontSize: 10.5,
+                  fontWeight: 800,
+                  color: t.petrol,
+                  background: t.petrolSoft,
+                  padding: "3px 8px",
+                  borderRadius: 6,
+                  letterSpacing: 0.4,
+                }}>
+                  Updated · v{request.version_num}
+                </span>
+              ) : null}
+              {isSuperseded ? (
+                <span style={{
+                  fontSize: 10.5,
+                  fontWeight: 800,
+                  color: t.warn,
+                  background: t.warnBg,
+                  padding: "3px 8px",
+                  borderRadius: 6,
+                  letterSpacing: 0.4,
+                }}>
+                  Superseded
                 </span>
               ) : null}
             </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: t.ink, marginTop: 2, letterSpacing: -0.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div style={{
+              fontSize: 22,
+              fontWeight: 800,
+              color: t.ink,
+              marginTop: 6,
+              letterSpacing: -0.3,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}>
               {request.target_property_address}
             </div>
+            <div style={{ fontSize: 12, color: t.ink3, marginTop: 4 }}>
+              {request.borrower_entity ? <span>Issued to <strong style={{ color: t.ink2 }}>{request.borrower_entity}</strong></span> : <span style={{ fontStyle: "italic" }}>Entity TBD</span>}
+              {borrowerFico ? <span>{" · "}FICO <strong style={{ color: t.ink2 }}>{borrowerFico}</strong></span> : null}
+              {request.expected_closing_date ? <span>{" · "}Closing <strong style={{ color: t.ink2 }}>{new Date(request.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</strong></span> : null}
+            </div>
           </div>
-          <button onClick={onClose} aria-label="Close" style={{ all: "unset", cursor: "pointer", width: 36, height: 36, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 9, color: t.ink2 }}>
-            <Icon name="x" size={18} />
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            title="Close (Esc)"
+            style={{
+              all: "unset",
+              cursor: "pointer",
+              width: 44,
+              height: 44,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 10,
+              color: t.ink2,
+              border: `1px solid ${t.line}`,
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = t.surface2; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+          >
+            <Icon name="x" size={20} />
           </button>
         </div>
 

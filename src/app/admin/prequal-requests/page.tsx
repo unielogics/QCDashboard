@@ -6,7 +6,7 @@
 // headers are sortable and the whole row is clickable to open the
 // review panel — no need to find the small Open button.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill } from "@/components/design-system/primitives";
@@ -65,10 +65,60 @@ export default function AdminPrequalQueuePage() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selected, setSelected] = useState<PrequalRequest | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  // Right-click context menu state. The row that fired the menu plus
+  // viewport coordinates so we can render at the cursor without an extra
+  // library. Cleared on any document click / Escape — see effect below.
+  const [menu, setMenu] = useState<{ req: PrequalRequest; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!menu) return;
+    const dismiss = () => setMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(null); };
+    // Mousedown (not click) so right-clicking another row immediately
+    // re-opens the menu at the new position rather than first dismissing.
+    window.addEventListener("mousedown", dismiss);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", dismiss);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
 
   // Always pull "all" from the server then filter client-side. Lets the
   // count chips show all-status counts at once.
   const { data: allRequests = [], isLoading } = useAdminPrequalQueue();
+
+  // Walk superseded_by → ... → head so "Print latest letter" always
+  // resolves to the most recent issued PDF in the chain, even when the
+  // operator right-clicks an older version row.
+  const requestById = useMemo(() => {
+    const m = new Map<string, PrequalRequest>();
+    for (const r of allRequests) m.set(r.id, r);
+    return m;
+  }, [allRequests]);
+
+  const findChainHead = (req: PrequalRequest): PrequalRequest => {
+    let cur = req;
+    const seen = new Set<string>([cur.id]);
+    while (cur.superseded_by_id) {
+      const next = requestById.get(cur.superseded_by_id);
+      if (!next || seen.has(next.id)) break;
+      seen.add(next.id);
+      cur = next;
+    }
+    return cur;
+  };
+
+  const onPrintLatest = (req: PrequalRequest) => {
+    const head = findChainHead(req);
+    if (head.pdf_url) {
+      window.open(head.pdf_url, "_blank", "noopener,noreferrer");
+    } else {
+      // Head has no PDF (pending revision still rendering, or a status
+      // without a letter). Fall back to opening the head in the modal.
+      setSelected(head);
+    }
+  };
 
   const counts = useMemo(() => {
     const c = { pending: 0, approved: 0, rejected: 0, offer_accepted: 0, offer_declined: 0 } as Record<PrequalStatus, number>;
@@ -162,8 +212,9 @@ export default function AdminPrequalQueuePage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Prequalifications</h1>
           <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
-            Click any row to open the review panel. Headers sort the queue.
-            Pending always groups to the top regardless of sort direction.
+            Click a row to open the review panel. Right-click for quick actions
+            (open, print the latest letter). Headers sort the queue; pending
+            always groups to the top.
           </div>
         </div>
         {profile.role === Role.SUPER_ADMIN ? (
@@ -231,6 +282,10 @@ export default function AdminPrequalQueuePage() {
               req={r}
               t={t}
               onOpen={() => setSelected(r)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ req: r, x: e.clientX, y: e.clientY });
+              }}
             />
           ))}
         </Card>
@@ -246,7 +301,149 @@ export default function AdminPrequalQueuePage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
       />
+
+      {menu ? (
+        <ContextMenu
+          t={t}
+          x={menu.x}
+          y={menu.y}
+          req={menu.req}
+          head={findChainHead(menu.req)}
+          onOpen={() => { setSelected(menu.req); setMenu(null); }}
+          onOpenLatest={() => { setSelected(findChainHead(menu.req)); setMenu(null); }}
+          onPrintLatest={() => { onPrintLatest(menu.req); setMenu(null); }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+// Context menu (right-click on a row). Rendered as a portal-less fixed
+// container at the cursor — dismiss is handled by the document-level
+// mousedown listener in the parent. The menu items are status-aware so
+// the operator never sees an action that won't work on this row.
+function ContextMenu({
+  t,
+  x,
+  y,
+  req,
+  head,
+  onOpen,
+  onOpenLatest,
+  onPrintLatest,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  x: number;
+  y: number;
+  req: PrequalRequest;
+  head: PrequalRequest;
+  onOpen: () => void;
+  onOpenLatest: () => void;
+  onPrintLatest: () => void;
+}) {
+  const isSuperseded = req.superseded_by_id != null;
+  // Clamp position so the menu doesn't fall off the right / bottom edge
+  // of the viewport. Width 240px, ~5 items × 36px tall + padding.
+  const MENU_W = 240;
+  const MENU_H = 230;
+  const left = typeof window !== "undefined" ? Math.min(x, window.innerWidth - MENU_W - 8) : x;
+  const top = typeof window !== "undefined" ? Math.min(y, window.innerHeight - MENU_H - 8) : y;
+
+  return (
+    <div
+      role="menu"
+      onMouseDown={(e) => e.stopPropagation()}
+      style={{
+        position: "fixed",
+        left,
+        top,
+        width: MENU_W,
+        background: t.surface,
+        border: `1px solid ${t.line}`,
+        borderRadius: 10,
+        boxShadow: t.shadowLg,
+        zIndex: 300,
+        padding: 6,
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+      }}
+    >
+      <MenuHeader t={t} req={req} />
+      <MenuItem t={t} icon="docCheck" label={isSuperseded ? "Open this version" : "Open"} onClick={onOpen} />
+      {isSuperseded ? (
+        <MenuItem t={t} icon="arrowR" label={`Open latest (v${head.version_num})`} onClick={onOpenLatest} />
+      ) : null}
+      <MenuItem
+        t={t}
+        icon="docCheck"
+        label="Print latest letter"
+        sublabel={head.pdf_url ? head.quote_number ?? undefined : "no PDF yet"}
+        disabled={!head.pdf_url}
+        onClick={onPrintLatest}
+      />
+    </div>
+  );
+}
+
+function MenuHeader({ t, req }: { t: ReturnType<typeof useTheme>["t"]; req: PrequalRequest }) {
+  return (
+    <div style={{
+      padding: "6px 10px 8px",
+      borderBottom: `1px solid ${t.line}`,
+      marginBottom: 4,
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
+        {req.quote_number ?? "Pre-qualification"}
+        {(req.version_num ?? 1) > 1 ? <span style={{ color: t.petrol, marginLeft: 6 }}>· v{req.version_num}</span> : null}
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: t.ink, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {req.target_property_address}
+      </div>
+    </div>
+  );
+}
+
+function MenuItem({
+  t,
+  icon,
+  label,
+  sublabel,
+  onClick,
+  disabled,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  icon: React.ComponentProps<typeof Icon>["name"];
+  label: string;
+  sublabel?: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      role="menuitem"
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      style={{
+        all: "unset",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 10px",
+        borderRadius: 6,
+        fontSize: 13,
+        fontWeight: 600,
+        color: disabled ? t.ink3 : t.ink,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.55 : 1,
+      }}
+      onMouseEnter={(e) => { if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = t.surface2; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+    >
+      <Icon name={icon} size={14} />
+      <span style={{ flex: 1 }}>{label}</span>
+      {sublabel ? <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600 }}>{sublabel}</span> : null}
+    </button>
   );
 }
 
@@ -335,10 +532,12 @@ function Row({
   req,
   t,
   onOpen,
+  onContextMenu,
 }: {
   req: PrequalRequest;
   t: ReturnType<typeof useTheme>["t"];
   onOpen: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const purchase = Number(req.purchase_price);
   const requested = Number(req.requested_loan_amount);
@@ -358,6 +557,7 @@ function Row({
       role="button"
       tabIndex={0}
       onClick={onOpen}
+      onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
       style={{
         display: "grid",
@@ -423,56 +623,9 @@ function Row({
           ? new Date(req.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
           : <span style={{ color: t.ink4 }}>—</span>}
       </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-        <span style={{ fontSize: 11.5, color: t.ink3, fontFeatureSettings: '"tnum"' }}>
-          {submittedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-        </span>
-        <ActionPill t={t} status={req.status} isSuperseded={isSuperseded} />
+      <div style={{ fontSize: 12, color: t.ink3, fontFeatureSettings: '"tnum"' }}>
+        {submittedAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
       </div>
     </div>
-  );
-}
-
-// Status-aware row action label so admins know what clicking the row
-// will do — Review (pending), Edit / Revise (approved, where the modal
-// exposes both in-place save and the new "Create updated version"
-// button), Edit (loan-opened, where revision isn't allowed), Open
-// (closed/rejected/superseded — read-only).
-function ActionPill({
-  t,
-  status,
-  isSuperseded,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  status: PrequalStatus;
-  isSuperseded: boolean;
-}) {
-  const label = (() => {
-    if (isSuperseded) return "Open";
-    if (status === "pending") return "Review";
-    if (status === "approved") return "Edit / Revise";
-    if (status === "offer_accepted") return "Edit";
-    return "Open";
-  })();
-  const canRevise = status === "approved" && !isSuperseded;
-  const isAction = status === "approved" || status === "offer_accepted";
-  const accent = isSuperseded ? t.ink3 : (canRevise ? t.petrol : (isAction ? t.brand : t.ink3));
-  const bg = isSuperseded ? t.surface2 : (canRevise ? (t.petrolSoft ?? t.brandSoft) : (isAction ? t.brandSoft : t.surface2));
-  return (
-    <span style={{
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 3,
-      padding: "3px 8px",
-      borderRadius: 7,
-      background: bg,
-      color: accent,
-      fontSize: 11,
-      fontWeight: 800,
-      letterSpacing: 0.3,
-    }}>
-      {label}
-      <Icon name="arrowR" size={10} />
-    </span>
   );
 }
