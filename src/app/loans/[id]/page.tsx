@@ -111,6 +111,18 @@ export default function LoanDetailPage() {
   // Subscribe to live message updates so the AI rail / messages are realtime
   useDealChannel(params.id, loan?.deal_id ?? null);
 
+  // ⚠️ Hooks must run on every render — keep all useMemo calls BEFORE
+  // the early `if (!loan)` return. Previously these three useMemos
+  // sat after the return and triggered React error #310 (rendered
+  // more hooks than during the previous render) on the first paint
+  // when loan was undefined.
+  const missingCriteria = useMemo(
+    () => loan ? getCriteriaItems(loan).filter((item) => !item.ready) : [],
+    [loan],
+  );
+  const flaggedDocs = useMemo(() => docs.filter((doc) => doc.status === "flagged"), [docs]);
+  const openDocs = useMemo(() => docs.filter((doc) => doc.status !== "verified"), [docs]);
+
   if (!loan) return <div style={{ color: t.ink3 }}>Loading…</div>;
 
   const isInternal = profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
@@ -121,12 +133,6 @@ export default function LoanDetailPage() {
   const stageIndex = completion.stage.index;
   // Blockers data for the popup that the file-completion strip opens.
   const warnings = recalc.data?.warnings ?? [];
-  const missingCriteria = useMemo(
-    () => getCriteriaItems(loan).filter((item) => !item.ready),
-    [loan],
-  );
-  const flaggedDocs = useMemo(() => docs.filter((doc) => doc.status === "flagged"), [docs]);
-  const openDocs = useMemo(() => docs.filter((doc) => doc.status !== "verified"), [docs]);
   const totalBlockers = warnings.length + missingCriteria.length + flaggedDocs.length;
   const canTransitionStage = isInternal;
   const canRequestDoc = isInternal;
