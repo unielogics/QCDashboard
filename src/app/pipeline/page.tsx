@@ -5,9 +5,10 @@ import { useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useLoans, useDealSecretarySummary, type DSPipelineSummaryItem } from "@/hooks/useApi";
+import { useDealSecretarySummary, useDocuments, useLoans, type DSPipelineSummaryItem } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
-import { loanTypeLabel } from "@/lib/types";
+import { loanTypeLabel, type Document } from "@/lib/types";
+import { getFileCompletion } from "@/app/loans/[id]/fileReadiness";
 import { SmartIntakeModal } from "./components/SmartIntakeModal";
 import { AgentLeadModal } from "./components/AgentLeadModal";
 import { LeadsPipelineView } from "./components/LeadsPipelineView";
@@ -36,6 +37,7 @@ export default function PipelinePage() {
   // default; non-Agent operators land on Funding.
   const isBroker = profile.role === "broker";
   const isInternal = profile.role === "super_admin" || profile.role === "loan_exec";
+  const { data: allDocs = [] } = useDocuments();
   const [mode, setMode] = useState<PipelineMode>(isBroker ? "leads" : "funding");
   const [view, setView] = useState<"table" | "kanban">("table");
   const [sortKey, setSortKey] = useState<SortKey>("amount");
@@ -46,6 +48,16 @@ export default function PipelinePage() {
 
   const canCreateLead = isBroker || profile.role === "super_admin";
   const canCreateDeal = isInternal;
+
+  const docsByLoan = useMemo(() => {
+    const grouped = new Map<string, Document[]>();
+    for (const doc of allDocs) {
+      const current = grouped.get(doc.loan_id) ?? [];
+      current.push(doc);
+      grouped.set(doc.loan_id, current);
+    }
+    return grouped;
+  }, [allDocs]);
 
   const sorted = useMemo(() => {
     const filtered = typeFilter === "all" ? loans : loans.filter((l) => l.type === typeFilter);
@@ -70,7 +82,9 @@ export default function PipelinePage() {
       (l) =>
         l.deal_id.toLowerCase().includes(q) ||
         l.address.toLowerCase().includes(q) ||
-        (l.city ?? "").toLowerCase().includes(q),
+        (l.city ?? "").toLowerCase().includes(q) ||
+        (l.client_name ?? "").toLowerCase().includes(q) ||
+        (l.broker_name ?? "").toLowerCase().includes(q),
     );
   }, [sorted, search]);
 
@@ -228,8 +242,8 @@ export default function PipelinePage() {
         // doesn't shift between roles.
         (() => {
           const gridCols = isInternal
-            ? "80px minmax(0, 2fr) 140px 110px 110px 90px 80px 90px"   // ID Property Agent Type Amount DSCR Risk Close
-            : "80px minmax(0, 2fr) 110px 110px 90px 80px 90px";        // ID Property Type  Amount DSCR Risk Close
+            ? "78px minmax(0, 1.7fr) 130px 122px 96px 110px 82px 104px 86px"
+            : "78px minmax(0, 1.7fr) 122px 96px 110px 82px 104px 86px";
           return (
             <Card pad={0}>
               <div style={{
@@ -240,62 +254,61 @@ export default function PipelinePage() {
                 <SortHead label="ID" k="deal_id" current={sortKey} dir={sortDir} onClick={setSort} />
                 <SortHead label="Property" k="address" current={sortKey} dir={sortDir} onClick={setSort} />
                 {isInternal ? <div>Agent</div> : null}
+                <div>Readiness</div>
                 <SortHead label="Type" k="type" current={sortKey} dir={sortDir} onClick={setSort} />
                 <SortHead label="Amount" k="amount" current={sortKey} dir={sortDir} onClick={setSort} align="right" />
                 <SortHead label="DSCR" k="dscr" current={sortKey} dir={sortDir} onClick={setSort} align="right" />
-                <div>Risk</div>
+                <div>Conditions</div>
                 <SortHead label="Close" k="close_date" current={sortKey} dir={sortDir} onClick={setSort} />
               </div>
-              {visibleLoans.map((loan) => (
-                <Link key={loan.id} href={`/loans/${loan.id}`} style={{
-                  display: "grid", gridTemplateColumns: gridCols,
-                  padding: "12px 16px", borderBottom: `1px solid ${t.line}`, alignItems: "center",
-                  fontSize: 13, color: t.ink,
-                }}>
-                  <div style={{ fontWeight: 700, color: t.ink2 }}>{loan.deal_id}</div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{loan.address}</div>
-                    <div style={{ fontSize: 11.5, color: t.ink3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                      <span>{loan.city}</span>
-                      {/* Client reference — visible only to operators. The
-                          Agent identity now lives in its own column so we
-                          dropped the inline pill that used to sit here. */}
-                      {isInternal && loan.client_name ? (
-                        <>
-                          <span aria-hidden>·</span>
-                          <span style={{ fontWeight: 600 }}>{loan.client_name}</span>
-                        </>
-                      ) : null}
-                      {/* AI Deal Secretary badge — shows current state +
-                          blocker. Operators always see it; brokers see
-                          it for their own loans. */}
-                      <DealSecretaryBadge summary={summaryByLoanId.get(loan.id)} />
+              {visibleLoans.map((loan) => {
+                const loanDocs = docsByLoan.get(loan.id) ?? [];
+                const readiness = getFileCompletion(loan, loanDocs);
+                const openDocs = loanDocs.filter((doc) => doc.status !== "verified" && doc.status !== "skipped");
+                const flaggedDocs = loanDocs.filter((doc) => doc.status === "flagged");
+                return (
+                  <Link key={loan.id} href={`/loans/${loan.id}`} style={{
+                    display: "grid", gridTemplateColumns: gridCols,
+                    padding: "12px 16px", borderBottom: `1px solid ${t.line}`, alignItems: "center",
+                    fontSize: 13, color: t.ink,
+                  }}>
+                    <div style={{ fontWeight: 800, color: t.ink2 }}>{loan.deal_id}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{loan.address}</div>
+                      <div style={{ fontSize: 11.5, color: t.ink3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span>{loan.city}</span>
+                        {isInternal && loan.client_name ? (
+                          <>
+                            <span aria-hidden>/</span>
+                            <span style={{ fontWeight: 700 }}>{loan.client_name}</span>
+                          </>
+                        ) : null}
+                        <DealSecretaryBadge summary={summaryByLoanId.get(loan.id)} />
+                      </div>
                     </div>
-                  </div>
-                  {/* Agent column — operators only. "Not assigned" displayed
-                      explicitly when the loan has no broker so the row never
-                      looks blank. */}
-                  {isInternal ? (
-                    <div style={{
-                      fontSize: 12.5,
-                      fontWeight: loan.broker_name ? 700 : 500,
-                      color: loan.broker_name ? t.ink2 : t.ink3,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}>
-                      {loan.broker_name ?? "Not assigned"}
+                    {isInternal ? (
+                      <div style={{
+                        fontSize: 12.5,
+                        fontWeight: loan.broker_name ? 800 : 550,
+                        color: loan.broker_name ? t.ink2 : t.ink3,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}>
+                        {loan.broker_name ?? "Not assigned"}
+                      </div>
+                    ) : null}
+                    <ReadinessCell score={readiness.score} label={readiness.label} />
+                    <div><Pill>{loanTypeLabel(loan.type)}</Pill></div>
+                    <div style={{ textAlign: "right", fontWeight: 800, fontFeatureSettings: '"tnum"' }}>{QC_FMT.short(Number(loan.amount))}</div>
+                    <div style={{ textAlign: "right", color: loan.dscr && loan.dscr >= 1.25 ? t.profit : loan.dscr && loan.dscr >= 1.0 ? t.warn : t.ink3, fontWeight: 800 }}>
+                      {loan.dscr ? loan.dscr.toFixed(2) : "—"}
                     </div>
-                  ) : null}
-                  <div><Pill>{loanTypeLabel(loan.type)}</Pill></div>
-                  <div style={{ textAlign: "right", fontWeight: 700, fontFeatureSettings: '"tnum"' }}>{QC_FMT.short(Number(loan.amount))}</div>
-                  <div style={{ textAlign: "right", color: loan.dscr && loan.dscr >= 1.25 ? t.profit : loan.dscr && loan.dscr >= 1.0 ? t.warn : t.ink3, fontWeight: 700 }}>
-                    {loan.dscr ? loan.dscr.toFixed(2) : "—"}
-                  </div>
-                  <div style={{ color: t.ink3 }}>{loan.risk_score ?? "—"}</div>
-                  <div style={{ color: t.ink3, fontSize: 12 }}>{loan.close_date ? new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}</div>
-                </Link>
-              ))}
+                    <ConditionCell open={openDocs.length} flagged={flaggedDocs.length} total={loanDocs.length} />
+                    <div style={{ color: t.ink3, fontSize: 12 }}>{loan.close_date ? new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}</div>
+                  </Link>
+                );
+              })}
             </Card>
           );
         })()
@@ -310,41 +323,101 @@ export default function PipelinePage() {
                   <div style={{ fontSize: 12, fontWeight: 700, color: t.ink3 }}>{stageLoans.length}</div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {stageLoans.map((loan) => (
-                    <Link key={loan.id} href={`/loans/${loan.id}`} style={{ background: t.surface, padding: 10, borderRadius: 10, border: `1px solid ${t.line}` }}>
-                      <div style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>{loan.deal_id}</div>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink, marginTop: 2 }}>{loan.address}</div>
-                      <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>{QC_FMT.short(Number(loan.amount))} · {loanTypeLabel(loan.type)}</div>
-                      {isInternal && (loan.broker_name || loan.client_name) ? (
-                        <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
-                          {loan.broker_name ? (
-                            <span style={{
-                              fontSize: 10, fontWeight: 700,
-                              padding: "1px 5px", borderRadius: 3,
-                              background: t.brandSoft, color: t.brand,
-                            }}>
-                              {loan.broker_name}
-                            </span>
-                          ) : null}
-                          {loan.client_name ? (
-                            <span style={{
-                              fontSize: 10, fontWeight: 600,
-                              padding: "1px 5px", borderRadius: 3,
-                              background: t.surface2, color: t.ink2,
-                            }}>
-                              {loan.client_name}
-                            </span>
-                          ) : null}
+                  {stageLoans.map((loan) => {
+                    const loanDocs = docsByLoan.get(loan.id) ?? [];
+                    const readiness = getFileCompletion(loan, loanDocs);
+                    const openDocs = loanDocs.filter((doc) => doc.status !== "verified" && doc.status !== "skipped").length;
+                    return (
+                      <Link key={loan.id} href={`/loans/${loan.id}`} style={{ background: t.surface, padding: 11, borderRadius: 10, border: `1px solid ${t.line}`, display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div>
+                          <div style={{ fontSize: 11, color: t.ink3, fontWeight: 800 }}>{loan.deal_id}</div>
+                          <div style={{ fontSize: 12.5, fontWeight: 850, color: t.ink, marginTop: 2, lineHeight: 1.25 }}>{loan.address}</div>
+                          <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>{QC_FMT.short(Number(loan.amount))} / {loanTypeLabel(loan.type)}</div>
                         </div>
-                      ) : null}
-                    </Link>
-                  ))}
+                        <ReadinessBar score={readiness.score} label={readiness.label} />
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                          <span style={{ fontSize: 11, color: openDocs ? t.warn : t.profit, fontWeight: 850 }}>{openDocs} open</span>
+                          <span style={{ fontSize: 11, color: loan.dscr && loan.dscr >= 1.25 ? t.profit : loan.dscr ? t.warn : t.ink3, fontWeight: 850 }}>
+                            DSCR {loan.dscr ? loan.dscr.toFixed(2) : "—"}
+                          </span>
+                        </div>
+                        {isInternal && (loan.broker_name || loan.client_name) ? (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {loan.broker_name ? (
+                              <span style={{
+                                fontSize: 10, fontWeight: 800,
+                                padding: "1px 5px", borderRadius: 3,
+                                background: t.brandSoft, color: t.brand,
+                              }}>
+                                {loan.broker_name}
+                              </span>
+                            ) : null}
+                            {loan.client_name ? (
+                              <span style={{
+                                fontSize: 10, fontWeight: 700,
+                                padding: "1px 5px", borderRadius: 3,
+                                background: t.surface2, color: t.ink2,
+                              }}>
+                                {loan.client_name}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </Link>
+                    );
+                  })}
                 </div>
               </div>
             );
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function ReadinessCell({ score, label }: { score: number; label: string }) {
+  const { t } = useTheme();
+  const color = score >= 85 ? t.profit : score >= 65 ? t.warn : t.brand;
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+        <span style={{ fontSize: 12.5, fontWeight: 900, color, fontFeatureSettings: '"tnum"' }}>{score}%</span>
+        <span style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      </div>
+      <div style={{ height: 6, borderRadius: 999, background: t.line, overflow: "hidden", marginTop: 5 }}>
+        <div style={{ width: `${score}%`, height: "100%", background: color }} />
+      </div>
+    </div>
+  );
+}
+
+function ReadinessBar({ score, label }: { score: number; label: string }) {
+  const { t } = useTheme();
+  const color = score >= 85 ? t.profit : score >= 65 ? t.warn : t.brand;
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 850 }}>{label}</span>
+        <span style={{ fontSize: 11, color, fontWeight: 950, fontFeatureSettings: '"tnum"' }}>{score}%</span>
+      </div>
+      <div style={{ height: 6, borderRadius: 999, background: t.line, overflow: "hidden", marginTop: 5 }}>
+        <div style={{ width: `${score}%`, height: "100%", background: color }} />
+      </div>
+    </div>
+  );
+}
+
+function ConditionCell({ open, flagged, total }: { open: number; flagged: number; total: number }) {
+  const { t } = useTheme();
+  const color = flagged ? t.danger : open ? t.warn : total ? t.profit : t.ink3;
+  const bg = flagged ? t.dangerBg : open ? t.warnBg : total ? t.profitBg : t.surface2;
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, color, fontWeight: 850, fontSize: 12 }}>
+      <span style={{ width: 8, height: 8, borderRadius: 999, background: color }} />
+      <span style={{ padding: "3px 7px", borderRadius: 999, background: bg }}>
+        {flagged ? `${flagged} flagged` : open ? `${open} open` : total ? "clear" : "none"}
+      </span>
     </div>
   );
 }

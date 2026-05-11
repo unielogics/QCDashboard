@@ -238,12 +238,13 @@ export function useAITasks() {
   });
 }
 
-export function useDocuments(loanId?: string) {
+export function useDocuments(loanId?: string, options?: { enabled?: boolean }) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["documents", loanId, devUser],
     queryFn: () => apiCall<Document[]>(loanId ? `/documents?loan_id=${loanId}` : "/documents"),
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -1158,6 +1159,8 @@ export function useRecalc() {
       annual_taxes?: number;
       annual_insurance?: number;
       monthly_hoa?: number;
+      term_months?: number | null;
+      monthly_rent?: number | null;
       ltv?: number;
       purpose?: LoanPurpose | null;
       arv?: number | null;

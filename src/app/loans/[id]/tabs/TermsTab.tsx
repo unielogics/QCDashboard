@@ -85,6 +85,8 @@ export function TermsTab({ loan }: { loan: Loan }) {
         annual_taxes: numbers.annualTaxes,
         annual_insurance: numbers.annualInsurance,
         monthly_hoa: numbers.monthlyHoa,
+        term_months: numbers.termMonths,
+        monthly_rent: numbers.monthlyRent,
         purpose: draft.purpose as LoanPurpose,
         arv: numbers.arv,
         brv: numbers.brv,
@@ -102,6 +104,8 @@ export function TermsTab({ loan }: { loan: Loan }) {
     numbers.annualTaxes,
     numbers.annualInsurance,
     numbers.monthlyHoa,
+    numbers.termMonths,
+    numbers.monthlyRent,
     numbers.arv,
     numbers.brv,
     numbers.rehabBudget,
@@ -122,7 +126,7 @@ export function TermsTab({ loan }: { loan: Loan }) {
     loan.type !== "dscr" || (numbers.monthlyRent != null && numbers.monthlyRent > 0),
     numbers.termMonths != null,
     finalRate != null,
-    result ? result.warnings.length === 0 : true,
+    !!result && result.warnings.length === 0,
   ].filter(Boolean).length;
   const criteriaCompletion = Math.round((criteriaReady / 8) * 100);
 
@@ -336,7 +340,7 @@ export function TermsTab({ loan }: { loan: Loan }) {
 function fromLoan(loan: Loan): Draft {
   return {
     amount: rounded(loan.amount),
-    baseRatePct: loan.base_rate ? (loan.base_rate * 100).toFixed(3) : "7.000",
+    baseRatePct: loan.base_rate ? (loan.base_rate * 100).toFixed(3) : "",
     points: String(loan.discount_points ?? 0),
     purpose: loan.purpose ?? LoanPurpose.PURCHASE,
     termMonths: loan.term_months ? String(loan.term_months) : "",

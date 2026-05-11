@@ -16,7 +16,20 @@ export function UnderwritingTab({ loan }: { loan: Loan }) {
   // Auto-recalc on mount so we can show warnings
   useEffect(() => {
     if (!recalc.data && !recalc.isPending) {
-      recalc.mutate({ loanId: loan.id, discount_points: loan.discount_points || 0 });
+      recalc.mutate({
+        loanId: loan.id,
+        discount_points: loan.discount_points || 0,
+        loan_amount: loan.amount,
+        base_rate: loan.base_rate ?? undefined,
+        annual_taxes: loan.annual_taxes,
+        annual_insurance: loan.annual_insurance,
+        monthly_hoa: loan.monthly_hoa,
+        term_months: loan.term_months,
+        monthly_rent: loan.monthly_rent,
+        purpose: loan.purpose,
+        arv: loan.arv,
+        ltv: loan.ltv ?? undefined,
+      });
     }
   }, [loan.id]);
 

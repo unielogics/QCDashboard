@@ -18,7 +18,7 @@ export function Hud1Tab({ loan }: { loan: Loan }) {
   // Fetch a fresh snapshot when the tab mounts.
   useEffect(() => {
     if (!recalc.data && !recalc.isPending) {
-      recalc.mutate({ loanId: loan.id, discount_points: loan.discount_points || 0 });
+      recalc.mutate(recalcPayload(loan));
     }
   }, [loan.id]);
 
@@ -77,7 +77,7 @@ export function Hud1Tab({ loan }: { loan: Loan }) {
           <div style={{ fontSize: 12.5, color: t.ink3 }}>{recalc.isPending ? "Loading HUD draft…" : "No HUD draft yet."}</div>
         )}
         <button
-          onClick={() => recalc.mutate({ loanId: loan.id, discount_points: loan.discount_points || 0 })}
+          onClick={() => recalc.mutate(recalcPayload(loan))}
           disabled={recalc.isPending}
           style={{
             marginTop: 14, width: "100%", padding: "10px 14px", borderRadius: 10,
@@ -90,6 +90,23 @@ export function Hud1Tab({ loan }: { loan: Loan }) {
       </Card>
     </div>
   );
+}
+
+function recalcPayload(loan: Loan) {
+  return {
+    loanId: loan.id,
+    discount_points: loan.discount_points || 0,
+    loan_amount: loan.amount,
+    base_rate: loan.base_rate ?? undefined,
+    annual_taxes: loan.annual_taxes,
+    annual_insurance: loan.annual_insurance,
+    monthly_hoa: loan.monthly_hoa,
+    term_months: loan.term_months,
+    monthly_rent: loan.monthly_rent,
+    purpose: loan.purpose,
+    arv: loan.arv,
+    ltv: loan.ltv ?? undefined,
+  };
 }
 
 function Row({ t, label, value, bold }: { t: ReturnType<typeof useTheme>["t"]; label: string; value: string; bold?: boolean }) {

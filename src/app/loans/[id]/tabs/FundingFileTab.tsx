@@ -37,6 +37,8 @@ export function FundingFileTab({
       annual_taxes: loan.annual_taxes,
       annual_insurance: loan.annual_insurance,
       monthly_hoa: loan.monthly_hoa,
+      term_months: loan.term_months,
+      monthly_rent: loan.monthly_rent,
       purpose: loan.purpose,
       arv: loan.arv,
       ltv: loan.ltv ?? undefined,
@@ -49,6 +51,8 @@ export function FundingFileTab({
     loan.annual_taxes,
     loan.annual_insurance,
     loan.monthly_hoa,
+    loan.term_months,
+    loan.monthly_rent,
     loan.purpose,
     loan.arv,
     loan.ltv,
@@ -57,6 +61,7 @@ export function FundingFileTab({
   const warnings = recalc.data?.warnings ?? [];
   const completion = getFileCompletion(loan, docs, warnings.length);
   const criteria = useMemo(() => getCriteriaItems(loan), [loan]);
+  const missingCriteria = criteria.filter((item) => !item.ready);
   const verifiedDocs = docs.filter((doc) => doc.status === "verified");
   const receivedDocs = docs.filter((doc) => doc.status === "received" || doc.status === "verified");
   const flaggedDocs = docs.filter((doc) => doc.status === "flagged");
@@ -68,6 +73,13 @@ export function FundingFileTab({
   const ltv = recalc.data?.sizing?.ltv ?? loan.ltv;
   const cap = recalc.data?.sizing?.max_allowed ?? null;
   const binding = recalc.data?.sizing?.binding_constraint ?? null;
+  const nextAction = getNextAction({
+    missingCriteria: missingCriteria.length,
+    warningCount: warnings.length,
+    flaggedDocs: flaggedDocs.length,
+    openDocs: openDocs.length,
+    prequalStatus: latestPrequal?.status ?? null,
+  });
 
   const criticalPath = [
     {
@@ -85,7 +97,7 @@ export function FundingFileTab({
       status: warnings.length ? "watch" : recalc.data ? "ready" : "open",
     },
     {
-      label: "Documents",
+      label: "Docs + Conditions",
       icon: "docCheck",
       score: completion.docs.score,
       detail: `${verifiedDocs.length}/${docs.length || 0} verified`,
@@ -98,10 +110,28 @@ export function FundingFileTab({
       detail: latestPrequal ? latestPrequal.status.replace(/_/g, " ") : "Not started",
       status: latestPrequal?.status === "approved" || latestPrequal?.status === "offer_accepted" ? "ready" : latestPrequal ? "watch" : "open",
     },
+    {
+      label: "Underwriting",
+      icon: "shieldChk",
+      score: warnings.length ? Math.max(45, 100 - warnings.length * 18) : recalc.data ? 100 : 35,
+      detail: warnings.length ? `${warnings.length} validation item${warnings.length === 1 ? "" : "s"}` : recalc.isPending ? "Checking matrix" : "Clean matrix",
+      status: warnings.length ? "watch" : recalc.data ? "ready" : "open",
+    },
   ] as const;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <OperationalHeader
+        score={completion.score}
+        label={completion.label}
+        nextAction={nextAction}
+        amount={sizedAmount}
+        finalRate={finalRate}
+        dscr={dscr}
+        openDocs={openDocs.length}
+        warnings={warnings.length}
+      />
+
       <div style={{ display: "grid", gridTemplateColumns: "240px minmax(0, 1fr) 330px", gap: 14 }}>
         <Panel compact>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
@@ -123,7 +153,7 @@ export function FundingFileTab({
 
         <Panel>
           <HeaderRow eyebrow="Critical path" title="File readiness map" action={`${openDocs.length} open condition${openDocs.length === 1 ? "" : "s"}`} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 10 }}>
             {criticalPath.map((step) => (
               <PathTile key={step.label} step={step} />
             ))}
@@ -140,10 +170,13 @@ export function FundingFileTab({
             {warnings.slice(0, 3).map((warning) => (
               <AttentionRow key={`${warning.code}-${warning.message}`} tone="watch" icon="alert" title={warning.message} meta={warning.code.replace(/_/g, " ")} />
             ))}
+            {missingCriteria.slice(0, 3).map((item) => (
+              <AttentionRow key={item.id} tone="open" icon="sliders" title={`${item.label} is missing`} meta={item.group} />
+            ))}
             {flaggedDocs.slice(0, 3).map((doc) => (
               <AttentionRow key={doc.id} tone="danger" icon="doc" title={doc.name} meta={doc.category ?? "Flagged document"} />
             ))}
-            {warnings.length === 0 && flaggedDocs.length === 0 ? (
+            {warnings.length === 0 && flaggedDocs.length === 0 && missingCriteria.length === 0 ? (
               <AttentionRow tone="ready" icon="check" title="No calculation warnings or flagged documents" meta="Ready for internal review" />
             ) : null}
             {openDocs.length > 0 ? (
@@ -161,6 +194,12 @@ export function FundingFileTab({
           <CalcMetric label="DSCR" value={dscr != null ? dscr.toFixed(2) : "N/A"} tone={dscr != null && dscr >= 1.25 ? "ready" : dscr ? "watch" : "open"} />
           <CalcMetric label="LTV" value={ltv != null ? `${(ltv * 100).toFixed(1)}%` : "N/A"} tone={ltv != null && ltv <= 0.75 ? "ready" : ltv ? "watch" : "open"} />
           <CalcMetric label="Binding cap" value={cap ? QC_FMT.usd(cap, 0) : "No cap"} sub={binding ? binding.replace(/_/g, " ") : undefined} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginTop: 12 }}>
+          <CalcMetric label="Term" value={loan.term_months ? `${loan.term_months} mo` : "Missing"} tone={loan.term_months ? "neutral" : "open"} />
+          <CalcMetric label="Monthly rent" value={loan.monthly_rent ? QC_FMT.usd(Number(loan.monthly_rent), 0) : loan.type === "dscr" ? "Missing" : "N/A"} tone={loan.type === "dscr" && !loan.monthly_rent ? "open" : "neutral"} />
+          <CalcMetric label="ARV / value" value={loan.arv ? QC_FMT.usd(Number(loan.arv), 0) : "Missing"} tone={loan.arv ? "neutral" : "open"} />
+          <CalcMetric label="Taxes + ins." value={QC_FMT.usd(Number(loan.annual_taxes || 0) + Number(loan.annual_insurance || 0), 0)} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 12 }}>
           <RatioBar label="DSCR target" value={dscr ?? 0} target={1.25} formatter={(v) => v.toFixed(2)} />
@@ -232,6 +271,115 @@ export function FundingFileTab({
       </Panel>
     </div>
   );
+}
+
+function OperationalHeader({
+  score,
+  label,
+  nextAction,
+  amount,
+  finalRate,
+  dscr,
+  openDocs,
+  warnings,
+}: {
+  score: number;
+  label: string;
+  nextAction: { tone: "ready" | "watch" | "danger" | "open"; title: string; detail: string };
+  amount: number;
+  finalRate: number | null | undefined;
+  dscr: number | null | undefined;
+  openDocs: number;
+  warnings: number;
+}) {
+  const { t } = useTheme();
+  const color = nextAction.tone === "ready" ? t.profit : nextAction.tone === "danger" ? t.danger : nextAction.tone === "watch" ? t.warn : t.brand;
+  return (
+    <section
+      style={{
+        border: `1px solid ${t.line}`,
+        borderRadius: 16,
+        background: `linear-gradient(180deg, ${t.surface}, ${t.surface2})`,
+        boxShadow: t.shadow,
+        padding: 16,
+        display: "grid",
+        gridTemplateColumns: "minmax(220px, 1fr) 1.25fr minmax(360px, 1.1fr)",
+        gap: 14,
+        alignItems: "stretch",
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.4, textTransform: "uppercase" }}>File command</div>
+        <div style={{ marginTop: 5, fontSize: 25, fontWeight: 950, color: t.ink, letterSpacing: 0 }}>{label}</div>
+        <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: t.line, overflow: "hidden" }}>
+          <div style={{ width: `${score}%`, height: "100%", background: score >= 85 ? t.profit : score >= 65 ? t.warn : t.brand }} />
+        </div>
+        <div style={{ marginTop: 7, fontSize: 12, fontWeight: 900, color: score >= 85 ? t.profit : score >= 65 ? t.warn : t.brand }}>{score}% complete</div>
+      </div>
+
+      <div style={{ border: `1px solid ${t.line}`, borderRadius: 13, background: t.surface, padding: 13, minWidth: 0 }}>
+        <div style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: `${color}18`, color, display: "grid", placeItems: "center" }}>
+            <Icon name={nextAction.tone === "ready" ? "check" : nextAction.tone === "danger" ? "alert" : "arrowR"} size={16} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.1, textTransform: "uppercase" }}>Next action</div>
+            <div style={{ marginTop: 4, fontSize: 15, fontWeight: 950, color: t.ink }}>{nextAction.title}</div>
+            <div style={{ marginTop: 4, fontSize: 12, fontWeight: 750, color: t.ink3, lineHeight: 1.35 }}>{nextAction.detail}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+        <HeaderKpi label="Sized" value={QC_FMT.usd(amount, 0)} />
+        <HeaderKpi label="Rate" value={finalRate != null ? `${(finalRate * 100).toFixed(3)}%` : "Missing"} tone={finalRate != null ? "neutral" : "watch"} />
+        <HeaderKpi label="DSCR" value={dscr != null ? dscr.toFixed(2) : "N/A"} tone={dscr != null && dscr >= 1.25 ? "ready" : dscr ? "watch" : "neutral"} />
+        <HeaderKpi label="Blockers" value={openDocs + warnings} tone={openDocs + warnings ? "watch" : "ready"} />
+      </div>
+    </section>
+  );
+}
+
+function HeaderKpi({ label, value, tone = "neutral" }: { label: string; value: string | number; tone?: "ready" | "watch" | "neutral" }) {
+  const { t } = useTheme();
+  const color = tone === "ready" ? t.profit : tone === "watch" ? t.warn : t.ink;
+  return (
+    <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface, padding: "10px 11px", minWidth: 0 }}>
+      <div style={{ fontSize: 9.5, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>{label}</div>
+      <div style={{ marginTop: 5, fontSize: 16, fontWeight: 950, color, fontFeatureSettings: '"tnum"', overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
+    </div>
+  );
+}
+
+function getNextAction({
+  missingCriteria,
+  warningCount,
+  flaggedDocs,
+  openDocs,
+  prequalStatus,
+}: {
+  missingCriteria: number;
+  warningCount: number;
+  flaggedDocs: number;
+  openDocs: number;
+  prequalStatus: string | null;
+}) {
+  if (warningCount > 0) {
+    return { tone: "danger" as const, title: "Clear underwriting warnings", detail: `${warningCount} validation item${warningCount === 1 ? "" : "s"} blocking a clean package.` };
+  }
+  if (missingCriteria > 0) {
+    return { tone: "open" as const, title: "Complete loan structure", detail: `${missingCriteria} criteria field${missingCriteria === 1 ? "" : "s"} still missing before underwriting.` };
+  }
+  if (flaggedDocs > 0) {
+    return { tone: "danger" as const, title: "Review flagged documents", detail: `${flaggedDocs} document${flaggedDocs === 1 ? "" : "s"} need quality review.` };
+  }
+  if (openDocs > 0) {
+    return { tone: "watch" as const, title: "Collect open conditions", detail: `${openDocs} document condition${openDocs === 1 ? "" : "s"} remain open.` };
+  }
+  if (prequalStatus && !["approved", "offer_accepted"].includes(prequalStatus)) {
+    return { tone: "watch" as const, title: "Finalize pre-qualification", detail: `Latest request is ${prequalStatus.replace(/_/g, " ")}.` };
+  }
+  return { tone: "ready" as const, title: "Package ready for review", detail: "Criteria, documents, and live calculations are clean." };
 }
 
 function Panel({
