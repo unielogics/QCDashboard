@@ -46,6 +46,7 @@ import {
   type RecalcResponse,
   type User,
 } from "@/lib/types";
+import { AISecretaryControl } from "@/components/AISecretaryControl";
 import { getCriteriaItems } from "../fileReadiness";
 import { InstructionStrip } from "../components/InstructionStrip";
 import { DealChatThread } from "../components/DealChatThread";
@@ -111,6 +112,13 @@ export function DealWorkspaceTab({ loanId, onOpenTab }: { loanId: string; onOpen
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+      {/* Headline Start/Pause CTA — the user-facing primitive for
+          "make the AI actually contact the borrower". Sits above
+          everything else so it's the first thing operators see. */}
+      {secretary ? (
+        <AISecretaryControl loanId={loanId} view={secretary} />
+      ) : null}
+
       {secretaryLoading ? (
         <div style={{ padding: 16, color: t.ink3, fontSize: 13 }}>Loading AI Secretary…</div>
       ) : !secretary ? (

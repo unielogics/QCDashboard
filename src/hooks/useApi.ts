@@ -3185,6 +3185,46 @@ export function useBootstrapDealSecretary(loanId: string) {
   });
 }
 
+// One-click "Start AI Secretary". Flips outreach_mode to portal_auto
+// (or whatever's passed) AND fires first-touch outreach immediately
+// for every AI-owned task — no 30-min cron wait.
+export interface DSStartResponse {
+  outreach_mode: string;
+  fired_count: number;
+  skipped_count: number;
+  skipped: string[];
+}
+export function useStartAISecretary(loanId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (mode?: import("@/lib/types").DSOutreachMode) =>
+      apiCall<DSStartResponse>(`/loans/${loanId}/deal-secretary/start`, {
+        method: "POST",
+        body: JSON.stringify(mode ? { mode } : {}),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deal-secretary", loanId] });
+      qc.invalidateQueries({ queryKey: ["deal-secretary-summary"] });
+    },
+  });
+}
+
+export function usePauseAISecretary(loanId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiCall<import("@/lib/types").DSFileSettings>(
+        `/loans/${loanId}/deal-secretary/pause`, { method: "POST" },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deal-secretary", loanId] });
+      qc.invalidateQueries({ queryKey: ["deal-secretary-summary"] });
+    },
+  });
+}
+
 export interface DSPipelineSummaryItem {
   loan_id: string;
   outreach_mode: string;
