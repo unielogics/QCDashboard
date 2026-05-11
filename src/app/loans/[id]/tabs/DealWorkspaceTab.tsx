@@ -63,7 +63,7 @@ import {
   saveHandoffRows,
   type HandoffRow,
 } from "@/components/AISecretaryHandoffTable";
-import { useAIQuestions, useAnswerAIQuestion, useCreateCustomTask, type DSAIQuestion } from "@/hooks/useApi";
+import { useAIQuestions, useAnswerAIQuestion, useCreateCustomTask, usePatchDocument, type DSAIQuestion } from "@/hooks/useApi";
 import { getCriteriaItems } from "../fileReadiness";
 import { LoanChatSlideOut } from "../components/LoanChatSlideOut";
 import { InstructionsModal } from "../components/InstructionsModal";
@@ -228,6 +228,7 @@ function SecretaryConsole({
 }) {
   const { t } = useTheme();
   const createCustomTask = useCreateCustomTask(loan.id);
+  const patchDocument = usePatchDocument();
   const [filter, setFilter] = useState<"borrower" | "required" | "human" | "all">("borrower");
   const [flash, setFlash] = useState<string | null>(null);
   // Right-pane view toggle. "handoff" = sequenced AI/Human assignment
@@ -323,12 +324,53 @@ function SecretaryConsole({
     setFlash(`Sent task back — flipped to Human.`);
     window.setTimeout(() => setFlash(null), 2400);
   };
+  // YYYY-MM-DD for today (local wall clock). The PATCH /documents
+  // endpoint accepts a date string in this form; the backend stores
+  // it as the operator-overridden due_date and the workflow cron then
+  // honors it instead of computing default_due from intake offsets.
+  const todayIso = () => {
+    const now = new Date();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    return `${now.getFullYear()}-${m}-${d}`;
+  };
+  // When the operator drags an overdue queue item onto the AI Secretary,
+  // the implied promise is "yes I'm still on this, just give it a fresh
+  // shot today." Roll the due date forward so the cadence engine + the
+  // overdue indicator both reset. No-op when the item wasn't overdue or
+  // we don't have a document_id to patch (e.g. warnings, criteria).
+  const maybeRollDueDateToToday = (payload: {
+    kind?: string;
+    overdue?: boolean;
+    document_id?: string;
+  }) => {
+    if (!payload.overdue || !payload.document_id) return;
+    patchDocument.mutate(
+      { documentId: payload.document_id, due_date: todayIso() },
+      {
+        onError: (err) => {
+          // Non-fatal — placement succeeded, just due-date roll failed.
+          // Surface in flash so the operator can manually adjust if
+          // they want to.
+          setFlash(err instanceof Error ? `Placed, but couldn't reset due date: ${err.message}` : "Placed, but couldn't reset due date.");
+          window.setTimeout(() => setFlash(null), 4200);
+        },
+      },
+    );
+  };
   const handleQueueDragEnd = (e: DragEndEvent) => {
     setActiveDrag(null);
     const overId = e.over?.id;
     if (overId === undefined) return;
     const payload = e.active.data?.current as
-      | { kind?: string; label?: string; source_id?: string; requirement_key?: string }
+      | {
+          kind?: string;
+          label?: string;
+          source_id?: string;
+          requirement_key?: string;
+          document_id?: string;
+          overdue?: boolean;
+        }
       | undefined;
     if (!payload) return;
 
@@ -360,14 +402,25 @@ function SecretaryConsole({
 
       if (payload.requirement_key && timelineKeys.has(payload.requirement_key)) {
         placeIntoRow(payload.requirement_key, payload.label);
+        // If the source row was an overdue workflow condition, roll its
+        // due_date forward to today as the operator's commitment signal.
+        maybeRollDueDateToToday(payload);
         return;
       }
       const label = payload.label || "Follow up";
       createCustomTask.mutate(
-        { label, owner_type: owner, objective_text: undefined },
+        {
+          label,
+          owner_type: owner,
+          objective_text: undefined,
+          // Same rule for fresh custom tasks: if they came from an
+          // overdue queue item, anchor the new task to today.
+          ...(payload.overdue ? { due_at: todayIso() } : {}),
+        },
         {
           onSuccess: (created) => {
             placeIntoRow(created.requirement_key, label);
+            maybeRollDueDateToToday(payload);
           },
           onError: (err) => {
             setFlash(err instanceof Error ? err.message : "Could not add task.");
@@ -382,15 +435,22 @@ function SecretaryConsole({
     if (overStr === "ai-secretary-zone") {
       if (payload.requirement_key && timelineKeys.has(payload.requirement_key)) {
         onAssign(payload.requirement_key);
+        maybeRollDueDateToToday(payload);
         setFlash(`Delegated "${payload.label ?? payload.requirement_key}" to AI.`);
         window.setTimeout(() => setFlash(null), 2400);
         return;
       }
       const label = payload.label || "Follow up";
       createCustomTask.mutate(
-        { label, owner_type: "ai", objective_text: undefined },
+        {
+          label,
+          owner_type: "ai",
+          objective_text: undefined,
+          ...(payload.overdue ? { due_at: todayIso() } : {}),
+        },
         {
           onSuccess: () => {
+            maybeRollDueDateToToday(payload);
             setFlash(`Added "${label}" to AI Secretary.`);
             window.setTimeout(() => setFlash(null), 2400);
           },
@@ -571,19 +631,29 @@ function SecretaryConsole({
                 dragData={{ kind: "flagged_doc", label: `Resolve flag on ${doc.name}`, source_id: doc.id }}
               />
             ))}
-            {primaryConditions.slice(0, 5).map((item) => (
-              <ResolutionRow
-                key={item.document_id}
-                icon="docCheck"
-                tone={item.days_until_due != null && item.days_until_due < 0 ? "danger" : "watch"}
-                title={item.name}
-                meta={conditionMeta(item)}
-                action="Schedule"
-                onClick={() => onOpenTab?.("workflow")}
-                dragId={`queue:condition:${item.document_id}`}
-                dragData={{ kind: "condition", label: `Collect ${item.name}`, requirement_key: item.checklist_key ?? undefined, source_id: item.document_id }}
-              />
-            ))}
+            {primaryConditions.slice(0, 5).map((item) => {
+              const overdue = item.days_until_due != null && item.days_until_due < 0;
+              return (
+                <ResolutionRow
+                  key={item.document_id}
+                  icon="docCheck"
+                  tone={overdue ? "danger" : "watch"}
+                  title={item.name}
+                  meta={conditionMeta(item)}
+                  action="Schedule"
+                  onClick={() => onOpenTab?.("workflow")}
+                  dragId={`queue:condition:${item.document_id}`}
+                  dragData={{
+                    kind: "condition",
+                    label: `Collect ${item.name}`,
+                    requirement_key: item.checklist_key ?? undefined,
+                    source_id: item.document_id,
+                    document_id: item.document_id,
+                    overdue,
+                  }}
+                />
+              );
+            })}
             {warnings.length === 0 && missingCriteria.length === 0 && openDocs.length === 0 ? (
               <ResolutionRow icon="check" tone="ready" title="No open criteria, conditions, or warnings" meta="Package can move to review" action="Open UW" onClick={() => onOpenTab?.("uw")} />
             ) : null}
