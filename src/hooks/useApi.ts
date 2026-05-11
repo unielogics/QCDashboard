@@ -2628,6 +2628,9 @@ export interface PlaybookRequirement {
   completion_criteria?: string;
   completion_mode?: string;
   wrong_upload_response_template?: string | null;
+  // Timeline + grouping (alembic 0040)
+  depends_on?: string[];
+  parent_key?: string | null;
 }
 
 export interface AgentPlaybook {

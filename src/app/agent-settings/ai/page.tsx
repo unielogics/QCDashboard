@@ -247,6 +247,7 @@ function SidedRulesTab({ side, leadLabel }: { side: "buyer" | "seller"; leadLabe
               t={t}
               row={configureFor.req}
               owner={configureFor.owner}
+              candidates={[...platform, ...overlay].filter((r) => r.requirement_key !== configureFor.req.requirement_key)}
               onClose={() => setConfigureFor(null)}
               onSave={async (changes) => {
                 try {
@@ -1101,11 +1102,13 @@ function btnSecondary(t: ReturnType<typeof useTheme>["t"]) {
 // platform rows fork to an agent-overlay row on first edit.
 
 function RequirementConfigurePopup({
-  t, row, owner, onClose, onSave,
+  t, row, owner, candidates, onClose, onSave,
 }: {
   t: ReturnType<typeof useTheme>["t"];
   row: PlaybookRequirement;
   owner: "platform" | "agent";
+  /** Other rows on the same playbook — used for depends_on + parent_key pickers. */
+  candidates: PlaybookRequirement[];
   onClose: () => void;
   onSave: (changes: Partial<{
     default_owner_type: "human" | "ai" | "shared" | "funding_locked";
@@ -1116,6 +1119,8 @@ function RequirementConfigurePopup({
     link_kind: "docusign" | "esign" | "external_form" | "reference" | null;
     objective_text: string;
     completion_criteria: string;
+    depends_on: string[];
+    parent_key: string | null;
   }>) => Promise<void>;
 }) {
   // Per the user direction: per-task config is just owner + what + done.
@@ -1133,6 +1138,8 @@ function RequirementConfigurePopup({
   );
   const [objective, setObjective] = useState<string>(row.objective_text ?? "");
   const [completion, setCompletion] = useState<string>(row.completion_criteria ?? "");
+  const [dependsOn, setDependsOn] = useState<string[]>(row.depends_on ?? []);
+  const [parentKey, setParentKey] = useState<string>(row.parent_key ?? "");
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
@@ -1145,6 +1152,8 @@ function RequirementConfigurePopup({
         link_kind: linkKind || null,
         objective_text: objective,
         completion_criteria: completion,
+        depends_on: dependsOn,
+        parent_key: parentKey || null,
       });
     } finally {
       setSaving(false);
@@ -1235,6 +1244,31 @@ function RequirementConfigurePopup({
             />
           </FieldBlock>
 
+          {/* Timeline + grouping pickers (alembic 0040). Determines
+              where this task lands in Next Up / In Progress / Upcoming
+              on the AI Secretary tab. */}
+          <FieldBlock label="Group under (optional)" t={t}>
+            <select
+              value={parentKey}
+              onChange={(e) => setParentKey(e.target.value)}
+              style={inputStyle(t)}
+            >
+              <option value="">No parent — top-level task</option>
+              {candidates.map((c) => (
+                <option key={c.requirement_key} value={c.requirement_key}>{c.label}</option>
+              ))}
+            </select>
+          </FieldBlock>
+
+          <FieldBlock label="Depends on (must finish first)" t={t}>
+            <DependsOnPicker
+              t={t}
+              candidates={candidates.filter((c) => c.requirement_key !== parentKey)}
+              value={dependsOn}
+              onChange={setDependsOn}
+            />
+          </FieldBlock>
+
           <div>
             <div style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
               Optional link (DocuSign, intake form, etc.)
@@ -1312,5 +1346,110 @@ function FieldBlock({ label, children, t }: { label: string; children: React.Rea
       </span>
       {children}
     </label>
+  );
+}
+
+// ─── DependsOnPicker — chip-style multi-select for prerequisite tasks
+//
+// User adds dependency rows by typing in a search box (filters
+// candidates). Selected deps render as removable chips above the
+// box. Used inside RequirementConfigurePopup to set the
+// requirement's depends_on array.
+
+function DependsOnPicker({
+  t, candidates, value, onChange,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  candidates: PlaybookRequirement[];
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const labelByKey = useMemo(() => {
+    const m = new Map<string, string>();
+    candidates.forEach((c) => m.set(c.requirement_key, c.label));
+    return m;
+  }, [candidates]);
+  const available = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return candidates
+      .filter((c) => !value.includes(c.requirement_key))
+      .filter((c) => !q || c.label.toLowerCase().includes(q) || c.requirement_key.toLowerCase().includes(q))
+      .slice(0, 6);
+  }, [candidates, value, query]);
+
+  return (
+    <div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 6 }}>
+        {value.length === 0 ? (
+          <span style={{ fontSize: 11, color: t.ink3 }}>No dependencies — this task is ready on day one.</span>
+        ) : null}
+        {value.map((key) => (
+          <span
+            key={key}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 5,
+              padding: "3px 8px", borderRadius: 999,
+              background: t.brandSoft, color: t.brand,
+              fontSize: 11, fontWeight: 800,
+            }}
+          >
+            {labelByKey.get(key) ?? key}
+            <button
+              type="button"
+              onClick={() => onChange(value.filter((k) => k !== key))}
+              style={{
+                all: "unset", cursor: "pointer",
+                width: 14, height: 14, borderRadius: 999,
+                background: t.surface, color: t.brand,
+                display: "inline-grid", placeItems: "center",
+                fontSize: 10, fontWeight: 900, lineHeight: 1,
+              }}
+              aria-label={`Remove ${key}`}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Type to search and add a prerequisite…"
+        style={inputStyle(t)}
+      />
+      {query.trim() ? (
+        <div style={{
+          marginTop: 6,
+          border: `1px solid ${t.line}`,
+          borderRadius: 8,
+          background: t.surface,
+          maxHeight: 200, overflow: "auto",
+        }}>
+          {available.length === 0 ? (
+            <div style={{ padding: 9, fontSize: 11, color: t.ink3 }}>No matches.</div>
+          ) : available.map((c) => (
+            <button
+              key={c.requirement_key}
+              type="button"
+              onClick={() => {
+                onChange([...value, c.requirement_key]);
+                setQuery("");
+              }}
+              style={{
+                all: "unset", cursor: "pointer",
+                display: "block", width: "calc(100% - 24px)",
+                padding: "8px 12px",
+                fontSize: 12, color: t.ink,
+                borderBottom: `1px solid ${t.line}`,
+              }}
+            >
+              <div style={{ fontWeight: 700 }}>{c.label}</div>
+              <div style={{ fontSize: 10, color: t.ink3, marginTop: 2 }}>{c.requirement_key}</div>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
