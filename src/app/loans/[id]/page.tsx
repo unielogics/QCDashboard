@@ -20,7 +20,8 @@ import { Hud1Tab } from "./tabs/Hud1Tab";
 import { DocsTab } from "./tabs/DocsTab";
 import { WorkflowTab } from "./tabs/WorkflowTab";
 import { UnderwritingTab } from "./tabs/UnderwritingTab";
-import { PropertyTab } from "./tabs/PropertyTab";
+// PropertyTab is no longer a standalone tab — its content is embedded
+// inside FundingFileTab, which owns the import now.
 import { WireClosingTab } from "./tabs/WireClosingTab";
 import { ActivityTab } from "./tabs/ActivityTab";
 import { DealWorkspaceTab } from "./tabs/DealWorkspaceTab";
@@ -32,9 +33,10 @@ import { EmailDraftsCard } from "./components/EmailDraftsCard";
 import { FILE_STAGE_KEYS, FILE_STAGE_LABELS, getFileCompletion } from "./fileReadiness";
 
 const INTERNAL_TABS = [
+  // Property tab merged into Funding File — property details now sit
+  // between the calc snapshot and the criteria matrix inside Funding File.
   { id: "file", label: "Funding File", icon: "file" as const },
   { id: "terms", label: "Criteria", icon: "sliders" as const },
-  { id: "property", label: "Property", icon: "building2" as const },
   { id: "docs", label: "Documents", icon: "doc" as const },
   { id: "workflow", label: "Conditions", icon: "cal" as const },
   { id: "prequal", label: "Pre-Qual", icon: "docCheck" as const },
@@ -334,7 +336,9 @@ export default function LoanDetailPage() {
         })}
       </div>
 
-      {activeTab === "file" && <FundingFileTab loan={loan} docs={docs} activity={activity} />}
+      {activeTab === "file" && (
+        <FundingFileTab loan={loan} docs={docs} activity={activity} canEdit={canTransitionStage} />
+      )}
       {activeTab === "agent" && <AgentLoanMirror loan={loan} docs={docs} activity={activity} />}
       {activeTab === "overview" && <OverviewTab loan={loan} docs={docs} activity={activity} />}
       {activeTab === "terms" &&
@@ -343,7 +347,7 @@ export default function LoanDetailPage() {
       {activeTab === "docs" && <DocsTab loan={loan} canRequest={canRequestDoc} />}
       {activeTab === "workflow" && <WorkflowTab loan={loan} canEdit={canRequestDoc} />}
       {activeTab === "uw" && <UnderwritingTab loan={loan} />}
-      {activeTab === "property" && <PropertyTab loan={loan} canEdit={canTransitionStage} />}
+      {/* Property tab removed — content now embedded in FundingFileTab. */}
       {activeTab === "wire" && <WireClosingTab loan={loan} />}
       {activeTab === "prequal" && <PrequalTab loan={loan} />}
       {activeTab === "workspace" && <DealWorkspaceTab loanId={loan.id} />}

@@ -8,15 +8,21 @@ import { QC_FMT } from "@/components/design-system/tokens";
 import { useLoanPrequalRequests, useRecalc } from "@/hooks/useApi";
 import type { Activity, Document, Loan } from "@/lib/types";
 import { getCriteriaItems, getFileCompletion } from "../fileReadiness";
+// PropertyTab is now embedded inside FundingFileTab instead of living
+// on its own tab — property details belong with the rest of the deal
+// foundation (address, beds/baths, taxes/insurance, ARV/LTV).
+import { PropertyTab } from "./PropertyTab";
 
 export function FundingFileTab({
   loan,
   docs,
   activity,
+  canEdit = false,
 }: {
   loan: Loan;
   docs: Document[];
   activity: Activity[];
+  canEdit?: boolean;
 }) {
   const { t } = useTheme();
   const recalc = useRecalc();
@@ -162,6 +168,12 @@ export function FundingFileTab({
           <RatioBar label="Completion" value={completion.score} target={100} formatter={(v) => `${Math.round(v)}%`} />
         </div>
       </Panel>
+
+      {/* Property details — folded in from the standalone Property tab.
+          Lives between the calc engine snapshot and the criteria matrix
+          so the file flows: status → math → what we're lending against →
+          what's still needed → activity. */}
+      <PropertyTab loan={loan} canEdit={canEdit} />
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 390px", gap: 14 }}>
         <Panel>
