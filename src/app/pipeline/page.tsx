@@ -89,12 +89,32 @@ export default function PipelinePage() {
   }, [sorted, search]);
 
   const totalValue = visibleLoans.reduce((acc, l) => acc + Number(l.amount), 0);
+  const fundingRows = useMemo(() => visibleLoans.map((loan) => {
+    const loanDocs = docsByLoan.get(loan.id) ?? [];
+    const readiness = getFileCompletion(loan, loanDocs);
+    const openDocs = loanDocs.filter((doc) => doc.status !== "verified" && doc.status !== "skipped");
+    const flaggedDocs = loanDocs.filter((doc) => doc.status === "flagged");
+    const summary = summaryByLoanId.get(loan.id);
+    return {
+      loan,
+      loanDocs,
+      readiness,
+      openDocs,
+      flaggedDocs,
+      summary,
+      action: getPipelineAction(readiness.score, openDocs.length, flaggedDocs.length, summary),
+    };
+  }), [visibleLoans, docsByLoan, summaryByLoanId]);
+  const underwritingReady = fundingRows.filter((row) => row.readiness.score >= 85 && row.openDocs.length === 0).length;
+  const needsStructure = fundingRows.filter((row) => row.readiness.score < 65).length;
+  const openConditionCount = fundingRows.reduce((acc, row) => acc + row.openDocs.length, 0);
+  const blockedAiCount = fundingRows.filter((row) => row.summary?.state === "blocked").length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: -0.5, color: t.ink, margin: 0 }}>
-          Pipeline
+        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: 0, color: t.ink, margin: 0 }}>
+          {mode === "funding" ? "Underwriting CRM" : "Pipeline"}
         </h1>
 
         <select
@@ -233,6 +253,17 @@ export default function PipelinePage() {
         <SmartIntakeModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
       )}
 
+      {mode === "funding" ? (
+        <FundingCommandStrip
+          totalFiles={fundingRows.length}
+          ready={underwritingReady}
+          needsStructure={needsStructure}
+          openConditions={openConditionCount}
+          blockedAi={blockedAiCount}
+          totalValue={totalValue}
+        />
+      ) : null}
+
       {mode === "leads" ? (
         <LeadsPipelineView view={view} search={search} />
       ) : view === "table" ? (
@@ -242,8 +273,8 @@ export default function PipelinePage() {
         // doesn't shift between roles.
         (() => {
           const gridCols = isInternal
-            ? "78px minmax(0, 1.7fr) 130px 122px 96px 110px 82px 104px 86px"
-            : "78px minmax(0, 1.7fr) 122px 96px 110px 82px 104px 86px";
+            ? "78px minmax(0, 1.55fr) 130px 122px 96px 110px 82px 104px 126px"
+            : "78px minmax(0, 1.55fr) 122px 96px 110px 82px 104px 126px";
           return (
             <Card pad={0}>
               <div style={{
@@ -259,13 +290,9 @@ export default function PipelinePage() {
                 <SortHead label="Amount" k="amount" current={sortKey} dir={sortDir} onClick={setSort} align="right" />
                 <SortHead label="DSCR" k="dscr" current={sortKey} dir={sortDir} onClick={setSort} align="right" />
                 <div>Conditions</div>
-                <SortHead label="Close" k="close_date" current={sortKey} dir={sortDir} onClick={setSort} />
+                <div>Next action</div>
               </div>
-              {visibleLoans.map((loan) => {
-                const loanDocs = docsByLoan.get(loan.id) ?? [];
-                const readiness = getFileCompletion(loan, loanDocs);
-                const openDocs = loanDocs.filter((doc) => doc.status !== "verified" && doc.status !== "skipped");
-                const flaggedDocs = loanDocs.filter((doc) => doc.status === "flagged");
+              {fundingRows.map(({ loan, loanDocs, readiness, openDocs, flaggedDocs, summary, action }) => {
                 return (
                   <Link key={loan.id} href={`/loans/${loan.id}`} style={{
                     display: "grid", gridTemplateColumns: gridCols,
@@ -283,7 +310,13 @@ export default function PipelinePage() {
                             <span style={{ fontWeight: 700 }}>{loan.client_name}</span>
                           </>
                         ) : null}
-                        <DealSecretaryBadge summary={summaryByLoanId.get(loan.id)} />
+                        {loan.close_date ? (
+                          <>
+                            <span aria-hidden>/</span>
+                            <span>Close {new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                          </>
+                        ) : null}
+                        <DealSecretaryBadge summary={summary} />
                       </div>
                     </div>
                     {isInternal ? (
@@ -305,7 +338,7 @@ export default function PipelinePage() {
                       {loan.dscr ? loan.dscr.toFixed(2) : "—"}
                     </div>
                     <ConditionCell open={openDocs.length} flagged={flaggedDocs.length} total={loanDocs.length} />
-                    <div style={{ color: t.ink3, fontSize: 12 }}>{loan.close_date ? new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}</div>
+                    <PipelineActionCell action={action} />
                   </Link>
                 );
               })}
@@ -315,7 +348,7 @@ export default function PipelinePage() {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
           {STAGE_KEYS.map((k, i) => {
-            const stageLoans = visibleLoans.filter((l) => l.stage === k);
+            const stageLoans = fundingRows.filter((row) => row.loan.stage === k);
             return (
               <div key={k} style={{ background: t.surface2, padding: 12, borderRadius: 12, border: `1px solid ${t.line}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -323,10 +356,7 @@ export default function PipelinePage() {
                   <div style={{ fontSize: 12, fontWeight: 700, color: t.ink3 }}>{stageLoans.length}</div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {stageLoans.map((loan) => {
-                    const loanDocs = docsByLoan.get(loan.id) ?? [];
-                    const readiness = getFileCompletion(loan, loanDocs);
-                    const openDocs = loanDocs.filter((doc) => doc.status !== "verified" && doc.status !== "skipped").length;
+                  {stageLoans.map(({ loan, readiness, openDocs, action }) => {
                     return (
                       <Link key={loan.id} href={`/loans/${loan.id}`} style={{ background: t.surface, padding: 11, borderRadius: 10, border: `1px solid ${t.line}`, display: "flex", flexDirection: "column", gap: 8 }}>
                         <div>
@@ -336,11 +366,12 @@ export default function PipelinePage() {
                         </div>
                         <ReadinessBar score={readiness.score} label={readiness.label} />
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                          <span style={{ fontSize: 11, color: openDocs ? t.warn : t.profit, fontWeight: 850 }}>{openDocs} open</span>
+                          <span style={{ fontSize: 11, color: openDocs.length ? t.warn : t.profit, fontWeight: 850 }}>{openDocs.length} open</span>
                           <span style={{ fontSize: 11, color: loan.dscr && loan.dscr >= 1.25 ? t.profit : loan.dscr ? t.warn : t.ink3, fontWeight: 850 }}>
                             DSCR {loan.dscr ? loan.dscr.toFixed(2) : "—"}
                           </span>
                         </div>
+                        <PipelineActionCell action={action} compact />
                         {isInternal && (loan.broker_name || loan.client_name) ? (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                             {loan.broker_name ? (
@@ -376,6 +407,72 @@ export default function PipelinePage() {
   );
 }
 
+function FundingCommandStrip({
+  totalFiles,
+  ready,
+  needsStructure,
+  openConditions,
+  blockedAi,
+  totalValue,
+}: {
+  totalFiles: number;
+  ready: number;
+  needsStructure: number;
+  openConditions: number;
+  blockedAi: number;
+  totalValue: number;
+}) {
+  const { t } = useTheme();
+  return (
+    <Card pad={14}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.1fr) repeat(5, minmax(128px, 1fr))", gap: 10, alignItems: "stretch" }}>
+        <div style={{ padding: 12, borderRadius: 12, background: t.surface2, border: `1px solid ${t.line}` }}>
+          <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
+            Funding command
+          </div>
+          <div style={{ marginTop: 5, fontSize: 18, fontWeight: 950, color: t.ink }}>
+            Manage files by readiness, blockers, and secretary status
+          </div>
+        </div>
+        <CommandMetric icon="file" label="Files" value={totalFiles} />
+        <CommandMetric icon="shieldChk" label="UW ready" value={ready} tone={ready ? "ready" : "neutral"} />
+        <CommandMetric icon="sliders" label="Needs structure" value={needsStructure} tone={needsStructure ? "watch" : "ready"} />
+        <CommandMetric icon="docCheck" label="Open conditions" value={openConditions} tone={openConditions ? "watch" : "ready"} />
+        <CommandMetric icon="ai" label="AI blocked" value={blockedAi} tone={blockedAi ? "danger" : "ready"} sub={QC_FMT.short(totalValue)} />
+      </div>
+    </Card>
+  );
+}
+
+function CommandMetric({
+  icon,
+  label,
+  value,
+  tone = "neutral",
+  sub,
+}: {
+  icon: string;
+  label: string;
+  value: string | number;
+  tone?: "ready" | "watch" | "danger" | "neutral";
+  sub?: string;
+}) {
+  const { t } = useTheme();
+  const color = tone === "ready" ? t.profit : tone === "watch" ? t.warn : tone === "danger" ? t.danger : t.ink;
+  return (
+    <div style={{ padding: 12, borderRadius: 12, background: t.surface2, border: `1px solid ${t.line}`, minWidth: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+        <span style={{ fontSize: 10, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>{label}</span>
+        <Icon name={icon} size={14} style={{ color }} />
+      </div>
+      <div style={{ marginTop: 5, fontSize: 22, fontWeight: 950, color, fontFeatureSettings: '"tnum"', overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {value}
+      </div>
+      {sub ? <div style={{ marginTop: 2, fontSize: 10.5, fontWeight: 800, color: t.ink3 }}>{sub} visible</div> : null}
+    </div>
+  );
+}
+
 function ReadinessCell({ score, label }: { score: number; label: string }) {
   const { t } = useTheme();
   const color = score >= 85 ? t.profit : score >= 65 ? t.warn : t.brand;
@@ -404,6 +501,39 @@ function ReadinessBar({ score, label }: { score: number; label: string }) {
       <div style={{ height: 6, borderRadius: 999, background: t.line, overflow: "hidden", marginTop: 5 }}>
         <div style={{ width: `${score}%`, height: "100%", background: color }} />
       </div>
+    </div>
+  );
+}
+
+type PipelineAction = {
+  label: string;
+  tone: "ready" | "watch" | "danger" | "brand";
+};
+
+function getPipelineAction(
+  readiness: number,
+  openDocs: number,
+  flaggedDocs: number,
+  summary: DSPipelineSummaryItem | undefined,
+): PipelineAction {
+  if (summary?.state === "blocked") return { label: "AI blocked", tone: "danger" };
+  if (flaggedDocs > 0) return { label: "Review docs", tone: "danger" };
+  if (readiness < 65) return { label: "Build criteria", tone: "brand" };
+  if (openDocs > 0) return { label: "Collect docs", tone: "watch" };
+  if (summary?.state === "waiting_borrower") return { label: "Waiting borrower", tone: "watch" };
+  if (readiness >= 85) return { label: "Submit UW", tone: "ready" };
+  return { label: "File review", tone: "brand" };
+}
+
+function PipelineActionCell({ action, compact }: { action: PipelineAction; compact?: boolean }) {
+  const { t } = useTheme();
+  const color = action.tone === "ready" ? t.profit : action.tone === "danger" ? t.danger : action.tone === "watch" ? t.warn : t.brand;
+  const bg = action.tone === "ready" ? t.profitBg : action.tone === "danger" ? t.dangerBg : action.tone === "watch" ? t.warnBg : t.brandSoft;
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: compact ? "flex-start" : "center", minWidth: 0 }}>
+      <span style={{ padding: compact ? "3px 7px" : "4px 8px", borderRadius: 999, background: bg, color, fontSize: compact ? 10.5 : 11.5, fontWeight: 900, whiteSpace: "nowrap" }}>
+        {action.label}
+      </span>
     </div>
   );
 }
@@ -458,12 +588,12 @@ function DealSecretaryBadge({ summary }: { summary: DSPipelineSummaryItem | unde
   if (!summary || summary.ai_task_count === 0) return null;
 
   // Map state → icon + tone.
-  let icon = "🤖";
+  let icon = "ai";
   let bg = t.brandSoft;
   let color = t.brand;
   let label = "";
   if (summary.state === "blocked") {
-    icon = "⚠️"; bg = t.warnBg; color = t.warn;
+    icon = "alert"; bg = t.warnBg; color = t.warn;
     label = summary.current_blocker
       ? `Blocked · ${summary.current_blocker}`
       : `Blocked · ${summary.blocked_count} task${summary.blocked_count === 1 ? "" : "s"}`;
@@ -477,7 +607,7 @@ function DealSecretaryBadge({ summary }: { summary: DSPipelineSummaryItem | unde
     label = `AI working · ${summary.ai_task_count} task${summary.ai_task_count === 1 ? "" : "s"}`;
   } else {
     // setup
-    icon = "🕒"; bg = t.surface2; color = t.ink3;
+    icon = "pause"; bg = t.surface2; color = t.ink3;
     label = `Setup · ${summary.ai_task_count} assigned, outreach off`;
   }
 
@@ -490,7 +620,7 @@ function DealSecretaryBadge({ summary }: { summary: DSPipelineSummaryItem | unde
         background: bg, color, fontWeight: 700,
         fontSize: 10.5, letterSpacing: 0.2,
       }}>
-        <span aria-hidden>{icon}</span>
+        <Icon name={icon} size={11} />
         {label}
       </span>
     </>

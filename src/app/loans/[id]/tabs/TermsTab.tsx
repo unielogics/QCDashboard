@@ -222,7 +222,7 @@ export function TermsTab({ loan }: { loan: Loan }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 420px", gap: 14, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-          <WorkbenchPanel eyebrow="Request" title="Product and pricing inputs">
+          <WorkbenchPanel id="criteria-pricing" eyebrow="Request" title="Product and pricing inputs">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
               <MoneyField label="Requested amount" value={draft.amount} onChange={(value) => setDraftField(setDraft, "amount", value)} />
               <Field label="Base rate">
@@ -249,7 +249,7 @@ export function TermsTab({ loan }: { loan: Loan }) {
             </div>
           </WorkbenchPanel>
 
-          <WorkbenchPanel eyebrow="Collateral" title="Value, cost, and income">
+          <WorkbenchPanel id="criteria-collateral" eyebrow="Collateral" title="Value, cost, and income">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
               <MoneyField label="ARV / value" value={draft.arv} onChange={(value) => setDraftField(setDraft, "arv", value)} />
               <MoneyField label="BRV / purchase price" value={draft.brv} onChange={(value) => setDraftField(setDraft, "brv", value)} />
@@ -268,7 +268,7 @@ export function TermsTab({ loan }: { loan: Loan }) {
           </div>
         </div>
 
-        <WorkbenchPanel eyebrow="Live terms" title="Underwriting output" action={recalc.isPending ? "Calculating" : "Live"}>
+        <WorkbenchPanel id="criteria-output" eyebrow="Live terms" title="Underwriting output" action={recalc.isPending ? "Calculating" : "Live"}>
           <div style={{ padding: 14, borderRadius: 14, background: t.brandSoft, border: `1px solid ${t.lineStrong}` }}>
             <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>Sized loan amount</div>
             <div style={{ marginTop: 5, fontSize: 32, fontWeight: 950, color: t.brand, fontFeatureSettings: '"tnum"', letterSpacing: 0 }}>
@@ -413,11 +413,13 @@ function NumberInput({
 }
 
 function WorkbenchPanel({
+  id,
   eyebrow,
   title,
   action,
   children,
 }: {
+  id?: string;
   eyebrow: string;
   title: string;
   action?: string;
@@ -425,7 +427,7 @@ function WorkbenchPanel({
 }) {
   const { t } = useTheme();
   return (
-    <section style={{ border: `1px solid ${t.line}`, borderRadius: 16, background: t.surface, boxShadow: t.shadow, padding: 16, minWidth: 0 }}>
+    <section id={id} style={{ border: `1px solid ${t.line}`, borderRadius: 16, background: t.surface, boxShadow: t.shadow, padding: 16, minWidth: 0, scrollMarginTop: 120 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 13 }}>
         <div>
           <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.4, textTransform: "uppercase" }}>{eyebrow}</div>

@@ -44,7 +44,7 @@ const INTERNAL_TABS = [
   // Hud1Tab.tsx was already wired at activeTab === "hud" below but had
   // no entry in this array, so it was unreachable from the UI.
   { id: "hud", label: "HUD-1", icon: "file" as const },
-  { id: "workspace", label: "AI Workbench", icon: "ai" as const },
+  { id: "workspace", label: "AI Secretary", icon: "ai" as const },
   { id: "thread", label: "Lender", icon: "chat" as const },
   { id: "activity", label: "Activity", icon: "audit" as const },
 ] as const;
@@ -90,6 +90,13 @@ export default function LoanDetailPage() {
   const canTransitionStage = isInternal;
   const canRequestDoc = isInternal;
   const docsReceived = completion.docs.received;
+  const openLoanArea = (nextTab: string, targetId?: string) => {
+    setTab(nextTab);
+    if (!targetId || typeof window === "undefined") return;
+    window.setTimeout(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 90);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -309,7 +316,7 @@ export default function LoanDetailPage() {
           return (
             <button
               key={tabDef.id}
-              onClick={() => setTab(tabDef.id)}
+              onClick={() => openLoanArea(tabDef.id)}
               style={{
                 padding: "9px 12px",
                 borderRadius: 9,
@@ -337,7 +344,7 @@ export default function LoanDetailPage() {
       </div>
 
       {activeTab === "file" && (
-        <FundingFileTab loan={loan} docs={docs} activity={activity} canEdit={canTransitionStage} />
+        <FundingFileTab loan={loan} docs={docs} activity={activity} canEdit={canTransitionStage} onOpenTab={openLoanArea} />
       )}
       {activeTab === "agent" && <AgentLoanMirror loan={loan} docs={docs} activity={activity} />}
       {activeTab === "overview" && <OverviewTab loan={loan} docs={docs} activity={activity} />}
@@ -350,7 +357,7 @@ export default function LoanDetailPage() {
       {/* Property tab removed — content now embedded in FundingFileTab. */}
       {activeTab === "wire" && <WireClosingTab loan={loan} />}
       {activeTab === "prequal" && <PrequalTab loan={loan} />}
-      {activeTab === "workspace" && <DealWorkspaceTab loanId={loan.id} />}
+      {activeTab === "workspace" && <DealWorkspaceTab loanId={loan.id} onOpenTab={openLoanArea} />}
       {activeTab === "thread" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <LenderConnectCard loan={loan} />

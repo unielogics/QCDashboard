@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pill, VerifiedBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
@@ -18,15 +18,18 @@ export function FundingFileTab({
   docs,
   activity,
   canEdit = false,
+  onOpenTab,
 }: {
   loan: Loan;
   docs: Document[];
   activity: Activity[];
   canEdit?: boolean;
+  onOpenTab?: (tab: string, targetId?: string) => void;
 }) {
   const { t } = useTheme();
   const recalc = useRecalc();
   const { data: prequalRequests = [] } = useLoanPrequalRequests(loan.id);
+  const [activePanel, setActivePanel] = useState<"math" | "criteria" | "documents" | "property" | "activity">("math");
 
   useEffect(() => {
     recalc.mutate({
@@ -88,6 +91,9 @@ export function FundingFileTab({
       score: completion.criteria.score,
       detail: `${completion.criteria.ready}/${completion.criteria.total} complete`,
       status: completion.criteria.score >= 88 ? "ready" : completion.criteria.score >= 60 ? "watch" : "open",
+      panel: "criteria" as const,
+      tab: "terms",
+      targetId: "criteria-pricing",
     },
     {
       label: "Calculations",
@@ -95,6 +101,9 @@ export function FundingFileTab({
       score: warnings.length ? 62 : recalc.data ? 100 : 45,
       detail: warnings.length ? `${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : recalc.isPending ? "Calculating" : "Clean recalc",
       status: warnings.length ? "watch" : recalc.data ? "ready" : "open",
+      panel: "math" as const,
+      tab: "terms",
+      targetId: "criteria-output",
     },
     {
       label: "Docs + Conditions",
@@ -102,6 +111,8 @@ export function FundingFileTab({
       score: completion.docs.score,
       detail: `${verifiedDocs.length}/${docs.length || 0} verified`,
       status: flaggedDocs.length ? "watch" : completion.docs.score >= 88 ? "ready" : "open",
+      panel: "documents" as const,
+      tab: "workflow",
     },
     {
       label: "Pre-Qual",
@@ -109,6 +120,8 @@ export function FundingFileTab({
       score: latestPrequal?.status === "approved" || latestPrequal?.status === "offer_accepted" ? 100 : latestPrequal ? 62 : 18,
       detail: latestPrequal ? latestPrequal.status.replace(/_/g, " ") : "Not started",
       status: latestPrequal?.status === "approved" || latestPrequal?.status === "offer_accepted" ? "ready" : latestPrequal ? "watch" : "open",
+      panel: "criteria" as const,
+      tab: "prequal",
     },
     {
       label: "Underwriting",
@@ -116,6 +129,8 @@ export function FundingFileTab({
       score: warnings.length ? Math.max(45, 100 - warnings.length * 18) : recalc.data ? 100 : 35,
       detail: warnings.length ? `${warnings.length} validation item${warnings.length === 1 ? "" : "s"}` : recalc.isPending ? "Checking matrix" : "Clean matrix",
       status: warnings.length ? "watch" : recalc.data ? "ready" : "open",
+      panel: "math" as const,
+      tab: "uw",
     },
   ] as const;
 
@@ -155,7 +170,14 @@ export function FundingFileTab({
           <HeaderRow eyebrow="Critical path" title="File readiness map" action={`${openDocs.length} open condition${openDocs.length === 1 ? "" : "s"}`} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 10 }}>
             {criticalPath.map((step) => (
-              <PathTile key={step.label} step={step} />
+              <PathTile
+                key={step.label}
+                step={step}
+                onClick={() => {
+                  setActivePanel(step.panel);
+                  onOpenTab?.(step.tab, "targetId" in step ? step.targetId : undefined);
+                }}
+              />
             ))}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1.25fr 1fr", gap: 10, marginTop: 12 }}>
@@ -168,107 +190,125 @@ export function FundingFileTab({
           <HeaderRow eyebrow="Blockers" title="Needs attention" />
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {warnings.slice(0, 3).map((warning) => (
-              <AttentionRow key={`${warning.code}-${warning.message}`} tone="watch" icon="alert" title={warning.message} meta={warning.code.replace(/_/g, " ")} />
+              <AttentionRow key={`${warning.code}-${warning.message}`} tone="watch" icon="alert" title={warning.message} meta={warning.code.replace(/_/g, " ")} onClick={() => onOpenTab?.("uw")} />
             ))}
             {missingCriteria.slice(0, 3).map((item) => (
-              <AttentionRow key={item.id} tone="open" icon="sliders" title={`${item.label} is missing`} meta={item.group} />
+              <AttentionRow key={item.id} tone="open" icon="sliders" title={`${item.label} is missing`} meta={item.group} onClick={() => onOpenTab?.("terms", criteriaTarget(item.id))} />
             ))}
             {flaggedDocs.slice(0, 3).map((doc) => (
-              <AttentionRow key={doc.id} tone="danger" icon="doc" title={doc.name} meta={doc.category ?? "Flagged document"} />
+              <AttentionRow key={doc.id} tone="danger" icon="doc" title={doc.name} meta={doc.category ?? "Flagged document"} onClick={() => onOpenTab?.("docs")} />
             ))}
             {warnings.length === 0 && flaggedDocs.length === 0 && missingCriteria.length === 0 ? (
               <AttentionRow tone="ready" icon="check" title="No calculation warnings or flagged documents" meta="Ready for internal review" />
             ) : null}
             {openDocs.length > 0 ? (
-              <AttentionRow tone="open" icon="docCheck" title={`${openDocs.length} document condition${openDocs.length === 1 ? "" : "s"} still open`} meta="Review Documents or Conditions" />
+              <AttentionRow tone="open" icon="docCheck" title={`${openDocs.length} document condition${openDocs.length === 1 ? "" : "s"} still open`} meta="Review Documents or Conditions" onClick={() => onOpenTab?.("workflow")} />
             ) : null}
           </div>
         </Panel>
       </div>
 
-      <Panel>
-        <HeaderRow eyebrow="Calculation engine" title="Sizing and underwriting snapshot" action={recalc.isPending ? "Calculating" : "Live recalc"} />
-        <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr 0.8fr 0.8fr 1fr", gap: 10 }}>
-          <CalcMetric label="Sized amount" value={QC_FMT.usd(sizedAmount, 0)} emphasis />
-          <CalcMetric label="Final rate" value={finalRate != null ? `${(finalRate * 100).toFixed(3)}%` : "Missing"} />
-          <CalcMetric label="DSCR" value={dscr != null ? dscr.toFixed(2) : "N/A"} tone={dscr != null && dscr >= 1.25 ? "ready" : dscr ? "watch" : "open"} />
-          <CalcMetric label="LTV" value={ltv != null ? `${(ltv * 100).toFixed(1)}%` : "N/A"} tone={ltv != null && ltv <= 0.75 ? "ready" : ltv ? "watch" : "open"} />
-          <CalcMetric label="Binding cap" value={cap ? QC_FMT.usd(cap, 0) : "No cap"} sub={binding ? binding.replace(/_/g, " ") : undefined} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginTop: 12 }}>
-          <CalcMetric label="Term" value={loan.term_months ? `${loan.term_months} mo` : "Missing"} tone={loan.term_months ? "neutral" : "open"} />
-          <CalcMetric label="Monthly rent" value={loan.monthly_rent ? QC_FMT.usd(Number(loan.monthly_rent), 0) : loan.type === "dscr" ? "Missing" : "N/A"} tone={loan.type === "dscr" && !loan.monthly_rent ? "open" : "neutral"} />
-          <CalcMetric label="ARV / value" value={loan.arv ? QC_FMT.usd(Number(loan.arv), 0) : "Missing"} tone={loan.arv ? "neutral" : "open"} />
-          <CalcMetric label="Taxes + ins." value={QC_FMT.usd(Number(loan.annual_taxes || 0) + Number(loan.annual_insurance || 0), 0)} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 12 }}>
-          <RatioBar label="DSCR target" value={dscr ?? 0} target={1.25} formatter={(v) => v.toFixed(2)} />
-          <RatioBar label="LTV ceiling" value={ltv ?? 0} target={0.75} formatter={(v) => `${(v * 100).toFixed(1)}%`} reverse />
-          <RatioBar label="Completion" value={completion.score} target={100} formatter={(v) => `${Math.round(v)}%`} />
-        </div>
-      </Panel>
-
-      {/* Property details — folded in from the standalone Property tab.
-          Lives between the calc engine snapshot and the criteria matrix
-          so the file flows: status → math → what we're lending against →
-          what's still needed → activity. */}
-      <PropertyTab loan={loan} canEdit={canEdit} />
-
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 390px", gap: 14 }}>
-        <Panel>
-          <HeaderRow eyebrow="Criteria matrix" title="Fields required before underwriting" action={`${completion.criteria.score}% complete`} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 9 }}>
-            {criteria.map((item) => (
-              <CriterionTile key={item.id} label={item.label} value={item.value} ready={item.ready} group={item.group} />
-            ))}
+      <div style={{ display: "grid", gridTemplateColumns: "220px minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
+        <Panel compact>
+          <HeaderRow eyebrow="Workspace" title="Open only what you need" />
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <PanelNavButton active={activePanel === "math"} icon="calc" title="Math + sizing" detail="Live recalc and UW ratios" onClick={() => setActivePanel("math")} />
+            <PanelNavButton active={activePanel === "criteria"} icon="sliders" title="Criteria fields" detail={`${completion.criteria.ready}/${completion.criteria.total} ready`} onClick={() => setActivePanel("criteria")} />
+            <PanelNavButton active={activePanel === "documents"} icon="docCheck" title="Docs + conditions" detail={`${openDocs.length} open`} onClick={() => setActivePanel("documents")} />
+            <PanelNavButton active={activePanel === "property"} icon="building2" title="Property file" detail="Collateral details" onClick={() => setActivePanel("property")} />
+            <PanelNavButton active={activePanel === "activity"} icon="audit" title="Activity" detail={`${activity.length} events`} onClick={() => setActivePanel("activity")} />
           </div>
         </Panel>
 
-        <Panel>
-          <HeaderRow eyebrow="Open conditions" title="Document queue" action={`${openDocs.length} open`} />
-          {openDocs.length === 0 ? (
-            <div style={{ padding: 14, borderRadius: 12, background: t.profitBg, color: t.profit, display: "flex", gap: 8, alignItems: "center", fontSize: 13, fontWeight: 850 }}>
-              <Icon name="check" size={15} />
-              All document conditions are verified.
+        {activePanel === "math" ? (
+          <Panel>
+            <HeaderRow eyebrow="Calculation engine" title="Sizing and underwriting snapshot" action={recalc.isPending ? "Calculating" : "Live recalc"} />
+            <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr 0.8fr 0.8fr 1fr", gap: 10 }}>
+              <CalcMetric label="Sized amount" value={QC_FMT.usd(sizedAmount, 0)} emphasis />
+              <CalcMetric label="Final rate" value={finalRate != null ? `${(finalRate * 100).toFixed(3)}%` : "Missing"} />
+              <CalcMetric label="DSCR" value={dscr != null ? dscr.toFixed(2) : "N/A"} tone={dscr != null && dscr >= 1.25 ? "ready" : dscr ? "watch" : "open"} />
+              <CalcMetric label="LTV" value={ltv != null ? `${(ltv * 100).toFixed(1)}%` : "N/A"} tone={ltv != null && ltv <= 0.75 ? "ready" : ltv ? "watch" : "open"} />
+              <CalcMetric label="Binding cap" value={cap ? QC_FMT.usd(cap, 0) : "No cap"} sub={binding ? binding.replace(/_/g, " ") : undefined} />
             </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {openDocs.slice(0, 7).map((doc) => (
-                <ConditionRow key={doc.id} doc={doc} />
-              ))}
-              {openDocs.length > 7 ? (
-                <div style={{ fontSize: 12, color: t.ink3, fontWeight: 750 }}>+{openDocs.length - 7} more in Documents</div>
-              ) : null}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginTop: 12 }}>
+              <CalcMetric label="Term" value={loan.term_months ? `${loan.term_months} mo` : "Missing"} tone={loan.term_months ? "neutral" : "open"} />
+              <CalcMetric label="Monthly rent" value={loan.monthly_rent ? QC_FMT.usd(Number(loan.monthly_rent), 0) : loan.type === "dscr" ? "Missing" : "N/A"} tone={loan.type === "dscr" && !loan.monthly_rent ? "open" : "neutral"} />
+              <CalcMetric label="ARV / value" value={loan.arv ? QC_FMT.usd(Number(loan.arv), 0) : "Missing"} tone={loan.arv ? "neutral" : "open"} />
+              <CalcMetric label="Taxes + ins." value={QC_FMT.usd(Number(loan.annual_taxes || 0) + Number(loan.annual_insurance || 0), 0)} />
             </div>
-          )}
-        </Panel>
-      </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 12 }}>
+              <RatioBar label="DSCR target" value={dscr ?? 0} target={1.25} formatter={(v) => v.toFixed(2)} />
+              <RatioBar label="LTV ceiling" value={ltv ?? 0} target={0.75} formatter={(v) => `${(v * 100).toFixed(1)}%`} reverse />
+              <RatioBar label="Completion" value={completion.score} target={100} formatter={(v) => `${Math.round(v)}%`} />
+            </div>
+            <button type="button" onClick={() => onOpenTab?.("terms", "criteria-output")} style={inlineAction(t)}>
+              <Icon name="arrowR" size={13} /> Open full criteria workbench
+            </button>
+          </Panel>
+        ) : null}
 
-      <Panel>
-        <HeaderRow eyebrow="Recent file activity" title="Latest movement" />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-          {(activity.length
-            ? activity.slice(0, 3)
-            : [{
-                id: "empty",
-                loan_id: loan.id,
-                actor_id: null,
-                actor_label: null,
-                kind: "activity",
-                summary: "No recent file activity",
-                payload: null,
-                occurred_at: "",
-              }]).map((item) => (
-            <div key={item.id} style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: 12, background: t.surface2, minHeight: 78 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, color: t.ink3, fontSize: 10.5, fontWeight: 850, letterSpacing: 1, textTransform: "uppercase" }}>
-                <Icon name="audit" size={13} />
-                {item.occurred_at ? new Date(item.occurred_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Activity"}
-              </div>
-              <div style={{ marginTop: 8, fontSize: 13, fontWeight: 800, color: t.ink, lineHeight: 1.35 }}>{item.summary}</div>
+        {activePanel === "criteria" ? (
+          <Panel>
+            <HeaderRow eyebrow="Criteria matrix" title="Fields required before underwriting" action={`${completion.criteria.score}% complete`} />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 9 }}>
+              {criteria.map((item) => (
+                <CriterionTile key={item.id} label={item.label} value={item.value} ready={item.ready} group={item.group} onClick={() => onOpenTab?.("terms", criteriaTarget(item.id))} />
+              ))}
             </div>
-          ))}
-        </div>
-      </Panel>
+          </Panel>
+        ) : null}
+
+        {activePanel === "documents" ? (
+          <Panel>
+            <HeaderRow eyebrow="Open conditions" title="Document queue" action={`${openDocs.length} open`} />
+            {openDocs.length === 0 ? (
+              <div style={{ padding: 14, borderRadius: 12, background: t.profitBg, color: t.profit, display: "flex", gap: 8, alignItems: "center", fontSize: 13, fontWeight: 850 }}>
+                <Icon name="check" size={15} />
+                All document conditions are verified.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 9 }}>
+                {openDocs.slice(0, 10).map((doc) => (
+                  <ConditionRow key={doc.id} doc={doc} onClick={() => onOpenTab?.("docs")} />
+                ))}
+              </div>
+            )}
+            <button type="button" onClick={() => onOpenTab?.("workflow")} style={inlineAction(t)}>
+              <Icon name="cal" size={13} /> Manage due dates and collection rules
+            </button>
+          </Panel>
+        ) : null}
+
+        {activePanel === "property" ? <PropertyTab loan={loan} canEdit={canEdit} /> : null}
+
+        {activePanel === "activity" ? (
+          <Panel>
+            <HeaderRow eyebrow="Recent file activity" title="Latest movement" />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+              {(activity.length
+                ? activity.slice(0, 6)
+                : [{
+                    id: "empty",
+                    loan_id: loan.id,
+                    actor_id: null,
+                    actor_label: null,
+                    kind: "activity",
+                    summary: "No recent file activity",
+                    payload: null,
+                    occurred_at: "",
+                  }]).map((item) => (
+                <div key={item.id} style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: 12, background: t.surface2, minHeight: 78 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, color: t.ink3, fontSize: 10.5, fontWeight: 850, letterSpacing: 1, textTransform: "uppercase" }}>
+                    <Icon name="audit" size={13} />
+                    {item.occurred_at ? new Date(item.occurred_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Activity"}
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 13, fontWeight: 800, color: t.ink, lineHeight: 1.35 }}>{item.summary}</div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -423,6 +463,51 @@ function HeaderRow({ eyebrow, title, action }: { eyebrow: string; title: string;
   );
 }
 
+function PanelNavButton({
+  active,
+  icon,
+  title,
+  detail,
+  onClick,
+}: {
+  active: boolean;
+  icon: string;
+  title: string;
+  detail: string;
+  onClick: () => void;
+}) {
+  const { t } = useTheme();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: "100%",
+        textAlign: "left",
+        border: `1px solid ${active ? t.brand : t.line}`,
+        background: active ? t.brandSoft : t.surface2,
+        color: t.ink,
+        borderRadius: 11,
+        padding: 10,
+        cursor: "pointer",
+        display: "grid",
+        gridTemplateColumns: "28px minmax(0, 1fr)",
+        gap: 8,
+        alignItems: "center",
+        fontFamily: "inherit",
+      }}
+    >
+      <span style={{ width: 28, height: 28, borderRadius: 9, background: active ? t.brand : t.surface, color: active ? t.inverse : t.ink3, display: "grid", placeItems: "center" }}>
+        <Icon name={icon} size={14} />
+      </span>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: "block", fontSize: 12.5, fontWeight: 900, color: active ? t.brand : t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
+        <span style={{ display: "block", marginTop: 2, fontSize: 11, fontWeight: 700, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</span>
+      </span>
+    </button>
+  );
+}
+
 function CompletionGauge({ score, label }: { score: number; label: string }) {
   const { t } = useTheme();
   const color = score >= 85 ? t.profit : score >= 65 ? t.warn : t.brand;
@@ -472,6 +557,7 @@ function MiniTile({ label, value, tone = "neutral" }: { label: string; value: st
 
 function PathTile({
   step,
+  onClick,
 }: {
   step: {
     label: string;
@@ -480,12 +566,13 @@ function PathTile({
     detail: string;
     status: "ready" | "watch" | "open";
   };
+  onClick: () => void;
 }) {
   const { t } = useTheme();
   const color = step.status === "ready" ? t.profit : step.status === "watch" ? t.warn : t.ink3;
   const bg = step.status === "ready" ? t.profitBg : step.status === "watch" ? t.warnBg : t.surface2;
   return (
-    <div style={{ border: `1px solid ${t.line}`, borderRadius: 13, padding: 12, background: t.surface2, minWidth: 0 }}>
+    <button type="button" onClick={onClick} style={{ textAlign: "left", border: `1px solid ${t.line}`, borderRadius: 13, padding: 12, background: t.surface2, minWidth: 0, cursor: "pointer", fontFamily: "inherit" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
         <div style={{ width: 30, height: 30, borderRadius: 9, background: bg, color, display: "grid", placeItems: "center" }}>
           <Icon name={step.icon} size={15} />
@@ -497,7 +584,7 @@ function PathTile({
       <div style={{ height: 5, borderRadius: 999, background: t.line, overflow: "hidden", marginTop: 10 }}>
         <div style={{ width: `${Math.min(100, Math.max(0, step.score))}%`, height: "100%", background: color }} />
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -523,17 +610,19 @@ function AttentionRow({
   icon,
   title,
   meta,
+  onClick,
 }: {
   tone: "ready" | "watch" | "danger" | "open";
   icon: string;
   title: string;
   meta: string;
+  onClick?: () => void;
 }) {
   const { t } = useTheme();
   const color = tone === "ready" ? t.profit : tone === "watch" ? t.warn : tone === "danger" ? t.danger : t.ink3;
   const bg = tone === "ready" ? t.profitBg : tone === "watch" ? t.warnBg : tone === "danger" ? t.dangerBg : t.surface2;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "30px minmax(0, 1fr)", gap: 9, alignItems: "center", padding: 10, borderRadius: 12, border: `1px solid ${t.line}`, background: tone === "open" ? t.surface2 : bg }}>
+    <button type="button" onClick={onClick} style={{ display: "grid", gridTemplateColumns: "30px minmax(0, 1fr) 16px", gap: 9, alignItems: "center", padding: 10, borderRadius: 12, border: `1px solid ${t.line}`, background: tone === "open" ? t.surface2 : bg, cursor: onClick ? "pointer" : "default", textAlign: "left", fontFamily: "inherit" }}>
       <div style={{ width: 30, height: 30, borderRadius: 9, display: "grid", placeItems: "center", color, background: tone === "open" ? t.chip : t.surface }}>
         <Icon name={icon} size={14} />
       </div>
@@ -541,7 +630,8 @@ function AttentionRow({
         <div style={{ fontSize: 12.5, fontWeight: 900, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
         <div style={{ marginTop: 2, fontSize: 11, fontWeight: 750, color }}>{meta}</div>
       </div>
-    </div>
+      {onClick ? <Icon name="arrowR" size={12} style={{ color: t.ink3 }} /> : <span />}
+    </button>
   );
 }
 
@@ -601,25 +691,28 @@ function RatioBar({
   );
 }
 
-function CriterionTile({ label, value, ready, group }: { label: string; value: string; ready: boolean; group: string }) {
+function CriterionTile({ label, value, ready, group, onClick }: { label: string; value: string; ready: boolean; group: string; onClick: () => void }) {
   const { t } = useTheme();
   return (
-    <div style={{ border: `1px solid ${ready ? t.line : t.warn}55`, borderRadius: 12, padding: 12, background: ready ? t.surface2 : t.warnBg, minWidth: 0 }}>
+    <button type="button" onClick={onClick} style={{ textAlign: "left", border: `1px solid ${ready ? t.line : t.warn}55`, borderRadius: 12, padding: 12, background: ready ? t.surface2 : t.warnBg, minWidth: 0, cursor: "pointer", fontFamily: "inherit" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
         <div style={{ fontSize: 10, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>{group}</div>
         <VerifiedBadge kind={ready ? "verified" : "pending"} />
       </div>
       <div style={{ marginTop: 9, fontSize: 12.5, fontWeight: 900, color: t.ink }}>{label}</div>
       <div style={{ marginTop: 4, fontSize: 15, fontWeight: 950, color: ready ? t.ink : t.warn, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textTransform: value.includes("_") ? "capitalize" : undefined }}>{value}</div>
-    </div>
+      <div style={{ marginTop: 8, fontSize: 10.5, fontWeight: 850, color: t.brand, display: "inline-flex", alignItems: "center", gap: 4 }}>
+        Open editor <Icon name="arrowR" size={10} />
+      </div>
+    </button>
   );
 }
 
-function ConditionRow({ doc }: { doc: Document }) {
+function ConditionRow({ doc, onClick }: { doc: Document; onClick: () => void }) {
   const { t } = useTheme();
   const kind = doc.status === "flagged" ? "flagged" : "pending";
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "10px 11px", borderRadius: 12, border: `1px solid ${doc.status === "flagged" ? t.danger : t.line}`, background: doc.status === "flagged" ? t.dangerBg : t.surface2 }}>
+    <button type="button" onClick={onClick} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto 16px", gap: 10, alignItems: "center", padding: "10px 11px", borderRadius: 12, border: `1px solid ${doc.status === "flagged" ? t.danger : t.line}`, background: doc.status === "flagged" ? t.dangerBg : t.surface2, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 12.5, fontWeight: 900, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.name}</div>
         <div style={{ marginTop: 3, fontSize: 11, fontWeight: 700, color: t.ink3 }}>
@@ -628,6 +721,31 @@ function ConditionRow({ doc }: { doc: Document }) {
         </div>
       </div>
       <VerifiedBadge kind={kind} />
-    </div>
+      <Icon name="arrowR" size={12} style={{ color: t.ink3 }} />
+    </button>
   );
+}
+
+function criteriaTarget(id: string) {
+  if (["value", "ltv", "income"].includes(id)) return "criteria-collateral";
+  if (id === "close") return "criteria-output";
+  return "criteria-pricing";
+}
+
+function inlineAction(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
+  return {
+    marginTop: 12,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "8px 11px",
+    borderRadius: 9,
+    border: `1px solid ${t.lineStrong}`,
+    background: t.surface,
+    color: t.brand,
+    fontSize: 12,
+    fontWeight: 850,
+    cursor: "pointer",
+    fontFamily: "inherit",
+  };
 }

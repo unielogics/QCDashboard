@@ -1,16 +1,13 @@
 "use client";
 
-// AI Workbench tab — the canonical place to manage what the AI is
-// handling on a loan. Phase 2 of the AI Deal Secretary build.
+// AI Secretary tab — the canonical place to manage what the AI is
+// handling on a loan without forcing operators into drag/drop setup.
 //
 // Top-to-bottom:
-//   1. Workbench State chip (Setup / Active Work / Blocked).
-//   2. DealSecretaryPicker — two-column @dnd-kit drag-drop, the
-//      OutreachModeStrip is built into the picker.
-//   3. Bootstrap nudge: button to repair if the CRS rows are missing
+//   1. SecretaryConsole — mode controls, delegation plan, and blockers.
+//   2. Bootstrap nudge: button to repair if the CRS rows are missing
 //      (happens on loans that pre-date alembic 0038).
-//   4. Existing Instructions strip + Loan chat (kept — both are
-//      operator-facing AI surfaces).
+//   3. Instructions and loan chat stay collapsed until needed.
 //
 // File-level outreach defaults to draft_first everywhere (see the
 // JSONB default on ClientAIPlan.ai_secretary_settings) — nothing
@@ -38,14 +35,23 @@ import {
   type WorkflowDoc,
 } from "@/hooks/useApi";
 import { DealChatMode, Role } from "@/lib/enums.generated";
-import type { Document, DSOutreachMode, DSTaskRow, Loan, RecalcResponse, User } from "@/lib/types";
-import { DealSecretaryPicker } from "@/components/DealSecretaryPicker";
+import {
+  DS_CATEGORY_META,
+  DS_OUTREACH_MODE_LABELS,
+  type Document,
+  type DSDealSecretaryView,
+  type DSOutreachMode,
+  type DSTaskRow,
+  type Loan,
+  type RecalcResponse,
+  type User,
+} from "@/lib/types";
 import { getCriteriaItems } from "../fileReadiness";
 import { InstructionStrip } from "../components/InstructionStrip";
 import { DealChatThread } from "../components/DealChatThread";
 import { DealChatInput } from "../components/DealChatInput";
 
-export function DealWorkspaceTab({ loanId }: { loanId: string }) {
+export function DealWorkspaceTab({ loanId, onOpenTab }: { loanId: string; onOpenTab?: (tab: string, targetId?: string) => void }) {
   const { t } = useTheme();
   const { data: user } = useCurrentUser();
   const { data: loan } = useLoan(loanId);
@@ -59,6 +65,7 @@ export function DealWorkspaceTab({ loanId }: { loanId: string }) {
   const updateAssignment = useUpdateAssignment(loanId);
   const updateFileSettings = useUpdateFileSettings(loanId);
   const bootstrap = useBootstrapDealSecretary(loanId);
+  const [openPanel, setOpenPanel] = useState<"instructions" | "chat" | null>(null);
 
   useEffect(() => {
     if (!loan) return;
@@ -104,12 +111,11 @@ export function DealWorkspaceTab({ loanId }: { loanId: string }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-      {/* Workbench State + Picker */}
       {secretaryLoading ? (
-        <div style={{ padding: 16, color: t.ink3, fontSize: 13 }}>Loading AI Workbench…</div>
+        <div style={{ padding: 16, color: t.ink3, fontSize: 13 }}>Loading AI Secretary…</div>
       ) : !secretary ? (
         <Card pad={14}>
-          <SectionLabel>AI Workbench</SectionLabel>
+          <SectionLabel>AI Secretary</SectionLabel>
           <div style={{ marginTop: 8, fontSize: 12.5, color: t.ink3 }}>
             This loan pre-dates the AI Deal Secretary feature. Click below to populate
             the task list from your firm&apos;s playbook — safe to re-run, no outreach fires.
@@ -134,138 +140,125 @@ export function DealWorkspaceTab({ loanId }: { loanId: string }) {
           </button>
         </Card>
       ) : (
-        <Card pad={14}>
-          <WorkbenchStateChip secretary={secretary} />
-          <div style={{ height: 12 }} />
-          <DealSecretaryPicker
-            view={secretary}
-            isOperator={isOperator}
-            onAssign={handleAssign}
-            onUnassign={handleUnassign}
-            onChangeOutreachMode={handleOutreachMode}
-            onOpenAssignment={handleOpenAssignment}
-          />
-        </Card>
-      )}
-
-      {isInternal ? (
-        <AIDraftQueue
+        <SecretaryConsole
           loan={loan}
           user={user}
+          secretary={secretary}
           docs={docs}
           workflow={workflow}
           recalcData={recalc.data}
           recalcPending={recalc.isPending}
+          isOperator={isOperator}
+          onAssign={handleAssign}
+          onUnassign={handleUnassign}
+          onChangeOutreachMode={handleOutreachMode}
+          onOpenAssignment={handleOpenAssignment}
+          onOpenTab={onOpenTab}
         />
-      ) : null}
+      )}
 
-      {/* Existing instruction strip + chat — kept below the workbench. */}
       {workspace && !workspaceLoading ? (
-        <>
-          <InstructionStrip
-            loanId={loanId}
-            instructions={workspace.instructions}
-            canEdit={isInternal}
-          />
-          <Card pad={14}>
-            <SectionLabel>Loan chat</SectionLabel>
-            <DealChatThread
-              loanId={loanId}
-              user={user}
-              messages={workspace.chat_messages}
-              pausedUntil={workspace.ai_paused_until}
-            />
-            <div style={{ height: 10 }} />
-            <DealChatInput
-              loanId={loanId}
-              user={user}
-              pausedUntil={workspace.ai_paused_until}
-            />
-          </Card>
-        </>
+        <Card pad={12}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <TogglePanelButton active={openPanel === "instructions"} icon="sliders" label="Instructions" onClick={() => setOpenPanel(openPanel === "instructions" ? null : "instructions")} />
+            <TogglePanelButton active={openPanel === "chat"} icon="chat" label="Loan chat" onClick={() => setOpenPanel(openPanel === "chat" ? null : "chat")} />
+            <span style={{ marginLeft: "auto", color: t.ink3, fontSize: 11.5, fontWeight: 750 }}>
+              Keep these surfaces hidden until you need to change instructions or talk to the file AI.
+            </span>
+          </div>
+          {openPanel === "instructions" ? (
+            <div style={{ marginTop: 12 }}>
+              <InstructionStrip
+                loanId={loanId}
+                instructions={workspace.instructions}
+                canEdit={isInternal}
+              />
+            </div>
+          ) : null}
+          {openPanel === "chat" ? (
+            <div style={{ marginTop: 12 }}>
+              <SectionLabel>Loan chat</SectionLabel>
+              <DealChatThread
+                loanId={loanId}
+                user={user}
+                messages={workspace.chat_messages}
+                pausedUntil={workspace.ai_paused_until}
+              />
+              <div style={{ height: 10 }} />
+              <DealChatInput
+                loanId={loanId}
+                user={user}
+                pausedUntil={workspace.ai_paused_until}
+              />
+            </div>
+          ) : null}
+        </Card>
       ) : null}
     </div>
   );
 }
 
-function WorkbenchStateChip({ secretary }: { secretary: import("@/lib/types").DSDealSecretaryView }) {
-  const { t } = useTheme();
-  const aiCount = secretary.right.length;
-  const stalled = secretary.right.filter((r) => (r.attempts_made ?? 0) >= ((r.cadence?.max_attempts ?? 3))).length;
-  const waitingOnBorrower = secretary.right.filter((r) => r.status === "asked" || r.status === "waiting_on_borrower").length;
-  const mode = secretary.file_settings.outreach_mode;
-
-  let state: "setup" | "active_work" | "blocked";
-  let label: string;
-  let bg = t.surface2;
-  let color = t.ink;
-  if (stalled > 0) {
-    state = "blocked";
-    label = `Blocked · ${stalled} task${stalled === 1 ? "" : "s"} stalled — recommend a human check-in`;
-    bg = t.warnBg; color = t.warn;
-  } else if (aiCount > 0 && mode !== "off") {
-    state = "active_work";
-    label = `Active Work · AI handling ${aiCount} task${aiCount === 1 ? "" : "s"}` +
-      (waitingOnBorrower > 0 ? ` · waiting on borrower for ${waitingOnBorrower}` : "");
-    bg = t.brandSoft; color = t.brand;
-  } else {
-    state = "setup";
-    label = aiCount === 0
-      ? "Setup · Drag tasks to the right column to start handing them to the AI"
-      : `Setup · ${aiCount} task${aiCount === 1 ? "" : "s"} assigned to AI but outreach is off`;
-  }
-
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 10,
-      padding: "9px 12px", borderRadius: 10,
-      background: bg, color, fontSize: 12.5, fontWeight: 800,
-    }}>
-      <span style={{ fontSize: 16 }}>
-        {state === "blocked" ? "⚠️" : state === "active_work" ? "🤖" : "🕒"}
-      </span>
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function AIDraftQueue({
+function SecretaryConsole({
   loan,
   user,
+  secretary,
   docs,
   workflow,
   recalcData,
   recalcPending,
+  isOperator,
+  onAssign,
+  onUnassign,
+  onChangeOutreachMode,
+  onOpenAssignment,
+  onOpenTab,
 }: {
   loan: Loan;
   user: User;
+  secretary: DSDealSecretaryView;
   docs: Document[];
   workflow: WorkflowDoc[];
   recalcData?: RecalcResponse;
   recalcPending: boolean;
+  isOperator: boolean;
+  onAssign: (key: string) => void;
+  onUnassign: (key: string) => void;
+  onChangeOutreachMode: (mode: DSOutreachMode) => void;
+  onOpenAssignment: (row: DSTaskRow) => void;
+  onOpenTab?: (tab: string, targetId?: string) => void;
 }) {
   const { t } = useTheme();
   const send = useSendDealChat();
+  const [filter, setFilter] = useState<"borrower" | "required" | "human" | "all">("borrower");
   const [busyDraft, setBusyDraft] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
 
-  const missingCriteria = useMemo(
-    () => getCriteriaItems(loan).filter((item) => !item.ready),
-    [loan],
-  );
+  const missingCriteria = useMemo(() => getCriteriaItems(loan).filter((item) => !item.ready), [loan]);
   const openDocs = docs.filter((doc) => doc.status !== "verified" && doc.status !== "skipped");
   const flaggedDocs = docs.filter((doc) => doc.status === "flagged");
   const dueWorkflow = workflow
     .filter((item) => item.status !== "verified" && item.status !== "skipped")
-    .sort((a, b) => {
-      const ad = a.days_until_due ?? 999;
-      const bd = b.days_until_due ?? 999;
-      return ad - bd;
-    });
+    .sort((a, b) => (a.days_until_due ?? 999) - (b.days_until_due ?? 999));
   const warnings = recalcData?.warnings ?? [];
-  const primaryConditions = dueWorkflow.slice(0, 5);
+  const primaryConditions = dueWorkflow.slice(0, 6);
+  const aiTasks = secretary.right;
+  const humanTasks = secretary.left;
+  const stalled = aiTasks.filter((r) => (r.attempts_made ?? 0) >= ((r.cadence?.max_attempts ?? 3))).length;
+  const waiting = aiTasks.filter((r) => r.status === "asked" || r.status === "waiting_on_borrower").length;
+  const collectionTargets = humanTasks.filter((r) => canControlTask(r, isOperator) && r.visibility?.includes("borrower"));
+  const requiredTargets = humanTasks.filter((r) => canControlTask(r, isOperator) && r.required_level === "required");
+  const sensitiveAssigned = aiTasks.filter((r) => canControlTask(r, isOperator) && r.completion_mode === "requires_human_verify");
+  const visibleHumanTasks = humanTasks.filter((r) => {
+    if (filter === "borrower") return r.visibility?.includes("borrower");
+    if (filter === "required") return r.required_level === "required";
+    if (filter === "human") return r.completion_mode === "requires_human_verify";
+    return true;
+  });
+  const mode = secretary.file_settings.outreach_mode;
+  const modeLabel = DS_OUTREACH_MODE_LABELS[mode];
   const canDraft = user.role === Role.SUPER_ADMIN || user.role === Role.LOAN_EXEC || user.role === Role.BROKER;
 
+  const assignMany = (rows: DSTaskRow[]) => rows.forEach((r) => onAssign(r.requirement_key));
   const sendDraft = async (kind: "borrower" | "underwriting" | "closing") => {
     if (!canDraft) return;
     setBusyDraft(kind);
@@ -287,79 +280,409 @@ function AIDraftQueue({
 
   return (
     <Card pad={14}>
-      <SectionLabel
-        action={
-          <Pill bg={openDocs.length || warnings.length ? t.warnBg : t.profitBg} color={openDocs.length || warnings.length ? t.warn : t.profit}>
-            {openDocs.length + warnings.length + missingCriteria.length} open
-          </Pill>
-        }
-      >
-        AI Draft Queue
-      </SectionLabel>
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(240px, 0.85fr) minmax(360px, 1.2fr) minmax(320px, 0.95fr)",
+        gap: 14,
+        alignItems: "stretch",
+      }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+          <div style={{ padding: 13, borderRadius: 13, border: `1px solid ${t.line}`, background: t.surface2 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
+                  AI Secretary
+                </div>
+                <div style={{ marginTop: 4, fontSize: 18, fontWeight: 950, color: t.ink }}>
+                  Collection control
+                </div>
+              </div>
+              <SecretaryStatus mode={mode} stalled={stalled} aiTasks={aiTasks.length} waiting={waiting} />
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12.5, color: t.ink3, lineHeight: 1.45 }}>
+              {mode === "off"
+                ? "AI is only tracking the plan. Turn on draft-first when you want it to prepare outreach."
+                : `${modeLabel.title}: ${modeLabel.sub}. Assigned tasks below are the only items the AI can chase.`}
+            </div>
+          </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginBottom: 10 }}>
-        <DraftMetric label="Criteria" value={missingCriteria.length} tone={missingCriteria.length ? "watch" : "ready"} />
-        <DraftMetric label="Conditions" value={openDocs.length} tone={openDocs.length ? "watch" : "ready"} />
-        <DraftMetric label="UW Warnings" value={recalcPending ? "..." : warnings.length} tone={warnings.length ? "danger" : "ready"} />
-      </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <SecretaryKpi label="AI tasks" value={aiTasks.length} tone={aiTasks.length ? "brand" : "muted"} />
+            <SecretaryKpi label="Open docs" value={openDocs.length} tone={openDocs.length ? "watch" : "ready"} />
+            <SecretaryKpi label="Criteria" value={missingCriteria.length} tone={missingCriteria.length ? "watch" : "ready"} />
+            <SecretaryKpi label="UW issues" value={recalcPending ? "..." : warnings.length} tone={warnings.length ? "danger" : "ready"} />
+          </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        {missingCriteria.slice(0, 3).map((item) => (
-          <DraftItem key={item.id} icon="sliders" title={item.label} meta={item.value} tone="watch" />
-        ))}
-        {flaggedDocs.slice(0, 2).map((doc) => (
-          <DraftItem key={doc.id} icon="doc" title={doc.name} meta="Flagged document" tone="danger" />
-        ))}
-        {primaryConditions.slice(0, 4).map((item) => (
-          <DraftItem
-            key={item.document_id}
-            icon="docCheck"
-            title={item.name}
-            meta={conditionMeta(item)}
-            tone={item.days_until_due != null && item.days_until_due < 0 ? "danger" : "watch"}
-          />
-        ))}
-        {missingCriteria.length === 0 && openDocs.length === 0 && warnings.length === 0 ? (
-          <DraftItem icon="check" title="No open criteria, conditions, or warnings" meta="Package can be reviewed" tone="ready" />
-        ) : null}
-      </div>
+          <div style={{ padding: 12, borderRadius: 13, border: `1px solid ${t.line}`, background: t.surface }}>
+            <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase", marginBottom: 8 }}>
+              Outreach mode
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 7 }}>
+              <ModeButton active={mode === "off"} title="Pause AI" detail="Plan only" icon="pause" onClick={() => onChangeOutreachMode("off")} />
+              <ModeButton active={mode === "draft_first"} title="Draft inbox" detail="Safest operating mode" icon="doc" onClick={() => onChangeOutreachMode("draft_first")} />
+              <ModeButton active={mode === "portal_auto"} title="Portal send" detail="Auto-send in portal" icon="send" onClick={() => onChangeOutreachMode("portal_auto")} />
+            </div>
+            <select
+              value={mode}
+              onChange={(event) => onChangeOutreachMode(event.target.value as DSOutreachMode)}
+              style={{
+                marginTop: 8,
+                width: "100%",
+                padding: "7px 9px",
+                borderRadius: 8,
+                border: `1px solid ${t.line}`,
+                background: t.surface2,
+                color: t.ink2,
+                fontSize: 11.5,
+                fontFamily: "inherit",
+              }}
+            >
+              <option value="off">Advanced: Off</option>
+              <option value="draft_first">Advanced: Draft first</option>
+              <option value="portal_auto">Advanced: Portal auto-send</option>
+              <option value="portal_email">Advanced: Portal + Email</option>
+              <option value="portal_email_sms">Advanced: Portal + Email + SMS</option>
+            </select>
+          </div>
+        </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginTop: 12 }}>
-        <DraftButton icon="send" label="Borrower Draft" busy={busyDraft === "borrower"} onClick={() => sendDraft("borrower")} />
-        <DraftButton icon="shield" label="UW Memo" busy={busyDraft === "underwriting"} onClick={() => sendDraft("underwriting")} />
-        <DraftButton icon="docCheck" label="Close Checklist" busy={busyDraft === "closing"} onClick={() => sendDraft("closing")} />
+        <div style={{ border: `1px solid ${t.line}`, borderRadius: 14, background: t.surface, padding: 13, minWidth: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
+                Delegation plan
+              </div>
+              <div style={{ marginTop: 3, fontSize: 17, fontWeight: 950, color: t.ink }}>
+                Choose what the secretary should chase
+              </div>
+            </div>
+            <Pill bg={t.brandSoft} color={t.brand} style={{ fontWeight: 850 }}>
+              {humanTasks.length} available
+            </Pill>
+          </div>
+
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 10 }}>
+            <PresetAction label="Start borrower collection" disabled={collectionTargets.length === 0} onClick={() => assignMany(collectionTargets)} />
+            <PresetAction label="Assign required" disabled={requiredTargets.length === 0} onClick={() => assignMany(requiredTargets)} />
+            <PresetAction label="Pull sensitive back" tone="danger" disabled={sensitiveAssigned.length === 0} onClick={() => sensitiveAssigned.forEach((r) => onUnassign(r.requirement_key))} />
+          </div>
+
+          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+            {([
+              ["borrower", "Borrower-facing"],
+              ["required", "Required"],
+              ["human", "Human review"],
+              ["all", "All"],
+            ] as const).map(([key, label]) => (
+              <FilterChip key={key} active={filter === key} label={label} onClick={() => setFilter(key)} />
+            ))}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, minHeight: 360 }}>
+            <TaskColumn title="Human owns" count={visibleHumanTasks.length}>
+              {visibleHumanTasks.length ? visibleHumanTasks.slice(0, 10).map((row) => (
+                <SecretaryTaskRow key={row.requirement_key} row={row} side="human" isOperator={isOperator} onAssign={onAssign} onUnassign={onUnassign} onOpenAssignment={onOpenAssignment} />
+              )) : <EmptyWork note="No matching human-owned tasks." />}
+            </TaskColumn>
+            <TaskColumn title="AI owns" count={aiTasks.length}>
+              {aiTasks.length ? aiTasks.slice(0, 10).map((row) => (
+                <SecretaryTaskRow key={row.requirement_key} row={row} side="ai" isOperator={isOperator} onAssign={onAssign} onUnassign={onUnassign} onOpenAssignment={onOpenAssignment} />
+              )) : <EmptyWork note="No AI tasks yet. Use a preset or assign a row." />}
+            </TaskColumn>
+          </div>
+        </div>
+
+        <div style={{ border: `1px solid ${t.line}`, borderRadius: 14, background: t.surface, padding: 13, minWidth: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
+                Resolution queue
+              </div>
+              <div style={{ marginTop: 3, fontSize: 17, fontWeight: 950, color: t.ink }}>
+                File blockers
+              </div>
+            </div>
+            <Pill bg={openDocs.length || missingCriteria.length || warnings.length ? t.warnBg : t.profitBg} color={openDocs.length || missingCriteria.length || warnings.length ? t.warn : t.profit}>
+              {openDocs.length + missingCriteria.length + warnings.length} open
+            </Pill>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 342, overflow: "auto", paddingRight: 2 }}>
+            {warnings.slice(0, 3).map((warning) => (
+              <ResolutionRow key={`${warning.code}-${warning.message}`} icon="alert" tone="danger" title={warning.message} meta={warning.code.replace(/_/g, " ")} action="Open UW" onClick={() => onOpenTab?.("uw")} />
+            ))}
+            {missingCriteria.slice(0, 4).map((item) => (
+              <ResolutionRow key={item.id} icon="sliders" tone="watch" title={`${item.label} is missing`} meta={item.value} action="Fix field" onClick={() => onOpenTab?.("terms", criteriaTarget(item.id))} />
+            ))}
+            {flaggedDocs.slice(0, 3).map((doc) => (
+              <ResolutionRow key={doc.id} icon="doc" tone="danger" title={doc.name} meta="Flagged document" action="Open doc" onClick={() => onOpenTab?.("docs")} />
+            ))}
+            {primaryConditions.slice(0, 5).map((item) => (
+              <ResolutionRow key={item.document_id} icon="docCheck" tone={item.days_until_due != null && item.days_until_due < 0 ? "danger" : "watch"} title={item.name} meta={conditionMeta(item)} action="Schedule" onClick={() => onOpenTab?.("workflow")} />
+            ))}
+            {warnings.length === 0 && missingCriteria.length === 0 && openDocs.length === 0 ? (
+              <ResolutionRow icon="check" tone="ready" title="No open criteria, conditions, or warnings" meta="Package can move to review" action="Open UW" onClick={() => onOpenTab?.("uw")} />
+            ) : null}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 7, marginTop: 12 }}>
+            <DraftButton icon="send" label="Draft borrower follow-up" busy={busyDraft === "borrower"} onClick={() => sendDraft("borrower")} />
+            <DraftButton icon="shield" label="Draft UW memo" busy={busyDraft === "underwriting"} onClick={() => sendDraft("underwriting")} />
+            <DraftButton icon="docCheck" label="Draft closing checklist" busy={busyDraft === "closing"} onClick={() => sendDraft("closing")} />
+          </div>
+          {flash ? <div style={{ marginTop: 9, fontSize: 11.5, color: flash.includes("failed") ? t.danger : t.ink3, fontWeight: 800 }}>{flash}</div> : null}
+        </div>
       </div>
-      {flash ? <div style={{ marginTop: 9, fontSize: 11.5, color: flash.includes("failed") ? t.danger : t.ink3, fontWeight: 800 }}>{flash}</div> : null}
     </Card>
   );
 }
 
-function DraftMetric({ label, value, tone }: { label: string; value: string | number; tone: "ready" | "watch" | "danger" }) {
+function SecretaryStatus({ mode, stalled, aiTasks, waiting }: { mode: DSOutreachMode; stalled: number; aiTasks: number; waiting: number }) {
   const { t } = useTheme();
-  const color = tone === "ready" ? t.profit : tone === "danger" ? t.danger : t.warn;
+  const color = stalled ? t.danger : mode === "off" ? t.ink3 : aiTasks ? t.brand : t.warn;
+  const bg = stalled ? t.dangerBg : mode === "off" ? t.surface : aiTasks ? t.brandSoft : t.warnBg;
+  const label = stalled ? `${stalled} stalled` : mode === "off" ? "Paused" : aiTasks ? `${aiTasks} active` : "Setup";
   return (
-    <div style={{ border: `1px solid ${t.line}`, borderRadius: 10, padding: "8px 9px", background: t.surface2 }}>
-      <div style={{ fontSize: 9.5, color: t.ink3, fontWeight: 900, letterSpacing: 1, textTransform: "uppercase" }}>{label}</div>
-      <div style={{ marginTop: 3, fontSize: 17, color, fontWeight: 950, fontFeatureSettings: '"tnum"' }}>{value}</div>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 999, background: bg, color, fontSize: 11.5, fontWeight: 900, whiteSpace: "nowrap" }}>
+      <Icon name={stalled ? "alert" : mode === "off" ? "pause" : "ai"} size={12} />
+      {label}{waiting ? ` / ${waiting} waiting` : ""}
+    </span>
+  );
+}
+
+function SecretaryKpi({ label, value, tone }: { label: string; value: string | number; tone: "ready" | "watch" | "danger" | "brand" | "muted" }) {
+  const { t } = useTheme();
+  const color = tone === "ready" ? t.profit : tone === "watch" ? t.warn : tone === "danger" ? t.danger : tone === "brand" ? t.brand : t.ink3;
+  return (
+    <div style={{ padding: "10px 11px", borderRadius: 11, border: `1px solid ${t.line}`, background: t.surface }}>
+      <div style={{ fontSize: 9.5, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>{label}</div>
+      <div style={{ marginTop: 4, fontSize: 19, fontWeight: 950, color, fontFeatureSettings: '"tnum"' }}>{value}</div>
     </div>
   );
 }
 
-function DraftItem({ icon, title, meta, tone }: { icon: string; title: string; meta: string; tone: "ready" | "watch" | "danger" }) {
+function ModeButton({ active, icon, title, detail, onClick }: { active: boolean; icon: string; title: string; detail: string; onClick: () => void }) {
+  const { t } = useTheme();
+  return (
+    <button type="button" onClick={onClick} style={{
+      display: "grid",
+      gridTemplateColumns: "26px minmax(0, 1fr)",
+      gap: 8,
+      alignItems: "center",
+      padding: 9,
+      borderRadius: 10,
+      border: `1px solid ${active ? t.brand : t.line}`,
+      background: active ? t.brandSoft : t.surface2,
+      color: active ? t.brand : t.ink2,
+      textAlign: "left",
+      cursor: "pointer",
+      fontFamily: "inherit",
+    }}>
+      <span style={{ width: 26, height: 26, borderRadius: 8, background: active ? t.brand : t.surface, color: active ? t.inverse : t.ink3, display: "grid", placeItems: "center" }}>
+        <Icon name={icon} size={13} />
+      </span>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: "block", fontSize: 12, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
+        <span style={{ display: "block", marginTop: 1, fontSize: 10.8, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</span>
+      </span>
+    </button>
+  );
+}
+
+function PresetAction({ label, onClick, disabled, tone }: { label: string; onClick: () => void; disabled?: boolean; tone?: "danger" }) {
+  const { t } = useTheme();
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} style={{
+      padding: "7px 10px",
+      borderRadius: 9,
+      border: `1px solid ${tone === "danger" ? t.danger : t.line}`,
+      background: tone === "danger" ? t.dangerBg : t.surface2,
+      color: tone === "danger" ? t.danger : t.ink2,
+      opacity: disabled ? 0.45 : 1,
+      cursor: disabled ? "not-allowed" : "pointer",
+      fontSize: 11.5,
+      fontWeight: 800,
+      fontFamily: "inherit",
+    }}>
+      {label}
+    </button>
+  );
+}
+
+function FilterChip({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  const { t } = useTheme();
+  return (
+    <button type="button" onClick={onClick} style={{
+      padding: "5px 8px",
+      borderRadius: 999,
+      border: `1px solid ${active ? t.brand : t.line}`,
+      background: active ? t.brandSoft : t.surface2,
+      color: active ? t.brand : t.ink3,
+      fontSize: 11,
+      fontWeight: 850,
+      cursor: "pointer",
+      fontFamily: "inherit",
+    }}>
+      {label}
+    </button>
+  );
+}
+
+function TaskColumn({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
+  const { t } = useTheme();
+  return (
+    <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface2, padding: 10, minWidth: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.1, textTransform: "uppercase" }}>{title}</div>
+        <span style={{ fontSize: 11, fontWeight: 900, color: t.ink3 }}>{count}</span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 7, maxHeight: 390, overflow: "auto", paddingRight: 2 }}>{children}</div>
+    </div>
+  );
+}
+
+function SecretaryTaskRow({
+  row,
+  side,
+  isOperator,
+  onAssign,
+  onUnassign,
+  onOpenAssignment,
+}: {
+  row: DSTaskRow;
+  side: "human" | "ai";
+  isOperator: boolean;
+  onAssign: (key: string) => void;
+  onUnassign: (key: string) => void;
+  onOpenAssignment: (row: DSTaskRow) => void;
+}) {
+  const { t } = useTheme();
+  const canControl = canControlTask(row, isOperator);
+  const cat = DS_CATEGORY_META[row.category]?.short ?? row.category;
+  const isSensitive = row.completion_mode === "requires_human_verify";
+  return (
+    <div style={{ padding: 10, borderRadius: 11, border: `1px solid ${side === "ai" ? t.brand : t.line}`, background: t.surface, minWidth: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+        <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: 0.8, textTransform: "uppercase", color: t.ink3 }}>{cat}</span>
+        <span style={{ fontSize: 9.5, fontWeight: 900, padding: "2px 5px", borderRadius: 4, background: row.required_level === "required" ? t.dangerBg : row.required_level === "recommended" ? t.warnBg : t.surface2, color: row.required_level === "required" ? t.danger : row.required_level === "recommended" ? t.warn : t.ink3 }}>
+          {row.required_level}
+        </span>
+      </div>
+      <div style={{ marginTop: 6, fontSize: 12.5, fontWeight: 900, color: t.ink, lineHeight: 1.25 }}>
+        {row.label}
+      </div>
+      <div style={{ marginTop: 4, fontSize: 11, color: t.ink3, lineHeight: 1.35, minHeight: 30 }}>
+        {row.objective_text || row.completion_criteria || "No objective provided."}
+      </div>
+      <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 10.5, fontWeight: 800, color: isSensitive ? t.warn : t.ink3, textTransform: "capitalize" }}>
+          {isSensitive ? "human verify" : row.status.replace(/_/g, " ")}
+        </span>
+        <div style={{ display: "flex", gap: 5 }}>
+          {side === "ai" && row.assignment_id ? (
+            <button type="button" onClick={() => onOpenAssignment(row)} style={taskBtn(t)}>
+              Notes
+            </button>
+          ) : null}
+          <button
+            type="button"
+            disabled={!canControl}
+            onClick={() => side === "ai" ? onUnassign(row.requirement_key) : onAssign(row.requirement_key)}
+            style={{ ...taskBtn(t), color: side === "ai" ? t.warn : t.brand, opacity: canControl ? 1 : 0.45, cursor: canControl ? "pointer" : "not-allowed" }}
+          >
+            {side === "ai" ? "Keep human" : "Give to AI"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyWork({ note }: { note: string }) {
+  const { t } = useTheme();
+  return (
+    <div style={{ padding: 14, borderRadius: 10, border: `1px dashed ${t.line}`, background: t.surface, color: t.ink3, fontSize: 12, fontWeight: 750, textAlign: "center" }}>
+      {note}
+    </div>
+  );
+}
+
+function ResolutionRow({ icon, tone, title, meta, action, onClick }: { icon: string; tone: "ready" | "watch" | "danger"; title: string; meta: string; action: string; onClick: () => void }) {
   const { t } = useTheme();
   const color = tone === "ready" ? t.profit : tone === "danger" ? t.danger : t.warn;
   const bg = tone === "ready" ? t.profitBg : tone === "danger" ? t.dangerBg : t.warnBg;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "26px minmax(0, 1fr)", gap: 8, alignItems: "center", padding: "7px 8px", borderRadius: 10, background: t.surface2, border: `1px solid ${t.line}` }}>
-      <div style={{ width: 26, height: 26, borderRadius: 8, display: "grid", placeItems: "center", background: bg, color }}>
+    <button type="button" onClick={onClick} style={{
+      display: "grid",
+      gridTemplateColumns: "28px minmax(0, 1fr) auto",
+      gap: 8,
+      alignItems: "center",
+      padding: 9,
+      borderRadius: 11,
+      border: `1px solid ${t.line}`,
+      background: t.surface2,
+      color: t.ink,
+      cursor: "pointer",
+      textAlign: "left",
+      fontFamily: "inherit",
+    }}>
+      <span style={{ width: 28, height: 28, borderRadius: 9, display: "grid", placeItems: "center", color, background: bg }}>
         <Icon name={icon} size={13} />
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 900, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-        <div style={{ marginTop: 1, fontSize: 10.8, color: t.ink3, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta}</div>
-      </div>
-    </div>
+      </span>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: "block", fontSize: 12.5, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
+        <span style={{ display: "block", marginTop: 1, fontSize: 10.8, color: t.ink3, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{meta}</span>
+      </span>
+      <span style={{ fontSize: 10.5, fontWeight: 900, color, whiteSpace: "nowrap" }}>{action}</span>
+    </button>
   );
+}
+
+function TogglePanelButton({ active, icon, label, onClick }: { active: boolean; icon: string; label: string; onClick: () => void }) {
+  const { t } = useTheme();
+  return (
+    <button type="button" onClick={onClick} style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      padding: "7px 10px",
+      borderRadius: 9,
+      border: `1px solid ${active ? t.brand : t.line}`,
+      background: active ? t.brandSoft : t.surface2,
+      color: active ? t.brand : t.ink2,
+      fontSize: 12,
+      fontWeight: 850,
+      cursor: "pointer",
+      fontFamily: "inherit",
+    }}>
+      <Icon name={icon} size={13} />
+      {label}
+    </button>
+  );
+}
+
+function canControlTask(row: DSTaskRow, isOperator: boolean) {
+  if (row.owner_type === "funding_locked" && !isOperator) return false;
+  return isOperator || row.can_agent_override;
+}
+
+function taskBtn(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
+  return {
+    border: `1px solid ${t.line}`,
+    background: t.surface2,
+    borderRadius: 7,
+    padding: "4px 7px",
+    fontSize: 10.5,
+    fontWeight: 850,
+    cursor: "pointer",
+    fontFamily: "inherit",
+  };
+}
+
+function criteriaTarget(id: string) {
+  if (["value", "ltv", "income"].includes(id)) return "criteria-collateral";
+  if (id === "close") return "criteria-output";
+  return "criteria-pricing";
 }
 
 function DraftButton({ icon, label, busy, onClick }: { icon: string; label: string; busy: boolean; onClick: () => void }) {
