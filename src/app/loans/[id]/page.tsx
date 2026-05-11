@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useDocuments, useLoan, useLoanActivity, useStageTransition } from "@/hooks/useApi";
+import { useDocuments, useLoan, useLoanActivity, useRecalc, useStageTransition } from "@/hooks/useApi";
+import { FileBlockersPopup } from "@/components/FileBlockersPopup";
+import { getCriteriaItems } from "./fileReadiness";
 import { useDealChannel } from "@/hooks/useDealChannel";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { useUI } from "@/store/ui";
@@ -70,10 +72,34 @@ export default function LoanDetailPage() {
   const { data: docs = [] } = useDocuments(params.id);
   const { data: activity = [], isLoading: activityLoading } = useLoanActivity(params.id);
   const stageMut = useStageTransition();
+  const recalc = useRecalc();
   const [tab, setTab] = useState<string>(
     profile.role === Role.CLIENT ? "overview" : profile.role === Role.BROKER ? "agent" : "file",
   );
   const [stageNote, setStageNote] = useState("");
+  const [showBlockers, setShowBlockers] = useState(false);
+
+  // Trigger recalc whenever loan numerics change so the warnings list
+  // is fresh for the BlockersPopup, regardless of which tab the user
+  // is on. Cheap — same effect that used to live in FundingFileTab.
+  useEffect(() => {
+    if (!loan) return;
+    recalc.mutate({
+      loanId: loan.id,
+      discount_points: loan.discount_points,
+      loan_amount: loan.amount,
+      base_rate: loan.base_rate ?? undefined,
+      annual_taxes: loan.annual_taxes,
+      annual_insurance: loan.annual_insurance,
+      monthly_hoa: loan.monthly_hoa,
+      term_months: loan.term_months,
+      monthly_rent: loan.monthly_rent,
+      purpose: loan.purpose,
+      arv: loan.arv,
+      ltv: loan.ltv ?? undefined,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loan?.id, loan?.amount, loan?.base_rate, loan?.discount_points, loan?.annual_taxes, loan?.annual_insurance, loan?.monthly_hoa, loan?.term_months, loan?.monthly_rent, loan?.purpose, loan?.arv, loan?.ltv]);
 
   // Subscribe to live message updates so the AI rail / messages are realtime
   useDealChannel(params.id, loan?.deal_id ?? null);
@@ -86,6 +112,15 @@ export default function LoanDetailPage() {
   const activeTab = tabs.some((item) => item.id === tab) ? tab : tabs[0].id;
   const completion = getFileCompletion(loan, docs);
   const stageIndex = completion.stage.index;
+  // Blockers data for the popup that the file-completion strip opens.
+  const warnings = recalc.data?.warnings ?? [];
+  const missingCriteria = useMemo(
+    () => getCriteriaItems(loan).filter((item) => !item.ready),
+    [loan],
+  );
+  const flaggedDocs = useMemo(() => docs.filter((doc) => doc.status === "flagged"), [docs]);
+  const openDocs = useMemo(() => docs.filter((doc) => doc.status !== "verified"), [docs]);
+  const totalBlockers = warnings.length + missingCriteria.length + flaggedDocs.length;
   const canTransitionStage = isInternal;
   const canRequestDoc = isInternal;
   const docsReceived = completion.docs.received;
@@ -159,12 +194,44 @@ export default function LoanDetailPage() {
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "72px minmax(0, 1fr)", gap: 14, alignItems: "center" }}>
+          {/* File completion is now click-to-open: the entire dial +
+              progress + tile cluster opens FileBlockersPopup so the
+              operator can see exactly what's left and jump to fix it.
+              Replaces the separate "File Command + readiness map +
+              Blockers column" the user asked us to remove. */}
+          <button
+            type="button"
+            onClick={() => setShowBlockers(true)}
+            title={totalBlockers > 0 ? `${totalBlockers} item${totalBlockers === 1 ? "" : "s"} blocking this file — click for details` : "All clear"}
+            style={{
+              all: "unset",
+              cursor: "pointer",
+              display: "grid",
+              gridTemplateColumns: "72px minmax(0, 1fr)",
+              gap: 14,
+              alignItems: "center",
+              padding: 4,
+              margin: -4,
+              borderRadius: 12,
+            }}
+          >
             <CompletionDial score={completion.score} label={completion.label} />
             <div style={{ minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 850, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
-                  File completion
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 850, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
+                    File completion
+                  </span>
+                  {totalBlockers > 0 ? (
+                    <span style={{
+                      fontSize: 10, fontWeight: 900,
+                      padding: "2px 6px", borderRadius: 4,
+                      background: totalBlockers > 5 ? t.dangerBg : t.warnBg,
+                      color: totalBlockers > 5 ? t.danger : t.warn,
+                    }}>
+                      ⚠ {totalBlockers}
+                    </span>
+                  ) : null}
                 </div>
                 <div style={{ fontSize: 12, fontWeight: 850, color: completion.score >= 80 ? t.profit : completion.score >= 60 ? t.warn : t.danger }}>
                   {completion.label}
@@ -186,37 +253,81 @@ export default function LoanDetailPage() {
                 <HeaderStat label="Stage" value={`${completion.stage.index + 1}/${completion.stage.total}`} />
               </div>
             </div>
-          </div>
+          </button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(72px, 1fr))", gap: 1, borderTop: `1px solid ${t.line}` }}>
-          {FILE_STAGE_KEYS.map((stage, i) => {
-            const active = i <= stageIndex;
+        {/* Visual stage stepper — replaces the thin-bar version that
+            used to live here. Numbered dots, checkmarks for done stages,
+            brand-colored active dot with halo. Same row, same height,
+            but reads as a real pipeline at a glance. */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${FILE_STAGE_KEYS.length}, 1fr)`,
+            borderTop: `1px solid ${t.line}`,
+            padding: "14px 14px 12px",
+            background: t.surface2,
+          }}
+        >
+          {FILE_STAGE_KEYS.map((_stage, i) => {
+            const done = i < stageIndex;
+            const active = i === stageIndex;
+            const dotBg = done ? t.profit : active ? t.brand : t.surface;
+            const dotColor = done || active ? t.inverse : t.ink3;
+            const dotBorder = done ? t.profit : active ? t.brand : t.line;
             return (
               <div
-                key={stage}
+                key={_stage}
                 style={{
-                  padding: "8px 10px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
                   minWidth: 0,
-                  background: active ? t.brandSoft : "transparent",
-                  borderRight: i === FILE_STAGE_KEYS.length - 1 ? "none" : `1px solid ${t.line}`,
+                  position: "relative",
                 }}
               >
-                <div style={{ height: 4, borderRadius: 999, background: active ? t.brand : t.line }} />
-                <div
-                  style={{
-                    marginTop: 5,
-                    fontSize: 10.5,
-                    fontWeight: 800,
-                    color: active ? t.ink : t.ink3,
-                    letterSpacing: 0,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
+                {i > 0 ? (
+                  <div style={{
+                    position: "absolute", top: 14, left: 0, width: "50%",
+                    height: 3, background: done ? t.profit : active ? t.brand : t.line,
+                  }} />
+                ) : null}
+                {i < FILE_STAGE_KEYS.length - 1 ? (
+                  <div style={{
+                    position: "absolute", top: 14, right: 0, width: "50%",
+                    height: 3, background: done ? t.profit : t.line,
+                  }} />
+                ) : null}
+                <div style={{
+                  position: "relative", zIndex: 1,
+                  width: 30, height: 30, borderRadius: 999,
+                  background: dotBg, color: dotColor,
+                  border: `2px solid ${dotBorder}`,
+                  display: "grid", placeItems: "center",
+                  fontSize: 12.5, fontWeight: 900,
+                  boxShadow: active ? `0 0 0 4px ${t.brandSoft}` : "none",
+                }}>
+                  {done ? "✓" : i + 1}
+                </div>
+                <div style={{
+                  marginTop: 6,
+                  fontSize: 10.5,
+                  fontWeight: 900,
+                  color: active ? t.brand : done ? t.ink : t.ink3,
+                  letterSpacing: 0.3,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  maxWidth: "100%",
+                  textAlign: "center",
+                }}>
                   {FILE_STAGE_LABELS[i]}
                 </div>
+                {active ? (
+                  <div style={{ marginTop: 1, fontSize: 9, fontWeight: 800, color: t.brand, letterSpacing: 0.5, textTransform: "uppercase" }}>
+                    Current
+                  </div>
+                ) : null}
               </div>
             );
           })}
@@ -365,6 +476,18 @@ export default function LoanDetailPage() {
         </div>
       )}
       {activeTab === "activity" && <ActivityTab activity={activity} isLoading={activityLoading} />}
+
+      {showBlockers ? (
+        <FileBlockersPopup
+          onClose={() => setShowBlockers(false)}
+          warnings={warnings}
+          missingCriteria={missingCriteria}
+          flaggedDocs={flaggedDocs}
+          openDocs={openDocs}
+          onOpenTab={(targetTab, _targetId) => openLoanArea(targetTab)}
+          onCriteriaJump={() => openLoanArea("terms")}
+        />
+      ) : null}
     </div>
   );
 }

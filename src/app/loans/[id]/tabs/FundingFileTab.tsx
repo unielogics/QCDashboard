@@ -135,39 +135,12 @@ export function FundingFileTab({
     },
   ] as const;
 
-  // Two helper data structures for the blockers popup.
-  const totalBlockers = warnings.length + missingCriteria.length + flaggedDocs.length;
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {/* Visual loan-stage stepper — replaces the giant OperationalHeader. */}
-      <LoanStageStepper
-        currentIndex={completion.stage.index}
-        totalStages={completion.stage.total}
-      />
-
-      {/* Clickable file-completion strip — opens a popup with blockers. */}
-      <FileCompletionStrip
-        score={completion.score}
-        label={completion.label}
-        openDocs={openDocs.length}
-        warnings={warnings.length}
-        missingCriteria={missingCriteria.length}
-        flaggedDocs={flaggedDocs.length}
-        totalBlockers={totalBlockers}
-        onClick={() => setShowBlockers(true)}
-      />
-      {showBlockers ? (
-        <BlockersPopup
-          onClose={() => setShowBlockers(false)}
-          warnings={warnings}
-          missingCriteria={missingCriteria}
-          flaggedDocs={flaggedDocs}
-          openDocs={openDocs}
-          onOpenTab={onOpenTab}
-          onCriteriaJump={(id) => onOpenTab?.("terms", criteriaTarget(id))}
-        />
-      ) : null}
+      {/* Stage stepper + clickable file-completion strip + blockers
+          popup all live in the loan header (page.tsx) now — this tab
+          starts directly with the Workspace panel selector + the
+          chosen panel's content. */}
 
       <div style={{ display: "grid", gridTemplateColumns: "220px minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
         <Panel compact>
