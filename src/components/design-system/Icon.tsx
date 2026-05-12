@@ -17,6 +17,10 @@ const ICON_PATHS: Record<string, string> = {
   // People
   user:      "M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0",
 
+  // Contact
+  mail:      "M3 7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7zM3 7l9 7 9-7",
+  phone:     "M5 4h3l2 5-2.5 1.5a11 11 0 005 5L14 13l5 2v3a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z",
+
   // Actions
   plus:      "M12 5v14M5 12h14",
   spark:     "M12 2l2.4 6.5L21 10l-5.4 4 1.7 7L12 17l-5.4 4 1.7-7L3 10l6.6-1.5L12 2z",

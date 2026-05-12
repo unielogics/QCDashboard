@@ -235,7 +235,40 @@ export default function LoanDetailPage() {
                   </>
                 );
               })()}
+              <PresencePill lastSeenAt={client?.last_seen_at ?? null} />
             </div>
+            {/* Contact strip — email + phone with click-to-copy / tel/mailto links. */}
+            {(client?.email || client?.phone) ? (
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 11.5, color: t.ink3, marginBottom: 4 }}>
+                {client?.email ? (
+                  <a
+                    href={`mailto:${client.email}`}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                      color: t.ink2, textDecoration: "none",
+                    }}
+                  >
+                    <Icon name="mail" size={11} stroke={2.2} />
+                    <span>{client.email}</span>
+                  </a>
+                ) : null}
+                {client?.email && client?.phone ? (
+                  <span style={{ color: t.ink4 }}>·</span>
+                ) : null}
+                {client?.phone ? (
+                  <a
+                    href={`tel:${client.phone.replace(/[^+\d]/g, "")}`}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                      color: t.ink2, textDecoration: "none",
+                    }}
+                  >
+                    <Icon name="phone" size={11} stroke={2.2} />
+                    <span>{client.phone}</span>
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: t.ink2 }}>
               <span>{loan.city ?? "No city"}</span>
               <span style={{ color: t.ink4 }}>/</span>
@@ -436,6 +469,77 @@ function CompletionDial({ score, label }: { score: number; label: string }) {
     </div>
   );
 }
+
+// Borrower presence pill — green dot when the client has signed into
+// the app recently (last_seen_at within ONLINE_WINDOW_SEC), gray dot
+// with relative time otherwise. NULL = "Never signed in" so the
+// operator knows the borrower portal hasn't been opened yet.
+const ONLINE_WINDOW_SEC = 5 * 60; // 5-minute "online" window
+
+function PresencePill({ lastSeenAt }: { lastSeenAt: string | null }) {
+  const { t } = useTheme();
+  if (lastSeenAt === null) {
+    return (
+      <>
+        <span style={{ color: t.ink4 }}>·</span>
+        <span
+          title="Borrower hasn't opened the app yet"
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 5,
+            padding: "2px 7px", borderRadius: 999,
+            background: t.surface2, color: t.ink3,
+            fontSize: 10.5, fontWeight: 800,
+          }}
+        >
+          <span style={{
+            width: 6, height: 6, borderRadius: 999,
+            background: t.ink3, opacity: 0.5,
+          }} />
+          Not signed in
+        </span>
+      </>
+    );
+  }
+  const last = new Date(lastSeenAt);
+  const ageSec = Math.max(0, Math.round((Date.now() - last.getTime()) / 1000));
+  const online = ageSec < ONLINE_WINDOW_SEC;
+  const relative = formatPresenceAge(ageSec);
+  return (
+    <>
+      <span style={{ color: t.ink4 }}>·</span>
+      <span
+        title={`Last seen ${last.toLocaleString()}`}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 5,
+          padding: "2px 8px", borderRadius: 999,
+          background: online ? t.profitBg : t.surface2,
+          color: online ? t.profit : t.ink3,
+          fontSize: 10.5, fontWeight: 850,
+        }}
+      >
+        <span style={{
+          width: 7, height: 7, borderRadius: 999,
+          background: online ? t.profit : t.ink3,
+          boxShadow: online ? `0 0 0 3px ${t.profit}33` : "none",
+        }} />
+        {online ? "Online" : `${relative} ago`}
+      </span>
+    </>
+  );
+}
+
+
+function formatPresenceAge(seconds: number): string {
+  if (seconds < 60) return "just now";
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d`;
+  return `${Math.floor(d / 30)}mo`;
+}
+
 
 function HeaderStat({ label, value }: { label: string; value: string | number }) {
   const { t } = useTheme();

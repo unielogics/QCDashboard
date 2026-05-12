@@ -148,6 +148,9 @@ export interface Client {
   // JSONB written by the Realtor AI. Drives the Client Readiness Map
   // card on /clients/[id].
   realtor_profile?: RealtorClientProfile | null;
+  // Presence (alembic 0046). Projected from the linked User row; null
+  // if the client has never signed into the borrower app.
+  last_seen_at?: string | null;
 }
 
 // Lead-routing enum values mirror app/schemas/client.py.
