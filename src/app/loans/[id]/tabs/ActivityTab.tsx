@@ -13,6 +13,7 @@
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import { fieldLabel, formatFieldValue } from "@/lib/activityFormat";
 import type { Activity } from "@/lib/types";
 
 type Family = "loan" | "document" | "credit" | "hud" | "calendar" | "ai" | "instruction" | "prequal" | "intake" | "other";
@@ -176,50 +177,38 @@ function DiffList({
   changes: Array<{ field?: unknown; before?: unknown; after?: unknown }>;
   t: ReturnType<typeof useTheme>["t"];
 }) {
+  // Each change becomes "Base rate: 7.50% → 7.80%". Both the field
+  // name and the values run through the shared activityFormat helpers
+  // so column-name jargon never reaches the operator.
   return (
     <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
-      {changes.map((c, idx) => (
-        <div key={idx} style={{
-          display: "grid", gridTemplateColumns: "160px 1fr",
-          gap: 10, padding: "6px 10px",
-          background: t.surface2, borderRadius: 8,
-          fontSize: 12,
-        }}>
-          <span style={{ color: t.ink3, fontWeight: 700, fontFamily: "ui-monospace, SF Mono, monospace" }}>
-            {String(c.field ?? "—")}
-          </span>
-          <span style={{ color: t.ink }}>
-            <DiffValue value={c.before} t={t} dim />
-            <span style={{ margin: "0 8px", color: t.ink3 }}>→</span>
-            <DiffValue value={c.after} t={t} />
-          </span>
-        </div>
-      ))}
+      {changes.map((c, idx) => {
+        const field = String(c.field ?? "");
+        const beforeText = formatFieldValue(field, c.before);
+        const afterText = formatFieldValue(field, c.after);
+        return (
+          <div key={idx} style={{
+            display: "grid", gridTemplateColumns: "180px 1fr",
+            gap: 10, padding: "6px 10px",
+            background: t.surface2, borderRadius: 8,
+            fontSize: 12,
+          }}>
+            <span style={{ color: t.ink2, fontWeight: 700 }}>
+              {fieldLabel(field)}
+            </span>
+            <span style={{ color: t.ink }}>
+              <span style={{ color: t.ink3, textDecoration: "line-through" }}>
+                {beforeText}
+              </span>
+              <span style={{ margin: "0 8px", color: t.ink3 }}>→</span>
+              <span style={{ color: t.ink, fontWeight: 600 }}>
+                {afterText}
+              </span>
+            </span>
+          </div>
+        );
+      })}
     </div>
-  );
-}
-
-
-function DiffValue({
-  value, t, dim = false,
-}: {
-  value: unknown;
-  t: ReturnType<typeof useTheme>["t"];
-  dim?: boolean;
-}) {
-  const display = value === null || value === undefined
-    ? "—"
-    : typeof value === "number"
-    ? Number.isInteger(value) ? String(value) : String(Number(value.toFixed(4)))
-    : String(value);
-  return (
-    <span style={{
-      fontFamily: "ui-monospace, SF Mono, monospace",
-      color: dim ? t.ink3 : t.ink,
-      textDecoration: dim ? "line-through" : "none",
-    }}>
-      {display}
-    </span>
   );
 }
 
