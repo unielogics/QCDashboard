@@ -15,7 +15,7 @@ import { Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useDownloadTermSheet, useRecalc, useUpdateLoan } from "@/hooks/useApi";
+import { useCurrentCredit, useDownloadTermSheet, useParsedReport, useRecalc, useUpdateLoan } from "@/hooks/useApi";
 import {
   AmortizationStyle,
   AmortizationStyleOptions,
@@ -458,11 +458,14 @@ export function TermsTab({ loan }: { loan: Loan }) {
             </div>
           </WorkbenchPanel>
 
-          <WorkbenchPanel eyebrow="Borrower" title="Credit & entity">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-              <Field label="FICO override">
-                <NumberInput value={draft.ficoOverride} onChange={(v) => setDraftField(setDraft, "ficoOverride", v)} />
-              </Field>
+          <CreditPanel
+            clientId={loan.client_id}
+            ficoOverride={draft.ficoOverride}
+            onOverrideChange={(v) => setDraftField(setDraft, "ficoOverride", v)}
+          />
+
+          <WorkbenchPanel eyebrow="Borrower" title="Entity & experience">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
               <Field label="Entity type">
                 <select value={draft.entityType} onChange={(e) => setDraftField(setDraft, "entityType", e.target.value)} style={inputStyle(t)}>
                   <option value="">—</option>
@@ -932,5 +935,174 @@ function DownloadTermSheetButton({ loan, unsaved }: { loan: Loan; unsaved: boole
       <Icon name="doc" size={12} />
       {dl.isPending ? "Generating…" : unsaved ? "PDF (saved state)" : "Download PDF"}
     </button>
+  );
+}
+
+
+// Borrower credit panel — shows the iSoftPull score + last-pull age
+// next to the underwriter's optional override. Compact by default;
+// "Show details" expands the parsed-report summary (tradelines,
+// inquiries, collections, public records, fraud flags).
+//
+// Effective FICO = override when set, else pulled. The expanded view
+// makes the precedence explicit so an underwriter can see when their
+// override is masking a different pulled value.
+
+function CreditPanel({
+  clientId,
+  ficoOverride,
+  onOverrideChange,
+}: {
+  clientId: string;
+  ficoOverride: string;
+  onOverrideChange: (value: string) => void;
+}) {
+  const { t } = useTheme();
+  const credit = useCurrentCredit(clientId);
+  const [expanded, setExpanded] = useState(false);
+
+  const pulled: number | null = credit.data?.fico ?? null;
+  const pulledAt = credit.data?.pulled_at ? new Date(credit.data.pulled_at) : null;
+  const overrideNum = ficoOverride.trim() ? parseInt(ficoOverride, 10) : null;
+  const effective = Number.isFinite(overrideNum) && overrideNum ? overrideNum : pulled;
+  const effectiveSource: "override" | "pulled" | "none" =
+    overrideNum ? "override" : pulled !== null ? "pulled" : "none";
+
+  const ageDays = pulledAt
+    ? Math.max(0, Math.floor((Date.now() - pulledAt.getTime()) / 86_400_000))
+    : null;
+  const ageLabel = ageDays === null ? "no pull on file" : ageDays === 0 ? "today" : `${ageDays}d ago`;
+
+  const tierLabel = effective === null
+    ? null
+    : effective >= 760 ? "Excellent"
+    : effective >= 720 ? "Strong"
+    : effective >= 680 ? "Good"
+    : effective >= 660 ? "Acceptable"
+    : effective >= 620 ? "Subprime"
+    : "Below floor";
+  const tierTone = effective === null
+    ? { bg: t.chip, fg: t.ink3 }
+    : effective >= 720 ? { bg: t.profitBg, fg: t.profit }
+    : effective >= 660 ? { bg: t.chip, fg: t.ink2 }
+    : { bg: t.warnBg, fg: t.warn };
+
+  // Lazy-fetch parsed report only when the details panel is open —
+  // keeps the criteria tab cheap on initial render.
+  const parsed = useParsedReport(expanded ? credit.data?.id ?? null : null);
+  const counts = parsed.data ? {
+    tradelines: parsed.data.trade_accounts?.length ?? null,
+    inquiries: parsed.data.inquiries?.length ?? null,
+    collections: parsed.data.collections?.length ?? null,
+    public_records: parsed.data.public_records?.length ?? null,
+  } : null;
+
+  return (
+    <WorkbenchPanel eyebrow="Borrower" title="Credit">
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 14, alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 4 }}>
+            Effective FICO
+          </div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ fontSize: 28, fontWeight: 900, color: t.ink, lineHeight: 1 }}>
+              {effective ?? "—"}
+            </span>
+            {tierLabel ? (
+              <span style={{
+                fontSize: 10, fontWeight: 800, padding: "2px 8px",
+                borderRadius: 999, background: tierTone.bg, color: tierTone.fg,
+                textTransform: "uppercase", letterSpacing: 0.4,
+              }}>
+                {tierLabel}
+              </span>
+            ) : null}
+          </div>
+          <div style={{ fontSize: 11, color: t.ink3, marginTop: 3 }}>
+            {effectiveSource === "override"
+              ? "Source: underwriter override"
+              : effectiveSource === "pulled"
+              ? `Source: iSoftPull · pulled ${ageLabel}`
+              : "No score on file"}
+          </div>
+        </div>
+
+        <div style={{ paddingLeft: 14, borderLeft: `1px solid ${t.line}` }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 4 }}>
+            Underwriter override
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={ficoOverride}
+              onChange={(e) => onOverrideChange(e.target.value)}
+              placeholder={pulled !== null ? String(pulled) : "—"}
+              style={{ ...inputStyle(t), width: 110 }}
+            />
+            <span style={{ fontSize: 11, color: t.ink3 }}>
+              {pulled !== null && overrideNum
+                ? `Pulled: ${pulled}`
+                : "Leave blank to use pulled score"}
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          style={{ ...qcBtn(t), padding: "6px 10px", borderRadius: 7, fontSize: 12 }}
+        >
+          {expanded ? "Hide details" : "Show details"}
+        </button>
+      </div>
+
+      {expanded ? (
+        <div style={{
+          marginTop: 14, padding: 12,
+          border: `1px solid ${t.line}`, borderRadius: 12,
+          background: t.surface2,
+        }}>
+          {credit.isLoading || parsed.isLoading ? (
+            <div style={{ fontSize: 12, color: t.ink3 }}>Loading credit details…</div>
+          ) : credit.data && parsed.data ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+              <DetailStat label="Tradelines" value={counts?.tradelines} t={t} />
+              <DetailStat label="Recent inquiries" value={counts?.inquiries} t={t} />
+              <DetailStat label="Collections" value={counts?.collections} t={t} />
+              <DetailStat label="Public records" value={counts?.public_records} t={t} />
+            </div>
+          ) : credit.data ? (
+            <div style={{ fontSize: 12, color: t.ink3 }}>
+              Detailed report not available yet. The score above is still authoritative.
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: t.ink3 }}>
+              No credit pull on file yet. Run a pull from the Credit tab or set an override above.
+            </div>
+          )}
+        </div>
+      ) : null}
+    </WorkbenchPanel>
+  );
+}
+
+
+function DetailStat({
+  label, value, t,
+}: {
+  label: string;
+  value: number | null | undefined;
+  t: ReturnType<typeof useTheme>["t"];
+}) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 800, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 3 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 18, fontWeight: 800, color: t.ink }}>
+        {value === null || value === undefined ? "—" : value}
+      </div>
+    </div>
   );
 }
