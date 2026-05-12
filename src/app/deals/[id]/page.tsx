@@ -26,6 +26,7 @@ import { PropertyTab } from "./tabs/PropertyTab";
 import { AISecretaryTab } from "./tabs/AISecretaryTab";
 import { DocumentsTab } from "./tabs/DocumentsTab";
 import { ScheduleTab } from "./tabs/ScheduleTab";
+import { TasksTab } from "./tabs/TasksTab";
 import { ActivityTab } from "./tabs/ActivityTab";
 import { FundingTab } from "./tabs/FundingTab";
 import { DealNotesFloatingButton, DealNotesPanel } from "@/components/DealNotesFloating";
@@ -33,8 +34,9 @@ import { DealNotesFloatingButton, DealNotesPanel } from "@/components/DealNotesF
 const TAB_ORDER = [
   { id: "property", label: "Property", icon: "home" as const },
   { id: "ai", label: "AI Secretary", icon: "spark" as const },
-  { id: "docs", label: "Documents", icon: "doc" as const },
+  { id: "tasks", label: "Tasks", icon: "doc" as const },
   { id: "schedule", label: "Schedule", icon: "cal" as const },
+  { id: "docs", label: "Documents", icon: "doc" as const },
   { id: "activity", label: "Activity", icon: "trend" as const },
 ];
 // Notes is no longer a tab — it's the floating bottom-right widget
@@ -309,6 +311,7 @@ export default function DealPage() {
       {activeTab === "docs" ? (
         <DocumentsTab clientId={deal.client_id} loanId={deal.promoted_loan_id} />
       ) : null}
+      {activeTab === "tasks" ? <TasksTab deal={deal} /> : null}
       {activeTab === "schedule" ? <ScheduleTab clientId={deal.client_id} dealId={deal.id} /> : null}
       {activeTab === "activity" ? <ActivityTab clientId={deal.client_id} /> : null}
       {activeTab === "funding" && loan ? <FundingTab loan={loan} clientId={deal.client_id} /> : null}

@@ -3943,6 +3943,31 @@ export function useUnassignClientTask(clientId: string) {
   });
 }
 
+/** POST /clients/{id}/ai-follow-up/bootstrap?deal_id=… or ?loan_id=…
+ *  Idempotently re-seeds CRS + ClientAIPlan for the selected scope.
+ *  Used by the AI Secretary tab's "Bootstrap" repair button on
+ *  /deals/[id] when the workbench is empty. */
+export function useBootstrapClientAiFollowUp(clientId: string) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ dealId, loanId }: { dealId?: string | null; loanId?: string | null }) => {
+      const q = new URLSearchParams();
+      if (dealId) q.set("deal_id", dealId);
+      if (loanId) q.set("loan_id", loanId);
+      const qs = q.toString();
+      return apiCall<{ crs_inserted: number; crs_skipped: number; plan_created?: boolean }>(
+        `/clients/${clientId}/ai-follow-up/bootstrap${qs ? `?${qs}` : ""}`,
+        { method: "POST" },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-ai-follow-up", clientId] });
+    },
+  });
+}
+
+
 export function useUpdateClientFileSettings(clientId: string) {
   const apiCall = useAuthedApi();
   const queryClient = useQueryClient();
