@@ -1,7 +1,7 @@
 // Hand-typed mirror of backend response shapes.
 // (When you scale, switch to OpenAPI codegen — for now the surface is small.)
 
-import type { LoanStage, LoanType, LoanPurpose, PropertyType, Role, AITaskPriority, AITaskSource, AITaskStatus, BrokerTier, MessageFrom, DocStatus, CalendarEventKind, EntityType, ExperienceTier, CreditPullStatus, DealChatMode, DealChatRole, FeedbackOutputType, FeedbackRating } from "./enums.generated";
+import type { LoanStage, LoanType, LoanPurpose, PropertyType, Role, AITaskPriority, AITaskSource, AITaskStatus, BrokerTier, MessageFrom, DocStatus, CalendarEventKind, EntityType, ExperienceTier, CreditPullStatus, DealChatMode, DealChatRole, FeedbackOutputType, FeedbackRating, AmortizationStyle, ExitStrategy, PrepayPenalty } from "./enums.generated";
 
 export interface User {
   id: string;
@@ -62,6 +62,22 @@ export interface Loan {
   street_view_url?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  // Underwriter fine-tuning fields (alembic 0044). All nullable.
+  amortization_style?: AmortizationStyle | null;
+  prepay_penalty?: PrepayPenalty | null;
+  vacancy_pct?: number | null;
+  expense_ratio_pct?: number | null;
+  reserves_required?: number | null;
+  lender_fees?: number | null;
+  fico_override?: number | null;
+  entity_type?: EntityType | null;
+  experience_tier?: ExperienceTier | null;
+  construction_holdback_pct?: number | null;
+  draw_count?: number | null;
+  exit_strategy?: ExitStrategy | null;
+  cash_to_borrower?: number | null;
+  seasoning_months?: number | null;
+  property_count?: number | null;
   // Living Loan File
   status_summary?: string | null;
   deal_health?: "on_track" | "at_risk" | "stuck";
@@ -282,6 +298,12 @@ export interface RecalcResponse {
     cash_to_borrower: number | null;
     cash_to_close: number | null;
   } | null;
+  // Underwriter calculator outputs (alembic 0044 fields).
+  monthly_interest?: number | null;
+  total_interest?: number | null;
+  total_cash_to_close?: number | null;
+  effective_pitia?: number | null;
+  effective_rent?: number | null;
 }
 
 // ── SmartIntake ────────────────────────────────────────────────────────────

@@ -279,11 +279,33 @@ export const PrepayPenalty = {
 } as const;
 export type PrepayPenalty = (typeof PrepayPenalty)[keyof typeof PrepayPenalty];
 export const PrepayPenaltyOptions = [
-  { value: "5_4_3_2_1", label: "5 4 3 2 1" },
-  { value: "3_2_1", label: "3 2 1" },
-  { value: "2_year", label: "2 Year" },
-  { value: "1_year", label: "1 Year" },
-  { value: "none", label: "None" }
+  { value: "5_4_3_2_1", label: "5/4/3/2/1" },
+  { value: "3_2_1", label: "3/2/1" },
+  { value: "2_year", label: "2-year" },
+  { value: "1_year", label: "1-year" },
+  { value: "none", label: "None (rate bump)" }
+] as const;
+
+export const AmortizationStyle = {
+  FULLY_AMORTIZING: "fully_amortizing",
+  INTEREST_ONLY: "interest_only"
+} as const;
+export type AmortizationStyle = (typeof AmortizationStyle)[keyof typeof AmortizationStyle];
+export const AmortizationStyleOptions = [
+  { value: "fully_amortizing", label: "Fully amortizing" },
+  { value: "interest_only", label: "Interest only" }
+] as const;
+
+export const ExitStrategy = {
+  SALE: "sale",
+  REFINANCE: "refinance",
+  HOLD: "hold"
+} as const;
+export type ExitStrategy = (typeof ExitStrategy)[keyof typeof ExitStrategy];
+export const ExitStrategyOptions = [
+  { value: "sale", label: "Sale" },
+  { value: "refinance", label: "Refinance" },
+  { value: "hold", label: "Hold" }
 ] as const;
 
 export const PropertyType = {
