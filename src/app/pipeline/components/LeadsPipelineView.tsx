@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
@@ -138,23 +138,48 @@ export function LeadsPipelineView({ view, search }: Props) {
       });
   }, [clients, loans]);
 
+  // Side filter — buyer / seller / all. Defaults to "all". The
+  // top-level Agent Relationships toggle was getting overloaded; agents
+  // wanted a way to slice WITHIN their relationships. Persists in URL?
+  // Local state is fine for v1.
+  const [sideFilter, setSideFilter] = useState<"all" | "buyer" | "seller">("all");
+
   const visible = useMemo(() => {
-    if (!search.trim()) return enriched;
-    const q = search.trim().toLowerCase();
-    return enriched.filter(
-      (client) =>
-        client.name.toLowerCase().includes(q) ||
-        (client.email ?? "").toLowerCase().includes(q) ||
-        (client.city ?? "").toLowerCase().includes(q),
-    );
-  }, [enriched, search]);
+    let rows = enriched;
+    if (sideFilter !== "all") {
+      rows = rows.filter((c) => (c.client_type ?? "buyer") === sideFilter);
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      rows = rows.filter(
+        (client) =>
+          client.name.toLowerCase().includes(q) ||
+          (client.email ?? "").toLowerCase().includes(q) ||
+          (client.city ?? "").toLowerCase().includes(q),
+      );
+    }
+    return rows;
+  }, [enriched, search, sideFilter]);
+
+  const sideCounts = useMemo(() => ({
+    buyer: enriched.filter((c) => (c.client_type ?? "buyer") === "buyer").length,
+    seller: enriched.filter((c) => c.client_type === "seller").length,
+  }), [enriched]);
 
   const header = (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 10, flexWrap: "wrap" }}>
       <div style={{ fontSize: 12, color: t.ink3 }}>
         {visible.length} {visible.length === 1 ? "relationship" : "relationships"}
         {search ? ` matching "${search}"` : ""}
+        {sideFilter !== "all" ? ` · ${sideFilter}s only` : ""}
       </div>
+      <SideFilter
+        value={sideFilter}
+        onChange={setSideFilter}
+        buyerCount={sideCounts.buyer}
+        sellerCount={sideCounts.seller}
+        t={t}
+      />
     </div>
   );
 
@@ -200,7 +225,7 @@ export function LeadsPipelineView({ view, search }: Props) {
           {visible.map((client) => (
             <Link
               key={client.id}
-              href={`/clients/${client.id}/workspace`}
+              href={destForClient(client)}
               style={{
                 display: "grid",
                 gridTemplateColumns: gridCols,
@@ -297,7 +322,7 @@ export function LeadsPipelineView({ view, search }: Props) {
                 {stageClients.map((client) => (
                   <Link
                     key={client.id}
-                    href={`/clients/${client.id}/workspace`}
+                    href={destForClient(client)}
                     style={{
                       background: t.surface,
                       padding: 11,
@@ -352,6 +377,97 @@ export function LeadsPipelineView({ view, search }: Props) {
     </>
   );
 }
+
+// Where a click on a relationship row should land. If the client has
+// active loans, jump straight to the loan detail page — the agent gets
+// the full funding pipeline view (stage strip, AI Secretary, docs,
+// conditions). When they don't, fall back to the relationship
+// workspace (Overview / Properties / Activity / Documents / Notes).
+//
+// Multiple active loans → pick the one furthest along the pipeline
+// (later LOAN_STAGE_ORDER index), then most-recent close_date as the
+// tiebreaker. That's the one the agent is most likely chasing.
+const STAGE_RANK: Record<string, number> = {
+  prequalified: 0,
+  collecting_docs: 1,
+  lender_connected: 2,
+  processing: 3,
+  closing: 4,
+  funded: 5,
+};
+function destForClient(client: EnrichedClient): string {
+  const loans = client._activeLoans ?? [];
+  if (loans.length === 0) return `/clients/${client.id}/workspace`;
+  const best = [...loans].sort((a, b) => {
+    const ra = STAGE_RANK[String(a.stage)] ?? 0;
+    const rb = STAGE_RANK[String(b.stage)] ?? 0;
+    if (ra !== rb) return rb - ra;
+    const ca = a.close_date ? new Date(a.close_date).getTime() : 0;
+    const cb = b.close_date ? new Date(b.close_date).getTime() : 0;
+    return cb - ca;
+  })[0];
+  return `/loans/${best.id}`;
+}
+
+
+function SideFilter({
+  value, onChange, buyerCount, sellerCount, t,
+}: {
+  value: "all" | "buyer" | "seller";
+  onChange: (next: "all" | "buyer" | "seller") => void;
+  buyerCount: number;
+  sellerCount: number;
+  t: ReturnType<typeof useTheme>["t"];
+}) {
+  const opts: Array<{ k: "all" | "buyer" | "seller"; label: string; count?: number }> = [
+    { k: "all", label: "All" },
+    { k: "buyer", label: "Buyers", count: buyerCount },
+    { k: "seller", label: "Sellers", count: sellerCount },
+  ];
+  return (
+    <div style={{
+      display: "inline-flex", padding: 3, gap: 2,
+      borderRadius: 9,
+      background: t.surface2,
+      border: `1px solid ${t.line}`,
+    }}>
+      {opts.map((o) => {
+        const active = o.k === value;
+        return (
+          <button
+            key={o.k}
+            type="button"
+            onClick={() => onChange(o.k)}
+            style={{
+              all: "unset",
+              cursor: "pointer",
+              padding: "5px 11px",
+              borderRadius: 7,
+              background: active ? t.surface : "transparent",
+              color: active ? t.ink : t.ink3,
+              fontSize: 11.5, fontWeight: 850,
+              display: "inline-flex", alignItems: "center", gap: 6,
+              boxShadow: active ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+            }}
+          >
+            {o.label}
+            {o.count !== undefined ? (
+              <span style={{
+                fontSize: 10, fontWeight: 800,
+                padding: "1px 5px", borderRadius: 999,
+                background: active ? t.brandSoft : t.surface,
+                color: active ? t.brand : t.ink3,
+              }}>
+                {o.count}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 
 function SidePill({ type }: { type: ClientType }) {
   const { t } = useTheme();

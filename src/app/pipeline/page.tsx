@@ -117,25 +117,35 @@ export default function PipelinePage() {
           {mode === "funding" ? "Underwriting CRM" : "Pipeline"}
         </h1>
 
-        <select
-          value={mode}
-          onChange={(e) => setMode(e.target.value as PipelineMode)}
-          style={{
-            background: t.surface,
-            color: t.ink,
-            border: `1px solid ${t.line}`,
-            borderRadius: 10,
-            padding: "8px 10px",
-            fontSize: 13,
-            fontFamily: "inherit",
-            fontWeight: 700,
-            cursor: "pointer",
-            marginLeft: 4,
-          }}
-        >
-          <option value="leads">Agent Relationships</option>
-          <option value="funding">Funding Files</option>
-        </select>
+        {/* View switcher — segmented button instead of a hidden-looking
+            <select>. Agents kept getting confused that they were "stuck"
+            on Agent Relationships; the segmented control reads as a
+            toggle. Both roles see both segments — operators default to
+            Funding Files, brokers default to Agent Relationships. */}
+        <div style={{
+          display: "inline-flex",
+          background: t.surface,
+          border: `1px solid ${t.line}`,
+          borderRadius: 10,
+          padding: 3,
+          gap: 2,
+          marginLeft: 4,
+        }}>
+          <button
+            type="button"
+            onClick={() => setMode("leads")}
+            style={modeSegBtn(t, mode === "leads")}
+          >
+            <Icon name="user" size={12} stroke={2.2} /> Agent Relationships
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("funding")}
+            style={modeSegBtn(t, mode === "funding")}
+          >
+            <Icon name="file" size={12} stroke={2.2} /> Funding Files
+          </button>
+        </div>
 
         {mode === "funding" ? (
           <span style={{ color: t.ink3, fontSize: 14 }}>
@@ -703,6 +713,28 @@ function segBtn(t: ReturnType<typeof useTheme>["t"], active: boolean): React.CSS
     fontWeight: 600,
     cursor: "pointer",
     fontFamily: "inherit",
+  };
+}
+
+// Brand-tinted variant of segBtn for the top-level mode switcher. Bigger
+// hit target + brand color when active so it reads as the primary
+// view control on the page, not the same weight as the kanban/table
+// view toggle.
+function modeSegBtn(t: ReturnType<typeof useTheme>["t"], active: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 7,
+    padding: "8px 14px",
+    borderRadius: 8,
+    border: "none",
+    background: active ? t.brand : "transparent",
+    color: active ? t.inverse : t.ink2,
+    fontSize: 12.5,
+    fontWeight: 850,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
   };
 }
 
