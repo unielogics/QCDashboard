@@ -227,7 +227,7 @@ export default function ClientWorkspacePage() {
 
       {tab === "overview" ? <OverviewPanel clientId={id} client={client} /> : null}
       {tab === "properties" ? <PropertiesPanel clientId={id} client={client} /> : null}
-      {tab === "deals" && workspace ? <DealsPanel data={workspace} /> : null}
+      {tab === "deals" && workspace ? <DealsPanel clientId={id} data={workspace} /> : null}
       {tab === "funding" && workspace ? (
         <FundingPanel
           data={workspace}

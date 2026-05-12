@@ -2010,9 +2010,11 @@ export interface Deal {
   handoff_status: DealHandoffStatus;
   ai_status: DealAiStatus;
   title: string;
+  summary: string | null;
   property_id: string | null;
   promoted_loan_id: string | null;
   assigned_agent_id: string | null;
+  living_profile: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }

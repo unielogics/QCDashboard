@@ -76,6 +76,9 @@ import type {
   UserRow,
   WorkspaceState,
   WorkspaceData,
+  Deal,
+  DealType,
+  DealSide,
 } from "@/lib/types";
 import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurpose, PropertyType, Role, DealChatMode, FeedbackOutputType, FeedbackRating, AmortizationStyle } from "@/lib/enums.generated";
 
@@ -3684,5 +3687,70 @@ export function useClientWorkspace(
     enabled: !!clientId,
     refetchInterval: 30_000,
     staleTime: 5_000,
+  });
+}
+
+
+// ── Deals (Phase 3) ─────────────────────────────────────────────────
+
+
+export function useClientDeals(clientId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["client-deals", clientId, devUser] as const,
+    queryFn: () => apiCall<Deal[]>(`/clients/${clientId}/deals`),
+    enabled: !!clientId,
+  });
+}
+
+export interface DealCreateBody {
+  deal_type: DealType;
+  title: string;
+  side?: DealSide;
+  property_id?: string | null;
+  assigned_agent_id?: string | null;
+  summary?: string | null;
+}
+
+export function useCreateDeal(clientId: string) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DealCreateBody) =>
+      apiCall<Deal>(`/clients/${clientId}/deals`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-deals", clientId] });
+      queryClient.invalidateQueries({ queryKey: ["client-workspace", clientId] });
+    },
+  });
+}
+
+export interface DealUpdateBody {
+  title?: string;
+  summary?: string | null;
+  status?: "open" | "active" | "paused" | "won" | "lost";
+  handoff_status?: "none" | "requested" | "packet_built" | "promoted";
+  ai_status?: "idle" | "active" | "paused";
+  assigned_agent_id?: string | null;
+  property_id?: string | null;
+}
+
+export function useUpdateDeal(clientId: string, dealId: string) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DealUpdateBody) =>
+      apiCall<Deal>(`/clients/${clientId}/deals/${dealId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-deals", clientId] });
+      queryClient.invalidateQueries({ queryKey: ["client-workspace", clientId] });
+    },
   });
 }
