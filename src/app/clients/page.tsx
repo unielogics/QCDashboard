@@ -5,6 +5,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SortableTableHead, TableRow, useSort } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useBrokers, useClients, useCurrentUser, useLoans, useUpdateClient } from "@/hooks/useApi";
+import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
 import { Role } from "@/lib/enums.generated";
 import type { Broker, Client, ClientStage } from "@/lib/types";
 import { QC_FMT } from "@/components/design-system/tokens";
@@ -307,6 +308,7 @@ function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [sweepBroker, setSweepBroker] = useState<Broker | null>(null);
   const { data: brokers = [], isLoading } = useBrokers();
   const update = useUpdateClient();
   const anchorRef = useRef<HTMLDivElement | null>(null);
@@ -339,6 +341,7 @@ function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | 
       await update.mutateAsync({ clientId: client.id, broker_id: broker?.id ?? null });
       setOpen(false);
       setQuery("");
+      if (broker) setSweepBroker(broker);
     } finally {
       setBusyId(null);
     }
@@ -478,6 +481,14 @@ function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | 
             </button>
           ) : null}
         </div>
+      ) : null}
+      {sweepBroker ? (
+        <MultiLoanReassignModal
+          clientId={client.id}
+          newBroker={sweepBroker}
+          brokerName={sweepBroker.display_name}
+          onClose={() => setSweepBroker(null)}
+        />
       ) : null}
     </div>
   );

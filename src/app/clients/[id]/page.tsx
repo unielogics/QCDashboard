@@ -8,6 +8,7 @@ import { Card, KPI, Pill, SectionLabel, VerifiedBadge } from "@/components/desig
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { useBrokers, useClient, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
+import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { RealtorReadinessCard } from "@/components/RealtorReadinessCard";
 import { ClientAIPlanCard } from "@/components/ClientAIPlanCard";
@@ -1033,6 +1034,10 @@ function AssignedAgentCard({ t, client }: { t: ReturnType<typeof useTheme>["t"];
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // After a successful broker assignment we open the multi-loan
+  // sweep modal so the operator can carry the client's open loans
+  // onto the same agent's pipeline.
+  const [sweepBroker, setSweepBroker] = useState<Broker | null>(null);
   const anchorRef = useRef<HTMLDivElement | null>(null);
 
   const canAssign = user?.role === "super_admin" || user?.role === "loan_exec";
@@ -1068,6 +1073,9 @@ function AssignedAgentCard({ t, client }: { t: ReturnType<typeof useTheme>["t"];
       await update.mutateAsync({ clientId: client.id, broker_id: broker?.id ?? null });
       setOpen(false);
       setQuery("");
+      // Assignment to a real broker — offer to sweep the client's
+      // other open loans onto the same agent. Unassign skips this.
+      if (broker) setSweepBroker(broker);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't update agent.");
     } finally {
@@ -1218,6 +1226,14 @@ function AssignedAgentCard({ t, client }: { t: ReturnType<typeof useTheme>["t"];
           Assigning an agent will also default the mobile experience to <strong>Guided</strong> if it&apos;s
           not explicitly set. The agent will see this client in their pipeline immediately.
         </div>
+      ) : null}
+      {sweepBroker ? (
+        <MultiLoanReassignModal
+          clientId={client.id}
+          newBroker={sweepBroker}
+          brokerName={sweepBroker.display_name}
+          onClose={() => setSweepBroker(null)}
+        />
       ) : null}
     </Card>
   );

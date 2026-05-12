@@ -8,9 +8,10 @@
 import { useEffect, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
-import { useUpdateDealById } from "@/hooks/useApi";
+import { useLoan, useUpdateDealById, useUpdateProperty } from "@/hooks/useApi";
 import { PropertyMap } from "@/components/property/PropertyMap";
-import type { Deal } from "@/lib/types";
+import type { Deal, Loan } from "@/lib/types";
+import type { PropertyType } from "@/lib/enums.generated";
 
 const PROPERTY_TYPES = ["sfr", "duplex", "triplex", "quad", "5_plus", "condo", "townhouse", "manufactured"];
 const LISTING_STATUSES = ["off_market", "coming_soon", "active", "pending", "under_contract", "sold", "withdrawn"];
@@ -31,37 +32,53 @@ interface Draft {
   mls_number: string;
 }
 
-function dealToDraft(deal: Deal): Draft {
+// When the deal has been promoted to a Loan, the Loan row is the
+// canonical source of truth for the shared property fields (address,
+// city, state, property_type, beds, baths, sqft, year_built,
+// listing_status). The agent and the underwriting team edit the
+// SAME row from their respective views. Deal-only fields (zip,
+// list_price, target_price, mls_number) stay on the Deal because
+// the Loan model doesn't carry them.
+function buildDraft(deal: Deal, loan: Loan | null | undefined): Draft {
+  const shared = loan ?? deal;
   return {
-    address: deal.address ?? "",
-    city: deal.city ?? "",
-    state: deal.state ?? "",
+    address: (shared.address ?? deal.address) ?? "",
+    city: (shared.city ?? deal.city) ?? "",
+    state: (shared.state ?? deal.state) ?? "",
     zip: deal.zip ?? "",
-    property_type: deal.property_type ?? "",
-    beds: deal.beds?.toString() ?? "",
-    baths: deal.baths?.toString() ?? "",
-    sqft: deal.sqft?.toString() ?? "",
-    year_built: deal.year_built?.toString() ?? "",
+    property_type: ((shared.property_type as string | null | undefined) ?? deal.property_type) ?? "",
+    beds: (shared.beds ?? deal.beds)?.toString() ?? "",
+    baths: (shared.baths ?? deal.baths)?.toString() ?? "",
+    sqft: (shared.sqft ?? deal.sqft)?.toString() ?? "",
+    year_built: (shared.year_built ?? deal.year_built)?.toString() ?? "",
     list_price: deal.list_price?.toString() ?? "",
     target_price: deal.target_price?.toString() ?? "",
-    listing_status: deal.listing_status ?? "",
+    listing_status: (shared.listing_status ?? deal.listing_status) ?? "",
     mls_number: deal.mls_number ?? "",
   };
 }
 
 export function PropertyTab({ deal }: { deal: Deal }) {
   const { t } = useTheme();
-  const update = useUpdateDealById();
-  const [draft, setDraft] = useState<Draft>(() => dealToDraft(deal));
+  const updateDeal = useUpdateDealById();
+  const updateProperty = useUpdateProperty();
+  // Once the deal has been promoted, the linked Loan row is the
+  // canonical source for the shared property fields. Both the agent
+  // here and the funding team on /loans/[id] write to the same row.
+  const { data: loan } = useLoan(deal.promoted_loan_id);
+  const linkedLoan = loan ?? null;
+
+  const [draft, setDraft] = useState<Draft>(() => buildDraft(deal, linkedLoan));
   const [dirty, setDirty] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
-  // Snap back to server values when the deal data changes underneath
-  // us, but only when there are no unsaved local edits.
+  // Snap back to server values when EITHER the deal or its linked
+  // loan changes underneath us, but only when there are no unsaved
+  // local edits.
   useEffect(() => {
-    if (!dirty) setDraft(dealToDraft(deal));
-  }, [deal, dirty]);
+    if (!dirty) setDraft(buildDraft(deal, linkedLoan));
+  }, [deal, linkedLoan, dirty]);
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((d) => ({ ...d, [key]: value }));
@@ -72,25 +89,53 @@ export function PropertyTab({ deal }: { deal: Deal }) {
   async function save() {
     setErr(null);
     try {
-      await update.mutateAsync({
-        clientId: deal.client_id,
-        dealId: deal.id,
-        body: {
-          address: draft.address || null,
-          city: draft.city || null,
-          state: draft.state || null,
-          zip: draft.zip || null,
-          property_type: draft.property_type || null,
-          beds: draft.beds ? Number(draft.beds) : null,
-          baths: draft.baths ? Number(draft.baths) : null,
-          sqft: draft.sqft ? Number(draft.sqft) : null,
-          year_built: draft.year_built ? Number(draft.year_built) : null,
-          list_price: draft.list_price ? Number(draft.list_price) : null,
-          target_price: draft.target_price ? Number(draft.target_price) : null,
-          listing_status: draft.listing_status || null,
-          mls_number: draft.mls_number || null,
-        },
-      });
+      const sharedPayload = {
+        address: draft.address || null,
+        city: draft.city || null,
+        state: draft.state || null,
+        property_type: (draft.property_type || null) as PropertyType | null,
+        beds: draft.beds ? Number(draft.beds) : null,
+        baths: draft.baths ? Number(draft.baths) : null,
+        sqft: draft.sqft ? Number(draft.sqft) : null,
+        year_built: draft.year_built ? Number(draft.year_built) : null,
+        listing_status: draft.listing_status || null,
+      };
+      const dealOnlyPayload = {
+        zip: draft.zip || null,
+        list_price: draft.list_price ? Number(draft.list_price) : null,
+        target_price: draft.target_price ? Number(draft.target_price) : null,
+        mls_number: draft.mls_number || null,
+      };
+      if (linkedLoan) {
+        // Post-promotion: shared fields go to the Loan (the funding
+        // team's view will reflect the edit on next refetch), Deal-only
+        // listing extras stay on the Deal.
+        //
+        // Strip nulls before the Loan PATCH — the frontend Loan type
+        // is non-nullable on most fields; the backend's PropertyUpdate
+        // schema treats missing fields as "no change" so an empty
+        // string clearing isn't useful here anyway. The Deal mirror
+        // PATCH below keeps the nulls so clearing on the deal works.
+        const loanPatch: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(sharedPayload)) {
+          if (v !== null && v !== "") loanPatch[k] = v;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await updateProperty.mutateAsync({ loanId: linkedLoan.id, ...(loanPatch as any) });
+        await updateDeal.mutateAsync({
+          clientId: deal.client_id,
+          dealId: deal.id,
+          body: { ...sharedPayload, ...dealOnlyPayload },
+        });
+      } else {
+        // Pre-promotion: write everything to the Deal. promote_deal_to_loan
+        // will carry these onto the Loan at handoff time.
+        await updateDeal.mutateAsync({
+          clientId: deal.client_id,
+          dealId: deal.id,
+          body: { ...sharedPayload, ...dealOnlyPayload },
+        });
+      }
       setDirty(false);
       setSavedAt(Date.now());
     } catch (e) {
@@ -99,7 +144,7 @@ export function PropertyTab({ deal }: { deal: Deal }) {
   }
 
   function reset() {
-    setDraft(dealToDraft(deal));
+    setDraft(buildDraft(deal, linkedLoan));
     setDirty(false);
     setSavedAt(null);
   }
@@ -110,6 +155,23 @@ export function PropertyTab({ deal }: { deal: Deal }) {
     <Card pad={18}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
         <SectionLabel>Property</SectionLabel>
+        {linkedLoan ? (
+          <span
+            style={{
+              padding: "2px 8px",
+              borderRadius: 999,
+              background: t.brandSoft,
+              color: t.brand,
+              fontSize: 10.5,
+              fontWeight: 800,
+              letterSpacing: 0.4,
+              textTransform: "uppercase",
+            }}
+            title="Edits sync to the funding workspace on the same loan"
+          >
+            Syncs to {linkedLoan.deal_id}
+          </span>
+        ) : null}
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
           {dirty ? <span style={{ fontSize: 11, color: t.warn, fontWeight: 700 }}>Unsaved changes</span> : null}
           {!dirty && savedAt ? <span style={{ fontSize: 11, color: t.ink3 }}>Saved</span> : null}
@@ -117,8 +179,12 @@ export function PropertyTab({ deal }: { deal: Deal }) {
           {dirty ? (
             <button onClick={reset} style={btnSecondary(t)}>Discard</button>
           ) : null}
-          <button onClick={save} disabled={!dirty || update.isPending} style={btnPrimary(t, !dirty || update.isPending)}>
-            {update.isPending ? "Saving…" : "Save changes"}
+          <button
+            onClick={save}
+            disabled={!dirty || updateDeal.isPending || updateProperty.isPending}
+            style={btnPrimary(t, !dirty || updateDeal.isPending || updateProperty.isPending)}
+          >
+            {updateDeal.isPending || updateProperty.isPending ? "Saving…" : "Save changes"}
           </button>
         </div>
       </div>
