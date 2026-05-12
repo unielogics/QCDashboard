@@ -76,7 +76,7 @@ import type {
   UserRow,
   WorkspaceState,
 } from "@/lib/types";
-import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurpose, PropertyType, Role, DealChatMode, FeedbackOutputType, FeedbackRating } from "@/lib/enums.generated";
+import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurpose, PropertyType, Role, DealChatMode, FeedbackOutputType, FeedbackRating, AmortizationStyle } from "@/lib/enums.generated";
 
 function useDevUser(): string {
   return useActiveProfile().email;
@@ -1169,6 +1169,14 @@ export function useRecalc() {
       rehab_budget?: number | null;
       payoff?: number | null;
       ltv_tier_cap?: number | null;
+      // Underwriter fine-tuning overrides (alembic 0044).
+      amortization_style?: AmortizationStyle | null;
+      origination_pct?: number | null;
+      vacancy_pct?: number | null;
+      expense_ratio_pct?: number | null;
+      reserves_required?: number | null;
+      lender_fees?: number | null;
+      construction_holdback_pct?: number | null;
     }) =>
       apiCall<RecalcResponse>(`/loans/${loanId}/recalc`, {
         method: "POST",
