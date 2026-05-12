@@ -29,6 +29,7 @@ import { ScheduleTab } from "./tabs/ScheduleTab";
 import { TasksTab } from "./tabs/TasksTab";
 import { ActivityTab } from "./tabs/ActivityTab";
 import { FundingTab } from "./tabs/FundingTab";
+import { LoanOverviewTab } from "./tabs/LoanOverviewTab";
 import { DealNotesFloatingButton, DealNotesPanel } from "@/components/DealNotesFloating";
 
 const TAB_ORDER = [
@@ -70,7 +71,11 @@ export default function DealPage() {
     profile.role === Role.SUPER_ADMIN ||
     profile.role === Role.LOAN_EXEC;
   const tabs = isPromoted
-    ? [...TAB_ORDER, { id: "funding", label: "Funding", icon: "file" as const }]
+    ? [
+        ...TAB_ORDER,
+        { id: "loan", label: "Loan Overview", icon: "sliders" as const },
+        { id: "funding", label: "Funding", icon: "file" as const },
+      ]
     : TAB_ORDER;
   const activeTab = tabs.find((x) => x.id === tab)?.id ?? tabs[0].id;
 
@@ -314,6 +319,7 @@ export default function DealPage() {
       {activeTab === "tasks" ? <TasksTab deal={deal} /> : null}
       {activeTab === "schedule" ? <ScheduleTab clientId={deal.client_id} dealId={deal.id} /> : null}
       {activeTab === "activity" ? <ActivityTab clientId={deal.client_id} /> : null}
+      {activeTab === "loan" && loan ? <LoanOverviewTab loan={loan} /> : null}
       {activeTab === "funding" && loan ? <FundingTab loan={loan} clientId={deal.client_id} /> : null}
 
       {/* Floating Notes — bottom-right button + side panel */}
