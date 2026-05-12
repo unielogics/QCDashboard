@@ -192,12 +192,33 @@ export function LeadsPipelineView({ view, search }: Props) {
     }
   }
 
+  // Tiny color legend so the agent knows what the row tints mean.
+  // Hidden when zero rows are in funding state (nothing to explain).
+  const fundingActiveCount = summaries.filter(
+    (s) => s.handoff_status === "promoted" || s.loans_count > 0,
+  ).length;
+  const readyCount = summaries.filter(
+    (s) => s.ready_for_lending_eligible && s.handoff_status !== "promoted",
+  ).length;
+
   const header = (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 10, flexWrap: "wrap" }}>
-      <div style={{ fontSize: 12, color: t.ink3 }}>
-        {visible.length} {visible.length === 1 ? "relationship" : "relationships"}
-        {search ? ` matching "${search}"` : ""}
-        {sideFilter !== "all" ? ` · ${sideFilter}s only` : ""}
+      <div style={{ fontSize: 12, color: t.ink3, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span>
+          {visible.length} {visible.length === 1 ? "relationship" : "relationships"}
+          {search ? ` matching "${search}"` : ""}
+          {sideFilter !== "all" ? ` · ${sideFilter}s only` : ""}
+        </span>
+        {fundingActiveCount > 0 ? (
+          <LegendChip color={t.brand} bg={t.brandSoft}>
+            {fundingActiveCount} in funding
+          </LegendChip>
+        ) : null}
+        {readyCount > 0 ? (
+          <LegendChip color={t.warn} bg={t.warnBg}>
+            {readyCount} ready for funding
+          </LegendChip>
+        ) : null}
       </div>
       <SideFilter
         value={sideFilter}
@@ -248,7 +269,10 @@ export function LeadsPipelineView({ view, search }: Props) {
             <div>Funding File</div>
             <div>Next Agent Move</div>
           </div>
-          {visible.map((client) => (
+          {visible.map((client) => {
+            const summary = summariesByClient.get(client.id);
+            const tint = fundingTint(summary, t);
+            return (
             <button
               key={client.id}
               onClick={() => openFile(client)}
@@ -258,14 +282,13 @@ export function LeadsPipelineView({ view, search }: Props) {
                 gap: 12,
                 padding: "14px 16px",
                 borderBottom: `1px solid ${t.line}`,
+                borderLeft: tint ? `3px solid ${tint.border}` : "3px solid transparent",
                 alignItems: "center",
                 fontSize: 13,
                 color: t.ink,
                 textDecoration: "none",
-                background: "transparent",
-                border: "none",
+                background: tint ? tint.bg : "transparent",
                 borderTop: "none",
-                borderLeft: "none",
                 borderRight: "none",
                 cursor: "pointer",
                 textAlign: "left",
@@ -320,7 +343,8 @@ export function LeadsPipelineView({ view, search }: Props) {
                 <PipelineSignals summary={summariesByClient.get(client.id)} t={t} />
               </div>
             </button>
-          ))}
+            );
+          })}
           {visible.length === 0 && (
             <div style={{ padding: 24, textAlign: "center", fontSize: 13, color: t.ink3 }}>
               {search ? `No relationships match "${search}".` : "No active relationships in the pipeline right now."}
@@ -357,15 +381,19 @@ export function LeadsPipelineView({ view, search }: Props) {
                 <div style={{ fontSize: 12, fontWeight: 800, color: t.ink3 }}>{stageClients.length}</div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {stageClients.map((client) => (
+                {stageClients.map((client) => {
+                  const summary = summariesByClient.get(client.id);
+                  const tint = fundingTint(summary, t);
+                  return (
                   <button
                     key={client.id}
                     onClick={() => openFile(client)}
                     style={{
-                      background: t.surface,
+                      background: tint ? tint.bg : t.surface,
                       padding: 11,
                       borderRadius: 10,
-                      border: `1px solid ${t.line}`,
+                      border: `1px solid ${tint ? tint.border : t.line}`,
+                      borderLeft: tint ? `3px solid ${tint.border}` : `1px solid ${t.line}`,
                       textDecoration: "none",
                       color: t.ink,
                       display: "block",
@@ -405,7 +433,8 @@ export function LeadsPipelineView({ view, search }: Props) {
                     </div>
                     <PipelineSignals summary={summariesByClient.get(client.id)} t={t} compact />
                   </button>
-                ))}
+                  );
+                })}
                 {stageClients.length === 0 && (
                   <div style={{ fontSize: 12, color: t.ink3, padding: "8px 0", textAlign: "center" }}>
                     Empty
@@ -923,5 +952,49 @@ function CreateFileModal({ client, onClose }: { client: EnrichedClient; onClose:
         </div>
       </div>
     </div>
+  );
+}
+
+
+// Color coding — rows already in the funding process get a tinted
+// background + a left stripe so the agent can spot them at a glance.
+//   funding live (handoff_status='promoted' OR loans_count>0) → brand tint
+//   ready-for-lending eligible                                 → warn tint
+//   default (active relationship, no funding)                  → no tint
+function fundingTint(
+  summary: PipelineClientSummary | undefined,
+  t: ReturnType<typeof useTheme>["t"],
+): { bg: string; border: string } | null {
+  if (!summary) return null;
+  if (summary.handoff_status === "promoted" || summary.loans_count > 0) {
+    return { bg: t.brandSoft, border: t.brand };
+  }
+  if (summary.ready_for_lending_eligible) {
+    return { bg: t.warnBg, border: t.warn };
+  }
+  return null;
+}
+
+
+function LegendChip({ children, color, bg }: { children: React.ReactNode; color: string; bg: string }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "1px 8px",
+        borderRadius: 999,
+        background: bg,
+        color,
+        fontSize: 11,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: 0.4,
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: 999, background: color }} />
+      {children}
+    </span>
   );
 }

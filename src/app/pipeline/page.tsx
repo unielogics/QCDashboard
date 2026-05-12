@@ -38,6 +38,11 @@ export default function PipelinePage() {
   const isBroker = profile.role === "broker";
   const isInternal = profile.role === "super_admin" || profile.role === "loan_exec";
   const { data: allDocs = [] } = useDocuments();
+  // Brokers see ONLY the relationships pipeline — funding content
+  // lives inside each deal/file (the Funding tab on /deals/[id]).
+  // Operators (super_admin / loan_exec) still get the segmented
+  // toggle so they can flip between the funding queue and the agent
+  // pipeline view for triage.
   const [mode, setMode] = useState<PipelineMode>(isBroker ? "leads" : "funding");
   const [view, setView] = useState<"table" | "kanban">("table");
   const [sortKey, setSortKey] = useState<SortKey>("amount");
@@ -117,35 +122,37 @@ export default function PipelinePage() {
           {mode === "funding" ? "Underwriting CRM" : "Pipeline"}
         </h1>
 
-        {/* View switcher — segmented button instead of a hidden-looking
-            <select>. Agents kept getting confused that they were "stuck"
-            on Agent Relationships; the segmented control reads as a
-            toggle. Both roles see both segments — operators default to
-            Funding Files, brokers default to Agent Relationships. */}
-        <div style={{
-          display: "inline-flex",
-          background: t.surface,
-          border: `1px solid ${t.line}`,
-          borderRadius: 10,
-          padding: 3,
-          gap: 2,
-          marginLeft: 4,
-        }}>
-          <button
-            type="button"
-            onClick={() => setMode("leads")}
-            style={modeSegBtn(t, mode === "leads")}
-          >
-            <Icon name="user" size={12} stroke={2.2} /> Agent Relationships
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("funding")}
-            style={modeSegBtn(t, mode === "funding")}
-          >
-            <Icon name="file" size={12} stroke={2.2} /> Funding Files
-          </button>
-        </div>
+        {/* Mode toggle is operator-only. Brokers see one unified
+            pipeline (their relationships) — funding-active rows are
+            color-coded so they can spot which clients are already in
+            underwriting, and the file page itself surfaces the loan
+            terms via the Funding tab. */}
+        {isInternal ? (
+          <div style={{
+            display: "inline-flex",
+            background: t.surface,
+            border: `1px solid ${t.line}`,
+            borderRadius: 10,
+            padding: 3,
+            gap: 2,
+            marginLeft: 4,
+          }}>
+            <button
+              type="button"
+              onClick={() => setMode("leads")}
+              style={modeSegBtn(t, mode === "leads")}
+            >
+              <Icon name="user" size={12} stroke={2.2} /> Agent Relationships
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("funding")}
+              style={modeSegBtn(t, mode === "funding")}
+            >
+              <Icon name="file" size={12} stroke={2.2} /> Funding Files
+            </button>
+          </div>
+        ) : null}
 
         {mode === "funding" ? (
           <span style={{ color: t.ink3, fontSize: 14 }}>
