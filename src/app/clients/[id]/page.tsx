@@ -223,12 +223,15 @@ export default function ClientDetailPage() {
 
       <ClientStageCard t={t} client={client} canEdit={canEdit} clientLoans={clientLoans} />
 
-      {/* Active AI Plan (alembic 0032). The plan is rebuilt on every
-          chat turn / doc upload / cadence pass; this card lets the
-          agent override individual items + write per-client custom
-          instructions for the AI. Sits ABOVE the Readiness card —
-          plan trumps the raw missing_facts walk. */}
-      <ClientAIPlanCard clientId={client.id} loanId={null} />
+      {/* Realtor-phase AI Plan card. The Realtor AI Secretary is for
+          nurturing pre-funding leads — once the client has any active
+          loan, the funding workspace at /loans/[id] is the canonical
+          AI surface and this card just shows stale "0% Ready" noise.
+          Hide it when the client has active loans so super-admin /
+          underwriter views stay focused on funding state. */}
+      {clientLoans.some((l) => l.stage !== "funded") ? null : (
+        <ClientAIPlanCard clientId={client.id} loanId={null} />
+      )}
 
       {isAgent && (
         <AgentRelationshipWorkspace
