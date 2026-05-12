@@ -1,7 +1,7 @@
 "use client";
 
-// Single source of truth for the AI status chip. Used in the workspace
-// header, deal/funding cards, and pipeline cards.
+// Single source of truth for the AI status chip. Used by the agent
+// pipeline (LeadsPipelineView) and the /deals/[id] file header.
 
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import type { WorkspaceAiState } from "@/lib/types";

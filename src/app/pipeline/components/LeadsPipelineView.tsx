@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { QC_FMT } from "@/components/design-system/tokens";
-import { useClients, useLoans, usePipelineClientSummary } from "@/hooks/useApi";
+import { useClients, useCreateDeal, useLoans, usePipelineClientSummary, type DealCreateBody } from "@/hooks/useApi";
 import { useActiveProfile } from "@/store/role";
-import type { Client, ClientStage, ClientType, Loan, PipelineClientSummary } from "@/lib/types";
-import { AiStatusBadge } from "@/app/clients/[id]/workspace/components/AiStatusBadge";
+import type { Client, ClientStage, ClientType, DealType, Loan, PipelineClientSummary } from "@/lib/types";
+import { AiStatusBadge } from "@/components/AiStatusBadge";
 
 const RELATIONSHIP_STAGES = [
   "lead",
@@ -178,6 +179,19 @@ export function LeadsPipelineView({ view, search }: Props) {
     return m;
   }, [summaries]);
 
+  // Click → if the client already has a primary deal, route to
+  // /deals/{id}. Otherwise open the create-file modal first.
+  const router = useRouter();
+  const [createFor, setCreateFor] = useState<EnrichedClient | null>(null);
+  function openFile(client: EnrichedClient) {
+    const s = summariesByClient.get(client.id);
+    if (s?.primary_deal_id) {
+      router.push(`/deals/${s.primary_deal_id}`);
+    } else {
+      setCreateFor(client);
+    }
+  }
+
   const header = (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 10, flexWrap: "wrap" }}>
       <div style={{ fontSize: 12, color: t.ink3 }}>
@@ -235,9 +249,9 @@ export function LeadsPipelineView({ view, search }: Props) {
             <div>Next Agent Move</div>
           </div>
           {visible.map((client) => (
-            <Link
+            <button
               key={client.id}
-              href={destForClient(client)}
+              onClick={() => openFile(client)}
               style={{
                 display: "grid",
                 gridTemplateColumns: gridCols,
@@ -248,6 +262,14 @@ export function LeadsPipelineView({ view, search }: Props) {
                 fontSize: 13,
                 color: t.ink,
                 textDecoration: "none",
+                background: "transparent",
+                border: "none",
+                borderTop: "none",
+                borderLeft: "none",
+                borderRight: "none",
+                cursor: "pointer",
+                textAlign: "left",
+                width: "100%",
               }}
             >
               <div style={{ minWidth: 0 }}>
@@ -297,7 +319,7 @@ export function LeadsPipelineView({ view, search }: Props) {
                 {nextMove(client, client._stage)}
                 <PipelineSignals summary={summariesByClient.get(client.id)} t={t} />
               </div>
-            </Link>
+            </button>
           ))}
           {visible.length === 0 && (
             <div style={{ padding: 24, textAlign: "center", fontSize: 13, color: t.ink3 }}>
@@ -305,6 +327,7 @@ export function LeadsPipelineView({ view, search }: Props) {
             </div>
           )}
         </Card>
+        {createFor ? <CreateFileModal client={createFor} onClose={() => setCreateFor(null)} /> : null}
       </>
     );
   }
@@ -335,9 +358,9 @@ export function LeadsPipelineView({ view, search }: Props) {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {stageClients.map((client) => (
-                  <Link
+                  <button
                     key={client.id}
-                    href={destForClient(client)}
+                    onClick={() => openFile(client)}
                     style={{
                       background: t.surface,
                       padding: 11,
@@ -346,6 +369,9 @@ export function LeadsPipelineView({ view, search }: Props) {
                       textDecoration: "none",
                       color: t.ink,
                       display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      cursor: "pointer",
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
@@ -378,7 +404,7 @@ export function LeadsPipelineView({ view, search }: Props) {
                       <span>{client._activeLoanCount > 0 ? QC_FMT.short(client._activeLoanValue) : "agent file"}</span>
                     </div>
                     <PipelineSignals summary={summariesByClient.get(client.id)} t={t} compact />
-                  </Link>
+                  </button>
                 ))}
                 {stageClients.length === 0 && (
                   <div style={{ fontSize: 12, color: t.ink3, padding: "8px 0", textAlign: "center" }}>
@@ -390,6 +416,7 @@ export function LeadsPipelineView({ view, search }: Props) {
           );
         })}
       </div>
+      {createFor ? <CreateFileModal client={createFor} onClose={() => setCreateFor(null)} /> : null}
     </>
   );
 }
@@ -742,6 +769,159 @@ function PipelineSignals({
           Ready for Lending
         </span>
       ) : null}
+    </div>
+  );
+}
+
+
+// Create-file modal — fires when the pipeline row click resolves to
+// a client with no Deal yet. The agent fills in the bare minimum
+// (deal type + title) and we POST /clients/{id}/deals, then route
+// to /deals/{new_deal_id} so they land directly on their file.
+function CreateFileModal({ client, onClose }: { client: EnrichedClient; onClose: () => void }) {
+  const { t } = useTheme();
+  const router = useRouter();
+  const create = useCreateDeal(client.id);
+  const defaultType: DealType =
+    client.client_type === "seller" ? "seller" : "buyer";
+  const defaultTitle =
+    defaultType === "seller"
+      ? `Listing — ${client.name}`
+      : `Buyer search — ${client.name}`;
+  const [body, setBody] = useState<DealCreateBody>({
+    deal_type: defaultType,
+    title: defaultTitle,
+  });
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    if (!body.title.trim()) {
+      setErr("Title is required");
+      return;
+    }
+    setErr(null);
+    try {
+      const created = await create.mutateAsync(body);
+      onClose();
+      router.push(`/deals/${created.id}`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Couldn't create file");
+    }
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.4)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 100,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: t.surface,
+          border: `1px solid ${t.line}`,
+          borderRadius: 10,
+          padding: 20,
+          minWidth: 420,
+          maxWidth: 520,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
+        <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>
+          New file for {client.name}
+        </div>
+        <div style={{ fontSize: 12, color: t.ink3 }}>
+          Each file is a transaction path you're working — buyer search, seller listing,
+          investor purchase. A client can carry multiple files at once.
+        </div>
+        <label style={{ display: "block" }}>
+          <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" }}>
+            Type
+          </span>
+          <select
+            value={body.deal_type}
+            onChange={(e) => setBody({ ...body, deal_type: e.target.value as DealType })}
+            style={{
+              marginTop: 4,
+              width: "100%",
+              padding: 8,
+              fontSize: 13,
+              borderRadius: 6,
+              border: `1px solid ${t.line}`,
+              background: t.surface,
+              color: t.ink,
+            }}
+          >
+            <option value="buyer">Buyer</option>
+            <option value="seller">Seller</option>
+            <option value="investor">Investor</option>
+            <option value="borrower">Borrower</option>
+          </select>
+        </label>
+        <label style={{ display: "block" }}>
+          <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" }}>
+            Title
+          </span>
+          <input
+            value={body.title}
+            onChange={(e) => setBody({ ...body, title: e.target.value })}
+            style={{
+              marginTop: 4,
+              width: "100%",
+              padding: 8,
+              fontSize: 13,
+              borderRadius: 6,
+              border: `1px solid ${t.line}`,
+              background: t.surface,
+              color: t.ink,
+            }}
+          />
+        </label>
+        {err ? <div style={{ fontSize: 12, color: t.danger }}>{err}</div> : null}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "8px 14px",
+              fontSize: 13,
+              fontWeight: 600,
+              borderRadius: 6,
+              border: `1px solid ${t.line}`,
+              background: t.surface,
+              color: t.ink,
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={create.isPending}
+            style={{
+              padding: "8px 14px",
+              fontSize: 13,
+              fontWeight: 700,
+              borderRadius: 6,
+              border: "none",
+              background: t.brand,
+              color: t.inverse,
+              cursor: "pointer",
+              opacity: create.isPending ? 0.6 : 1,
+            }}
+          >
+            {create.isPending ? "Creating…" : "Open file"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -3700,6 +3700,45 @@ export function useClientWorkspace(
 // ── Deals (Phase 3) ─────────────────────────────────────────────────
 
 
+/** GET /deals/{deal_id} — single deal fetch for the /deals/[id] page. */
+export function useDeal(dealId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["deal", dealId, devUser] as const,
+    queryFn: () => apiCall<Deal>(`/deals/${dealId}`),
+    enabled: !!dealId,
+    refetchInterval: 30_000,
+  });
+}
+
+/** PATCH /clients/{clientId}/deals/{dealId} when you know both ids and
+ * just want a simpler call site than useUpdateDeal. Same endpoint. */
+export function useUpdateDealById() {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      clientId,
+      dealId,
+      body,
+    }: {
+      clientId: string;
+      dealId: string;
+      body: DealUpdateBody;
+    }) =>
+      apiCall<Deal>(`/clients/${clientId}/deals/${dealId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["deal", data.id] });
+      queryClient.invalidateQueries({ queryKey: ["client-deals", data.client_id] });
+    },
+  });
+}
+
+
 export function useClientDeals(clientId: string | null | undefined) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
@@ -3743,6 +3782,22 @@ export interface DealUpdateBody {
   ai_status?: "idle" | "active" | "paused";
   assigned_agent_id?: string | null;
   property_id?: string | null;
+  // Property snapshot fields edited on the Property tab.
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  property_type?: string | null;
+  beds?: number | null;
+  baths?: number | null;
+  sqft?: number | null;
+  year_built?: number | null;
+  list_price?: number | null;
+  target_price?: number | null;
+  listing_status?: string | null;
+  mls_number?: string | null;
+  // Private agent notes (Notes tab).
+  notes_text?: string | null;
 }
 
 export function useUpdateDeal(clientId: string, dealId: string) {

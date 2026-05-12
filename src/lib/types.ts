@@ -87,6 +87,13 @@ export interface Loan {
   status_summary?: string | null;
   deal_health?: "on_track" | "at_risk" | "stuck";
   living_profile?: LivingLoanProfile | null;
+  // Funding file fields (alembic 0048). Loan IS the FundingFile in
+  // this product — these are populated by promote_deal_to_loan at
+  // handoff time.
+  source_deal_id?: string | null;
+  baseline_profile_snapshot?: Record<string, unknown> | null;
+  handoff_summary?: string | null;
+  funding_file_kind?: string | null;
 }
 
 // Output of "The Associate" summarizer — see qcbackend/app/services/ai/summarizer.py
@@ -2015,6 +2022,24 @@ export interface Deal {
   promoted_loan_id: string | null;
   assigned_agent_id: string | null;
   living_profile: Record<string, unknown> | null;
+  // Property snapshot (alembic 0052). Cross-syncs to the Loan at
+  // promote_deal_to_loan time. Editable by the agent on the Property
+  // tab of /deals/[id].
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  property_type: string | null;
+  beds: number | null;
+  baths: number | null;
+  sqft: number | null;
+  year_built: number | null;
+  list_price: number | null;
+  target_price: number | null;
+  listing_status: string | null;
+  mls_number: string | null;
+  // Private agent notes — Notes tab on /deals/[id].
+  notes_text: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -2112,4 +2137,8 @@ export interface PipelineClientSummary {
   loans_count: number;
   open_tasks_count: number;
   last_activity_at: string | null;
+  // Primary deal id for routing — null when no deals yet; the
+  // pipeline click opens a "Create file" modal in that case.
+  primary_deal_id: string | null;
+  primary_deal_title: string | null;
 }

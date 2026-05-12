@@ -1,10 +1,10 @@
 "use client";
 
 // Thin wrapper that mounts the existing DealSecretaryPicker (drag-drop
-// AI workbench) inside the unified client workspace. The same picker
-// component lives on /loans/[id]/tabs/DealWorkspaceTab; here it's
-// scoped by client + optional deal/loan so an agent can manage AI
-// follow-up before a loan exists.
+// AI workbench) scoped to a (client, deal?, loan?) tuple. Same picker
+// the funding /loans/[id] page renders, just hitting the client-scoped
+// endpoints so it can drive deal-stage requirements before a loan
+// exists.
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -41,16 +41,16 @@ export function WorkspaceAiWorkbench({ clientId, scope, isOperator }: WorkspaceA
   if (isLoading) {
     return (
       <Card pad={20}>
-        <div style={{ color: t.ink3, fontSize: 13 }}>Loading AI follow-up…</div>
+        <div style={{ color: t.ink3, fontSize: 13 }}>Loading AI Secretary…</div>
       </Card>
     );
   }
   if (error || !view) {
     return (
       <Card pad={20}>
-        <SectionLabel>AI Follow-Up unavailable</SectionLabel>
+        <SectionLabel>AI Secretary unavailable</SectionLabel>
         <div style={{ marginTop: 8, fontSize: 13, color: t.ink3 }}>
-          Couldn&apos;t load the follow-up view for this scope. Try refreshing or selecting a different deal / funding file.
+          Couldn&apos;t load the AI Secretary view. Try refreshing.
         </div>
       </Card>
     );
@@ -83,8 +83,6 @@ export function WorkspaceAiWorkbench({ clientId, scope, isOperator }: WorkspaceA
           })
         }
         onOpenAssignment={(task: DSTaskRow) => {
-          // v1 — the loan workbench's full AssignmentDrawer is the
-          // canonical editor. Link out when a loan is in scope.
           if (scope.loanId) {
             router.push(`/loans/${scope.loanId}?tab=workspace&focus=${task.requirement_key}`);
           }
@@ -109,7 +107,7 @@ export function WorkspaceAiWorkbench({ clientId, scope, isOperator }: WorkspaceA
               gap: 6,
             }}
           >
-            Open Advanced Workbench <Icon name="chevR" size={11} />
+            Open funding workbench <Icon name="chevR" size={11} />
           </Link>
         </div>
       ) : null}
