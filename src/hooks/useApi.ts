@@ -3792,3 +3792,120 @@ export function useMarkDealReadyForLending(clientId: string) {
     },
   });
 }
+
+
+// ── Client-scoped AI Follow-Up (Phase 5) ────────────────────────────
+
+
+export interface ClientAiFollowUpArgs {
+  clientId: string;
+  dealId?: string | null;
+  loanId?: string | null;
+}
+
+function aiFollowUpQs(args: ClientAiFollowUpArgs): string {
+  const q = new URLSearchParams();
+  if (args.dealId) q.set("deal_id", args.dealId);
+  if (args.loanId) q.set("loan_id", args.loanId);
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
+
+export function useClientAiFollowUp(args: ClientAiFollowUpArgs) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qs = aiFollowUpQs(args);
+  return useQuery({
+    queryKey: ["client-ai-follow-up", args.clientId, args.dealId ?? "", args.loanId ?? "", devUser] as const,
+    queryFn: () => apiCall<DSDealSecretaryView>(`/clients/${args.clientId}/ai-follow-up${qs}`),
+    enabled: !!args.clientId,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useAssignClientTask(clientId: string) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      body,
+      dealId,
+      loanId,
+    }: {
+      body: DSAssignRequest;
+      dealId?: string | null;
+      loanId?: string | null;
+    }) => {
+      const q = new URLSearchParams();
+      if (dealId) q.set("deal_id", dealId);
+      if (loanId) q.set("loan_id", loanId);
+      const qs = q.toString();
+      return apiCall<DSTaskRow>(
+        `/clients/${clientId}/ai-follow-up/assign${qs ? `?${qs}` : ""}`,
+        { method: "POST", body: JSON.stringify(body) },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-ai-follow-up", clientId] });
+      queryClient.invalidateQueries({ queryKey: ["client-workspace", clientId] });
+    },
+  });
+}
+
+export function useUnassignClientTask(clientId: string) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      requirementKey,
+      dealId,
+      loanId,
+    }: {
+      requirementKey: string;
+      dealId?: string | null;
+      loanId?: string | null;
+    }) => {
+      const q = new URLSearchParams();
+      if (dealId) q.set("deal_id", dealId);
+      if (loanId) q.set("loan_id", loanId);
+      const qs = q.toString();
+      return apiCall<DSTaskRow>(
+        `/clients/${clientId}/ai-follow-up/unassign${qs ? `?${qs}` : ""}`,
+        { method: "POST", body: JSON.stringify({ requirement_key: requirementKey }) },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-ai-follow-up", clientId] });
+      queryClient.invalidateQueries({ queryKey: ["client-workspace", clientId] });
+    },
+  });
+}
+
+export function useUpdateClientFileSettings(clientId: string) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      body,
+      dealId,
+      loanId,
+    }: {
+      body: Partial<DSFileSettings>;
+      dealId?: string | null;
+      loanId?: string | null;
+    }) => {
+      const q = new URLSearchParams();
+      if (dealId) q.set("deal_id", dealId);
+      if (loanId) q.set("loan_id", loanId);
+      const qs = q.toString();
+      return apiCall<DSFileSettings>(
+        `/clients/${clientId}/ai-follow-up/file-settings${qs ? `?${qs}` : ""}`,
+        { method: "PATCH", body: JSON.stringify(body) },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-ai-follow-up", clientId] });
+      queryClient.invalidateQueries({ queryKey: ["client-workspace", clientId] });
+    },
+  });
+}

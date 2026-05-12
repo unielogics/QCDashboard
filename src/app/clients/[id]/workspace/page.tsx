@@ -235,7 +235,16 @@ export default function ClientWorkspacePage() {
         />
       ) : null}
       {tab === "tasks" ? <TasksPanel /> : null}
-      {tab === "ai-follow-up" && workspace ? <AiFollowUpPanel data={workspace} /> : null}
+      {tab === "ai-follow-up" && workspace ? (
+        <AiFollowUpPanel
+          clientId={id}
+          data={workspace}
+          initialScope={{
+            dealId: queryParams.dealId ?? null,
+            loanId: queryParams.loanId ?? queryParams.fundingFileId ?? null,
+          }}
+        />
+      ) : null}
       {tab === "documents" ? <DocumentsPanel clientId={id} /> : null}
       {tab === "activity" ? <ActivityPanel clientId={id} /> : null}
       {tab === "notes" ? <NotesPanel clientId={id} client={client} /> : null}
