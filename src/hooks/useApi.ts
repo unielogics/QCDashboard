@@ -3754,3 +3754,41 @@ export function useUpdateDeal(clientId: string, dealId: string) {
     },
   });
 }
+
+
+// ── Funding handoff (Phase 4) ───────────────────────────────────────
+
+
+export interface MarkReadyBody {
+  override_loan_type?: string | null;
+  override_purpose?: string | null;
+  notes?: string | null;
+}
+
+export interface MarkReadyResponse {
+  loan_id: string;
+  deal_id: string;
+  handoff_packet_id: string | null;
+  prequal_request_id: string | null;
+  lending_thread_id: string | null;
+  handoff_summary: string | null;
+  missing_lending_items: string[];
+}
+
+export function useMarkDealReadyForLending(clientId: string) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ dealId, body }: { dealId: string; body?: MarkReadyBody }) =>
+      apiCall<MarkReadyResponse>(
+        `/clients/${clientId}/deals/${dealId}/mark-ready-for-lending`,
+        { method: "POST", body: JSON.stringify(body ?? {}) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-deals", clientId] });
+      queryClient.invalidateQueries({ queryKey: ["client-funding-files", clientId] });
+      queryClient.invalidateQueries({ queryKey: ["client-workspace", clientId] });
+      queryClient.invalidateQueries({ queryKey: ["loans"] });
+    },
+  });
+}

@@ -11,8 +11,13 @@ import { useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useCreateDeal, type DealCreateBody } from "@/hooks/useApi";
-import type { Deal, DealType, WorkspaceData } from "@/lib/types";
+import {
+  useCreateDeal,
+  useMarkDealReadyForLending,
+  type DealCreateBody,
+  type MarkReadyResponse,
+} from "@/hooks/useApi";
+import type { Deal, DealType, RolePermissions, WorkspaceData } from "@/lib/types";
 import { AiStatusBadge } from "./AiStatusBadge";
 
 const DEAL_TYPE_LABELS: Record<DealType, string> = {
@@ -92,20 +97,52 @@ export function DealsPanel({ clientId, data }: { clientId: string; data: Workspa
         ) : null}
       </div>
       {data.deals.map((d) => (
-        <DealCard key={d.id} d={d} />
+        <DealCard key={d.id} clientId={clientId} d={d} role={data.role_permissions} />
       ))}
       {createOpen ? <NewDealModal clientId={clientId} onClose={() => setCreateOpen(false)} /> : null}
     </div>
   );
 }
 
-function DealCard({ d }: { d: Deal }) {
+function DealCard({
+  clientId,
+  d,
+  role,
+}: {
+  clientId: string;
+  d: Deal;
+  role: RolePermissions;
+}) {
   const { t } = useTheme();
+  const markReady = useMarkDealReadyForLending(clientId);
+  const [result, setResult] = useState<MarkReadyResponse | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
   const stateMap: Record<string, "deployed" | "paused" | "idle"> = {
     active: "deployed",
     paused: "paused",
     idle: "idle",
   };
+
+  const canPromote =
+    role.can_mark_ready_for_lending &&
+    d.handoff_status !== "promoted" &&
+    d.status !== "promoted" &&
+    !d.promoted_loan_id;
+
+  async function onMarkReady() {
+    if (!confirm(`Promote "${d.title}" to a funding file? The lending team will pick it up.`)) {
+      return;
+    }
+    setErr(null);
+    try {
+      const r = await markReady.mutateAsync({ dealId: d.id });
+      setResult(r);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Couldn't mark ready");
+    }
+  }
+
   return (
     <Card pad={16}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
@@ -113,6 +150,25 @@ function DealCard({ d }: { d: Deal }) {
         <Pill>{d.status}</Pill>
         <span style={{ fontSize: 14, fontWeight: 700, color: t.ink, flex: 1 }}>{d.title}</span>
         <AiStatusBadge state={stateMap[d.ai_status] ?? "idle"} size="sm" />
+        {canPromote ? (
+          <button
+            onClick={onMarkReady}
+            disabled={markReady.isPending}
+            style={{
+              padding: "6px 12px",
+              fontSize: 12,
+              fontWeight: 700,
+              borderRadius: 6,
+              border: "none",
+              background: t.brand,
+              color: t.inverse,
+              cursor: "pointer",
+              opacity: markReady.isPending ? 0.6 : 1,
+            }}
+          >
+            <Icon name="bolt" size={11} /> {markReady.isPending ? "Promoting…" : "Ready for Lending"}
+          </button>
+        ) : null}
       </div>
       {d.summary ? (
         <div style={{ fontSize: 12, color: t.ink3, marginBottom: 8 }}>{d.summary}</div>
@@ -123,6 +179,33 @@ function DealCard({ d }: { d: Deal }) {
         <KPI label="Created" value={new Date(d.created_at).toLocaleDateString()} />
         {d.promoted_loan_id ? <KPI label="Loan" value="Promoted" /> : null}
       </div>
+      {err ? <div style={{ marginTop: 8, fontSize: 12, color: t.danger }}>{err}</div> : null}
+      {result ? (
+        <div
+          style={{
+            marginTop: 10,
+            padding: 12,
+            borderRadius: 6,
+            background: t.surface2,
+            border: `1px solid ${t.brand}`,
+            fontSize: 12,
+            color: t.ink2,
+          }}
+        >
+          <div style={{ fontWeight: 700, color: t.brand, marginBottom: 4 }}>
+            <Icon name="bolt" size={11} /> Funding file created
+          </div>
+          {result.handoff_summary ? (
+            <div style={{ whiteSpace: "pre-wrap" }}>{result.handoff_summary}</div>
+          ) : null}
+          {result.missing_lending_items.length > 0 ? (
+            <div style={{ marginTop: 6 }}>
+              <strong>Still needed:</strong> {result.missing_lending_items.slice(0, 4).join(", ")}
+              {result.missing_lending_items.length > 4 ? "…" : ""}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </Card>
   );
 }
