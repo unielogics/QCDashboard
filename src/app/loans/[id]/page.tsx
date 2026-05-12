@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useDocuments, useLoan, useLoanActivity, useRecalc, useStageTransition } from "@/hooks/useApi";
+import { useClient, useDocuments, useLoan, useLoanActivity, useRecalc, useStageTransition, useUpdateLoan } from "@/hooks/useApi";
 import { FileBlockersPopup } from "@/components/FileBlockersPopup";
 import { getCriteriaItems } from "./fileReadiness";
 import { useDealChannel } from "@/hooks/useDealChannel";
@@ -69,6 +69,10 @@ export default function LoanDetailPage() {
   const profile = useActiveProfile();
   const setAiOpen = useUI((s) => s.setAiOpen);
   const { data: loan } = useLoan(params.id);
+  // Borrower (natural person) FICO + display name come from the client
+  // record. We don't always need it elsewhere on the page, but the
+  // header strip shows it next to the LLC + address.
+  const { data: client } = useClient(loan?.client_id ?? null);
   const { data: docs = [] } = useDocuments(params.id);
   const { data: activity = [], isLoading: activityLoading } = useLoanActivity(params.id);
   const stageMut = useStageTransition();
@@ -83,7 +87,6 @@ export default function LoanDetailPage() {
     initialTabHint ||
     (profile.role === Role.CLIENT ? "overview" : profile.role === Role.BROKER ? "agent" : "file"),
   );
-  const [stageNote, setStageNote] = useState("");
   const [showBlockers, setShowBlockers] = useState(false);
 
   // Trigger recalc whenever loan numerics change so the warnings list
@@ -196,6 +199,43 @@ export default function LoanDetailPage() {
             >
               {loan.address}
             </h1>
+            {/* Borrower meta strip — natural person + LLC + FICO. */}
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: t.ink2, marginBottom: 4 }}>
+              {client?.name || loan.client_name ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <Icon name="user" size={11} stroke={2.2} />
+                  <strong style={{ color: t.ink }}>{client?.name ?? loan.client_name}</strong>
+                </span>
+              ) : null}
+              {loan.entity_name ? (
+                <>
+                  <span style={{ color: t.ink4 }}>·</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 9, fontWeight: 900, color: t.ink3, letterSpacing: 0.5 }}>LLC</span>
+                    <span style={{ color: t.ink }}>{loan.entity_name}</span>
+                  </span>
+                </>
+              ) : null}
+              {(() => {
+                const fico = loan.fico_override ?? client?.fico ?? null;
+                if (fico == null) return null;
+                const tone = fico >= 740 ? t.profit : fico >= 680 ? t.warn : t.danger;
+                const toneBg = fico >= 740 ? t.profitBg : fico >= 680 ? t.warnBg : t.dangerBg;
+                return (
+                  <>
+                    <span style={{ color: t.ink4 }}>·</span>
+                    <span style={{
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                      padding: "2px 7px", borderRadius: 999,
+                      background: toneBg, color: tone,
+                      fontSize: 11, fontWeight: 900,
+                    }}>
+                      FICO {fico}
+                    </span>
+                  </>
+                );
+              })()}
+            </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: t.ink2 }}>
               <span>{loan.city ?? "No city"}</span>
               <span style={{ color: t.ink4 }}>/</span>
@@ -269,166 +309,20 @@ export default function LoanDetailPage() {
           </button>
         </div>
 
-        {/* Visual stage stepper — replaces the thin-bar version that
-            used to live here. Numbered dots, checkmarks for done stages,
-            brand-colored active dot with halo. Same row, same height,
-            but reads as a real pipeline at a glance. */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${FILE_STAGE_KEYS.length}, 1fr)`,
-            borderTop: `1px solid ${t.line}`,
-            padding: "14px 14px 12px",
-            background: t.surface2,
-          }}
-        >
-          {FILE_STAGE_KEYS.map((_stage, i) => {
-            const done = i < stageIndex;
-            const active = i === stageIndex;
-            const dotBg = done ? t.profit : active ? t.brand : t.surface;
-            const dotColor = done || active ? t.inverse : t.ink3;
-            const dotBorder = done ? t.profit : active ? t.brand : t.line;
-            return (
-              <div
-                key={_stage}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  minWidth: 0,
-                  position: "relative",
-                }}
-              >
-                {i > 0 ? (
-                  <div style={{
-                    position: "absolute", top: 14, left: 0, width: "50%",
-                    height: 3, background: done ? t.profit : active ? t.brand : t.line,
-                  }} />
-                ) : null}
-                {i < FILE_STAGE_KEYS.length - 1 ? (
-                  <div style={{
-                    position: "absolute", top: 14, right: 0, width: "50%",
-                    height: 3, background: done ? t.profit : t.line,
-                  }} />
-                ) : null}
-                <div style={{
-                  position: "relative", zIndex: 1,
-                  width: 30, height: 30, borderRadius: 999,
-                  background: dotBg, color: dotColor,
-                  border: `2px solid ${dotBorder}`,
-                  display: "grid", placeItems: "center",
-                  fontSize: 12.5, fontWeight: 900,
-                  boxShadow: active ? `0 0 0 4px ${t.brandSoft}` : "none",
-                }}>
-                  {done ? "✓" : i + 1}
-                </div>
-                <div style={{
-                  marginTop: 6,
-                  fontSize: 10.5,
-                  fontWeight: 900,
-                  color: active ? t.brand : done ? t.ink : t.ink3,
-                  letterSpacing: 0.3,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  maxWidth: "100%",
-                  textAlign: "center",
-                }}>
-                  {FILE_STAGE_LABELS[i]}
-                </div>
-                {active ? (
-                  <div style={{ marginTop: 1, fontSize: 9, fontWeight: 800, color: t.brand, letterSpacing: 0.5, textTransform: "uppercase" }}>
-                    Current
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-
-        {canTransitionStage && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "180px minmax(220px, 1fr) auto",
-              gap: 10,
-              padding: 12,
-              borderTop: `1px solid ${t.line}`,
-              alignItems: "center",
-            }}
-          >
-            <select
-              value=""
-              onChange={(e) => {
-                const next = e.target.value;
-                if (!next) return;
-                stageMut.mutate({
-                  loanId: loan.id,
-                  new_stage: next as typeof LoanStageOptions[number]["value"],
-                  note: stageNote.trim() || null,
-                });
-                setStageNote("");
-              }}
-              disabled={stageMut.isPending}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 8,
-                background: t.surface,
-                border: `1px solid ${t.lineStrong}`,
-                color: t.ink,
-                fontSize: 12,
-                fontFamily: "inherit",
-              }}
-            >
-              <option value="">Move file stage</option>
-              {LoanStageOptions
-                .filter((o) => o.value !== loan.stage)
-                .map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-            <input
-              value={stageNote}
-              onChange={(e) => setStageNote(e.target.value)}
-              placeholder="Stage note before moving"
-              style={{
-                minWidth: 0,
-                padding: "8px 10px",
-                borderRadius: 8,
-                background: t.surface,
-                border: `1px solid ${t.line}`,
-                color: t.ink,
-                fontSize: 12,
-                fontFamily: "inherit",
-                outline: "none",
-              }}
-            />
-            <button
-              onClick={() => setAiOpen(true)}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 8,
-                background: t.petrolSoft,
-                color: t.petrol,
-                fontSize: 12.5,
-                fontWeight: 800,
-                border: `1px solid ${t.petrol}40`,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              <Icon name="sparkles" size={13} /> Co-pilot
-            </button>
-            {stageMut.isError && (
-              <span style={{ gridColumn: "1 / -1", fontSize: 11, color: t.danger, fontWeight: 800 }}>
-                {stageMut.error instanceof Error ? stageMut.error.message : "Failed to move stage"}
-              </span>
-            )}
-            {stageMut.isPending && <span style={{ gridColumn: "1 / -1", fontSize: 11, color: t.ink3, fontWeight: 700 }}>Moving stage...</span>}
-          </div>
-        )}
+        {/* Compact stage strip + auto-status pill + action buttons.
+            Replaces the fat numbered stepper and the manual "Move file
+            stage" dropdown. Stage is now mostly auto-derived from the
+            file's own state — operators only override at the very end
+            (Funded / Did Not Process). */}
+        <CompactStageStripWrapper
+          loan={loan}
+          completion={completion}
+          docs={docs}
+          stageIndex={stageIndex}
+          canEdit={canTransitionStage}
+          stageMut={stageMut}
+          onCopilot={() => setAiOpen(true)}
+        />
       </div>
 
       {/* Tabs */}
@@ -551,4 +445,259 @@ function HeaderStat({ label, value }: { label: string; value: string | number })
       <div style={{ marginTop: 2, fontSize: 13, fontWeight: 900, color: t.ink, fontFeatureSettings: '"tnum"' }}>{value}</div>
     </div>
   );
+}
+
+
+// ── Compact stage strip + auto-status pill + completion actions ───────
+//
+// Replaces the wide 6-dot stepper and the manual "Move file stage"
+// dropdown. The status auto-derives from observable file state:
+//
+//   • Collecting docs   — docs/conditions still outstanding
+//   • Processing        — docs done, no lender yet
+//   • Lender connected  — loan.lender_id present
+//   • Closing / Funded  — stage manually flipped past lender_connected
+//
+// Once a lender is assigned, the strip swaps to two big action buttons:
+// "Mark Funded" + "Did not process" — the only two ways a deal really
+// ends. "Did not process" prompts for a reason before flipping the
+// stage so the audit trail captures why.
+
+import type { Document as DocumentType, Loan as LoanType } from "@/lib/types";
+type StageMutation = ReturnType<typeof useStageTransition>;
+type StageValue = typeof LoanStageOptions[number]["value"];
+
+// Wrapper that owns the updateLoan mutation for the "Did not process"
+// path — separate from CompactStageStrip so the stage hook stays
+// decoupled from the outcome path.
+function CompactStageStripWrapper(props: {
+  loan: LoanType;
+  completion: ReturnType<typeof import("./fileReadiness").getFileCompletion>;
+  docs: DocumentType[];
+  stageIndex: number;
+  canEdit: boolean;
+  stageMut: StageMutation;
+  onCopilot: () => void;
+}) {
+  const updateLoan = useUpdateLoan();
+  return <CompactStageStrip {...props} updateLoan={updateLoan} />;
+}
+
+function CompactStageStrip({
+  loan, completion, docs, stageIndex, canEdit, stageMut, updateLoan, onCopilot,
+}: {
+  loan: LoanType;
+  completion: ReturnType<typeof import("./fileReadiness").getFileCompletion>;
+  docs: DocumentType[];
+  stageIndex: number;
+  canEdit: boolean;
+  stageMut: StageMutation;
+  updateLoan: ReturnType<typeof useUpdateLoan>;
+  onCopilot: () => void;
+}) {
+  const { t } = useTheme();
+  void docs;
+
+  // Auto-derive what the file *is* doing right now. Stage on the loan
+  // is the source of truth for closing/funded; everything before that
+  // is recomputed from observable state so it stays honest even when
+  // the operator hasn't manually pushed the file forward.
+  const autoStatus = deriveAutoStatus(loan, completion);
+
+  // Convenience for the "Did not process" reason prompt.
+  const markFunded = () => {
+    if (!canEdit) return;
+    stageMut.mutate({ loanId: loan.id, new_stage: "funded" as StageValue, note: "Marked funded from header" });
+  };
+  const markDidNotProcess = () => {
+    if (!canEdit) return;
+    const reason = window.prompt("Reason this loan did not process (required for audit):") ?? "";
+    if (!reason.trim()) return;
+    // No dedicated "lost" stage in the canonical pipeline — we capture
+    // the operator's reason in status_summary so the activity log + the
+    // pipeline header both reflect it. Promoting this to a real outcome
+    // column is a follow-up.
+    updateLoan.mutate({ loanId: loan.id, status_summary: `Did not process — ${reason.trim()}` });
+  };
+
+  const tone = autoStatus.tone;
+  const showCompletionActions = !!loan.lender_id && (loan.stage === "lender_connected" || loan.stage === "closing");
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+      padding: "10px 14px",
+      borderTop: `1px solid ${t.line}`,
+      background: t.surface2,
+    }}>
+      {/* Live status pill */}
+      <span style={{
+        display: "inline-flex", alignItems: "center", gap: 7,
+        padding: "5px 11px",
+        borderRadius: 999,
+        background: tone === "ready" ? t.profitBg : tone === "watch" ? t.warnBg : tone === "danger" ? t.dangerBg : tone === "brand" ? t.brandSoft : t.surface,
+        color: tone === "ready" ? t.profit : tone === "watch" ? t.warn : tone === "danger" ? t.danger : tone === "brand" ? t.brand : t.ink2,
+        fontSize: 11.5, fontWeight: 900, letterSpacing: 0.2,
+        whiteSpace: "nowrap",
+      }}>
+        <span style={{
+          width: 7, height: 7, borderRadius: 999,
+          background: tone === "ready" ? t.profit : tone === "watch" ? t.warn : tone === "danger" ? t.danger : tone === "brand" ? t.brand : t.ink2,
+          animation: autoStatus.pulse ? "qcPulse 1.6s ease-in-out infinite" : undefined,
+        }} />
+        {autoStatus.label}
+      </span>
+      <span style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.3, minWidth: 0, flex: 1 }}>
+        {autoStatus.hint}
+      </span>
+
+      {/* Mini stage strip — 6 tiny dots, current one labeled. */}
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+        {FILE_STAGE_KEYS.map((s, i) => {
+          const done = i < stageIndex;
+          const active = i === stageIndex;
+          const color = done ? t.profit : active ? t.brand : t.line;
+          return (
+            <div key={s} title={FILE_STAGE_LABELS[i]} style={{
+              display: "inline-flex", alignItems: "center", gap: 4,
+            }}>
+              <span style={{
+                width: active ? 9 : 7, height: active ? 9 : 7,
+                borderRadius: 999, background: color,
+                boxShadow: active ? `0 0 0 3px ${t.brandSoft}` : "none",
+              }} />
+              {i < FILE_STAGE_KEYS.length - 1 ? (
+                <span style={{ width: 14, height: 2, background: done ? t.profit : t.line, borderRadius: 999 }} />
+              ) : null}
+            </div>
+          );
+        })}
+        <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 900, color: t.ink, letterSpacing: 0.3 }}>
+          {FILE_STAGE_LABELS[stageIndex]}
+        </span>
+      </div>
+
+      <div style={{ flex: "0 0 auto", display: "inline-flex", gap: 6 }}>
+        {showCompletionActions && canEdit ? (
+          <>
+            <button
+              onClick={markDidNotProcess}
+              disabled={stageMut.isPending}
+              style={{
+                padding: "7px 12px", borderRadius: 9,
+                background: t.surface, color: t.ink2,
+                border: `1px solid ${t.lineStrong}`,
+                fontSize: 12, fontWeight: 850,
+                cursor: stageMut.isPending ? "wait" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              Did not process
+            </button>
+            <button
+              onClick={markFunded}
+              disabled={stageMut.isPending}
+              style={{
+                padding: "7px 12px", borderRadius: 9,
+                background: t.profit, color: t.inverse,
+                border: "none",
+                fontSize: 12, fontWeight: 900,
+                cursor: stageMut.isPending ? "wait" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              <Icon name="check" size={12} /> Mark Funded
+            </button>
+          </>
+        ) : null}
+        <button
+          onClick={onCopilot}
+          style={{
+            padding: "7px 12px", borderRadius: 9,
+            background: t.petrolSoft, color: t.petrol,
+            border: `1px solid ${t.petrol}40`,
+            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5,
+            fontSize: 12, fontWeight: 800,
+            cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+          }}
+        >
+          <Icon name="sparkles" size={12} /> Co-pilot
+        </button>
+      </div>
+
+      {stageMut.isError ? (
+        <span style={{ width: "100%", fontSize: 11, color: t.danger, fontWeight: 800 }}>
+          {stageMut.error instanceof Error ? stageMut.error.message : "Failed to update stage"}
+        </span>
+      ) : null}
+
+      <style jsx>{`
+        @keyframes qcPulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.35); opacity: 0.55; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+
+function deriveAutoStatus(
+  loan: LoanType,
+  completion: ReturnType<typeof import("./fileReadiness").getFileCompletion>,
+): { label: string; hint: string; tone: "ready" | "watch" | "danger" | "brand" | "muted"; pulse: boolean } {
+  // Terminal states first — operator-set, take precedence.
+  if (loan.stage === "funded") {
+    return { label: "Funded", hint: "Loan funded — celebration noises.", tone: "ready", pulse: false };
+  }
+  // Did-not-process is captured via status_summary (no dedicated stage
+  // in the canonical pipeline). If the operator wrote that summary we
+  // surface it as terminal here.
+  if (loan.status_summary?.startsWith("Did not process")) {
+    return { label: "Did not process", hint: loan.status_summary, tone: "muted", pulse: false };
+  }
+  if (loan.stage === "closing") {
+    return { label: "Closing", hint: "Lender connected — wire + closing docs in flight.", tone: "brand", pulse: true };
+  }
+
+  // Lender phase — strongest signal is the lender_id on the loan.
+  if (loan.lender_id) {
+    return {
+      label: "Lender connected",
+      hint: "Lender has the file. Ready to mark Funded or report did-not-process.",
+      tone: "brand",
+      pulse: true,
+    };
+  }
+
+  // Doc + criteria readiness — the trigger that moves us out of
+  // collection. completion.docs gives total/verified counts; criteria
+  // gives ready/total. Both must be at full coverage to count as
+  // "ready for lender."
+  const docsReady = completion.docs.total > 0
+    && completion.docs.verified >= completion.docs.total;
+  const criteriaReady = completion.criteria.total > 0
+    && completion.criteria.ready >= completion.criteria.total;
+
+  if (docsReady && criteriaReady) {
+    return {
+      label: "Processing",
+      hint: "Docs + criteria complete. Pick a lender on the Lender tab to advance.",
+      tone: "watch",
+      pulse: true,
+    };
+  }
+
+  // Default — we're still collecting.
+  const remainingDocs = Math.max(0, (completion.docs.total || 0) - completion.docs.verified);
+  const remainingCrit = Math.max(0, (completion.criteria.total || 0) - completion.criteria.ready);
+  const parts: string[] = [];
+  if (remainingCrit) parts.push(`${remainingCrit} criteria`);
+  if (remainingDocs) parts.push(`${remainingDocs} docs`);
+  return {
+    label: "Collecting docs",
+    hint: parts.length ? `Waiting on ${parts.join(" + ")}. Status flips to Processing when both reach zero.` : "Waiting on borrower uploads.",
+    tone: "watch",
+    pulse: true,
+  };
 }

@@ -71,6 +71,8 @@ export interface Loan {
   lender_fees?: number | null;
   fico_override?: number | null;
   entity_type?: EntityType | null;
+  // Borrowing entity display name (alembic 0045) — e.g. "Smith Properties LLC".
+  entity_name?: string | null;
   experience_tier?: ExperienceTier | null;
   construction_holdback_pct?: number | null;
   draw_count?: number | null;
