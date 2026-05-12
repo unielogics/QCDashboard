@@ -396,8 +396,9 @@ const STAGE_RANK: Record<string, number> = {
   funded: 5,
 };
 function destForClient(client: EnrichedClient): string {
+  const base = `/clients/${client.id}/workspace`;
   const loans = client._activeLoans ?? [];
-  if (loans.length === 0) return `/clients/${client.id}/workspace`;
+  if (loans.length === 0) return `${base}?tab=deals`;
   const best = [...loans].sort((a, b) => {
     const ra = STAGE_RANK[String(a.stage)] ?? 0;
     const rb = STAGE_RANK[String(b.stage)] ?? 0;
@@ -406,7 +407,7 @@ function destForClient(client: EnrichedClient): string {
     const cb = b.close_date ? new Date(b.close_date).getTime() : 0;
     return cb - ca;
   })[0];
-  return `/loans/${best.id}`;
+  return `${base}?tab=funding&fundingFileId=${best.id}&loanId=${best.id}`;
 }
 
 
