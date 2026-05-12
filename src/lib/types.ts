@@ -222,6 +222,13 @@ export interface Document {
   received_on: string | null;
   verified_at: string | null;
   verified_by: string | null;
+  // AI scan + checklist linkage (alembic 0017).
+  checklist_key?: string | null;
+  is_other?: boolean;
+  ai_notes?: string | null;
+  ai_scan_status?: "unscanned" | "queued" | "scanning" | "verified" | "flagged" | "failed" | string;
+  ai_scan_confidence?: number | null;
+  due_date?: string | null;
 }
 
 export interface Message {

@@ -9,6 +9,7 @@ import { DocRequestModal } from "@/app/documents/components/DocRequestModal";
 import { DocUploadButton } from "@/app/documents/components/DocUploadButton";
 import { useDocuments, useMarkDocumentVerified } from "@/hooks/useApi";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
+import { UploadOnBehalfModal } from "../components/UploadOnBehalfModal";
 import type { Document, Loan } from "@/lib/types";
 
 export function DocsTab({ loan, canRequest }: { loan: Loan; canRequest: boolean }) {
@@ -18,6 +19,7 @@ export function DocsTab({ loan, canRequest }: { loan: Loan; canRequest: boolean 
   const { data: docs = [] } = useDocuments(loan.id);
   const markVerified = useMarkDocumentVerified();
   const [requestOpen, setRequestOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   // Tracks the doc_id whose upload picker should auto-open on mount,
   // sourced from `?upload=<doc_id>` (the chat's upload_document CTA
   // deep-links here).
@@ -50,9 +52,7 @@ export function DocsTab({ loan, canRequest }: { loan: Loan; canRequest: boolean 
   };
 
   // Compute the right-click menu items per row. "Mark complete" only
-  // appears when the doc isn't already verified. (Skipped rows can
-  // also be marked verified — operator may have skipped early and the
-  // doc came in later via email.)
+  // appears when the doc isn't already verified.
   const menuItems = (doc: Document): ContextMenuItem[] => {
     const alreadyVerified = doc.status === "verified";
     return [
@@ -78,14 +78,20 @@ export function DocsTab({ loan, canRequest }: { loan: Loan; canRequest: boolean 
         </div>
         {canRequest ? (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            {/* Operator upload-on-behalf — creates a fresh doc row from
-                the uploaded file. Separate from per-row Upload buttons
-                which fulfill a specific requested slot. */}
-            <DocUploadButton
-              loanId={loan.id}
-              label="Upload on behalf"
-              compact
-            />
+            <button
+              onClick={() => setUploadOpen(true)}
+              style={{
+                padding: "8px 12px", borderRadius: 9,
+                background: t.surface, color: t.ink,
+                fontSize: 13, fontWeight: 700,
+                border: `1px solid ${t.lineStrong}`,
+                display: "inline-flex", alignItems: "center", gap: 6,
+                cursor: "pointer", fontFamily: "inherit",
+              }}
+            >
+              <Icon name="download" size={13} style={{ transform: "rotate(180deg)" }} />
+              Upload on behalf
+            </button>
             <button
               onClick={() => setRequestOpen(true)}
               style={{
@@ -99,6 +105,22 @@ export function DocsTab({ loan, canRequest }: { loan: Loan; canRequest: boolean 
           </div>
         ) : null}
       </div>
+
+      {canRequest ? (
+        <div style={{
+          padding: "8px 16px",
+          background: t.surface2,
+          borderBottom: `1px solid ${t.line}`,
+          fontSize: 11.5, color: t.ink3, fontWeight: 700,
+          display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <Icon name="ai" size={12} stroke={2.2} />
+          <span>
+            AI scans every upload — operator or client. Right-click a row to mark complete, override, or open details.
+          </span>
+        </div>
+      ) : null}
+
       <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 16 }}>
         {docs.length === 0 && <div style={{ fontSize: 13, color: t.ink3 }}>No documents on file yet.</div>}
         {docs.map((d) => {
@@ -126,6 +148,7 @@ export function DocsTab({ loan, canRequest }: { loan: Loan; canRequest: boolean 
                   {d.received_on && ` · received ${new Date(d.received_on).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
                 </div>
               </div>
+              <AIScanBadge status={d.ai_scan_status} t={t} />
               <Pill bg={
                 d.status === "verified" ? t.profitBg : d.status === "received" ? t.brandSoft : d.status === "flagged" ? t.dangerBg : t.warnBg
               } color={
@@ -168,10 +191,55 @@ export function DocsTab({ loan, canRequest }: { loan: Loan; canRequest: boolean 
         })}
       </div>
       <DocRequestModal open={requestOpen} onClose={() => setRequestOpen(false)} defaultLoanId={loan.id} />
+      <UploadOnBehalfModal
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        loanId={loan.id}
+        docs={docs}
+      />
       <ContextMenu state={ctxMenu.state} onClose={ctxMenu.close} items={menuItems} />
     </Card>
   );
 }
+
+
+function AIScanBadge({ status, t }: { status?: string | null; t: ReturnType<typeof useTheme>["t"] }) {
+  if (!status || status === "unscanned") return null;
+  let label = "";
+  let fg = t.ink3;
+  let bg = t.surface2;
+  if (status === "queued" || status === "scanning") {
+    label = "AI scanning";
+    fg = t.brand;
+    bg = t.brandSoft;
+  } else if (status === "verified") {
+    label = "AI ✓";
+    fg = t.profit;
+    bg = t.profitBg;
+  } else if (status === "flagged") {
+    label = "AI ⚠ flagged";
+    fg = t.danger;
+    bg = t.dangerBg;
+  } else if (status === "failed") {
+    label = "AI scan failed";
+    fg = t.warn;
+    bg = t.warnBg;
+  } else {
+    return null;
+  }
+  return (
+    <span style={{
+      fontSize: 9.5, fontWeight: 900,
+      padding: "2px 7px", borderRadius: 4,
+      background: bg, color: fg,
+      whiteSpace: "nowrap",
+      letterSpacing: 0.3, textTransform: "uppercase",
+    }}>
+      {label}
+    </span>
+  );
+}
+
 
 function Counter({ t, label, count, color }: { t: ReturnType<typeof useTheme>["t"]; label: string; count: number; color: string }) {
   return (

@@ -138,7 +138,12 @@ export default function LoanDetailPage() {
   const warnings = recalc.data?.warnings ?? [];
   const totalBlockers = warnings.length + missingCriteria.length + flaggedDocs.length;
   const canTransitionStage = isInternal;
-  const canRequestDoc = isInternal;
+  // Docs + workflow edits are open to BROKER too — agents need to
+  // request docs, mark complete, and upload-on-behalf on their own
+  // files. The backend's per-document endpoints (PATCH /documents/{id},
+  // POST /mark-verified, upload-init) already enforce loan-scope via
+  // _scope_loan, so brokers can only touch their own deals.
+  const canRequestDoc = isInternal || isAgent;
   const docsReceived = completion.docs.received;
   const openLoanArea = (nextTab: string, targetId?: string) => {
     setTab(nextTab);
