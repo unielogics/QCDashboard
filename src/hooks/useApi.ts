@@ -3207,22 +3207,28 @@ export function useDeleteFundingCadenceRule() {
   });
 }
 
-// Verification / Escalation / Communication rules — JSONB blobs
-export function useFundingMetaRules(kind: "verification" | "escalation" | "communication") {
+// Verification / Escalation / Communication / Follow-up rules — JSONB blobs.
+// Backend route names use kebab-case ("/follow-up-rules"); we translate
+// the underscore kind to the hyphenated URL segment here so callers can
+// pass a type-safe Literal.
+type FundingMetaKind = "verification" | "escalation" | "communication" | "follow_up";
+const _kindToSlug = (k: FundingMetaKind) => k.replace(/_/g, "-");
+
+export function useFundingMetaRules(kind: FundingMetaKind) {
   const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["fundingMetaRules", kind],
-    queryFn: () => apiCall<{ playbook_id: string; rules: Record<string, unknown> }>(`/lending-admin/${kind}-rules`),
+    queryFn: () => apiCall<{ playbook_id: string; rules: Record<string, unknown> }>(`/lending-admin/${_kindToSlug(kind)}-rules`),
     retry: aiQueryRetry,
   });
 }
 
-export function usePatchFundingMetaRules(kind: "verification" | "escalation" | "communication") {
+export function usePatchFundingMetaRules(kind: FundingMetaKind) {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (rules: Record<string, unknown>) =>
-      apiCall<{ playbook_id: string; rules: Record<string, unknown> }>(`/lending-admin/${kind}-rules`, {
+      apiCall<{ playbook_id: string; rules: Record<string, unknown> }>(`/lending-admin/${_kindToSlug(kind)}-rules`, {
         method: "PATCH",
         body: JSON.stringify({ rules }),
       }),

@@ -1736,12 +1736,21 @@ export interface DSConsentState {
   voice?: "disabled";
 }
 
+export interface DSFollowUpSettings {
+  stall_threshold_minutes?: number | null;
+  max_attempts_per_day?: number | null;
+  max_days_without_reply?: number | null;
+  quiet_hours_start?: number | null;
+  quiet_hours_end?: number | null;
+}
+
 export interface DSFileSettings {
   outreach_mode: DSOutreachMode;
   complete_file_by?: string | null;
   sms_consent?: DSSmsConsent | null;
   email_opt_out?: DSEmailOptOut | null;
   default_cadence?: DSCadencePolicy | null;
+  follow_up?: DSFollowUpSettings | null;
 }
 
 export interface DSTaskRow {
@@ -1840,6 +1849,7 @@ export interface DSFileSettingsUpdate {
   sms_consent?: DSSmsConsent | null;
   email_opt_out?: DSEmailOptOut | null;
   default_cadence?: DSCadencePolicy | null;
+  follow_up?: DSFollowUpSettings | null;
 }
 
 export interface DSWizardAssignmentIntent {

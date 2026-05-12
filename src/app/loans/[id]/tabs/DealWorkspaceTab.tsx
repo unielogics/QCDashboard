@@ -68,6 +68,7 @@ import { getCriteriaItems } from "../fileReadiness";
 import { LoanChatSlideOut } from "../components/LoanChatSlideOut";
 import { InstructionsModal } from "../components/InstructionsModal";
 import { AIQuestionsPopover } from "../components/AIQuestionsPopover";
+import { FollowUpRhythmModal } from "../components/FollowUpRhythmModal";
 
 export function DealWorkspaceTab({ loanId, onOpenTab }: { loanId: string; onOpenTab?: (tab: string, targetId?: string) => void }) {
   const { t } = useTheme();
@@ -236,7 +237,7 @@ function SecretaryConsole({
   const [rightView, setRightView] = useState<"handoff" | "current">("handoff");
   // Side panel state — Instructions / Loan chat / AI questions affordances
   // now live in the AI Secretary header. Single-modal-at-a-time.
-  const [panel, setPanel] = useState<"chat" | "instructions" | "ai-questions" | null>(null);
+  const [panel, setPanel] = useState<"chat" | "instructions" | "ai-questions" | "follow-up" | null>(null);
   // Handoff table rows (per-loan localStorage).
   const [handoffRows, setHandoffRows] = useState<HandoffRow[]>([]);
   useEffect(() => {
@@ -579,6 +580,12 @@ function SecretaryConsole({
           attention={aiQuestions.length > 0}
           onClick={() => setPanel("ai-questions")}
         />
+        <ActionButton
+          icon="cal"
+          label="Follow-up rhythm"
+          hint={secretary.file_settings.follow_up ? "overridden" : undefined}
+          onClick={() => setPanel("follow-up")}
+        />
         <span style={{ marginLeft: "auto", fontSize: 11, color: t.ink3, fontWeight: 700 }}>
           {workspaceLoading ? "Loading workspace…" : aiQuestions.length ? "AI is waiting on context — open AI questions" : "Drag work between the queue and AI / Human columns"}
         </span>
@@ -783,6 +790,12 @@ function SecretaryConsole({
         onClose={() => setPanel(null)}
         questions={aiQuestions}
         onAnswer={onAnswerAIQuestion}
+      />
+      <FollowUpRhythmModal
+        open={panel === "follow-up"}
+        onClose={() => setPanel(null)}
+        loanId={loan.id}
+        value={secretary.file_settings.follow_up ?? null}
       />
     </Card>
   );
