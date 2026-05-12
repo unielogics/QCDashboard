@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel, VerifiedBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useClient, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
+import { useBrokers, useClient, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { RealtorReadinessCard } from "@/components/RealtorReadinessCard";
 import { ClientAIPlanCard } from "@/components/ClientAIPlanCard";
@@ -19,7 +19,7 @@ import { deriveExperienceMode } from "@/lib/experienceMode";
 import { canEditExperienceMode } from "@/lib/experienceModePermissions";
 import { DocUploadButton } from "@/app/documents/components/DocUploadButton";
 import { SmartIntakeModal } from "@/app/pipeline/components/SmartIntakeModal";
-import type { Client, ClientExperienceMode, ClientExperienceModeLockedBy, ClientExperienceModeReason, ClientStage, Document, Loan } from "@/lib/types";
+import type { Broker, Client, ClientExperienceMode, ClientExperienceModeLockedBy, ClientExperienceModeReason, ClientStage, Document, Loan } from "@/lib/types";
 
 export default function ClientDetailPage() {
   const { t } = useTheme();
@@ -248,6 +248,7 @@ export default function ClientDetailPage() {
         <RealtorReadinessCard profile={client.realtor_profile} />
       )}
 
+      <AssignedAgentCard t={t} client={client} />
       <ExperienceModeCard t={t} client={client} />
 
       {editing && canEdit && (
@@ -1014,6 +1015,211 @@ const REASON_LABEL: Record<ClientExperienceModeReason, string> = {
   user_preference: "Manual selection",
   super_admin_override: "Super Admin override",
 };
+
+// AssignedAgentCard — surfaces the broker assignment alongside the
+// experience-mode controls. Operator-only (super_admin / loan_exec);
+// brokers can already see who owns their own clients implicitly.
+// Backend auto-flips client_experience_mode to "guided" on the
+// NULL→set transition, so assigning an agent here also unsticks the
+// mobile app from self_directed.
+function AssignedAgentCard({ t, client }: { t: ReturnType<typeof useTheme>["t"]; client: Client }) {
+  const { data: user } = useCurrentUser();
+  const { data: brokers = [], isLoading } = useBrokers();
+  const update = useUpdateClient();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+
+  const canAssign = user?.role === "super_admin" || user?.role === "loan_exec";
+  if (!canAssign) return null;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!anchorRef.current) return;
+      if (!anchorRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return brokers;
+    return brokers.filter((b: Broker) => b.display_name.toLowerCase().includes(q));
+  }, [brokers, query]);
+
+  const assigned = !!client.broker_id;
+
+  async function pick(broker: Broker | null) {
+    setError(null);
+    setBusyId(broker?.id ?? "__unassign__");
+    try {
+      await update.mutateAsync({ clientId: client.id, broker_id: broker?.id ?? null });
+      setOpen(false);
+      setQuery("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't update agent.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <Card pad={18}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
+            Real estate agent
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+            <span
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "5px 12px", borderRadius: 999,
+                background: assigned ? t.brandSoft : t.warnBg,
+                color: assigned ? t.brand : t.warn,
+                fontSize: 13, fontWeight: 700,
+              }}
+            >
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: assigned ? t.brand : t.warn }} />
+              {assigned ? client.broker_name ?? "Assigned" : "Unassigned"}
+            </span>
+            <span style={{ fontSize: 11, color: t.ink3 }}>
+              {assigned
+                ? "Owns the relationship + receives all agent-pipeline notifications."
+                : "No broker on file — assign an agent so this client appears in their pipeline."}
+            </span>
+          </div>
+        </div>
+
+        <div ref={anchorRef} style={{ position: "relative" }}>
+          <button onClick={() => setOpen((v) => !v)} style={qcBtn(t)} disabled={busyId !== null}>
+            <Icon name="user" size={12} /> {assigned ? "Reassign agent" : "Assign agent"}
+          </button>
+          {open ? (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "absolute",
+                top: "calc(100% + 4px)",
+                right: 0,
+                zIndex: 50,
+                width: 280,
+                background: t.surface,
+                border: `1px solid ${t.line}`,
+                borderRadius: 8,
+                boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ padding: "8px 8px 6px", borderBottom: `1px solid ${t.line}` }}>
+                <input
+                  autoFocus
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search agents…"
+                  style={{
+                    width: "100%",
+                    padding: "6px 8px",
+                    fontSize: 12,
+                    borderRadius: 6,
+                    border: `1px solid ${t.line}`,
+                    background: t.surface,
+                    color: t.ink,
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+              <div style={{ maxHeight: 240, overflowY: "auto" }}>
+                {isLoading ? (
+                  <div style={{ padding: 12, fontSize: 12, color: t.ink3 }}>Loading agents…</div>
+                ) : filtered.length === 0 ? (
+                  <div style={{ padding: 12, fontSize: 12, color: t.ink3 }}>No matches.</div>
+                ) : (
+                  filtered.map((b: Broker) => {
+                    const isCurrent = b.id === client.broker_id;
+                    return (
+                      <button
+                        key={b.id}
+                        onClick={() => pick(b)}
+                        disabled={isCurrent || busyId !== null}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "8px 10px",
+                          width: "100%",
+                          border: "none",
+                          background: isCurrent ? t.brandSoft : "transparent",
+                          cursor: isCurrent ? "default" : "pointer",
+                          textAlign: "left",
+                          fontSize: 13,
+                          color: isCurrent ? t.brand : t.ink,
+                          fontFamily: "inherit",
+                          borderBottom: `1px solid ${t.line}`,
+                        }}
+                      >
+                        <Icon name="user" size={11} />
+                        <span style={{ flex: 1, fontWeight: isCurrent ? 800 : 600 }}>{b.display_name}</span>
+                        {isCurrent ? (
+                          <span style={{ fontSize: 10, fontWeight: 800, color: t.brand, letterSpacing: 0.5, textTransform: "uppercase" }}>
+                            Current
+                          </span>
+                        ) : busyId === b.id ? (
+                          <span style={{ fontSize: 10.5, color: t.ink3 }}>Saving…</span>
+                        ) : null}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+              {assigned ? (
+                <button
+                  onClick={() => pick(null)}
+                  disabled={busyId !== null}
+                  style={{
+                    padding: "8px 10px",
+                    border: "none",
+                    borderTop: `1px solid ${t.line}`,
+                    background: t.surface2,
+                    color: t.danger,
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    textAlign: "left",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {busyId === "__unassign__" ? "Unassigning…" : "Unassign agent"}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      {error ? (
+        <div style={{ marginTop: 10, fontSize: 12, color: t.danger, fontWeight: 700 }}>{error}</div>
+      ) : null}
+      {!assigned ? (
+        <div style={{ marginTop: 10, fontSize: 11.5, color: t.ink3, lineHeight: 1.5 }}>
+          Assigning an agent will also default the mobile experience to <strong>Guided</strong> if it&apos;s
+          not explicitly set. The agent will see this client in their pipeline immediately.
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
 
 function ExperienceModeCard({ t, client }: { t: ReturnType<typeof useTheme>["t"]; client: Client }) {
   const { data: user } = useCurrentUser();
