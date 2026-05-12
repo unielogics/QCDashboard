@@ -75,6 +75,7 @@ import type {
   HeadshotUploadInitResponse,
   UserRow,
   WorkspaceState,
+  WorkspaceData,
 } from "@/lib/types";
 import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurpose, PropertyType, Role, DealChatMode, FeedbackOutputType, FeedbackRating, AmortizationStyle } from "@/lib/enums.generated";
 
@@ -3645,5 +3646,43 @@ export function useBufferWizardIntent() {
         `/clients/${clientId}/deal-secretary/wizard-intent`,
         { method: "POST", body: JSON.stringify(body) },
       ),
+  });
+}
+
+
+// ── Unified Client Workspace v2 (Phase 2+) ──────────────────────────
+
+
+export interface ClientWorkspaceParams {
+  tab?: string;
+  dealId?: string;
+  fundingFileId?: string;
+  loanId?: string;
+}
+
+function buildWorkspaceQs(params?: ClientWorkspaceParams): string {
+  if (!params) return "";
+  const q = new URLSearchParams();
+  if (params.tab) q.set("tab", params.tab);
+  if (params.dealId) q.set("deal_id", params.dealId);
+  if (params.fundingFileId) q.set("funding_file_id", params.fundingFileId);
+  if (params.loanId) q.set("loan_id", params.loanId);
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
+
+export function useClientWorkspace(
+  clientId: string | null | undefined,
+  params?: ClientWorkspaceParams,
+) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qs = buildWorkspaceQs(params);
+  return useQuery({
+    queryKey: ["client-workspace", clientId, qs, devUser] as const,
+    queryFn: () => apiCall<WorkspaceData>(`/clients/${clientId}/workspace${qs}`),
+    enabled: !!clientId,
+    refetchInterval: 30_000,
+    staleTime: 5_000,
   });
 }

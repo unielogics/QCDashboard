@@ -1810,7 +1810,10 @@ export interface DSTaskRow {
 export type DSTimelineState = "next_up" | "in_progress" | "upcoming" | "done" | "waived";
 
 export interface DSDealSecretaryView {
-  loan_id: string;
+  // Nullable when the view is scoped to a client or deal rather than a
+  // specific loan (Phase 5 — same picker mounts inside the unified
+  // /clients/[id]/workspace AI Follow-Up panel).
+  loan_id: string | null;
   client_id: string;
   left: DSTaskRow[];
   right: DSTaskRow[];
@@ -1919,3 +1922,192 @@ export const DS_OUTREACH_MODE_LABELS: Record<DSOutreachMode, { title: string; su
   portal_email:     { title: "Portal + Email",   sub: "Email also auto-sends" },
   portal_email_sms: { title: "Portal + Email + SMS", sub: "SMS only with consent" },
 };
+
+
+// ── Unified Client Workspace (Phase 2+) ─────────────────────────────
+
+
+export type WorkspaceAiState = "deployed" | "paused" | "draft_first" | "human_only" | "idle";
+
+export type WorkspaceTabId =
+  | "overview"
+  | "deals"
+  | "funding"
+  | "tasks"
+  | "ai-follow-up"
+  | "documents"
+  | "activity"
+  | "notes"
+  | "properties";
+
+export interface RolePermissions {
+  can_mark_ready_for_lending: boolean;
+  can_edit_underwriting: boolean;
+  can_create_deals: boolean;
+  can_create_funding_files: boolean;
+  can_assign_ai: boolean;
+  can_edit_client_fields: boolean;
+  can_view_funding_tab: boolean;
+}
+
+export interface WorkspaceAISummary {
+  state: WorkspaceAiState;
+  outstanding_followups: number;
+  current_blocker: string | null;
+  next_follow_up_at: string | null;
+  next_best_question: string | null;
+  readiness_score: number | null;
+}
+
+export interface WorkspaceDocumentsSummary {
+  total: number;
+  missing: number;
+  pending_review: number;
+}
+
+export interface WorkspaceActivityRow {
+  at: string;
+  kind: string;
+  summary: string;
+  actor: string | null;
+}
+
+export interface WorkspaceNoteRow {
+  id: string;
+  author: string;
+  at: string;
+  body: string;
+}
+
+export interface WorkspaceSelectedContext {
+  tab: string | null;
+  deal_id: string | null;
+  funding_file_id: string | null;
+  loan_id: string | null;
+  recommended_tab: string | null;
+}
+
+export interface WorkspaceTabCounts {
+  deals: number | null;
+  funding: number | null;
+  tasks: number | null;
+  ai_follow_up: number | null;
+  documents: number | null;
+}
+
+export type DealType = "buyer" | "seller" | "investor" | "borrower";
+export type DealSide = "buyer" | "seller";
+export type DealStatus = "open" | "active" | "paused" | "won" | "lost" | "promoted";
+export type DealHandoffStatus = "none" | "requested" | "packet_built" | "promoted";
+export type DealAiStatus = "idle" | "active" | "paused";
+
+export interface Deal {
+  id: string;
+  client_id: string;
+  deal_type: DealType;
+  side: DealSide;
+  status: DealStatus;
+  handoff_status: DealHandoffStatus;
+  ai_status: DealAiStatus;
+  title: string;
+  property_id: string | null;
+  promoted_loan_id: string | null;
+  assigned_agent_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// FundingFile is rendered from existing Loan rows (Loan IS the
+// FundingFile — see Phase 4 plan). The summary shape returned by
+// GET /clients/{id}/workspace.
+export interface FundingFileSummary {
+  id: string;
+  deal_id: string;
+  client_id: string;
+  side: string | null;
+  stage: string;
+  address: string | null;
+  amount: number | null;
+  funding_file_kind: string | null;
+  source_deal_id: string | null;
+  handoff_summary: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceData {
+  client: Client;
+  deals: Deal[];
+  funding_files: FundingFileSummary[];
+  documents_summary: WorkspaceDocumentsSummary;
+  ai_summary: WorkspaceAISummary;
+  activity_tail: WorkspaceActivityRow[];
+  notes: WorkspaceNoteRow[];
+  role_permissions: RolePermissions;
+  selected_context: WorkspaceSelectedContext;
+  tab_counts: WorkspaceTabCounts;
+}
+
+// AgentTask (Phase 7). Defined now so workspace components can
+// reference it without churn when Phase 7 lands.
+export type AgentTaskCategory =
+  | "buyer_workflow"
+  | "seller_workflow"
+  | "funding_prep"
+  | "showing"
+  | "open_house"
+  | "listing_prep"
+  | "cma"
+  | "photography"
+  | "document_collection"
+  | "other";
+
+export type AgentTaskVisibility =
+  | "agent_private"
+  | "team_visible"
+  | "funding_visible"
+  | "client_visible";
+
+export type AgentTaskOwnerType = "human" | "ai" | "shared" | "funding_locked";
+
+export type AgentTaskStatus = "open" | "in_progress" | "waiting" | "done" | "cancelled";
+
+export interface AgentTask {
+  id: string;
+  client_id: string;
+  deal_id: string | null;
+  loan_id: string | null;
+  title: string;
+  description: string | null;
+  category: AgentTaskCategory;
+  visibility: AgentTaskVisibility;
+  owner_type: AgentTaskOwnerType;
+  assigned_user_id: string | null;
+  ai_assignment_id: string | null;
+  due_at: string | null;
+  reminder_at: string | null;
+  status: AgentTaskStatus;
+  priority: "low" | "medium" | "high";
+  notes: string | null;
+  created_by: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Pipeline batch summary (Phase 6) — returned by GET /pipeline/client-summary.
+export interface PipelineClientSummary {
+  client_id: string;
+  ai_state: WorkspaceAiState;
+  current_blocker: string | null;
+  next_follow_up_at: string | null;
+  human_needed: boolean;
+  missing_items_count: number;
+  handoff_status: DealHandoffStatus;
+  funding_status: string | null;
+  ready_for_lending_eligible: boolean;
+  deals_count: number;
+  loans_count: number;
+  open_tasks_count: number;
+  last_activity_at: string | null;
+}
