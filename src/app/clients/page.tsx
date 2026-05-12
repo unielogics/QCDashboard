@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SortableTableHead, TableRow, useSort } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useClients, useCurrentUser, useLoans } from "@/hooks/useApi";
+import { useBrokers, useClients, useCurrentUser, useLoans, useUpdateClient } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
-import type { Client, ClientStage } from "@/lib/types";
+import type { Broker, Client, ClientStage } from "@/lib/types";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { SmartIntakeModal } from "@/app/pipeline/components/SmartIntakeModal";
 
@@ -34,7 +34,22 @@ const STAGE_LABEL: Record<ClientStage, string> = {
   lost: "Lost",
 };
 
-const COLS = [
+// Internal users (super_admin / loan_exec) see an Agent column they can
+// click to assign or reassign the broker on each client. Brokers don't
+// see this column — they only own their own clients and don't need to
+// reassign anything.
+const INTERNAL_COLS = [
+  { label: "Client",   w: "minmax(0, 2fr)", key: "name" },
+  { label: "Stage",    w: "130px",          key: "_stage" },
+  { label: "Type",     w: "90px",           key: "_type" },
+  { label: "Agent",    w: "160px",          key: "broker_name" },
+  { label: "FICO",     w: "70px",  align: "right" as const, key: "fico" },
+  { label: "Loans",    w: "60px",  align: "right" as const, key: "active_loans" },
+  { label: "Exposure", w: "100px", align: "right" as const, key: "exposure" },
+  { label: "City",     w: "120px",          key: "city" },
+  { label: "Since",    w: "80px",           key: "since" },
+];
+const BROKER_COLS = [
   { label: "Client",   w: "minmax(0, 2fr)", key: "name" },
   { label: "Stage",    w: "130px",          key: "_stage" },
   { label: "Type",     w: "90px",           key: "_type" },
@@ -65,6 +80,10 @@ export default function ClientsPage() {
   const [intakeOpen, setIntakeOpen] = useState(false);
 
   const canCreate = user?.role !== Role.CLIENT;
+  // Only super_admin / loan_exec see the Agent column + assign picker.
+  // Brokers operate within their own scope; clients are read-only.
+  const isInternal = user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC;
+  const COLS = isInternal ? INTERNAL_COLS : BROKER_COLS;
 
   // Compute exposure + active loans per client from the loans list, plus an
   // effective-stage value used for filtering and rendering.
@@ -216,32 +235,44 @@ export default function ClientsPage() {
 
       <Card pad={0}>
         <SortableTableHead cols={COLS} sort={sort} onSort={onSort} />
-        {sorted.map((c) => (
-          <TableRow
-            key={c.id}
-            cols={COLS}
-            onClick={() => (window.location.href = `/clients/${c.id}`)}
-            values={[
-              <div key="n">
-                <div style={{ fontWeight: 700, color: t.ink }}>{c.name}</div>
-                <div style={{ fontSize: 11, color: t.ink3 }}>{c.email}</div>
-              </div>,
-              <StagePill key="st" t={t} stage={c._stage} />,
-              c._type ? (
-                <Pill key="ty" bg={c._type === "buyer" ? t.brandSoft : t.warnBg} color={c._type === "buyer" ? t.brand : t.warn}>
-                  {c._type === "buyer" ? "Buyer" : "Seller"}
-                </Pill>
-              ) : (
-                <span key="ty" style={{ color: t.ink3, fontSize: 12 }}>—</span>
-              ),
-              <span key="f" style={{ fontFeatureSettings: '"tnum"', color: t.ink2 }}>{c.fico ?? "—"}</span>,
-              <span key="l" style={{ fontFeatureSettings: '"tnum"', color: t.ink2 }}>{c.active_loans}</span>,
-              <span key="e" style={{ fontWeight: 700, fontFeatureSettings: '"tnum"', color: t.ink }}>{QC_FMT.short(c.exposure)}</span>,
-              <span key="c" style={{ color: t.ink3 }}>{c.city ?? "—"}</span>,
-              <span key="s" style={{ color: t.ink3 }}>{c.since ? new Date(c.since).getFullYear() : "—"}</span>,
-            ]}
-          />
-        ))}
+        {sorted.map((c) => {
+          const baseValues = [
+            <div key="n">
+              <div style={{ fontWeight: 700, color: t.ink }}>{c.name}</div>
+              <div style={{ fontSize: 11, color: t.ink3 }}>{c.email}</div>
+            </div>,
+            <StagePill key="st" t={t} stage={c._stage} />,
+            c._type ? (
+              <Pill key="ty" bg={c._type === "buyer" ? t.brandSoft : t.warnBg} color={c._type === "buyer" ? t.brand : t.warn}>
+                {c._type === "buyer" ? "Buyer" : "Seller"}
+              </Pill>
+            ) : (
+              <span key="ty" style={{ color: t.ink3, fontSize: 12 }}>—</span>
+            ),
+          ];
+          const tailValues = [
+            <span key="f" style={{ fontFeatureSettings: '"tnum"', color: t.ink2 }}>{c.fico ?? "—"}</span>,
+            <span key="l" style={{ fontFeatureSettings: '"tnum"', color: t.ink2 }}>{c.active_loans}</span>,
+            <span key="e" style={{ fontWeight: 700, fontFeatureSettings: '"tnum"', color: t.ink }}>{QC_FMT.short(c.exposure)}</span>,
+            <span key="c" style={{ color: t.ink3 }}>{c.city ?? "—"}</span>,
+            <span key="s" style={{ color: t.ink3 }}>{c.since ? new Date(c.since).getFullYear() : "—"}</span>,
+          ];
+          const values = isInternal
+            ? [
+                ...baseValues,
+                <AssignBrokerCell key="br" client={c} />,
+                ...tailValues,
+              ]
+            : [...baseValues, ...tailValues];
+          return (
+            <TableRow
+              key={c.id}
+              cols={COLS}
+              onClick={() => (window.location.href = `/clients/${c.id}`)}
+              values={values}
+            />
+          );
+        })}
         {sorted.length === 0 && (
           <div style={{ padding: 24, textAlign: "center", fontSize: 13, color: t.ink3 }}>
             {search || stageFilter !== "all"
@@ -265,6 +296,193 @@ export default function ClientsPage() {
     </div>
   );
 }
+
+// Agent assignment cell — clickable for super_admin / loan_exec. Shows
+// the current broker's display_name (or "Unassigned"), and on click
+// opens a small picker with search to (re)assign. Hits the existing
+// PATCH /clients/{id} endpoint which already supports broker_id
+// updates for non-broker roles.
+function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | null; broker_name?: string | null } }) {
+  const { t } = useTheme();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const { data: brokers = [], isLoading } = useBrokers();
+  const update = useUpdateClient();
+  const anchorRef = useRef<HTMLDivElement | null>(null);
+
+  // Click-outside closer for the dropdown.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!anchorRef.current) return;
+      if (!anchorRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return brokers;
+    return brokers.filter((b: Broker) => b.display_name.toLowerCase().includes(q));
+  }, [brokers, query]);
+
+  async function pick(broker: Broker | null) {
+    setBusyId(broker?.id ?? "__unassign__");
+    try {
+      await update.mutateAsync({ clientId: client.id, broker_id: broker?.id ?? null });
+      setOpen(false);
+      setQuery("");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const assigned = !!client.broker_id;
+  return (
+    <div ref={anchorRef} style={{ position: "relative" }}>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        title={assigned ? "Reassign agent" : "Assign an agent"}
+        style={{
+          all: "unset",
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "3px 8px",
+          borderRadius: 6,
+          border: `1px solid ${assigned ? t.line : t.warn}`,
+          background: assigned ? t.surface : t.warnBg,
+          color: assigned ? t.ink2 : t.warn,
+          fontSize: 12,
+          fontWeight: assigned ? 600 : 800,
+          maxWidth: 150,
+        }}
+      >
+        <Icon name={assigned ? "user" : "alert"} size={11} />
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {assigned ? client.broker_name ?? "Assigned" : "Unassigned"}
+        </span>
+        <Icon name="chevR" size={9} />
+      </button>
+      {open ? (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            left: 0,
+            zIndex: 50,
+            width: 260,
+            background: t.surface,
+            border: `1px solid ${t.line}`,
+            borderRadius: 8,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: "8px 8px 6px", borderBottom: `1px solid ${t.line}` }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 4 }}>
+              {assigned ? "Reassign agent" : "Assign agent"}
+            </div>
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search agents…"
+              style={{
+                width: "100%",
+                padding: "6px 8px",
+                fontSize: 12,
+                borderRadius: 6,
+                border: `1px solid ${t.line}`,
+                background: t.surface,
+                color: t.ink,
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+          <div style={{ maxHeight: 240, overflowY: "auto" }}>
+            {isLoading ? (
+              <div style={{ padding: 12, fontSize: 12, color: t.ink3 }}>Loading agents…</div>
+            ) : filtered.length === 0 ? (
+              <div style={{ padding: 12, fontSize: 12, color: t.ink3 }}>No matches.</div>
+            ) : (
+              filtered.map((b: Broker) => {
+                const isCurrent = b.id === client.broker_id;
+                return (
+                  <button
+                    key={b.id}
+                    onClick={() => pick(b)}
+                    disabled={isCurrent || busyId !== null}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 10px",
+                      width: "100%",
+                      border: "none",
+                      background: isCurrent ? t.brandSoft : "transparent",
+                      cursor: isCurrent ? "default" : "pointer",
+                      textAlign: "left",
+                      fontSize: 13,
+                      color: isCurrent ? t.brand : t.ink,
+                      fontFamily: "inherit",
+                      borderBottom: `1px solid ${t.line}`,
+                    }}
+                  >
+                    <Icon name="user" size={11} />
+                    <span style={{ flex: 1, fontWeight: isCurrent ? 800 : 600 }}>{b.display_name}</span>
+                    {isCurrent ? (
+                      <span style={{ fontSize: 10, fontWeight: 800, color: t.brand, letterSpacing: 0.5, textTransform: "uppercase" }}>
+                        Current
+                      </span>
+                    ) : busyId === b.id ? (
+                      <span style={{ fontSize: 10.5, color: t.ink3 }}>Saving…</span>
+                    ) : null}
+                  </button>
+                );
+              })
+            )}
+          </div>
+          {assigned ? (
+            <button
+              onClick={() => pick(null)}
+              disabled={busyId !== null}
+              style={{
+                padding: "8px 10px",
+                border: "none",
+                borderTop: `1px solid ${t.line}`,
+                background: t.surface2,
+                color: t.danger,
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 700,
+                textAlign: "left",
+                fontFamily: "inherit",
+              }}
+            >
+              {busyId === "__unassign__" ? "Unassigning…" : "Unassign agent"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 
 function StagePill({
   t,
