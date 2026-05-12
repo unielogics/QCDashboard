@@ -79,6 +79,7 @@ import type {
   Deal,
   DealType,
   DealSide,
+  PipelineClientSummary,
 } from "@/lib/types";
 import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurpose, PropertyType, Role, DealChatMode, FeedbackOutputType, FeedbackRating, AmortizationStyle } from "@/lib/enums.generated";
 
@@ -3907,5 +3908,23 @@ export function useUpdateClientFileSettings(clientId: string) {
       queryClient.invalidateQueries({ queryKey: ["client-ai-follow-up", clientId] });
       queryClient.invalidateQueries({ queryKey: ["client-workspace", clientId] });
     },
+  });
+}
+
+
+// ── Pipeline batch summary (Phase 6) ────────────────────────────────
+
+
+export function usePipelineClientSummary(clientIds: readonly string[]) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const csv = [...clientIds].sort().join(",");
+  return useQuery({
+    queryKey: ["pipeline-client-summary", csv, devUser] as const,
+    queryFn: () =>
+      apiCall<PipelineClientSummary[]>(`/pipeline/client-summary?client_ids=${encodeURIComponent(csv)}`),
+    enabled: clientIds.length > 0,
+    staleTime: 15_000,
+    refetchInterval: 60_000,
   });
 }

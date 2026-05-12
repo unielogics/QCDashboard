@@ -6,9 +6,10 @@ import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { QC_FMT } from "@/components/design-system/tokens";
-import { useClients, useLoans } from "@/hooks/useApi";
+import { useClients, useLoans, usePipelineClientSummary } from "@/hooks/useApi";
 import { useActiveProfile } from "@/store/role";
-import type { Client, ClientStage, ClientType, Loan } from "@/lib/types";
+import type { Client, ClientStage, ClientType, Loan, PipelineClientSummary } from "@/lib/types";
+import { AiStatusBadge } from "@/app/clients/[id]/workspace/components/AiStatusBadge";
 
 const RELATIONSHIP_STAGES = [
   "lead",
@@ -166,6 +167,17 @@ export function LeadsPipelineView({ view, search }: Props) {
     seller: enriched.filter((c) => c.client_type === "seller").length,
   }), [enriched]);
 
+  // Batch fetch the AI / blocker / handoff summary for every visible
+  // row so each card can render real-time pipeline state without an
+  // N+1 storm. 60s refetch matches the cadence-engine heartbeat.
+  const visibleIds = useMemo(() => visible.map((c) => c.id), [visible]);
+  const { data: summaries = [] } = usePipelineClientSummary(visibleIds);
+  const summariesByClient = useMemo(() => {
+    const m = new Map<string, PipelineClientSummary>();
+    for (const s of summaries) m.set(s.client_id, s);
+    return m;
+  }, [summaries]);
+
   const header = (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 10, flexWrap: "wrap" }}>
       <div style={{ fontSize: 12, color: t.ink3 }}>
@@ -281,7 +293,10 @@ export function LeadsPipelineView({ view, search }: Props) {
                   {client._activeLoanValue > 0 ? QC_FMT.short(client._activeLoanValue) : "Agent owned"}
                 </div>
               </div>
-              <div style={{ color: t.ink2, lineHeight: 1.35 }}>{nextMove(client, client._stage)}</div>
+              <div style={{ color: t.ink2, lineHeight: 1.35 }}>
+                {nextMove(client, client._stage)}
+                <PipelineSignals summary={summariesByClient.get(client.id)} t={t} />
+              </div>
             </Link>
           ))}
           {visible.length === 0 && (
@@ -362,6 +377,7 @@ export function LeadsPipelineView({ view, search }: Props) {
                       <span>FICO {client.fico ?? "new"}</span>
                       <span>{client._activeLoanCount > 0 ? QC_FMT.short(client._activeLoanValue) : "agent file"}</span>
                     </div>
+                    <PipelineSignals summary={summariesByClient.get(client.id)} t={t} compact />
                   </Link>
                 ))}
                 {stageClients.length === 0 && (
@@ -624,6 +640,108 @@ function SummaryTile({
         <div style={{ fontSize: 9.5, fontWeight: 900, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase" }}>{label}</div>
         <div style={{ fontSize: 18, fontWeight: 950, color, lineHeight: 1.1, fontFeatureSettings: '"tnum"' }}>{value}</div>
       </div>
+    </div>
+  );
+}
+
+
+// Pipeline enrichment chips (Phase 6) — AI state, blocker, next
+// follow-up, missing items, handoff badge, human-needed warning,
+// Ready-for-Lending eligibility. Backed by /pipeline/client-summary.
+function PipelineSignals({
+  summary,
+  t,
+  compact = false,
+}: {
+  summary: PipelineClientSummary | undefined;
+  t: ReturnType<typeof useTheme>["t"];
+  compact?: boolean;
+}) {
+  if (!summary) return null;
+  const fmt = (iso: string | null) => {
+    if (!iso) return null;
+    const ms = new Date(iso).getTime() - Date.now();
+    if (ms < 0) return "now";
+    const hrs = ms / 36e5;
+    if (hrs < 1) return `${Math.max(1, Math.round(ms / 6e4))}m`;
+    if (hrs < 24) return `${Math.round(hrs)}h`;
+    return `${Math.round(hrs / 24)}d`;
+  };
+  const next = fmt(summary.next_follow_up_at);
+  return (
+    <div
+      style={{
+        marginTop: compact ? 6 : 6,
+        display: "flex",
+        gap: 6,
+        flexWrap: "wrap",
+        alignItems: "center",
+      }}
+    >
+      <AiStatusBadge state={summary.ai_state} size={compact ? "sm" : "sm"} />
+      {summary.missing_items_count > 0 ? (
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            padding: "1px 6px",
+            borderRadius: 4,
+            background: t.warnBg,
+            color: t.warn,
+            textTransform: "uppercase",
+          }}
+        >
+          {summary.missing_items_count} missing
+        </span>
+      ) : null}
+      {next ? (
+        <span style={{ fontSize: 10.5, color: t.ink3 }}>Next: {next}</span>
+      ) : null}
+      {summary.human_needed ? (
+        <span
+          title="No AI follow-up scheduled — human attention needed"
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            padding: "1px 6px",
+            borderRadius: 4,
+            background: t.warnBg,
+            color: t.warn,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 3,
+          }}
+        >
+          <Icon name="bolt" size={9} /> Needs human
+        </span>
+      ) : null}
+      {summary.handoff_status === "promoted" ? (
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            padding: "1px 6px",
+            borderRadius: 4,
+            background: t.brandSoft,
+            color: t.brand,
+          }}
+        >
+          Funding live
+        </span>
+      ) : summary.ready_for_lending_eligible ? (
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            padding: "1px 6px",
+            borderRadius: 4,
+            background: t.brandSoft,
+            color: t.brand,
+          }}
+        >
+          Ready for Lending
+        </span>
+      ) : null}
     </div>
   );
 }
