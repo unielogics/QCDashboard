@@ -10,12 +10,12 @@
 // "Unsaved edits — save to refresh PDF" pill warns the operator when
 // the in-page preview is ahead of the saved loan.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useCurrentCredit, useDownloadTermSheet, useParsedReport, useRecalc, useUpdateLoan } from "@/hooks/useApi";
+import { useClient, useCurrentCredit, useDownloadTermSheet, useParsedReport, useRecalc, useUpdateClient, useUpdateLoan } from "@/hooks/useApi";
 import {
   AmortizationStyle,
   AmortizationStyleOptions,
@@ -959,19 +959,52 @@ function CreditPanel({
 }) {
   const { t } = useTheme();
   const credit = useCurrentCredit(clientId);
+  const client = useClient(clientId);
+  const updateClient = useUpdateClient();
   const [expanded, setExpanded] = useState(false);
+  // When the operator types an override they often also want it to
+  // update the borrower's master record — opt-in checkbox so we don't
+  // surprise them.
+  const [syncToBorrower, setSyncToBorrower] = useState(false);
 
+  // Pulled = the most-recent iSoftPull on file (most authoritative
+  // because it has a parsed report). Manual = the operator-set value
+  // on Client.fico (typically entered during intake before any pull).
+  // Override = per-loan override the underwriter set on this deal.
+  // Precedence for "effective" score: override → pulled → manual.
   const pulled: number | null = credit.data?.fico ?? null;
   const pulledAt = credit.data?.pulled_at ? new Date(credit.data.pulled_at) : null;
+  const manual: number | null = client.data?.fico ?? null;
   const overrideNum = ficoOverride.trim() ? parseInt(ficoOverride, 10) : null;
-  const effective = Number.isFinite(overrideNum) && overrideNum ? overrideNum : pulled;
-  const effectiveSource: "override" | "pulled" | "none" =
-    overrideNum ? "override" : pulled !== null ? "pulled" : "none";
+  const effective =
+    Number.isFinite(overrideNum) && overrideNum
+      ? overrideNum
+      : pulled !== null
+        ? pulled
+        : manual;
+  const effectiveSource: "override" | "pulled" | "manual" | "none" =
+    overrideNum
+      ? "override"
+      : pulled !== null
+        ? "pulled"
+        : manual !== null
+          ? "manual"
+          : "none";
 
   const ageDays = pulledAt
     ? Math.max(0, Math.floor((Date.now() - pulledAt.getTime()) / 86_400_000))
     : null;
   const ageLabel = ageDays === null ? "no pull on file" : ageDays === 0 ? "today" : `${ageDays}d ago`;
+
+  // Mirror the override to the client record on blur if the operator
+  // opted in. Fires once per distinct value to keep churn low.
+  const lastSyncedRef = useRef<number | null>(null);
+  const syncOverrideToClient = () => {
+    if (!syncToBorrower || !overrideNum || !Number.isFinite(overrideNum)) return;
+    if (lastSyncedRef.current === overrideNum) return;
+    lastSyncedRef.current = overrideNum;
+    updateClient.mutate({ clientId, fico: overrideNum });
+  };
 
   const tierLabel = effective === null
     ? null
@@ -1022,8 +1055,10 @@ function CreditPanel({
             {effectiveSource === "override"
               ? "Source: underwriter override"
               : effectiveSource === "pulled"
-              ? `Source: iSoftPull · pulled ${ageLabel}`
-              : "No score on file"}
+                ? `Source: iSoftPull · pulled ${ageLabel}`
+                : effectiveSource === "manual"
+                  ? "Source: borrower record (manual entry)"
+                  : "No score on file"}
           </div>
         </div>
 
@@ -1037,15 +1072,45 @@ function CreditPanel({
               inputMode="numeric"
               value={ficoOverride}
               onChange={(e) => onOverrideChange(e.target.value)}
-              placeholder={pulled !== null ? String(pulled) : "—"}
+              onBlur={syncOverrideToClient}
+              placeholder={pulled !== null ? String(pulled) : manual !== null ? String(manual) : "Enter score"}
               style={{ ...inputStyle(t), width: 110 }}
             />
-            <span style={{ fontSize: 11, color: t.ink3 }}>
-              {pulled !== null && overrideNum
-                ? `Pulled: ${pulled}`
-                : "Leave blank to use pulled score"}
-            </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700 }}>
+                {pulled !== null
+                  ? `iSoftPull: ${pulled}`
+                  : "No iSoftPull on file"}
+              </span>
+              {manual !== null && manual !== pulled ? (
+                <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700 }}>
+                  Borrower record: {manual}
+                </span>
+              ) : null}
+              {pulled === null && manual === null ? (
+                <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700, fontStyle: "italic" }}>
+                  Leave blank or enter manually
+                </span>
+              ) : null}
+            </div>
           </div>
+          {overrideNum ? (
+            <label style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              marginTop: 8,
+              fontSize: 11, color: t.ink3, fontWeight: 700,
+              cursor: "pointer",
+            }}>
+              <input
+                type="checkbox"
+                checked={syncToBorrower}
+                onChange={(e) => setSyncToBorrower(e.target.checked)}
+                style={{ width: 13, height: 13, cursor: "pointer" }}
+              />
+              Also save to borrower record (used across all their loans)
+              {updateClient.isPending ? <span style={{ color: t.ink3 }}>· saving…</span> : null}
+            </label>
+          ) : null}
         </div>
 
         <button
