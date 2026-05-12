@@ -19,10 +19,12 @@ import { Icon } from "@/components/design-system/Icon";
 import {
   useAddCustomDocument,
   useLoanWorkflow,
+  useMarkDocumentVerified,
   usePatchDocument,
   useRunDocReminders,
   type WorkflowDoc,
 } from "@/hooks/useApi";
+import { ContextMenu, useContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import type { Loan } from "@/lib/types";
 
 // Maps each scenario to a (label, fg, bg) tuple. heads_up + due_today
@@ -50,7 +52,9 @@ export function WorkflowTab({
   const patchDoc = usePatchDocument();
   const runReminders = useRunDocReminders();
   const addCustom = useAddCustomDocument();
+  const markVerified = useMarkDocumentVerified();
   const styles = SCENARIO_STYLE(t);
+  const ctxMenu = useContextMenu<WorkflowDoc>();
 
   const [shiftDays, setShiftDays] = useState<number>(7);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -339,6 +343,7 @@ export function WorkflowTab({
             canEdit={canEdit}
             onSetDate={(v) => onSetDate(d, v)}
             onToggleSkip={() => onToggleSkip(d)}
+            onContextMenu={canEdit ? (e) => ctxMenu.open(e, d) : undefined}
             t={t}
             styles={styles}
           />
@@ -352,6 +357,28 @@ export function WorkflowTab({
           onSave={onAddCustom}
         />
       )}
+      <ContextMenu
+        state={ctxMenu.state}
+        onClose={ctxMenu.close}
+        items={(d): ContextMenuItem[] => {
+          const alreadyDone = d.status === "verified";
+          return [
+            {
+              label: alreadyDone ? "Already complete" : "Mark complete",
+              icon: "check",
+              disabled: alreadyDone || !canEdit || markVerified.isPending,
+              hint: alreadyDone ? undefined : "operator override",
+              onSelect: () => markVerified.mutate({ documentId: d.document_id, loanId: loan.id }),
+            },
+            {
+              label: d.status === "skipped" ? "Re-enable AI collection" : "Skip (AI stops chasing)",
+              icon: d.status === "skipped" ? "send" : "pause",
+              disabled: !canEdit,
+              onSelect: () => onToggleSkip(d),
+            },
+          ];
+        }}
+      />
     </Card>
   );
 }
@@ -467,6 +494,7 @@ function WorkflowRow({
   canEdit,
   onSetDate,
   onToggleSkip,
+  onContextMenu,
   t,
   styles,
 }: {
@@ -474,6 +502,7 @@ function WorkflowRow({
   canEdit: boolean;
   onSetDate: (value: string | null) => void;
   onToggleSkip: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
   t: ReturnType<typeof useTheme>["t"];
   styles: ReturnType<typeof SCENARIO_STYLE>;
 }) {
@@ -497,6 +526,7 @@ function WorkflowRow({
 
   return (
     <div
+      onContextMenu={onContextMenu}
       style={{
         display: "grid",
         gridTemplateColumns: "30px 1.1fr 95px 95px 95px 1fr 110px 80px",
@@ -507,7 +537,9 @@ function WorkflowRow({
         fontSize: 12.5,
         opacity: isSkipped ? 0.55 : 1,
         background: isSkipped ? t.surface2 : "transparent",
+        cursor: onContextMenu ? "context-menu" : "default",
       }}
+      title={onContextMenu ? "Right-click for actions" : undefined}
     >
       <input
         type="checkbox"

@@ -1839,6 +1839,27 @@ export function useUpdateHudLine() {
   });
 }
 
+// Operator force-mark a document (or workflow condition) VERIFIED.
+// Hits the new POST /documents/{id}/mark-verified — open to BROKER /
+// LOAN_EXEC / SUPER_ADMIN. Used by the right-click "Mark complete"
+// affordance on the Documents + Conditions tabs.
+export function useMarkDocumentVerified() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ documentId, loanId }: { documentId: string; loanId: string }) =>
+      apiCall<import("@/lib/types").Document>(
+        `/documents/${documentId}/mark-verified`,
+        { method: "POST" },
+      ).then((doc) => ({ doc, loanId })),
+    onSuccess: ({ loanId }) => {
+      qc.invalidateQueries({ queryKey: ["documents", loanId] });
+      qc.invalidateQueries({ queryKey: ["loanWorkflow", loanId] });
+      qc.invalidateQueries({ queryKey: ["loan", loanId] });
+    },
+  });
+}
+
 // ── HUD list + create + delete (alembic 0042) ─────────────────────────
 
 export function useHudLines(loanId: string | null | undefined) {

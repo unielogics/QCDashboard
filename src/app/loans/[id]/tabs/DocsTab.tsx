@@ -7,19 +7,23 @@ import { Card, Pill, SectionLabel } from "@/components/design-system/primitives"
 import { Icon } from "@/components/design-system/Icon";
 import { DocRequestModal } from "@/app/documents/components/DocRequestModal";
 import { DocUploadButton } from "@/app/documents/components/DocUploadButton";
-import { useDocuments } from "@/hooks/useApi";
-import type { Loan } from "@/lib/types";
+import { useDocuments, useMarkDocumentVerified } from "@/hooks/useApi";
+import { ContextMenu, useContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
+import type { Document, Loan } from "@/lib/types";
 
 export function DocsTab({ loan, canRequest }: { loan: Loan; canRequest: boolean }) {
   const { t } = useTheme();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: docs = [] } = useDocuments(loan.id);
+  const markVerified = useMarkDocumentVerified();
   const [requestOpen, setRequestOpen] = useState(false);
   // Tracks the doc_id whose upload picker should auto-open on mount,
   // sourced from `?upload=<doc_id>` (the chat's upload_document CTA
   // deep-links here).
   const [autoUploadDocId, setAutoUploadDocId] = useState<string | null>(null);
+  // Right-click context menu shared across all doc rows.
+  const ctxMenu = useContextMenu<Document>();
 
   useEffect(() => {
     const u = searchParams?.get("upload");
@@ -45,35 +49,74 @@ export function DocsTab({ loan, canRequest }: { loan: Loan; canRequest: boolean 
     flagged: docs.filter((d) => d.status === "flagged").length,
   };
 
+  // Compute the right-click menu items per row. "Mark complete" only
+  // appears when the doc isn't already verified. (Skipped rows can
+  // also be marked verified — operator may have skipped early and the
+  // doc came in later via email.)
+  const menuItems = (doc: Document): ContextMenuItem[] => {
+    const alreadyVerified = doc.status === "verified";
+    return [
+      {
+        label: alreadyVerified ? "Already complete" : "Mark complete",
+        icon: "check",
+        disabled: alreadyVerified || !canRequest || markVerified.isPending,
+        hint: alreadyVerified ? undefined : "operator override",
+        onSelect: () => markVerified.mutate({ documentId: doc.id, loanId: loan.id }),
+      },
+    ];
+  };
+
   return (
     <Card pad={0}>
-      <div style={{ padding: 16, borderBottom: `1px solid ${t.line}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+      <div style={{ padding: 16, borderBottom: `1px solid ${t.line}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
           <SectionLabel>Document Vault · {docs.length} items</SectionLabel>
           <Counter label="Received" count={counts.received} color={t.profit} t={t} />
           <Counter label="Requested" count={counts.requested} color={t.brand} t={t} />
           <Counter label="Pending" count={counts.pending} color={t.warn} t={t} />
           <Counter label="Flagged" count={counts.flagged} color={t.danger} t={t} />
         </div>
-        {canRequest && (
-          <button
-            onClick={() => setRequestOpen(true)}
-            style={{
-              padding: "8px 12px", borderRadius: 9, background: t.brand, color: t.inverse,
-              fontSize: 13, fontWeight: 700, border: "none",
-              display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer",
-            }}
-          >
-            <Icon name="plus" size={13} /> Request doc
-          </button>
-        )}
+        {canRequest ? (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            {/* Operator upload-on-behalf — creates a fresh doc row from
+                the uploaded file. Separate from per-row Upload buttons
+                which fulfill a specific requested slot. */}
+            <DocUploadButton
+              loanId={loan.id}
+              label="Upload on behalf"
+              compact
+            />
+            <button
+              onClick={() => setRequestOpen(true)}
+              style={{
+                padding: "8px 12px", borderRadius: 9, background: t.brand, color: t.inverse,
+                fontSize: 13, fontWeight: 700, border: "none",
+                display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer",
+              }}
+            >
+              <Icon name="plus" size={13} /> Request doc
+            </button>
+          </div>
+        ) : null}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 16 }}>
         {docs.length === 0 && <div style={{ fontSize: 13, color: t.ink3 }}>No documents on file yet.</div>}
         {docs.map((d) => {
           const showUpload = canRequest && (d.status === "requested" || d.status === "pending" || d.status === "flagged");
+          const showMarkComplete = canRequest && d.status !== "verified";
           return (
-            <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, border: `1px solid ${t.line}` }}>
+            <div
+              key={d.id}
+              onContextMenu={(e) => { if (canRequest) ctxMenu.open(e, d); }}
+              style={{
+                display: "flex", alignItems: "center", gap: 12,
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: `1px solid ${t.line}`,
+                cursor: canRequest ? "context-menu" : "default",
+              }}
+              title={canRequest ? "Right-click for actions" : undefined}
+            >
               <Icon name="doc" size={16} style={{ color: t.ink3 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{d.name}</div>
@@ -101,11 +144,31 @@ export function DocsTab({ loan, canRequest }: { loan: Loan; canRequest: boolean 
                   onAutoOpenHandled={() => setAutoUploadDocId(null)}
                 />
               )}
+              {showMarkComplete && !showUpload ? (
+                <button
+                  type="button"
+                  onClick={() => markVerified.mutate({ documentId: d.id, loanId: loan.id })}
+                  disabled={markVerified.isPending}
+                  title="Force-mark this document complete (operator override)"
+                  style={{
+                    padding: "5px 9px", borderRadius: 7,
+                    border: `1px solid ${t.line}`,
+                    background: t.surface2, color: t.ink2,
+                    fontSize: 11, fontWeight: 800,
+                    cursor: markVerified.isPending ? "wait" : "pointer",
+                    fontFamily: "inherit",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <Icon name="check" size={11} /> Mark complete
+                </button>
+              ) : null}
             </div>
           );
         })}
       </div>
       <DocRequestModal open={requestOpen} onClose={() => setRequestOpen(false)} defaultLoanId={loan.id} />
+      <ContextMenu state={ctxMenu.state} onClose={ctxMenu.close} items={menuItems} />
     </Card>
   );
 }
