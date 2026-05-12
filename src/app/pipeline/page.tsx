@@ -254,13 +254,14 @@ export default function PipelinePage() {
       )}
 
       {mode === "funding" ? (
-        <FundingCommandStrip
+        <FundingMetricsRow
           totalFiles={fundingRows.length}
           ready={underwritingReady}
           needsStructure={needsStructure}
           openConditions={openConditionCount}
           blockedAi={blockedAiCount}
           totalValue={totalValue}
+          rows={fundingRows}
         />
       ) : null}
 
@@ -272,9 +273,12 @@ export default function PipelinePage() {
         // themselves. Grid template flexes accordingly so the row layout
         // doesn't shift between roles.
         (() => {
+          // Added a 70px Credit column between Amount and DSCR. Reading
+          // order matches an UW's mental model: Property → Readiness →
+          // Type/Amount → Credit → DSCR → Conditions → Next action.
           const gridCols = isInternal
-            ? "78px minmax(0, 1.55fr) 130px 122px 96px 110px 82px 104px 126px"
-            : "78px minmax(0, 1.55fr) 122px 96px 110px 82px 104px 126px";
+            ? "78px minmax(0, 1.55fr) 130px 122px 96px 110px 70px 82px 104px 126px"
+            : "78px minmax(0, 1.55fr) 122px 96px 110px 70px 82px 104px 126px";
           return (
             <Card pad={0}>
               <div style={{
@@ -288,6 +292,7 @@ export default function PipelinePage() {
                 <div>Readiness</div>
                 <SortHead label="Type" k="type" current={sortKey} dir={sortDir} onClick={setSort} />
                 <SortHead label="Amount" k="amount" current={sortKey} dir={sortDir} onClick={setSort} align="right" />
+                <div style={{ textAlign: "right" }}>Credit</div>
                 <SortHead label="DSCR" k="dscr" current={sortKey} dir={sortDir} onClick={setSort} align="right" />
                 <div>Conditions</div>
                 <div>Next action</div>
@@ -334,6 +339,7 @@ export default function PipelinePage() {
                     <ReadinessCell score={readiness.score} label={readiness.label} />
                     <div><Pill>{loanTypeLabel(loan.type)}</Pill></div>
                     <div style={{ textAlign: "right", fontWeight: 800, fontFeatureSettings: '"tnum"' }}>{QC_FMT.short(Number(loan.amount))}</div>
+                    <CreditCell fico={loan.fico_override ?? loan.client_fico ?? null} override={loan.fico_override != null} />
                     <div style={{ textAlign: "right", color: loan.dscr && loan.dscr >= 1.25 ? t.profit : loan.dscr && loan.dscr >= 1.0 ? t.warn : t.ink3, fontWeight: 800 }}>
                       {loan.dscr ? loan.dscr.toFixed(2) : "—"}
                     </div>
@@ -407,13 +413,13 @@ export default function PipelinePage() {
   );
 }
 
-function FundingCommandStrip({
-  totalFiles,
-  ready,
-  needsStructure,
-  openConditions,
-  blockedAi,
-  totalValue,
+// FundingMetricsRow — slim ~30% replacement for the old FundingCommandStrip.
+// One row of compact tiles (no big "Funding command" hero copy), paired
+// with a Next Closing card that pulls the soonest close_date out of the
+// visible loans. The card is the operator's "what does this week look
+// like" pulse — what's about to fund, when, and how much.
+function FundingMetricsRow({
+  totalFiles, ready, needsStructure, openConditions, blockedAi, totalValue, rows,
 }: {
   totalFiles: number;
   ready: number;
@@ -421,37 +427,55 @@ function FundingCommandStrip({
   openConditions: number;
   blockedAi: number;
   totalValue: number;
+  rows: { loan: import("@/lib/types").Loan }[];
 }) {
   const { t } = useTheme();
+  // Next closing — earliest close_date in the visible set that hasn't
+  // already passed (or, if everything's past, the soonest past one so
+  // the operator notices the slipped close).
+  const nextClose = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const withDate = rows
+      .map((r) => r.loan)
+      .filter((l) => !!l.close_date)
+      .map((l) => ({ loan: l, ts: new Date(l.close_date as string).getTime() }))
+      .sort((a, b) => a.ts - b.ts);
+    if (withDate.length === 0) return null;
+    const upcoming = withDate.find((x) => x.ts >= today.getTime());
+    return upcoming ?? withDate[withDate.length - 1];
+  }, [rows]);
+
   return (
-    <Card pad={14}>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.1fr) repeat(5, minmax(128px, 1fr))", gap: 10, alignItems: "stretch" }}>
-        <div style={{ padding: 12, borderRadius: 12, background: t.surface2, border: `1px solid ${t.line}` }}>
-          <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
-            Funding command
-          </div>
-          <div style={{ marginTop: 5, fontSize: 18, fontWeight: 950, color: t.ink }}>
-            Manage files by readiness, blockers, and secretary status
-          </div>
-        </div>
-        <CommandMetric icon="file" label="Files" value={totalFiles} />
-        <CommandMetric icon="shieldChk" label="UW ready" value={ready} tone={ready ? "ready" : "neutral"} />
-        <CommandMetric icon="sliders" label="Needs structure" value={needsStructure} tone={needsStructure ? "watch" : "ready"} />
-        <CommandMetric icon="docCheck" label="Open conditions" value={openConditions} tone={openConditions ? "watch" : "ready"} />
-        <CommandMetric icon="ai" label="AI blocked" value={blockedAi} tone={blockedAi ? "danger" : "ready"} sub={QC_FMT.short(totalValue)} />
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)",
+      gap: 10,
+      alignItems: "stretch",
+    }}>
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+        gap: 8,
+        padding: 8,
+        borderRadius: 11,
+        background: t.surface,
+        border: `1px solid ${t.line}`,
+      }}>
+        <MiniMetric label="Files" value={totalFiles} tone="neutral" />
+        <MiniMetric label="UW ready" value={ready} tone={ready ? "ready" : "neutral"} />
+        <MiniMetric label="Needs structure" value={needsStructure} tone={needsStructure ? "watch" : "ready"} />
+        <MiniMetric label="Open conditions" value={openConditions} tone={openConditions ? "watch" : "ready"} />
+        <MiniMetric label="AI blocked" value={blockedAi} tone={blockedAi ? "danger" : "ready"} sub={QC_FMT.short(totalValue)} />
       </div>
-    </Card>
+      <NextClosingCard item={nextClose} t={t} />
+    </div>
   );
 }
 
-function CommandMetric({
-  icon,
-  label,
-  value,
-  tone = "neutral",
-  sub,
+function MiniMetric({
+  label, value, tone = "neutral", sub,
 }: {
-  icon: string;
   label: string;
   value: string | number;
   tone?: "ready" | "watch" | "danger" | "neutral";
@@ -460,15 +484,114 @@ function CommandMetric({
   const { t } = useTheme();
   const color = tone === "ready" ? t.profit : tone === "watch" ? t.warn : tone === "danger" ? t.danger : t.ink;
   return (
-    <div style={{ padding: 12, borderRadius: 12, background: t.surface2, border: `1px solid ${t.line}`, minWidth: 0 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-        <span style={{ fontSize: 10, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>{label}</span>
-        <Icon name={icon} size={14} style={{ color }} />
-      </div>
-      <div style={{ marginTop: 5, fontSize: 22, fontWeight: 950, color, fontFeatureSettings: '"tnum"', overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+    <div style={{
+      padding: "6px 9px",
+      borderRadius: 8,
+      background: t.surface2,
+      border: `1px solid ${t.line}`,
+      minWidth: 0,
+      display: "flex",
+      flexDirection: "column",
+      gap: 1,
+    }}>
+      <span style={{ fontSize: 9.5, fontWeight: 900, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {label}
+      </span>
+      <span style={{ fontSize: 16, fontWeight: 950, color, fontFeatureSettings: '"tnum"', lineHeight: 1.1 }}>
         {value}
+      </span>
+      {sub ? <span style={{ fontSize: 9.5, fontWeight: 800, color: t.ink3 }}>{sub} total</span> : null}
+    </div>
+  );
+}
+
+function NextClosingCard({
+  item, t,
+}: {
+  item: { loan: import("@/lib/types").Loan; ts: number } | null;
+  t: ReturnType<typeof useTheme>["t"];
+}) {
+  if (item === null) {
+    return (
+      <div style={{
+        padding: 12, borderRadius: 11,
+        background: t.surface, border: `1px solid ${t.line}`,
+        display: "flex", alignItems: "center", gap: 10,
+      }}>
+        <Icon name="cal" size={16} style={{ color: t.ink3 }} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 10, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>Next closing</div>
+          <div style={{ marginTop: 2, fontSize: 12.5, color: t.ink3 }}>No close dates on any file yet.</div>
+        </div>
       </div>
-      {sub ? <div style={{ marginTop: 2, fontSize: 10.5, fontWeight: 800, color: t.ink3 }}>{sub} visible</div> : null}
+    );
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((item.ts - today.getTime()) / 86_400_000);
+  const overdue = days < 0;
+  const daysLabel = days === 0 ? "today" : overdue ? `${Math.abs(days)}d overdue` : `in ${days}d`;
+  const tone = overdue ? t.danger : days <= 3 ? t.warn : days <= 10 ? t.brand : t.ink2;
+  const toneBg = overdue ? t.dangerBg : days <= 3 ? t.warnBg : days <= 10 ? t.brandSoft : t.surface2;
+  const dateStr = new Date(item.ts).toLocaleDateString("en-US", {
+    weekday: "short", month: "short", day: "numeric",
+  });
+  return (
+    <Link href={`/loans/${item.loan.id}`} style={{
+      padding: 10, borderRadius: 11,
+      background: t.surface, border: `1px solid ${t.line}`,
+      display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", gap: 10,
+      alignItems: "center", textDecoration: "none", color: t.ink,
+    }}>
+      <div style={{
+        padding: "6px 10px", borderRadius: 8,
+        background: toneBg, color: tone,
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        minWidth: 64,
+      }}>
+        <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: 0.6, textTransform: "uppercase" }}>{overdue ? "Slipped" : "Closes"}</span>
+        <span style={{ fontSize: 14, fontWeight: 950, lineHeight: 1.1 }}>{daysLabel}</span>
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 10, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>Next closing</div>
+        <div style={{ marginTop: 2, fontSize: 13.5, fontWeight: 850, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {item.loan.address}
+        </div>
+        <div style={{ marginTop: 1, fontSize: 11.5, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {dateStr} · {item.loan.deal_id}
+          {item.loan.client_name ? ` · ${item.loan.client_name}` : ""}
+        </div>
+      </div>
+      <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+        <div style={{ fontSize: 14, fontWeight: 950, color: t.ink, fontFeatureSettings: '"tnum"' }}>
+          {QC_FMT.short(Number(item.loan.amount))}
+        </div>
+        <div style={{ fontSize: 10, fontWeight: 800, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.4 }}>
+          {String(item.loan.type).replace("_", " ")}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function CreditCell({ fico, override }: { fico: number | null; override: boolean }) {
+  const { t } = useTheme();
+  if (fico === null) {
+    return (
+      <div style={{ textAlign: "right", color: t.ink3, fontWeight: 700, fontSize: 12.5 }}>—</div>
+    );
+  }
+  const tone = fico >= 740 ? t.profit : fico >= 680 ? t.warn : t.danger;
+  return (
+    <div style={{ textAlign: "right", fontFeatureSettings: '"tnum"' }}>
+      <div style={{ fontSize: 12.5, fontWeight: 900, color: tone, lineHeight: 1.1 }}>
+        {fico}
+      </div>
+      {override ? (
+        <div style={{ fontSize: 9, fontWeight: 800, color: t.ink3, letterSpacing: 0.3, textTransform: "uppercase" }}>
+          override
+        </div>
+      ) : null}
     </div>
   );
 }

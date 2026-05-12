@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { Card, Pill } from "@/components/design-system/primitives";
+import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { useClients, useLoans } from "@/hooks/useApi";
@@ -158,8 +159,13 @@ export function LeadsPipelineView({ view, search }: Props) {
   );
 
   if (view === "table") {
+    // gridTemplateColumns shared between header + rows. Inserted a
+    // Property column between Workflow and Readiness so the agent sees
+    // the address the relationship is centered on without drilling in.
+    const gridCols = "minmax(0, 1.35fr) 130px minmax(0, 1.1fr) 140px 140px minmax(200px, 1fr)";
     return (
       <>
+        <RelationshipSummaryRow clients={visible} t={t} />
         {header}
         <Card pad={0}>
           <div style={{ padding: 16, borderBottom: `1px solid ${t.line}`, background: t.surface2 }}>
@@ -173,7 +179,7 @@ export function LeadsPipelineView({ view, search }: Props) {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(0, 1.45fr) 132px 150px 150px minmax(220px, 1fr)",
+              gridTemplateColumns: gridCols,
               gap: 12,
               padding: "12px 16px",
               fontSize: 11,
@@ -186,6 +192,7 @@ export function LeadsPipelineView({ view, search }: Props) {
           >
             <div>Relationship</div>
             <div>Workflow</div>
+            <div>Property</div>
             <div>Readiness</div>
             <div>Funding File</div>
             <div>Next Agent Move</div>
@@ -196,7 +203,7 @@ export function LeadsPipelineView({ view, search }: Props) {
               href={`/clients/${client.id}/workspace`}
               style={{
                 display: "grid",
-                gridTemplateColumns: "minmax(0, 1.45fr) 132px 150px 150px minmax(220px, 1fr)",
+                gridTemplateColumns: gridCols,
                 gap: 12,
                 padding: "14px 16px",
                 borderBottom: `1px solid ${t.line}`,
@@ -234,6 +241,7 @@ export function LeadsPipelineView({ view, search }: Props) {
                 </div>
               </div>
               <StagePill stage={client._stage} />
+              <PropertyCell client={client} t={t} />
               <div>
                 <div style={{ fontWeight: 700, color: t.ink2 }}>{readinessLabel(client, client._stage)}</div>
                 <div style={{ marginTop: 2, color: t.ink3, fontSize: 11.5 }}>
@@ -366,4 +374,139 @@ function StagePill({ stage }: { stage: (typeof RELATIONSHIP_STAGES)[number] }) {
   };
   const { bg, fg } = palette[stage];
   return <Pill bg={bg} color={fg}>{STAGE_LABELS[stage]}</Pill>;
+}
+
+
+// Property column — surfaces the address the relationship is centered
+// on (for buyers, the target property if known; for sellers, the
+// listing). Falls back gracefully through city → "—" so the column
+// never looks broken on empty rows.
+function PropertyCell({
+  client, t,
+}: {
+  client: Client;
+  t: ReturnType<typeof useTheme>["t"];
+}) {
+  const addr = (client.address || "").trim() || null;
+  const line2 = [client.city, client.client_type === "seller" ? "Listing" : "Target"].filter(Boolean).join(" · ");
+  if (!addr) {
+    return (
+      <div style={{ minWidth: 0, color: t.ink3, fontSize: 12 }}>
+        <div style={{ fontWeight: 700, color: t.ink3 }}>{client.city || "No address"}</div>
+        <div style={{ marginTop: 2, fontSize: 11, color: t.ink3 }}>
+          {client.client_type === "seller" ? "Seller relationship" : "Buyer relationship"}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{
+        fontWeight: 800, color: t.ink, fontSize: 12.5,
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>
+        {addr}
+      </div>
+      <div style={{
+        marginTop: 2, fontSize: 11, color: t.ink3,
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>
+        {line2 || "—"}
+      </div>
+    </div>
+  );
+}
+
+
+// Summary row above the Agent Relationship Pipeline. Four pulse tiles:
+//   Buyers + Sellers — split of visible relationships by side
+//   Alerts — relationships with documented contact-permission missing
+//            or financing-support flagged (proxy for "needs human")
+//   AI issues — relationships that have AI-cadence overrides set
+//            (proxy for "AI is being told to do something non-default")
+// All four read from the same `visible` list the table consumes so the
+// counts and the rows stay in lockstep.
+function RelationshipSummaryRow({
+  clients, t,
+}: {
+  clients: Client[];
+  t: ReturnType<typeof useTheme>["t"];
+}) {
+  const buyers = clients.filter((c) => (c.client_type ?? "buyer") === "buyer").length;
+  const sellers = clients.filter((c) => c.client_type === "seller").length;
+  // Alerts — relationships that need a human touch right now.
+  //   • Cold leads (lead_temperature === "nurture")
+  //   • Borrowers who need financing help but haven't been routed yet
+  //   • Contact permission gated to "agent introduces first" (lead
+  //     is dormant until the agent acts)
+  const alerts = clients.filter((c) =>
+    c.lead_temperature === "nurture" ||
+    c.financing_support_needed === "yes" ||
+    c.contact_permission === "agent_will_introduce_first",
+  ).length;
+  // AI issues — relationships flagged "lead_promotion_status =
+  // agent_requested_review" (agent has actively asked funding to look
+  // at it). Proxy until we wire a dedicated AI-issue stream.
+  const aiIssues = clients.filter((c) =>
+    c.lead_promotion_status === "agent_requested_review",
+  ).length;
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+      gap: 8,
+      marginBottom: 10,
+    }}>
+      <SummaryTile icon="user" label="Buyers" value={buyers} tone="brand" t={t} />
+      <SummaryTile icon="user" label="Sellers" value={sellers} tone="warn" t={t} />
+      <SummaryTile icon="alert" label="Alerts" value={alerts} tone={alerts ? "danger" : "neutral"} t={t} />
+      <SummaryTile icon="ai" label="AI overrides" value={aiIssues} tone={aiIssues ? "watch" : "neutral"} t={t} />
+    </div>
+  );
+}
+
+function SummaryTile({
+  icon, label, value, tone, t,
+}: {
+  icon: string;
+  label: string;
+  value: number;
+  tone: "brand" | "warn" | "danger" | "watch" | "neutral";
+  t: ReturnType<typeof useTheme>["t"];
+}) {
+  const color =
+    tone === "brand" ? t.brand
+    : tone === "warn" ? t.warn
+    : tone === "danger" ? t.danger
+    : tone === "watch" ? t.warn
+    : t.ink2;
+  const bg =
+    tone === "brand" ? t.brandSoft
+    : tone === "warn" ? t.warnBg
+    : tone === "danger" ? t.dangerBg
+    : tone === "watch" ? t.warnBg
+    : t.surface2;
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 10,
+      padding: "8px 12px",
+      borderRadius: 10,
+      background: t.surface,
+      border: `1px solid ${t.line}`,
+      minWidth: 0,
+    }}>
+      <span style={{
+        width: 30, height: 30, borderRadius: 8,
+        display: "grid", placeItems: "center",
+        background: bg, color,
+        flex: "0 0 auto",
+      }}>
+        <Icon name={icon} size={14} stroke={2.2} />
+      </span>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 9.5, fontWeight: 900, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase" }}>{label}</div>
+        <div style={{ fontSize: 18, fontWeight: 950, color, lineHeight: 1.1, fontFeatureSettings: '"tnum"' }}>{value}</div>
+      </div>
+    </div>
+  );
 }

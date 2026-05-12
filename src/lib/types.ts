@@ -22,6 +22,9 @@ export interface Loan {
   broker_name?: string | null;
   /** Borrower display name joined from the clients table. */
   client_name?: string | null;
+  /** Borrower FICO joined from clients.fico. Populated by list
+   *  endpoints so the pipeline can render a Credit column. */
+  client_fico?: number | null;
   lender_id?: string | null;
   address: string;
   city: string | null;
