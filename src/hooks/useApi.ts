@@ -80,6 +80,11 @@ import type {
   DealType,
   DealSide,
   PipelineClientSummary,
+  AgentTask,
+  AgentTaskCategory,
+  AgentTaskOwnerType,
+  AgentTaskStatus,
+  AgentTaskVisibility,
 } from "@/lib/types";
 import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurpose, PropertyType, Role, DealChatMode, FeedbackOutputType, FeedbackRating, AmortizationStyle } from "@/lib/enums.generated";
 
@@ -3926,5 +3931,128 @@ export function usePipelineClientSummary(clientIds: readonly string[]) {
     enabled: clientIds.length > 0,
     staleTime: 15_000,
     refetchInterval: 60_000,
+  });
+}
+
+
+// ── Agent CRM tasks (Phase 7) ───────────────────────────────────────
+
+
+export interface AgentTaskFilter {
+  dealId?: string | null;
+  loanId?: string | null;
+  status?: AgentTaskStatus;
+  visibility?: AgentTaskVisibility;
+}
+
+export function useClientTasks(clientId: string | null | undefined, filter?: AgentTaskFilter) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const q = new URLSearchParams();
+  if (filter?.dealId) q.set("deal_id", filter.dealId);
+  if (filter?.loanId) q.set("loan_id", filter.loanId);
+  if (filter?.status) q.set("status", filter.status);
+  if (filter?.visibility) q.set("visibility", filter.visibility);
+  const qs = q.toString();
+  const url = `/clients/${clientId}/tasks${qs ? `?${qs}` : ""}`;
+  return useQuery({
+    queryKey: ["client-tasks", clientId, qs, devUser] as const,
+    queryFn: () => apiCall<AgentTask[]>(url),
+    enabled: !!clientId,
+  });
+}
+
+export interface AgentTaskCreateBody {
+  title: string;
+  description?: string | null;
+  category?: AgentTaskCategory;
+  visibility?: AgentTaskVisibility;
+  owner_type?: AgentTaskOwnerType;
+  deal_id?: string | null;
+  loan_id?: string | null;
+  assigned_user_id?: string | null;
+  due_at?: string | null;
+  reminder_at?: string | null;
+  priority?: "low" | "medium" | "high";
+  notes?: string | null;
+}
+
+export function useCreateAgentTask(clientId: string) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AgentTaskCreateBody) =>
+      apiCall<AgentTask>(`/clients/${clientId}/tasks`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-tasks", clientId] });
+      queryClient.invalidateQueries({ queryKey: ["client-workspace", clientId] });
+    },
+  });
+}
+
+export interface AgentTaskUpdateBody extends Partial<AgentTaskCreateBody> {
+  status?: AgentTaskStatus;
+}
+
+export function useUpdateAgentTask(clientId: string) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, body }: { taskId: string; body: AgentTaskUpdateBody }) =>
+      apiCall<AgentTask>(`/clients/${clientId}/tasks/${taskId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-tasks", clientId] });
+      queryClient.invalidateQueries({ queryKey: ["client-workspace", clientId] });
+    },
+  });
+}
+
+export function useDeleteAgentTask(clientId: string) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (taskId: string) =>
+      apiCall<void>(`/clients/${clientId}/tasks/${taskId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-tasks", clientId] });
+      queryClient.invalidateQueries({ queryKey: ["client-workspace", clientId] });
+    },
+  });
+}
+
+export function useCompleteAgentTask(clientId: string) {
+  const update = useUpdateAgentTask(clientId);
+  return {
+    ...update,
+    mutate: (taskId: string) => update.mutate({ taskId, body: { status: "done" } }),
+    mutateAsync: (taskId: string) => update.mutateAsync({ taskId, body: { status: "done" } }),
+  };
+}
+
+export interface PromoteToAiResponse {
+  task: AgentTask;
+  assignment_id: string;
+  requirement_key: string;
+}
+
+export function usePromoteAgentTaskToAi(clientId: string) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (taskId: string) =>
+      apiCall<PromoteToAiResponse>(`/clients/${clientId}/tasks/${taskId}/promote-to-ai`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client-tasks", clientId] });
+      queryClient.invalidateQueries({ queryKey: ["client-ai-follow-up", clientId] });
+      queryClient.invalidateQueries({ queryKey: ["client-workspace", clientId] });
+    },
   });
 }

@@ -234,7 +234,7 @@ export default function ClientWorkspacePage() {
           onSelect={(id) => onChangeTab("funding")}
         />
       ) : null}
-      {tab === "tasks" ? <TasksPanel /> : null}
+      {tab === "tasks" && workspace ? <TasksPanel clientId={id} data={workspace} /> : null}
       {tab === "ai-follow-up" && workspace ? (
         <AiFollowUpPanel
           clientId={id}
