@@ -41,8 +41,28 @@ import { RealtorReadinessCard } from "@/components/RealtorReadinessCard";
 import { ClientAuditTrail } from "@/components/ClientAuditTrail";
 import { AddPropertyModal } from "@/components/AddPropertyModal";
 import { StageStepper } from "@/components/StageStepper";
+import { FollowUpRhythmModal } from "./components/FollowUpRhythmModal";
+import type { FollowUpSettings } from "@/components/FollowUpEditor";
 import type { Client } from "@/lib/types";
 import type { ClientStage } from "@/lib/enums.generated";
+
+
+// Pull the per-client follow_up override out of the JSONB blob.
+// Tolerant: returns null when the blob is missing, not an object, or
+// doesn't contain a follow_up key.
+function extractFollowUp(raw: unknown): FollowUpSettings | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const fu = r.follow_up;
+  if (!fu || typeof fu !== "object") return null;
+  return fu as FollowUpSettings;
+}
+
+function hasFollowUpOverride(raw: unknown): boolean {
+  const fu = extractFollowUp(raw);
+  if (!fu) return false;
+  return Object.values(fu).some((v) => v !== null && v !== undefined);
+}
 
 
 type TabId = "overview" | "properties" | "activity" | "documents" | "notes";
@@ -67,6 +87,7 @@ export default function ClientWorkspacePage() {
   const setAiOpen = useUI((s) => s.setAiOpen);
   const [tab, setTab] = useState<TabId>("overview");
   const [busy, setBusy] = useState<string | null>(null);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
 
   if (!client) {
     return <div style={{ padding: 24, color: t.ink3, fontSize: 13 }}>Loading…</div>;
@@ -150,6 +171,24 @@ export default function ClientWorkspacePage() {
             <button onClick={openChat} disabled={busy !== null} style={btnSecondary(t)}>
               <Icon name="chat" size={13} /> {busy === "chat" ? "Opening…" : "Open AI Chat"}
             </button>
+            <button
+              onClick={() => setFollowUpOpen(true)}
+              disabled={busy !== null}
+              style={btnSecondary(t)}
+              title="Configure how often the AI Realtor nudges this lead if they go quiet"
+            >
+              <Icon name="cal" size={13} /> Follow-up rhythm
+              {hasFollowUpOverride(client.ai_cadence_override) ? (
+                <span style={{
+                  marginLeft: 4, fontSize: 9.5, fontWeight: 800,
+                  padding: "1px 5px", borderRadius: 999,
+                  background: t.brandSoft, color: t.brand,
+                  textTransform: "uppercase", letterSpacing: 0.3,
+                }}>
+                  override
+                </span>
+              ) : null}
+            </button>
             {client.stage === "lead" && client.lead_promotion_status !== "agent_requested_review" ? (
               <button onClick={onMarkReady} disabled={busy !== null} style={btnPrimary(t)}>
                 <Icon name="bolt" size={13} /> {busy === "ready" ? "Marking…" : "Mark Ready for Lending"}
@@ -158,6 +197,14 @@ export default function ClientWorkspacePage() {
           </div>
         </div>
       </Card>
+
+      <FollowUpRhythmModal
+        open={followUpOpen}
+        onClose={() => setFollowUpOpen(false)}
+        clientId={id}
+        value={extractFollowUp(client.ai_cadence_override)}
+        cadenceOverride={(client.ai_cadence_override ?? null) as Record<string, unknown> | null}
+      />
 
       {/* Stage pipeline — visual horizontal stepper */}
       <StageStepper clientId={id} currentStage={client.stage as ClientStage} />

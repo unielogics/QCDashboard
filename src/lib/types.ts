@@ -147,6 +147,17 @@ export interface Client {
   originating_agent_id?: string | null;
   current_agent_id?: string | null;
   source_channel?: string | null;
+  // Per-client AI cadence override (alembic 0025). Free-shape JSONB
+  // the agent uses to dial nudge frequency, channel preferences, and
+  // follow-up rhythm for this specific lead. Read by the cadence
+  // engine when targeting client-level rules (no loan attached yet).
+  //
+  // Shape today:
+  //   { follow_up: { stall_threshold_minutes, max_attempts_per_day,
+  //                  max_days_without_reply, quiet_hours_start, quiet_hours_end }
+  //   , channel_overrides: { ... }   // future
+  //   }
+  ai_cadence_override?: Record<string, unknown> | null;
   // Realtor Client Intelligence Profile (alembic 0030). Free-shape
   // JSONB written by the Realtor AI. Drives the Client Readiness Map
   // card on /clients/[id].
