@@ -4,17 +4,18 @@ import { SignUp, useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { AuthMarketingShell } from "@/components/auth/AuthMarketingShell";
+import { CLERK_DARK_APPEARANCE } from "@/components/auth/clerkAppearance";
 import { COMPANY_NAME, PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal";
 
 // localStorage key used to bridge "user accepted at signup time" → the
-// post-signup auto-record effect (in app/providers.tsx via useRecordPendingConsent).
+// post-signup auto-record effect (in app/providers.tsx via
+// useRecordPendingConsent).
 const PENDING_CONSENT_KEY = "qc.pendingLegalConsent";
 
 export default function SignUpPage() {
   const { isLoaded, isSignedIn } = useAuth();
   const router = useRouter();
-  const { t } = useTheme();
   const [accepted, setAccepted] = useState(false);
 
   useEffect(() => {
@@ -23,10 +24,9 @@ export default function SignUpPage() {
     }
   }, [isLoaded, isSignedIn, router]);
 
-  // When the user checks the box, capture the acceptance to localStorage with
-  // a UTC timestamp + the document versions they saw. The post-signup hook
-  // reads this and POSTs it to /api/v1/legal/accept once auth completes,
-  // creating the audit record server-side.
+  // When the user checks the box, capture acceptance to localStorage
+  // with a UTC timestamp + the document versions. The post-signup hook
+  // reads this and POSTs to /api/v1/legal/accept once auth completes.
   const onAccept = (checked: boolean) => {
     setAccepted(checked);
     if (checked) {
@@ -44,35 +44,24 @@ export default function SignUpPage() {
   };
 
   if (!isLoaded || isSignedIn) {
-    return <div style={{ minHeight: "100vh", background: t.bg }} />;
+    return <div className="qc-marketing" style={{ minHeight: "100vh" }} aria-hidden="true" />;
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        minHeight: "100vh",
-        alignItems: "center",
-        justifyContent: "center",
-        flexDirection: "column",
-        gap: 16,
-        padding: "32px 16px",
-        background: t.bg,
-      }}
-    >
-      {/* Consent gate — must be checked before the Clerk form is rendered.
-          We hide rather than disable the form so the user can't bypass via
-          devtools (Clerk handles its own submit; we don't get a useful
-          beforeSubmit hook). */}
+    <AuthMarketingShell>
+      {/* Consent gate — must be checked before the Clerk form renders.
+          Hidden rather than disabled so the user can't bypass via
+          devtools (Clerk handles its own submit). */}
       <div
         style={{
-          maxWidth: 460,
           width: "100%",
-          padding: 16,
+          padding: 18,
           borderRadius: 12,
-          background: t.surface,
-          border: `1px solid ${accepted ? t.profit : t.line}`,
-          boxShadow: t.shadow,
+          background: "rgba(8, 14, 33, 0.85)",
+          border: `1px solid ${accepted ? "#34D399" : "rgba(255,255,255,0.10)"}`,
+          backdropFilter: "blur(12px)",
+          boxShadow: "0 24px 60px rgba(0, 0, 0, 0.55)",
+          marginBottom: 16,
           transition: "border-color 120ms",
         }}
       >
@@ -82,50 +71,63 @@ export default function SignUpPage() {
             checked={accepted}
             onChange={(e) => onAccept(e.target.checked)}
             aria-required
-            style={{ marginTop: 2, accentColor: t.petrol, width: 18, height: 18, cursor: "pointer" }}
+            style={{
+              marginTop: 2,
+              accentColor: "#D4AF37",
+              width: 18,
+              height: 18,
+              cursor: "pointer",
+            }}
           />
-          <span style={{ fontSize: 13, color: t.ink, lineHeight: 1.55 }}>
+          <span style={{ fontSize: 13, color: "#E2E8F0", lineHeight: 1.55 }}>
             I agree to {COMPANY_NAME}&apos;s{" "}
-            <Link href="/terms" target="_blank" style={{ color: t.petrol, fontWeight: 700 }}>
+            <Link
+              href="/terms"
+              target="_blank"
+              style={{ color: "#E9D58A", fontWeight: 700, textDecoration: "underline" }}
+            >
               Terms &amp; Conditions
             </Link>{" "}
             and{" "}
-            <Link href="/privacy" target="_blank" style={{ color: t.petrol, fontWeight: 700 }}>
+            <Link
+              href="/privacy"
+              target="_blank"
+              style={{ color: "#E9D58A", fontWeight: 700, textDecoration: "underline" }}
+            >
               Privacy Policy
             </Link>
             , and consent under the TCPA to receive email and SMS communications about my loan
-            file (you can reply STOP to opt out at any time).
+            file (reply STOP to opt out at any time).
           </span>
         </label>
         <div
           style={{
             marginTop: 10,
             fontSize: 11,
-            color: accepted ? t.profit : t.ink3,
+            color: accepted ? "#34D399" : "#94A3B8",
             fontWeight: 600,
             display: "flex",
             alignItems: "center",
             gap: 6,
           }}
         >
-          {accepted ? "✓ Consent recorded — you can create your account below." : "Check the box to enable account creation."}
+          {accepted
+            ? "✓ Consent recorded — you can create your account below."
+            : "Check the box to enable account creation."}
         </div>
       </div>
 
-      {/* Sign-up form: hidden until consent is given. We render a placeholder
-          card with the same dimensions to avoid layout jump. */}
       {accepted ? (
-        <SignUp />
+        <SignUp appearance={CLERK_DARK_APPEARANCE} routing="path" path="/sign-up" />
       ) : (
         <div
           style={{
-            maxWidth: 460,
             width: "100%",
             padding: 32,
             borderRadius: 12,
-            background: t.surface2,
-            border: `1px dashed ${t.line}`,
-            color: t.ink3,
+            background: "rgba(255, 255, 255, 0.03)",
+            border: "1px dashed rgba(255, 255, 255, 0.12)",
+            color: "#94A3B8",
             fontSize: 13,
             textAlign: "center",
           }}
@@ -133,6 +135,6 @@ export default function SignUpPage() {
           The account creation form will appear once you accept the Terms &amp; Privacy above.
         </div>
       )}
-    </div>
+    </AuthMarketingShell>
   );
 }

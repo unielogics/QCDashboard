@@ -24,3 +24,70 @@ html, body {
 ::-webkit-scrollbar-thumb { background: var(--qc-line-strong); border-radius: 3px; }
 button { font-family: inherit; cursor: pointer; border: none; background: none; }
 a { color: inherit; text-decoration: none; }
+
+
+/* ── Marketing-site brand surfaces ────────────────────────────────────
+ * Used by the unauthenticated /sign-in and /sign-up pages so the
+ * app subdomain matches the qualifiedcommercial.com look (dark navy,
+ * gold accents, grid-bg hero, rate ticker, footer).
+ *
+ * Tailwind config stays clean — these are scoped utilities consumed
+ * only by the auth shell, not the operator console.
+ * ─────────────────────────────────────────────────────────────────── */
+
+.qc-marketing { background: #060B1A; color: #E2E8F0; }
+.qc-ticker-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  height: 34px; background: #020617;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.25);
+  overflow: hidden; white-space: nowrap;
+  color: #E2E8F0; font-size: 12px; letter-spacing: 0.04em;
+  display: flex; align-items: center;
+}
+.qc-ticker-track {
+  display: inline-flex; gap: 32px; align-items: center; height: 100%;
+  padding: 0 22px;
+  animation: qc-ticker-scroll 42s linear infinite;
+}
+.qc-ticker-track > span { display: inline-flex; align-items: center; gap: 4px; }
+.qc-ticker-track b { color: #E9D58A; font-weight: 800; letter-spacing: 0.05em; }
+.qc-ticker-track em.up   { color: #34D399; font-style: normal; }
+.qc-ticker-track em.down { color: #F87171; font-style: normal; }
+@keyframes qc-ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+.qc-nav {
+  position: fixed; top: 34px; left: 0; right: 0; z-index: 90;
+  backdrop-filter: blur(18px);
+  background: rgba(6, 11, 26, 0.7);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Hero grid background — radial vignette + faint white grid lines. */
+.qc-hero-grid-bg {
+  position: relative;
+  background:
+    radial-gradient(60% 80% at 50% 20%, rgba(33, 211, 199, 0.10), transparent 70%),
+    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px) 0 0 / 32px 32px,
+    #060B1A;
+}
+
+.qc-btn-primary {
+  background: linear-gradient(135deg, #E9D58A 0%, #D4AF37 100%);
+  color: #0B1326; font-weight: 800;
+  border-radius: 999px; padding: 11px 18px;
+  box-shadow: 0 12px 36px rgba(212, 175, 55, 0.28);
+  transition: transform .15s ease;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; letter-spacing: 0.01em;
+}
+.qc-btn-primary:hover { transform: translateY(-1px); }
+
+.qc-footer-bg {
+  background: linear-gradient(180deg, #060B1A 0%, #04081A 100%);
+  border-top: 1px solid rgba(212, 175, 55, 0.18);
+  color: #94A3B8;
+}
