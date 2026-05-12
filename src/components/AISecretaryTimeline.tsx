@@ -175,7 +175,7 @@ export function AISecretaryTimeline({
                       cursor: "pointer", fontFamily: "inherit",
                     }}
                   >
-                    {o === "ai" ? "AI handles" : "Human handles"}
+                    {o === "ai" ? "My AI Secretary" : "My Tasks"}
                   </button>
                 ))}
                 <div style={{ flex: 1 }} />
@@ -477,7 +477,7 @@ function TaskCard({
               whiteSpace: "nowrap",
             }}
           >
-            {isAI ? "AI handles" : isLocked ? "🔒 Funding" : row.owner_type === "shared" ? "Shared" : "Human handles"}
+            {isAI ? "My AI Secretary" : isLocked ? "🔒 Funding" : row.owner_type === "shared" ? "Shared" : "My Tasks"}
           </button>
           {isAI && row.assignment_id && onOpenAssignment ? (
             <button

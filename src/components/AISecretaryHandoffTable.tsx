@@ -352,7 +352,7 @@ function HandoffCell({
           minHeight: 44,
           fontSize: 11.5, color: accent, fontWeight: 900, letterSpacing: 0.2,
         }}>
-          Drop to flip row → {owner === "ai" ? "AI handles" : "Human handles"}
+          Drop to flip row → {owner === "ai" ? "My AI Secretary" : "My Tasks"}
         </span>
       ) : taskKeys.length === 0 ? (
         <span style={{
@@ -363,7 +363,7 @@ function HandoffCell({
           fontStyle: drop.isOver ? "normal" : "italic",
           letterSpacing: 0.2,
         }}>
-          {drop.isOver ? `Drop here → ${owner === "ai" ? "AI handles" : "Human handles"}` : `Drag work here`}
+          {drop.isOver ? `Drop here → ${owner === "ai" ? "My AI Secretary" : "My Tasks"}` : `Drag work here`}
         </span>
       ) : (
         taskKeys.map((k) => (

@@ -1,22 +1,36 @@
 "use client";
 
-// AI Secretary tab — the agent's drag-drop workbench scoped to this
-// deal (pre-promotion) or to the linked funding loan (post-promotion).
-// Adds three controls the funding /loans/[id] page has that were
-// missing from the bare picker:
+// AI Secretary tab — agent-side workbench. Same shape as the funding
+// /loans/[id] surface (DealWorkspaceTab): header strip + action pills
+// + two-column body with Resolution Queue (left) and a numbered
+// handoff table (right). Phase rendered:
 //
-//   1. Cadence editor — opens FollowUpEditor in a modal, writes
-//      ai_secretary_settings.follow_up via PATCH file-settings
-//   2. Bootstrap repair — visible when the workbench is empty;
-//      seeds CRS + plan from the agent's buyer/seller playbook
-//   3. Per-task assignment drawer — opens when the agent clicks a
-//      task; edits instructions + outreach instructions visibility
+//   - Pre-promotion: scope = deal_id. CRS rows materialized via the
+//     buyer/seller playbook overlay through bootstrap_deal_requirement_rows.
+//   - Post-promotion: scope = loan_id. Bridges to the existing funding
+//     workbench at /loans/[id] for advanced controls (lender connect,
+//     workflow conditions, HUD); the deal page surfaces the same view
+//     so the agent doesn't have to leave their file.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, SectionLabel } from "@/components/design-system/primitives";
+import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { DealSecretaryPicker } from "@/components/DealSecretaryPicker";
+import {
+  AISecretaryHandoffTable,
+  loadHandoffRows,
+  saveHandoffRows,
+  type HandoffRow,
+} from "@/components/AISecretaryHandoffTable";
 import { FollowUpEditor, type FollowUpSettings } from "@/components/FollowUpEditor";
 import {
   useAssignClientTask,
@@ -27,8 +41,8 @@ import {
   useUpdateClientFileSettings,
 } from "@/hooks/useApi";
 import type { DSOutreachMode, DSTaskRow } from "@/lib/types";
+import { useDraggable } from "@dnd-kit/core";
 
-// System floor — matches qcbackend app/services/ai/follow_up.py.
 const SYSTEM_FLOOR: FollowUpSettings = {
   stall_threshold_minutes: 60 * 24,
   max_attempts_per_day: 3,
@@ -48,6 +62,9 @@ export function AISecretaryTab({
   const { data: user } = useCurrentUser();
   const isOperator = user?.role === "super_admin" || user?.role === "loan_exec";
   const scope = loanId ? { loanId } : { dealId };
+  // localStorage key — falls back to the deal id pre-promotion. The
+  // handoff table only uses this prop as a per-file storage suffix.
+  const localKey = scope.loanId ?? scope.dealId ?? "deal:none";
 
   const { data: view, isLoading } = useClientAiFollowUp({
     clientId,
@@ -59,13 +76,24 @@ export function AISecretaryTab({
   const updateSettings = useUpdateClientFileSettings(clientId);
   const bootstrap = useBootstrapClientAiFollowUp(clientId);
 
-  const [rhythmOpen, setRhythmOpen] = useState(false);
+  const [panel, setPanel] = useState<"instructions" | "follow-up" | null>(null);
   const [editing, setEditing] = useState<DSTaskRow | null>(null);
   const [bootstrapErr, setBootstrapErr] = useState<string | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
 
-  const totalRows = (view?.left.length ?? 0) + (view?.right.length ?? 0);
-  const isEmpty = !!view && totalRows === 0;
-  const followUp = (view?.file_settings?.follow_up ?? null) as FollowUpSettings | null;
+  // Handoff table rows (per-deal/per-loan in localStorage).
+  const [handoffRows, setHandoffRows] = useState<HandoffRow[]>([]);
+  useEffect(() => {
+    const stored = loadHandoffRows(localKey);
+    if (stored) setHandoffRows(stored);
+    else setHandoffRows(defaultHandoffRows());
+  }, [localKey]);
+  useEffect(() => {
+    if (handoffRows.length > 0) saveHandoffRows(localKey, handoffRows);
+  }, [localKey, handoffRows]);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const [activeDrag, setActiveDrag] = useState<{ label: string; owner: "ai" | "human" } | null>(null);
 
   if (isLoading) {
     return (
@@ -78,122 +106,306 @@ export function AISecretaryTab({
     return (
       <Card pad={20}>
         <SectionLabel>AI Secretary unavailable</SectionLabel>
-        <div style={{ marginTop: 8, fontSize: 13, color: t.ink3 }}>
-          Couldn&apos;t load the view. Try refreshing.
-        </div>
+        <div style={{ marginTop: 8, fontSize: 13, color: t.ink3 }}>Couldn&apos;t load the view. Try refreshing.</div>
       </Card>
     );
   }
 
+  const totalRows = view.left.length + view.right.length;
+  const isEmpty = totalRows === 0;
+  const mode = view.file_settings?.outreach_mode ?? "portal_auto";
+  const aiIsLive = mode === "portal_auto" || mode === "portal_email" || mode === "portal_email_sms";
+  const followUp = (view.file_settings?.follow_up ?? null) as FollowUpSettings | null;
+  const hasFollowUpOverride =
+    !!followUp && Object.values(followUp).some((v) => v !== null && v !== undefined);
+
+  // Resolution Queue = rows currently owned by Human that aren't slotted
+  // into a handoff row yet. Drag into the right column to assign.
+  const placedKeys = new Set<string>();
+  for (const r of handoffRows) for (const k of r.taskKeys) placedKeys.add(k);
+  const queue = view.left.filter((row) => !placedKeys.has(row.requirement_key));
+  const aiTasksCount = view.right.length;
+
+  function handleDragStart(e: DragStartEvent) {
+    const data = e.active.data?.current as { label?: string; requirement_key?: string } | undefined;
+    if (!data) return;
+    setActiveDrag({ label: data.label ?? data.requirement_key ?? "Task", owner: "ai" });
+  }
+  function handleDragEnd(e: DragEndEvent) {
+    setActiveDrag(null);
+    const overId = e.over?.id ? String(e.over.id) : "";
+    if (!overId.startsWith("handoff:")) return;
+    const [, rowId, ownerStr] = overId.split(":");
+    const owner: "ai" | "human" = ownerStr === "ai" ? "ai" : "human";
+    const data = e.active.data?.current as { requirement_key?: string; label?: string } | undefined;
+    const key = data?.requirement_key;
+    if (!key) return;
+    // Place into the row + flip ownership server-side.
+    const target = handoffRows.find((r) => r.id === rowId);
+    const targetWasOtherOwner = target?.owner && target.owner !== owner;
+    const siblingsToFlip = targetWasOtherOwner ? (target?.taskKeys ?? []).filter((k) => k !== key) : [];
+    const next = handoffRows.map((r) =>
+      r.id === rowId
+        ? { ...r, owner, taskKeys: r.taskKeys.includes(key) ? r.taskKeys : [...r.taskKeys.filter((x) => x !== key), key] }
+        : { ...r, taskKeys: r.taskKeys.filter((x) => x !== key) },
+    );
+    setHandoffRows(next);
+    if (owner === "ai") {
+      assign.mutate({ body: { requirement_key: key }, dealId: scope.dealId, loanId: scope.loanId });
+    } else {
+      unassign.mutate({ requirementKey: key, dealId: scope.dealId, loanId: scope.loanId });
+    }
+    for (const sib of siblingsToFlip) {
+      if (owner === "ai") assign.mutate({ body: { requirement_key: sib }, dealId: scope.dealId, loanId: scope.loanId });
+      else unassign.mutate({ requirementKey: sib, dealId: scope.dealId, loanId: scope.loanId });
+    }
+    const rowLabel = rowId.replace(/^row_/, "").split("_")[0];
+    setFlash(`Placed "${data?.label ?? key}" in row ${rowLabel} (${owner.toUpperCase()}).`);
+    window.setTimeout(() => setFlash(null), 2400);
+  }
+
+  function handleUnplaceTask(key: string) {
+    const next = handoffRows.map((r) => ({
+      ...r,
+      taskKeys: r.taskKeys.filter((k) => k !== key),
+    }));
+    setHandoffRows(next);
+    unassign.mutate({ requirementKey: key, dealId: scope.dealId, loanId: scope.loanId });
+  }
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Header — cadence + bootstrap + funding workbench link */}
-      <Card pad={14}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 800, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
-              AI Secretary {scope.loanId ? "· funding scope" : "· realtor scope"}
-            </div>
-            <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>
-              {totalRows === 0
-                ? "No requirements yet — bootstrap from your buyer/seller playbook below."
-                : `${view.right.length} AI-owned · ${view.left.length} you handle · ${view.funding_locked_count} funding-locked`}
-            </div>
-          </div>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={() => setRhythmOpen(true)} style={btnSecondary(t)}>
-              <Icon name="cal" size={12} /> Follow-up rhythm
-              {followUp && Object.values(followUp).some((v) => v !== null && v !== undefined) ? (
-                <span
-                  style={{
-                    marginLeft: 4,
-                    padding: "1px 5px",
-                    fontSize: 9.5,
-                    fontWeight: 800,
-                    background: t.brandSoft,
-                    color: t.brand,
-                    borderRadius: 999,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  override
-                </span>
-              ) : null}
-            </button>
-            {scope.loanId ? (
-              <a
-                href={`/loans/${scope.loanId}?tab=workspace`}
-                style={{ ...btnSecondary(t), textDecoration: "none" }}
-              >
-                <Icon name="file" size={12} /> Open funding workbench
-              </a>
-            ) : null}
+    <Card pad={12}>
+      {/* Header strip — bot avatar + status + Pause + Outreach mode */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 8,
+            background: t.surface2,
+            border: `1px solid ${t.line}`,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          🤖
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+          <span style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.4, textTransform: "uppercase" }}>
+            AI Secretary
+          </span>
+          <div style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>
+            {mode === "off" || aiTasksCount === 0
+              ? "Standing by — drop tasks into AI to start"
+              : `${aiIsLive ? "Working" : "Drafting"} · ${aiTasksCount} task${aiTasksCount === 1 ? "" : "s"} active`}
           </div>
         </div>
-        {bootstrapErr ? (
-          <div style={{ marginTop: 8, fontSize: 12, color: t.danger }}>{bootstrapErr}</div>
+        {aiTasksCount > 0 ? (
+          <Pill bg={t.brandSoft} color={t.brand}>
+            <Icon name="bolt" size={10} /> {aiTasksCount} active
+          </Pill>
         ) : null}
-      </Card>
+        <div style={{ flex: 1 }} />
+        <button
+          type="button"
+          onClick={() =>
+            updateSettings.mutate({
+              body: { outreach_mode: mode === "off" ? "portal_auto" : "off" },
+              dealId: scope.dealId,
+              loanId: scope.loanId,
+            })
+          }
+          style={pillBtn(t)}
+        >
+          <Icon name={mode === "off" ? "send" : "pause"} size={12} />
+          {mode === "off" ? "Resume" : "Pause"}
+        </button>
+        <select
+          value={mode}
+          onChange={(e) =>
+            updateSettings.mutate({
+              body: { outreach_mode: e.target.value as DSOutreachMode },
+              dealId: scope.dealId,
+              loanId: scope.loanId,
+            })
+          }
+          style={{
+            padding: "6px 8px",
+            borderRadius: 9,
+            border: `1px solid ${t.line}`,
+            background: t.surface,
+            color: t.ink2,
+            fontSize: 11,
+            cursor: "pointer",
+          }}
+        >
+          <option value="off">Off</option>
+          <option value="draft_first">Draft first</option>
+          <option value="portal_auto">Portal</option>
+          <option value="portal_email">Portal + Email</option>
+          <option value="portal_email_sms">Portal + Email + SMS</option>
+        </select>
+      </div>
+
+      {/* Action pill row */}
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+        <ActionPill t={t} icon="sliders" label="Instructions" onClick={() => setPanel("instructions")} />
+        <ActionPill
+          t={t}
+          icon="cal"
+          label="Follow-up rhythm"
+          hint={hasFollowUpOverride ? "overridden" : undefined}
+          onClick={() => setPanel("follow-up")}
+        />
+        {scope.loanId ? (
+          <a href={`/loans/${scope.loanId}?tab=workspace`} style={{ ...pillBtn(t), textDecoration: "none" }}>
+            <Icon name="file" size={12} /> Open funding workbench
+          </a>
+        ) : null}
+        <span style={{ marginLeft: "auto", fontSize: 11, color: t.ink3, fontWeight: 700 }}>
+          Drag work between the queue and AI / Human columns
+        </span>
+      </div>
+
+      {flash ? (
+        <div
+          style={{
+            marginBottom: 10,
+            padding: "6px 10px",
+            borderRadius: 6,
+            background: t.brandSoft,
+            color: t.brand,
+            fontSize: 11.5,
+            fontWeight: 700,
+          }}
+        >
+          {flash}
+        </div>
+      ) : null}
 
       {isEmpty ? (
-        <Card pad={20} style={{ borderLeft: `3px solid ${t.brand}` }}>
-          <SectionLabel>Bootstrap requirements</SectionLabel>
-          <div style={{ fontSize: 13, color: t.ink2, marginTop: 6 }}>
-            This file has no AI requirements yet. Pull from your buyer/seller playbook (the templates
-            you configured in <strong>Settings → AI → Lead Templates</strong>) to seed the workbench.
+        <Card pad={16} style={{ borderLeft: `3px solid ${t.brand}`, marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ flex: 1 }}>
+              <SectionLabel>Bootstrap requirements</SectionLabel>
+              <div style={{ fontSize: 12.5, color: t.ink2, marginTop: 4 }}>
+                Pull from your buyer/seller playbook (Settings → AI → Lead Templates) to seed the workbench.
+              </div>
+            </div>
+            <button
+              onClick={async () => {
+                setBootstrapErr(null);
+                try {
+                  await bootstrap.mutateAsync(scope);
+                } catch (e) {
+                  setBootstrapErr(e instanceof Error ? e.message : "Bootstrap failed");
+                }
+              }}
+              disabled={bootstrap.isPending}
+              style={{
+                padding: "8px 14px",
+                fontSize: 12,
+                fontWeight: 800,
+                borderRadius: 8,
+                border: "none",
+                background: t.brand,
+                color: t.inverse,
+                cursor: "pointer",
+              }}
+            >
+              <Icon name="bolt" size={12} /> {bootstrap.isPending ? "Bootstrapping…" : "Bootstrap from playbook"}
+            </button>
           </div>
-          <button
-            onClick={async () => {
-              setBootstrapErr(null);
-              try {
-                await bootstrap.mutateAsync(scope);
-              } catch (e) {
-                setBootstrapErr(e instanceof Error ? e.message : "Bootstrap failed");
-              }
-            }}
-            disabled={bootstrap.isPending}
-            style={{
-              marginTop: 12,
-              padding: "8px 14px",
-              fontSize: 12,
-              fontWeight: 800,
-              borderRadius: 8,
-              border: "none",
-              background: t.brand,
-              color: t.inverse,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <Icon name="bolt" size={12} /> {bootstrap.isPending ? "Bootstrapping…" : "Bootstrap from playbook"}
-          </button>
+          {bootstrapErr ? <div style={{ marginTop: 8, fontSize: 12, color: t.danger }}>{bootstrapErr}</div> : null}
         </Card>
       ) : null}
 
-      <DealSecretaryPicker
-        view={view}
-        isOperator={isOperator}
-        onAssign={(requirement_key) =>
-          assign.mutate({ body: { requirement_key }, dealId: scope.dealId, loanId: scope.loanId })
-        }
-        onUnassign={(requirement_key) =>
-          unassign.mutate({ requirementKey: requirement_key, dealId: scope.dealId, loanId: scope.loanId })
-        }
-        onChangeOutreachMode={(mode: DSOutreachMode) =>
-          updateSettings.mutate({
-            body: { outreach_mode: mode },
-            dealId: scope.dealId,
-            loanId: scope.loanId,
-          })
-        }
-        onOpenAssignment={(task) => setEditing(task)}
-      />
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDrag(null)}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(280px, 0.85fr) minmax(420px, 1.3fr)",
+            gap: 12,
+            alignItems: "stretch",
+          }}
+        >
+          {/* LEFT — Resolution Queue */}
+          <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface, padding: 12, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
+                Resolution Queue
+              </span>
+              <Pill bg={queue.length > 0 ? t.warnBg : t.surface2} color={queue.length > 0 ? t.warn : t.ink3}>
+                {queue.length} open
+              </Pill>
+              <span style={{ marginLeft: "auto", fontSize: 10.5, color: t.ink3, fontWeight: 700 }}>
+                Drag → row cell
+              </span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 540, overflow: "auto", paddingRight: 2 }}>
+              {queue.length === 0 ? (
+                <div style={{ padding: "16px 8px", fontSize: 12, color: t.ink3 }}>
+                  {totalRows === 0
+                    ? "Nothing yet — bootstrap from your playbook above to populate the queue."
+                    : "Every task is already placed in the handoff table on the right."}
+                </div>
+              ) : (
+                queue.map((row) => <QueueRow key={row.requirement_key} row={row} onOpen={() => setEditing(row)} />)
+              )}
+            </div>
+          </div>
+
+          {/* RIGHT — Delegation (numbered handoff table) */}
+          <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface, padding: 12, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
+                Delegation
+              </span>
+              <Pill>Work handoff</Pill>
+              <span style={{ marginLeft: "auto", fontSize: 11, color: t.ink3 }}>
+                Drop tasks into a numbered row&apos;s AI or Human column
+              </span>
+            </div>
+            <AISecretaryHandoffTable
+              view={view}
+              loanId={localKey}
+              isOperator={isOperator}
+              onAssign={(key) =>
+                assign.mutate({ body: { requirement_key: key }, dealId: scope.dealId, loanId: scope.loanId })
+              }
+              onUnassign={(key) =>
+                unassign.mutate({ requirementKey: key, dealId: scope.dealId, loanId: scope.loanId })
+              }
+              rows={handoffRows}
+              setRows={setHandoffRows}
+              onUnplaceTask={handleUnplaceTask}
+            />
+          </div>
+        </div>
+        <DragOverlay dropAnimation={null}>
+          {activeDrag ? (
+            <span
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                background: activeDrag.owner === "ai" ? t.brandSoft : t.surface2,
+                color: activeDrag.owner === "ai" ? t.brand : t.ink2,
+                fontSize: 11.5,
+                fontWeight: 800,
+                border: `1px solid ${activeDrag.owner === "ai" ? t.brand : t.line}`,
+              }}
+            >
+              {activeDrag.label}
+            </span>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       <FollowUpRhythmEditor
-        open={rhythmOpen}
-        onClose={() => setRhythmOpen(false)}
+        open={panel === "follow-up"}
+        onClose={() => setPanel(null)}
         value={followUp}
         onSave={(next) =>
           updateSettings.mutateAsync({
@@ -203,7 +415,10 @@ export function AISecretaryTab({
           })
         }
       />
-
+      <InstructionsEditor
+        open={panel === "instructions"}
+        onClose={() => setPanel(null)}
+      />
       <AssignmentEditor
         task={editing}
         onClose={() => setEditing(null)}
@@ -216,8 +431,111 @@ export function AISecretaryTab({
           });
         }}
       />
+    </Card>
+  );
+}
+
+function defaultHandoffRows(): HandoffRow[] {
+  return Array.from({ length: 6 }, (_, i) => ({
+    id: `row_${i + 1}`,
+    owner: null,
+    taskKeys: [],
+  }));
+}
+
+function QueueRow({ row, onOpen }: { row: DSTaskRow; onOpen: () => void }) {
+  const { t } = useTheme();
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `queue:${row.requirement_key}`,
+    data: { kind: "queue", label: row.label, requirement_key: row.requirement_key },
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      onClick={onOpen}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 12px",
+        borderRadius: 8,
+        background: t.surface2,
+        border: `1px solid ${t.line}`,
+        cursor: "grab",
+        opacity: isDragging ? 0.5 : 1,
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink, lineHeight: 1.3 }}>{row.label}</div>
+        <div style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700, marginTop: 2, textTransform: "uppercase", letterSpacing: 0.4 }}>
+          {row.status}
+        </div>
+      </div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen();
+        }}
+        style={{
+          padding: "4px 10px",
+          fontSize: 11,
+          fontWeight: 700,
+          borderRadius: 6,
+          border: `1px solid ${t.line}`,
+          background: t.surface,
+          color: t.ink2,
+          cursor: "pointer",
+        }}
+      >
+        Edit
+      </button>
     </div>
   );
+}
+
+function ActionPill({
+  t,
+  icon,
+  label,
+  hint,
+  onClick,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  icon: "sliders" | "cal" | "alert" | "chat";
+  label: string;
+  hint?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button onClick={onClick} style={pillBtn(t)}>
+      <Icon name={icon} size={12} stroke={2.2} />
+      <span style={{ fontWeight: 800 }}>{label}</span>
+      {hint ? (
+        <span style={{ marginLeft: 4, fontSize: 9.5, color: t.brand, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.5 }}>
+          {hint}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function pillBtn(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
+  return {
+    padding: "6px 12px",
+    borderRadius: 9,
+    border: `1px solid ${t.line}`,
+    background: t.surface2,
+    color: t.ink2,
+    fontSize: 11.5,
+    fontWeight: 700,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+  };
 }
 
 function FollowUpRhythmEditor({
@@ -243,15 +561,6 @@ function FollowUpRhythmEditor({
     }
   }, [open, value]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
   if (!open) return null;
 
   async function save() {
@@ -273,78 +582,40 @@ function FollowUpRhythmEditor({
     }
   }
 
-  async function reset() {
-    setBusy(true);
-    setErr(null);
-    try {
-      await onSave(null);
-      onClose();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Couldn't reset");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
-    <div
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.32)",
-        zIndex: 70,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-      }}
-    >
-      <div
-        style={{
-          background: t.surface,
-          border: `1px solid ${t.line}`,
-          borderRadius: 12,
-          width: 520,
-          maxWidth: "100%",
-          padding: 20,
-          display: "flex",
-          flexDirection: "column",
-          gap: 14,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Icon name="cal" size={15} stroke={2.2} />
-          <div style={{ fontSize: 15, fontWeight: 800, color: t.ink }}>Follow-up rhythm</div>
-          <button
-            onClick={onClose}
-            style={{ marginLeft: "auto", background: "transparent", border: "none", color: t.ink3, cursor: "pointer", padding: 4 }}
-            title="Close"
-          >
-            <Icon name="x" size={16} />
-          </button>
-        </div>
-        <div style={{ fontSize: 12, color: t.ink3 }}>
-          Controls how often the AI re-engages this client between replies. Per-deal overrides win; otherwise the
-          firm default or system floor applies.
-        </div>
-        <FollowUpEditor
-          value={draft}
-          onChange={setDraft}
-          fallback={SYSTEM_FLOOR}
-          fallbackLabel="System floor"
-        />
-        {err ? <div style={{ fontSize: 12, color: t.danger }}>{err}</div> : null}
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button onClick={reset} disabled={busy} style={btnSecondary(t)}>Reset to firm default</button>
-          <button onClick={save} disabled={busy} style={btnPrimary(t, busy)}>
-            {busy ? "Saving…" : "Save"}
-          </button>
-        </div>
+    <ModalShell onClose={onClose} title="Follow-up rhythm" icon="cal">
+      <div style={{ fontSize: 12, color: t.ink3 }}>
+        Controls how often the AI re-engages this client between replies. Per-deal overrides win; otherwise the
+        firm default or system floor applies.
       </div>
-    </div>
+      <FollowUpEditor value={draft} onChange={setDraft} fallback={SYSTEM_FLOOR} fallbackLabel="System floor" />
+      {err ? <div style={{ fontSize: 12, color: t.danger }}>{err}</div> : null}
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button onClick={() => onSave(null).then(onClose)} disabled={busy} style={btnSecondary(t)}>
+          Reset to firm default
+        </button>
+        <button onClick={save} disabled={busy} style={btnPrimary(t, busy)}>
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function InstructionsEditor({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTheme();
+  if (!open) return null;
+  return (
+    <ModalShell onClose={onClose} title="Instructions" icon="sliders">
+      <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.5 }}>
+        Standing rules the AI honors across every task on this file are configured in{" "}
+        <strong>Settings → AI → Lead Templates</strong>. Per-task instructions live on each task itself —
+        click a task in the Resolution Queue or in a numbered row to edit.
+      </div>
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button onClick={onClose} style={btnPrimary(t, false)}>Got it</button>
+      </div>
+    </ModalShell>
   );
 }
 
@@ -385,6 +656,63 @@ function AssignmentEditor({
   }
 
   return (
+    <ModalShell onClose={onClose} title={task.label} icon="spark" subtitle={`${task.requirement_key} · ${task.owner_type} · ${task.status}`}>
+      <div style={{ fontSize: 12, color: t.ink3 }}>
+        Free-text instructions the AI uses when chasing this requirement. Stays per-task, never leaks to the
+        borrower unless you flag it borrower-visible.
+      </div>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        rows={6}
+        placeholder='e.g. "Ask the buyer for their pre-approval letter from Chase…"'
+        style={{
+          width: "100%",
+          padding: 10,
+          fontSize: 13,
+          fontFamily: "inherit",
+          borderRadius: 6,
+          border: `1px solid ${t.line}`,
+          background: t.surface,
+          color: t.ink,
+          resize: "vertical",
+          lineHeight: 1.4,
+          boxSizing: "border-box",
+        }}
+      />
+      {err ? <div style={{ fontSize: 12, color: t.danger }}>{err}</div> : null}
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button onClick={onClose} style={btnSecondary(t)}>Cancel</button>
+        <button onClick={save} disabled={busy} style={btnPrimary(t, busy)}>
+          {busy ? "Saving…" : "Save instructions"}
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function ModalShell({
+  onClose,
+  title,
+  icon,
+  subtitle,
+  children,
+}: {
+  onClose: () => void;
+  title: string;
+  icon: "sliders" | "cal" | "spark";
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  const { t } = useTheme();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
     <div
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -392,7 +720,7 @@ function AssignmentEditor({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.32)",
+        background: "rgba(0,0,0,0.4)",
         zIndex: 70,
         display: "flex",
         alignItems: "center",
@@ -414,12 +742,10 @@ function AssignmentEditor({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Icon name="spark" size={15} stroke={2.2} />
+          <Icon name={icon} size={15} stroke={2.2} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: t.ink }}>{task.label}</div>
-            <div style={{ fontSize: 11.5, color: t.ink3 }}>
-              {task.requirement_key} · {task.owner_type} · {task.status}
-            </div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: t.ink }}>{title}</div>
+            {subtitle ? <div style={{ fontSize: 11.5, color: t.ink3 }}>{subtitle}</div> : null}
           </div>
           <button
             onClick={onClose}
@@ -428,36 +754,7 @@ function AssignmentEditor({
             <Icon name="x" size={16} />
           </button>
         </div>
-        <div style={{ fontSize: 12, color: t.ink3 }}>
-          Free-text instructions the AI uses when chasing this requirement. Stays per-task, never leaks to the
-          borrower unless you flag it borrower-visible.
-        </div>
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          rows={6}
-          placeholder='e.g. "Ask the buyer for their pre-approval letter from Chase. If they push back, offer alternative lenders we work with."'
-          style={{
-            width: "100%",
-            padding: 10,
-            fontSize: 13,
-            fontFamily: "inherit",
-            borderRadius: 6,
-            border: `1px solid ${t.line}`,
-            background: t.surface,
-            color: t.ink,
-            resize: "vertical",
-            lineHeight: 1.4,
-            boxSizing: "border-box",
-          }}
-        />
-        {err ? <div style={{ fontSize: 12, color: t.danger }}>{err}</div> : null}
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={btnSecondary(t)}>Cancel</button>
-          <button onClick={save} disabled={busy} style={btnPrimary(t, busy)}>
-            {busy ? "Saving…" : "Save instructions"}
-          </button>
-        </div>
+        {children}
       </div>
     </div>
   );
@@ -487,8 +784,5 @@ function btnSecondary(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties 
     background: t.surface,
     color: t.ink2,
     cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
   };
 }

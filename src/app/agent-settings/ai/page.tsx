@@ -487,6 +487,7 @@ function TemplateCard({
   const del = useDeleteAgentRequirement(side);
   const [expanded, setExpanded] = useState(false);
   const [configureFor, setConfigureFor] = useState<{ req: PlaybookRequirement; owner: "platform" | "agent" } | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const platform = data?.platform_requirements || [];
   const overlay = data?.agent_requirements || [];
@@ -581,9 +582,47 @@ function TemplateCard({
             <Group title="Required" t={t} rows={groups.required} onSetLevel={setLevel} onConfigure={(req, owner) => setConfigureFor({ req, owner })} />
             <Group title="Recommended" t={t} rows={groups.recommended} onSetLevel={setLevel} onConfigure={(req, owner) => setConfigureFor({ req, owner })} />
             <Group title="Optional" t={t} rows={groups.optional} onSetLevel={setLevel} onConfigure={(req, owner) => setConfigureFor({ req, owner })} />
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${t.line}` }}>
+              <button
+                type="button"
+                onClick={() => setAddOpen(true)}
+                style={{
+                  padding: "8px 14px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  borderRadius: 8,
+                  border: `1px solid ${t.line}`,
+                  background: t.surface,
+                  color: t.ink,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                + Add row
+              </button>
+              <span style={{ marginLeft: 10, fontSize: 11, color: t.ink3 }}>
+                Custom rows show up in your buyer/seller playbook and seed the Tasks tab on new deals.
+              </span>
+            </div>
           </div>
         )}
       </div>
+
+      {addOpen ? (
+        <AddTemplateRowModal
+          t={t}
+          side={side}
+          existingKeys={new Set([...platform.map((r) => r.requirement_key), ...overlay.map((r) => r.requirement_key)])}
+          onClose={() => setAddOpen(false)}
+          onSave={async (input) => {
+            await upsert.mutateAsync(input);
+            setAddOpen(false);
+          }}
+          saving={upsert.isPending}
+        />
+      ) : null}
 
       {configureFor ? (
         <RequirementConfigurePopup
@@ -1274,10 +1313,10 @@ function ChipText({ children, t, bg, fg }: { children: React.ReactNode; t: Retur
 
 function ownerLabel(owner?: string): string {
   switch (owner) {
-    case "ai": return "AI handles";
+    case "ai": return "My AI Secretary";
     case "shared": return "Shared";
     case "funding_locked": return "Locked";
-    default: return "Human handles";
+    default: return "My Tasks";
   }
 }
 
@@ -1498,7 +1537,7 @@ function RequirementConfigurePopup({
                     fontSize: 12, fontWeight: 800, fontFamily: "inherit",
                   }}
                 >
-                  {opt === "human" ? "Human handles" : opt === "ai" ? "AI handles" : "Shared"}
+                  {opt === "human" ? "My Tasks" : opt === "ai" ? "My AI Secretary" : "Shared"}
                 </button>
               ))}
             </div>
@@ -1587,6 +1626,248 @@ function RequirementConfigurePopup({
             opacity: saving ? 0.7 : 1,
           }}>
             {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// AddTemplateRowModal — lets the agent create a brand-new playbook
+// requirement on their buyer or seller template. Hits the same
+// useUpsertAgentRequirement(side) endpoint the existing edit flow
+// uses, just with a fresh requirement_key.
+function AddTemplateRowModal({
+  t,
+  side,
+  existingKeys,
+  onSave,
+  onClose,
+  saving,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  side: "buyer" | "seller";
+  existingKeys: Set<string>;
+  onSave: (input: {
+    requirement_key: string;
+    label: string;
+    category: string;
+    required_level: "required" | "recommended" | "optional";
+    default_owner_type?: string;
+  }) => Promise<unknown>;
+  onClose: () => void;
+  saving: boolean;
+}) {
+  const [label, setLabel] = useState("");
+  const [level, setLevel] = useState<"required" | "recommended" | "optional">("recommended");
+  const [category, setCategory] = useState<string>("communication");
+  const [owner, setOwner] = useState<"human" | "ai" | "shared">("human");
+  const [err, setErr] = useState<string | null>(null);
+
+  // Derive requirement_key from the label — agents shouldn't have to
+  // care about backend identifiers, but if a key clashes we suffix it.
+  const baseKey = useMemo(() => {
+    const slug = label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    if (!slug) return "";
+    let key = `agent_${side}_${slug}`;
+    let n = 2;
+    while (existingKeys.has(key)) key = `agent_${side}_${slug}_${n++}`;
+    return key;
+  }, [label, side, existingKeys]);
+
+  async function save() {
+    if (!label.trim()) {
+      setErr("Label is required");
+      return;
+    }
+    if (!baseKey) {
+      setErr("Couldn't derive a key from the label");
+      return;
+    }
+    setErr(null);
+    try {
+      await onSave({
+        requirement_key: baseKey,
+        label: label.trim(),
+        category,
+        required_level: level,
+        default_owner_type: owner,
+      });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Couldn't save");
+    }
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.4)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 100,
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: t.surface,
+          border: `1px solid ${t.line}`,
+          borderRadius: 12,
+          width: 480,
+          maxWidth: "100%",
+          padding: 20,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
+        <div style={{ fontSize: 15, fontWeight: 800, color: t.ink }}>
+          Add row to {side === "buyer" ? "Buyer" : "Seller"} template
+        </div>
+        <div style={{ fontSize: 12, color: t.ink3 }}>
+          Defines a new playbook requirement. Applies automatically to every new {side} deal
+          you open; existing deals can opt-in via the Tasks tab.
+        </div>
+        <label style={{ display: "block" }}>
+          <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" }}>Label</span>
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder='e.g. "Send buyer agency agreement"'
+            style={{
+              marginTop: 4,
+              width: "100%",
+              padding: 8,
+              fontSize: 13,
+              borderRadius: 6,
+              border: `1px solid ${t.line}`,
+              background: t.surface,
+              color: t.ink,
+              boxSizing: "border-box",
+            }}
+          />
+          {baseKey ? (
+            <div style={{ marginTop: 4, fontSize: 10.5, color: t.ink3, fontFamily: "ui-monospace, SF Mono, monospace" }}>
+              key: {baseKey}
+            </div>
+          ) : null}
+        </label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <label style={{ display: "block" }}>
+            <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" }}>Required level</span>
+            <select
+              value={level}
+              onChange={(e) => setLevel(e.target.value as "required" | "recommended" | "optional")}
+              style={{
+                marginTop: 4,
+                width: "100%",
+                padding: 8,
+                fontSize: 13,
+                borderRadius: 6,
+                border: `1px solid ${t.line}`,
+                background: t.surface,
+                color: t.ink,
+              }}
+            >
+              <option value="required">Required</option>
+              <option value="recommended">Recommended</option>
+              <option value="optional">Optional</option>
+            </select>
+          </label>
+          <label style={{ display: "block" }}>
+            <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" }}>Default owner</span>
+            <select
+              value={owner}
+              onChange={(e) => setOwner(e.target.value as "human" | "ai" | "shared")}
+              style={{
+                marginTop: 4,
+                width: "100%",
+                padding: 8,
+                fontSize: 13,
+                borderRadius: 6,
+                border: `1px solid ${t.line}`,
+                background: t.surface,
+                color: t.ink,
+              }}
+            >
+              <option value="human">My Tasks (I handle it)</option>
+              <option value="ai">My AI Secretary</option>
+              <option value="shared">Shared</option>
+            </select>
+          </label>
+        </div>
+        <label style={{ display: "block" }}>
+          <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" }}>Category</span>
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            style={{
+              marginTop: 4,
+              width: "100%",
+              padding: 8,
+              fontSize: 13,
+              borderRadius: 6,
+              border: `1px solid ${t.line}`,
+              background: t.surface,
+              color: t.ink,
+            }}
+          >
+            <option value="communication">Communication</option>
+            <option value="agreements">Agreements</option>
+            <option value="scheduling">Scheduling</option>
+            <option value="property_data">Property data</option>
+            <option value="financials">Financials</option>
+            <option value="credit">Credit</option>
+            <option value="title_and_escrow">Title &amp; escrow</option>
+            <option value="appraisal_and_inspection">Appraisal &amp; inspection</option>
+            <option value="insurance">Insurance</option>
+            <option value="compliance">Compliance</option>
+            <option value="borrower_info">Borrower info</option>
+          </select>
+        </label>
+        {err ? <div style={{ fontSize: 12, color: "#dc2626" }}>{err}</div> : null}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "8px 14px",
+              fontSize: 12,
+              fontWeight: 700,
+              borderRadius: 6,
+              border: `1px solid ${t.line}`,
+              background: t.surface,
+              color: t.ink2,
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={saving || !label.trim()}
+            style={{
+              padding: "8px 14px",
+              fontSize: 12,
+              fontWeight: 800,
+              borderRadius: 6,
+              border: "none",
+              background: t.brand,
+              color: t.inverse,
+              cursor: "pointer",
+              opacity: saving || !label.trim() ? 0.5 : 1,
+            }}
+          >
+            {saving ? "Adding…" : "Add row"}
           </button>
         </div>
       </div>

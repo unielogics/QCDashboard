@@ -149,7 +149,7 @@ export function DealSecretaryPicker({
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, alignItems: "stretch" }}>
-          <Column id="human-column" title="Human handles this" subtitle={`${view.left.length} task${view.left.length === 1 ? "" : "s"} on your side`}>
+          <Column id="human-column" title="My Tasks" subtitle={`${view.left.length} task${view.left.length === 1 ? "" : "s"} on your side`}>
             {view.left.map((r) => (
               <DraggableTaskCard
                 key={r.requirement_key}
@@ -161,7 +161,7 @@ export function DealSecretaryPicker({
             {view.left.length === 0 ? <EmptyHint side="left" /> : null}
           </Column>
 
-          <Column id="ai-column" title="AI handles this" subtitle={`${view.right.length} task${view.right.length === 1 ? "" : "s"} assigned to AI`}>
+          <Column id="ai-column" title="My AI Secretary" subtitle={`${view.right.length} task${view.right.length === 1 ? "" : "s"} assigned to AI`}>
             {view.right.map((r) => (
               <DraggableTaskCard
                 key={r.requirement_key}
