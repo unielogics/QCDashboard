@@ -10,6 +10,13 @@ interface UIStore {
   setAiOpen: (v: boolean) => void;
   searchOpen: boolean;
   setSearchOpen: (v: boolean) => void;
+  // Floating Notes panel — opened from /deals/[id] via a fixed
+  // bottom-right button. Stores the deal id in scope so the panel
+  // knows which deal's notes to load + append.
+  notesOpen: boolean;
+  notesDealId: string | null;
+  openNotes: (dealId: string) => void;
+  closeNotes: () => void;
 }
 
 export const SIDEBAR_KEY = "qc.sidebarCollapsed";
@@ -43,6 +50,10 @@ export const useUI = create<UIStore>((set) => ({
   setAiOpen: (v) => set({ aiOpen: v }),
   searchOpen: false,
   setSearchOpen: (v) => set({ searchOpen: v }),
+  notesOpen: false,
+  notesDealId: null,
+  openNotes: (dealId: string) => set({ notesOpen: true, notesDealId: dealId }),
+  closeNotes: () => set({ notesOpen: false }),
 }));
 
 // Read the persisted sidebar state. Call only from a client-side effect

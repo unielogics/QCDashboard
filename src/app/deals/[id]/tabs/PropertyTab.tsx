@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { useUpdateDealById } from "@/hooks/useApi";
+import { PropertyMap } from "@/components/property/PropertyMap";
 import type { Deal } from "@/lib/types";
 
 const PROPERTY_TYPES = ["sfr", "duplex", "triplex", "quad", "5_plus", "condo", "townhouse", "manufactured"];
@@ -122,22 +123,58 @@ export function PropertyTab({ deal }: { deal: Deal }) {
         </div>
       </div>
 
-      {/* Address row — full width */}
+      {/* Address row — full width + map preview side by side */}
       <Section title="Address">
-        <Grid cols="3fr 1.5fr 0.6fr 0.8fr">
-          <Field label="Street address">
-            <input value={draft.address} onChange={(e) => set("address", e.target.value)} placeholder="123 Main St" style={inputStyle(t)} />
-          </Field>
-          <Field label="City">
-            <input value={draft.city} onChange={(e) => set("city", e.target.value)} placeholder="Tampa" style={inputStyle(t)} />
-          </Field>
-          <Field label="State">
-            <input maxLength={2} value={draft.state} onChange={(e) => set("state", e.target.value.toUpperCase())} placeholder="FL" style={inputStyle(t)} />
-          </Field>
-          <Field label="ZIP">
-            <input value={draft.zip} onChange={(e) => set("zip", e.target.value)} placeholder="33602" style={inputStyle(t)} />
-          </Field>
-        </Grid>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(220px, 0.6fr)", gap: 14 }}>
+          <div>
+            <Grid cols="3fr 1.5fr 0.6fr 0.8fr">
+              <Field label="Street address">
+                <input value={draft.address} onChange={(e) => set("address", e.target.value)} placeholder="123 Main St" style={inputStyle(t)} />
+              </Field>
+              <Field label="City">
+                <input value={draft.city} onChange={(e) => set("city", e.target.value)} placeholder="Tampa" style={inputStyle(t)} />
+              </Field>
+              <Field label="State">
+                <input maxLength={2} value={draft.state} onChange={(e) => set("state", e.target.value.toUpperCase())} placeholder="FL" style={inputStyle(t)} />
+              </Field>
+              <Field label="ZIP">
+                <input value={draft.zip} onChange={(e) => set("zip", e.target.value)} placeholder="33602" style={inputStyle(t)} />
+              </Field>
+            </Grid>
+          </div>
+          {draft.address ? (
+            <div style={{ borderRadius: 8, overflow: "hidden", border: `1px solid ${t.line}` }}>
+              <PropertyMap
+                address={draft.address}
+                city={draft.city || null}
+                state={draft.state || null}
+                latitude={null}
+                longitude={null}
+                width={320}
+                height={180}
+                style="osm-bright"
+              />
+            </div>
+          ) : (
+            <div
+              style={{
+                borderRadius: 8,
+                border: `1px dashed ${t.line}`,
+                background: t.surface2,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: t.ink3,
+                fontSize: 12,
+                minHeight: 180,
+                padding: 12,
+                textAlign: "center",
+              }}
+            >
+              Map appears once you enter a street address.
+            </div>
+          )}
+        </div>
       </Section>
 
       <Section title="Details">

@@ -3796,8 +3796,9 @@ export interface DealUpdateBody {
   target_price?: number | null;
   listing_status?: string | null;
   mls_number?: string | null;
-  // Private agent notes (Notes tab).
+  // Private agent notes (Notes tab + floating widget).
   notes_text?: string | null;
+  notes_entries?: { id: string; at: string; body: string; author_id?: string | null }[] | null;
 }
 
 export function useUpdateDeal(clientId: string, dealId: string) {

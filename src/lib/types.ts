@@ -2038,10 +2038,20 @@ export interface Deal {
   target_price: number | null;
   listing_status: string | null;
   mls_number: string | null;
-  // Private agent notes — Notes tab on /deals/[id].
+  // Private agent notes.
+  // notes_text (legacy single blob) + notes_entries (timestamped
+  // entries the floating widget appends to).
   notes_text: string | null;
+  notes_entries: DealNoteEntry[] | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface DealNoteEntry {
+  id: string;
+  at: string;
+  body: string;
+  author_id?: string | null;
 }
 
 // FundingFile is rendered from existing Loan rows (Loan IS the
