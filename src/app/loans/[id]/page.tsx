@@ -33,6 +33,7 @@ import { LenderConnectCard } from "./components/LenderConnectCard";
 import { ParticipantsCard } from "./components/ParticipantsCard";
 import { EmailDraftsCard } from "./components/EmailDraftsCard";
 import { FILE_STAGE_KEYS, FILE_STAGE_LABELS, getFileCompletion } from "./fileReadiness";
+import { LoanAgentPicker } from "@/components/LoanAgentPicker";
 
 const INTERNAL_TABS = [
   // Property tab merged into Funding File — property details now sit
@@ -88,6 +89,9 @@ export default function LoanDetailPage() {
     (profile.role === Role.CLIENT ? "overview" : profile.role === Role.BROKER ? "agent" : "file"),
   );
   const [showBlockers, setShowBlockers] = useState(false);
+  // Agent assignment picker — opens from the AGENT chip in the header.
+  // Super_admin / loan_exec only.
+  const [agentPickerOpen, setAgentPickerOpen] = useState(false);
 
   // Trigger recalc whenever loan numerics change so the warnings list
   // is fresh for the BlockersPopup, regardless of which tab the user
@@ -241,6 +245,64 @@ export default function LoanDetailPage() {
                 );
               })()}
               <PresencePill lastSeenAt={client?.last_seen_at ?? null} />
+              {isInternal ? (
+                <span style={{ position: "relative", display: "inline-flex" }}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAgentPickerOpen((v) => !v);
+                    }}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "3px 9px",
+                      borderRadius: 999,
+                      border: `1px solid ${loan.broker_id ? t.line : `${t.danger}66`}`,
+                      background: loan.broker_id ? t.surface2 : `${t.danger}10`,
+                      color: loan.broker_id ? t.ink : t.danger,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                    title={loan.broker_id ? "Reassign agent on this file" : "Assign an agent to this file"}
+                  >
+                    <Icon name="user" size={10} stroke={2.2} />
+                    <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: 0.6, color: t.ink3 }}>
+                      AGENT
+                    </span>
+                    <span>{loan.broker_name ?? "Not assigned"}</span>
+                    <Icon name="chevR" size={10} />
+                  </button>
+                  {agentPickerOpen ? (
+                    <LoanAgentPicker
+                      loan={loan}
+                      onClose={() => setAgentPickerOpen(false)}
+                    />
+                  ) : null}
+                </span>
+              ) : loan.broker_name ? (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    background: t.surface2,
+                    border: `1px solid ${t.line}`,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: t.ink2,
+                  }}
+                  title="Loan owner / agent"
+                >
+                  <Icon name="user" size={10} stroke={2.2} />
+                  {loan.broker_name}
+                </span>
+              ) : null}
             </div>
             {/* Contact strip — email + phone with click-to-copy / tel/mailto links. */}
             {(client?.email || client?.phone) ? (

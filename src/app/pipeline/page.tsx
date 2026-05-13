@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -13,6 +13,8 @@ import { SmartIntakeModal } from "./components/SmartIntakeModal";
 import { AgentLeadModal } from "./components/AgentLeadModal";
 import { LeadsPipelineView } from "./components/LeadsPipelineView";
 import { useActiveProfile } from "@/store/role";
+import { LoanAgentPicker } from "@/components/LoanAgentPicker";
+import type { Loan } from "@/lib/types";
 
 type PipelineMode = "leads" | "funding";
 
@@ -50,6 +52,10 @@ export default function PipelinePage() {
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [search, setSearch] = useState<string>("");
   const [intakeOpen, setIntakeOpen] = useState(false);
+  // Right-click → "Reassign agent…" context menu state. Only super_admin
+  // / loan_exec can open this — broker rows don't render the trigger.
+  const [reassignTarget, setReassignTarget] = useState<{ loan: Loan; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ loan: Loan; x: number; y: number } | null>(null);
 
   const canCreateLead = isBroker || profile.role === "super_admin";
   const canCreateDeal = isInternal;
@@ -316,11 +322,27 @@ export default function PipelinePage() {
               </div>
               {fundingRows.map(({ loan, loanDocs, readiness, openDocs, flaggedDocs, summary, action }) => {
                 return (
-                  <Link key={loan.id} href={`/loans/${loan.id}`} style={{
-                    display: "grid", gridTemplateColumns: gridCols,
-                    padding: "12px 16px", borderBottom: `1px solid ${t.line}`, alignItems: "center",
-                    fontSize: 13, color: t.ink,
-                  }}>
+                  <Link
+                    key={loan.id}
+                    href={`/loans/${loan.id}`}
+                    onContextMenu={
+                      isInternal
+                        ? (e) => {
+                            // Super_admin / loan_exec → swap the browser's
+                            // context menu for our own "Reassign agent…"
+                            // popover anchored at the cursor. Brokers fall
+                            // through to the browser default.
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setContextMenu({ loan, x: e.clientX, y: e.clientY });
+                          }
+                        : undefined
+                    }
+                    style={{
+                      display: "grid", gridTemplateColumns: gridCols,
+                      padding: "12px 16px", borderBottom: `1px solid ${t.line}`, alignItems: "center",
+                      fontSize: 13, color: t.ink,
+                    }}>
                     <div style={{ fontWeight: 800, color: t.ink2 }}>{loan.deal_id}</div>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{loan.address}</div>
@@ -381,7 +403,19 @@ export default function PipelinePage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {stageLoans.map(({ loan, readiness, openDocs, action }) => {
                     return (
-                      <Link key={loan.id} href={`/loans/${loan.id}`} style={{ background: t.surface, padding: 11, borderRadius: 10, border: `1px solid ${t.line}`, display: "flex", flexDirection: "column", gap: 8 }}>
+                      <Link
+                        key={loan.id}
+                        href={`/loans/${loan.id}`}
+                        onContextMenu={
+                          isInternal
+                            ? (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setContextMenu({ loan, x: e.clientX, y: e.clientY });
+                              }
+                            : undefined
+                        }
+                        style={{ background: t.surface, padding: 11, borderRadius: 10, border: `1px solid ${t.line}`, display: "flex", flexDirection: "column", gap: 8 }}>
                         <div>
                           <div style={{ fontSize: 11, color: t.ink3, fontWeight: 800 }}>{loan.deal_id}</div>
                           <div style={{ fontSize: 12.5, fontWeight: 850, color: t.ink, marginTop: 2, lineHeight: 1.25 }}>{loan.address}</div>
@@ -426,6 +460,125 @@ export default function PipelinePage() {
           })}
         </div>
       )}
+
+      {contextMenu ? (
+        <PipelineRowContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          loan={contextMenu.loan}
+          onReassign={() =>
+            setReassignTarget({ loan: contextMenu.loan, x: contextMenu.x, y: contextMenu.y })
+          }
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
+      {reassignTarget ? (
+        <LoanAgentPicker
+          loan={reassignTarget.loan}
+          anchor={{ x: reassignTarget.x, y: reassignTarget.y }}
+          onClose={() => {
+            setReassignTarget(null);
+            setContextMenu(null);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// Right-click context menu for funding-mode pipeline rows. Currently
+// only carries the "Reassign agent…" action — kept as a generic
+// container so future row-level actions (e.g. open in new tab, copy
+// link, archive) can drop in without restructuring.
+function PipelineRowContextMenu({
+  x,
+  y,
+  loan,
+  onReassign,
+  onClose,
+}: {
+  x: number;
+  y: number;
+  loan: Loan;
+  onReassign: () => void;
+  onClose: () => void;
+}) {
+  const { t } = useTheme();
+  // Dismiss on Escape + outside-click. Defer the click handler one
+  // tick so the right-click that opened this doesn't immediately
+  // close it.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    const onClick = () => onClose();
+    window.addEventListener("keydown", onKey);
+    const id = window.setTimeout(() => {
+      window.addEventListener("click", onClick);
+    }, 0);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("click", onClick);
+      window.clearTimeout(id);
+    };
+  }, [onClose]);
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+      style={{
+        position: "fixed",
+        top: y,
+        left: x,
+        zIndex: 80,
+        minWidth: 200,
+        background: t.surface,
+        border: `1px solid ${t.line}`,
+        borderRadius: 8,
+        boxShadow: "0 14px 32px rgba(0,0,0,0.32)",
+        padding: 4,
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+      }}
+    >
+      <div
+        style={{
+          padding: "8px 10px 4px",
+          fontSize: 10,
+          fontWeight: 900,
+          color: t.ink3,
+          letterSpacing: 0.6,
+          textTransform: "uppercase",
+        }}
+      >
+        {loan.deal_id} · {loan.broker_name ?? "Unassigned"}
+      </div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onReassign();
+        }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 10px",
+          borderRadius: 4,
+          border: "none",
+          background: "transparent",
+          color: t.ink,
+          fontSize: 13,
+          cursor: "pointer",
+          textAlign: "left",
+          fontFamily: "inherit",
+        }}
+        onMouseOver={(e) => ((e.currentTarget as HTMLElement).style.background = t.surface2)}
+        onMouseOut={(e) => ((e.currentTarget as HTMLElement).style.background = "transparent")}
+      >
+        <Icon name="user" size={12} stroke={2.2} />
+        {loan.broker_id ? "Reassign agent…" : "Assign agent…"}
+      </button>
     </div>
   );
 }
