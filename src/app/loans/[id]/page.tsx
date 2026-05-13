@@ -360,6 +360,21 @@ export default function LoanDetailPage() {
           canEdit={canTransitionStage}
           stageMut={stageMut}
           onCopilot={() => setAiOpen(true)}
+          onOpenLoanChat={() => {
+            // Switch to the AI Secretary tab and signal it to open the
+            // LoanChatSlideOut. The tab reads the ?chat=open param on
+            // mount + when activeTab flips to workspace, then strips it
+            // so a refresh doesn't re-open the chat.
+            setTab("workspace");
+            if (typeof window !== "undefined") {
+              const sp = new URLSearchParams(window.location.search);
+              sp.set("tab", "workspace");
+              sp.set("chat", "open");
+              window.history.replaceState(null, "", `?${sp.toString()}`);
+              // Same-key event so DealWorkspaceTab can listen w/o a router refetch.
+              window.dispatchEvent(new CustomEvent("qc:open-loan-chat"));
+            }
+          }}
         />
       </div>
 
@@ -587,13 +602,14 @@ function CompactStageStripWrapper(props: {
   canEdit: boolean;
   stageMut: StageMutation;
   onCopilot: () => void;
+  onOpenLoanChat: () => void;
 }) {
   const updateLoan = useUpdateLoan();
   return <CompactStageStrip {...props} updateLoan={updateLoan} />;
 }
 
 function CompactStageStrip({
-  loan, completion, docs, stageIndex, canEdit, stageMut, updateLoan, onCopilot,
+  loan, completion, docs, stageIndex, canEdit, stageMut, updateLoan, onCopilot, onOpenLoanChat,
 }: {
   loan: LoanType;
   completion: ReturnType<typeof import("./fileReadiness").getFileCompletion>;
@@ -602,6 +618,7 @@ function CompactStageStrip({
   canEdit: boolean;
   stageMut: StageMutation;
   updateLoan: ReturnType<typeof useUpdateLoan>;
+  onOpenLoanChat: () => void;
   onCopilot: () => void;
 }) {
   const { t } = useTheme();
@@ -719,6 +736,20 @@ function CompactStageStrip({
             </button>
           </>
         ) : null}
+        <button
+          onClick={onOpenLoanChat}
+          title="Open the loan chat (AI ↔ borrower) on this file"
+          aria-label="Open loan chat"
+          style={{
+            width: 32, height: 32, borderRadius: 9,
+            background: t.brandSoft, color: t.brand,
+            border: `1px solid ${t.brand}40`,
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", fontFamily: "inherit",
+          }}
+        >
+          <Icon name="chat" size={14} stroke={2.2} />
+        </button>
         <button
           onClick={onCopilot}
           style={{

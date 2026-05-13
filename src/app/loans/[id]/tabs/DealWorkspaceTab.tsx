@@ -250,6 +250,34 @@ function SecretaryConsole({
     if (handoffRows.length > 0) saveHandoffRows(loan.id, handoffRows);
   }, [loan.id, handoffRows]);
 
+  // Loan-header "Open loan chat" affordance lands here — it dispatches
+  // a `qc:open-loan-chat` window event AND stamps `?chat=open` on the
+  // URL. We honor both so a fresh page load with the param works AND
+  // an in-app click works without a re-render race.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stripParam = () => {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get("chat") === "open") {
+        sp.delete("chat");
+        const next = sp.toString();
+        window.history.replaceState(null, "", next ? `?${next}` : window.location.pathname);
+      }
+    };
+    // Initial param check (deep-link case).
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("chat") === "open") {
+      setPanel("chat");
+      stripParam();
+    }
+    const handler = () => {
+      setPanel("chat");
+      stripParam();
+    };
+    window.addEventListener("qc:open-loan-chat", handler);
+    return () => window.removeEventListener("qc:open-loan-chat", handler);
+  }, []);
+
   const missingCriteria = useMemo(() => getCriteriaItems(loan).filter((item) => !item.ready), [loan]);
   const openDocs = docs.filter((doc) => doc.status !== "verified" && doc.status !== "skipped");
   const flaggedDocs = docs.filter((doc) => doc.status === "flagged");
