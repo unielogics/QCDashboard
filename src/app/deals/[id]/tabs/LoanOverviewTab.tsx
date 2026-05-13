@@ -25,11 +25,23 @@ import {
   useLoanWorkflow,
   useUpdateHudLine,
 } from "@/hooks/useApi";
-import type { HudLine, Loan } from "@/lib/types";
+import type { DSTaskRow, HudLine, Loan } from "@/lib/types";
 
 const AGENT_COMMISSION_CODE = "agent_commission";
 
-export function LoanOverviewTab({ loan }: { loan: Loan }) {
+export function LoanOverviewTab({
+  loan,
+  pendingBorrowerRows = [],
+  pendingCreditRows = [],
+}: {
+  loan: Loan;
+  // Open borrower_info / credit requirements lifted out of the AI
+  // Resolution Queue. The AI can't fill these — they have to be set
+  // on the borrower / credit record. We surface the list at the top
+  // of the tab so the agent knows what's pending without hunting.
+  pendingBorrowerRows?: DSTaskRow[];
+  pendingCreditRows?: DSTaskRow[];
+}) {
   const { t } = useTheme();
   const { data: prequals = [], isLoading: prequalLoading } = useLoanPrequalRequests(loan.id);
   const { data: workflow = [], isLoading: wfLoading } = useLoanWorkflow(loan.id);
@@ -59,6 +71,15 @@ export function LoanOverviewTab({ loan }: { loan: Loan }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {pendingBorrowerRows.length + pendingCreditRows.length > 0 ? (
+        <BorrowerCreditCallout
+          t={t}
+          borrowerRows={pendingBorrowerRows}
+          creditRows={pendingCreditRows}
+          clientId={loan.client_id}
+        />
+      ) : null}
+
       {/* 1 — Current loan terms */}
       <LoanTermsCard t={t} loan={loan} />
 
@@ -85,6 +106,98 @@ export function LoanOverviewTab({ loan }: { loan: Loan }) {
       {/* 7 — Documents */}
       <DocumentsReadOnlyCard t={t} docs={docs} loading={docsLoading} openCount={openDocs.length} />
     </div>
+  );
+}
+
+
+// ── 0. Borrower + credit fields the AI can't fill ───────────────────
+
+
+function BorrowerCreditCallout({
+  t,
+  borrowerRows,
+  creditRows,
+  clientId,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  borrowerRows: DSTaskRow[];
+  creditRows: DSTaskRow[];
+  clientId: string;
+}) {
+  const items = [
+    ...borrowerRows.map((r) => ({ key: r.requirement_key, label: r.label, kind: "Borrower" as const })),
+    ...creditRows.map((r) => ({ key: r.requirement_key, label: r.label, kind: "Credit" as const })),
+  ];
+  if (items.length === 0) return null;
+  return (
+    <Card pad={14} style={{ borderLeft: `3px solid ${t.danger}`, background: `${t.danger}08` }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <Icon name="alert" size={14} color={t.danger} stroke={2.2} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>
+            {items.length} borrower / credit field{items.length === 1 ? "" : "s"} need data
+          </div>
+          <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>
+            The AI can&apos;t fill these for you. Update them on the client profile to clear the badge.
+          </div>
+          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+            {items.slice(0, 6).map((it) => (
+              <div
+                key={it.key}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: 12,
+                  color: t.ink2,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 9.5,
+                    fontWeight: 900,
+                    padding: "1px 6px",
+                    borderRadius: 9,
+                    background: t.surface2,
+                    color: t.ink3,
+                    letterSpacing: 0.5,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {it.kind}
+                </span>
+                {it.label}
+              </div>
+            ))}
+            {items.length > 6 ? (
+              <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
+                +{items.length - 6} more…
+              </div>
+            ) : null}
+          </div>
+          <a
+            href={`/clients/${clientId}/workspace`}
+            style={{
+              marginTop: 10,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 12px",
+              fontSize: 12,
+              fontWeight: 700,
+              borderRadius: 6,
+              border: `1px solid ${t.line}`,
+              background: t.surface,
+              color: t.ink,
+              textDecoration: "none",
+              width: "fit-content",
+            }}
+          >
+            Open client profile <Icon name="chevR" size={11} />
+          </a>
+        </div>
+      </div>
+    </Card>
   );
 }
 

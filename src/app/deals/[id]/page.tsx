@@ -6,7 +6,7 @@
 // listing/buyer-search work. Post-promotion: same surface continues,
 // with a read-only Funding tab showing the linked loan's progress.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
@@ -14,11 +14,13 @@ import { Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import {
   useClient,
+  useClientAiFollowUp,
   useDeal,
   useLoan,
   useMarkDealReadyForLending,
   type MarkReadyResponse,
 } from "@/hooks/useApi";
+import { partitionFieldFill } from "./tabs/fieldFillRequirements";
 import { AiStatusBadge } from "@/components/AiStatusBadge";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
@@ -53,6 +55,21 @@ export default function DealPage() {
   const { data: deal } = useDeal(params.id);
   const { data: client } = useClient(deal?.client_id ?? null);
   const { data: loan } = useLoan(deal?.promoted_loan_id ?? null);
+  // Field-fill counts: same view AISecretaryTab uses (react-query
+  // dedups by key), filtered through partitionFieldFill so the tab
+  // strip can badge Property + Loan Overview with the open count.
+  const { data: secretaryView } = useClientAiFollowUp({
+    clientId: deal?.client_id ?? "",
+    dealId: deal?.promoted_loan_id ? null : deal?.id ?? null,
+    loanId: deal?.promoted_loan_id ?? null,
+  });
+  const fieldFill = useMemo(() => {
+    if (!secretaryView) return { property: [], borrower: [], credit: [] };
+    const { fieldFill } = partitionFieldFill(secretaryView.left);
+    return fieldFill;
+  }, [secretaryView]);
+  const propertyFieldCount = fieldFill.property.length;
+  const borrowerPlusCreditCount = fieldFill.borrower.length + fieldFill.credit.length;
 
   const initialTab = searchParams?.get("tab") || "property";
   const [tab, setTab] = useState<string>(initialTab);
@@ -250,6 +267,12 @@ export default function DealPage() {
         >
           {tabs.map((x) => {
             const isActive = activeTab === x.id;
+            const badge =
+              x.id === "property"
+                ? propertyFieldCount
+                : x.id === "loan"
+                ? borrowerPlusCreditCount
+                : 0;
             return (
               <button
                 key={x.id}
@@ -272,6 +295,27 @@ export default function DealPage() {
               >
                 <Icon name={x.icon} size={13} />
                 {x.label}
+                {badge > 0 ? (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minWidth: 18,
+                      height: 18,
+                      padding: "0 5px",
+                      borderRadius: 9,
+                      background: t.danger,
+                      color: "#fff",
+                      fontSize: 10.5,
+                      fontWeight: 900,
+                      fontFeatureSettings: '"tnum"',
+                      marginLeft: 2,
+                    }}
+                  >
+                    {badge}
+                  </span>
+                ) : null}
               </button>
             );
           })}
@@ -309,9 +353,16 @@ export default function DealPage() {
         </div>
       ) : null}
 
-      {activeTab === "property" ? <PropertyTab deal={deal} /> : null}
+      {activeTab === "property" ? (
+        <PropertyTab deal={deal} requiredFieldRows={fieldFill.property} />
+      ) : null}
       {activeTab === "ai" ? (
-        <AISecretaryTab clientId={deal.client_id} dealId={deal.id} loanId={deal.promoted_loan_id} />
+        <AISecretaryTab
+          clientId={deal.client_id}
+          dealId={deal.id}
+          loanId={deal.promoted_loan_id}
+          onJumpToTab={(next) => onTabChange(next)}
+        />
       ) : null}
       {activeTab === "docs" ? (
         <DocumentsTab clientId={deal.client_id} loanId={deal.promoted_loan_id} />
@@ -319,7 +370,13 @@ export default function DealPage() {
       {activeTab === "tasks" ? <TasksTab deal={deal} /> : null}
       {activeTab === "schedule" ? <ScheduleTab clientId={deal.client_id} dealId={deal.id} /> : null}
       {activeTab === "activity" ? <ActivityTab clientId={deal.client_id} /> : null}
-      {activeTab === "loan" && loan ? <LoanOverviewTab loan={loan} /> : null}
+      {activeTab === "loan" && loan ? (
+        <LoanOverviewTab
+          loan={loan}
+          pendingBorrowerRows={fieldFill.borrower}
+          pendingCreditRows={fieldFill.credit}
+        />
+      ) : null}
       {activeTab === "funding" && loan ? <FundingTab loan={loan} clientId={deal.client_id} /> : null}
 
       {/* Floating Notes — bottom-right button + side panel */}

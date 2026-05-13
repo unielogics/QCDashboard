@@ -42,6 +42,7 @@ import {
 } from "@/hooks/useApi";
 import type { DSOutreachMode, DSTaskRow } from "@/lib/types";
 import { useDraggable } from "@dnd-kit/core";
+import { partitionFieldFill } from "./fieldFillRequirements";
 
 const SYSTEM_FLOOR: FollowUpSettings = {
   stall_threshold_minutes: 60 * 24,
@@ -53,10 +54,15 @@ export function AISecretaryTab({
   clientId,
   dealId,
   loanId,
+  onJumpToTab,
 }: {
   clientId: string;
   dealId: string;
   loanId: string | null;
+  // Set by the parent /deals/[id] page. Lets the queue's "X property
+  // fields need data" banner jump straight to the Property or Loan
+  // Overview tab when clicked.
+  onJumpToTab?: (tab: "property" | "loan") => void;
 }) {
   const { t } = useTheme();
   const { data: user } = useCurrentUser();
@@ -121,9 +127,17 @@ export function AISecretaryTab({
 
   // Resolution Queue = rows currently owned by Human that aren't slotted
   // into a handoff row yet. Drag into the right column to assign.
+  //
+  // Field-fill rows (property_data / borrower_info / credit) are pulled
+  // OUT of the queue here — the AI can't help fill a form, so we route
+  // those to the relevant tab (Property / Loan Overview) as red count
+  // badges instead. The classifier lives in fieldFillRequirements.ts.
   const placedKeys = new Set<string>();
   for (const r of handoffRows) for (const k of r.taskKeys) placedKeys.add(k);
-  const queue = view.left.filter((row) => !placedKeys.has(row.requirement_key));
+  const visibleLeft = view.left.filter((row) => !placedKeys.has(row.requirement_key));
+  const { queue, fieldFill } = partitionFieldFill(visibleLeft);
+  const fieldFillCount =
+    fieldFill.property.length + fieldFill.borrower.length + fieldFill.credit.length;
   const aiTasksCount = view.right.length;
 
   function handleDragStart(e: DragStartEvent) {
@@ -285,6 +299,18 @@ export function AISecretaryTab({
         </div>
       ) : null}
 
+      {fieldFillCount > 0 ? (
+        <FieldFillBanner
+          t={t}
+          property={fieldFill.property.length}
+          borrower={fieldFill.borrower.length}
+          credit={fieldFill.credit.length}
+          hasLoanOverview={!!scope.loanId}
+          onJumpToProperty={() => onJumpToTab?.("property")}
+          onJumpToLoanOverview={() => onJumpToTab?.("loan")}
+        />
+      ) : null}
+
       {isEmpty ? (
         <Card pad={16} style={{ borderLeft: `3px solid ${t.brand}`, marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -433,6 +459,133 @@ export function AISecretaryTab({
       />
     </Card>
   );
+}
+
+function FieldFillBanner({
+  t,
+  property,
+  borrower,
+  credit,
+  hasLoanOverview,
+  onJumpToProperty,
+  onJumpToLoanOverview,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  property: number;
+  borrower: number;
+  credit: number;
+  hasLoanOverview: boolean;
+  onJumpToProperty: () => void;
+  onJumpToLoanOverview: () => void;
+}) {
+  const borrowerPlusCredit = borrower + credit;
+  return (
+    <div
+      style={{
+        marginBottom: 12,
+        padding: 12,
+        borderRadius: 10,
+        border: `1px solid ${t.danger}55`,
+        background: `${t.danger}10`,
+        display: "flex",
+        gap: 12,
+        alignItems: "center",
+        flexWrap: "wrap",
+      }}
+    >
+      <Icon name="alert" size={14} color={t.danger} stroke={2.2} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: t.ink }}>
+          Field data the AI can&apos;t fill for you
+        </div>
+        <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>
+          These rows were pulled out of the queue — finish them on the tab where they live.
+        </div>
+      </div>
+      {property > 0 ? (
+        <button
+          type="button"
+          onClick={onJumpToProperty}
+          style={fieldFillJumpBtn(t)}
+        >
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              minWidth: 22,
+              height: 22,
+              padding: "0 7px",
+              borderRadius: 11,
+              background: t.danger,
+              color: "#fff",
+              fontSize: 11,
+              fontWeight: 900,
+              fontFeatureSettings: '"tnum"',
+            }}
+          >
+            {property}
+          </span>
+          Property tab
+          <Icon name="chevR" size={11} />
+        </button>
+      ) : null}
+      {borrowerPlusCredit > 0 ? (
+        <button
+          type="button"
+          onClick={onJumpToLoanOverview}
+          disabled={!hasLoanOverview}
+          title={
+            hasLoanOverview
+              ? "Open the Loan Overview tab to fill borrower + credit details."
+              : "Borrower + credit fields show up on Loan Overview once the deal is promoted to a funding file."
+          }
+          style={{
+            ...fieldFillJumpBtn(t),
+            opacity: hasLoanOverview ? 1 : 0.6,
+            cursor: hasLoanOverview ? "pointer" : "not-allowed",
+          }}
+        >
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              minWidth: 22,
+              height: 22,
+              padding: "0 7px",
+              borderRadius: 11,
+              background: t.danger,
+              color: "#fff",
+              fontSize: 11,
+              fontWeight: 900,
+              fontFeatureSettings: '"tnum"',
+            }}
+          >
+            {borrowerPlusCredit}
+          </span>
+          Loan Overview {borrower > 0 && credit > 0 ? "· borrower + credit" : borrower > 0 ? "· borrower" : "· credit"}
+          <Icon name="chevR" size={11} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function fieldFillJumpBtn(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "6px 10px 6px 6px",
+    borderRadius: 8,
+    border: `1px solid ${t.line}`,
+    background: t.surface,
+    color: t.ink,
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+  };
 }
 
 function defaultHandoffRows(): HandoffRow[] {

@@ -5,13 +5,19 @@
 // and a single "Save changes" button lights up. Saves cross-sync onto
 // the linked Loan at promote_deal_to_loan time.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
+import { Icon } from "@/components/design-system/Icon";
 import { useLoan, useUpdateDealById, useUpdateProperty } from "@/hooks/useApi";
 import { PropertyMap } from "@/components/property/PropertyMap";
-import type { Deal, Loan } from "@/lib/types";
+import type { Deal, DSTaskRow, Loan } from "@/lib/types";
 import type { PropertyType } from "@/lib/enums.generated";
+import {
+  deriveRedPropertyFields,
+  emptyPropertyFlags,
+  type PropertyFieldFlags,
+} from "./fieldFillRequirements";
 
 const PROPERTY_TYPES = ["sfr", "duplex", "triplex", "quad", "5_plus", "condo", "townhouse", "manufactured"];
 const LISTING_STATUSES = ["off_market", "coming_soon", "active", "pending", "under_contract", "sold", "withdrawn"];
@@ -58,7 +64,16 @@ function buildDraft(deal: Deal, loan: Loan | null | undefined): Draft {
   };
 }
 
-export function PropertyTab({ deal }: { deal: Deal }) {
+export function PropertyTab({
+  deal,
+  requiredFieldRows = [],
+}: {
+  deal: Deal;
+  // property_data requirements still open. Each empty matching field
+  // renders with a red left-border + "Required" pill. Unmapped keys
+  // show up in the top callout so the agent still knows about them.
+  requiredFieldRows?: DSTaskRow[];
+}) {
   const { t } = useTheme();
   const updateDeal = useUpdateDealById();
   const updateProperty = useUpdateProperty();
@@ -72,6 +87,30 @@ export function PropertyTab({ deal }: { deal: Deal }) {
   const [dirty, setDirty] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  // Map open requirements → which specific draft fields should render
+  // red. Recomputes as the agent types so a field stops being red as
+  // soon as it has a value.
+  const { flags: redFlags, unmappedLabels } = useMemo(() => {
+    if (requiredFieldRows.length === 0) {
+      return { flags: emptyPropertyFlags(), unmappedLabels: [] as string[] };
+    }
+    return deriveRedPropertyFields(requiredFieldRows, {
+      address: draft.address,
+      city: draft.city,
+      state: draft.state,
+      zip: draft.zip,
+      property_type: draft.property_type,
+      beds: draft.beds,
+      baths: draft.baths,
+      sqft: draft.sqft,
+      year_built: draft.year_built,
+      list_price: draft.list_price,
+      target_price: draft.target_price,
+      listing_status: draft.listing_status,
+      mls_number: draft.mls_number,
+    });
+  }, [requiredFieldRows, draft]);
 
   // Snap back to server values when EITHER the deal or its linked
   // loan changes underneath us, but only when there are no unsaved
@@ -189,22 +228,30 @@ export function PropertyTab({ deal }: { deal: Deal }) {
         </div>
       </div>
 
+      {requiredFieldRows.length > 0 ? (
+        <RequiredFieldsCallout
+          t={t}
+          flagCount={countTrue(redFlags)}
+          unmappedLabels={unmappedLabels}
+        />
+      ) : null}
+
       {/* Address row — full width + map preview side by side */}
       <Section title="Address">
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(220px, 0.6fr)", gap: 14 }}>
           <div>
             <Grid cols="3fr 1.5fr 0.6fr 0.8fr">
-              <Field label="Street address">
-                <input value={draft.address} onChange={(e) => set("address", e.target.value)} placeholder="123 Main St" style={inputStyle(t)} />
+              <Field label="Street address" required={redFlags.address}>
+                <input value={draft.address} onChange={(e) => set("address", e.target.value)} placeholder="123 Main St" style={inputStyle(t, redFlags.address)} />
               </Field>
-              <Field label="City">
-                <input value={draft.city} onChange={(e) => set("city", e.target.value)} placeholder="Tampa" style={inputStyle(t)} />
+              <Field label="City" required={redFlags.city}>
+                <input value={draft.city} onChange={(e) => set("city", e.target.value)} placeholder="Tampa" style={inputStyle(t, redFlags.city)} />
               </Field>
-              <Field label="State">
-                <input maxLength={2} value={draft.state} onChange={(e) => set("state", e.target.value.toUpperCase())} placeholder="FL" style={inputStyle(t)} />
+              <Field label="State" required={redFlags.state}>
+                <input maxLength={2} value={draft.state} onChange={(e) => set("state", e.target.value.toUpperCase())} placeholder="FL" style={inputStyle(t, redFlags.state)} />
               </Field>
-              <Field label="ZIP">
-                <input value={draft.zip} onChange={(e) => set("zip", e.target.value)} placeholder="33602" style={inputStyle(t)} />
+              <Field label="ZIP" required={redFlags.zip}>
+                <input value={draft.zip} onChange={(e) => set("zip", e.target.value)} placeholder="33602" style={inputStyle(t, redFlags.zip)} />
               </Field>
             </Grid>
           </div>
@@ -245,25 +292,25 @@ export function PropertyTab({ deal }: { deal: Deal }) {
 
       <Section title="Details">
         <Grid cols="1fr 1fr 1fr 1fr 1fr">
-          <Field label="Property type">
-            <select value={draft.property_type} onChange={(e) => set("property_type", e.target.value)} style={inputStyle(t)}>
+          <Field label="Property type" required={redFlags.property_type}>
+            <select value={draft.property_type} onChange={(e) => set("property_type", e.target.value)} style={inputStyle(t, redFlags.property_type)}>
               <option value="">—</option>
               {PROPERTY_TYPES.map((p) => (
                 <option key={p} value={p}>{p.replace(/_/g, " ")}</option>
               ))}
             </select>
           </Field>
-          <Field label="Beds">
-            <input type="number" value={draft.beds} onChange={(e) => set("beds", e.target.value)} placeholder="3" style={inputStyle(t)} />
+          <Field label="Beds" required={redFlags.beds}>
+            <input type="number" value={draft.beds} onChange={(e) => set("beds", e.target.value)} placeholder="3" style={inputStyle(t, redFlags.beds)} />
           </Field>
-          <Field label="Baths">
-            <input type="number" step="0.5" value={draft.baths} onChange={(e) => set("baths", e.target.value)} placeholder="2.5" style={inputStyle(t)} />
+          <Field label="Baths" required={redFlags.baths}>
+            <input type="number" step="0.5" value={draft.baths} onChange={(e) => set("baths", e.target.value)} placeholder="2.5" style={inputStyle(t, redFlags.baths)} />
           </Field>
-          <Field label="Sq ft">
-            <input type="number" value={draft.sqft} onChange={(e) => set("sqft", e.target.value)} placeholder="1850" style={inputStyle(t)} />
+          <Field label="Sq ft" required={redFlags.sqft}>
+            <input type="number" value={draft.sqft} onChange={(e) => set("sqft", e.target.value)} placeholder="1850" style={inputStyle(t, redFlags.sqft)} />
           </Field>
-          <Field label="Year built">
-            <input type="number" value={draft.year_built} onChange={(e) => set("year_built", e.target.value)} placeholder="1998" style={inputStyle(t)} />
+          <Field label="Year built" required={redFlags.year_built}>
+            <input type="number" value={draft.year_built} onChange={(e) => set("year_built", e.target.value)} placeholder="1998" style={inputStyle(t, redFlags.year_built)} />
           </Field>
         </Grid>
       </Section>
@@ -271,41 +318,105 @@ export function PropertyTab({ deal }: { deal: Deal }) {
       <Section title={isSeller ? "Listing" : "Pricing"}>
         <Grid cols="1fr 1fr 1fr 1fr">
           {isSeller ? (
-            <Field label="List price">
-              <input type="number" value={draft.list_price} onChange={(e) => set("list_price", e.target.value)} placeholder="450000" style={inputStyle(t)} />
+            <Field label="List price" required={redFlags.list_price}>
+              <input type="number" value={draft.list_price} onChange={(e) => set("list_price", e.target.value)} placeholder="450000" style={inputStyle(t, redFlags.list_price)} />
             </Field>
           ) : (
-            <Field label="Target price">
-              <input type="number" value={draft.target_price} onChange={(e) => set("target_price", e.target.value)} placeholder="375000" style={inputStyle(t)} />
+            <Field label="Target price" required={redFlags.target_price}>
+              <input type="number" value={draft.target_price} onChange={(e) => set("target_price", e.target.value)} placeholder="375000" style={inputStyle(t, redFlags.target_price)} />
             </Field>
           )}
-          <Field label="Listing status">
-            <select value={draft.listing_status} onChange={(e) => set("listing_status", e.target.value)} style={inputStyle(t)}>
+          <Field label="Listing status" required={redFlags.listing_status}>
+            <select value={draft.listing_status} onChange={(e) => set("listing_status", e.target.value)} style={inputStyle(t, redFlags.listing_status)}>
               <option value="">—</option>
               {LISTING_STATUSES.map((s) => (
                 <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
               ))}
             </select>
           </Field>
-          <Field label="MLS#">
-            <input value={draft.mls_number} onChange={(e) => set("mls_number", e.target.value)} placeholder="A4592031" style={inputStyle(t)} />
+          <Field label="MLS#" required={redFlags.mls_number}>
+            <input value={draft.mls_number} onChange={(e) => set("mls_number", e.target.value)} placeholder="A4592031" style={inputStyle(t, redFlags.mls_number)} />
           </Field>
           {/* When buyer, also expose list_price as the seller's asking
               so the agent can capture both buyer target + seller list
               if they're tracking offer math. */}
           {!isSeller ? (
-            <Field label="Seller's asking">
-              <input type="number" value={draft.list_price} onChange={(e) => set("list_price", e.target.value)} placeholder="425000" style={inputStyle(t)} />
+            <Field label="Seller's asking" required={redFlags.list_price}>
+              <input type="number" value={draft.list_price} onChange={(e) => set("list_price", e.target.value)} placeholder="425000" style={inputStyle(t, redFlags.list_price)} />
             </Field>
           ) : (
-            <Field label="Target / negotiation price">
-              <input type="number" value={draft.target_price} onChange={(e) => set("target_price", e.target.value)} placeholder="440000" style={inputStyle(t)} />
+            <Field label="Target / negotiation price" required={redFlags.target_price}>
+              <input type="number" value={draft.target_price} onChange={(e) => set("target_price", e.target.value)} placeholder="440000" style={inputStyle(t, redFlags.target_price)} />
             </Field>
           )}
         </Grid>
       </Section>
     </Card>
   );
+}
+
+function RequiredFieldsCallout({
+  t,
+  flagCount,
+  unmappedLabels,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  flagCount: number;
+  unmappedLabels: string[];
+}) {
+  const total = flagCount + unmappedLabels.length;
+  if (total === 0) {
+    return (
+      <div
+        style={{
+          marginBottom: 14,
+          padding: "10px 12px",
+          borderRadius: 8,
+          background: `${t.brand}10`,
+          border: `1px solid ${t.brand}40`,
+          fontSize: 12.5,
+          color: t.ink2,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        <Icon name="docCheck" size={12} color={t.brand} stroke={2.2} />
+        All property fields are filled — nothing red on this tab right now.
+      </div>
+    );
+  }
+  return (
+    <div
+      style={{
+        marginBottom: 14,
+        padding: "10px 12px",
+        borderRadius: 8,
+        background: `${t.danger}10`,
+        border: `1px solid ${t.danger}55`,
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 10,
+      }}
+    >
+      <Icon name="alert" size={13} color={t.danger} stroke={2.2} />
+      <div style={{ flex: 1, fontSize: 12.5, color: t.ink }}>
+        <strong>{total} property field{total === 1 ? "" : "s"} need data.</strong>{" "}
+        Fields outlined in red below are the ones to fill.
+        {unmappedLabels.length > 0 ? (
+          <div style={{ marginTop: 4, fontSize: 11.5, color: t.ink3 }}>
+            Also pending (no dedicated field on this tab):{" "}
+            {unmappedLabels.slice(0, 4).join(", ")}
+            {unmappedLabels.length > 4 ? `, +${unmappedLabels.length - 4} more` : ""}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function countTrue(flags: PropertyFieldFlags): number {
+  return Object.values(flags).filter(Boolean).length;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -328,28 +439,72 @@ function Grid({ cols, children }: { cols: string; children: React.ReactNode }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  required = false,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
   const { t } = useTheme();
   return (
-    <label style={{ display: "block", minWidth: 0 }}>
-      <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" }}>
+    <label
+      style={{
+        display: "block",
+        minWidth: 0,
+        position: "relative",
+        paddingLeft: required ? 8 : 0,
+        borderLeft: required ? `3px solid ${t.danger}` : "none",
+        transition: "border-color 120ms",
+      }}
+    >
+      <span
+        style={{
+          fontSize: 10.5,
+          fontWeight: 700,
+          letterSpacing: 0.4,
+          textTransform: "uppercase",
+          color: required ? t.danger : t.ink3,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
         {label}
+        {required ? (
+          <span
+            style={{
+              fontSize: 9,
+              fontWeight: 900,
+              padding: "1px 6px",
+              borderRadius: 9,
+              background: t.danger,
+              color: "#fff",
+              letterSpacing: 0.5,
+            }}
+          >
+            REQUIRED
+          </span>
+        ) : null}
       </span>
       <div style={{ marginTop: 4 }}>{children}</div>
     </label>
   );
 }
 
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
+function inputStyle(t: ReturnType<typeof useTheme>["t"], required = false): React.CSSProperties {
   return {
     width: "100%",
     padding: "8px 10px",
     fontSize: 13,
     borderRadius: 6,
-    border: `1px solid ${t.line}`,
+    border: `1px solid ${required ? t.danger : t.line}`,
     background: t.surface,
     color: t.ink,
     boxSizing: "border-box",
+    boxShadow: required ? `0 0 0 2px ${t.danger}22` : "none",
   };
 }
 
