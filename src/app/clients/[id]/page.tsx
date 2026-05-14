@@ -72,8 +72,8 @@ export default function ClientDetailPage() {
   };
 
   const canEdit = profile.role !== "client";
-  // CLIENT-role users can't kick off deals from inside their own page;
-  // every other role gets the "+ New deal" affordance.
+  // CLIENT-role users can't add a file from inside their own page;
+  // every other operator role gets the "+ New file" affordance.
   // Agents (BROKER) see "Ready for Prequalification" instead — that's
   // their controlled handoff to the funding team. Direct loan creation
   // is super-admin / underwriter territory.
@@ -139,7 +139,7 @@ export default function ClientDetailPage() {
                 display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer",
               }}
             >
-              <Icon name="plus" size={12} /> New deal
+              <Icon name="plus" size={12} /> New file
             </button>
           )}
           {/* Agent's controlled handoff to the funding team (alembic 0031).
