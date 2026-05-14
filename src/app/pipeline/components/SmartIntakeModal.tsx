@@ -522,10 +522,10 @@ export function SmartIntakeModal({
         const purposeLabel = form.loanPurpose === "refinance" ? "Refinance" : "Purchase";
         const sideLabel = showSideToggle ? ` · ${isSeller ? "Seller" : "Buyer"}` : "";
         const programLabel = LOAN_PROGRAM_LABELS[form.loanType] ?? "";
-        return `New Deal · ${purposeLabel}${programLabel ? ` · ${programLabel}` : ""}${sideLabel}`;
+        return `New File · ${purposeLabel}${programLabel ? ` · ${programLabel}` : ""}${sideLabel}`;
       })()}
       title={STEPS[step].label}
-      ariaLabel="Smart Intake — new deal"
+      ariaLabel="Smart Intake — new file"
       footer={
         <>
           <button

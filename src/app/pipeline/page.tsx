@@ -260,7 +260,7 @@ export default function PipelinePage() {
                 border: "none",
               }}
             >
-              <Icon name="plus" size={14} /> {mode === "funding" ? "New deal" : "New relationship"}
+              <Icon name="plus" size={14} /> New client
             </button>
           )}
         </div>

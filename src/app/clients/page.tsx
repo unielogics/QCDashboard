@@ -195,7 +195,7 @@ export default function ClientsPage() {
                 cursor: "pointer",
               }}
             >
-              <Icon name="plus" size={14} /> New deal
+              <Icon name="plus" size={14} /> New client
             </button>
           )}
         </div>
