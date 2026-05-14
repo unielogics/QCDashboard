@@ -40,6 +40,7 @@ export const DealChatRole = {
   AI: "ai",
   SUPER_ADMIN: "super_admin",
   BROKER_INTERNAL: "broker_internal",
+  BROKER: "broker",
   CLIENT: "client"
 } as const;
 export type DealChatRole = (typeof DealChatRole)[keyof typeof DealChatRole];
@@ -48,7 +49,8 @@ export const DealChatMode = {
   CHAT: "chat",
   INSTRUCT: "instruct",
   BROKER_QUESTION: "broker_question",
-  BROKER_SUGGESTION: "broker_suggestion"
+  BROKER_SUGGESTION: "broker_suggestion",
+  LIVE_CHAT: "live_chat"
 } as const;
 export type DealChatMode = (typeof DealChatMode)[keyof typeof DealChatMode];
 

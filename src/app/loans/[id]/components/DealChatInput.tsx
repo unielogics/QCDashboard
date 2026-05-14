@@ -35,6 +35,10 @@ const SUPER_ADMIN_MODES: ModeOption[] = [
 ];
 
 const BROKER_MODES: ModeOption[] = [
+  // Live Chat — leftmost / default so brokers in a hand-on moment land
+  // in the right mode without an extra click. Same backend semantics as
+  // super_admin's CHAT (pauses AI for 1h, client_visible=true).
+  { mode: DealChatMode.LIVE_CHAT, label: "Live Chat", hint: "Reply directly to the client (pauses AI for 1h)", icon: "send" },
   { mode: DealChatMode.BROKER_QUESTION, label: "Ask the AI", hint: "Internal Q&A — borrower won't see this", icon: "ai" },
   { mode: DealChatMode.BROKER_SUGGESTION, label: "Suggest to Inbox", hint: "Files an item for super-admin review", icon: "send" },
   { mode: DealChatMode.INSTRUCT, label: "Instruct AI", hint: "Save as a persistent loan instruction", icon: "shield" },

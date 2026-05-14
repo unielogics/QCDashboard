@@ -127,6 +127,7 @@ function Bubble({
     switch (message.from_role) {
       case DealChatRole.AI: return t.petrol;
       case DealChatRole.SUPER_ADMIN: return t.brand;
+      case DealChatRole.BROKER: return t.gold;
       case DealChatRole.BROKER_INTERNAL: return t.gold;
       case DealChatRole.CLIENT: return t.ink2;
       default: return t.ink3;
@@ -136,6 +137,7 @@ function Bubble({
     switch (message.from_role) {
       case DealChatRole.AI: return "AI";
       case DealChatRole.SUPER_ADMIN: return "Operator";
+      case DealChatRole.BROKER: return "Broker (Live Chat)";
       case DealChatRole.BROKER_INTERNAL: return "Broker (internal)";
       case DealChatRole.CLIENT: return "Borrower";
       default: return String(message.from_role);
