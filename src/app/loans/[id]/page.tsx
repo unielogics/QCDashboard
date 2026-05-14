@@ -33,6 +33,7 @@ import { LenderConnectCard } from "./components/LenderConnectCard";
 import { FILE_STAGE_KEYS, FILE_STAGE_LABELS, getFileCompletion } from "./fileReadiness";
 import { LoanAgentPicker } from "@/components/LoanAgentPicker";
 import { ClientLoanChatTab } from "./components/ClientLoanChatTab";
+import { LoanChatTab } from "./components/LoanChatTab";
 
 const INTERNAL_TABS = [
   // Property tab merged into Funding File — property details now sit
@@ -52,6 +53,10 @@ const INTERNAL_TABS = [
 
 const AGENT_TABS = [
   { id: "agent", label: "Client Status", icon: "clients" as const },
+  // Broker access to the 4-mode loan chat (Live Chat / Ask AI /
+  // Suggest / Instruct) — same surface super_admin gets, rendered
+  // inline as a tab rather than via the slide-out.
+  { id: "loan_chat", label: "Loan chat", icon: "chat" as const },
   { id: "docs", label: "Documents", icon: "doc" as const },
   { id: "activity", label: "Updates", icon: "audit" as const },
 ] as const;
@@ -72,6 +77,7 @@ export default function LoanDetailPage() {
   const params = useParams<{ id: string }>();
   const { t } = useTheme();
   const profile = useActiveProfile();
+  // Needed for the inline Loan-chat tab (passed through to DealChatInput).
   const { data: currentUser } = useCurrentUser();
   const setAiOpen = useUI((s) => s.setAiOpen);
   const { data: loan } = useLoan(params.id);
@@ -498,6 +504,9 @@ export default function LoanDetailPage() {
       {activeTab === "wire" && <WireClosingTab loan={loan} />}
       {activeTab === "prequal" && <PrequalTab loan={loan} />}
       {activeTab === "workspace" && <DealWorkspaceTab loanId={loan.id} onOpenTab={openLoanArea} />}
+      {activeTab === "loan_chat" && currentUser && (
+        <LoanChatTab loanId={loan.id} user={currentUser} />
+      )}
       {activeTab === "thread" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {/* Thread participants + Pending drafts now render INSIDE
