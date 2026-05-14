@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel, VerifiedBadge } from "@/components/design-system/primitives";
@@ -25,6 +25,7 @@ import type { Broker, Client, ClientExperienceMode, ClientExperienceModeLockedBy
 export default function ClientDetailPage() {
   const { t } = useTheme();
   const profile = useActiveProfile();
+  const router = useRouter();
   const { id } = useParams<{ id: string }>();
   const { data: client } = useClient(id);
   const { data: loans = [] } = useLoans();
@@ -44,6 +45,7 @@ export default function ClientDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [prequalErr, setPrequalErr] = useState<string | null>(null);
+  const [chatPickerOpen, setChatPickerOpen] = useState(false);
   // Confirmation modal — shows the handoff packet summary before
   // firing. After fire, the same modal shows the success state with
   // what the Lending AI inherited + the first message it sent.
@@ -99,6 +101,23 @@ export default function ClientDetailPage() {
   const clientLoans = loans.filter((l) => l.client_id === client.id);
   const exposure = clientLoans.reduce((s, l) => s + Number(l.amount), 0);
 
+  // Any loan is chat-able — broker may want post-funding follow-up too.
+  const chatLoans = clientLoans;
+  const openLoanChat = (loanId: string) => {
+    router.push(`/loans/${loanId}?tab=loan_chat`);
+  };
+  const onMessageClient = () => {
+    if (chatLoans.length === 0) {
+      setPrequalErr("No active loan to chat in. Start a file first.");
+      return;
+    }
+    if (chatLoans.length === 1) {
+      openLoanChat(chatLoans[0].id);
+      return;
+    }
+    setChatPickerOpen(true);
+  };
+
   const handleSave = async () => {
     setError(null);
     try {
@@ -129,6 +148,19 @@ export default function ClientDetailPage() {
             <div style={{ fontSize: 13, color: t.ink3 }}>{client.email ?? "—"} · {client.phone ?? "—"} · {client.city ?? "—"}</div>
           </div>
           <Pill>{client.tier}</Pill>
+          {canEdit && chatLoans.length > 0 && (
+            <button
+              onClick={onMessageClient}
+              style={{
+                padding: "8px 12px", borderRadius: 9,
+                background: t.petrol, color: t.inverse, border: "none",
+                fontSize: 12, fontWeight: 700,
+                display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer",
+              }}
+            >
+              <Icon name="chat" size={12} /> Message client
+            </button>
+          )}
           {canStartDeal && (
             <button
               onClick={() => setIntakeOpen(true)}
@@ -205,6 +237,16 @@ export default function ClientDetailPage() {
           email: client.email ?? null,
           phone: client.phone ?? null,
           client_type: client.client_type ?? null,
+        }}
+      />
+      <LoanChatPicker
+        t={t}
+        open={chatPickerOpen}
+        loans={chatLoans}
+        onClose={() => setChatPickerOpen(false)}
+        onPick={(loanId) => {
+          setChatPickerOpen(false);
+          openLoanChat(loanId);
         }}
       />
       <LendingHandoffModal
@@ -438,6 +480,59 @@ export default function ClientDetailPage() {
           REO Schedule = docs tied to funded loans. Backed by the new
           GET /documents?client_id={id} server-side join. */}
       <ClientVaultCard t={t} clientLoans={clientLoans} docs={clientDocs} />
+    </div>
+  );
+}
+
+function LoanChatPicker({
+  t,
+  open,
+  loans,
+  onClose,
+  onPick,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  open: boolean;
+  loans: Loan[];
+  onClose: () => void;
+  onPick: (loanId: string) => void;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
+        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: t.surface, borderRadius: 14, padding: 18,
+          maxWidth: 480, width: "92%", display: "flex", flexDirection: "column", gap: 10,
+        }}
+      >
+        <div style={{ fontSize: 15, fontWeight: 800, color: t.ink }}>Pick a loan to chat in</div>
+        <div style={{ fontSize: 12, color: t.ink3 }}>This client has more than one active loan. Choose which thread to open.</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+          {loans.map((l) => (
+            <button
+              key={l.id}
+              onClick={() => onPick(l.id)}
+              style={{
+                all: "unset", cursor: "pointer",
+                padding: "10px 12px", borderRadius: 10, border: `1px solid ${t.line}`,
+                display: "flex", alignItems: "center", gap: 10,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 700, color: t.ink3, width: 80 }}>{l.deal_id}</div>
+              <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: t.ink }}>{l.address}</div>
+              <div style={{ fontSize: 12, color: t.ink3 }}>{l.stage}</div>
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

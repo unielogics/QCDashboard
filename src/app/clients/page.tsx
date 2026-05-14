@@ -9,7 +9,7 @@ import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
 import { Role } from "@/lib/enums.generated";
 import type { Broker, Client, ClientStage } from "@/lib/types";
 import { QC_FMT } from "@/components/design-system/tokens";
-import { SmartIntakeModal } from "@/app/pipeline/components/SmartIntakeModal";
+import { AgentLeadModal } from "@/app/pipeline/components/AgentLeadModal";
 
 // Stages-as-filter-chips shown above the table.
 type StageFilter = "all" | ClientStage;
@@ -174,11 +174,9 @@ export default function ClientsPage() {
             />
           </div>
           {canCreate && (
-            // Single entry point — opens SmartIntakeModal which leads
-            // with a client search before falling through to the
-            // borrower-creation flow. For agents, this gives a
-            // listing/purchase choice; for super-admin / underwriter
-            // the wizard runs in pure prequalification mode.
+            // Clients tab owns person/contact creation only — the slim
+            // AgentLeadModal mirrors the mobile single-page New Client
+            // form. Loan-file creation lives on /pipeline.
             <button
               onClick={() => setIntakeOpen(true)}
               style={{
@@ -293,7 +291,7 @@ export default function ClientsPage() {
           </div>
         )}
       </Card>
-      <SmartIntakeModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
+      <AgentLeadModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
     </div>
   );
 }

@@ -10,7 +10,6 @@ import { QC_FMT } from "@/components/design-system/tokens";
 import { loanTypeLabel, type Document } from "@/lib/types";
 import { getFileCompletion } from "@/app/loans/[id]/fileReadiness";
 import { SmartIntakeModal } from "./components/SmartIntakeModal";
-import { AgentLeadModal } from "./components/AgentLeadModal";
 import { LeadsPipelineView } from "./components/LeadsPipelineView";
 import { useActiveProfile } from "@/store/role";
 import { LoanAgentPicker } from "@/components/LoanAgentPicker";
@@ -260,21 +259,18 @@ export default function PipelinePage() {
                 border: "none",
               }}
             >
-              <Icon name="plus" size={14} /> New client
+              <Icon name="plus" size={14} /> New file
             </button>
           )}
         </div>
       </div>
 
-      {/* Role-aware container split: agents capture a real-estate lead
-          (no Loan); super-admin / underwriter originate a Loan. The
-          two modals share field shapes but model different mental
-          surfaces — never merge them. */}
-      {profile.role === "broker" ? (
-        <AgentLeadModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
-      ) : (
-        <SmartIntakeModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
-      )}
+      {/* Pipeline owns loan-file creation (the funding target the AI
+          nurtures), separate from the client/person creation on the
+          Clients tab. Both broker and operator open the same
+          SmartIntake flow — it finds-or-creates the client by email,
+          then originates a Loan with property + ask + AI cadence. */}
+      <SmartIntakeModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
 
       {mode === "funding" ? (
         <FundingMetricsRow
