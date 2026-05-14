@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useClient, useDocuments, useLoan, useLoanActivity, useRecalc, useStageTransition, useUpdateLoan } from "@/hooks/useApi";
+import { useClient, useCurrentUser, useDocuments, useLoan, useLoanActivity, useRecalc, useStageTransition, useUpdateLoan } from "@/hooks/useApi";
 import { FileBlockersPopup } from "@/components/FileBlockersPopup";
 import { getCriteriaItems } from "./fileReadiness";
 import { useDealChannel } from "@/hooks/useDealChannel";
@@ -32,6 +32,7 @@ import { DealHealthPill } from "./components/DealHealthPill";
 import { LenderConnectCard } from "./components/LenderConnectCard";
 import { FILE_STAGE_KEYS, FILE_STAGE_LABELS, getFileCompletion } from "./fileReadiness";
 import { LoanAgentPicker } from "@/components/LoanAgentPicker";
+import { ClientLoanChatTab } from "./components/ClientLoanChatTab";
 
 const INTERNAL_TABS = [
   // Property tab merged into Funding File — property details now sit
@@ -56,6 +57,11 @@ const AGENT_TABS = [
 ] as const;
 
 const CLIENT_TABS = [
+  // Phase 7.5 — Messages is the default tab for clients because that's
+  // where operator / broker / AI messages on this loan land. Without
+  // this tab, desktop clients had no chat surface and operator messages
+  // were invisible on desktop.
+  { id: "messages", label: "Messages", icon: "chat" as const },
   { id: "overview", label: "Overview", icon: "home" as const },
   { id: "terms", label: "Simulator", icon: "sliders" as const },
   { id: "docs", label: "Documents", icon: "doc" as const },
@@ -66,6 +72,7 @@ export default function LoanDetailPage() {
   const params = useParams<{ id: string }>();
   const { t } = useTheme();
   const profile = useActiveProfile();
+  const { data: currentUser } = useCurrentUser();
   const setAiOpen = useUI((s) => s.setAiOpen);
   const { data: loan } = useLoan(params.id);
   // Borrower (natural person) FICO + display name come from the client
@@ -84,7 +91,7 @@ export default function LoanDetailPage() {
   const initialTabHint = searchParams?.get("tab") || null;
   const [tab, setTab] = useState<string>(
     initialTabHint ||
-    (profile.role === Role.CLIENT ? "overview" : profile.role === Role.BROKER ? "agent" : "file"),
+    (profile.role === Role.CLIENT ? "messages" : profile.role === Role.BROKER ? "agent" : "file"),
   );
   const [showBlockers, setShowBlockers] = useState(false);
   // Agent assignment picker — opens from the AGENT chip in the header.
@@ -477,6 +484,9 @@ export default function LoanDetailPage() {
         <FundingFileTab loan={loan} docs={docs} activity={activity} canEdit={canTransitionStage} onOpenTab={openLoanArea} />
       )}
       {activeTab === "agent" && <AgentLoanMirror loan={loan} docs={docs} activity={activity} />}
+      {activeTab === "messages" && currentUser && (
+        <ClientLoanChatTab loanId={loan.id} user={currentUser} />
+      )}
       {activeTab === "overview" && <OverviewTab loan={loan} docs={docs} activity={activity} />}
       {activeTab === "terms" &&
         (profile.role === Role.CLIENT ? <LoanSimulator loan={loan} /> : <TermsTab loan={loan} />)}

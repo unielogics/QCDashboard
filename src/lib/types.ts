@@ -1420,6 +1420,17 @@ export type LenderThreadEntryKind =
 
 export type LenderThreadSendStatus = "sent" | "saved" | "failed" | "n/a";
 
+export interface LenderThreadAttachment {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  source: "outbound_upload" | "system_doc_ref" | "inbound_lender" | string;
+  direction: "outbound" | "inbound" | string;
+  document_id?: string | null;
+  download_url?: string | null;
+}
+
 export interface LenderThreadEntry {
   id: string;
   kind: LenderThreadEntryKind;
@@ -1435,6 +1446,31 @@ export interface LenderThreadEntry {
   send_status?: LenderThreadSendStatus;
   send_note?: string | null;
   to_email?: string | null;
+  // Round-4: attachments tied to this message.
+  attachments?: LenderThreadAttachment[];
+}
+
+export interface LenderAttachmentInitRequest {
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+}
+
+export interface LenderAttachmentInitResponse {
+  attachment_id: string;
+  upload_url: string | null;
+  s3_key: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+}
+
+export interface LenderAttachmentRef {
+  attachment_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  source: string;
 }
 
 export interface GmailPayloadView {
@@ -1507,6 +1543,9 @@ export type LenderThreadReplyMode = "send_now" | "instruct_ai" | "save_draft";
 export interface LenderThreadReplyRequest {
   mode: LenderThreadReplyMode;
   text: string;
+  // Round-4: attachment IDs (from upload-init or from-doc) to commit
+  // with this reply and include as MIME parts in the Gmail send.
+  attachment_ids?: string[];
 }
 
 export interface LenderThreadReplyResponse {

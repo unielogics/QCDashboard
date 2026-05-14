@@ -22,6 +22,9 @@ import type {
   InjectLenderEmailRequest,
   InjectLenderEmailResponse,
   Lender,
+  LenderAttachmentInitRequest,
+  LenderAttachmentInitResponse,
+  LenderAttachmentRef,
   LenderCreate,
   LenderLoansResponse,
   LenderUpdate,
@@ -2676,6 +2679,103 @@ export function useGmailTest() {
       qc.invalidateQueries({ queryKey: ["connectLenderHealth"] });
     },
   });
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Lender-thread attachments (round 4)
+// ────────────────────────────────────────────────────────────────────
+
+/** Initialize an outbound attachment upload — returns presigned PUT URL. */
+export function useLenderAttachmentInit() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: ({
+      loanId,
+      payload,
+    }: {
+      loanId: string;
+      payload: LenderAttachmentInitRequest;
+    }) =>
+      apiCall<LenderAttachmentInitResponse>(
+        `/loans/${loanId}/lender-thread/attachment/upload-init`,
+        { method: "POST", body: JSON.stringify(payload) },
+      ),
+  });
+}
+
+/** Mark a staged attachment as upload-complete. */
+export function useLenderAttachmentComplete() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: ({
+      loanId,
+      attachmentId,
+    }: {
+      loanId: string;
+      attachmentId: string;
+    }) =>
+      apiCall<LenderAttachmentRef>(
+        `/loans/${loanId}/lender-thread/attachment/upload-complete?attachment_id=${encodeURIComponent(attachmentId)}`,
+        { method: "POST" },
+      ),
+  });
+}
+
+/** Stage an existing loan Document as a reply attachment. */
+export function useLenderAttachmentFromDoc() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: ({
+      loanId,
+      documentId,
+    }: {
+      loanId: string;
+      documentId: string;
+    }) =>
+      apiCall<LenderAttachmentRef>(
+        `/loans/${loanId}/lender-thread/attachment/from-doc`,
+        {
+          method: "POST",
+          body: JSON.stringify({ document_id: documentId }),
+        },
+      ),
+  });
+}
+
+/** Build the helper that uploads a single browser File to S3 via the
+ * two-phase init → S3 PUT → complete flow. Returns the attachment ref
+ * the composer can include in its reply payload. */
+export function useUploadLenderAttachment(loanId: string) {
+  const init = useLenderAttachmentInit();
+  const complete = useLenderAttachmentComplete();
+  return async function upload(file: File): Promise<LenderAttachmentRef> {
+    const res = await init.mutateAsync({
+      loanId,
+      payload: {
+        filename: file.name,
+        mime_type: file.type || "application/octet-stream",
+        size_bytes: file.size,
+      },
+    });
+    if (!res.upload_url) {
+      throw new Error("S3 not configured on the backend.");
+    }
+    const put = await fetch(res.upload_url, {
+      method: "PUT",
+      headers: {
+        "Content-Type": res.mime_type,
+        "x-amz-server-side-encryption": "AES256",
+      },
+      body: file,
+    });
+    if (!put.ok) {
+      throw new Error(`S3 upload failed: HTTP ${put.status}`);
+    }
+    return await complete.mutateAsync({
+      loanId,
+      attachmentId: res.attachment_id,
+    });
+  };
 }
 
 export function useInjectLenderEmail() {
