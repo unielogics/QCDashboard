@@ -51,13 +51,27 @@ python3 /path/to/QCDashboard/docs/qcbackend-patches/02_loan_workspace_human_take
 python3 /path/to/QCDashboard/docs/qcbackend-patches/03_ai_tasks_strict_broker_filter.py
 
 # Re-gen TS enums so QCDashboard + QCMobile pick up DealChatMode.LIVE_CHAT
-# and DealChatRole.BROKER from the source-of-truth enums.py.
+# and DealChatRole.BROKER from the source-of-truth enums.py. Skip this
+# step if your front-end enums.generated.ts already has both members
+# (verifiable with: grep -E "LIVE_CHAT|^.*BROKER:.*broker" enums.generated.ts).
 python scripts/gen_ts_enums.py
 
-# Commit and rebuild
+# Commit
 git add app/enums.py app/routers/loan_workspace.py app/routers/ai_tasks.py
 git commit -m "feat(chat): live_chat broker takeover + strict ai-inbox isolation"
-docker compose build qcbackend && docker compose up -d qcbackend
+
+# Rebuild + restart. NOTE the deploy on this EC2 is systemd, NOT
+# docker-compose — the compose file in qcbackend only defines postgres.
+# qcbackend itself is launched by /etc/systemd/system/qcbackend.service,
+# which `docker run`s the `qcbackend:current` image.
+docker build -t qcbackend:current .
+sudo systemctl restart qcbackend
+
+# Verify
+sudo docker exec qcbackend python3 -c "from app.enums import DealChatMode, DealChatRole; \
+  assert 'live_chat' in [m.value for m in DealChatMode]; \
+  assert 'broker'    in [r.value for r in DealChatRole]; \
+  print('OK')"
 ```
 
 ## How to verify after deploy
