@@ -30,8 +30,6 @@ import { DealWorkspaceTab } from "./tabs/DealWorkspaceTab";
 import { PrequalTab } from "./tabs/PrequalTab";
 import { DealHealthPill } from "./components/DealHealthPill";
 import { LenderConnectCard } from "./components/LenderConnectCard";
-import { ParticipantsCard } from "./components/ParticipantsCard";
-import { EmailDraftsCard } from "./components/EmailDraftsCard";
 import { FILE_STAGE_KEYS, FILE_STAGE_LABELS, getFileCompletion } from "./fileReadiness";
 import { LoanAgentPicker } from "@/components/LoanAgentPicker";
 
@@ -492,9 +490,10 @@ export default function LoanDetailPage() {
       {activeTab === "workspace" && <DealWorkspaceTab loanId={loan.id} onOpenTab={openLoanArea} />}
       {activeTab === "thread" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Thread participants + Pending drafts now render INSIDE
+              LenderConnectCard's right column (LenderThread), so the
+              whole lender file lives in a single section. */}
           <LenderConnectCard loan={loan} />
-          <ParticipantsCard loanId={loan.id} />
-          <EmailDraftsCard loanId={loan.id} />
         </div>
       )}
       {activeTab === "activity" && <ActivityTab activity={activity} isLoading={activityLoading} />}

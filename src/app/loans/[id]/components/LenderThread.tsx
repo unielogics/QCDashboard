@@ -44,6 +44,8 @@ import { LenderThreadAuditDrawer } from "./LenderThreadAuditDrawer";
 import { LenderThreadPreviewModal } from "./LenderThreadPreviewModal";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { LenderActionItemsPanel } from "./LenderActionItemsPanel";
+import { ParticipantsCard } from "./ParticipantsCard";
+import { EmailDraftsCard } from "./EmailDraftsCard";
 
 interface Props {
   loan: Loan;
@@ -494,6 +496,16 @@ export function LenderThread({ loan, lender }: Props) {
             </div>
           </CollapsiblePanel>
         )}
+
+        {/* Thread participants — the routing source-of-truth for the
+            Fintech Orchestrator (CC/BCC/hide_identity). Moved into this
+            column so the operator can add more people as the file
+            grows without leaving the lender section. */}
+        <ParticipantsCard loanId={loan.id} />
+
+        {/* Pending email drafts — round-1 created this card; moving it
+            here keeps everything lender-thread in one column. */}
+        <EmailDraftsCard loanId={loan.id} />
 
         {isSuperAdmin && (
           <CollapsiblePanel
