@@ -46,6 +46,8 @@ import { CollapsiblePanel } from "./CollapsiblePanel";
 import { LenderActionItemsPanel } from "./LenderActionItemsPanel";
 import { ParticipantsCard } from "./ParticipantsCard";
 import { EmailDraftsCard } from "./EmailDraftsCard";
+import { LenderThreadAttachmentBar } from "./LenderThreadAttachmentBar";
+import type { LenderAttachmentRef } from "@/lib/types";
 
 interface Props {
   loan: Loan;
@@ -74,6 +76,7 @@ export function LenderThread({ loan, lender }: Props) {
 
   const [text, setText] = useState("");
   const [mode, setMode] = useState<LenderThreadReplyMode>("send_now");
+  const [attachments, setAttachments] = useState<LenderAttachmentRef[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [lastNote, setLastNote] = useState<string | null>(null);
 
@@ -116,9 +119,17 @@ export function LenderThread({ loan, lender }: Props) {
     }
     if (mode === "save_draft") {
       reply
-        .mutateAsync({ loanId: loan.id, payload: { mode, text: text.trim() } })
+        .mutateAsync({
+          loanId: loan.id,
+          payload: {
+            mode,
+            text: text.trim(),
+            attachment_ids: attachments.map((a) => a.attachment_id),
+          },
+        })
         .then((res) => {
           setText("");
+          setAttachments([]);
           setLastNote(res.note);
         })
         .catch((err) => setError((err as Error).message ?? "Save failed."));
@@ -132,9 +143,14 @@ export function LenderThread({ loan, lender }: Props) {
     try {
       const res = await reply.mutateAsync({
         loanId: loan.id,
-        payload: { mode, text: text.trim() },
+        payload: {
+          mode,
+          text: text.trim(),
+          attachment_ids: attachments.map((a) => a.attachment_id),
+        },
       });
       setText("");
+      setAttachments([]);
       setLastNote(res.note);
       setPreviewOpen(false);
     } catch (err) {
@@ -319,6 +335,11 @@ export function LenderThread({ loan, lender }: Props) {
               <div style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.45 }}>
                 {modeHint(mode, lender.name)}
               </div>
+              <LenderThreadAttachmentBar
+                loanId={loan.id}
+                attachments={attachments}
+                onChange={setAttachments}
+              />
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}

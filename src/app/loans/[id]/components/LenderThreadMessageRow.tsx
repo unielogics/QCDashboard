@@ -138,38 +138,89 @@ export function LenderThreadMessageRow({ entry, onShowDetails }: Props) {
           style={{
             padding: "0 14px 12px 58px",
             display: "flex",
+            flexDirection: "column",
             gap: 8,
-            flexWrap: "wrap",
           }}
         >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onShowDetails(entry);
-            }}
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              padding: "6px 10px",
-              borderRadius: 8,
-              border: `1px solid ${t.line}`,
-              background: t.surface,
-              fontSize: 11,
-              fontWeight: 700,
-              color: t.brand,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <Icon name="search" size={11} stroke={2.5} /> Show details
-          </button>
-          {entry.sent_message_id ? (
-            <span style={{ fontSize: 11, color: t.ink3, padding: "6px 4px" }}>
-              Gmail msg id: <code>{entry.sent_message_id}</code>
-            </span>
-          ) : null}
+          {entry.attachments && entry.attachments.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {entry.attachments.map((a) => (
+                <a
+                  key={a.id}
+                  href={a.download_url ?? "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => {
+                    if (!a.download_url) {
+                      e.preventDefault();
+                    }
+                    e.stopPropagation();
+                  }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    background: t.surface2,
+                    border: `1px solid ${t.line}`,
+                    fontSize: 11.5,
+                    color: a.download_url ? t.brand : t.ink3,
+                    textDecoration: "none",
+                    maxWidth: 280,
+                  }}
+                  title={a.filename}
+                >
+                  <Icon name="paperclip" size={10} stroke={2.5} />
+                  <span
+                    style={{
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      maxWidth: 220,
+                    }}
+                  >
+                    {a.filename}
+                  </span>
+                  {a.size_bytes > 0 && (
+                    <span style={{ color: t.ink3, fontSize: 10 }}>
+                      {formatBytes(a.size_bytes)}
+                    </span>
+                  )}
+                </a>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onShowDetails(entry);
+              }}
+              style={{
+                all: "unset",
+                cursor: "pointer",
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: `1px solid ${t.line}`,
+                background: t.surface,
+                fontSize: 11,
+                fontWeight: 700,
+                color: t.brand,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <Icon name="search" size={11} stroke={2.5} /> Show details
+            </button>
+            {entry.sent_message_id ? (
+              <span style={{ fontSize: 11, color: t.ink3, padding: "6px 4px" }}>
+                Gmail msg id: <code>{entry.sent_message_id}</code>
+              </span>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>
@@ -274,4 +325,10 @@ function formatGmailTime(d: Date): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function formatBytes(b: number): string {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
 }
