@@ -1,23 +1,25 @@
 "use client";
 
-// Lender Thread — embedded under the Lender Connect card on the loan
-// detail page. Three stacked surfaces:
+// Lender Thread (round 2) — Gmail-style mailbox.
 //
-//   1. Loan Living Profile (re-using loan.status_summary +
-//      loan.living_profile populated by The Associate summarizer)
-//   2. Lender-thread mini-summary (scoped to the lender conversation
-//      via GET /loans/{id}/lender-thread/summary)
-//   3. Dated timeline of inbound + outbound messages with the
-//      sender name and channel pill
-//   4. Reply composer with three modes:
-//        • Send now   — outbound via Gmail, immediate
-//        • Instruct AI — AI writes + sends the reply
-//        • Save draft  — EmailDraft(status=PENDING), no send
+// Layout from top to bottom:
+//   1. Loan Living Profile (reused — Associate-generated overview).
+//   2. Lender-thread AI mini-summary (scoped to lender messages).
+//   3. Gmail-readiness banner (green/amber, plus a "Test Gmail" button
+//      for super-admins).
+//   4. Mailbox-style timeline grouped by day (LenderThreadMessageRow
+//      per entry). Each row shows the actual delivery status pill
+//      (Delivered / Saved only / Send failed) — surfacing the
+//      ground truth from the EmailDraft.status + sent_message_id
+//      that round-1 was hiding.
+//   5. Reply composer with mode toggle; clicking the primary submit
+//      opens LenderThreadPreviewModal — the operator sees exactly
+//      what will be transmitted before any DB write.
+//   6. Dev-only "Inject test email" panel (USE_FAKE_INBOX gate).
 //
-// Super-admin + loan-exec see the composer; broker/client see the
-// timeline with the lender identity redacted. Inject-test-email
-// helper is super-admin only and shown only when USE_FAKE_INBOX is
-// true (signalled via the connect-lender health probe).
+// Per-row "Show details" opens LenderThreadAuditDrawer with the
+// friendly view + collapsed advanced (raw DB rows + base64 RFC 5322
+// payload).
 
 import { useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
@@ -27,6 +29,7 @@ import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
 import {
   useConnectLenderHealth,
+  useGmailTest,
   useInjectLenderEmail,
   useLenderThread,
   useLenderThreadReply,
@@ -35,9 +38,13 @@ import {
 import type {
   Lender,
   LenderThreadEntry,
+  LenderThreadPreviewResponse,
   LenderThreadReplyMode,
   Loan,
 } from "@/lib/types";
+import { LenderThreadMessageRow } from "./LenderThreadMessageRow";
+import { LenderThreadAuditDrawer } from "./LenderThreadAuditDrawer";
+import { LenderThreadPreviewModal } from "./LenderThreadPreviewModal";
 
 interface Props {
   loan: Loan;
@@ -56,16 +63,22 @@ export function LenderThread({ loan, lender }: Props) {
   const reply = useLenderThreadReply();
   const inject = useInjectLenderEmail();
   const health = useConnectLenderHealth(isSuperAdmin);
+  const gmailTest = useGmailTest();
 
   const inboxIsMock = useMemo(() => {
     const check = health.data?.checks.find((c) => c.name === "Gmail inbound");
     return check?.status === "warn"; // warn = USE_FAKE_INBOX=True
   }, [health.data]);
 
+  const gmailCanSend = health.data?.gmail_can_send ?? false;
+
   const [text, setText] = useState("");
   const [mode, setMode] = useState<LenderThreadReplyMode>("send_now");
   const [error, setError] = useState<string | null>(null);
   const [lastNote, setLastNote] = useState<string | null>(null);
+
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [auditEntry, setAuditEntry] = useState<LenderThreadEntry | null>(null);
 
   const [injectOpen, setInjectOpen] = useState(false);
   const [injectFrom, setInjectFrom] = useState(
@@ -77,13 +90,31 @@ export function LenderThread({ loan, lender }: Props) {
   const livingProfile = loan.living_profile;
   const statusSummary = loan.status_summary;
 
-  const handleSubmit = async () => {
+  const grouped = useMemo(() => groupByDay(thread.data?.entries ?? []), [thread.data]);
+
+  const openPreviewOrSave = () => {
     setError(null);
     setLastNote(null);
     if (!text.trim()) {
-      setError("Write something before sending.");
+      setError("Write something before submitting.");
       return;
     }
+    if (mode === "save_draft") {
+      // No preview for save_draft — nothing's transmitted, just save.
+      reply
+        .mutateAsync({ loanId: loan.id, payload: { mode, text: text.trim() } })
+        .then((res) => {
+          setText("");
+          setLastNote(res.note);
+        })
+        .catch((err) => setError((err as Error).message ?? "Save failed."));
+      return;
+    }
+    setPreviewOpen(true);
+  };
+
+  const confirmFromPreview = async (_preview: LenderThreadPreviewResponse) => {
+    setError(null);
     try {
       const res = await reply.mutateAsync({
         loanId: loan.id,
@@ -91,8 +122,9 @@ export function LenderThread({ loan, lender }: Props) {
       });
       setText("");
       setLastNote(res.note);
+      setPreviewOpen(false);
     } catch (err) {
-      setError((err as Error).message ?? "Reply failed.");
+      setError((err as Error).message ?? "Send failed.");
     }
   };
 
@@ -119,7 +151,7 @@ export function LenderThread({ loan, lender }: Props) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Living Profile (loan-level Associate summary) */}
+      {/* Living Profile */}
       {(statusSummary || livingProfile) && (
         <Card pad={0}>
           <div
@@ -143,19 +175,8 @@ export function LenderThread({ loan, lender }: Props) {
             ) : null}
             {livingProfile?.bottlenecks && livingProfile.bottlenecks.length > 0 && (
               <div style={{ marginTop: 8 }}>
-                <div
-                  style={{
-                    fontSize: 10.5,
-                    fontWeight: 700,
-                    letterSpacing: 1.2,
-                    textTransform: "uppercase",
-                    color: t.ink3,
-                    marginBottom: 4,
-                  }}
-                >
-                  Bottlenecks
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                <SubLabel t={t}>Bottlenecks</SubLabel>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
                   {livingProfile.bottlenecks.map((b) => (
                     <Pill key={b} bg={t.warnBg} color={t.warn}>
                       {b}
@@ -186,7 +207,8 @@ export function LenderThread({ loan, lender }: Props) {
           </div>
           {summary.data ? (
             <Pill bg={t.brandSoft} color={t.brand}>
-              {summary.data.message_count} msg{summary.data.message_count === 1 ? "" : "s"}
+              {summary.data.message_count} msg
+              {summary.data.message_count === 1 ? "" : "s"}
             </Pill>
           ) : null}
         </div>
@@ -200,33 +222,15 @@ export function LenderThread({ loan, lender }: Props) {
               </div>
               {summary.data.open_asks.length > 0 && (
                 <div style={{ marginTop: 8 }}>
-                  <div
-                    style={{
-                      fontSize: 10.5,
-                      fontWeight: 700,
-                      letterSpacing: 1.2,
-                      textTransform: "uppercase",
-                      color: t.ink3,
-                      marginBottom: 4,
-                    }}
-                  >
-                    Open asks
-                  </div>
-                  <ul
-                    style={{
-                      margin: 0,
-                      paddingLeft: 18,
-                      color: t.ink2,
-                      fontSize: 12,
-                    }}
-                  >
+                  <SubLabel t={t}>Open asks</SubLabel>
+                  <ul style={{ margin: "4px 0 0", paddingLeft: 18, color: t.ink2, fontSize: 12 }}>
                     {summary.data.open_asks.map((a, i) => (
                       <li key={i}>{a}</li>
                     ))}
                   </ul>
                 </div>
               )}
-              {summary.data.suggested_next_reply && (
+              {summary.data.suggested_next_reply && canPost && (
                 <div
                   style={{
                     marginTop: 10,
@@ -236,41 +240,28 @@ export function LenderThread({ loan, lender }: Props) {
                     border: `1px solid ${t.line}`,
                   }}
                 >
-                  <div
-                    style={{
-                      fontSize: 10.5,
-                      fontWeight: 700,
-                      letterSpacing: 1.2,
-                      textTransform: "uppercase",
-                      color: t.brand,
-                      marginBottom: 4,
-                    }}
-                  >
-                    Suggested reply
-                  </div>
-                  <div style={{ color: t.ink, fontSize: 12.5, lineHeight: 1.5 }}>
+                  <SubLabel t={t}>Suggested reply</SubLabel>
+                  <div style={{ color: t.ink, fontSize: 12.5, lineHeight: 1.5, marginTop: 4 }}>
                     {summary.data.suggested_next_reply}
                   </div>
-                  {canPost && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setText(summary.data?.suggested_next_reply ?? "");
-                        setMode("send_now");
-                      }}
-                      style={{
-                        all: "unset",
-                        cursor: "pointer",
-                        marginTop: 8,
-                        fontSize: 11.5,
-                        fontWeight: 700,
-                        color: t.brand,
-                        textDecoration: "underline",
-                      }}
-                    >
-                      Use as starting point ↓
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setText(summary.data?.suggested_next_reply ?? "");
+                      setMode("send_now");
+                    }}
+                    style={{
+                      all: "unset",
+                      cursor: "pointer",
+                      marginTop: 8,
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      color: t.brand,
+                      textDecoration: "underline",
+                    }}
+                  >
+                    Use as starting point ↓
+                  </button>
                 </div>
               )}
             </>
@@ -280,7 +271,19 @@ export function LenderThread({ loan, lender }: Props) {
         </div>
       </Card>
 
-      {/* Dated timeline */}
+      {/* Gmail readiness banner */}
+      {isSuperAdmin && (
+        <GmailReadinessBanner
+          t={t}
+          canSend={gmailCanSend}
+          loading={health.isLoading}
+          testing={gmailTest.isPending}
+          testResult={gmailTest.data}
+          onTest={() => gmailTest.mutate()}
+        />
+      )}
+
+      {/* Mailbox conversation */}
       <Card pad={0}>
         <div
           style={{
@@ -323,17 +326,10 @@ export function LenderThread({ loan, lender }: Props) {
               gap: 8,
             }}
           >
-            <div
-              style={{
-                fontSize: 11,
-                color: t.ink3,
-                lineHeight: 1.5,
-              }}
-            >
+            <div style={{ fontSize: 11, color: t.ink3, lineHeight: 1.5 }}>
               Dev-only mock-inbox injector. Writes a synthetic inbound
               Message(from_role=LENDER) row — same shape the Pub/Sub
-              consumer will produce. The from-email must match the
-              connected lender&apos;s submission or contact address.
+              consumer will produce.
             </div>
             <input
               value={injectFrom}
@@ -358,29 +354,35 @@ export function LenderThread({ loan, lender }: Props) {
               type="button"
               onClick={handleInject}
               disabled={inject.isPending}
-              style={{
-                ...primaryButton(t),
-                opacity: inject.isPending ? 0.6 : 1,
-              }}
+              style={{ ...primaryButton(t), opacity: inject.isPending ? 0.6 : 1 }}
             >
               {inject.isPending ? "Injecting…" : "Inject as inbound lender email"}
             </button>
           </div>
         )}
 
-        <div style={{ padding: 14 }}>
+        <div>
           {thread.isLoading ? (
-            <div style={{ fontSize: 12.5, color: t.ink3 }}>Loading thread…</div>
-          ) : thread.data && thread.data.entries.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {thread.data.entries.map((e) => (
-                <TimelineEntry key={e.id} t={t} entry={e} />
-              ))}
+            <div style={{ padding: 14, fontSize: 12.5, color: t.ink3 }}>
+              Loading thread…
             </div>
-          ) : (
-            <div style={{ fontSize: 12.5, color: t.ink3 }}>
+          ) : grouped.length === 0 ? (
+            <div style={{ padding: 14, fontSize: 12.5, color: t.ink3 }}>
               No messages yet. {canPost ? "Send the first one below." : ""}
             </div>
+          ) : (
+            grouped.map(({ day, entries }) => (
+              <div key={day}>
+                <DayDivider t={t} label={day} />
+                {entries.map((e) => (
+                  <LenderThreadMessageRow
+                    key={e.id}
+                    entry={e}
+                    onShowDetails={setAuditEntry}
+                  />
+                ))}
+              </div>
+            ))
           )}
         </div>
       </Card>
@@ -421,21 +423,8 @@ export function LenderThread({ loan, lender }: Props) {
               ))}
             </div>
           </div>
-          <div
-            style={{
-              padding: 14,
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11.5,
-                color: t.ink3,
-                lineHeight: 1.45,
-              }}
-            >
+          <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.45 }}>
               {modeHint(mode, lender.name)}
             </div>
             <textarea
@@ -458,15 +447,35 @@ export function LenderThread({ loan, lender }: Props) {
             )}
             <button
               type="button"
-              onClick={handleSubmit}
+              onClick={openPreviewOrSave}
               disabled={reply.isPending}
               style={{ ...primaryButton(t), opacity: reply.isPending ? 0.6 : 1 }}
             >
-              {reply.isPending ? "Working…" : modeCta(mode)}
+              {reply.isPending
+                ? "Working…"
+                : mode === "save_draft"
+                ? "Save as draft"
+                : "Preview…"}
             </button>
           </div>
         </Card>
       )}
+
+      {/* Modals / drawers */}
+      <LenderThreadPreviewModal
+        open={previewOpen && mode !== "save_draft"}
+        loanId={loan.id}
+        mode={mode}
+        text={text}
+        onCancel={() => setPreviewOpen(false)}
+        onConfirm={confirmFromPreview}
+        confirming={reply.isPending}
+      />
+      <LenderThreadAuditDrawer
+        loanId={loan.id}
+        entry={auditEntry}
+        onClose={() => setAuditEntry(null)}
+      />
     </div>
   );
 }
@@ -475,74 +484,103 @@ export function LenderThread({ loan, lender }: Props) {
 // Subcomponents
 // ---------------------------------------------------------------------------
 
-function TimelineEntry({
+function GmailReadinessBanner({
   t,
-  entry,
+  canSend,
+  loading,
+  testing,
+  testResult,
+  onTest,
 }: {
   t: ReturnType<typeof useTheme>["t"];
-  entry: LenderThreadEntry;
+  canSend: boolean;
+  loading: boolean;
+  testing: boolean;
+  testResult: { ok: boolean; note: string } | undefined;
+  onTest: () => void;
 }) {
-  const ts = new Date(entry.sent_at);
-  const isInbound = entry.kind === "inbound";
-  const isDraft = entry.kind === "pending_draft";
-  const isAI = entry.kind === "ai_outbound";
-
-  const alignSelf = isInbound ? "flex-start" : "flex-end";
-  const bg = isInbound
-    ? t.surface2
-    : isDraft
-    ? t.warnBg
-    : isAI
-    ? t.petrolSoft
-    : t.brandSoft;
-  const border = isInbound ? t.line : t.line;
-
+  const bg = canSend ? t.profitBg : t.warnBg;
+  const fg = canSend ? t.profit : t.warn;
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignSelf, maxWidth: "85%" }}>
+    <Card pad={0}>
       <div
         style={{
+          padding: "10px 14px",
           display: "flex",
           alignItems: "center",
-          gap: 6,
-          marginBottom: 4,
-          fontSize: 11,
-          color: t.ink3,
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
         }}
       >
-        <span style={{ fontWeight: 700, color: t.ink2 }}>{entry.sender_label}</span>
-        <span>·</span>
-        <time title={ts.toISOString()}>{formatRelative(ts)}</time>
-        {isInbound && <Pill bg={t.profitBg} color={t.profit}>Inbound</Pill>}
-        {entry.kind === "outbound" && <Pill bg={t.brandSoft} color={t.brand}>Outbound</Pill>}
-        {isAI && <Pill bg={t.petrolSoft} color={t.petrol}>AI</Pill>}
-        {isDraft && <Pill bg={t.warnBg} color={t.warn}>Pending draft</Pill>}
-      </div>
-      <div
-        style={{
-          padding: "10px 12px",
-          borderRadius: 10,
-          background: bg,
-          border: `1px solid ${border}`,
-          fontSize: 12.5,
-          color: t.ink,
-          lineHeight: 1.5,
-          whiteSpace: "pre-wrap",
-        }}
-      >
-        {entry.subject && isDraft ? (
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: t.ink3,
-              marginBottom: 6,
-            }}
-          >
-            Subject: {entry.subject}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Pill bg={bg} color={fg}>
+            {loading ? "Checking…" : canSend ? "Gmail ready" : "Gmail not configured"}
+          </Pill>
+          <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.45 }}>
+            {canSend
+              ? "Send Now and Instruct AI will deliver via Gmail."
+              : "Messages will be saved locally only — recipients will NOT receive them until GMAIL_SERVICE_ACCOUNT_PATH + GMAIL_DELEGATED_USER are configured."}
           </div>
-        ) : null}
-        {entry.body}
+        </div>
+        <button
+          type="button"
+          onClick={onTest}
+          disabled={testing}
+          style={{
+            all: "unset",
+            cursor: testing ? "wait" : "pointer",
+            padding: "6px 12px",
+            borderRadius: 8,
+            border: `1px solid ${t.line}`,
+            fontSize: 11.5,
+            fontWeight: 700,
+            color: t.brand,
+            background: t.surface,
+          }}
+        >
+          {testing ? "Testing…" : "Test Gmail"}
+        </button>
       </div>
+      {testResult ? (
+        <div
+          style={{
+            padding: "8px 14px",
+            borderTop: `1px solid ${t.line}`,
+            fontSize: 11.5,
+            color: testResult.ok ? t.profit : t.danger,
+            background: testResult.ok ? t.profitBg : t.dangerBg,
+          }}
+        >
+          {testResult.note}
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+function DayDivider({
+  t,
+  label,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  label: string;
+}) {
+  return (
+    <div
+      style={{
+        padding: "8px 14px",
+        background: t.surface2,
+        borderTop: `1px solid ${t.line}`,
+        borderBottom: `1px solid ${t.line}`,
+        fontSize: 10.5,
+        fontWeight: 700,
+        letterSpacing: 1.4,
+        textTransform: "uppercase",
+        color: t.ink3,
+      }}
+    >
+      {label}
     </div>
   );
 }
@@ -567,28 +605,95 @@ function DealHealthPill({
   );
 }
 
+function SubLabel({
+  t,
+  children,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        fontSize: 10.5,
+        fontWeight: 700,
+        letterSpacing: 1.2,
+        textTransform: "uppercase",
+        color: t.ink3,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+interface DayGroup {
+  day: string;
+  entries: LenderThreadEntry[];
+}
+
+function groupByDay(entries: LenderThreadEntry[]): DayGroup[] {
+  if (entries.length === 0) return [];
+  // entries from the API arrive sorted oldest→newest. Group by local
+  // calendar day and label "Today" / "Yesterday" / "Mon DD, YYYY".
+  const buckets = new Map<string, LenderThreadEntry[]>();
+  const order: string[] = [];
+  for (const e of entries) {
+    const d = new Date(e.sent_at);
+    const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
+    if (!buckets.has(key)) {
+      buckets.set(key, []);
+      order.push(key);
+    }
+    buckets.get(key)!.push(e);
+  }
+  return order.map((key) => ({
+    day: labelForDayKey(key),
+    entries: buckets.get(key)!,
+  }));
+}
+
+function labelForDayKey(yyyymmdd: string): string {
+  const d = new Date(yyyymmdd + "T00:00:00");
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) return "Today";
+  const yest = new Date(now);
+  yest.setDate(now.getDate() - 1);
+  if (
+    d.getFullYear() === yest.getFullYear() &&
+    d.getMonth() === yest.getMonth() &&
+    d.getDate() === yest.getDate()
+  ) {
+    return "Yesterday";
+  }
+  if (d.getFullYear() === now.getFullYear()) {
+    return d.toLocaleDateString(undefined, { month: "long", day: "numeric" });
+  }
+  return d.toLocaleDateString(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 function modeLabel(m: LenderThreadReplyMode): string {
   return m === "send_now" ? "Send now" : m === "instruct_ai" ? "Instruct AI" : "Save draft";
 }
 
-function modeCta(m: LenderThreadReplyMode): string {
-  return m === "send_now"
-    ? "Send to lender"
-    : m === "instruct_ai"
-    ? "Have AI draft & send"
-    : "Save as draft";
-}
-
 function modeHint(m: LenderThreadReplyMode, lenderName: string): string {
   switch (m) {
     case "send_now":
-      return `Sends your message directly to ${lenderName} via Gmail. No approval step.`;
+      return `Sends your message directly to ${lenderName} via Gmail. You will see a preview before it goes out.`;
     case "instruct_ai":
-      return `Tell the AI what to ask or say (e.g. "Ask for the appraisal report and a 30-day rate-lock quote"). The AI writes the email and sends it to ${lenderName}.`;
+      return `Tell the AI what to ask or say (e.g. "Ask for the appraisal report and a 30-day rate-lock quote"). You will review the AI's draft before it is sent to ${lenderName}.`;
     case "save_draft":
       return `Saves your message as a draft. It will not be sent until you (or anyone with access) approves it from the Drafts panel.`;
   }
@@ -603,16 +708,6 @@ function modePlaceholder(m: LenderThreadReplyMode): string {
     case "save_draft":
       return "Write the message you want to save for later approval…";
   }
-}
-
-function formatRelative(d: Date): string {
-  const now = Date.now();
-  const diff = (now - d.getTime()) / 1000;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}d ago`;
-  return d.toLocaleDateString();
 }
 
 function inputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {

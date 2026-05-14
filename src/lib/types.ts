@@ -1387,6 +1387,9 @@ export interface ConnectLenderHealth {
   eligible_loan_count: number;
   active_lender_count: number;
   connected_loan_count: number;
+  // Round-2: convenience flag — true iff GMAIL_SERVICE_ACCOUNT_PATH +
+  // GMAIL_DELEGATED_USER are set and the SA file exists on disk.
+  gmail_can_send: boolean;
 }
 
 export interface LenderLoanSummary {
@@ -1415,6 +1418,8 @@ export type LenderThreadEntryKind =
   | "ai_outbound"
   | "pending_draft";
 
+export type LenderThreadSendStatus = "sent" | "saved" | "failed" | "n/a";
+
 export interface LenderThreadEntry {
   id: string;
   kind: LenderThreadEntryKind;
@@ -1426,6 +1431,29 @@ export interface LenderThreadEntry {
   is_ai_drafted?: boolean;
   sent_message_id?: string | null;
   draft_id?: string | null;
+  // Round-2: actual delivery outcome per entry.
+  send_status?: LenderThreadSendStatus;
+  send_note?: string | null;
+  to_email?: string | null;
+}
+
+export interface GmailPayloadView {
+  from_email: string;
+  to_email: string;
+  subject: string;
+  body: string;
+  raw_base64: string | null;
+  would_send_via: "service-account-DWD" | "(not configured)" | string;
+}
+
+export interface LenderThreadEntryAudit {
+  entry_id: string;
+  message: Record<string, unknown> | null;
+  email_draft: Record<string, unknown> | null;
+  activity: Record<string, unknown> | null;
+  gmail_payload: GmailPayloadView | null;
+  send_status: LenderThreadSendStatus;
+  send_note: string | null;
 }
 
 export interface LenderThreadResponse {
@@ -1453,6 +1481,29 @@ export interface LenderThreadReplyResponse {
   mode: LenderThreadReplyMode;
   note: string;
   entry: LenderThreadEntry | null;
+}
+
+export interface LenderThreadPreviewRequest {
+  mode: LenderThreadReplyMode;
+  text: string;
+}
+
+export interface LenderThreadPreviewResponse {
+  mode: LenderThreadReplyMode;
+  to_email: string;
+  subject: string;
+  body: string;
+  gmail_payload: GmailPayloadView;
+  gmail_ready: boolean;
+  gmail_status_note: string;
+}
+
+export interface GmailTestResult {
+  ok: boolean;
+  tier: "token" | "profile" | "labels" | "(not_configured)" | string;
+  note: string;
+  service_account_email: string | null;
+  delegated_user: string | null;
 }
 
 export interface InjectLenderEmailRequest {

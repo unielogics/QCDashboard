@@ -18,6 +18,7 @@ import type {
   ConnectLenderHealth,
   ConnectLenderRequest,
   ConnectLenderResponse,
+  GmailTestResult,
   InjectLenderEmailRequest,
   InjectLenderEmailResponse,
   Lender,
@@ -26,6 +27,9 @@ import type {
   LenderUpdate,
   LenderSendRequest,
   LenderSendResponse,
+  LenderThreadEntryAudit,
+  LenderThreadPreviewRequest,
+  LenderThreadPreviewResponse,
   LenderThreadReplyRequest,
   LenderThreadReplyResponse,
   LenderThreadResponse,
@@ -2574,7 +2578,13 @@ export function useLenderThread(loanId: string | null) {
     queryKey: ["lenderThread", loanId, devUser],
     queryFn: () => apiCall<LenderThreadResponse>(`/loans/${loanId}/lender-thread`),
     enabled: !!loanId,
-    staleTime: 10 * 1000,
+    // Round-2: drop staleTime so the timeline always reflects the
+    // latest DB state. User explicitly reported they couldn't see
+    // messages they had just sent — staleTime=10s was masking
+    // freshly-committed rows.
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
     retry: aiQueryRetry,
   });
 }
@@ -2586,7 +2596,9 @@ export function useLenderThreadSummary(loanId: string | null) {
     queryKey: ["lenderThreadSummary", loanId, devUser],
     queryFn: () => apiCall<LenderThreadSummary>(`/loans/${loanId}/lender-thread/summary`),
     enabled: !!loanId,
-    staleTime: 60 * 1000,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
     retry: aiQueryRetry,
   });
 }
@@ -2608,11 +2620,60 @@ export function useLenderThreadReply() {
         body: JSON.stringify(payload),
       }),
     onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ["lenderThread", vars.loanId, devUser] });
-      qc.invalidateQueries({ queryKey: ["lenderThreadSummary", vars.loanId, devUser] });
+      // Round-2: force a refetch (not just invalidate) so the new row
+      // appears immediately rather than on next focus.
+      qc.refetchQueries({ queryKey: ["lenderThread", vars.loanId, devUser] });
+      qc.refetchQueries({ queryKey: ["lenderThreadSummary", vars.loanId, devUser] });
       qc.invalidateQueries({ queryKey: ["emailDrafts", vars.loanId] });
       qc.invalidateQueries({ queryKey: ["activities", vars.loanId] });
       qc.invalidateQueries({ queryKey: ["loan", vars.loanId, devUser] });
+    },
+  });
+}
+
+export function useLenderThreadEntryAudit(
+  loanId: string | null,
+  entryId: string | null,
+) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lenderThreadEntryAudit", loanId, entryId, devUser],
+    queryFn: () =>
+      apiCall<LenderThreadEntryAudit>(
+        `/loans/${loanId}/lender-thread/entry/${entryId}/audit`,
+      ),
+    enabled: !!(loanId && entryId),
+    staleTime: 0,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useLenderThreadPreview() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: ({
+      loanId,
+      payload,
+    }: {
+      loanId: string;
+      payload: LenderThreadPreviewRequest;
+    }) =>
+      apiCall<LenderThreadPreviewResponse>(`/loans/${loanId}/lender-thread/preview`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+  });
+}
+
+export function useGmailTest() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiCall<GmailTestResult>("/admin/gmail/test", { method: "POST" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["connectLenderHealth"] });
     },
   });
 }
