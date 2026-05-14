@@ -1456,10 +1456,42 @@ export interface LenderThreadEntryAudit {
   send_note: string | null;
 }
 
+export interface LenderActionItem {
+  id: string;
+  summary: string;
+  owner: "broker" | "client" | "lender" | "super_admin" | string;
+  sensitivity: "internal" | "external";
+  priority: "high" | "med" | "low" | string;
+  due_date?: string | null;
+  requested_documents?: string[];
+  named_people?: string[];
+  amounts?: string[];
+  confidence?: number;
+}
+
+export interface LenderStatusChange {
+  summary: string;
+  kind: string;
+  sensitivity: "internal" | "external";
+}
+
+export interface LenderExtract {
+  current_situation: string;
+  action_items: LenderActionItem[];
+  status_changes: LenderStatusChange[];
+  generated_at?: string | null;
+  message_count?: number;
+  trigger?: string | null;
+}
+
 export interface LenderThreadResponse {
   loan_id: string;
   lender_name: string | null;
   entries: LenderThreadEntry[];
+  // Round-3: server-filtered per viewer role.
+  // super_admin / loan_exec → full extract (internal + external)
+  // broker / client          → externals-only view
+  lender_extract: LenderExtract | null;
 }
 
 export interface LenderThreadSummary {

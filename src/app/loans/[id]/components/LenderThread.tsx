@@ -1,25 +1,22 @@
 "use client";
 
-// Lender Thread (round 2) — Gmail-style mailbox.
+// Lender Thread (round 3) — Gmail-style mailbox + 65/35 split layout.
 //
-// Layout from top to bottom:
-//   1. Loan Living Profile (reused — Associate-generated overview).
-//   2. Lender-thread AI mini-summary (scoped to lender messages).
-//   3. Gmail-readiness banner (green/amber, plus a "Test Gmail" button
-//      for super-admins).
-//   4. Mailbox-style timeline grouped by day (LenderThreadMessageRow
-//      per entry). Each row shows the actual delivery status pill
-//      (Delivered / Saved only / Send failed) — surfacing the
-//      ground truth from the EmailDraft.status + sent_message_id
-//      that round-1 was hiding.
-//   5. Reply composer with mode toggle; clicking the primary submit
-//      opens LenderThreadPreviewModal — the operator sees exactly
-//      what will be transmitted before any DB write.
-//   6. Dev-only "Inject test email" panel (USE_FAKE_INBOX gate).
+// Layout:
+//   ┌────────────────────────────────┬──────────────────────────┐
+//   │                                │ AI summary (collapsible) │
+//   │                                ├──────────────────────────┤
+//   │  Conversation (mailbox)        │ Living profile           │
+//   │  ↳ LenderThreadMessageRow      ├──────────────────────────┤
+//   │  + day dividers                │ Lender to-dos            │
+//   │  + composer at bottom          ├──────────────────────────┤
+//   │       65%                      │ Gmail status      35%    │
+//   └────────────────────────────────┴──────────────────────────┘
 //
-// Per-row "Show details" opens LenderThreadAuditDrawer with the
-// friendly view + collapsed advanced (raw DB rows + base64 RFC 5322
-// payload).
+// Right-column panels are collapsible; defaults are AI-suggested based
+// on importance (open_asks present → AI summary open; deal_health off
+// → Living Profile open; external action items present → To-dos open).
+// User overrides persist per-loan in localStorage.
 
 import { useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
@@ -45,6 +42,8 @@ import type {
 import { LenderThreadMessageRow } from "./LenderThreadMessageRow";
 import { LenderThreadAuditDrawer } from "./LenderThreadAuditDrawer";
 import { LenderThreadPreviewModal } from "./LenderThreadPreviewModal";
+import { CollapsiblePanel } from "./CollapsiblePanel";
+import { LenderActionItemsPanel } from "./LenderActionItemsPanel";
 
 interface Props {
   loan: Loan;
@@ -67,9 +66,8 @@ export function LenderThread({ loan, lender }: Props) {
 
   const inboxIsMock = useMemo(() => {
     const check = health.data?.checks.find((c) => c.name === "Gmail inbound");
-    return check?.status === "warn"; // warn = USE_FAKE_INBOX=True
+    return check?.status === "warn";
   }, [health.data]);
-
   const gmailCanSend = health.data?.gmail_can_send ?? false;
 
   const [text, setText] = useState("");
@@ -90,7 +88,22 @@ export function LenderThread({ loan, lender }: Props) {
   const livingProfile = loan.living_profile;
   const statusSummary = loan.status_summary;
 
-  const grouped = useMemo(() => groupByDay(thread.data?.entries ?? []), [thread.data]);
+  const grouped = useMemo(
+    () => groupByDay(thread.data?.entries ?? []),
+    [thread.data],
+  );
+  const lenderExtract = thread.data?.lender_extract ?? null;
+
+  // AI-suggested defaults for right-column panels. CollapsiblePanel
+  // honors user overrides via localStorage, so these only apply on
+  // first visit per (loanId, panelKey).
+  const summaryHasOpenAsks = (summary.data?.open_asks?.length ?? 0) > 0;
+  const profileNeedsAttention = livingProfile?.deal_health
+    ? livingProfile.deal_health !== "on_track"
+    : false;
+  const hasExternalAsks = lenderExtract
+    ? (lenderExtract.action_items ?? []).some((i) => i.sensitivity === "external")
+    : false;
 
   const openPreviewOrSave = () => {
     setError(null);
@@ -100,7 +113,6 @@ export function LenderThread({ loan, lender }: Props) {
       return;
     }
     if (mode === "save_draft") {
-      // No preview for save_draft — nothing's transmitted, just save.
       reply
         .mutateAsync({ loanId: loan.id, payload: { mode, text: text.trim() } })
         .then((res) => {
@@ -150,9 +162,16 @@ export function LenderThread({ loan, lender }: Props) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Living Profile */}
-      {(statusSummary || livingProfile) && (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 65fr) minmax(0, 35fr)",
+        gap: 12,
+        alignItems: "start",
+      }}
+    >
+      {/* LEFT 65% — Mailbox + composer */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
         <Card pad={0}>
           <div
             style={{
@@ -160,70 +179,212 @@ export function LenderThread({ loan, lender }: Props) {
               borderBottom: `1px solid ${t.line}`,
               display: "flex",
               alignItems: "center",
-              gap: 8,
+              justifyContent: "space-between",
             }}
           >
-            <Icon name="spark" size={12} stroke={2.5} />
-            <SectionLabel>Living loan profile</SectionLabel>
-            {livingProfile?.deal_health ? (
-              <DealHealthPill t={t} health={livingProfile.deal_health} />
-            ) : null}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Icon name="mail" size={13} stroke={2.5} />
+              <SectionLabel>Conversation — {lender.name}</SectionLabel>
+            </div>
+            {isSuperAdmin && inboxIsMock && (
+              <button
+                type="button"
+                onClick={() => setInjectOpen((v) => !v)}
+                style={{
+                  all: "unset",
+                  cursor: "pointer",
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: `1px solid ${t.line}`,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: t.petrol,
+                }}
+              >
+                {injectOpen ? "Cancel" : "Inject test email"}
+              </button>
+            )}
           </div>
-          <div style={{ padding: 14, fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
-            {statusSummary ? (
-              <div style={{ marginBottom: 8 }}>{statusSummary}</div>
-            ) : null}
-            {livingProfile?.bottlenecks && livingProfile.bottlenecks.length > 0 && (
-              <div style={{ marginTop: 8 }}>
-                <SubLabel t={t}>Bottlenecks</SubLabel>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
-                  {livingProfile.bottlenecks.map((b) => (
-                    <Pill key={b} bg={t.warnBg} color={t.warn}>
-                      {b}
-                    </Pill>
+
+          {injectOpen && isSuperAdmin && (
+            <div
+              style={{
+                padding: 14,
+                borderBottom: `1px solid ${t.line}`,
+                background: t.surface2,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+              }}
+            >
+              <div style={{ fontSize: 11, color: t.ink3, lineHeight: 1.5 }}>
+                Dev-only mock-inbox injector. Writes a synthetic inbound
+                Message(from_role=LENDER) row — same shape the real
+                Gmail poller produces.
+              </div>
+              <input
+                value={injectFrom}
+                onChange={(e) => setInjectFrom(e.target.value)}
+                placeholder="from email (lender)"
+                style={inputStyle(t)}
+              />
+              <input
+                value={injectSubject}
+                onChange={(e) => setInjectSubject(e.target.value)}
+                placeholder="subject"
+                style={inputStyle(t)}
+              />
+              <textarea
+                value={injectBody}
+                onChange={(e) => setInjectBody(e.target.value)}
+                placeholder="paste the email body (eg from an .eml file)"
+                rows={5}
+                style={{ ...inputStyle(t), fontFamily: "inherit", resize: "vertical" }}
+              />
+              <button
+                type="button"
+                onClick={handleInject}
+                disabled={inject.isPending}
+                style={{ ...primaryButton(t), opacity: inject.isPending ? 0.6 : 1 }}
+              >
+                {inject.isPending ? "Injecting…" : "Inject as inbound lender email"}
+              </button>
+            </div>
+          )}
+
+          <div>
+            {thread.isLoading ? (
+              <div style={{ padding: 14, fontSize: 12.5, color: t.ink3 }}>
+                Loading thread…
+              </div>
+            ) : grouped.length === 0 ? (
+              <div style={{ padding: 14, fontSize: 12.5, color: t.ink3 }}>
+                No messages yet. {canPost ? "Send the first one below." : ""}
+              </div>
+            ) : (
+              grouped.map(({ day, entries }) => (
+                <div key={day}>
+                  <DayDivider t={t} label={day} />
+                  {entries.map((e) => (
+                    <LenderThreadMessageRow
+                      key={e.id}
+                      entry={e}
+                      onShowDetails={setAuditEntry}
+                    />
                   ))}
                 </div>
-              </div>
+              ))
             )}
           </div>
         </Card>
-      )}
 
-      {/* Lender-thread mini-summary */}
-      <Card pad={0}>
-        <div
-          style={{
-            padding: "10px 14px",
-            borderBottom: `1px solid ${t.line}`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-          }}
+        {canPost && (
+          <Card pad={0}>
+            <div
+              style={{
+                padding: "10px 14px",
+                borderBottom: `1px solid ${t.line}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <SectionLabel>Reply</SectionLabel>
+              <div style={{ display: "flex", gap: 6 }}>
+                {(["send_now", "instruct_ai", "save_draft"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setMode(m)}
+                    style={{
+                      all: "unset",
+                      cursor: "pointer",
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: `1px solid ${mode === m ? t.brand : t.line}`,
+                      background: mode === m ? t.brandSoft : t.surface,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: mode === m ? t.brand : t.ink3,
+                    }}
+                  >
+                    {modeLabel(m)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.45 }}>
+                {modeHint(mode, lender.name)}
+              </div>
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={5}
+                placeholder={modePlaceholder(mode)}
+                style={{
+                  ...inputStyle(t),
+                  fontFamily: "inherit",
+                  resize: "vertical",
+                  minHeight: 110,
+                }}
+              />
+              {error && <div style={{ fontSize: 12, color: t.danger }}>{error}</div>}
+              {lastNote && !error && (
+                <div style={{ fontSize: 12, color: t.profit }}>{lastNote}</div>
+              )}
+              <button
+                type="button"
+                onClick={openPreviewOrSave}
+                disabled={reply.isPending}
+                style={{ ...primaryButton(t), opacity: reply.isPending ? 0.6 : 1 }}
+              >
+                {reply.isPending
+                  ? "Working…"
+                  : mode === "save_draft"
+                  ? "Save as draft"
+                  : "Preview…"}
+              </button>
+            </div>
+          </Card>
+        )}
+      </div>
+
+      {/* RIGHT 35% — stackable collapsible panels */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+        <CollapsiblePanel
+          loanId={loan.id}
+          panelKey="ai-summary"
+          title="AI summary"
+          importance={summaryHasOpenAsks ? "high" : "med"}
+          defaultOpen={true}
+          rightBadge={
+            summary.data ? (
+              <Pill bg={t.brandSoft} color={t.brand}>
+                {summary.data.message_count} msg
+                {summary.data.message_count === 1 ? "" : "s"}
+              </Pill>
+            ) : null
+          }
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Icon name="ai" size={12} stroke={2.5} />
-            <SectionLabel>Lender thread — AI summary</SectionLabel>
-          </div>
-          {summary.data ? (
-            <Pill bg={t.brandSoft} color={t.brand}>
-              {summary.data.message_count} msg
-              {summary.data.message_count === 1 ? "" : "s"}
-            </Pill>
-          ) : null}
-        </div>
-        <div style={{ padding: 14, fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
           {summary.isLoading ? (
-            <div style={{ color: t.ink3 }}>Generating summary…</div>
+            <div style={{ fontSize: 12, color: t.ink3 }}>Generating summary…</div>
           ) : summary.data ? (
-            <>
+            <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
               <div style={{ color: t.ink, fontWeight: 600, marginBottom: 6 }}>
                 {summary.data.headline}
               </div>
               {summary.data.open_asks.length > 0 && (
                 <div style={{ marginTop: 8 }}>
                   <SubLabel t={t}>Open asks</SubLabel>
-                  <ul style={{ margin: "4px 0 0", paddingLeft: 18, color: t.ink2, fontSize: 12 }}>
+                  <ul
+                    style={{
+                      margin: "4px 0 0",
+                      paddingLeft: 18,
+                      color: t.ink2,
+                      fontSize: 12,
+                    }}
+                  >
                     {summary.data.open_asks.map((a, i) => (
                       <li key={i}>{a}</li>
                     ))}
@@ -241,7 +402,14 @@ export function LenderThread({ loan, lender }: Props) {
                   }}
                 >
                   <SubLabel t={t}>Suggested reply</SubLabel>
-                  <div style={{ color: t.ink, fontSize: 12.5, lineHeight: 1.5, marginTop: 4 }}>
+                  <div
+                    style={{
+                      color: t.ink,
+                      fontSize: 12.5,
+                      lineHeight: 1.5,
+                      marginTop: 4,
+                    }}
+                  >
                     {summary.data.suggested_next_reply}
                   </div>
                   <button
@@ -260,206 +428,131 @@ export function LenderThread({ loan, lender }: Props) {
                       textDecoration: "underline",
                     }}
                   >
-                    Use as starting point ↓
+                    Use as starting point ←
                   </button>
                 </div>
               )}
-            </>
-          ) : (
-            <div style={{ color: t.ink3 }}>Summary unavailable.</div>
-          )}
-        </div>
-      </Card>
-
-      {/* Gmail readiness banner */}
-      {isSuperAdmin && (
-        <GmailReadinessBanner
-          t={t}
-          canSend={gmailCanSend}
-          loading={health.isLoading}
-          testing={gmailTest.isPending}
-          testResult={gmailTest.data}
-          onTest={() => gmailTest.mutate()}
-        />
-      )}
-
-      {/* Mailbox conversation */}
-      <Card pad={0}>
-        <div
-          style={{
-            padding: "10px 14px",
-            borderBottom: `1px solid ${t.line}`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <SectionLabel>Conversation</SectionLabel>
-          {isSuperAdmin && inboxIsMock && (
-            <button
-              type="button"
-              onClick={() => setInjectOpen((v) => !v)}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: `1px solid ${t.line}`,
-                fontSize: 11,
-                fontWeight: 700,
-                color: t.petrol,
-              }}
-            >
-              {injectOpen ? "Cancel" : "Inject test email"}
-            </button>
-          )}
-        </div>
-
-        {injectOpen && isSuperAdmin && (
-          <div
-            style={{
-              padding: 14,
-              borderBottom: `1px solid ${t.line}`,
-              background: t.surface2,
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-            }}
-          >
-            <div style={{ fontSize: 11, color: t.ink3, lineHeight: 1.5 }}>
-              Dev-only mock-inbox injector. Writes a synthetic inbound
-              Message(from_role=LENDER) row — same shape the Pub/Sub
-              consumer will produce.
             </div>
-            <input
-              value={injectFrom}
-              onChange={(e) => setInjectFrom(e.target.value)}
-              placeholder="from email (lender)"
-              style={inputStyle(t)}
-            />
-            <input
-              value={injectSubject}
-              onChange={(e) => setInjectSubject(e.target.value)}
-              placeholder="subject"
-              style={inputStyle(t)}
-            />
-            <textarea
-              value={injectBody}
-              onChange={(e) => setInjectBody(e.target.value)}
-              placeholder="paste the email body (eg from an .eml file)"
-              rows={5}
-              style={{ ...inputStyle(t), fontFamily: "inherit", resize: "vertical" }}
-            />
-            <button
-              type="button"
-              onClick={handleInject}
-              disabled={inject.isPending}
-              style={{ ...primaryButton(t), opacity: inject.isPending ? 0.6 : 1 }}
-            >
-              {inject.isPending ? "Injecting…" : "Inject as inbound lender email"}
-            </button>
-          </div>
+          ) : (
+            <div style={{ fontSize: 12, color: t.ink3 }}>Summary unavailable.</div>
+          )}
+        </CollapsiblePanel>
+
+        <CollapsiblePanel
+          loanId={loan.id}
+          panelKey="action-items"
+          title="What's needed"
+          importance={hasExternalAsks ? "high" : "med"}
+          defaultOpen={hasExternalAsks || !!lenderExtract}
+          rightBadge={
+            lenderExtract && lenderExtract.action_items.length > 0 ? (
+              <Pill bg={t.warnBg} color={t.warn}>
+                {lenderExtract.action_items.length}
+              </Pill>
+            ) : null
+          }
+        >
+          <LenderActionItemsPanel extract={lenderExtract} />
+        </CollapsiblePanel>
+
+        {(statusSummary || livingProfile) && (
+          <CollapsiblePanel
+            loanId={loan.id}
+            panelKey="living-profile"
+            title="Living profile"
+            importance={profileNeedsAttention ? "high" : "low"}
+            defaultOpen={profileNeedsAttention}
+            rightBadge={
+              livingProfile?.deal_health ? (
+                <DealHealthPill t={t} health={livingProfile.deal_health} />
+              ) : null
+            }
+          >
+            <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
+              {statusSummary ? (
+                <div style={{ marginBottom: 8 }}>{statusSummary}</div>
+              ) : null}
+              {livingProfile?.bottlenecks && livingProfile.bottlenecks.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <SubLabel t={t}>Bottlenecks</SubLabel>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 4,
+                      marginTop: 4,
+                    }}
+                  >
+                    {livingProfile.bottlenecks.map((b) => (
+                      <Pill key={b} bg={t.warnBg} color={t.warn}>
+                        {b}
+                      </Pill>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </CollapsiblePanel>
         )}
 
-        <div>
-          {thread.isLoading ? (
-            <div style={{ padding: 14, fontSize: 12.5, color: t.ink3 }}>
-              Loading thread…
-            </div>
-          ) : grouped.length === 0 ? (
-            <div style={{ padding: 14, fontSize: 12.5, color: t.ink3 }}>
-              No messages yet. {canPost ? "Send the first one below." : ""}
-            </div>
-          ) : (
-            grouped.map(({ day, entries }) => (
-              <div key={day}>
-                <DayDivider t={t} label={day} />
-                {entries.map((e) => (
-                  <LenderThreadMessageRow
-                    key={e.id}
-                    entry={e}
-                    onShowDetails={setAuditEntry}
-                  />
-                ))}
-              </div>
-            ))
-          )}
-        </div>
-      </Card>
-
-      {/* Composer */}
-      {canPost && (
-        <Card pad={0}>
-          <div
-            style={{
-              padding: "10px 14px",
-              borderBottom: `1px solid ${t.line}`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
+        {isSuperAdmin && (
+          <CollapsiblePanel
+            loanId={loan.id}
+            panelKey="gmail-status"
+            title="Gmail status"
+            importance={gmailCanSend ? "low" : "high"}
+            defaultOpen={!gmailCanSend}
+            rightBadge={
+              <Pill
+                bg={gmailCanSend ? t.profitBg : t.warnBg}
+                color={gmailCanSend ? t.profit : t.warn}
+              >
+                {gmailCanSend ? "Ready" : "Not configured"}
+              </Pill>
+            }
           >
-            <SectionLabel>Reply</SectionLabel>
-            <div style={{ display: "flex", gap: 6 }}>
-              {(["send_now", "instruct_ai", "save_draft"] as const).map((m) => (
+            <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
+              {gmailCanSend
+                ? "Send Now and Instruct AI will deliver via Gmail."
+                : "Messages will be saved locally only — recipients will NOT receive them."}
+              <div style={{ marginTop: 8 }}>
                 <button
-                  key={m}
                   type="button"
-                  onClick={() => setMode(m)}
+                  onClick={() => gmailTest.mutate()}
+                  disabled={gmailTest.isPending}
                   style={{
                     all: "unset",
-                    cursor: "pointer",
-                    padding: "6px 10px",
+                    cursor: gmailTest.isPending ? "wait" : "pointer",
+                    padding: "6px 12px",
                     borderRadius: 8,
-                    border: `1px solid ${mode === m ? t.brand : t.line}`,
-                    background: mode === m ? t.brandSoft : t.surface,
-                    fontSize: 11,
+                    border: `1px solid ${t.line}`,
+                    fontSize: 11.5,
                     fontWeight: 700,
-                    color: mode === m ? t.brand : t.ink3,
+                    color: t.brand,
                   }}
                 >
-                  {modeLabel(m)}
+                  {gmailTest.isPending ? "Testing…" : "Test Gmail"}
                 </button>
-              ))}
+              </div>
+              {gmailTest.data ? (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "6px 8px",
+                    borderRadius: 6,
+                    background: gmailTest.data.ok ? t.profitBg : t.dangerBg,
+                    color: gmailTest.data.ok ? t.profit : t.danger,
+                    fontSize: 11.5,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {gmailTest.data.note}
+                </div>
+              ) : null}
             </div>
-          </div>
-          <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.45 }}>
-              {modeHint(mode, lender.name)}
-            </div>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={5}
-              placeholder={modePlaceholder(mode)}
-              style={{
-                ...inputStyle(t),
-                fontFamily: "inherit",
-                resize: "vertical",
-                minHeight: 110,
-              }}
-            />
-            {error && (
-              <div style={{ fontSize: 12, color: t.danger }}>{error}</div>
-            )}
-            {lastNote && !error && (
-              <div style={{ fontSize: 12, color: t.profit }}>{lastNote}</div>
-            )}
-            <button
-              type="button"
-              onClick={openPreviewOrSave}
-              disabled={reply.isPending}
-              style={{ ...primaryButton(t), opacity: reply.isPending ? 0.6 : 1 }}
-            >
-              {reply.isPending
-                ? "Working…"
-                : mode === "save_draft"
-                ? "Save as draft"
-                : "Preview…"}
-            </button>
-          </div>
-        </Card>
-      )}
+          </CollapsiblePanel>
+        )}
+      </div>
 
       {/* Modals / drawers */}
       <LenderThreadPreviewModal
@@ -477,85 +570,6 @@ export function LenderThread({ loan, lender }: Props) {
         onClose={() => setAuditEntry(null)}
       />
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Subcomponents
-// ---------------------------------------------------------------------------
-
-function GmailReadinessBanner({
-  t,
-  canSend,
-  loading,
-  testing,
-  testResult,
-  onTest,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  canSend: boolean;
-  loading: boolean;
-  testing: boolean;
-  testResult: { ok: boolean; note: string } | undefined;
-  onTest: () => void;
-}) {
-  const bg = canSend ? t.profitBg : t.warnBg;
-  const fg = canSend ? t.profit : t.warn;
-  return (
-    <Card pad={0}>
-      <div
-        style={{
-          padding: "10px 14px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Pill bg={bg} color={fg}>
-            {loading ? "Checking…" : canSend ? "Gmail ready" : "Gmail not configured"}
-          </Pill>
-          <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.45 }}>
-            {canSend
-              ? "Send Now and Instruct AI will deliver via Gmail."
-              : "Messages will be saved locally only — recipients will NOT receive them until GMAIL_SERVICE_ACCOUNT_PATH + GMAIL_DELEGATED_USER are configured."}
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={onTest}
-          disabled={testing}
-          style={{
-            all: "unset",
-            cursor: testing ? "wait" : "pointer",
-            padding: "6px 12px",
-            borderRadius: 8,
-            border: `1px solid ${t.line}`,
-            fontSize: 11.5,
-            fontWeight: 700,
-            color: t.brand,
-            background: t.surface,
-          }}
-        >
-          {testing ? "Testing…" : "Test Gmail"}
-        </button>
-      </div>
-      {testResult ? (
-        <div
-          style={{
-            padding: "8px 14px",
-            borderTop: `1px solid ${t.line}`,
-            fontSize: 11.5,
-            color: testResult.ok ? t.profit : t.danger,
-            background: testResult.ok ? t.profitBg : t.dangerBg,
-          }}
-        >
-          {testResult.note}
-        </div>
-      ) : null}
-    </Card>
   );
 }
 
@@ -598,11 +612,7 @@ function DealHealthPill({
     stuck: { bg: t.dangerBg, fg: t.danger, label: "Stuck" },
   } as const;
   const cfg = map[health];
-  return (
-    <Pill bg={cfg.bg} color={cfg.fg}>
-      {cfg.label}
-    </Pill>
-  );
+  return <Pill bg={cfg.bg} color={cfg.fg}>{cfg.label}</Pill>;
 }
 
 function SubLabel({
@@ -627,10 +637,6 @@ function SubLabel({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 interface DayGroup {
   day: string;
   entries: LenderThreadEntry[];
@@ -638,23 +644,18 @@ interface DayGroup {
 
 function groupByDay(entries: LenderThreadEntry[]): DayGroup[] {
   if (entries.length === 0) return [];
-  // entries from the API arrive sorted oldest→newest. Group by local
-  // calendar day and label "Today" / "Yesterday" / "Mon DD, YYYY".
   const buckets = new Map<string, LenderThreadEntry[]>();
   const order: string[] = [];
   for (const e of entries) {
     const d = new Date(e.sent_at);
-    const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
+    const key = d.toISOString().slice(0, 10);
     if (!buckets.has(key)) {
       buckets.set(key, []);
       order.push(key);
     }
     buckets.get(key)!.push(e);
   }
-  return order.map((key) => ({
-    day: labelForDayKey(key),
-    entries: buckets.get(key)!,
-  }));
+  return order.map((key) => ({ day: labelForDayKey(key), entries: buckets.get(key)! }));
 }
 
 function labelForDayKey(yyyymmdd: string): string {
@@ -691,11 +692,11 @@ function modeLabel(m: LenderThreadReplyMode): string {
 function modeHint(m: LenderThreadReplyMode, lenderName: string): string {
   switch (m) {
     case "send_now":
-      return `Sends your message directly to ${lenderName} via Gmail. You will see a preview before it goes out.`;
+      return `Sends your message directly to ${lenderName} via Gmail. Preview before send.`;
     case "instruct_ai":
-      return `Tell the AI what to ask or say (e.g. "Ask for the appraisal report and a 30-day rate-lock quote"). You will review the AI's draft before it is sent to ${lenderName}.`;
+      return `Tell the AI what to ask or say. AI's draft is shown for review before send.`;
     case "save_draft":
-      return `Saves your message as a draft. It will not be sent until you (or anyone with access) approves it from the Drafts panel.`;
+      return `Saves your message as a draft for later approval.`;
   }
 }
 
