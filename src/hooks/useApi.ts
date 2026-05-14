@@ -15,13 +15,21 @@ import type {
   AIChatThreadDetail,
   AIFeedback,
   ClientLivingProfile,
+  ConnectLenderHealth,
   ConnectLenderRequest,
   ConnectLenderResponse,
+  InjectLenderEmailRequest,
+  InjectLenderEmailResponse,
   Lender,
   LenderCreate,
+  LenderLoansResponse,
   LenderUpdate,
   LenderSendRequest,
   LenderSendResponse,
+  LenderThreadReplyRequest,
+  LenderThreadReplyResponse,
+  LenderThreadResponse,
+  LenderThreadSummary,
   RequiredDocument,
   AITask,
   AITaskDecisionRequest,
@@ -2527,6 +2535,103 @@ export function useDraftLenderSend() {
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["emailDrafts", vars.loanId] });
       qc.invalidateQueries({ queryKey: ["activities", vars.loanId] });
+    },
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Connect-Lender diagnostics, per-lender drilldown, and lender thread
+// ────────────────────────────────────────────────────────────────────────────
+
+export function useConnectLenderHealth(enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["connectLenderHealth", devUser],
+    queryFn: () => apiCall<ConnectLenderHealth>("/admin/connect-lender/health"),
+    enabled,
+    staleTime: 30 * 1000,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useLenderLoans(lenderId: string | null) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lenderLoans", lenderId, devUser],
+    queryFn: () => apiCall<LenderLoansResponse>(`/lenders/${lenderId}/loans`),
+    enabled: !!lenderId,
+    staleTime: 30 * 1000,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useLenderThread(loanId: string | null) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lenderThread", loanId, devUser],
+    queryFn: () => apiCall<LenderThreadResponse>(`/loans/${loanId}/lender-thread`),
+    enabled: !!loanId,
+    staleTime: 10 * 1000,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useLenderThreadSummary(loanId: string | null) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lenderThreadSummary", loanId, devUser],
+    queryFn: () => apiCall<LenderThreadSummary>(`/loans/${loanId}/lender-thread/summary`),
+    enabled: !!loanId,
+    staleTime: 60 * 1000,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useLenderThreadReply() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      loanId,
+      payload,
+    }: {
+      loanId: string;
+      payload: LenderThreadReplyRequest;
+    }) =>
+      apiCall<LenderThreadReplyResponse>(`/loans/${loanId}/lender-thread/reply`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["lenderThread", vars.loanId, devUser] });
+      qc.invalidateQueries({ queryKey: ["lenderThreadSummary", vars.loanId, devUser] });
+      qc.invalidateQueries({ queryKey: ["emailDrafts", vars.loanId] });
+      qc.invalidateQueries({ queryKey: ["activities", vars.loanId] });
+      qc.invalidateQueries({ queryKey: ["loan", vars.loanId, devUser] });
+    },
+  });
+}
+
+export function useInjectLenderEmail() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: InjectLenderEmailRequest) =>
+      apiCall<InjectLenderEmailResponse>("/admin/dev/inject-lender-email", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["lenderThread", vars.loan_id, devUser] });
+      qc.invalidateQueries({ queryKey: ["lenderThreadSummary", vars.loan_id, devUser] });
+      qc.invalidateQueries({ queryKey: ["activities", vars.loan_id] });
+      qc.invalidateQueries({ queryKey: ["loan", vars.loan_id, devUser] });
     },
   });
 }

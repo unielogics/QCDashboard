@@ -17,6 +17,8 @@ import { Role, LoanTypeOptions } from "@/lib/enums.generated";
 import { useLenders } from "@/hooks/useApi";
 import { LenderEditModal } from "@/components/LenderEditModal";
 import type { Lender } from "@/lib/types";
+import { ConnectLenderHealthCard } from "./ConnectLenderHealthCard";
+import { LenderLoansDrawer } from "./LenderLoansDrawer";
 
 const PRODUCT_LABEL = new Map<string, string>(
   LoanTypeOptions.map((o) => [o.value, o.label]),
@@ -32,6 +34,7 @@ export default function LendersAdminPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editing, setEditing] = useState<Lender | null>(null);
   const [creating, setCreating] = useState(false);
+  const [drilldown, setDrilldown] = useState<Lender | null>(null);
 
   const { data: lenders = [], isLoading } = useLenders();
 
@@ -141,6 +144,9 @@ export default function LendersAdminPage() {
         </button>
       </div>
 
+      {/* Connect-Lender health probe — answers 'what is blocking it?' */}
+      <ConnectLenderHealthCard />
+
       {/* Search */}
       <Card pad={12}>
         <input
@@ -177,6 +183,7 @@ export default function LendersAdminPage() {
                 <Th t={t} active={sortKey === "contact"} dir={sortDir} onClick={() => toggleSort("contact")}>Contact</Th>
                 <Th t={t} active={sortKey === "products"} dir={sortDir} onClick={() => toggleSort("products")}>Products</Th>
                 <Th t={t} active={sortKey === "active"} dir={sortDir} onClick={() => toggleSort("active")}>Status</Th>
+                <th style={{ padding: "10px 14px" }}></th>
               </tr>
             </thead>
             <tbody>
@@ -230,6 +237,35 @@ export default function LendersAdminPage() {
                       <Pill bg={t.surface2} color={t.ink3}>Inactive</Pill>
                     )}
                   </td>
+                  <td
+                    style={{
+                      padding: "12px 14px",
+                      verticalAlign: "top",
+                      textAlign: "right",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDrilldown(l);
+                      }}
+                      style={{
+                        all: "unset",
+                        cursor: "pointer",
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: `1px solid ${t.line}`,
+                        background: t.surface,
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        color: t.brand,
+                      }}
+                    >
+                      View loans →
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -245,6 +281,8 @@ export default function LendersAdminPage() {
           setEditing(null);
         }}
       />
+
+      <LenderLoansDrawer lender={drilldown} onClose={() => setDrilldown(null)} />
     </div>
   );
 }

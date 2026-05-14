@@ -1368,6 +1368,107 @@ export interface LenderSendResponse {
   subject: string;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Connect-Lender diagnostics + per-lender loan drilldown
+// (Super Admin → Lenders tab)
+// ─────────────────────────────────────────────────────────────────────────
+
+export type HealthStatus = "ok" | "warn" | "fail";
+
+export interface ConnectLenderHealthCheck {
+  name: string;
+  status: HealthStatus;
+  detail: string;
+}
+
+export interface ConnectLenderHealth {
+  overall: HealthStatus;
+  checks: ConnectLenderHealthCheck[];
+  eligible_loan_count: number;
+  active_lender_count: number;
+  connected_loan_count: number;
+}
+
+export interface LenderLoanSummary {
+  id: string;
+  deal_id: string;
+  address: string;
+  stage: string;
+  type: string;
+  connected: boolean;
+}
+
+export interface LenderLoansResponse {
+  lender_id: string;
+  lender_name: string;
+  connected: LenderLoanSummary[];
+  connectable: LenderLoanSummary[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Lender Thread — per-loan timeline + AI summary + 3-mode reply composer
+// ─────────────────────────────────────────────────────────────────────────
+
+export type LenderThreadEntryKind =
+  | "inbound"
+  | "outbound"
+  | "ai_outbound"
+  | "pending_draft";
+
+export interface LenderThreadEntry {
+  id: string;
+  kind: LenderThreadEntryKind;
+  sender_label: string;
+  sender_role: "lender" | "broker" | "ai" | "system";
+  sent_at: string; // ISO 8601
+  body: string;
+  subject?: string | null;
+  is_ai_drafted?: boolean;
+  sent_message_id?: string | null;
+  draft_id?: string | null;
+}
+
+export interface LenderThreadResponse {
+  loan_id: string;
+  lender_name: string | null;
+  entries: LenderThreadEntry[];
+}
+
+export interface LenderThreadSummary {
+  loan_id: string;
+  headline: string;
+  open_asks: string[];
+  suggested_next_reply: string;
+  message_count: number;
+}
+
+export type LenderThreadReplyMode = "send_now" | "instruct_ai" | "save_draft";
+
+export interface LenderThreadReplyRequest {
+  mode: LenderThreadReplyMode;
+  text: string;
+}
+
+export interface LenderThreadReplyResponse {
+  mode: LenderThreadReplyMode;
+  note: string;
+  entry: LenderThreadEntry | null;
+}
+
+export interface InjectLenderEmailRequest {
+  loan_id: string;
+  from_email: string;
+  subject: string;
+  body: string;
+}
+
+export interface InjectLenderEmailResponse {
+  message_id: string;
+  loan_id: string;
+  sent_at: string;
+  note: string;
+}
+
 export interface FredRefreshResult {
   series: Record<string, { rows: number; latest_date: string | null; latest_value: number | null }>;
   errors: Record<string, string>;

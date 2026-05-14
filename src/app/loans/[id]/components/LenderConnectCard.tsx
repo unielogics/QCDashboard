@@ -29,6 +29,7 @@ import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
 import type { ConnectLenderNotifyToggle, Lender, Loan, LoanParticipant } from "@/lib/types";
 import { LenderSendModal } from "./LenderSendModal";
+import { LenderThread } from "./LenderThread";
 
 interface Props {
   loan: Loan;
@@ -194,6 +195,11 @@ export function LenderConnectCard({ loan }: Props) {
           loan={loan}
           lender={connectedLender}
         />
+      ) : null}
+      {connectedLender ? (
+        <div style={{ padding: "0 16px 16px" }}>
+          <LenderThread loan={loan} lender={connectedLender} />
+        </div>
       ) : null}
     </Card>
   );
