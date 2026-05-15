@@ -1765,6 +1765,40 @@ export function useSendDealChat() {
   });
 }
 
+// ── (A) Agent deal-chat — multi-party thread per Deal ─────────────────
+//
+// Distinct from useDealChat above (which is misnamed and actually
+// reads /loans/{id}/chat — the (L) post-promotion thread). These
+// hooks hit the new backend endpoints introduced by the qcbackend
+// patch in /tmp/qcbackend-patch: GET + POST /deals/{deal_id}/chat,
+// backed by deal_chat_messages.
+
+export function useDealAgentChat(dealId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["dealAgentChat", dealId, devUser],
+    queryFn: () => apiCall<LoanChatMessage[]>(`/deals/${dealId}/chat`),
+    enabled: !!dealId,
+    refetchInterval: 15_000,
+  });
+}
+
+export function useSendDealAgentChat() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ dealId, body, mode }: { dealId: string; body: string; mode: DealChatMode }) =>
+      apiCall<ChatSendResponse>(`/deals/${dealId}/chat`, {
+        method: "POST",
+        body: JSON.stringify({ body, mode }),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["dealAgentChat", vars.dealId] });
+    },
+  });
+}
+
 export function useAttachAIModifyCorrection() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();

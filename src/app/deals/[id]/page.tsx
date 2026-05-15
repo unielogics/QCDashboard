@@ -34,6 +34,7 @@ import { ActivityTab } from "./tabs/ActivityTab";
 import { FundingTab } from "./tabs/FundingTab";
 import { LoanOverviewTab } from "./tabs/LoanOverviewTab";
 import { LoanChatTab } from "@/app/loans/[id]/components/LoanChatTab";
+import { DealAgentChatTab } from "./components/DealAgentChatTab";
 import { DealNotesFloatingButton, DealNotesPanel } from "@/components/DealNotesFloating";
 
 const TAB_ORDER = [
@@ -372,17 +373,26 @@ export default function DealPage() {
       {activeTab === "docs" ? (
         <DocumentsTab clientId={deal.client_id} loanId={deal.promoted_loan_id} />
       ) : null}
-      {activeTab === "chat" ? (
-        isPromoted && deal.promoted_loan_id && currentUser ? (
-          <LoanChatTab loanId={deal.promoted_loan_id} user={currentUser} />
-        ) : (
-          <ChatTabEmptyState
-            t={t}
-            canPromote={canPromote}
-            isPending={busy}
-            onMarkReady={onMarkReady}
-          />
-        )
+      {activeTab === "chat" && currentUser ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* (A) Agent thread — always present on a deal. Broker + client
+              + AI converge here pre-funding and continue here for ongoing
+              nurture post-funding. */}
+          <DealAgentChatTab dealId={deal.id} user={currentUser} />
+          {/* (L) Loan workspace — created on promotion, used by the
+              funding/lending team. Surfaces alongside (A) so the broker
+              can see both at a glance. */}
+          {isPromoted && deal.promoted_loan_id ? (
+            <LoanChatTab loanId={deal.promoted_loan_id} user={currentUser} />
+          ) : (
+            <PromoteHint
+              t={t}
+              canPromote={canPromote}
+              isPending={busy}
+              onMarkReady={onMarkReady}
+            />
+          )}
+        </div>
       ) : null}
       {activeTab === "tasks" ? <TasksTab deal={deal} /> : null}
       {activeTab === "schedule" ? <ScheduleTab clientId={deal.client_id} dealId={deal.id} /> : null}
@@ -403,7 +413,7 @@ export default function DealPage() {
   );
 }
 
-function ChatTabEmptyState({
+function PromoteHint({
   t,
   canPromote,
   isPending,
@@ -417,52 +427,48 @@ function ChatTabEmptyState({
   return (
     <div
       style={{
-        padding: 32,
+        padding: 18,
         background: t.surface,
         borderRadius: 14,
-        border: `1px solid ${t.line}`,
+        border: `1px dashed ${t.line}`,
         display: "flex",
-        flexDirection: "column",
         alignItems: "center",
         gap: 14,
-        textAlign: "center",
-        minHeight: 320,
-        justifyContent: "center",
       }}
     >
       <div
         style={{
-          width: 56, height: 56, borderRadius: 28,
+          width: 36, height: 36, borderRadius: 18,
           background: t.brandSoft, color: t.brand,
           display: "inline-flex", alignItems: "center", justifyContent: "center",
+          flexShrink: 0,
         }}
       >
-        <Icon name="chat" size={24} />
+        <Icon name="bolt" size={16} />
       </div>
-      <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>
-        Loan chat starts after funding handoff
-      </div>
-      <div style={{ fontSize: 13, color: t.ink3, maxWidth: 480, lineHeight: 1.55 }}>
-        The chat thread (broker ↔ client ↔ AI) lives on the loan that's created
-        when you mark this deal ready for funding. Promote the deal and the
-        chat surface lights up here — the same workspace the borrower sees in
-        the mobile app.
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>
+          (L) Loan chat appears after funding handoff
+        </div>
+        <div style={{ fontSize: 12, color: t.ink3, marginTop: 2, lineHeight: 1.5 }}>
+          The funding-team thread is created on promotion and seeded with a
+          summary of the (A) chat above so lending picks up where you left off.
+        </div>
       </div>
       {canPromote ? (
         <button
           onClick={onMarkReady}
           disabled={isPending}
           style={{
-            padding: "10px 18px", borderRadius: 10,
+            padding: "8px 14px", borderRadius: 10,
             background: t.brand, color: t.inverse, border: "none",
-            fontSize: 13, fontWeight: 700,
-            display: "inline-flex", alignItems: "center", gap: 7,
+            fontSize: 12, fontWeight: 700,
             cursor: isPending ? "wait" : "pointer",
             opacity: isPending ? 0.7 : 1,
+            flexShrink: 0,
           }}
         >
-          <Icon name="bolt" size={13} />
-          {isPending ? "Promoting…" : "Mark Ready for Funding"}
+          {isPending ? "Promoting…" : "Mark Ready"}
         </button>
       ) : null}
     </div>
