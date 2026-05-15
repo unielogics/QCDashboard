@@ -33,18 +33,20 @@ export default function PipelinePage() {
     return map;
   }, [secretarySummaries]);
   const profile = useActiveProfile();
-  // Top-level mode: Leads (Agent funnel) vs Funding (loan stages). Each mode
-  // independently picks kanban vs table for layout. Agents see Leads by
-  // default; non-Agent operators land on Funding.
+  // Top-level mode: Funding Files (loan/deal files keyed on deal_id)
+  // vs Agent Relationships (the client funnel). Mirrors the mobile
+  // PipelineScreen, which defaults brokers to the "files" view and
+  // offers a Files/Relationships toggle. The relationship DETAIL
+  // (workflow / property / readiness per client) lives on the
+  // Clients tab → /clients/[id], not as the pipeline default.
   const isBroker = profile.role === "broker";
   const isInternal = profile.role === "super_admin" || profile.role === "loan_exec";
   const { data: allDocs = [] } = useDocuments();
-  // Brokers see ONLY the relationships pipeline — funding content
-  // lives inside each deal/file (the Funding tab on /deals/[id]).
-  // Operators (super_admin / loan_exec) still get the segmented
-  // toggle so they can flip between the funding queue and the agent
-  // pipeline view for triage.
-  const [mode, setMode] = useState<PipelineMode>(isBroker ? "leads" : "funding");
+  // Everyone now lands on Funding Files (deal-id-focused). Brokers get
+  // the same Files/Relationships toggle operators have, matching the
+  // mobile pipeline so the desktop experience and available functions
+  // line up across surfaces.
+  const [mode, setMode] = useState<PipelineMode>("funding");
   const [view, setView] = useState<"table" | "kanban">("table");
   const [sortKey, setSortKey] = useState<SortKey>("amount");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -57,7 +59,11 @@ export default function PipelinePage() {
   const [contextMenu, setContextMenu] = useState<{ loan: Loan; x: number; y: number } | null>(null);
 
   const canCreateLead = isBroker || profile.role === "super_admin";
-  const canCreateDeal = isInternal;
+  // Brokers now default to (and live in) Funding Files mode, mirroring
+  // the mobile pipeline FAB → /agent/loan/new. They must be able to
+  // start a file here too — SmartIntakeModal finds-or-creates the
+  // client and originates the loan.
+  const canCreateDeal = isInternal || isBroker;
 
   const docsByLoan = useMemo(() => {
     const grouped = new Map<string, Document[]>();
@@ -124,40 +130,38 @@ export default function PipelinePage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: 0, color: t.ink, margin: 0 }}>
-          {mode === "funding" ? "Underwriting CRM" : "Pipeline"}
+          {isInternal && mode === "funding" ? "Underwriting CRM" : "Pipeline"}
         </h1>
 
-        {/* Mode toggle is operator-only. Brokers see one unified
-            pipeline (their relationships) — funding-active rows are
-            color-coded so they can spot which clients are already in
-            underwriting, and the file page itself surfaces the loan
-            terms via the Funding tab. */}
-        {isInternal ? (
-          <div style={{
-            display: "inline-flex",
-            background: t.surface,
-            border: `1px solid ${t.line}`,
-            borderRadius: 10,
-            padding: 3,
-            gap: 2,
-            marginLeft: 4,
-          }}>
-            <button
-              type="button"
-              onClick={() => setMode("leads")}
-              style={modeSegBtn(t, mode === "leads")}
-            >
-              <Icon name="user" size={12} stroke={2.2} /> Agent Relationships
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("funding")}
-              style={modeSegBtn(t, mode === "funding")}
-            >
-              <Icon name="file" size={12} stroke={2.2} /> Funding Files
-            </button>
-          </div>
-        ) : null}
+        {/* Files / Relationships toggle — available to brokers AND
+            operators, mirroring the mobile pipeline. "Funding Files"
+            is the deal-id-focused loan table (default). "Agent
+            Relationships" is the client funnel; per-client detail
+            opens from the Clients tab. */}
+        <div style={{
+          display: "inline-flex",
+          background: t.surface,
+          border: `1px solid ${t.line}`,
+          borderRadius: 10,
+          padding: 3,
+          gap: 2,
+          marginLeft: 4,
+        }}>
+          <button
+            type="button"
+            onClick={() => setMode("funding")}
+            style={modeSegBtn(t, mode === "funding")}
+          >
+            <Icon name="file" size={12} stroke={2.2} /> Funding Files
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("leads")}
+            style={modeSegBtn(t, mode === "leads")}
+          >
+            <Icon name="user" size={12} stroke={2.2} /> Agent Relationships
+          </button>
+        </div>
 
         {mode === "funding" ? (
           <span style={{ color: t.ink3, fontSize: 14 }}>
