@@ -69,7 +69,7 @@ export function LoanChatTab({ loanId, user }: Props) {
         }}
       >
         <Icon name="chat" size={14} />
-        <span style={{ fontSize: 13, fontWeight: 900, color: t.ink }}>Loan chat</span>
+        <span style={{ fontSize: 13, fontWeight: 900, color: t.ink }}>Chat</span>
         <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>
           AI ↔ client conversation
         </span>

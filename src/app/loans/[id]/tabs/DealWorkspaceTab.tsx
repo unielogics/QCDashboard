@@ -597,7 +597,7 @@ function SecretaryConsole({
         />
         <ActionButton
           icon="chat"
-          label="Loan chat"
+          label="Chat"
           hint="AI ↔ client"
           onClick={() => setPanel("chat")}
           disabled={!workspace}

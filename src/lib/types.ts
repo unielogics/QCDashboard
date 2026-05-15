@@ -1139,14 +1139,23 @@ export interface LoanInstruction {
   deactivated_at: string | null;
 }
 
+export interface ChatAttachment {
+  document_id: string;
+  name: string;
+  mime?: string | null;
+  url?: string | null;
+}
+
 export interface LoanChatMessage {
   id: string;
-  loan_id: string;
+  loan_id: string | null;
   from_role: DealChatRole;
   from_user_id: string | null;
+  from_name?: string | null;
   body: string;
   client_visible: boolean;
   created_at: string;
+  attachment?: ChatAttachment | null;
 }
 
 export interface ChatSendResponse {

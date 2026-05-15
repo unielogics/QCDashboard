@@ -78,7 +78,7 @@ export function LoanChatSlideOut({ open, onClose, loanId, user, workspace }: Pro
         }}>
           <Icon name="chat" size={14} />
           <span style={{ fontSize: 13, fontWeight: 900, color: t.ink }}>
-            Loan chat
+            Chat
           </span>
           <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>
             AI ↔ client conversation

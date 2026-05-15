@@ -199,12 +199,16 @@ function Bubble({ m, user }: { m: LoanChatMessage; user: User }) {
   const isInternal = m.from_role === DealChatRole.BROKER_INTERNAL;
   const bg = isInternal ? t.surface2 : isAI ? t.petrolSoft : isMe ? t.brandSoft : t.surface2;
   const borderC = isInternal ? t.line : isAI ? t.petrol : isMe ? t.brand : t.line;
-  const label =
-    m.from_role === DealChatRole.AI ? "AI"
-    : m.from_role === DealChatRole.BROKER ? "Agent"
-    : m.from_role === DealChatRole.BROKER_INTERNAL ? "Agent (private)"
-    : m.from_role === DealChatRole.SUPER_ADMIN ? "Operator"
-    : "Borrower";
+  const label = (() => {
+    if (m.from_role === DealChatRole.AI) return "Smart Assistant";
+    const roleWord =
+      m.from_role === DealChatRole.BROKER ? "Agent"
+      : m.from_role === DealChatRole.BROKER_INTERNAL ? "Agent (private)"
+      : m.from_role === DealChatRole.SUPER_ADMIN ? "Operator"
+      : "Borrower";
+    const nm = (m as { from_name?: string | null }).from_name;
+    return nm ? `${nm} (${roleWord})` : roleWord;
+  })();
   return (
     <div style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "78%" }}>
       <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, marginBottom: 3, textTransform: "uppercase", letterSpacing: 0.6 }}>

@@ -134,14 +134,18 @@ function Bubble({
     }
   })();
   const labelText = (() => {
-    switch (message.from_role) {
-      case DealChatRole.AI: return "AI";
-      case DealChatRole.SUPER_ADMIN: return "Operator";
-      case DealChatRole.BROKER: return "Broker (Live Chat)";
-      case DealChatRole.BROKER_INTERNAL: return "Broker (internal)";
-      case DealChatRole.CLIENT: return "Borrower";
-      default: return String(message.from_role);
-    }
+    if (message.from_role === DealChatRole.AI) return "Smart Assistant";
+    const roleWord = (() => {
+      switch (message.from_role) {
+        case DealChatRole.SUPER_ADMIN: return "Operator";
+        case DealChatRole.BROKER: return "Agent";
+        case DealChatRole.BROKER_INTERNAL: return "Agent (internal)";
+        case DealChatRole.CLIENT: return "Borrower";
+        default: return String(message.from_role);
+      }
+    })();
+    const nm = (message as { from_name?: string | null }).from_name;
+    return nm ? `${nm} (${roleWord})` : roleWord;
   })();
 
   return (

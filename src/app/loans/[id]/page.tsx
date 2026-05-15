@@ -56,7 +56,7 @@ const AGENT_TABS = [
   // Broker access to the 4-mode loan chat (Live Chat / Ask AI /
   // Suggest / Instruct) — same surface super_admin gets, rendered
   // inline as a tab rather than via the slide-out.
-  { id: "loan_chat", label: "Loan chat", icon: "chat" as const },
+  { id: "loan_chat", label: "Chat", icon: "chat" as const },
   { id: "docs", label: "Documents", icon: "doc" as const },
   { id: "activity", label: "Updates", icon: "audit" as const },
 ] as const;
@@ -818,8 +818,8 @@ function CompactStageStrip({
         ) : null}
         <button
           onClick={onOpenLoanChat}
-          title="Open the loan chat (AI ↔ borrower) on this file"
-          aria-label="Open loan chat"
+          title="Open the chat (AI ↔ borrower) on this file"
+          aria-label="Open chat"
           style={{
             width: 32, height: 32, borderRadius: 9,
             background: t.brandSoft, color: t.brand,
