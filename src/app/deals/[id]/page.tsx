@@ -15,6 +15,7 @@ import { Icon } from "@/components/design-system/Icon";
 import {
   useClient,
   useClientAiFollowUp,
+  useCurrentUser,
   useDeal,
   useLoan,
   useMarkDealReadyForLending,
@@ -32,11 +33,13 @@ import { TasksTab } from "./tabs/TasksTab";
 import { ActivityTab } from "./tabs/ActivityTab";
 import { FundingTab } from "./tabs/FundingTab";
 import { LoanOverviewTab } from "./tabs/LoanOverviewTab";
+import { LoanChatTab } from "@/app/loans/[id]/components/LoanChatTab";
 import { DealNotesFloatingButton, DealNotesPanel } from "@/components/DealNotesFloating";
 
 const TAB_ORDER = [
   { id: "property", label: "Property", icon: "home" as const },
   { id: "ai", label: "AI Secretary", icon: "spark" as const },
+  { id: "chat", label: "Chat", icon: "chat" as const },
   { id: "tasks", label: "Tasks", icon: "doc" as const },
   { id: "schedule", label: "Schedule", icon: "cal" as const },
   { id: "docs", label: "Documents", icon: "doc" as const },
@@ -55,6 +58,8 @@ export default function DealPage() {
   const { data: deal } = useDeal(params.id);
   const { data: client } = useClient(deal?.client_id ?? null);
   const { data: loan } = useLoan(deal?.promoted_loan_id ?? null);
+  // Needed by LoanChatTab for the broker composer + bubble alignment.
+  const { data: currentUser } = useCurrentUser();
   // Field-fill counts: same view AISecretaryTab uses (react-query
   // dedups by key), filtered through partitionFieldFill so the tab
   // strip can badge Property + Loan Overview with the open count.
@@ -367,6 +372,18 @@ export default function DealPage() {
       {activeTab === "docs" ? (
         <DocumentsTab clientId={deal.client_id} loanId={deal.promoted_loan_id} />
       ) : null}
+      {activeTab === "chat" ? (
+        isPromoted && deal.promoted_loan_id && currentUser ? (
+          <LoanChatTab loanId={deal.promoted_loan_id} user={currentUser} />
+        ) : (
+          <ChatTabEmptyState
+            t={t}
+            canPromote={canPromote}
+            isPending={busy}
+            onMarkReady={onMarkReady}
+          />
+        )
+      ) : null}
       {activeTab === "tasks" ? <TasksTab deal={deal} /> : null}
       {activeTab === "schedule" ? <ScheduleTab clientId={deal.client_id} dealId={deal.id} /> : null}
       {activeTab === "activity" ? <ActivityTab clientId={deal.client_id} /> : null}
@@ -382,6 +399,72 @@ export default function DealPage() {
       {/* Floating Notes — bottom-right button + side panel */}
       <DealNotesFloatingButton dealId={deal.id} />
       <DealNotesPanel />
+    </div>
+  );
+}
+
+function ChatTabEmptyState({
+  t,
+  canPromote,
+  isPending,
+  onMarkReady,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  canPromote: boolean;
+  isPending: boolean;
+  onMarkReady: () => void;
+}) {
+  return (
+    <div
+      style={{
+        padding: 32,
+        background: t.surface,
+        borderRadius: 14,
+        border: `1px solid ${t.line}`,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 14,
+        textAlign: "center",
+        minHeight: 320,
+        justifyContent: "center",
+      }}
+    >
+      <div
+        style={{
+          width: 56, height: 56, borderRadius: 28,
+          background: t.brandSoft, color: t.brand,
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+        }}
+      >
+        <Icon name="chat" size={24} />
+      </div>
+      <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>
+        Loan chat starts after funding handoff
+      </div>
+      <div style={{ fontSize: 13, color: t.ink3, maxWidth: 480, lineHeight: 1.55 }}>
+        The chat thread (broker ↔ client ↔ AI) lives on the loan that's created
+        when you mark this deal ready for funding. Promote the deal and the
+        chat surface lights up here — the same workspace the borrower sees in
+        the mobile app.
+      </div>
+      {canPromote ? (
+        <button
+          onClick={onMarkReady}
+          disabled={isPending}
+          style={{
+            padding: "10px 18px", borderRadius: 10,
+            background: t.brand, color: t.inverse, border: "none",
+            fontSize: 13, fontWeight: 700,
+            display: "inline-flex", alignItems: "center", gap: 7,
+            cursor: isPending ? "wait" : "pointer",
+            opacity: isPending ? 0.7 : 1,
+          }}
+        >
+          <Icon name="bolt" size={13} />
+          {isPending ? "Promoting…" : "Mark Ready for Funding"}
+        </button>
+      ) : null}
     </div>
   );
 }

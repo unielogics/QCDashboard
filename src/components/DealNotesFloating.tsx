@@ -53,7 +53,7 @@ export function DealNotesFloatingButton({ dealId }: { dealId: string }) {
         justifyContent: "center",
       }}
     >
-      <Icon name="chat" size={20} stroke={2.2} />
+      <Icon name="pencil" size={20} stroke={2.2} />
     </button>
   );
 }
@@ -161,7 +161,7 @@ export function DealNotesPanel() {
             borderBottom: `1px solid ${t.line}`,
           }}
         >
-          <Icon name="chat" size={15} stroke={2.2} />
+          <Icon name="pencil" size={15} stroke={2.2} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>Private notes</div>
             <div style={{ fontSize: 11, color: t.ink3 }}>
