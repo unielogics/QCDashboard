@@ -33,6 +33,7 @@ import { LenderConnectCard } from "./components/LenderConnectCard";
 import { FILE_STAGE_KEYS, FILE_STAGE_LABELS, getFileCompletion } from "./fileReadiness";
 import { LoanAgentPicker } from "@/components/LoanAgentPicker";
 import { ClientLoanChatTab } from "./components/ClientLoanChatTab";
+import { ClientTodoTab } from "./tabs/ClientTodoTab";
 import { LoanChatTab } from "./components/LoanChatTab";
 
 const INTERNAL_TABS = [
@@ -70,7 +71,9 @@ const CLIENT_TABS = [
   { id: "overview", label: "Overview", icon: "home" as const },
   { id: "terms", label: "Simulator", icon: "sliders" as const },
   { id: "docs", label: "Documents", icon: "doc" as const },
-  { id: "activity", label: "Activity", icon: "audit" as const },
+  // Parity with mobile: clients get "To Do" instead of the raw
+  // activity feed (scoped to their own loan; filterable).
+  { id: "todo", label: "To Do", icon: "audit" as const },
 ] as const;
 
 export default function LoanDetailPage() {
@@ -516,6 +519,7 @@ export default function LoanDetailPage() {
         </div>
       )}
       {activeTab === "activity" && <ActivityTab activity={activity} isLoading={activityLoading} />}
+      {activeTab === "todo" && <ClientTodoTab loanId={loan.id} />}
 
       {showBlockers ? (
         <FileBlockersPopup

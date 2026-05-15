@@ -1765,6 +1765,53 @@ export function useSendDealChat() {
   });
 }
 
+// ── Loan To-Do (parity with mobile) ───────────────────────────────────
+export interface LoanTodoItem {
+  id: string;
+  kind: "document" | "call" | "task";
+  title: string;
+  subtitle?: string | null;
+  status?: string | null;
+  due_at?: string | null;
+  deeplink?: string | null;
+}
+export type TodoStatusFilter = "pending" | "completed" | "all";
+
+export function useLoanTodo(
+  loanId: string | null | undefined,
+  status: TodoStatusFilter = "pending",
+) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["loanTodo", loanId, status, devUser],
+    queryFn: () =>
+      apiCall<LoanTodoItem[]>(`/loans/${loanId}/todo?status=${status}`),
+    enabled: !!loanId,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useCreateCalendarEvent() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      loan_id: string;
+      kind: string;
+      title: string;
+      description?: string | null;
+      who?: string | null;
+      starts_at: string;
+      duration_min?: number | null;
+    }) => apiCall(`/calendar`, { method: "POST", body: JSON.stringify(payload) }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["loanTodo", vars.loan_id] });
+      qc.invalidateQueries({ queryKey: ["calendar"] });
+    },
+  });
+}
+
 // ── (A) Agent deal-chat — multi-party thread per Deal ─────────────────
 //
 // Distinct from useDealChat above (which is misnamed and actually
