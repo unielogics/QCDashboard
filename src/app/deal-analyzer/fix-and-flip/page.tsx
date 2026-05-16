@@ -1,9 +1,8 @@
 "use client";
 
-// Fix & Flip Deal Analyzer — decision engine, not a calculator.
-// Two-panel: collapsible left inputs, right results with tabs.
-// All math is client-side (src/lib/fixFlip). Hedged language only —
-// never "approved"/"guaranteed"/"will qualify".
+// Fix & Flip Deal Analyzer — paginated wizard. Borrower credit +
+// experience are DERIVED from the profile (read-only), never typed.
+// All math is client-side (src/lib/fixFlip). Hedged language only.
 
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -13,8 +12,10 @@ import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import {
   useClient,
   useCurrentCredit,
+  useMyClient,
   useSaveFixFlipScenario,
 } from "@/hooks/useApi";
+import { US_STATES } from "@/lib/usStates";
 import { analyzeFixFlip } from "@/lib/fixFlip/calc";
 import type {
   ExperienceTier,
@@ -25,7 +26,6 @@ import type {
 
 const DISCLAIMER =
   "Estimates only. Final terms, cash to close, and eligibility depend on lender review, credit, title, appraisal, insurance, and the final settlement statement.";
-
 const $ = (x: number) => `$${Math.round(x).toLocaleString()}`;
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 
@@ -39,16 +39,32 @@ const PROPERTY_TYPES: { v: PropertyType; l: string }[] = [
   { v: "townhouse", l: "Townhouse" },
   { v: "other", l: "Other" },
 ];
-const EXPERIENCE: { v: ExperienceTier; l: string }[] = [
-  { v: "0_flips", l: "First-time investor" },
-  { v: "1_2_flips", l: "1-2 completed flips" },
-  { v: "3_5_flips", l: "3-5 completed flips" },
-  { v: "5_plus_flips", l: "5+ completed flips" },
-  { v: "pro", l: "Professional operator" },
-];
+
+const EXP_LABEL: Record<ExperienceTier, string> = {
+  "0_flips": "First-time investor",
+  "1_2_flips": "1-2 completed flips",
+  "3_5_flips": "3-5 completed flips",
+  "5_plus_flips": "5+ completed flips",
+  pro: "Professional operator",
+};
+
+// Map the free-text profile experience → a tier. Best-effort; defaults
+// to 1-2 flips when the profile is blank/unstructured.
+export function deriveExperienceTier(raw?: string | null): ExperienceTier {
+  const s = (raw ?? "").toLowerCase();
+  if (/pro\b|professional|operator/.test(s)) return "pro";
+  if (/first|brand new|\bnone\b|\b0\b|no experience/.test(s)) return "0_flips";
+  if (/\b([5-9]|\d{2,})\b|\b5\s*\+/.test(s)) return "5_plus_flips";
+  if (/\b[3-4]\b/.test(s)) return "3_5_flips";
+  if (/\b[1-2]\b|\bone\b|\btwo\b/.test(s)) return "1_2_flips";
+  return "1_2_flips";
+}
 
 const TABS = ["Summary", "Loan Programs", "HUD Forecast", "Profit Breakdown", "Sensitivity", "Make This Deal Work"] as const;
 type Tab = (typeof TABS)[number];
+
+const STEPS = ["Property", "Deal Numbers", "Timeline & Cash", "Review", "Results"] as const;
+type Step = (typeof STEPS)[number];
 
 const DEFAULTS: FixFlipInputs = {
   address: { street: "", city: "", state: "", zip: "" },
@@ -74,40 +90,51 @@ function gradeColor(t: ReturnType<typeof useTheme>["t"], g: string): string {
 export default function FixAndFlipAnalyzerPage() {
   const { t } = useTheme();
   const sp = useSearchParams();
-  const clientId = sp?.get("clientId") ?? null;
-  const { data: client } = useClient(clientId);
-  const { data: credit } = useCurrentCredit(clientId);
-  const save = useSaveFixFlipScenario();
+  const queryClientId = sp?.get("clientId") ?? null;
+  const { data: myClient } = useMyClient();
+  // Prefer ?clientId= (agent/operator opening a borrower); else the
+  // signed-in client's own profile.
+  const profileClientId = queryClientId ?? myClient?.id ?? null;
+  const { data: client } = useClient(queryClientId);
+  const { data: credit } = useCurrentCredit(profileClientId);
 
+  const profileClient = queryClientId ? client : myClient;
+  const derivedCredit =
+    credit?.fico ?? profileClient?.fico ?? undefined;
+  const derivedExperience = deriveExperienceTier(profileClient?.experience);
+
+  const save = useSaveFixFlipScenario();
   const [i, setI] = useState<FixFlipInputs>(DEFAULTS);
-  const [collapsed, setCollapsed] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [stepIdx, setStepIdx] = useState(0);
   const [tab, setTab] = useState<Tab>("Summary");
   const [flash, setFlash] = useState<string | null>(null);
+  const step: Step = STEPS[stepIdx];
 
-  // Prefill borrower/credit when arriving with ?clientId=.
-  const prefilled = useMemo(() => {
-    if (!client) return i;
-    return {
-      ...i,
-      creditScore: i.creditScore ?? credit?.fico ?? client.fico ?? undefined,
-    };
-  }, [client, credit]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const inputs = prefilled;
+  // Credit + experience always come from the profile, never the form.
+  const inputs: FixFlipInputs = useMemo(
+    () => ({ ...i, creditScore: derivedCredit, experience: derivedExperience }),
+    [i, derivedCredit, derivedExperience],
+  );
   const result = useMemo(() => analyzeFixFlip(inputs), [inputs]);
-  const ready = result.validationErrors.length === 0;
 
   const set = <K extends keyof FixFlipInputs>(k: K, v: FixFlipInputs[K]) =>
     setI((p) => ({ ...p, [k]: v }));
-  const setAddr = (k: keyof FixFlipInputs["address"], v: string) =>
+  const setAddr = (k: "street" | "city" | "state" | "zip", v: string) =>
     setI((p) => ({ ...p, address: { ...p.address, [k]: v } }));
   const num = (s: string) => Number(s.replace(/[^0-9.]/g, "")) || 0;
+
+  // Per-step required fields (no county; state via dropdown).
+  const stepValid = (s: Step): boolean => {
+    if (s === "Property") return !!(inputs.address.street && inputs.address.city && inputs.address.state && inputs.address.zip);
+    if (s === "Deal Numbers") return inputs.purchasePrice > 0 && inputs.arv > 0 && inputs.rehabCost >= 0;
+    if (s === "Timeline & Cash") return inputs.constructionMonths > 0 && inputs.monthsToSell > 0;
+    return true;
+  };
 
   const onSave = async () => {
     try {
       await save.mutateAsync({
-        client_id: clientId ?? undefined,
+        client_id: profileClientId ?? undefined,
         status: "saved",
         payload: { inputs, result } as unknown as Record<string, unknown>,
         deal_score: result.dealScore,
@@ -120,155 +147,131 @@ export default function FixAndFlipAnalyzerPage() {
     setTimeout(() => setFlash(null), 3500);
   };
 
-  const field = (
-    label: string,
-    value: string | number,
-    onChange: (s: string) => void,
-    placeholder?: string,
-  ) => (
-    <label style={{ display: "block", marginBottom: 10 }}>
-      <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>
-        {label}
-      </span>
-      <input
-        value={value === 0 ? "" : String(value)}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        style={{
-          width: "100%", marginTop: 4, padding: "8px 10px", borderRadius: 8,
-          border: `1px solid ${t.line}`, background: t.surface, color: t.ink, fontSize: 13,
-        }}
-      />
+  const inputStyle = {
+    width: "100%", marginTop: 4, padding: "9px 11px", borderRadius: 8,
+    border: `1px solid ${t.line}`, background: t.surface, color: t.ink, fontSize: 13,
+  } as const;
+  // JSX-returning helper (NOT a component) so inputs keep focus across
+  // re-renders.
+  const fld = (label: string, value: string | number, onChange: (s: string) => void, placeholder?: string) => (
+    <label style={{ display: "block", marginBottom: 12 }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>{label}</span>
+      <input value={value === 0 ? "" : String(value)} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} style={inputStyle} />
     </label>
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, color: t.ink, margin: 0 }}>
-            Fix &amp; Flip Deal Analyzer
-          </h1>
-          <p style={{ fontSize: 13, color: t.ink3, margin: "4px 0 0" }}>
-            See if the deal works before you make the offer — profit, cash to
-            close, financing options, and downside risk in one place.
-          </p>
-        </div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          {ready ? (
-            <button onClick={() => setCollapsed((c) => !c)} style={qcBtn(t)}>
-              {collapsed ? "Edit inputs" : "Collapse inputs"}
-            </button>
-          ) : null}
-          <button onClick={onSave} disabled={!ready || save.isPending} style={{ ...qcBtnPrimary(t), opacity: !ready || save.isPending ? 0.5 : 1 }}>
-            {save.isPending ? "Saving…" : "Save Scenario"}
-          </button>
-        </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 860, margin: "0 auto" }}>
+      <div>
+        <h1 style={{ fontSize: 24, fontWeight: 800, color: t.ink, margin: 0 }}>Fix &amp; Flip Deal Analyzer</h1>
+        <p style={{ fontSize: 13, color: t.ink3, margin: "4px 0 0" }}>
+          See if the deal works before you make the offer — profit, cash to close, financing options, and downside risk.
+        </p>
       </div>
-      {flash ? (
-        <div style={{ fontSize: 12.5, color: flash.includes("Couldn") ? t.danger : t.profit, fontWeight: 600 }}>{flash}</div>
-      ) : null}
 
-      <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-        {/* LEFT — inputs */}
-        {!collapsed ? (
-          <div style={{ width: 340, flexShrink: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-            <Card pad={16}>
-              <SectionLabel>Property</SectionLabel>
-              {field("Street address", inputs.address.street, (s) => setAddr("street", s))}
-              <div style={{ display: "flex", gap: 8 }}>
-                <div style={{ flex: 2 }}>{field("City", inputs.address.city, (s) => setAddr("city", s))}</div>
-                <div style={{ flex: 1 }}>{field("State", inputs.address.state, (s) => setAddr("state", s.toUpperCase().slice(0, 2)))}</div>
+      {/* Stepper */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {STEPS.map((s, idx) => {
+          const active = idx === stepIdx;
+          const done = idx < stepIdx;
+          return (
+            <div key={s} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 11px", borderRadius: 999, background: active ? t.petrolSoft : done ? t.profitBg : t.chip, color: active ? t.petrol : done ? t.profit : t.ink3, fontSize: 12, fontWeight: 700 }}>
+                <span>{idx + 1}</span><span>{s}</span>
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <div style={{ flex: 1 }}>{field("ZIP", inputs.address.zip, (s) => setAddr("zip", s))}</div>
-                <div style={{ flex: 1 }}>{field("County", inputs.address.county ?? "", (s) => setAddr("county" as never, s))}</div>
+              {idx < STEPS.length - 1 ? <span style={{ color: t.ink4 }}>→</span> : null}
+            </div>
+          );
+        })}
+      </div>
+
+      {flash ? <div style={{ fontSize: 12.5, color: flash.includes("Couldn") ? t.danger : t.profit, fontWeight: 600 }}>{flash}</div> : null}
+
+      <Card pad={20}>
+        {step === "Property" ? (
+          <div>
+            <SectionLabel>Property</SectionLabel>
+            {fld('Street address', inputs.address.street, (s) => setAddr("street", s))}
+            <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ flex: 2 }}>{fld('City', inputs.address.city, (s) => setAddr("city", s))}</div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: "block", marginBottom: 12 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>State</span>
+                  <select value={inputs.address.state} onChange={(e) => setAddr("state", e.target.value)} style={inputStyle}>
+                    <option value="">Select…</option>
+                    {US_STATES.map((s) => <option key={s.code} value={s.code}>{s.code} — {s.name}</option>)}
+                  </select>
+                </label>
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <div style={{ flex: 1 }}>{field("Unit", inputs.address.unit ?? "", (s) => setAddr("unit" as never, s))}</div>
-                <div style={{ flex: 1 }}>{field("Parcel ID", inputs.address.parcelId ?? "", (s) => setAddr("parcelId" as never, s))}</div>
-              </div>
-              <label style={{ display: "block" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>Property type</span>
-                <select
-                  value={inputs.propertyType}
-                  onChange={(e) => set("propertyType", e.target.value as PropertyType)}
-                  style={{ width: "100%", marginTop: 4, padding: "8px 10px", borderRadius: 8, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, fontSize: 13 }}
-                >
-                  {PROPERTY_TYPES.map((p) => <option key={p.v} value={p.v}>{p.l}</option>)}
-                </select>
-              </label>
-            </Card>
-
-            <Card pad={16}>
-              <SectionLabel>Deal numbers</SectionLabel>
-              {field("Purchase price / BRV", inputs.purchasePrice, (s) => set("purchasePrice", num(s)))}
-              {field("After repair value (ARV)", inputs.arv, (s) => set("arv", num(s)))}
-              {field("Rehab / construction budget", inputs.rehabCost, (s) => set("rehabCost", num(s)))}
-              {field("Rehab contingency %", inputs.rehabContingencyPct * 100, (s) => set("rehabContingencyPct", num(s) / 100), "10")}
-              {field("Monthly holding cost", inputs.monthlyHoldingCost, (s) => set("monthlyHoldingCost", num(s)))}
-              {field("Selling cost %", inputs.sellingCostPct * 100, (s) => set("sellingCostPct", num(s) / 100), "6")}
-              {field("Closing cost %", inputs.closingCostPct * 100, (s) => set("closingCostPct", num(s) / 100), "2")}
-            </Card>
-
-            <Card pad={16}>
-              <SectionLabel>Timeline</SectionLabel>
-              {field("Construction months", inputs.constructionMonths, (s) => set("constructionMonths", num(s)))}
-              {field("Months to sell after construction", inputs.monthsToSell, (s) => set("monthsToSell", num(s)))}
-              <div style={{ fontSize: 12, color: t.ink3 }}>Total hold: <b style={{ color: t.ink }}>{result.holdMonths} months</b></div>
-            </Card>
-
-            <Card pad={16}>
-              <SectionLabel>Borrower / credit</SectionLabel>
-              {field("Credit score", inputs.creditScore ?? 0, (s) => set("creditScore", num(s) || undefined))}
-              <label style={{ display: "block", marginBottom: 10 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>Experience</span>
-                <select
-                  value={inputs.experience}
-                  onChange={(e) => set("experience", e.target.value as ExperienceTier)}
-                  style={{ width: "100%", marginTop: 4, padding: "8px 10px", borderRadius: 8, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, fontSize: 13 }}
-                >
-                  {EXPERIENCE.map((x) => <option key={x.v} value={x.v}>{x.l}</option>)}
-                </select>
-              </label>
-              {field("Liquidity available", inputs.liquidity ?? 0, (s) => set("liquidity", num(s) || undefined))}
-            </Card>
-
-            <Card pad={16}>
-              <button onClick={() => setShowAdvanced((a) => !a)} style={{ all: "unset", cursor: "pointer", fontSize: 12, fontWeight: 700, color: t.petrol }}>
-                {showAdvanced ? "− Hide" : "+ Show"} advanced assumptions
-              </button>
-              {showAdvanced ? (
-                <div style={{ marginTop: 10 }}>
-                  {field("Interest rate override %", (inputs.interestRateOverride ?? 0) * 100, (s) => set("interestRateOverride", num(s) / 100 || undefined))}
-                  {field("Points override", inputs.pointsOverride ?? 0, (s) => set("pointsOverride", num(s) || undefined))}
-                  {field("Origination fee", inputs.originationFee ?? 0, (s) => set("originationFee", num(s)))}
-                  {field("Title / legal estimate", inputs.titleLegalEstimate ?? 0, (s) => set("titleLegalEstimate", num(s)))}
-                  {field("Insurance estimate", inputs.insuranceEstimate ?? 0, (s) => set("insuranceEstimate", num(s)))}
-                  {field("ARV haircut %", (inputs.arvHaircutPct ?? 0) * 100, (s) => set("arvHaircutPct", num(s) / 100))}
-                  {field("Rehab overrun %", (inputs.rehabOverrunPct ?? 0) * 100, (s) => set("rehabOverrunPct", num(s) / 100))}
-                </div>
-              ) : null}
-            </Card>
+              <div style={{ flex: 1 }}>{fld('ZIP', inputs.address.zip, (s) => setAddr("zip", s))}</div>
+            </div>
+            <label style={{ display: "block" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>Property type</span>
+              <select value={inputs.propertyType} onChange={(e) => set("propertyType", e.target.value as PropertyType)} style={inputStyle}>
+                {PROPERTY_TYPES.map((p) => <option key={p.v} value={p.v}>{p.l}</option>)}
+              </select>
+            </label>
           </div>
         ) : null}
 
-        {/* RIGHT — results */}
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-          {!ready ? (
-            <Card pad={24}>
-              <div style={{ fontSize: 15, fontWeight: 800, color: t.ink }}>Enter the deal to see results</div>
-              <div style={{ fontSize: 13, color: t.ink3, marginTop: 6 }}>
-                Add the property address and deal numbers to see projected
-                profit, cash needed, loan options, and your max safe offer.
-              </div>
+        {step === "Deal Numbers" ? (
+          <div>
+            <SectionLabel>Deal numbers</SectionLabel>
+            {fld('Purchase price / BRV', inputs.purchasePrice, (s) => set("purchasePrice", num(s)))}
+            {fld('After repair value (ARV)', inputs.arv, (s) => set("arv", num(s)))}
+            {fld('Rehab / construction budget', inputs.rehabCost, (s) => set("rehabCost", num(s)))}
+            {fld('Rehab contingency %', inputs.rehabContingencyPct * 100, (s) => set("rehabContingencyPct", num(s) / 100), '10')}
+            {fld('Selling cost %', inputs.sellingCostPct * 100, (s) => set("sellingCostPct", num(s) / 100), '6')}
+            {fld('Closing cost %', inputs.closingCostPct * 100, (s) => set("closingCostPct", num(s) / 100), '2')}
+          </div>
+        ) : null}
+
+        {step === "Timeline & Cash" ? (
+          <div>
+            <SectionLabel>Timeline &amp; cash</SectionLabel>
+            {fld('Construction months', inputs.constructionMonths, (s) => set("constructionMonths", num(s)))}
+            {fld('Months to sell after construction', inputs.monthsToSell, (s) => set("monthsToSell", num(s)))}
+            {fld('Monthly holding cost', inputs.monthlyHoldingCost, (s) => set("monthlyHoldingCost", num(s)))}
+            {fld('Cash to work available', inputs.liquidity ?? 0, (s) => set("liquidity", num(s) || undefined))}
+            <div style={{ fontSize: 12, color: t.ink3 }}>Total hold: <b style={{ color: t.ink }}>{result.holdMonths} months</b></div>
+          </div>
+        ) : null}
+
+        {step === "Review" ? (
+          <div>
+            <SectionLabel>Borrower profile</SectionLabel>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+              <span style={{ fontSize: 12, color: t.ink3 }}>Credit score</span>
+              {derivedCredit != null ? (
+                <Pill bg={t.petrolSoft} color={t.petrol}>{derivedCredit}</Pill>
+              ) : (
+                <Pill bg={t.chip} color={t.ink3}>Not on file</Pill>
+              )}
+              <span style={{ fontSize: 12, color: t.ink3, marginLeft: 12 }}>Experience</span>
+              <Pill bg={t.chip} color={t.ink2}>{EXP_LABEL[derivedExperience]}</Pill>
+            </div>
+            <div style={{ fontSize: 11.5, color: t.ink3, marginBottom: 14 }}>
+              Credit &amp; experience are pulled from the borrower&apos;s profile, not entered here.
+            </div>
+            <SectionLabel>Recap</SectionLabel>
+            <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.7 }}>
+              {inputs.address.street}, {inputs.address.city} {inputs.address.state} {inputs.address.zip}<br />
+              Purchase {$(inputs.purchasePrice)} · ARV {$(inputs.arv)} · Rehab {$(inputs.rehabCost)}<br />
+              Hold {result.holdMonths} months · Cash to work {$(inputs.liquidity ?? 0)}
+            </div>
+          </div>
+        ) : null}
+
+        {step === "Results" ? (
+          result.validationErrors.length ? (
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: t.ink }}>Missing information</div>
               <ul style={{ fontSize: 12.5, color: t.warn, marginTop: 10 }}>
                 {result.validationErrors.map((e) => <li key={e}>{e}</li>)}
               </ul>
-            </Card>
+            </div>
           ) : (
-            <>
-              {/* Summary cards */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
                 <Card pad={14}><KPI label="Deal Grade" value={result.dealGrade} sub={`Score ${result.dealScore}/100`} accent={gradeColor(t, result.dealGrade)} /></Card>
                 <Card pad={14}><KPI label="Projected Net Profit" value={$(result.projectedNetProfit)} sub={pct(result.profitMargin)} accent={result.projectedNetProfit > 0 ? t.profit : t.danger} /></Card>
@@ -277,48 +280,30 @@ export default function FixAndFlipAnalyzerPage() {
                 <Card pad={14}><KPI label="Loan Amount" value={$(result.loanAmount)} /></Card>
                 <Card pad={14}><KPI label="Max Safe Purchase" value={$(result.maxSafePurchasePrice)} sub={`Purchase: ${result.purchasePriceGrade}`} accent={gradeColor(t, result.purchasePriceGrade)} /></Card>
               </div>
-
-              {/* Tabs */}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {TABS.map((x) => (
                   <button key={x} onClick={() => setTab(x)} style={{ all: "unset", cursor: "pointer", padding: "6px 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 700, border: `1px solid ${tab === x ? t.petrol : t.line}`, background: tab === x ? t.petrolSoft : "transparent", color: tab === x ? t.petrol : t.ink3 }}>{x}</button>
                 ))}
               </div>
-
-              <Card pad={18}>
+              <div>
                 {tab === "Summary" ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     <PriceMeter t={t} grade={result.purchasePriceGrade} />
                     <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.55 }}>{result.explanation}</div>
-                    {result.warnings.length ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        {result.warnings.map((w) => (
-                          <div key={w} style={{ fontSize: 12.5, color: t.warn }}>⚠ {w}</div>
-                        ))}
-                      </div>
-                    ) : null}
+                    {result.warnings.map((w) => <div key={w} style={{ fontSize: 12.5, color: t.warn }}>⚠ {w}</div>)}
                   </div>
                 ) : null}
-
                 {tab === "Loan Programs" ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                     <div>
                       <SectionLabel>Potential fits</SectionLabel>
-                      {result.eligiblePrograms.length === 0 ? (
-                        <div style={{ fontSize: 13, color: t.ink3 }}>No program is a clear fit under current rules.</div>
-                      ) : result.eligiblePrograms.map((f) => (
+                      {result.eligiblePrograms.length === 0 ? <div style={{ fontSize: 13, color: t.ink3 }}>No program is a clear fit under current rules.</div> : result.eligiblePrograms.map((f) => (
                         <div key={f.program.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${t.line}` }}>
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 13.5, fontWeight: 700, color: t.ink }}>
-                              {f.program.name}
-                              {result.bestProgram?.id === f.program.id ? <Pill bg={t.profitBg} color={t.profit}>Best overall</Pill> : null}
-                            </div>
+                            <div style={{ fontSize: 13.5, fontWeight: 700, color: t.ink }}>{f.program.name}{result.bestProgram?.id === f.program.id ? <Pill bg={t.profitBg} color={t.profit}>Best overall</Pill> : null}</div>
                             <div style={{ fontSize: 12, color: t.ink3 }}>{(f.program.interestRate * 100).toFixed(2)}% · {f.program.points} pts · {f.program.termMonths}mo</div>
                           </div>
-                          <div style={{ textAlign: "right", fontSize: 12 }}>
-                            <div style={{ color: t.ink }}>{$(f.loanAmount)} loan</div>
-                            <div style={{ color: t.ink3 }}>{$(f.estimatedCashToClose)} cash</div>
-                          </div>
+                          <div style={{ textAlign: "right", fontSize: 12 }}><div style={{ color: t.ink }}>{$(f.loanAmount)} loan</div><div style={{ color: t.ink3 }}>{$(f.estimatedCashToClose)} cash</div></div>
                         </div>
                       ))}
                     </div>
@@ -333,58 +318,27 @@ export default function FixAndFlipAnalyzerPage() {
                     </div>
                   </div>
                 ) : null}
-
                 {tab === "HUD Forecast" ? (
                   <div style={{ fontSize: 13 }}>
-                    {[
-                      ["Purchase price", -inputs.purchasePrice],
-                      ["Loan amount", result.loanAmount],
-                      ["Origination / points", -result.lenderPointsCost],
-                      ["Closing costs", -result.estimatedClosingCosts],
-                      ["Interest (hold period)", -result.estimatedInterestPaid],
-                      ["Holding costs", -result.estimatedHoldingCosts],
-                      ["Selling costs", -result.estimatedSellingCosts],
-                    ].map(([k, v]) => (
+                    {[["Purchase price", -inputs.purchasePrice], ["Loan amount", result.loanAmount], ["Origination / points", -result.lenderPointsCost], ["Closing costs", -result.estimatedClosingCosts], ["Interest (hold period)", -result.estimatedInterestPaid], ["Holding costs", -result.estimatedHoldingCosts], ["Selling costs", -result.estimatedSellingCosts]].map(([k, v]) => (
                       <div key={k as string} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: `1px solid ${t.line}` }}>
-                        <span style={{ color: t.ink2 }}>{k}</span>
-                        <span style={{ color: (v as number) < 0 ? t.danger : t.ink, fontWeight: 700 }}>{$(v as number)}</span>
+                        <span style={{ color: t.ink2 }}>{k}</span><span style={{ color: (v as number) < 0 ? t.danger : t.ink, fontWeight: 700 }}>{$(v as number)}</span>
                       </div>
                     ))}
-                    <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, fontWeight: 800 }}>
-                      <span style={{ color: t.ink }}>Estimated cash to close</span>
-                      <span style={{ color: t.ink }}>{$(result.estimatedCashToClose)}</span>
-                    </div>
-                    <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 8 }}>
-                      This is a forecast only. Final cash to close depends on
-                      lender approval, title, taxes, insurance, draw schedule,
-                      and the final settlement statement.
-                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, fontWeight: 800 }}><span style={{ color: t.ink }}>Estimated cash to close</span><span style={{ color: t.ink }}>{$(result.estimatedCashToClose)}</span></div>
+                    <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 8 }}>This is a forecast only. Final cash to close depends on lender approval, title, taxes, insurance, draw schedule, and the final settlement statement.</div>
                   </div>
                 ) : null}
-
                 {tab === "Profit Breakdown" ? (
                   <div style={{ fontSize: 13 }}>
-                    {[
-                      ["ARV", inputs.arv],
-                      ["− Purchase price", -inputs.purchasePrice],
-                      ["− Rehab + contingency", -(inputs.rehabCost + result.rehabContingencyAmount)],
-                      ["− Financing (interest + points)", -(result.estimatedInterestPaid + result.lenderPointsCost)],
-                      ["− Holding", -result.estimatedHoldingCosts],
-                      ["− Closing", -result.estimatedClosingCosts],
-                      ["− Selling", -result.estimatedSellingCosts],
-                    ].map(([k, v]) => (
+                    {[["ARV", inputs.arv], ["− Purchase price", -inputs.purchasePrice], ["− Rehab + contingency", -(inputs.rehabCost + result.rehabContingencyAmount)], ["− Financing (interest + points)", -(result.estimatedInterestPaid + result.lenderPointsCost)], ["− Holding", -result.estimatedHoldingCosts], ["− Closing", -result.estimatedClosingCosts], ["− Selling", -result.estimatedSellingCosts]].map(([k, v]) => (
                       <div key={k as string} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: `1px solid ${t.line}` }}>
-                        <span style={{ color: t.ink2 }}>{k}</span>
-                        <span style={{ color: (v as number) < 0 ? t.danger : t.ink, fontWeight: 700 }}>{$(v as number)}</span>
+                        <span style={{ color: t.ink2 }}>{k}</span><span style={{ color: (v as number) < 0 ? t.danger : t.ink, fontWeight: 700 }}>{$(v as number)}</span>
                       </div>
                     ))}
-                    <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, fontWeight: 800 }}>
-                      <span style={{ color: t.ink }}>= Net profit</span>
-                      <span style={{ color: result.projectedNetProfit > 0 ? t.profit : t.danger }}>{$(result.projectedNetProfit)}</span>
-                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, fontWeight: 800 }}><span style={{ color: t.ink }}>= Net profit</span><span style={{ color: result.projectedNetProfit > 0 ? t.profit : t.danger }}>{$(result.projectedNetProfit)}</span></div>
                   </div>
                 ) : null}
-
                 {tab === "Sensitivity" ? (
                   <div style={{ fontSize: 13 }}>
                     {result.sensitivity.map((s) => (
@@ -397,18 +351,34 @@ export default function FixAndFlipAnalyzerPage() {
                     ))}
                   </div>
                 ) : null}
-
                 {tab === "Make This Deal Work" ? (
                   <ul style={{ fontSize: 13.5, color: t.ink2, lineHeight: 1.7, margin: 0, paddingLeft: 18 }}>
                     {result.recommendations.map((r) => <li key={r}>{r}</li>)}
                   </ul>
                 ) : null}
-              </Card>
-
+              </div>
               <div style={{ fontSize: 11, color: t.ink3 }}>{DISCLAIMER}</div>
-            </>
-          )}
-        </div>
+            </div>
+          )
+        ) : null}
+      </Card>
+
+      {/* Wizard nav */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <button onClick={() => setStepIdx((x) => Math.max(0, x - 1))} disabled={stepIdx === 0} style={{ ...qcBtn(t), opacity: stepIdx === 0 ? 0.4 : 1 }}>Back</button>
+        {step !== "Results" ? (
+          <button
+            onClick={() => stepValid(step) && setStepIdx((x) => Math.min(STEPS.length - 1, x + 1))}
+            disabled={!stepValid(step)}
+            style={{ ...qcBtnPrimary(t), opacity: stepValid(step) ? 1 : 0.5 }}
+          >
+            {step === "Review" ? "Analyze Deal" : "Next"}
+          </button>
+        ) : (
+          <button onClick={onSave} disabled={save.isPending || result.validationErrors.length > 0} style={{ ...qcBtnPrimary(t), opacity: save.isPending || result.validationErrors.length ? 0.5 : 1 }}>
+            {save.isPending ? "Saving…" : "Save Scenario"}
+          </button>
+        )}
       </div>
     </div>
   );
