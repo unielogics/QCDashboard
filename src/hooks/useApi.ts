@@ -1779,6 +1779,8 @@ export interface FixFlipScenarioRow {
   deal_grade: string | null;
   created_at: string;
   updated_at: string;
+  created_by_name?: string | null;
+  created_by_email?: string | null;
 }
 interface FixFlipScenarioBody {
   client_id?: string | null;
@@ -1828,6 +1830,39 @@ export function useFixFlipScenario(id: string | null | undefined) {
     queryKey: ["fixFlipScenario", id, devUser],
     queryFn: () => apiCall<FixFlipScenarioRow>(`/fix-flip/scenarios/${id}`),
     enabled: !!id,
+  });
+}
+
+// System-wide simulator runs (operator-only). Backed by
+// GET /admin/loan-scenarios — every loan scenario across all users.
+export interface AdminLoanScenarioRow {
+  id: string;
+  name: string;
+  discount_points: number;
+  loan_amount: number | null;
+  base_rate: number | null;
+  ltv: number | null;
+  recalc_snapshot: {
+    final_rate?: number;
+    monthly_pi?: number;
+    dscr?: number | null;
+    cash_to_close_pricing?: number;
+  } | null;
+  created_at: string;
+  loan_id: string;
+  loan_deal_id: string | null;
+  loan_address: string | null;
+  created_by_name: string | null;
+  created_by_email: string | null;
+}
+export function useAdminLoanScenarios(enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["adminLoanScenarios", devUser],
+    queryFn: () => apiCall<AdminLoanScenarioRow[]>(`/admin/loan-scenarios`),
+    enabled,
+    staleTime: 15 * 1000,
   });
 }
 

@@ -12,11 +12,13 @@
 //             taxes / insurance / HOA, raw loan amount, full HUD-1 detail.
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import {
+  useAdminLoanScenarios,
   useCurrentUser,
   useFreeCalc,
   useFredSeries,
@@ -25,6 +27,7 @@ import {
   useMyPrequalRequests,
   useRecalc,
   useSettings,
+  type AdminLoanScenarioRow,
 } from "@/hooks/useApi";
 import { PreQualRequestList } from "@/components/PreQualRequestList";
 import { PreQualRequestModal } from "@/components/PreQualRequestModal";
@@ -85,9 +88,42 @@ export default function SimulatorPage() {
   const isClient = user?.role === Role.CLIENT;
   const [mode, setMode] = useState<Mode>("free");
 
+  const router = useRouter();
+  const spq = useSearchParams();
+  const isOperator =
+    user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC;
+  const wantNew = spq?.get("new") === "1";
+  const runId = spq?.get("run") ?? null;
+  const adminRuns = useAdminLoanScenarios(!!isOperator);
+
   // CLIENT view — same gated, ARV-driven simulator as mobile.
   if (isClient) {
     return <ClientSimulatorPage />;
+  }
+
+  // Operator (super-admin / loan-exec): land on a system-wide table
+  // of every user's simulator runs; "+" opens the wizard; a row opens
+  // that run read-only. Brokers keep the wizard.
+  if (isOperator && runId) {
+    return (
+      <SimInspect
+        t={t}
+        row={(adminRuns.data ?? []).find((r) => r.id === runId)}
+        loading={adminRuns.isLoading}
+        onBack={() => router.push("/simulator")}
+      />
+    );
+  }
+  if (isOperator && !wantNew) {
+    return (
+      <SimRunsTable
+        t={t}
+        rows={adminRuns.data ?? []}
+        loading={adminRuns.isLoading}
+        onNew={() => router.push("/simulator?new=1")}
+        onOpen={(id) => router.push(`/simulator?run=${id}`)}
+      />
+    );
   }
 
   // OPERATOR view — full advanced flow against the backend.
@@ -1876,6 +1912,149 @@ function PrequalRequestsSection() {
         isLoading={isLoading}
         emptyState="No pre-qualification requests yet. Use 'Request Pre-Qualification' at the top to start your first one."
       />
+    </div>
+  );
+}
+
+// ── Operator: system-wide simulator runs ──────────────────────────────
+
+type ThS = ReturnType<typeof useTheme>["t"];
+const rate3 = (v: number | null | undefined) =>
+  typeof v === "number" ? `${(v * 100).toFixed(3)}%` : "—";
+const usd0 = (v: number | null | undefined) =>
+  typeof v === "number" ? QC_FMT.usd(v, 0) : "—";
+
+function SimRunsTable({
+  t,
+  rows,
+  loading,
+  onNew,
+  onOpen,
+}: {
+  t: ThS;
+  rows: AdminLoanScenarioRow[];
+  loading: boolean;
+  onNew: () => void;
+  onOpen: (id: string) => void;
+}) {
+  const th = {
+    textAlign: "left" as const, padding: "12px 14px", fontSize: 11,
+    fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: 0.6,
+    color: t.ink3, borderBottom: `1px solid ${t.line}`,
+  };
+  const td = { padding: "11px 14px", fontSize: 13, color: t.ink, borderBottom: `1px solid ${t.line}` };
+  return (
+    <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Simulate — all runs</h1>
+          <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
+            Every saved simulator scenario across all users. Click a run to inspect it read-only.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onNew}
+          style={{
+            all: "unset", cursor: "pointer", padding: "10px 16px", borderRadius: 10,
+            background: t.petrol, color: "#fff", fontSize: 13, fontWeight: 700,
+            display: "inline-flex", alignItems: "center", gap: 6,
+          }}
+        >
+          <Icon name="plus" size={12} stroke={3} /> New simulation
+        </button>
+      </div>
+      <Card pad={0}>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 920 }}>
+            <thead>
+              <tr>
+                {["User", "Created", "Scenario", "Loan", "Loan amount", "Points", "Rate", "Monthly P&I"].map((h) => (
+                  <th key={h} style={th}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={8} style={{ ...td, color: t.ink3 }}>Loading…</td></tr>
+              ) : rows.length === 0 ? (
+                <tr><td colSpan={8} style={{ ...td, color: t.ink3 }}>No runs yet.</td></tr>
+              ) : (
+                rows.map((r) => (
+                  <tr key={r.id} onClick={() => onOpen(r.id)} style={{ cursor: "pointer" }}>
+                    <td style={td}>{r.created_by_name || r.created_by_email || "—"}</td>
+                    <td style={{ ...td, color: t.ink3 }}>{new Date(r.created_at).toLocaleDateString()}</td>
+                    <td style={td}>{r.name}</td>
+                    <td style={td}>{r.loan_deal_id ?? "—"}{r.loan_address ? ` · ${r.loan_address}` : ""}</td>
+                    <td style={td}>{usd0(r.loan_amount)}</td>
+                    <td style={td}>{r.discount_points}</td>
+                    <td style={td}>{rate3(r.recalc_snapshot?.final_rate)}</td>
+                    <td style={td}>{usd0(r.recalc_snapshot?.monthly_pi)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function SimInspect({
+  t,
+  row,
+  loading,
+  onBack,
+}: {
+  t: ThS;
+  row: AdminLoanScenarioRow | undefined;
+  loading: boolean;
+  onBack: () => void;
+}) {
+  const back = (
+    <button
+      type="button"
+      onClick={onBack}
+      style={{ all: "unset", cursor: "pointer", color: t.petrol, fontSize: 13, fontWeight: 700 }}
+    >
+      ← Back to all runs
+    </button>
+  );
+  if (loading) {
+    return <div style={{ padding: 24, maxWidth: 860, margin: "0 auto" }}><Card pad={20}><div style={{ fontSize: 13, color: t.ink3 }}>Loading…</div></Card></div>;
+  }
+  if (!row) {
+    return (
+      <div style={{ padding: 24, maxWidth: 860, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
+        {back}
+        <Card pad={20}><div style={{ fontSize: 13, color: t.ink2 }}>Run not found.</div></Card>
+      </div>
+    );
+  }
+  const s = row.recalc_snapshot ?? {};
+  return (
+    <div style={{ padding: 24, maxWidth: 860, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
+      {back}
+      <div>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>
+          {row.name} · {row.created_by_name || row.created_by_email || "—"}
+        </h1>
+        <p style={{ fontSize: 12.5, color: t.ink3, margin: "4px 0 0" }}>
+          {new Date(row.created_at).toLocaleString()} ·{" "}
+          {row.loan_deal_id ?? "—"}{row.loan_address ? ` · ${row.loan_address}` : ""} · read-only
+        </p>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        <Card pad={14}><KPI label="Loan amount" value={usd0(row.loan_amount)} /></Card>
+        <Card pad={14}><KPI label="Discount points" value={String(row.discount_points)} /></Card>
+        <Card pad={14}><KPI label="Base rate" value={rate3(row.base_rate)} /></Card>
+        <Card pad={14}><KPI label="Final rate" value={rate3(s.final_rate)} /></Card>
+        <Card pad={14}><KPI label="Monthly P&I" value={usd0(s.monthly_pi)} /></Card>
+        <Card pad={14}><KPI label="Cash to close" value={usd0(s.cash_to_close_pricing)} /></Card>
+        <Card pad={14}><KPI label="DSCR" value={typeof s.dscr === "number" ? s.dscr.toFixed(2) : "—"} /></Card>
+        <Card pad={14}><KPI label="LTV" value={typeof row.ltv === "number" ? `${(row.ltv * 100).toFixed(1)}%` : "—"} /></Card>
+      </div>
     </div>
   );
 }

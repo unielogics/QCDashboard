@@ -1,15 +1,15 @@
 "use client";
 
-// Super-admin only — the global closing-cost tier table.
-//
+// Deal Analyzer settings — the global closing-cost tier table.
+// Rendered as a tab inside /settings (mirrors the Simulator tab).
 // Excel-like editable grid: loan-amount range → closing %, with a
-// dollar floor. The Deal Analyzer resolves a deal's closing % from
-// this table: max(percentage, minimum$ / loanAmount). Empty From/To
-// means an open-ended bound. One Save does a bulk replace.
+// dollar floor. The analyzer resolves a deal's closing % as
+// max(percentage, minimum$ / loanAmount). Empty From/To = open bound.
+// One Save does a bulk replace.
 
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card } from "@/components/design-system/primitives";
+import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
@@ -17,10 +17,10 @@ import { useClosingCostTiers, useReplaceClosingCostTiers } from "@/hooks/useApi"
 import type { ClosingCostTier } from "@/lib/fixFlip/types";
 
 interface Draft {
-  from: string; // dollars, blank = open bottom
-  to: string;   // dollars, blank = open top
-  pct: string;  // percent, e.g. "2" == 2%
-  min: string;  // dollars
+  from: string;
+  to: string;
+  pct: string;
+  min: string;
 }
 
 function toDraft(tr: ClosingCostTier): Draft {
@@ -41,7 +41,7 @@ const num0 = (s: string): number => {
   return Number.isFinite(v) ? v : 0;
 };
 
-export default function ClosingCostsAdminPage() {
+export function DealAnalyzerSection() {
   const { t } = useTheme();
   const profile = useActiveProfile();
   const { data: tiers, isLoading } = useClosingCostTiers();
@@ -54,7 +54,7 @@ export default function ClosingCostsAdminPage() {
     if (tiers) setRows(tiers.map(toDraft));
   }, [tiers]);
 
-  const isSuper = profile.role === Role.SUPER_ADMIN;
+  const canEdit = profile.role === Role.SUPER_ADMIN;
 
   const cellInput = (
     value: string,
@@ -66,6 +66,7 @@ export default function ClosingCostsAdminPage() {
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        disabled={!canEdit}
         style={{
           width: "100%",
           padding: "8px 8px",
@@ -103,8 +104,6 @@ export default function ClosingCostsAdminPage() {
     setTimeout(() => setFlash(null), 3000);
   };
 
-  // Preview the resolved closing % for a sample loan against the
-  // current (unsaved) grid — gives admins instant feedback.
   const [sample, setSample] = useState("300000");
   const preview = useMemo(() => {
     const loan = num0(sample);
@@ -123,44 +122,49 @@ export default function ClosingCostsAdminPage() {
     };
   }, [rows, sample]);
 
-  if (!isSuper) {
-    return (
-      <div style={{ padding: 24 }}>
-        <Card pad={20}>
-          <div style={{ fontSize: 13, color: t.ink2 }}>
-            The closing-cost table is super-admin only.
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
   return (
-    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-      <div>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: t.petrol }}>
-          Super admin
-        </div>
-        <h1 style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>
-          Closing Costs
-        </h1>
-        <div style={{ fontSize: 12, color: t.ink3, marginTop: 4, lineHeight: 1.5, maxWidth: 720 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Card pad={20}>
+        <SectionLabel
+          action={
+            canEdit ? (
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={replace.isPending}
+                style={{
+                  all: "unset",
+                  cursor: replace.isPending ? "default" : "pointer",
+                  padding: "7px 16px",
+                  borderRadius: 9,
+                  background: replace.isPending ? t.chip : t.petrol,
+                  color: replace.isPending ? t.ink4 : "#fff",
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                }}
+              >
+                {replace.isPending ? "Saving…" : "Save"}
+              </button>
+            ) : undefined
+          }
+        >
+          Closing-cost tiers
+        </SectionLabel>
+        <div style={{ fontSize: 12.5, color: t.ink3, marginBottom: 12, lineHeight: 1.5 }}>
           Loan-amount tiers used by the Deal Analyzer. For a deal the effective
           closing % is <strong>max(tier %, minimum $ ÷ loan amount)</strong>,
           applied to the loan amount. Leave <em>From</em> or <em>To</em> blank
           for an open-ended bound.
         </div>
-      </div>
 
-      {flash ? (
-        <div style={{ fontSize: 13, fontWeight: 600, color: flash.includes("Couldn") ? t.danger : t.petrol }}>
-          {flash}
-        </div>
-      ) : null}
+        {flash ? (
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: flash.includes("Couldn") ? t.danger : t.petrol }}>
+            {flash}
+          </div>
+        ) : null}
 
-      <Card pad={0}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
+        <div style={{ overflowX: "auto", border: `1px solid ${t.line}`, borderRadius: 10 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
             <thead>
               <tr>
                 {["From $", "To $", "Percentage %", "Minimum $", ""].map((h) => (
@@ -211,14 +215,16 @@ export default function ClosingCostsAdminPage() {
                       {cellInput(r.min, (v) => setCell(idx, "min", v), "$")}
                     </td>
                     <td style={{ padding: "8px 14px", textAlign: "right" }}>
-                      <button
-                        type="button"
-                        onClick={() => delRow(idx)}
-                        style={{ all: "unset", cursor: "pointer", color: t.danger, padding: 6 }}
-                        aria-label="Remove tier"
-                      >
-                        <Icon name="x" size={14} />
-                      </button>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => delRow(idx)}
+                          style={{ all: "unset", cursor: "pointer", color: t.danger, padding: 6 }}
+                          aria-label="Remove tier"
+                        >
+                          <Icon name="x" size={14} />
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 ))
@@ -226,51 +232,34 @@ export default function ClosingCostsAdminPage() {
             </tbody>
           </table>
         </div>
-        <div style={{ display: "flex", gap: 10, padding: 14, borderTop: `1px solid ${t.line}` }}>
-          <button
-            type="button"
-            onClick={addRow}
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              padding: "9px 14px",
-              borderRadius: 9,
-              border: `1px solid ${t.line}`,
-              color: t.ink2,
-              fontSize: 13,
-              fontWeight: 700,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <Icon name="plus" size={12} stroke={3} /> Add tier
-          </button>
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={replace.isPending}
-            style={{
-              all: "unset",
-              cursor: replace.isPending ? "default" : "pointer",
-              padding: "9px 18px",
-              borderRadius: 9,
-              background: replace.isPending ? t.chip : t.petrol,
-              color: replace.isPending ? t.ink4 : "#fff",
-              fontSize: 13,
-              fontWeight: 700,
-            }}
-          >
-            {replace.isPending ? "Saving…" : "Save"}
-          </button>
-        </div>
+        {canEdit ? (
+          <div style={{ marginTop: 12 }}>
+            <button
+              type="button"
+              onClick={addRow}
+              style={{
+                all: "unset",
+                cursor: "pointer",
+                padding: "9px 14px",
+                borderRadius: 9,
+                border: `1px solid ${t.line}`,
+                color: t.ink2,
+                fontSize: 13,
+                fontWeight: 700,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <Icon name="plus" size={12} stroke={3} /> Add tier
+            </button>
+          </div>
+        ) : null}
       </Card>
 
-      <Card pad={16}>
-        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6, color: t.ink3 }}>
-          Preview
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+      <Card pad={20}>
+        <SectionLabel>Preview</SectionLabel>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
           <span style={{ fontSize: 13, color: t.ink3 }}>Loan amount $</span>
           <input
             value={sample}

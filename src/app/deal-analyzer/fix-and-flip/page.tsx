@@ -5,16 +5,22 @@
 // All math is client-side (src/lib/fixFlip). Hedged language only.
 
 import { useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { useActiveProfile } from "@/store/role";
+import { Role } from "@/lib/enums.generated";
 import {
   useClient,
   useClosingCostTiers,
   useCurrentCredit,
+  useFixFlipScenario,
+  useFixFlipScenarios,
   useMyClient,
   useSaveFixFlipScenario,
+  type FixFlipScenarioRow,
 } from "@/hooks/useApi";
 import { US_STATES } from "@/lib/usStates";
 import { analyzeFixFlip } from "@/lib/fixFlip/calc";
@@ -120,6 +126,18 @@ export default function FixAndFlipAnalyzerPage() {
     [inputs, closingTiers],
   );
 
+  // Operator (super-admin / loan-exec) surface: land on a system-wide
+  // table of every user's runs; "+" opens the wizard; a row opens
+  // that run read-only. Brokers/clients keep the create wizard.
+  const router = useRouter();
+  const profile = useActiveProfile();
+  const isOperator =
+    profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
+  const wantNew = sp?.get("new") === "1";
+  const runId = sp?.get("run") ?? null;
+  const allRuns = useFixFlipScenarios();
+  const inspected = useFixFlipScenario(runId);
+
   const set = <K extends keyof FixFlipInputs>(k: K, v: FixFlipInputs[K]) =>
     setI((p) => ({ ...p, [k]: v }));
   const setAddr = (k: "street" | "city" | "state" | "zip", v: string) =>
@@ -162,6 +180,28 @@ export default function FixAndFlipAnalyzerPage() {
       <input value={value === 0 ? "" : String(value)} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} style={inputStyle} />
     </label>
   );
+
+  if (runId) {
+    return (
+      <RunInspect
+        t={t}
+        row={inspected.data}
+        loading={inspected.isLoading}
+        onBack={() => router.push("/deal-analyzer/fix-and-flip")}
+      />
+    );
+  }
+  if (isOperator && !wantNew) {
+    return (
+      <RunsTable
+        t={t}
+        rows={allRuns.data ?? []}
+        loading={allRuns.isLoading}
+        onNew={() => router.push("/deal-analyzer/fix-and-flip?new=1")}
+        onOpen={(id) => router.push(`/deal-analyzer/fix-and-flip?run=${id}`)}
+      />
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 860, margin: "0 auto" }}>
@@ -596,6 +636,189 @@ function PriceMeter({ t, grade }: { t: ReturnType<typeof useTheme>["t"]; grade: 
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ── Operator: system-wide runs table ──────────────────────────────────
+
+type RunPayload = {
+  inputs?: { address?: { street?: string; city?: string; state?: string } };
+  result?: { estimatedCashToClose?: number; projectedNetProfit?: number };
+};
+
+function runAddress(row: FixFlipScenarioRow): string {
+  const a = (row.payload as RunPayload | null)?.inputs?.address;
+  if (!a) return "—";
+  return [a.street, a.city, a.state].filter(Boolean).join(", ") || "—";
+}
+function runCashToClose(row: FixFlipScenarioRow): number | null {
+  const v = (row.payload as RunPayload | null)?.result?.estimatedCashToClose;
+  return typeof v === "number" ? v : null;
+}
+function runCreator(row: FixFlipScenarioRow): string {
+  return row.created_by_name || row.created_by_email || "—";
+}
+
+function RunsTable({
+  t,
+  rows,
+  loading,
+  onNew,
+  onOpen,
+}: {
+  t: Th;
+  rows: FixFlipScenarioRow[];
+  loading: boolean;
+  onNew: () => void;
+  onOpen: (id: string) => void;
+}) {
+  const th = {
+    textAlign: "left" as const,
+    padding: "12px 14px",
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.6,
+    color: t.ink3,
+    borderBottom: `1px solid ${t.line}`,
+  };
+  const td = { padding: "11px 14px", fontSize: 13, color: t.ink, borderBottom: `1px solid ${t.line}` };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: t.ink, margin: 0 }}>Deal Analyzer — all runs</h1>
+          <p style={{ fontSize: 13, color: t.ink3, margin: "4px 0 0" }}>
+            Every Fix &amp; Flip analysis across all users. Click a run to inspect it read-only.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onNew}
+          style={{
+            all: "unset", cursor: "pointer", padding: "10px 16px", borderRadius: 10,
+            background: t.petrol, color: "#fff", fontSize: 13, fontWeight: 700,
+            display: "inline-flex", alignItems: "center", gap: 6,
+          }}
+        >
+          <Icon name="plus" size={12} stroke={3} /> New analysis
+        </button>
+      </div>
+      <Card pad={0}>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
+            <thead>
+              <tr>
+                {["User", "Created", "Address", "Grade", "Score", "Cash to close", "Status"].map((h) => (
+                  <th key={h} style={th}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={7} style={{ ...td, color: t.ink3 }}>Loading…</td></tr>
+              ) : rows.length === 0 ? (
+                <tr><td colSpan={7} style={{ ...td, color: t.ink3 }}>No runs yet.</td></tr>
+              ) : (
+                rows.map((r) => {
+                  const ctc = runCashToClose(r);
+                  return (
+                    <tr
+                      key={r.id}
+                      onClick={() => onOpen(r.id)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <td style={td}>{runCreator(r)}</td>
+                      <td style={{ ...td, color: t.ink3 }}>{new Date(r.created_at).toLocaleDateString()}</td>
+                      <td style={td}>{runAddress(r)}</td>
+                      <td style={td}>{r.deal_grade ?? "—"}</td>
+                      <td style={td}>{r.deal_score ?? "—"}</td>
+                      <td style={td}>{ctc != null ? $(ctc) : "—"}</td>
+                      <td style={{ ...td, color: t.ink3 }}>{r.status}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function RunInspect({
+  t,
+  row,
+  loading,
+  onBack,
+}: {
+  t: Th;
+  row: FixFlipScenarioRow | undefined;
+  loading: boolean;
+  onBack: () => void;
+}) {
+  const back = (
+    <button
+      type="button"
+      onClick={onBack}
+      style={{ all: "unset", cursor: "pointer", color: t.petrol, fontSize: 13, fontWeight: 700 }}
+    >
+      ← Back to all runs
+    </button>
+  );
+  if (loading) {
+    return <div style={{ maxWidth: 860, margin: "0 auto" }}><Card pad={20}><div style={{ fontSize: 13, color: t.ink3 }}>Loading…</div></Card></div>;
+  }
+  if (!row) {
+    return (
+      <div style={{ maxWidth: 860, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
+        {back}
+        <Card pad={20}><div style={{ fontSize: 13, color: t.ink2 }}>Run not found.</div></Card>
+      </div>
+    );
+  }
+  const p = (row.payload as RunPayload | null) ?? null;
+  const result = (p?.result ?? null) as Record<string, unknown> | null;
+  const inputs = (p?.inputs ?? null) as Record<string, unknown> | null;
+  const num = (v: unknown): string =>
+    typeof v === "number" ? $(v) : "—";
+  return (
+    <div style={{ maxWidth: 860, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
+      {back}
+      <div>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>
+          Viewing {runCreator(row)}&apos;s run
+        </h1>
+        <p style={{ fontSize: 12.5, color: t.ink3, margin: "4px 0 0" }}>
+          {new Date(row.created_at).toLocaleString()} · {runAddress(row)} · read-only
+        </p>
+      </div>
+      {!result ? (
+        <Card pad={20}>
+          <div style={{ fontSize: 13, color: t.ink2 }}>
+            This run has no saved result snapshot to display.
+          </div>
+        </Card>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+          <Card pad={14}><KPI label="Deal Grade" value={String(row.deal_grade ?? "—")} sub={`Score ${row.deal_score ?? "—"}/100`} /></Card>
+          <Card pad={14}><KPI label="Net Profit" value={num(result["projectedNetProfit"])} /></Card>
+          <Card pad={14}><KPI label="Cash to Close" value={num(result["estimatedCashToClose"])} /></Card>
+          <Card pad={14}><KPI label="Loan Amount" value={num(result["loanAmount"])} /></Card>
+          <Card pad={14}><KPI label="Construction outside loan" value={num(result["constructionOutsideLoan"])} /></Card>
+          <Card pad={14}><KPI label="Within 75% ARV" value={result["withinArvEnvelope"] ? "Yes" : "No"} /></Card>
+        </div>
+      )}
+      {inputs ? (
+        <Card pad={16}>
+          <SectionLabel>Saved inputs</SectionLabel>
+          <pre style={{ fontSize: 11.5, color: t.ink2, whiteSpace: "pre-wrap", margin: 0 }}>
+            {JSON.stringify(inputs, null, 2)}
+          </pre>
+        </Card>
+      ) : null}
     </div>
   );
 }

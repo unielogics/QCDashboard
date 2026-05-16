@@ -31,6 +31,7 @@ import type {
   SimulatorSettings,
 } from "@/lib/types";
 import { useInitSignatureUpload } from "@/hooks/useApi";
+import { DealAnalyzerSection } from "./DealAnalyzerSection";
 
 // Doc Checklists + AI Cadence are reachable via deep-link from the
 // Lending AI portal (/admin/lending-ai → Legacy tiles) but no longer
@@ -41,6 +42,7 @@ const SECTIONS = [
   { id: "referrals", label: "Referrals", icon: "user" as const, hidden: false },
   { id: "pricing", label: "Pricing", icon: "rates" as const, hidden: false },
   { id: "simulator", label: "Simulator", icon: "calc" as const, hidden: false },
+  { id: "deal_analyzer", label: "Deal Analyzer", icon: "calc" as const, hidden: false },
   { id: "letterhead", label: "Firm letterhead", icon: "docCheck" as const, hidden: false },
   { id: "security", label: "Security", icon: "shield" as const, hidden: false },
   { id: "team", label: "Team", icon: "clients" as const, hidden: false },
@@ -363,6 +365,7 @@ export default function SettingsPage() {
               saving={update.isPending}
             />
           )}
+          {section === "deal_analyzer" && <DealAnalyzerSection />}
           {section === "letterhead" && (
             <LetterheadSection
               draft={draft}

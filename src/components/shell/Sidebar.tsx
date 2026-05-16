@@ -57,7 +57,7 @@ const OPERATOR_NAV: NavItem[] = [
   { href: "/vault", label: "Vault", icon: "vault" },
   { href: "/admin/prequal-requests", label: "Prequalifications", icon: "docCheck", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
   { href: "/admin/lenders", label: "Lenders", icon: "building", roles: [Role.SUPER_ADMIN] },
-  { href: "/admin/closing-costs", label: "Closing Costs", icon: "sliders", roles: [Role.SUPER_ADMIN] },
+  // Closing-cost tiers moved into Settings → "Deal Analyzer" tab.
   // Lending AI is reached from /settings → "Open Lending AI" banner.
   { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "cal" },
