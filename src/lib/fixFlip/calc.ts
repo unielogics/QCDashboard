@@ -164,6 +164,9 @@ export interface CoreNumbers {
   constructionOutsideLoan: number;
   withinArvEnvelope: boolean;
   arvEnvelopeOverflow: number;
+  arvUsedPct: number;
+  arvHeadroom: number;
+  totalFeesAndCosts: number;
   projectedNetProfit: number;
   profitMargin: number;
   cashOnCashReturn: number;
@@ -234,6 +237,25 @@ export function computeCore(
     purchase + rehab + rehabContingencyAmount + acqFees - arvEnvelope,
   );
   const withinArvEnvelope = arvEnvelopeOverflow <= 0;
+  // How much of ARV the all-in deal consumes, and how much more the
+  // borrower could still pull before hitting the 75% ceiling.
+  const arvAllIn = purchase + rehab + rehabContingencyAmount + acqFees;
+  const arvUsedPct = arv > 0 ? arvAllIn / arv : 0;
+  const arvHeadroom = Math.max(0, arvEnvelope - arvAllIn);
+  // Every soft cost the deal carries (financing + carrying + selling
+  // + closing + lender fees + contingency) — i.e. everything that is
+  // NOT the purchase or rehab principal. Cash to close covers only a
+  // slice of this, so it is disclosed explicitly in the HUD.
+  const totalFeesAndCosts =
+    estimatedClosingCosts +
+    lenderPointsCost +
+    feeTotal(i) +
+    insurance +
+    taxEscrow +
+    estimatedInterestPaid +
+    estimatedHoldingCosts +
+    estimatedSellingCosts +
+    rehabContingencyAmount;
   // Financed: lender wraps construction into the loan within the
   // 75%-ARV envelope, so only the overflow above it is the
   // borrower's. Self-funded: the whole construction budget sits
@@ -272,6 +294,9 @@ export function computeCore(
     constructionOutsideLoan,
     withinArvEnvelope,
     arvEnvelopeOverflow,
+    arvUsedPct,
+    arvHeadroom,
+    totalFeesAndCosts,
     projectedNetProfit,
     profitMargin,
     cashOnCashReturn,

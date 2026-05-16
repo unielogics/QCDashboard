@@ -163,6 +163,9 @@ export interface FixFlipAnalysisResult {
   constructionOutsideLoan: number;
   withinArvEnvelope: boolean;
   arvEnvelopeOverflow: number;
+  arvUsedPct: number;
+  arvHeadroom: number;
+  totalFeesAndCosts: number;
   projectedNetProfit: number;
   profitMargin: number;
   cashOnCashReturn: number;

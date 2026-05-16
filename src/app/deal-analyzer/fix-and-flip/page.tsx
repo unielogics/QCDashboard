@@ -116,6 +116,7 @@ export default function FixAndFlipAnalyzerPage() {
   const [stepIdx, setStepIdx] = useState(0);
   const [tab, setTab] = useState<Tab>("Summary");
   const [flash, setFlash] = useState<string | null>(null);
+  const [coverage, setCoverage] = useState<"financed" | "self">("financed");
   const step: Step = STEPS[stepIdx];
 
   // Credit + experience always come from the profile, never the form.
@@ -124,10 +125,18 @@ export default function FixAndFlipAnalyzerPage() {
     [i, derivedCredit, derivedExperience],
   );
   const { data: closingTiers } = useClosingCostTiers();
-  const result = useMemo(
+  const resultFinanced = useMemo(
     () => analyzeFixFlip(inputs, { closingTiers }),
     [inputs, closingTiers],
   );
+  const resultSelf = useMemo(
+    () => analyzeFixFlip(inputs, { closingTiers, selfFundRehab: true }),
+    [inputs, closingTiers],
+  );
+  // The whole Results view follows the coverage toggle; financed is
+  // the canonical one we persist.
+  const result =
+    coverage === "financed" ? resultFinanced : resultSelf;
 
   // Operator (super-admin / loan-exec) surface: land on a system-wide
   // table of every user's runs; "+" opens the wizard; a row opens
@@ -158,12 +167,12 @@ export default function FixAndFlipAnalyzerPage() {
   // Auto-save on "Analyze Deal". First analyze creates the run;
   // editing inputs and re-analyzing PATCHes the same row.
   const autoSave = async () => {
-    if (result.validationErrors.length) return;
+    if (resultFinanced.validationErrors.length) return;
     const body = {
       status: "saved",
-      payload: { inputs, result } as unknown as Record<string, unknown>,
-      deal_score: result.dealScore,
-      deal_grade: result.dealGrade,
+      payload: { inputs, result: resultFinanced } as unknown as Record<string, unknown>,
+      deal_score: resultFinanced.dealScore,
+      deal_grade: resultFinanced.dealGrade,
     };
     try {
       if (savedId) {
@@ -340,6 +349,30 @@ export default function FixAndFlipAnalyzerPage() {
                 <Card pad={14}><KPI label="Loan Amount" value={$(result.loanAmount)} /></Card>
                 <Card pad={14}><KPI label="Max Safe Purchase" value={$(result.maxSafePurchasePrice)} sub={`Purchase: ${result.purchasePriceGrade}`} accent={gradeColor(t, result.purchasePriceGrade)} /></Card>
               </div>
+              {/* Coverage toggle — switches EVERY tab/figure below
+                  between the two construction scenarios. */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>Construction</span>
+                <div style={{ display: "inline-flex", border: `1px solid ${t.line}`, borderRadius: 999, overflow: "hidden" }}>
+                  {(["financed", "self"] as const).map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setCoverage(c)}
+                      style={{
+                        all: "unset",
+                        cursor: "pointer",
+                        padding: "6px 14px",
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        background: coverage === c ? t.petrol : "transparent",
+                        color: coverage === c ? "#fff" : t.ink3,
+                      }}
+                    >
+                      {c === "financed" ? "Construction financed" : "You fund construction"}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {TABS.map((x) => (
                   <button key={x} onClick={() => setTab(x)} style={{ all: "unset", cursor: "pointer", padding: "6px 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 700, border: `1px solid ${tab === x ? t.petrol : t.line}`, background: tab === x ? t.petrolSoft : "transparent", color: tab === x ? t.petrol : t.ink3 }}>{x}</button>
@@ -348,20 +381,22 @@ export default function FixAndFlipAnalyzerPage() {
               <div>
                 {tab === "Summary" ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                    <div>
-                      {result.withinArvEnvelope ? (
-                        <Pill bg={t.profitBg} color={t.profit}>Within 75% ARV · borrower protected</Pill>
-                      ) : (
-                        <Pill bg={t.chip} color={t.danger}>
-                          Over 75% ARV by {$(result.arvEnvelopeOverflow)} · borrower liability outside the loan
-                        </Pill>
-                      )}
+                    <div style={{ borderRadius: 10, padding: 12, background: result.withinArvEnvelope ? t.profitBg : t.chip }}>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: result.withinArvEnvelope ? t.profit : t.danger }}>
+                        At {(result.arvUsedPct * 100).toFixed(1)}% of ARV{" "}
+                        <span style={{ fontWeight: 600 }}>(lenders cap at 75%)</span>
+                      </div>
+                      <div style={{ fontSize: 12.5, color: result.withinArvEnvelope ? t.profit : t.danger, marginTop: 3 }}>
+                        {result.withinArvEnvelope
+                          ? `Borrower protected — up to ${$(result.arvHeadroom)} more can still be pulled before hitting the 75% ceiling.`
+                          : `Over the 75% ceiling by ${$(result.arvEnvelopeOverflow)} — that amount is the borrower's liability outside the loan.`}
+                      </div>
                     </div>
                     <div>
-                      <SectionLabel>Construction coverage</SectionLabel>
+                      <SectionLabel>Construction coverage · click to switch the whole view</SectionLabel>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 6 }}>
-                        <ScenarioCard t={t} title="Construction financed (draws)" sub="Lender draws rehab (≤75% ARV)" s={result.constructionScenarios.financed} accent={t.profit} />
-                        <ScenarioCard t={t} title="You fund construction" sub="Construction stays outside the loan" s={result.constructionScenarios.selfFunded} accent={t.ink2} />
+                        <ScenarioCard t={t} title="Construction financed (draws)" sub="Lender draws rehab (≤75% ARV)" s={result.constructionScenarios.financed} accent={t.profit} active={coverage === "financed"} onClick={() => setCoverage("financed")} />
+                        <ScenarioCard t={t} title="You fund construction" sub="Construction stays outside the loan" s={result.constructionScenarios.selfFunded} accent={t.ink2} active={coverage === "self"} onClick={() => setCoverage("self")} />
                       </div>
                     </div>
                     <div>
@@ -409,15 +444,7 @@ export default function FixAndFlipAnalyzerPage() {
                   </div>
                 ) : null}
                 {tab === "HUD Forecast" ? (
-                  <div style={{ fontSize: 13 }}>
-                    {[["Purchase price", -inputs.purchasePrice], ["Loan amount", result.loanAmount], ["Origination / points", -result.lenderPointsCost], ["Closing costs", -result.estimatedClosingCosts], ["Interest (hold period)", -result.estimatedInterestPaid], ["Holding costs", -result.estimatedHoldingCosts], ["Selling costs", -result.estimatedSellingCosts]].map(([k, v]) => (
-                      <div key={k as string} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: `1px solid ${t.line}` }}>
-                        <span style={{ color: t.ink2 }}>{k}</span><span style={{ color: (v as number) < 0 ? t.danger : t.ink, fontWeight: 700 }}>{$(v as number)}</span>
-                      </div>
-                    ))}
-                    <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, fontWeight: 800 }}><span style={{ color: t.ink }}>Estimated cash to close</span><span style={{ color: t.ink }}>{$(result.estimatedCashToClose)}</span></div>
-                    <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 8 }}>This is a forecast only. Final cash to close depends on lender approval, title, taxes, insurance, draw schedule, and the final settlement statement.</div>
-                  </div>
+                  <HudForecast t={t} result={result} arv={inputs.arv} />
                 ) : null}
                 {tab === "Profit Breakdown" ? (
                   <div style={{ fontSize: 13 }}>
@@ -483,6 +510,8 @@ function ScenarioCard({
   sub,
   s,
   accent,
+  active,
+  onClick,
 }: {
   t: Th;
   title: string;
@@ -495,6 +524,8 @@ function ScenarioCard({
     holdMonths: number;
   };
   accent: string;
+  active?: boolean;
+  onClick?: () => void;
 }) {
   const row = (k: string, v: string, c?: string, strong?: boolean) => (
     <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "3px 0" }}>
@@ -503,8 +534,21 @@ function ScenarioCard({
     </div>
   );
   return (
-    <Card pad={12} style={{ borderTop: `3px solid ${accent}` }}>
-      <div style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>{title}</div>
+    <Card
+      pad={12}
+      onClick={onClick}
+      style={{
+        borderTop: `3px solid ${accent}`,
+        border: active ? `2px solid ${accent}` : undefined,
+        borderTopWidth: 3,
+        cursor: onClick ? "pointer" : undefined,
+        opacity: onClick && !active ? 0.7 : 1,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 800, color: t.ink }}>{title}</div>
+        {active ? <span style={{ fontSize: 11, fontWeight: 800, color: accent }}>● selected</span> : null}
+      </div>
       <div style={{ fontSize: 11.5, color: t.ink3, marginBottom: 8 }}>{sub}</div>
       {row("Cash to close", `$${Math.round(s.estimatedCashToClose).toLocaleString()}`, t.ink, true)}
       {row("Construction you fund (outside loan)", `$${Math.round(s.constructionOutsideLoan).toLocaleString()}`)}
@@ -833,6 +877,68 @@ function RunInspect({
           </pre>
         </Card>
       ) : null}
+    </div>
+  );
+}
+
+function HudForecast({
+  t,
+  result,
+  arv,
+}: {
+  t: Th;
+  result: Analysis;
+  arv: number;
+}) {
+  type L = { k: string; v: number; kind?: "cost" | "total" | "credit" | "final" };
+  const lines: L[] = [
+    { k: "Purchase price", v: result.totalProjectCost - result.rehabContingencyAmount, kind: "cost" },
+    { k: "Closing costs", v: result.estimatedClosingCosts, kind: "cost" },
+    { k: "Origination / points", v: result.lenderPointsCost, kind: "cost" },
+    { k: "Rehab safety buffer", v: result.rehabContingencyAmount, kind: "cost" },
+    { k: "Holding / carry", v: result.estimatedHoldingCosts, kind: "cost" },
+    { k: "Interest (hold period)", v: result.estimatedInterestPaid, kind: "cost" },
+    { k: "Selling costs", v: result.estimatedSellingCosts, kind: "cost" },
+    { k: "Total fees & costs", v: result.totalFeesAndCosts, kind: "total" },
+    { k: "Loan amount (credit)", v: -result.loanAmount, kind: "credit" },
+    { k: "Estimated cash to close", v: result.estimatedCashToClose, kind: "final" },
+  ];
+  const head = { fontSize: 10.5, fontWeight: 700, color: t.ink4, textTransform: "uppercase" as const, letterSpacing: 0.6 };
+  return (
+    <div style={{ fontSize: 13 }}>
+      <div style={{ display: "flex", padding: "0 0 6px" }}>
+        <span style={{ flex: 1, ...head }}>Item</span>
+        <span style={{ width: 130, textAlign: "right", ...head }}>Amount</span>
+        <span style={{ width: 70, textAlign: "right", ...head }}>% ARV</span>
+      </div>
+      {lines.map((l) => {
+        const isTotal = l.kind === "total" || l.kind === "final";
+        const credit = l.kind === "credit";
+        const pct = arv > 0 ? (Math.abs(l.v) / arv) * 100 : 0;
+        return (
+          <div
+            key={l.k}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              padding: l.kind === "final" ? "10px 0 0" : "6px 0",
+              borderTop: l.kind === "final" ? `1px solid ${t.line}` : "none",
+              borderBottom: l.kind === "final" ? "none" : `1px solid ${t.line}`,
+            }}
+          >
+            <span style={{ flex: 1, color: isTotal ? t.ink : t.ink2, fontWeight: isTotal ? 800 : 400 }}>{l.k}</span>
+            <span style={{ width: 130, textAlign: "right", fontWeight: isTotal ? 800 : 700, color: credit ? t.profit : isTotal ? t.ink : t.ink2 }}>
+              {credit ? `(${$(Math.abs(l.v))})` : $(l.v)}
+            </span>
+            <span style={{ width: 70, textAlign: "right", color: t.ink3 }}>({pct.toFixed(1)}%)</span>
+          </div>
+        );
+      })}
+      <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 8 }}>
+        Cash to close is only the money due at the table — not the total project cost.
+        Forecast only; final figures depend on lender approval, title, taxes, insurance,
+        draw schedule, and the final settlement statement.
+      </div>
     </div>
   );
 }
