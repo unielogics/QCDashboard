@@ -102,6 +102,7 @@ import type {
   AgentTaskVisibility,
 } from "@/lib/types";
 import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurpose, PropertyType, Role, DealChatMode, FeedbackOutputType, FeedbackRating, AmortizationStyle } from "@/lib/enums.generated";
+import type { ClosingCostTier } from "@/lib/fixFlip/types";
 
 function useDevUser(): string {
   return useActiveProfile().email;
@@ -2640,6 +2641,63 @@ export function useDeleteLender() {
         { method: "DELETE" },
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["lenders", devUser] }),
+  });
+}
+
+// ── Closing-cost tiers (SUPER_ADMIN config; analyzer reads) ───────────
+
+interface ClosingCostTierRow {
+  id: string;
+  from_amount: number | null;
+  to_amount: number | null;
+  percentage: number;
+  minimum_dollar: number;
+  sort_order: number;
+}
+
+function toTier(r: ClosingCostTierRow): ClosingCostTier {
+  return {
+    id: r.id,
+    fromAmount: r.from_amount,
+    toAmount: r.to_amount,
+    percentage: Number(r.percentage),
+    minimumDollar: Number(r.minimum_dollar),
+  };
+}
+
+export function useClosingCostTiers() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["closingCostTiers", devUser],
+    queryFn: async (): Promise<ClosingCostTier[]> => {
+      const rows = await apiCall<ClosingCostTierRow[]>(`/closing-costs`);
+      return rows.map(toTier);
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+// Bulk replace — backs the Excel-grid Save (single transaction).
+export function useReplaceClosingCostTiers() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (tiers: ClosingCostTier[]) =>
+      apiCall<ClosingCostTierRow[]>(`/closing-costs`, {
+        method: "PUT",
+        body: JSON.stringify({
+          tiers: tiers.map((tr, idx) => ({
+            from_amount: tr.fromAmount,
+            to_amount: tr.toAmount,
+            percentage: tr.percentage,
+            minimum_dollar: tr.minimumDollar,
+            sort_order: idx,
+          })),
+        }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["closingCostTiers", devUser] }),
   });
 }
 

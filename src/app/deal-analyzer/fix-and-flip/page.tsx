@@ -11,6 +11,7 @@ import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primit
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import {
   useClient,
+  useClosingCostTiers,
   useCurrentCredit,
   useMyClient,
   useSaveFixFlipScenario,
@@ -73,9 +74,7 @@ const DEFAULTS: FixFlipInputs = {
   arv: 0,
   rehabCost: 0,
   rehabContingencyPct: 0.1,
-  monthlyHoldingCost: 0,
   sellingCostPct: 0.06,
-  closingCostPct: 0.02,
   constructionMonths: 4,
   monthsToSell: 3,
   experience: "1_2_flips",
@@ -115,7 +114,11 @@ export default function FixAndFlipAnalyzerPage() {
     () => ({ ...i, creditScore: derivedCredit, experience: derivedExperience }),
     [i, derivedCredit, derivedExperience],
   );
-  const result = useMemo(() => analyzeFixFlip(inputs), [inputs]);
+  const { data: closingTiers } = useClosingCostTiers();
+  const result = useMemo(
+    () => analyzeFixFlip(inputs, { closingTiers }),
+    [inputs, closingTiers],
+  );
 
   const set = <K extends keyof FixFlipInputs>(k: K, v: FixFlipInputs[K]) =>
     setI((p) => ({ ...p, [k]: v }));
@@ -222,7 +225,10 @@ export default function FixAndFlipAnalyzerPage() {
             {fld('Rehab / construction budget', inputs.rehabCost, (s) => set("rehabCost", num(s)))}
             {fld('Rehab contingency %', inputs.rehabContingencyPct * 100, (s) => set("rehabContingencyPct", num(s) / 100), '10')}
             {fld('Selling cost %', inputs.sellingCostPct * 100, (s) => set("sellingCostPct", num(s) / 100), '6')}
-            {fld('Closing cost %', inputs.closingCostPct * 100, (s) => set("closingCostPct", num(s) / 100), '2')}
+            <div style={{ fontSize: 11.5, color: t.ink3 }}>
+              Closing % is derived from the firm&apos;s closing-cost tier table; monthly
+              carry (interest + taxes + insurance) is system-generated. Neither is entered here.
+            </div>
           </div>
         ) : null}
 
@@ -231,9 +237,9 @@ export default function FixAndFlipAnalyzerPage() {
             <SectionLabel>Timeline &amp; cash</SectionLabel>
             {fld('Construction months', inputs.constructionMonths, (s) => set("constructionMonths", num(s)))}
             {fld('Months to sell after construction', inputs.monthsToSell, (s) => set("monthsToSell", num(s)))}
-            {fld('Monthly holding cost', inputs.monthlyHoldingCost, (s) => set("monthlyHoldingCost", num(s)))}
             {fld('Cash to work available', inputs.liquidity ?? 0, (s) => set("liquidity", num(s) || undefined))}
             <div style={{ fontSize: 12, color: t.ink3 }}>Total hold: <b style={{ color: t.ink }}>{result.holdMonths} months</b></div>
+            <div style={{ fontSize: 12, color: t.ink3, marginTop: 4 }}>Est. monthly carry: <b style={{ color: t.ink }}>{$(result.estimatedMonthlyCarry)}/mo</b> <span style={{ color: t.ink4 }}>(interest + taxes + insurance, system-generated)</span></div>
           </div>
         ) : null}
 
@@ -287,7 +293,22 @@ export default function FixAndFlipAnalyzerPage() {
               </div>
               <div>
                 {tab === "Summary" ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    <div>
+                      <SectionLabel>Construction coverage</SectionLabel>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 6 }}>
+                        <ScenarioCard t={t} title="Construction financed (draws)" sub="Lender draws the rehab" s={result.constructionScenarios.financed} accent={t.profit} />
+                        <ScenarioCard t={t} title="You fund construction" sub="Rehab is borrower cash" s={result.constructionScenarios.selfFunded} accent={t.ink2} />
+                      </div>
+                    </div>
+                    <div>
+                      <SectionLabel>Where the money comes from</SectionLabel>
+                      <CapitalStack t={t} result={result} />
+                    </div>
+                    <div>
+                      <SectionLabel>From sale price to net profit</SectionLabel>
+                      <ProfitWaterfall t={t} inputs={inputs} result={result} />
+                    </div>
                     <PriceMeter t={t} grade={result.purchasePriceGrade} />
                     <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.55 }}>{result.explanation}</div>
                     {result.warnings.map((w) => <div key={w} style={{ fontSize: 12.5, color: t.warn }}>⚠ {w}</div>)}
@@ -303,10 +324,16 @@ export default function FixAndFlipAnalyzerPage() {
                             <div style={{ fontSize: 13.5, fontWeight: 700, color: t.ink }}>{f.program.name}{result.bestProgram?.id === f.program.id ? <Pill bg={t.profitBg} color={t.profit}>Best overall</Pill> : null}</div>
                             <div style={{ fontSize: 12, color: t.ink3 }}>{(f.program.interestRate * 100).toFixed(2)}% · {f.program.points} pts · {f.program.termMonths}mo</div>
                           </div>
-                          <div style={{ textAlign: "right", fontSize: 12 }}><div style={{ color: t.ink }}>{$(f.loanAmount)} loan</div><div style={{ color: t.ink3 }}>{$(f.estimatedCashToClose)} cash</div></div>
+                          <div style={{ textAlign: "right", fontSize: 12 }}><div style={{ color: t.ink, fontWeight: 700 }}>Cash to close: {$(f.estimatedCashToClose)}</div><div style={{ color: t.ink3 }}>{$(f.loanAmount)} loan</div></div>
                         </div>
                       ))}
                     </div>
+                    {result.eligiblePrograms.length > 1 ? (
+                      <div>
+                        <SectionLabel>Compare all</SectionLabel>
+                        <CompareTable t={t} result={result} />
+                      </div>
+                    ) : null}
                     <div>
                       <SectionLabel>Not eligible based on current rules</SectionLabel>
                       {result.ineligiblePrograms.map((f) => (
@@ -380,6 +407,157 @@ export default function FixAndFlipAnalyzerPage() {
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+type Th = ReturnType<typeof useTheme>["t"];
+type Analysis = ReturnType<typeof analyzeFixFlip>;
+
+function ScenarioCard({
+  t,
+  title,
+  sub,
+  s,
+  accent,
+}: {
+  t: Th;
+  title: string;
+  sub: string;
+  s: { loanAmount: number; estimatedCashToClose: number; projectedNetProfit: number; holdMonths: number };
+  accent: string;
+}) {
+  const row = (k: string, v: string, c?: string, strong?: boolean) => (
+    <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
+      <span style={{ fontSize: 12, color: t.ink3 }}>{k}</span>
+      <span style={{ fontSize: 12.5, fontWeight: strong ? 800 : 600, color: c ?? t.ink }}>{v}</span>
+    </div>
+  );
+  return (
+    <Card pad={12} style={{ borderTop: `3px solid ${accent}` }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>{title}</div>
+      <div style={{ fontSize: 11.5, color: t.ink3, marginBottom: 8 }}>{sub}</div>
+      {row("Cash to close", `$${Math.round(s.estimatedCashToClose).toLocaleString()}`, t.ink, true)}
+      {row("Loan amount", `$${Math.round(s.loanAmount).toLocaleString()}`)}
+      {row("Net profit", `$${Math.round(s.projectedNetProfit).toLocaleString()}`, s.projectedNetProfit > 0 ? t.profit : t.danger)}
+    </Card>
+  );
+}
+
+function StackBar({ segs }: { segs: { w: number; color: string }[] }) {
+  const total = segs.reduce((a, s) => a + Math.max(0, s.w), 0) || 1;
+  return (
+    <div style={{ display: "flex", height: 22, borderRadius: 6, overflow: "hidden", marginTop: 6 }}>
+      {segs.map((s, idx) => (
+        <div key={idx} style={{ width: `${(Math.max(0, s.w) / total) * 100}%`, background: s.color }} />
+      ))}
+    </div>
+  );
+}
+
+function Legend({ t, items }: { t: Th; items: { color: string; label: string; value: string }[] }) {
+  return (
+    <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+      {items.map((it) => (
+        <div key={it.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ width: 10, height: 10, borderRadius: 3, background: it.color }} />
+          <span style={{ flex: 1, fontSize: 12, color: t.ink3 }}>{it.label}</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: t.ink }}>{it.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CapitalStack({ t, result }: { t: Th; result: Analysis }) {
+  const m = (x: number) => `$${Math.round(x).toLocaleString()}`;
+  return (
+    <div>
+      <StackBar
+        segs={[
+          { w: result.loanAmount, color: t.profit },
+          { w: result.estimatedCashToClose, color: t.ink2 },
+          { w: result.rehabContingencyAmount, color: t.warn },
+        ]}
+      />
+      <Legend
+        t={t}
+        items={[
+          { color: t.profit, label: "Lender funds", value: m(result.loanAmount) },
+          { color: t.ink2, label: "Cash to close", value: m(result.estimatedCashToClose) },
+          { color: t.warn, label: "Rehab contingency reserve", value: m(result.rehabContingencyAmount) },
+        ]}
+      />
+    </div>
+  );
+}
+
+function ProfitWaterfall({ t, inputs, result }: { t: Th; inputs: FixFlipInputs; result: Analysis }) {
+  const m = (x: number) => `$${Math.round(x).toLocaleString()}`;
+  const costs =
+    inputs.purchasePrice +
+    inputs.rehabCost +
+    result.rehabContingencyAmount +
+    result.estimatedClosingCosts +
+    result.estimatedInterestPaid +
+    result.estimatedHoldingCosts +
+    result.estimatedSellingCosts;
+  return (
+    <div>
+      <StackBar
+        segs={[
+          { w: costs, color: t.danger },
+          { w: Math.max(0, result.projectedNetProfit), color: t.profit },
+        ]}
+      />
+      <Legend
+        t={t}
+        items={[
+          { color: t.ink3, label: "Sale price (ARV)", value: m(inputs.arv) },
+          { color: t.danger, label: "All-in costs", value: m(costs) },
+          { color: t.profit, label: "Net profit", value: m(result.projectedNetProfit) },
+        ]}
+      />
+    </div>
+  );
+}
+
+function CompareTable({ t, result }: { t: Th; result: Analysis }) {
+  const m = (x: number) => `$${Math.round(x).toLocaleString()}`;
+  const progs = result.eligiblePrograms;
+  const rows: { label: string; cell: (f: (typeof progs)[number]) => string }[] = [
+    { label: "Loan", cell: (f) => m(f.loanAmount) },
+    { label: "Cash to close", cell: (f) => m(f.estimatedCashToClose) },
+    { label: "Rate", cell: (f) => `${(f.program.interestRate * 100).toFixed(2)}%` },
+    { label: "Points", cell: (f) => `${f.program.points}` },
+    { label: "Term", cell: (f) => `${f.program.termMonths}mo` },
+    { label: "Net profit", cell: (f) => m(f.projectedNetProfit) },
+  ];
+  const cell = { padding: "7px 10px", fontSize: 12.5, borderBottom: `1px solid ${t.line}` } as const;
+  return (
+    <div style={{ overflowX: "auto", marginTop: 6 }}>
+      <table style={{ borderCollapse: "collapse", minWidth: 480 }}>
+        <thead>
+          <tr>
+            <th style={{ ...cell, textAlign: "left", color: t.ink3 }} />
+            {progs.map((f) => (
+              <th key={f.program.id} style={{ ...cell, textAlign: "left", color: result.bestProgram?.id === f.program.id ? t.profit : t.ink, fontWeight: 800 }}>
+                {f.program.name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.label}>
+              <td style={{ ...cell, color: t.ink3 }}>{r.label}</td>
+              {progs.map((f) => (
+                <td key={f.program.id} style={{ ...cell, color: t.ink, fontWeight: 600 }}>{r.cell(f)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

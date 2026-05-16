@@ -5,12 +5,15 @@
 // BYTE-IDENTICAL between QCDashboard and QCMobile.
 
 import type {
+  AnalyzeOptions,
+  ClosingCostTier,
   DealGrade,
   FixFlipAnalysisResult,
   FixFlipInputs,
   Grade,
   LendingProgram,
   ProgramFitResult,
+  ScenarioNums,
   SensitivityScenario,
 } from "./types";
 import { matchPrograms } from "./programMatcher";
@@ -20,6 +23,40 @@ export const FF_MAX_LTC = 0.85;
 export const FF_MAX_ARV_LTV = 0.7;
 const DEFAULT_RATE = 0.1075;
 const DEFAULT_POINTS = 2;
+
+// Closing % when no tier table is supplied / no tier matches.
+export const DEFAULT_CLOSING_PCT = 0.02;
+// System-generated monthly carry: interest + taxes + insurance.
+// Taxes/insurance are annual fractions of (adjusted) ARV. Tunable.
+export const TAX_RATE_ANNUAL = 0.011;
+export const INS_RATE_ANNUAL = 0.005;
+
+// Effective closing % for a loan amount against the SUPER_ADMIN tier
+// table. Tier match is by loan amount ∈ [fromAmount, toAmount] (null
+// bound = open). Floor: max(percentage, minimumDollar / loanAmount)
+// so a small loan floors at the tier's minimum dollar.
+export function resolveClosingPct(
+  loanAmount: number,
+  tiers?: ClosingCostTier[],
+): number {
+  if (!tiers || tiers.length === 0 || !(loanAmount > 0))
+    return DEFAULT_CLOSING_PCT;
+  const tier = tiers.find((t) => {
+    const lo = t.fromAmount == null ? -Infinity : t.fromAmount;
+    const hi = t.toAmount == null ? Infinity : t.toAmount;
+    return loanAmount >= lo && loanAmount <= hi;
+  });
+  if (!tier) return DEFAULT_CLOSING_PCT;
+  return Math.max(n(tier.percentage), n(tier.minimumDollar) / loanAmount);
+}
+
+function effRehabFundedPct(
+  program?: LendingProgram,
+  selfFundRehab?: boolean,
+): number {
+  if (selfFundRehab) return 0;
+  return program ? (program.maxRehabFundingPct ?? 1) : 1;
+}
 
 function n(v: number | undefined | null, d = 0): number {
   return Number.isFinite(v as number) ? (v as number) : d;
@@ -46,7 +83,11 @@ export interface SizedLoan {
 // Program-aware loan sizing. No program → the default F&F caps
 // (min(0.85×(brv+rehab), 0.70×arv)) so the sanity test
 // 300k/500k/80k → 323k holds.
-export function sizeLoan(i: FixFlipInputs, program?: LendingProgram): SizedLoan {
+export function sizeLoan(
+  i: FixFlipInputs,
+  program?: LendingProgram,
+  selfFundRehab?: boolean,
+): SizedLoan {
   const purchase = n(i.purchasePrice);
   const rehab = rehabAdjusted(i);
   const arv = arvAdjusted(i);
@@ -57,10 +98,12 @@ export function sizeLoan(i: FixFlipInputs, program?: LendingProgram): SizedLoan 
   const ltcCap = maxLTC * totalCost;
   const arvCap = maxARVLTV * arv;
 
+  const rehabFundedPct = effRehabFundedPct(program, selfFundRehab);
+
   let loanAmount: number;
   if (program && program.maxPurchaseFundingPct != null) {
     const purchaseFunding = purchase * program.maxPurchaseFundingPct;
-    const rehabFunding = rehab * (program.maxRehabFundingPct ?? 0);
+    const rehabFunding = rehab * rehabFundedPct;
     const potential = purchaseFunding + rehabFunding;
     loanAmount = Math.min(potential, arvCap, ltcCap);
   } else {
@@ -69,7 +112,6 @@ export function sizeLoan(i: FixFlipInputs, program?: LendingProgram): SizedLoan 
   loanAmount = Math.max(0, loanAmount);
 
   // Rehab portion is released as draws → NOT available cash at close.
-  const rehabFundedPct = program ? (program.maxRehabFundingPct ?? 1) : 1;
   const loanRehabPortion = Math.min(loanAmount, rehab * rehabFundedPct);
   const loanProceedsAtClosing = Math.max(0, loanAmount - loanRehabPortion);
 
@@ -96,6 +138,7 @@ export interface CoreNumbers {
   estimatedClosingCosts: number;
   estimatedSellingCosts: number;
   estimatedHoldingCosts: number;
+  estimatedMonthlyCarry: number;
   estimatedInterestPaid: number;
   lenderPointsCost: number;
   loanAmount: number;
@@ -105,23 +148,39 @@ export interface CoreNumbers {
   cashOnCashReturn: number;
 }
 
-export function computeCore(i: FixFlipInputs, program?: LendingProgram): CoreNumbers {
+export function computeCore(
+  i: FixFlipInputs,
+  program?: LendingProgram,
+  opts?: AnalyzeOptions,
+): CoreNumbers {
   const purchase = n(i.purchasePrice);
   const rehab = rehabAdjusted(i);
   const arv = arvAdjusted(i);
   const hm = holdMonths(i);
   const rehabContingencyAmount = rehab * n(i.rehabContingencyPct, 0.1);
-  const estimatedClosingCosts = purchase * n(i.closingCostPct, 0.02);
   const estimatedSellingCosts = arv * n(i.sellingCostPct, 0.06);
-  const estimatedHoldingCosts = n(i.monthlyHoldingCost) * hm;
 
-  const sized = sizeLoan(i, program);
+  const sized = sizeLoan(i, program, opts?.selfFundRehab);
+
+  // Closing % from the SUPER_ADMIN tier table, applied to the loan
+  // amount so the tier's minimum-dollar floor is exact.
+  const closingPct = resolveClosingPct(sized.loanAmount, opts?.closingTiers);
+  const estimatedClosingCosts = sized.loanAmount * closingPct;
+
   const estimatedInterestPaid = (sized.loanAmount * sized.rate * hm) / 12;
   const lenderPointsCost = sized.loanAmount * (sized.points / 100);
 
+  // System-generated monthly carry: loan interest + ARV-derived
+  // property taxes + insurance. inputs.monthlyHoldingCost is ignored.
+  const monthlyInterest = (sized.loanAmount * sized.rate) / 12;
+  const monthlyTax = (arv * TAX_RATE_ANNUAL) / 12;
+  const monthlyInsurance = (arv * INS_RATE_ANNUAL) / 12;
+  const estimatedMonthlyCarry = monthlyInterest + monthlyTax + monthlyInsurance;
+  const estimatedHoldingCosts = estimatedMonthlyCarry * hm;
+
   const insurance = n(i.insuranceEstimate);
   const taxEscrow = n(i.taxEscrowEstimate);
-  const rehabFundedPct = program ? (program.maxRehabFundingPct ?? 1) : 1;
+  const rehabFundedPct = effRehabFundedPct(program, opts?.selfFundRehab);
   const initialRehabContribution = Math.max(0, rehab * (1 - rehabFundedPct));
 
   const estimatedCashToClose =
@@ -155,6 +214,7 @@ export function computeCore(i: FixFlipInputs, program?: LendingProgram): CoreNum
     estimatedClosingCosts,
     estimatedSellingCosts,
     estimatedHoldingCosts,
+    estimatedMonthlyCarry,
     estimatedInterestPaid,
     lenderPointsCost,
     loanAmount: sized.loanAmount,
@@ -165,11 +225,15 @@ export function computeCore(i: FixFlipInputs, program?: LendingProgram): CoreNum
   };
 }
 
-export function maxSafePurchasePrice(i: FixFlipInputs, program?: LendingProgram): number {
+export function maxSafePurchasePrice(
+  i: FixFlipInputs,
+  program?: LendingProgram,
+  opts?: AnalyzeOptions,
+): number {
   const arv = arvAdjusted(i);
   const rehab = rehabAdjusted(i);
   const targetProfit = Math.max(arv * 0.1, 25000);
-  const core = computeCore(i, program);
+  const core = computeCore(i, program, opts);
   return (
     arv -
     targetProfit -
@@ -225,7 +289,11 @@ function scoreDeal(
   );
 }
 
-function buildSensitivity(i: FixFlipInputs, program?: LendingProgram): SensitivityScenario[] {
+function buildSensitivity(
+  i: FixFlipInputs,
+  program?: LendingProgram,
+  opts?: AnalyzeOptions,
+): SensitivityScenario[] {
   const variants: { key: string; label: string; mut: (x: FixFlipInputs) => FixFlipInputs }[] = [
     { key: "base", label: "Base Case", mut: (x) => x },
     {
@@ -263,7 +331,7 @@ function buildSensitivity(i: FixFlipInputs, program?: LendingProgram): Sensitivi
     },
   ];
   return variants.map((v) => {
-    const c = computeCore(v.mut(i), program);
+    const c = computeCore(v.mut(i), program, opts);
     const score = scoreDeal(v.mut(i), c, !!program);
     return {
       key: v.key,
@@ -368,13 +436,16 @@ function buildExplanation(
   return parts.join(" ");
 }
 
-export function analyzeFixFlip(inputs: FixFlipInputs): FixFlipAnalysisResult {
+export function analyzeFixFlip(
+  inputs: FixFlipInputs,
+  opts?: AnalyzeOptions,
+): FixFlipAnalysisResult {
   const validationErrors = validate(inputs);
   const { eligible, ineligible } = matchPrograms(inputs);
 
   // Rank eligible programs by their own computed outcomes.
   const fits: ProgramFitResult[] = eligible.map((program) => {
-    const c = computeCore(inputs, program);
+    const c = computeCore(inputs, program, opts);
     return {
       program,
       loanAmount: c.loanAmount,
@@ -403,18 +474,37 @@ export function analyzeFixFlip(inputs: FixFlipInputs): FixFlipAnalysisResult {
     : undefined;
 
   const bestProgram = bestOverall?.program;
-  const core = computeCore(inputs, bestProgram);
-  const maxSafe = maxSafePurchasePrice(inputs, bestProgram);
+  const core = computeCore(inputs, bestProgram, opts);
+  const maxSafe = maxSafePurchasePrice(inputs, bestProgram, opts);
   const purchasePriceGrade = gradePurchasePrice(n(inputs.purchasePrice), maxSafe);
   const dealScore = scoreDeal(inputs, core, !!bestProgram);
   const dealGrade = dealGradeFromScore(dealScore);
   const warnings = buildWarnings(inputs, core, bestProgram);
   const recommendations = buildRecommendations(inputs, core, maxSafe, dealGrade);
   const explanation = buildExplanation(inputs, core, dealGrade, bestProgram);
-  const sensitivity = buildSensitivity(inputs, bestProgram);
+  const sensitivity = buildSensitivity(inputs, bestProgram, opts);
+
+  // Construction side-by-side: lender draws the rehab (financed)
+  // vs the borrower self-funds it (selfFunded). `core` is already
+  // the financed case for the best program.
+  const selfCore = computeCore(inputs, bestProgram, {
+    ...opts,
+    selfFundRehab: true,
+  });
+  const scenarioNums = (c: typeof core): ScenarioNums => ({
+    loanAmount: c.loanAmount,
+    estimatedCashToClose: c.estimatedCashToClose,
+    projectedNetProfit: c.projectedNetProfit,
+    holdMonths: c.holdMonths,
+  });
+  const constructionScenarios = {
+    financed: scenarioNums(core),
+    selfFunded: scenarioNums(selfCore),
+  };
 
   return {
     ...core,
+    constructionScenarios,
     maxSafePurchasePrice: maxSafe,
     purchasePriceGrade,
     dealScore,

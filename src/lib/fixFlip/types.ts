@@ -60,9 +60,12 @@ export interface FixFlipInputs {
   arv: number;
   rehabCost: number;
   rehabContingencyPct: number;    // fraction, default 0.10
-  monthlyHoldingCost: number;     // default 0
   sellingCostPct: number;         // fraction, default 0.06
-  closingCostPct: number;         // fraction, default 0.02
+  // Closing % and monthly carry are now system/config-derived (see
+  // closing-cost tiers + engine carry constants). Kept optional and
+  // IGNORED by the engine so old DEFAULTS / saved scenarios still type.
+  monthlyHoldingCost?: number;
+  closingCostPct?: number;
 
   // Timeline
   constructionMonths: number;
@@ -90,6 +93,32 @@ export interface FixFlipInputs {
   arvHaircutPct?: number;         // fraction applied to ARV
   rehabOverrunPct?: number;       // fraction added to rehab
   delayMonths?: number;           // extra hold months
+}
+
+// SUPER_ADMIN-configured loan-amount tier. `fromAmount`/`toAmount`
+// null = open-ended bound. Effective closing % for a loan is
+// max(percentage, minimumDollar / loanAmount).
+export interface ClosingCostTier {
+  id?: string;
+  fromAmount: number | null;
+  toAmount: number | null;
+  percentage: number;   // fraction, e.g. 0.02
+  minimumDollar: number;
+}
+
+export interface AnalyzeOptions {
+  closingTiers?: ClosingCostTier[];
+  // When true, the lender funds NO rehab — the borrower self-funds
+  // construction (used for the "You fund construction" scenario).
+  selfFundRehab?: boolean;
+}
+
+// Compact per-scenario numbers for the construction side-by-side.
+export interface ScenarioNums {
+  loanAmount: number;
+  estimatedCashToClose: number;
+  projectedNetProfit: number;
+  holdMonths: number;
 }
 
 export type Grade = "Excellent" | "Good" | "Fair" | "Risky" | "Poor";
@@ -120,6 +149,7 @@ export interface FixFlipAnalysisResult {
   estimatedClosingCosts: number;
   estimatedSellingCosts: number;
   estimatedHoldingCosts: number;
+  estimatedMonthlyCarry: number;
   estimatedInterestPaid: number;
   lenderPointsCost: number;
   loanAmount: number;
@@ -127,6 +157,10 @@ export interface FixFlipAnalysisResult {
   projectedNetProfit: number;
   profitMargin: number;
   cashOnCashReturn: number;
+  constructionScenarios: {
+    financed: ScenarioNums;
+    selfFunded: ScenarioNums;
+  };
   maxSafePurchasePrice: number;
   purchasePriceGrade: Grade;
   dealScore: number;
