@@ -39,23 +39,26 @@ export const DEFAULT_CLOSING_PCT = 0.02;
 export const TAX_RATE_ANNUAL = 0.011;
 export const INS_RATE_ANNUAL = 0.005;
 
-// Effective closing % for a loan amount against the SUPER_ADMIN tier
-// table. Tier match is by loan amount ∈ [fromAmount, toAmount] (null
-// bound = open). Floor: max(percentage, minimumDollar / loanAmount)
-// so a small loan floors at the tier's minimum dollar.
+// Closing % for a deal against the SUPER_ADMIN tier table. The tier
+// is matched by the BASE being charged: BRV + construction when the
+// construction is financed, BRV alone when the borrower self-funds
+// it. Each tier carries two rates — `percentage` (with construction)
+// and `percentageNoConstruction` (without). No minimum-dollar floor.
 export function resolveClosingPct(
-  loanAmount: number,
-  tiers?: ClosingCostTier[],
+  base: number,
+  tiers: ClosingCostTier[] | undefined,
+  withConstruction: boolean,
 ): number {
-  if (!tiers || tiers.length === 0 || !(loanAmount > 0))
-    return DEFAULT_CLOSING_PCT;
+  if (!tiers || tiers.length === 0 || !(base > 0)) return DEFAULT_CLOSING_PCT;
   const tier = tiers.find((t) => {
     const lo = t.fromAmount == null ? -Infinity : t.fromAmount;
     const hi = t.toAmount == null ? Infinity : t.toAmount;
-    return loanAmount >= lo && loanAmount <= hi;
+    return base >= lo && base <= hi;
   });
   if (!tier) return DEFAULT_CLOSING_PCT;
-  return Math.max(n(tier.percentage), n(tier.minimumDollar) / loanAmount);
+  return withConstruction
+    ? n(tier.percentage)
+    : n(tier.percentageNoConstruction);
 }
 
 function effRehabFundedPct(
@@ -178,12 +181,20 @@ export function computeCore(
   const rehabContingencyAmount = rehab * n(i.rehabContingencyPct, 0.1);
   const estimatedSellingCosts = arv * n(i.sellingCostPct, 0.06);
 
-  const sized = sizeLoan(i, program, opts?.selfFundRehab);
+  const selfFund = !!opts?.selfFundRehab;
+  const sized = sizeLoan(i, program, selfFund);
 
-  // Closing % from the SUPER_ADMIN tier table, applied to the loan
-  // amount so the tier's minimum-dollar floor is exact.
-  const closingPct = resolveClosingPct(sized.loanAmount, opts?.closingTiers);
-  const estimatedClosingCosts = sized.loanAmount * closingPct;
+  // Closing/origination fee. Financed → charged on (BRV +
+  // construction) at the tier's with-construction %. Self-funded →
+  // charged on BRV alone at the without-construction %. The two
+  // scenarios therefore never produce the same closing figure.
+  const closingBase = selfFund ? purchase : purchase + rehab;
+  const closingPct = resolveClosingPct(
+    closingBase,
+    opts?.closingTiers,
+    !selfFund,
+  );
+  const estimatedClosingCosts = closingBase * closingPct;
 
   const estimatedInterestPaid = (sized.loanAmount * sized.rate * hm) / 12;
   const lenderPointsCost = sized.loanAmount * (sized.points / 100);

@@ -19,16 +19,16 @@ import type { ClosingCostTier } from "@/lib/fixFlip/types";
 interface Draft {
   from: string;
   to: string;
-  pct: string;
-  min: string;
+  pctWith: string;    // % with construction financed
+  pctWithout: string; // % without construction (borrower self-funds)
 }
 
 function toDraft(tr: ClosingCostTier): Draft {
   return {
     from: tr.fromAmount == null ? "" : String(tr.fromAmount),
     to: tr.toAmount == null ? "" : String(tr.toAmount),
-    pct: String(+(tr.percentage * 100).toFixed(4)),
-    min: String(tr.minimumDollar),
+    pctWith: String(+(tr.percentage * 100).toFixed(4)),
+    pctWithout: String(+(tr.percentageNoConstruction * 100).toFixed(4)),
   };
 }
 
@@ -84,7 +84,7 @@ export function DealAnalyzerSection() {
   const setCell = (idx: number, k: keyof Draft, v: string) =>
     setRows((p) => p.map((r, i) => (i === idx ? { ...r, [k]: v } : r)));
   const addRow = () =>
-    setRows((p) => [...p, { from: "", to: "", pct: "2", min: "0" }]);
+    setRows((p) => [...p, { from: "", to: "", pctWith: "2", pctWithout: "3" }]);
   const delRow = (idx: number) =>
     setRows((p) => p.filter((_, i) => i !== idx));
 
@@ -92,8 +92,8 @@ export function DealAnalyzerSection() {
     const payload: ClosingCostTier[] = rows.map((r) => ({
       fromAmount: numOrNull(r.from),
       toAmount: numOrNull(r.to),
-      percentage: num0(r.pct) / 100,
-      minimumDollar: num0(r.min),
+      percentage: num0(r.pctWith) / 100,
+      percentageNoConstruction: num0(r.pctWithout) / 100,
     }));
     try {
       await replace.mutateAsync(payload);
@@ -104,23 +104,26 @@ export function DealAnalyzerSection() {
     setTimeout(() => setFlash(null), 3000);
   };
 
+  // Preview the resolved closing $ for a sample base (BRV, or
+  // BRV+construction) against the current unsaved grid.
   const [sample, setSample] = useState("300000");
+  const [withConstruction, setWithConstruction] = useState(true);
   const preview = useMemo(() => {
-    const loan = num0(sample);
-    if (!(loan > 0)) return null;
+    const base = num0(sample);
+    if (!(base > 0)) return null;
     const tier = rows.find((r) => {
       const lo = numOrNull(r.from);
       const hi = numOrNull(r.to);
-      return loan >= (lo ?? -Infinity) && loan <= (hi ?? Infinity);
+      return base >= (lo ?? -Infinity) && base <= (hi ?? Infinity);
     });
-    if (!tier) return { pct: 0.02, src: "default 2%", dollars: loan * 0.02 };
-    const eff = Math.max(num0(tier.pct) / 100, num0(tier.min) / loan);
+    if (!tier) return { pct: 0.02, src: "default 2%", dollars: base * 0.02 };
+    const pct = (withConstruction ? num0(tier.pctWith) : num0(tier.pctWithout)) / 100;
     return {
-      pct: eff,
-      src: eff > num0(tier.pct) / 100 ? "minimum-$ floor" : "tier %",
-      dollars: loan * eff,
+      pct,
+      src: withConstruction ? "with-construction %" : "without-construction %",
+      dollars: base * pct,
     };
-  }, [rows, sample]);
+  }, [rows, sample, withConstruction]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -167,7 +170,7 @@ export function DealAnalyzerSection() {
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
             <thead>
               <tr>
-                {["From $", "To $", "Percentage %", "Minimum $", ""].map((h) => (
+                {["From $", "To $", "% with construction", "% without construction", ""].map((h) => (
                   <th
                     key={h}
                     style={{
@@ -209,10 +212,10 @@ export function DealAnalyzerSection() {
                       {cellInput(r.to, (v) => setCell(idx, "to", v), "$")}
                     </td>
                     <td style={{ padding: "8px 14px", width: "22%" }}>
-                      {cellInput(r.pct, (v) => setCell(idx, "pct", v), "%")}
+                      {cellInput(r.pctWith, (v) => setCell(idx, "pctWith", v), "%")}
                     </td>
                     <td style={{ padding: "8px 14px", width: "22%" }}>
-                      {cellInput(r.min, (v) => setCell(idx, "min", v), "$")}
+                      {cellInput(r.pctWithout, (v) => setCell(idx, "pctWithout", v), "%")}
                     </td>
                     <td style={{ padding: "8px 14px", textAlign: "right" }}>
                       {canEdit ? (
@@ -259,8 +262,8 @@ export function DealAnalyzerSection() {
 
       <Card pad={20}>
         <SectionLabel>Preview</SectionLabel>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
-          <span style={{ fontSize: 13, color: t.ink3 }}>Loan amount $</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, color: t.ink3 }}>Base $ (BRV, or BRV + construction)</span>
           <input
             value={sample}
             onChange={(e) => setSample(e.target.value)}
@@ -275,6 +278,22 @@ export function DealAnalyzerSection() {
               outline: "none",
             }}
           />
+          <button
+            type="button"
+            onClick={() => setWithConstruction((v) => !v)}
+            style={{
+              all: "unset",
+              cursor: "pointer",
+              padding: "7px 12px",
+              borderRadius: 8,
+              border: `1px solid ${t.line}`,
+              color: t.ink2,
+              fontSize: 12.5,
+              fontWeight: 700,
+            }}
+          >
+            {withConstruction ? "With construction" : "Without construction"}
+          </button>
           {preview ? (
             <span style={{ fontSize: 13, color: t.ink2 }}>
               → closing{" "}

@@ -20,6 +20,7 @@ import {
   useFixFlipScenarios,
   useMyClient,
   useSaveFixFlipScenario,
+  useUpdateFixFlipScenario,
   type FixFlipScenarioRow,
 } from "@/hooks/useApi";
 import { US_STATES } from "@/lib/usStates";
@@ -109,6 +110,8 @@ export default function FixAndFlipAnalyzerPage() {
   const derivedExperience = deriveExperienceTier(profileClient?.experience);
 
   const save = useSaveFixFlipScenario();
+  const update = useUpdateFixFlipScenario();
+  const [savedId, setSavedId] = useState<string | null>(null);
   const [i, setI] = useState<FixFlipInputs>(DEFAULTS);
   const [stepIdx, setStepIdx] = useState(0);
   const [tab, setTab] = useState<Tab>("Summary");
@@ -152,20 +155,31 @@ export default function FixAndFlipAnalyzerPage() {
     return true;
   };
 
-  const onSave = async () => {
+  // Auto-save on "Analyze Deal". First analyze creates the run;
+  // editing inputs and re-analyzing PATCHes the same row.
+  const autoSave = async () => {
+    if (result.validationErrors.length) return;
+    const body = {
+      status: "saved",
+      payload: { inputs, result } as unknown as Record<string, unknown>,
+      deal_score: result.dealScore,
+      deal_grade: result.dealGrade,
+    };
     try {
-      await save.mutateAsync({
-        client_id: profileClientId ?? undefined,
-        status: "saved",
-        payload: { inputs, result } as unknown as Record<string, unknown>,
-        deal_score: result.dealScore,
-        deal_grade: result.dealGrade,
-      });
-      setFlash("Scenario saved.");
+      if (savedId) {
+        await update.mutateAsync({ id: savedId, ...body });
+      } else {
+        const row = await save.mutateAsync({
+          client_id: profileClientId ?? undefined,
+          ...body,
+        });
+        setSavedId(row.id);
+      }
+      setFlash("Saved.");
     } catch (e) {
       setFlash(e instanceof Error ? e.message : "Couldn't save scenario.");
     }
-    setTimeout(() => setFlash(null), 3500);
+    setTimeout(() => setFlash(null), 3000);
   };
 
   const inputStyle = {
@@ -444,17 +458,17 @@ export default function FixAndFlipAnalyzerPage() {
         <button onClick={() => setStepIdx((x) => Math.max(0, x - 1))} disabled={stepIdx === 0} style={{ ...qcBtn(t), opacity: stepIdx === 0 ? 0.4 : 1 }}>Back</button>
         {step !== "Results" ? (
           <button
-            onClick={() => stepValid(step) && setStepIdx((x) => Math.min(STEPS.length - 1, x + 1))}
+            onClick={() => {
+              if (!stepValid(step)) return;
+              if (step === "Review") autoSave();
+              setStepIdx((x) => Math.min(STEPS.length - 1, x + 1));
+            }}
             disabled={!stepValid(step)}
             style={{ ...qcBtnPrimary(t), opacity: stepValid(step) ? 1 : 0.5 }}
           >
             {step === "Review" ? "Analyze Deal" : "Next"}
           </button>
-        ) : (
-          <button onClick={onSave} disabled={save.isPending || result.validationErrors.length > 0} style={{ ...qcBtnPrimary(t), opacity: save.isPending || result.validationErrors.length ? 0.5 : 1 }}>
-            {save.isPending ? "Saving…" : "Save Scenario"}
-          </button>
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -483,9 +497,9 @@ function ScenarioCard({
   accent: string;
 }) {
   const row = (k: string, v: string, c?: string, strong?: boolean) => (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
-      <span style={{ fontSize: 12, color: t.ink3 }}>{k}</span>
-      <span style={{ fontSize: 12.5, fontWeight: strong ? 800 : 600, color: c ?? t.ink }}>{v}</span>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "3px 0" }}>
+      <span style={{ flex: 1, fontSize: 12, color: t.ink3 }}>{k}</span>
+      <span style={{ flexShrink: 0, textAlign: "right", fontSize: 12.5, fontWeight: strong ? 800 : 600, color: c ?? t.ink }}>{v}</span>
     </div>
   );
   return (

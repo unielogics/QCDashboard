@@ -102,8 +102,10 @@ export interface ClosingCostTier {
   id?: string;
   fromAmount: number | null;
   toAmount: number | null;
+  // WITH construction financed (base = BRV + construction).
   percentage: number;   // fraction, e.g. 0.02
-  minimumDollar: number;
+  // WITHOUT construction — borrower self-funds it (base = BRV).
+  percentageNoConstruction: number;
 }
 
 export interface AnalyzeOptions {

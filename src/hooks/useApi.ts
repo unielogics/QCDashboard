@@ -2686,7 +2686,7 @@ interface ClosingCostTierRow {
   from_amount: number | null;
   to_amount: number | null;
   percentage: number;
-  minimum_dollar: number;
+  percentage_no_construction: number;
   sort_order: number;
 }
 
@@ -2696,7 +2696,7 @@ function toTier(r: ClosingCostTierRow): ClosingCostTier {
     fromAmount: r.from_amount,
     toAmount: r.to_amount,
     percentage: Number(r.percentage),
-    minimumDollar: Number(r.minimum_dollar),
+    percentageNoConstruction: Number(r.percentage_no_construction),
   };
 }
 
@@ -2727,7 +2727,7 @@ export function useReplaceClosingCostTiers() {
             from_amount: tr.fromAmount,
             to_amount: tr.toAmount,
             percentage: tr.percentage,
-            minimum_dollar: tr.minimumDollar,
+            percentage_no_construction: tr.percentageNoConstruction,
             sort_order: idx,
           })),
         }),
