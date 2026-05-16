@@ -117,6 +117,8 @@ export interface AnalyzeOptions {
 export interface ScenarioNums {
   loanAmount: number;
   estimatedCashToClose: number;
+  // Construction the borrower funds outside the loan.
+  constructionOutsideLoan: number;
   projectedNetProfit: number;
   holdMonths: number;
 }
@@ -137,6 +139,7 @@ export interface ProgramFitResult {
   program: LendingProgram;
   loanAmount: number;
   estimatedCashToClose: number;
+  constructionOutsideLoan: number;
   projectedNetProfit: number;
   costOfCapital: number;
   reasons?: string[]; // ineligible reasons
@@ -153,7 +156,11 @@ export interface FixFlipAnalysisResult {
   estimatedInterestPaid: number;
   lenderPointsCost: number;
   loanAmount: number;
+  downPayment: number;
   estimatedCashToClose: number;
+  constructionOutsideLoan: number;
+  withinArvEnvelope: boolean;
+  arvEnvelopeOverflow: number;
   projectedNetProfit: number;
   profitMargin: number;
   cashOnCashReturn: number;

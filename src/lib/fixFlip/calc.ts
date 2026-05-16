@@ -20,7 +20,15 @@ import { matchPrograms } from "./programMatcher";
 
 // Mirror eligibility.ts / sizing.py.
 export const FF_MAX_LTC = 0.85;
-export const FF_MAX_ARV_LTV = 0.7;
+// Global hard cap: BRV + construction + every acquisition fee must
+// stay within 75% of ARV for the borrower to be "safe". This
+// OVERRIDES every program's own maxARVLTV (firm-wide safety
+// envelope). Anything above it is the borrower's liability outside
+// the loan.
+export const FF_MAX_ARV_LTV = 0.75;
+// Purchase funding when no program is matched, so cash-to-close
+// (≈ 20% of BRV + closing) holds in the no-program fallback.
+export const DEFAULT_PURCHASE_FUNDING_PCT = 0.8;
 const DEFAULT_RATE = 0.1075;
 const DEFAULT_POINTS = 2;
 
@@ -75,14 +83,19 @@ function rehabAdjusted(i: FixFlipInputs): number {
 
 export interface SizedLoan {
   loanAmount: number;
-  loanProceedsAtClosing: number;
+  // Loan dollars applied to the PURCHASE at the closing table. Rehab
+  // is released as draws, never table cash, so it is excluded here.
+  purchaseProceeds: number;
+  // Loan dollars allocated to rehab (draws). Informational.
+  rehabInLoan: number;
   rate: number;
   points: number;
 }
 
-// Program-aware loan sizing. No program → the default F&F caps
-// (min(0.85×(brv+rehab), 0.70×arv)) so the sanity test
-// 300k/500k/80k → 323k holds.
+// Program-aware loan sizing. The 75%-ARV envelope is a GLOBAL hard
+// cap that overrides each program's own maxARVLTV. Construction can
+// be financed up to 100% (program maxRehabFundingPct) as long as the
+// loan stays within that envelope.
 export function sizeLoan(
   i: FixFlipInputs,
   program?: LendingProgram,
@@ -91,33 +104,31 @@ export function sizeLoan(
   const purchase = n(i.purchasePrice);
   const rehab = rehabAdjusted(i);
   const arv = arvAdjusted(i);
-  const totalCost = purchase + rehab;
 
-  const maxLTC = program ? program.maxLTC : FF_MAX_LTC;
-  const maxARVLTV = program ? program.maxARVLTV : FF_MAX_ARV_LTV;
-  const ltcCap = maxLTC * totalCost;
-  const arvCap = maxARVLTV * arv;
+  const pf = program?.maxPurchaseFundingPct ?? DEFAULT_PURCHASE_FUNDING_PCT;
+  const rf = effRehabFundedPct(program, selfFundRehab);
 
-  const rehabFundedPct = effRehabFundedPct(program, selfFundRehab);
+  // 75%-ARV global hard cap overrides program.maxARVLTV.
+  const arvCap = FF_MAX_ARV_LTV * arv;
+  const ltcCap = (program ? program.maxLTC : FF_MAX_LTC) * (purchase + rehab);
 
-  let loanAmount: number;
-  if (program && program.maxPurchaseFundingPct != null) {
-    const purchaseFunding = purchase * program.maxPurchaseFundingPct;
-    const rehabFunding = rehab * rehabFundedPct;
-    const potential = purchaseFunding + rehabFunding;
-    loanAmount = Math.min(potential, arvCap, ltcCap);
-  } else {
-    loanAmount = Math.min(ltcCap, arvCap);
-  }
-  loanAmount = Math.max(0, loanAmount);
+  const purchaseLoan = purchase * pf;
+  const rehabLoan = rehab * rf;
+  const loanAmount = Math.max(
+    0,
+    Math.min(purchaseLoan + rehabLoan, arvCap, ltcCap),
+  );
 
-  // Rehab portion is released as draws → NOT available cash at close.
-  const loanRehabPortion = Math.min(loanAmount, rehab * rehabFundedPct);
-  const loanProceedsAtClosing = Math.max(0, loanAmount - loanRehabPortion);
+  // Purchase is funded first; the remainder (if any) is rehab draws.
+  const purchaseProceeds = Math.min(loanAmount, purchaseLoan);
+  const rehabInLoan = Math.min(
+    rehabLoan,
+    Math.max(0, loanAmount - purchaseProceeds),
+  );
 
   const rate = n(i.interestRateOverride, program ? program.interestRate : DEFAULT_RATE);
   const points = n(i.pointsOverride, program ? program.points : DEFAULT_POINTS);
-  return { loanAmount, loanProceedsAtClosing, rate, points };
+  return { loanAmount, purchaseProceeds, rehabInLoan, rate, points };
 }
 
 function feeTotal(i: FixFlipInputs): number {
@@ -142,7 +153,14 @@ export interface CoreNumbers {
   estimatedInterestPaid: number;
   lenderPointsCost: number;
   loanAmount: number;
+  downPayment: number;
   estimatedCashToClose: number;
+  // Construction the borrower funds OUTSIDE the loan. Financed →
+  // only the overflow above the 75%-ARV envelope (usually $0).
+  // Self-funded → the whole construction budget (+ any overflow).
+  constructionOutsideLoan: number;
+  withinArvEnvelope: boolean;
+  arvEnvelopeOverflow: number;
   projectedNetProfit: number;
   profitMargin: number;
   cashOnCashReturn: number;
@@ -180,18 +198,38 @@ export function computeCore(
 
   const insurance = n(i.insuranceEstimate);
   const taxEscrow = n(i.taxEscrowEstimate);
-  const rehabFundedPct = effRehabFundedPct(program, opts?.selfFundRehab);
-  const initialRehabContribution = Math.max(0, rehab * (1 - rehabFundedPct));
 
+  // Cash to close = acquisition-table money ONLY: the down payment
+  // on the purchase + closing + origination points + lender fees.
+  // Construction is NEVER in cash to close — it is either drawn by
+  // the lender or carried by the borrower outside the loan.
+  const downPayment = Math.max(0, purchase - sized.purchaseProceeds);
   const estimatedCashToClose =
-    purchase +
+    downPayment +
     estimatedClosingCosts +
     lenderPointsCost +
     feeTotal(i) +
     insurance +
-    taxEscrow +
-    initialRehabContribution -
-    sized.loanProceedsAtClosing;
+    taxEscrow;
+
+  // 75%-ARV safety envelope. acqFees are derived from the first-pass
+  // loan (points/closing depend on loan size) — a deterministic,
+  // close-enough approximation for the overflow test.
+  const acqFees =
+    estimatedClosingCosts + lenderPointsCost + feeTotal(i) + insurance + taxEscrow;
+  const arvEnvelope = FF_MAX_ARV_LTV * arv;
+  const arvEnvelopeOverflow = Math.max(
+    0,
+    purchase + rehab + rehabContingencyAmount + acqFees - arvEnvelope,
+  );
+  const withinArvEnvelope = arvEnvelopeOverflow <= 0;
+  // Financed: lender wraps construction into the loan within the
+  // 75%-ARV envelope, so only the overflow above it is the
+  // borrower's. Self-funded: the whole construction budget sits
+  // outside the loan by definition (the loan only covers purchase).
+  const constructionOutsideLoan = opts?.selfFundRehab
+    ? rehab
+    : arvEnvelopeOverflow;
 
   const projectedNetProfit =
     arv -
@@ -218,7 +256,11 @@ export function computeCore(
     estimatedInterestPaid,
     lenderPointsCost,
     loanAmount: sized.loanAmount,
+    downPayment,
     estimatedCashToClose: Math.max(0, estimatedCashToClose),
+    constructionOutsideLoan,
+    withinArvEnvelope,
+    arvEnvelopeOverflow,
     projectedNetProfit,
     profitMargin,
     cashOnCashReturn,
@@ -450,6 +492,7 @@ export function analyzeFixFlip(
       program,
       loanAmount: c.loanAmount,
       estimatedCashToClose: c.estimatedCashToClose,
+      constructionOutsideLoan: c.constructionOutsideLoan,
       projectedNetProfit: c.projectedNetProfit,
       costOfCapital: c.estimatedInterestPaid + c.lenderPointsCost,
     };
@@ -494,6 +537,7 @@ export function analyzeFixFlip(
   const scenarioNums = (c: typeof core): ScenarioNums => ({
     loanAmount: c.loanAmount,
     estimatedCashToClose: c.estimatedCashToClose,
+    constructionOutsideLoan: c.constructionOutsideLoan,
     projectedNetProfit: c.projectedNetProfit,
     holdMonths: c.holdMonths,
   });
@@ -515,6 +559,7 @@ export function analyzeFixFlip(
       program: x.program,
       loanAmount: 0,
       estimatedCashToClose: 0,
+      constructionOutsideLoan: 0,
       projectedNetProfit: 0,
       costOfCapital: 0,
       reasons: x.reasons,

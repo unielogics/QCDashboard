@@ -295,10 +295,19 @@ export default function FixAndFlipAnalyzerPage() {
                 {tab === "Summary" ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                     <div>
+                      {result.withinArvEnvelope ? (
+                        <Pill bg={t.profitBg} color={t.profit}>Within 75% ARV · borrower protected</Pill>
+                      ) : (
+                        <Pill bg={t.chip} color={t.danger}>
+                          Over 75% ARV by {$(result.arvEnvelopeOverflow)} · borrower liability outside the loan
+                        </Pill>
+                      )}
+                    </div>
+                    <div>
                       <SectionLabel>Construction coverage</SectionLabel>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 6 }}>
-                        <ScenarioCard t={t} title="Construction financed (draws)" sub="Lender draws the rehab" s={result.constructionScenarios.financed} accent={t.profit} />
-                        <ScenarioCard t={t} title="You fund construction" sub="Rehab is borrower cash" s={result.constructionScenarios.selfFunded} accent={t.ink2} />
+                        <ScenarioCard t={t} title="Construction financed (draws)" sub="Lender draws rehab (≤75% ARV)" s={result.constructionScenarios.financed} accent={t.profit} />
+                        <ScenarioCard t={t} title="You fund construction" sub="Construction stays outside the loan" s={result.constructionScenarios.selfFunded} accent={t.ink2} />
                       </div>
                     </div>
                     <div>
@@ -424,7 +433,13 @@ function ScenarioCard({
   t: Th;
   title: string;
   sub: string;
-  s: { loanAmount: number; estimatedCashToClose: number; projectedNetProfit: number; holdMonths: number };
+  s: {
+    loanAmount: number;
+    estimatedCashToClose: number;
+    constructionOutsideLoan: number;
+    projectedNetProfit: number;
+    holdMonths: number;
+  };
   accent: string;
 }) {
   const row = (k: string, v: string, c?: string, strong?: boolean) => (
@@ -438,6 +453,7 @@ function ScenarioCard({
       <div style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>{title}</div>
       <div style={{ fontSize: 11.5, color: t.ink3, marginBottom: 8 }}>{sub}</div>
       {row("Cash to close", `$${Math.round(s.estimatedCashToClose).toLocaleString()}`, t.ink, true)}
+      {row("Construction you fund (outside loan)", `$${Math.round(s.constructionOutsideLoan).toLocaleString()}`)}
       {row("Loan amount", `$${Math.round(s.loanAmount).toLocaleString()}`)}
       {row("Net profit", `$${Math.round(s.projectedNetProfit).toLocaleString()}`, s.projectedNetProfit > 0 ? t.profit : t.danger)}
     </Card>
@@ -528,6 +544,7 @@ function CompareTable({ t, result }: { t: Th; result: Analysis }) {
   const rows: { label: string; cell: (f: (typeof progs)[number]) => string }[] = [
     { label: "Loan", cell: (f) => m(f.loanAmount) },
     { label: "Cash to close", cell: (f) => m(f.estimatedCashToClose) },
+    { label: "Construction outside loan", cell: (f) => m(f.constructionOutsideLoan) },
     { label: "Rate", cell: (f) => `${(f.program.interestRate * 100).toFixed(2)}%` },
     { label: "Points", cell: (f) => `${f.program.points}` },
     { label: "Term", cell: (f) => `${f.program.termMonths}mo` },
