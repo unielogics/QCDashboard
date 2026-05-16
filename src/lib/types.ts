@@ -439,6 +439,9 @@ export interface IntakeDocumentOverrides {
   skip_names?: string[];
   add_items?: IntakeCustomDoc[];
   due_offset_overrides?: Record<string, number>;
+  // Days to delay the start of document collection / AI outreach.
+  // 0 / omitted = start immediately (default behavior).
+  collection_start_delay_days?: number;
 }
 
 export interface SmartIntakePayload {

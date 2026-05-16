@@ -274,6 +274,7 @@ function resolveDocPreview({
 function buildDocOverridesPayload(
   state: DocOverridesState,
   customs: CustomDocDraft[],
+  collectionStartDelayDays = 0,
 ): IntakeDocumentOverrides | null {
   const skip_names = Array.from(state.skipNames).filter((n) => n.trim().length > 0);
   const due_offset_overrides: Record<string, number> = {};
@@ -291,14 +292,18 @@ function buildDocOverridesPayload(
         due_date: due.toISOString().slice(0, 10),
       };
     });
+  const delay = collectionStartDelayDays > 0 ? Math.round(collectionStartDelayDays) : 0;
   if (
     skip_names.length === 0 &&
     Object.keys(due_offset_overrides).length === 0 &&
-    add_items.length === 0
+    add_items.length === 0 &&
+    delay === 0
   ) {
     return null;
   }
-  return { skip_names, due_offset_overrides, add_items };
+  const out: IntakeDocumentOverrides = { skip_names, due_offset_overrides, add_items };
+  if (delay > 0) out.collection_start_delay_days = delay;
+  return out;
 }
 
 function applyChecklistOverlay(
@@ -359,6 +364,15 @@ export function SmartIntakeModal({
     dueOverrides: {},
   });
   const [customDocs, setCustomDocs] = useState<CustomDocDraft[]>([]);
+  // Broker-only: delay the start of collection / AI outreach. Default
+  // 0 = Immediately. Unit is UI sugar — converted to days on the wire
+  // (backend is day-granular).
+  const [collectionStartValue, setCollectionStartValue] = useState(0);
+  const [collectionStartUnit, setCollectionStartUnit] = useState<"days" | "hours">("days");
+  const collectionStartDelayDays =
+    collectionStartUnit === "hours"
+      ? Math.round(collectionStartValue / 24)
+      : Math.round(collectionStartValue);
   const previewItems = useMemo(
     () =>
       resolveDocPreview({
@@ -406,6 +420,15 @@ export function SmartIntakeModal({
 
   const update = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  // Brokers are locked to app-push outreach for now. Force it so the
+  // payload is correct even though the Select is read-only.
+  useEffect(() => {
+    if (isBroker && form.preferredChannel !== "push") {
+      update("preferredChannel", "push");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBroker]);
 
   const isSeller = form.dealSide === "seller";
   const isBuyer = form.dealSide === "buyer";
@@ -472,6 +495,7 @@ export function SmartIntakeModal({
       const docOverridesPayload = buildDocOverridesPayload(
         docOverrides,
         customDocs,
+        isBroker ? collectionStartDelayDays : 0,
       );
       if (docOverridesPayload) {
         payload.document_overrides = docOverridesPayload;
@@ -632,6 +656,11 @@ export function SmartIntakeModal({
           customDocs={customDocs}
           setCustomDocs={setCustomDocs}
           previewItems={previewItems}
+          isBroker={isBroker}
+          collectionStartValue={collectionStartValue}
+          setCollectionStartValue={setCollectionStartValue}
+          collectionStartUnit={collectionStartUnit}
+          setCollectionStartUnit={setCollectionStartUnit}
         />
       )}
     </RightPanel>
@@ -808,13 +837,13 @@ function BorrowerStepView({
           listing-vs-purchase framing. */}
       {showSideToggle && (
         <div>
-          <Label t={t}>Listing or Purchase?</Label>
+          <Label t={t}>Buyer or Seller</Label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <SideButton t={t} active={form.dealSide === "buyer"} onClick={() => update("dealSide", "buyer")}>
-              Purchase (Buyer)
+              Buyer
             </SideButton>
             <SideButton t={t} active={form.dealSide === "seller"} onClick={() => update("dealSide", "seller")}>
-              Listing (Seller)
+              Seller
             </SideButton>
           </div>
           <div style={{ fontSize: 11, color: t.ink3, marginTop: 6 }}>
@@ -1499,12 +1528,22 @@ function CommunicationStepView({
   customDocs,
   setCustomDocs,
   previewItems,
+  isBroker,
+  collectionStartValue,
+  setCollectionStartValue,
+  collectionStartUnit,
+  setCollectionStartUnit,
 }: StepProps & {
   docOverrides: DocOverridesState;
   setDocOverrides: React.Dispatch<React.SetStateAction<DocOverridesState>>;
   customDocs: CustomDocDraft[];
   setCustomDocs: React.Dispatch<React.SetStateAction<CustomDocDraft[]>>;
   previewItems: DocChecklistItem[];
+  isBroker: boolean;
+  collectionStartValue: number;
+  setCollectionStartValue: React.Dispatch<React.SetStateAction<number>>;
+  collectionStartUnit: "days" | "hours";
+  setCollectionStartUnit: React.Dispatch<React.SetStateAction<"days" | "hours">>;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1547,17 +1586,32 @@ function CommunicationStepView({
           />
         </Field>
         <Field t={t} label="Preferred channel">
-          <Select
-            t={t}
-            value={form.preferredChannel}
-            onChange={(v) => update("preferredChannel", v as Channel)}
-            options={[
-              { value: "sms+email", label: "SMS + Email" },
-              { value: "sms", label: "SMS only" },
-              { value: "email", label: "Email only" },
-              { value: "push", label: "App push only" },
-            ]}
-          />
+          {isBroker ? (
+            <div
+              style={{
+                padding: "9px 11px",
+                borderRadius: 8,
+                border: `1px solid ${t.line}`,
+                background: t.surface2,
+                color: t.ink,
+                fontSize: 13,
+              }}
+            >
+              App push only
+            </div>
+          ) : (
+            <Select
+              t={t}
+              value={form.preferredChannel}
+              onChange={(v) => update("preferredChannel", v as Channel)}
+              options={[
+                { value: "sms+email", label: "SMS + Email" },
+                { value: "sms", label: "SMS only" },
+                { value: "email", label: "Email only" },
+                { value: "push", label: "App push only" },
+              ]}
+            />
+          )}
         </Field>
         <Field t={t} label="Target close date" full>
           <Input
@@ -1621,6 +1675,61 @@ function CommunicationStepView({
           />
         </Field>
       </div>
+
+      {isBroker && (
+        <div style={{ marginBottom: 14 }}>
+          <Label t={t}>Start collecting</Label>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <input
+              type="number"
+              min={0}
+              value={collectionStartValue}
+              onChange={(e) => setCollectionStartValue(Math.max(0, Number(e.target.value) || 0))}
+              style={{
+                width: 80,
+                padding: "9px 11px",
+                borderRadius: 8,
+                border: `1px solid ${t.line}`,
+                background: t.surface,
+                color: t.ink,
+                fontSize: 13,
+                outline: "none",
+                fontFamily: "inherit",
+              }}
+            />
+            <div style={{ display: "inline-flex", border: `1px solid ${t.line}`, borderRadius: 8, overflow: "hidden" }}>
+              {(["hours", "days"] as const).map((u) => (
+                <button
+                  key={u}
+                  type="button"
+                  onClick={() => setCollectionStartUnit(u)}
+                  style={{
+                    all: "unset",
+                    cursor: "pointer",
+                    padding: "8px 14px",
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    textTransform: "capitalize",
+                    background: collectionStartUnit === u ? t.petrol : "transparent",
+                    color: collectionStartUnit === u ? "#fff" : t.ink3,
+                  }}
+                >
+                  {u}
+                </button>
+              ))}
+            </div>
+            <span style={{ fontSize: 12, color: t.ink3 }}>
+              {collectionStartValue <= 0
+                ? "Immediately when you create the file."
+                : `Outreach starts ${collectionStartValue} ${collectionStartUnit} after file creation.`}
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: t.ink4, marginTop: 6 }}>
+            Documents are still created now; the AI just waits to begin
+            chasing them. Hours are converted to whole days.
+          </div>
+        </div>
+      )}
 
       <DocPreviewSection
         t={t}
