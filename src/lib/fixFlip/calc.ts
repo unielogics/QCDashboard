@@ -1,0 +1,444 @@
+// Fix & Flip Deal Analyzer — deterministic deal engine.
+// Mirrors the F&F sizing in src/lib/eligibility.ts and the backend
+// app/services/math/sizing.py. No LLM; all explanations are templated
+// with hedged language (never "approved"/"guaranteed"/"will qualify").
+// BYTE-IDENTICAL between QCDashboard and QCMobile.
+
+import type {
+  DealGrade,
+  FixFlipAnalysisResult,
+  FixFlipInputs,
+  Grade,
+  LendingProgram,
+  ProgramFitResult,
+  SensitivityScenario,
+} from "./types";
+import { matchPrograms } from "./programMatcher";
+
+// Mirror eligibility.ts / sizing.py.
+export const FF_MAX_LTC = 0.85;
+export const FF_MAX_ARV_LTV = 0.7;
+const DEFAULT_RATE = 0.1075;
+const DEFAULT_POINTS = 2;
+
+function n(v: number | undefined | null, d = 0): number {
+  return Number.isFinite(v as number) ? (v as number) : d;
+}
+
+export function holdMonths(i: FixFlipInputs): number {
+  return n(i.constructionMonths) + n(i.monthsToSell) + n(i.delayMonths);
+}
+
+function arvAdjusted(i: FixFlipInputs): number {
+  return n(i.arv) * (1 - n(i.arvHaircutPct));
+}
+function rehabAdjusted(i: FixFlipInputs): number {
+  return n(i.rehabCost) * (1 + n(i.rehabOverrunPct));
+}
+
+export interface SizedLoan {
+  loanAmount: number;
+  loanProceedsAtClosing: number;
+  rate: number;
+  points: number;
+}
+
+// Program-aware loan sizing. No program → the default F&F caps
+// (min(0.85×(brv+rehab), 0.70×arv)) so the sanity test
+// 300k/500k/80k → 323k holds.
+export function sizeLoan(i: FixFlipInputs, program?: LendingProgram): SizedLoan {
+  const purchase = n(i.purchasePrice);
+  const rehab = rehabAdjusted(i);
+  const arv = arvAdjusted(i);
+  const totalCost = purchase + rehab;
+
+  const maxLTC = program ? program.maxLTC : FF_MAX_LTC;
+  const maxARVLTV = program ? program.maxARVLTV : FF_MAX_ARV_LTV;
+  const ltcCap = maxLTC * totalCost;
+  const arvCap = maxARVLTV * arv;
+
+  let loanAmount: number;
+  if (program && program.maxPurchaseFundingPct != null) {
+    const purchaseFunding = purchase * program.maxPurchaseFundingPct;
+    const rehabFunding = rehab * (program.maxRehabFundingPct ?? 0);
+    const potential = purchaseFunding + rehabFunding;
+    loanAmount = Math.min(potential, arvCap, ltcCap);
+  } else {
+    loanAmount = Math.min(ltcCap, arvCap);
+  }
+  loanAmount = Math.max(0, loanAmount);
+
+  // Rehab portion is released as draws → NOT available cash at close.
+  const rehabFundedPct = program ? (program.maxRehabFundingPct ?? 1) : 1;
+  const loanRehabPortion = Math.min(loanAmount, rehab * rehabFundedPct);
+  const loanProceedsAtClosing = Math.max(0, loanAmount - loanRehabPortion);
+
+  const rate = n(i.interestRateOverride, program ? program.interestRate : DEFAULT_RATE);
+  const points = n(i.pointsOverride, program ? program.points : DEFAULT_POINTS);
+  return { loanAmount, loanProceedsAtClosing, rate, points };
+}
+
+function feeTotal(i: FixFlipInputs): number {
+  return (
+    n(i.originationFee) +
+    n(i.underwritingFee) +
+    n(i.processingFee) +
+    n(i.appraisalFee) +
+    n(i.titleLegalEstimate) +
+    n(i.transferTaxEstimate)
+  );
+}
+
+export interface CoreNumbers {
+  totalProjectCost: number;
+  rehabContingencyAmount: number;
+  holdMonths: number;
+  estimatedClosingCosts: number;
+  estimatedSellingCosts: number;
+  estimatedHoldingCosts: number;
+  estimatedInterestPaid: number;
+  lenderPointsCost: number;
+  loanAmount: number;
+  estimatedCashToClose: number;
+  projectedNetProfit: number;
+  profitMargin: number;
+  cashOnCashReturn: number;
+}
+
+export function computeCore(i: FixFlipInputs, program?: LendingProgram): CoreNumbers {
+  const purchase = n(i.purchasePrice);
+  const rehab = rehabAdjusted(i);
+  const arv = arvAdjusted(i);
+  const hm = holdMonths(i);
+  const rehabContingencyAmount = rehab * n(i.rehabContingencyPct, 0.1);
+  const estimatedClosingCosts = purchase * n(i.closingCostPct, 0.02);
+  const estimatedSellingCosts = arv * n(i.sellingCostPct, 0.06);
+  const estimatedHoldingCosts = n(i.monthlyHoldingCost) * hm;
+
+  const sized = sizeLoan(i, program);
+  const estimatedInterestPaid = (sized.loanAmount * sized.rate * hm) / 12;
+  const lenderPointsCost = sized.loanAmount * (sized.points / 100);
+
+  const insurance = n(i.insuranceEstimate);
+  const taxEscrow = n(i.taxEscrowEstimate);
+  const rehabFundedPct = program ? (program.maxRehabFundingPct ?? 1) : 1;
+  const initialRehabContribution = Math.max(0, rehab * (1 - rehabFundedPct));
+
+  const estimatedCashToClose =
+    purchase +
+    estimatedClosingCosts +
+    lenderPointsCost +
+    feeTotal(i) +
+    insurance +
+    taxEscrow +
+    initialRehabContribution -
+    sized.loanProceedsAtClosing;
+
+  const projectedNetProfit =
+    arv -
+    purchase -
+    rehab -
+    rehabContingencyAmount -
+    estimatedClosingCosts -
+    estimatedInterestPaid -
+    estimatedHoldingCosts -
+    estimatedSellingCosts;
+
+  const profitMargin = arv > 0 ? projectedNetProfit / arv : 0;
+  const cashOnCashReturn =
+    estimatedCashToClose > 0 ? projectedNetProfit / estimatedCashToClose : 0;
+
+  return {
+    totalProjectCost: purchase + rehab,
+    rehabContingencyAmount,
+    holdMonths: hm,
+    estimatedClosingCosts,
+    estimatedSellingCosts,
+    estimatedHoldingCosts,
+    estimatedInterestPaid,
+    lenderPointsCost,
+    loanAmount: sized.loanAmount,
+    estimatedCashToClose: Math.max(0, estimatedCashToClose),
+    projectedNetProfit,
+    profitMargin,
+    cashOnCashReturn,
+  };
+}
+
+export function maxSafePurchasePrice(i: FixFlipInputs, program?: LendingProgram): number {
+  const arv = arvAdjusted(i);
+  const rehab = rehabAdjusted(i);
+  const targetProfit = Math.max(arv * 0.1, 25000);
+  const core = computeCore(i, program);
+  return (
+    arv -
+    targetProfit -
+    rehab -
+    core.rehabContingencyAmount -
+    core.estimatedInterestPaid -
+    core.estimatedHoldingCosts -
+    core.estimatedSellingCosts -
+    core.estimatedClosingCosts
+  );
+}
+
+function gradePurchasePrice(purchase: number, maxSafe: number): Grade {
+  if (maxSafe <= 0) return "Poor";
+  const delta = (purchase - maxSafe) / maxSafe; // negative = below max (good)
+  if (delta <= -0.1) return "Excellent";
+  if (delta <= 0) return "Good";
+  if (delta <= 0.05) return "Fair";
+  if (delta <= 0.1) return "Risky";
+  return "Poor";
+}
+
+function dealGradeFromScore(s: number): DealGrade {
+  if (s >= 85) return "Excellent";
+  if (s >= 70) return "Good";
+  if (s >= 55) return "Thin";
+  if (s >= 40) return "Risky";
+  return "Poor";
+}
+
+function clamp01(x: number): number {
+  return Math.max(0, Math.min(1, x));
+}
+
+function scoreDeal(
+  i: FixFlipInputs,
+  core: CoreNumbers,
+  programFit: boolean,
+): number {
+  const arv = arvAdjusted(i);
+  const marginScore = clamp01(core.profitMargin / 0.2) * 30; // 20%+ margin = full
+  const cashScore =
+    clamp01(1 - core.estimatedCashToClose / Math.max(1, core.totalProjectCost)) * 20;
+  const arvSpread = arv > 0 ? (arv - core.totalProjectCost) / arv : 0;
+  const arvScore = clamp01(arvSpread / 0.35) * 20;
+  const timelineScore = clamp01(1 - (core.holdMonths - 4) / 14) * 10;
+  const rehabRisk =
+    arv > 0 ? clamp01(1 - n(i.rehabCost) / (arv * 0.3)) : 0;
+  const rehabScore = rehabRisk * 10;
+  const programScore = programFit ? 10 : 0;
+  return Math.round(
+    marginScore + cashScore + arvScore + timelineScore + rehabScore + programScore,
+  );
+}
+
+function buildSensitivity(i: FixFlipInputs, program?: LendingProgram): SensitivityScenario[] {
+  const variants: { key: string; label: string; mut: (x: FixFlipInputs) => FixFlipInputs }[] = [
+    { key: "base", label: "Base Case", mut: (x) => x },
+    {
+      key: "rehab10",
+      label: "Rehab Cost +10%",
+      mut: (x) => ({ ...x, rehabOverrunPct: n(x.rehabOverrunPct) + 0.1 }),
+    },
+    {
+      key: "sale2mo",
+      label: "Sale Delayed 2 Months",
+      mut: (x) => ({ ...x, delayMonths: n(x.delayMonths) + 2 }),
+    },
+    {
+      key: "arv5",
+      label: "ARV Drops 5%",
+      mut: (x) => ({ ...x, arvHaircutPct: n(x.arvHaircutPct) + 0.05 }),
+    },
+    {
+      key: "rehab10arv5",
+      label: "Rehab +10% & ARV −5%",
+      mut: (x) => ({
+        ...x,
+        rehabOverrunPct: n(x.rehabOverrunPct) + 0.1,
+        arvHaircutPct: n(x.arvHaircutPct) + 0.05,
+      }),
+    },
+    {
+      key: "rate1",
+      label: "Interest Rate +1%",
+      mut: (x) => ({
+        ...x,
+        interestRateOverride:
+          n(x.interestRateOverride, program ? program.interestRate : DEFAULT_RATE) + 0.01,
+      }),
+    },
+  ];
+  return variants.map((v) => {
+    const c = computeCore(v.mut(i), program);
+    const score = scoreDeal(v.mut(i), c, !!program);
+    return {
+      key: v.key,
+      label: v.label,
+      netProfit: c.projectedNetProfit,
+      profitMargin: c.profitMargin,
+      cashNeeded: c.estimatedCashToClose,
+      grade: dealGradeFromScore(score),
+    };
+  });
+}
+
+function validate(i: FixFlipInputs): string[] {
+  const e: string[] = [];
+  if (!i.address?.state) e.push("State is required for lender eligibility");
+  if (!(n(i.purchasePrice) > 0)) e.push("Purchase price is required");
+  if (!(n(i.arv) > 0)) e.push("ARV is required");
+  if (!(n(i.rehabCost) >= 0)) e.push("Rehab cost is required");
+  if (!(n(i.constructionMonths) > 0)) e.push("Construction timeline is required");
+  if (!(n(i.monthsToSell) > 0)) e.push("Months to sell is required");
+  if (i.creditScore == null) e.push("Credit score is required for program matching");
+  return e;
+}
+
+function buildWarnings(i: FixFlipInputs, core: CoreNumbers, program?: LendingProgram): string[] {
+  const w: string[] = [];
+  const arv = arvAdjusted(i);
+  if (arv <= n(i.purchasePrice)) w.push("ARV must be higher than purchase price");
+  if (arv > 0 && n(i.rehabCost) > arv * 0.3)
+    w.push("Rehab cost exceeds 30% of ARV");
+  if (arv > 0 && core.totalProjectCost > arv * 0.85)
+    w.push("Total project cost exceeds 85% of ARV");
+  if (core.profitMargin < 0.1)
+    w.push("Profit margin is below 10%");
+  if (i.liquidity != null && core.estimatedCashToClose > i.liquidity)
+    w.push(
+      `Estimated cash to close exceeds borrower liquidity by ${money(
+        core.estimatedCashToClose - i.liquidity,
+      )}`,
+    );
+  if (program && core.holdMonths > program.termMonths)
+    w.push("Hold period exceeds the loan term");
+  return w;
+}
+
+function money(x: number): string {
+  return `$${Math.round(x).toLocaleString()}`;
+}
+
+function buildRecommendations(
+  i: FixFlipInputs,
+  core: CoreNumbers,
+  maxSafe: number,
+  grade: DealGrade,
+): string[] {
+  if (grade === "Excellent" || grade === "Good") {
+    return [
+      "This deal appears financeable and profitable based on current assumptions. Next step: save this as a scenario and request funding terms.",
+    ];
+  }
+  const recs: string[] = [];
+  const over = n(i.purchasePrice) - maxSafe;
+  if (over > 0) recs.push(`Negotiate purchase price down by ${money(over)}`);
+  if (n(i.rehabCost) > arvAdjusted(i) * 0.2)
+    recs.push("Reduce rehab budget or tighten the scope");
+  recs.push("Find a lower-rate or higher-leverage program");
+  recs.push("Shorten the project timeline to cut holding + interest cost");
+  if (i.liquidity != null && core.estimatedCashToClose > i.liquidity)
+    recs.push("Bring additional liquidity or add an experienced partner");
+  return recs;
+}
+
+function buildExplanation(
+  i: FixFlipInputs,
+  core: CoreNumbers,
+  grade: DealGrade,
+  bestProgram?: LendingProgram,
+): string {
+  const parts: string[] = [];
+  if (grade === "Excellent" || grade === "Good") {
+    parts.push(
+      `This deal is profitable in the base case with a projected net profit of ${money(
+        core.projectedNetProfit,
+      )} (${(core.profitMargin * 100).toFixed(1)}% margin).`,
+    );
+  } else {
+    parts.push(
+      `The margin is thin/sensitive — projected net profit ${money(
+        core.projectedNetProfit,
+      )} (${(core.profitMargin * 100).toFixed(1)}%).`,
+    );
+  }
+  if (bestProgram) {
+    parts.push(
+      `The borrower appears eligible for "${bestProgram.name}" based on credit and deal leverage; liquidity should be verified before submission.`,
+    );
+  } else {
+    parts.push(
+      "No program is a clear fit yet under current rules — adjust the deal or borrower profile and re-check.",
+    );
+  }
+  return parts.join(" ");
+}
+
+export function analyzeFixFlip(inputs: FixFlipInputs): FixFlipAnalysisResult {
+  const validationErrors = validate(inputs);
+  const { eligible, ineligible } = matchPrograms(inputs);
+
+  // Rank eligible programs by their own computed outcomes.
+  const fits: ProgramFitResult[] = eligible.map((program) => {
+    const c = computeCore(inputs, program);
+    return {
+      program,
+      loanAmount: c.loanAmount,
+      estimatedCashToClose: c.estimatedCashToClose,
+      projectedNetProfit: c.projectedNetProfit,
+      costOfCapital: c.estimatedInterestPaid + c.lenderPointsCost,
+    };
+  });
+
+  const byCash = [...fits].sort(
+    (a, b) => a.estimatedCashToClose - b.estimatedCashToClose,
+  );
+  const byProfit = [...fits].sort(
+    (a, b) => b.projectedNetProfit - a.projectedNetProfit,
+  );
+  const byCost = [...fits].sort((a, b) => a.costOfCapital - b.costOfCapital);
+
+  // Best overall: lowest cash, then strongest profit, then cost.
+  const bestOverall = byCash[0]
+    ? [...fits].sort(
+        (a, b) =>
+          a.estimatedCashToClose - b.estimatedCashToClose ||
+          b.projectedNetProfit - a.projectedNetProfit ||
+          a.costOfCapital - b.costOfCapital,
+      )[0]
+    : undefined;
+
+  const bestProgram = bestOverall?.program;
+  const core = computeCore(inputs, bestProgram);
+  const maxSafe = maxSafePurchasePrice(inputs, bestProgram);
+  const purchasePriceGrade = gradePurchasePrice(n(inputs.purchasePrice), maxSafe);
+  const dealScore = scoreDeal(inputs, core, !!bestProgram);
+  const dealGrade = dealGradeFromScore(dealScore);
+  const warnings = buildWarnings(inputs, core, bestProgram);
+  const recommendations = buildRecommendations(inputs, core, maxSafe, dealGrade);
+  const explanation = buildExplanation(inputs, core, dealGrade, bestProgram);
+  const sensitivity = buildSensitivity(inputs, bestProgram);
+
+  return {
+    ...core,
+    maxSafePurchasePrice: maxSafe,
+    purchasePriceGrade,
+    dealScore,
+    dealGrade,
+    bestProgram,
+    eligiblePrograms: fits,
+    ineligiblePrograms: ineligible.map((x) => ({
+      program: x.program,
+      loanAmount: 0,
+      estimatedCashToClose: 0,
+      projectedNetProfit: 0,
+      costOfCapital: 0,
+      reasons: x.reasons,
+    })),
+    buckets: {
+      bestOverall,
+      lowestCash: byCash[0],
+      highestProfit: byProfit[0],
+      backup: byCost[1] ?? byCost[0],
+    },
+    warnings,
+    recommendations,
+    explanation,
+    sensitivity,
+    validationErrors,
+  };
+}
