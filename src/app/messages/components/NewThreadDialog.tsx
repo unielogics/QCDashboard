@@ -335,7 +335,7 @@ export function NewThreadDialog({ open, onClose, onThreadReady }: Props) {
               </Field>
 
               <div style={{ fontSize: 11, color: t.ink3, lineHeight: 1.5 }}>
-                Once created, &quot;The Associate&quot; uses the per-loan-type checklist
+                Once created, the &quot;Pocket Assistant&quot; uses the per-loan-type checklist
                 (Settings → Doc checklists) to start collecting required documents from{" "}
                 {pickedClient.name}.
               </div>

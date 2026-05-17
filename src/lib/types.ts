@@ -96,7 +96,7 @@ export interface Loan {
   funding_file_kind?: string | null;
 }
 
-// Output of "The Associate" summarizer — see qcbackend/app/services/ai/summarizer.py
+// Output of the "Pocket Assistant" summarizer — see qcbackend/app/services/ai/summarizer.py
 export type MarketWarning = "Rate Pressure" | "Rate Stability" | "Rate Easing";
 export interface LivingLoanProfile {
   current_status: string;

@@ -124,7 +124,7 @@ export const TERMS_AND_CONDITIONS: LegalDocument = {
       ],
     },
     {
-      heading: '3. Use of Artificial Intelligence ("The Associate")',
+      heading: '3. Use of Artificial Intelligence ("Pocket Assistant")',
       paragraphs: [
         "Qualified Commercial utilizes AI software to assist in loan processing, document summarization, and communication drafting.",
         "No AI Liability: While we strive for perfection, AI may occasionally generate inaccurate summaries or estimates. Qualified Commercial LLC assumes no liability for financial losses resulting from AI-generated text.",
