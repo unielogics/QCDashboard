@@ -15,10 +15,10 @@
 // / Activity, no chat tab). Operator-to-client messages were
 // invisible on desktop entirely.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
-import { useDealChat, useDealWorkspace, useSendDealChat } from "@/hooks/useApi";
+import { useDealChat, useDealWorkspace, useSendDealChat, useUploadDocument } from "@/hooks/useApi";
 import { DealChatMode } from "@/lib/enums.generated";
 import type { User } from "@/lib/types";
 import { DealChatThread } from "./DealChatThread";
@@ -33,8 +33,21 @@ export function ClientLoanChatTab({ loanId, user }: Props) {
   const { data: workspace, isLoading } = useDealWorkspace(loanId);
   const { data: messages = [] } = useDealChat(loanId);
   const send = useSendDealChat();
+  const uploadDoc = useUploadDocument();
   const [draft, setDraft] = useState("");
   const [flash, setFlash] = useState<string | null>(null);
+  const [staged, setStaged] = useState<{ document_id: string; name: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const onPickFile = async (file: File) => {
+    try {
+      const init = await uploadDoc.mutateAsync({ loan_id: loanId, file, is_other: true });
+      setStaged({ document_id: init.document_id, name: file.name });
+    } catch (e: unknown) {
+      setFlash(e instanceof Error ? e.message : "Couldn't attach the file.");
+      setTimeout(() => setFlash(null), 4000);
+    }
+  };
 
   const pausedUntil = workspace?.ai_paused_until ?? null;
   const pauseRemainingMin = pausedUntil
@@ -44,10 +57,16 @@ export function ClientLoanChatTab({ loanId, user }: Props) {
 
   const submit = async () => {
     const body = draft.trim();
-    if (!body || send.isPending) return;
+    if ((!body && !staged) || send.isPending) return;
     try {
-      await send.mutateAsync({ loanId, body, mode: DealChatMode.CHAT });
+      await send.mutateAsync({
+        loanId,
+        body: body || (staged ? `Uploaded: ${staged.name}` : ""),
+        mode: DealChatMode.CHAT,
+        attachment_document_id: staged?.document_id ?? null,
+      });
       setDraft("");
+      setStaged(null);
       // No client-side flash on send when un-paused; the AI reply will
       // appear in the thread within seconds. When paused, hint that
       // the operator is handling the conversation.
@@ -147,7 +166,63 @@ export function ClientLoanChatTab({ loanId, user }: Props) {
             {flash}
           </div>
         )}
+        {staged && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "6px 10px",
+              borderRadius: 8,
+              background: t.surface,
+              border: `1px solid ${t.line}`,
+            }}
+          >
+            <Icon name="paperclip" size={13} />
+            <span style={{ flex: 1, fontSize: 12, color: t.ink2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {staged.name}
+            </span>
+            <button
+              onClick={() => setStaged(null)}
+              style={{ all: "unset", cursor: "pointer", color: t.ink3 }}
+              aria-label="Remove attachment"
+            >
+              <Icon name="x" size={13} />
+            </button>
+          </div>
+        )}
         <div style={{ display: "flex", gap: 8 }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/pdf,image/*"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) void onPickFile(f);
+            }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadDoc.isPending}
+            aria-label="Attach a file"
+            title="Attach a file"
+            style={{
+              all: "unset",
+              cursor: uploadDoc.isPending ? "not-allowed" : "pointer",
+              padding: "10px 12px",
+              borderRadius: 9,
+              border: `1px solid ${t.line}`,
+              background: t.surface,
+              color: t.ink2,
+              display: "inline-flex",
+              alignItems: "center",
+              opacity: uploadDoc.isPending ? 0.6 : 1,
+            }}
+          >
+            <Icon name="paperclip" size={14} />
+          </button>
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -176,14 +251,14 @@ export function ClientLoanChatTab({ loanId, user }: Props) {
           />
           <button
             onClick={() => void submit()}
-            disabled={!draft.trim() || send.isPending}
+            disabled={(!draft.trim() && !staged) || send.isPending}
             style={{
               all: "unset",
-              cursor: !draft.trim() || send.isPending ? "not-allowed" : "pointer",
+              cursor: (!draft.trim() && !staged) || send.isPending ? "not-allowed" : "pointer",
               padding: "10px 16px",
               borderRadius: 9,
-              background: !draft.trim() ? t.chip : t.brand,
-              color: !draft.trim() ? t.ink3 : "#fff",
+              background: !draft.trim() && !staged ? t.chip : t.brand,
+              color: !draft.trim() && !staged ? t.ink3 : "#fff",
               fontSize: 13,
               fontWeight: 800,
               display: "inline-flex",

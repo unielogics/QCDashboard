@@ -6,12 +6,12 @@
 //   loan_exec   → same as super_admin minus the pause (acts as broker_question)
 //   client      → just textarea, mode=Chat, hidden when paused
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtnPrimary } from "@/components/design-system/buttons";
-import { useSendDealChat } from "@/hooks/useApi";
+import { useSendDealChat, useUploadDocument } from "@/hooks/useApi";
 import { DealChatMode, Role } from "@/lib/enums.generated";
 import type { User } from "@/lib/types";
 
@@ -58,16 +58,35 @@ export function DealChatInput({ loanId, user, pausedUntil }: Props) {
   const [mode, setMode] = useState<DealChatMode>(modeOptions[0].mode);
   const [body, setBody] = useState("");
   const [flash, setFlash] = useState<string | null>(null);
+  const uploadDoc = useUploadDocument();
+  const [staged, setStaged] = useState<{ document_id: string; name: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const onPickFile = async (file: File) => {
+    try {
+      const init = await uploadDoc.mutateAsync({ loan_id: loanId, file, is_other: true });
+      setStaged({ document_id: init.document_id, name: file.name });
+    } catch (e) {
+      setFlash(e instanceof Error ? e.message : "Couldn't attach the file.");
+      setTimeout(() => setFlash(null), 2400);
+    }
+  };
 
   const isClient = user.role === Role.CLIENT;
   const pauseRemainingMs = pausedUntil ? new Date(pausedUntil).getTime() - Date.now() : 0;
   const clientLockedOut = isClient && pauseRemainingMs > 0;
 
   const submit = async () => {
-    if (!body.trim()) return;
+    if (!body.trim() && !staged) return;
     try {
-      const res = await send.mutateAsync({ loanId, body: body.trim(), mode });
+      const res = await send.mutateAsync({
+        loanId,
+        body: body.trim() || (staged ? `Uploaded: ${staged.name}` : ""),
+        mode,
+        attachment_document_id: staged?.document_id ?? null,
+      });
       setBody("");
+      setStaged(null);
       if (res.kind === "instruction") setFlash("Instruction saved.");
       else if (res.kind === "ai_task") setFlash("Suggestion filed in AI Inbox.");
       else if (res.paused_until) setFlash("AI paused for 1h.");
@@ -157,14 +176,56 @@ export function DealChatInput({ loanId, user, pausedUntil }: Props) {
           resize: "vertical",
         }}
       />
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf,image/*"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) void onPickFile(f);
+          }}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploadDoc.isPending}
+          aria-label="Attach a file"
+          title="Attach a file"
+          style={{
+            all: "unset",
+            cursor: uploadDoc.isPending ? "not-allowed" : "pointer",
+            padding: "8px 10px",
+            borderRadius: 8,
+            border: `1px solid ${t.lineStrong}`,
+            color: t.ink2,
+            display: "inline-flex",
+            alignItems: "center",
+            opacity: uploadDoc.isPending ? 0.6 : 1,
+          }}
+        >
+          <Icon name="paperclip" size={14} />
+        </button>
+        {staged ? (
+          <Pill bg={t.surface2} color={t.ink2}>
+            {staged.name.length > 22 ? staged.name.slice(0, 21) + "…" : staged.name}
+            <span
+              onClick={() => setStaged(null)}
+              style={{ marginLeft: 6, cursor: "pointer", fontWeight: 800 }}
+            >
+              ×
+            </span>
+          </Pill>
+        ) : null}
+        <div style={{ flex: 1 }} />
         {flash ? (
           <Pill bg={t.profitBg} color={t.profit}>{flash}</Pill>
         ) : null}
         <button
           onClick={submit}
-          disabled={!body.trim() || send.isPending}
-          style={{ ...qcBtnPrimary(t), opacity: body.trim() && !send.isPending ? 1 : 0.5 }}
+          disabled={(!body.trim() && !staged) || send.isPending}
+          style={{ ...qcBtnPrimary(t), opacity: (body.trim() || staged) && !send.isPending ? 1 : 0.5 }}
         >
           <Icon name={activeMode.icon} size={13} />
           {send.isPending ? "Sending…" : activeMode.label}

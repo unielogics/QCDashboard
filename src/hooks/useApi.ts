@@ -275,6 +275,47 @@ export function useDocuments(loanId?: string, options?: { enabled?: boolean }) {
   });
 }
 
+export interface DocAnalysisItem {
+  document_id: string;
+  name: string;
+  status: string;
+  detected_type: string | null;
+  confidence: number | null;
+  ai_notes: string | null;
+  ai_scan_status: string | null;
+  issues: Record<string, unknown>[];
+}
+export interface DocAnalysisResponse {
+  summary: {
+    total: number;
+    reviewed: number;
+    flagged: number;
+    conflicts: number;
+    verdict: "clean" | "needs_review" | "pending";
+    headline: string;
+  };
+  documents: DocAnalysisItem[];
+}
+// Aggregate AI underwriting read for a loan/client (GET /documents/analysis).
+export function useDocumentsAnalysis(
+  opts: { loanId?: string | null; clientId?: string | null },
+  options?: { enabled?: boolean },
+) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qs = opts.loanId
+    ? `?loan_id=${opts.loanId}`
+    : opts.clientId
+      ? `?client_id=${opts.clientId}`
+      : "";
+  return useQuery({
+    queryKey: ["documents-analysis", opts.loanId ?? null, opts.clientId ?? null, devUser],
+    queryFn: () => apiCall<DocAnalysisResponse>(`/documents/analysis${qs}`),
+    enabled: (options?.enabled ?? true) && !!(opts.loanId || opts.clientId),
+    staleTime: 30 * 1000,
+  });
+}
+
 // /loans/{id}/workflow — the AI's collection plan for one loan.
 // One row per Document with computed scenario + days_until_due +
 // editable due_date override. Drives the Workflow tab.
@@ -1752,10 +1793,20 @@ export function useSendDealChat() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ loanId, body, mode }: { loanId: string; body: string; mode: DealChatMode }) =>
+    mutationFn: ({
+      loanId,
+      body,
+      mode,
+      attachment_document_id,
+    }: {
+      loanId: string;
+      body: string;
+      mode: DealChatMode;
+      attachment_document_id?: string | null;
+    }) =>
       apiCall<ChatSendResponse>(`/loans/${loanId}/chat`, {
         method: "POST",
-        body: JSON.stringify({ body, mode }),
+        body: JSON.stringify({ body, mode, attachment_document_id }),
       }),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["dealChat", vars.loanId] });

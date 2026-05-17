@@ -112,12 +112,16 @@ export function ThreadChatView({
     try {
       switch (action.kind) {
         case "upload_document": {
-          // Deep-link into the loan's docs tab with ?upload=<doc_id>.
-          // DocsTab fires the upload picker pre-bound on mount.
-          if (action.document_id && threadLoanId) {
+          // In-chat upload: open the file picker right here; the file
+          // stages on the composer and sends into the chat (scan +
+          // classify inline). Only loan-scoped threads can attach;
+          // fall back to the docs-tab deep-link otherwise.
+          if (threadLoanId) {
+            fileInputRef.current?.click();
+            return;
+          }
+          if (action.document_id) {
             router.push(`/loans/${threadLoanId}?upload=${action.document_id}#docs`);
-          } else if (threadLoanId) {
-            router.push(`/loans/${threadLoanId}#docs`);
           }
           return;
         }
