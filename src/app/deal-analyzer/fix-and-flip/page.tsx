@@ -58,7 +58,7 @@ const EXP_LABEL: Record<ExperienceTier, string> = {
 
 // Map the free-text profile experience → a tier. Best-effort; defaults
 // to 1-2 flips when the profile is blank/unstructured.
-export function deriveExperienceTier(raw?: string | null): ExperienceTier {
+function deriveExperienceTier(raw?: string | null): ExperienceTier {
   const s = (raw ?? "").toLowerCase();
   if (/pro\b|professional|operator/.test(s)) return "pro";
   if (/first|brand new|\bnone\b|\b0\b|no experience/.test(s)) return "0_flips";
