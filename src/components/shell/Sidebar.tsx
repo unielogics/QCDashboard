@@ -8,6 +8,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Avatar } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useUI } from "@/store/ui";
+import { SIGN_IN_URL } from "@/lib/appUrl";
 import { useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { QCMark } from "@/components/QCMark";
@@ -117,10 +118,10 @@ export default function Sidebar() {
   const handleSignOut = async () => {
     setMenuOpen(false);
     try {
-      await clerk.signOut({ redirectUrl: "/sign-in" });
+      await clerk.signOut({ redirectUrl: SIGN_IN_URL });
     } catch {
-      // If Clerk's signOut hiccups, push to /sign-in anyway so the user lands somewhere sensible.
-      router.push("/sign-in");
+      // If Clerk's signOut hiccups, send to the app sign-in anyway so the user lands somewhere sensible.
+      window.location.assign(SIGN_IN_URL);
     }
   };
 
@@ -291,7 +292,7 @@ export default function Sidebar() {
         >
           <SignedIn>
             <UserButton
-              afterSignOutUrl="/sign-in"
+              afterSignOutUrl={SIGN_IN_URL}
               appearance={{
                 elements: {
                   avatarBox: { width: 32, height: 32 },
@@ -301,7 +302,7 @@ export default function Sidebar() {
           </SignedIn>
           <SignedOut>
             <Link
-              href="/sign-in"
+              href={SIGN_IN_URL}
               aria-label="Sign in"
               style={{
                 width: 32,

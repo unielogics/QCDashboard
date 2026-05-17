@@ -15,6 +15,7 @@ import { useTheme, type ThemePreference } from "@/components/design-system/Theme
 import { Avatar, Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useCurrentUser, useMyCredit } from "@/hooks/useApi";
+import { SIGN_IN_URL } from "@/lib/appUrl";
 import { CreditPullModal } from "@/components/CreditPullModal";
 import { Role } from "@/lib/enums.generated";
 import { InvestorProfileDialog } from "./components/InvestorProfileDialog";
@@ -86,9 +87,9 @@ export default function ProfilePage() {
   const handleSignOut = async () => {
     setSigningOut(true);
     try {
-      await clerk.signOut({ redirectUrl: "/sign-in" });
+      await clerk.signOut({ redirectUrl: SIGN_IN_URL });
     } catch {
-      router.push("/sign-in");
+      window.location.assign(SIGN_IN_URL);
     }
   };
 
