@@ -45,31 +45,6 @@ export function AuthMarketingShell({ children }: { children: ReactNode }) {
         }}
       >
         <div style={{ position: "relative", zIndex: 2, maxWidth: 480, width: "100%" }}>
-          <header style={{ textAlign: "center", marginBottom: 32 }}>
-            <h1
-              style={{
-                fontSize: "clamp(28px, 4vw, 40px)",
-                fontWeight: 800,
-                letterSpacing: "-0.03em",
-                color: "#F8FAFC",
-                margin: 0,
-                lineHeight: 1.1,
-              }}
-            >
-              Welcome back
-            </h1>
-            <p
-              style={{
-                marginTop: 10,
-                color: "#94A3B8",
-                fontSize: 15,
-                lineHeight: 1.55,
-              }}
-            >
-              Sign in to access your capital intelligence — borrowing power, deal
-              status, and lender routing for every active file.
-            </p>
-          </header>
           {children}
         </div>
       </div>
@@ -157,27 +132,58 @@ function TopNav() {
 }
 
 
+// The exact marketing-site mark (QCWeb /public/qc-icon.svg), inlined so
+// it renders identically here without depending on a static asset dir.
 function LogoBadge() {
   return (
-    <span
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 512 512"
+      width={34}
+      height={34}
+      aria-hidden="true"
       style={{
-        width: 34,
-        height: 34,
+        display: "block",
         borderRadius: 11,
-        background:
-          "linear-gradient(135deg, rgba(33,211,199,0.18) 0%, rgba(33,211,199,0.05) 100%)",
-        border: "1px solid rgba(33,211,199,0.35)",
         boxShadow: "0 0 35px rgba(33, 211, 199, 0.25)",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: "#21D3C7",
-        fontWeight: 900,
-        fontSize: 16,
       }}
     >
-      QC
-    </span>
+      <defs>
+        <linearGradient id="qcLogoBg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#0B1D3A" />
+          <stop offset="100%" stopColor="#050E1F" />
+        </linearGradient>
+        <linearGradient id="qcLogoTeal" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#21d3c7" />
+          <stop offset="100%" stopColor="#18A89F" />
+        </linearGradient>
+      </defs>
+      <rect width="512" height="512" rx="115" fill="url(#qcLogoBg)" />
+      <circle
+        cx="200"
+        cy="240"
+        r="120"
+        fill="none"
+        stroke="#FFFFFF"
+        strokeWidth="52"
+      />
+      <line
+        x1="280"
+        y1="320"
+        x2="350"
+        y2="400"
+        stroke="#FFFFFF"
+        strokeWidth="52"
+        strokeLinecap="square"
+      />
+      <path
+        d="M 460 140 A 130 130 0 1 0 460 370"
+        fill="none"
+        stroke="url(#qcLogoTeal)"
+        strokeWidth="52"
+        strokeLinecap="square"
+      />
+    </svg>
   );
 }
 
