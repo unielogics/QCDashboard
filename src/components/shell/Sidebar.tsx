@@ -458,6 +458,10 @@ export default function Sidebar() {
           <Link href="/privacy" style={{ color: "inherit", textDecoration: "none" }}>
             Privacy
           </Link>
+          <span aria-hidden>·</span>
+          <Link href="/disclosures" style={{ color: "inherit", textDecoration: "none" }}>
+            Disclosures
+          </Link>
         </div>
       )}
       {/* Suppress unused warning for `initials` — kept for future fallback */}

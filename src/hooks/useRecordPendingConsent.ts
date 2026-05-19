@@ -20,6 +20,10 @@ const PENDING_CONSENT_KEY = "qc.pendingLegalConsent";
 interface PendingConsent {
   terms_version: string;
   privacy_version: string;
+  // Optional for backward-compat: pre-v1.0 (pre-2026-05-19) pending blobs
+  // were written before the Disclosure existed and only carried Terms +
+  // Privacy. New blobs always include it.
+  disclosure_version?: string;
   accepted_at: string;
 }
 
@@ -46,7 +50,11 @@ export function useRecordPendingConsent() {
 
     fired.current = true;
     accept.mutate(
-      { terms_version: parsed.terms_version, privacy_version: parsed.privacy_version },
+      {
+        terms_version: parsed.terms_version,
+        privacy_version: parsed.privacy_version,
+        disclosure_version: parsed.disclosure_version,
+      },
       {
         onSuccess: () => window.localStorage.removeItem(PENDING_CONSENT_KEY),
         onError: () => {

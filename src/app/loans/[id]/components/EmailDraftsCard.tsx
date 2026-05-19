@@ -54,6 +54,22 @@ export function EmailDraftsCard({ loanId }: { loanId: string }) {
           {pending.length} pending
         </Pill>
       </div>
+      {/* AI disclosure microcopy — Disclosure §2 ("AI can make mistakes")
+          + Terms §5 require explicit human review of AI-drafted comms before
+          they send. */}
+      <div
+        style={{
+          padding: "8px 16px",
+          borderBottom: `1px solid ${t.line}`,
+          fontSize: 11,
+          color: t.ink4,
+          fontStyle: "italic",
+          lineHeight: 1.5,
+        }}
+      >
+        AI-drafted. Human review required before sending — verify recipients,
+        figures, and tone.
+      </div>
 
       <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
         {pending.length === 0 && (

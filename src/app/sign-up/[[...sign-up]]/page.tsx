@@ -6,7 +6,12 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AuthMarketingShell } from "@/components/auth/AuthMarketingShell";
 import { CLERK_DARK_APPEARANCE } from "@/components/auth/clerkAppearance";
-import { COMPANY_NAME, PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal";
+import {
+  COMPANY_NAME,
+  DISCLOSURE_VERSION,
+  PRIVACY_VERSION,
+  TERMS_VERSION,
+} from "@/lib/legal";
 
 // localStorage key used to bridge "user accepted at signup time" → the
 // post-signup auto-record effect (in app/providers.tsx via
@@ -35,6 +40,7 @@ export default function SignUpPage() {
         JSON.stringify({
           terms_version: TERMS_VERSION,
           privacy_version: PRIVACY_VERSION,
+          disclosure_version: DISCLOSURE_VERSION,
           accepted_at: new Date().toISOString(),
         }),
       );
@@ -87,14 +93,22 @@ export default function SignUpPage() {
               style={{ color: "#E9D58A", fontWeight: 700, textDecoration: "underline" }}
             >
               Terms &amp; Conditions
-            </Link>{" "}
-            and{" "}
+            </Link>
+            ,{" "}
             <Link
               href="/privacy"
               target="_blank"
               style={{ color: "#E9D58A", fontWeight: 700, textDecoration: "underline" }}
             >
               Privacy Policy
+            </Link>
+            , and{" "}
+            <Link
+              href="/disclosures"
+              target="_blank"
+              style={{ color: "#E9D58A", fontWeight: 700, textDecoration: "underline" }}
+            >
+              Funding / AI / Communications Disclosure
             </Link>
             , and consent under the TCPA to receive email and SMS communications about my loan
             file (reply STOP to opt out at any time).
@@ -132,7 +146,7 @@ export default function SignUpPage() {
             textAlign: "center",
           }}
         >
-          The account creation form will appear once you accept the Terms &amp; Privacy above.
+          The account creation form will appear once you accept the documents above.
         </div>
       )}
     </AuthMarketingShell>

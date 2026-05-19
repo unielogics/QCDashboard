@@ -81,6 +81,23 @@ export function LoanSummaryCard({ loan }: { loan: Loan }) {
           {refresh.error instanceof Error ? refresh.error.message : "Refresh failed."}
         </div>
       )}
+
+      {/* AI disclosure microcopy — Disclosure §2 ("AI can make mistakes")
+          requires this near AI-generated underwriting observations. */}
+      <div
+        style={{
+          marginTop: 12,
+          paddingTop: 10,
+          borderTop: `1px solid ${t.line}`,
+          fontSize: 11,
+          color: t.ink4,
+          fontStyle: "italic",
+          lineHeight: 1.5,
+        }}
+      >
+        AI can make mistakes. Review before relying on these figures — final
+        underwriting and lender decisions are made independently.
+      </div>
     </Card>
   );
 }

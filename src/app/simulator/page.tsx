@@ -408,6 +408,22 @@ function ClientSimulator() {
             style={productKey === "dscr" ? "fully_amortizing" : "interest_only"}
           />
         ) : null}
+
+        {/* AI / projections disclaimer — Disclosure §5 + Terms §4 require
+            preliminary projections to be labeled as not a rate lock or
+            commitment to lend. */}
+        <div
+          style={{
+            fontSize: 11,
+            color: t.ink4,
+            fontStyle: "italic",
+            lineHeight: 1.5,
+            padding: "4px 2px",
+          }}
+        >
+          Preliminary estimate. Not a rate lock or commitment to lend — final
+          terms, pricing, and approval are set by the lender at underwriting.
+        </div>
       </div>
 
       {/* RIGHT — controls panel: credit (compact) → product → property+sizing.

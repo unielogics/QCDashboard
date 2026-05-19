@@ -2410,7 +2410,13 @@ export function useAcceptLegal() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { terms_version: string; privacy_version: string }) =>
+    mutationFn: (body: {
+      terms_version: string;
+      privacy_version: string;
+      // Funding/AI/Communications Disclosure added with the v1.0 deploy
+      // (2026-05-19). Optional so legacy pending blobs still POST cleanly.
+      disclosure_version?: string;
+    }) =>
       apiCall<{ id: string }>("/legal/accept", {
         method: "POST",
         body: JSON.stringify(body),

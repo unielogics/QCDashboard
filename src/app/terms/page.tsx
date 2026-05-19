@@ -7,8 +7,8 @@ export default function TermsPage() {
   return (
     <LegalDocumentView
       doc={TERMS_AND_CONDITIONS}
-      peerHref="/privacy"
-      peerLabel="Read the Privacy Policy"
+      peerHref="/disclosures"
+      peerLabel="Read the Funding / AI / Communications Disclosure"
     />
   );
 }

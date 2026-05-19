@@ -129,6 +129,19 @@ export function ClientLoanChatTab({ loanId, user }: Props) {
             ? `Your operator is handling this directly (AI back in ~${pauseRemainingMin} min)`
             : "AI ↔ you about this loan"}
         </span>
+        {/* AI disclosure microcopy — Disclosure §2 ("AI can make mistakes")
+            on a borrower-facing AI surface. */}
+        <span
+          style={{
+            marginLeft: "auto",
+            fontSize: 10.5,
+            color: t.ink4,
+            fontStyle: "italic",
+            fontWeight: 500,
+          }}
+        >
+          Nurture AI can make mistakes — anything material is reviewed before action.
+        </span>
       </header>
 
       <div style={{ minHeight: 0, overflow: "auto", padding: 12 }}>
