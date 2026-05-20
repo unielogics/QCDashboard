@@ -4699,3 +4699,130 @@ export function usePromoteAgentTaskToAi(clientId: string) {
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Capital partner (lender) applications — super-admin review queue.
+//
+// Backed by app/routers/admin.py:
+//   GET  /admin/capital-partner-applications[?status_filter=...]
+//   GET  /admin/capital-partner-applications/{id}
+//   POST /admin/capital-partner-applications/{id}/decision
+// ---------------------------------------------------------------------------
+
+export type CapitalPartnerStatus = "pending" | "approved" | "denied";
+
+export interface CapitalPartnerAppListRow {
+  id: string;
+  company_name: string;
+  contact_name: string;
+  contact_email: string;
+  loan_types: string[];
+  geographic_states: string[];
+  monthly_origination_band: string | null;
+  status: CapitalPartnerStatus;
+  reviewed_at: string | null;
+  promoted_lender_id: string | null;
+  created_at: string;
+}
+
+export interface CapitalPartnerApp {
+  id: string;
+  // Company
+  company_name: string;
+  legal_entity_type: string | null;
+  formation_state: string | null;
+  ein: string | null;
+  years_in_business: number | null;
+  website: string | null;
+  // Lending appetite
+  loan_types: string[];
+  loan_size_min: number | null;
+  loan_size_max: number | null;
+  geographic_states: string[];
+  asset_classes: string[];
+  // Capital & volume
+  capital_source: string | null;
+  aum_band: string | null;
+  monthly_origination_band: string | null;
+  // Underwriting box
+  max_ltv: number | null;
+  max_ltc: number | null;
+  min_dscr: number | null;
+  min_fico: number | null;
+  rate_range: string | null;
+  // Contact
+  contact_name: string;
+  contact_title: string | null;
+  contact_email: string;
+  contact_phone: string | null;
+  submission_email: string | null;
+  submission_portal_url: string | null;
+  average_response_time: string | null;
+  notes: string | null;
+  // Review state
+  status: CapitalPartnerStatus;
+  review_notes: string | null;
+  reviewed_by_id: string | null;
+  reviewed_at: string | null;
+  promoted_lender_id: string | null;
+  // Audit
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CapitalPartnerDecisionPayload {
+  decision: "approved" | "denied";
+  review_notes?: string | null;
+  promote_to_lender?: boolean;
+}
+
+export function useCapitalPartnerApplications(
+  statusFilter?: CapitalPartnerStatus,
+) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qs = statusFilter ? `?status_filter=${statusFilter}` : "";
+  return useQuery({
+    queryKey: ["capital-partner-applications", statusFilter ?? "all", devUser],
+    queryFn: () =>
+      apiCall<CapitalPartnerAppListRow[]>(
+        `/admin/capital-partner-applications${qs}`,
+      ),
+    refetchOnWindowFocus: true,
+    staleTime: 15 * 1000,
+  });
+}
+
+export function useCapitalPartnerApplication(id: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    enabled: !!id,
+    queryKey: ["capital-partner-applications", "detail", id, devUser],
+    queryFn: () =>
+      apiCall<CapitalPartnerApp>(`/admin/capital-partner-applications/${id}`),
+  });
+}
+
+export function useDecideCapitalPartnerApplication() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: string;
+      payload: CapitalPartnerDecisionPayload;
+    }) =>
+      apiCall<CapitalPartnerApp>(
+        `/admin/capital-partner-applications/${id}/decision`,
+        { method: "POST", body: JSON.stringify(payload) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["capital-partner-applications"] });
+    },
+  });
+}

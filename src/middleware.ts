@@ -31,6 +31,7 @@ const isPublicPage = createRouteMatcher([
 const isSuperAdminOnlyPage = createRouteMatcher([
   "/admin/lenders(.*)",
   "/admin/borrowers(.*)",
+  "/admin/capital-partner-applications(.*)",
   "/settings(.*)",
 ]);
 
