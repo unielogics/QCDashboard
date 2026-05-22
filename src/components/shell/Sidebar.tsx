@@ -39,6 +39,7 @@ const AGENT_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: "home" },
   { href: "/pipeline", label: "My Pipeline", icon: "layers" },
   { href: "/ai-inbox", label: "AI Inbox", icon: "bolt" },
+  { href: "/ai-agents", label: "AI Agents", icon: "spark" },
   { href: "/clients", label: "Clients", icon: "clients" },
   // /vault intentionally omitted for agents — they collect docs from
   // INSIDE a deal (Documents tab on the loan/client detail page) rather

@@ -104,7 +104,7 @@ import type {
 import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurpose, PropertyType, Role, DealChatMode, FeedbackOutputType, FeedbackRating, AmortizationStyle } from "@/lib/enums.generated";
 import type { ClosingCostTier } from "@/lib/fixFlip/types";
 
-function useDevUser(): string {
+export function useDevUser(): string {
   return useActiveProfile().email;
 }
 
@@ -146,7 +146,7 @@ function aiQueryRetry(failureCount: number, err: unknown): boolean {
   return failureCount < 1;
 }
 
-function useAuthedApi() {
+export function useAuthedApi() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const devUser = useDevUser();
 
