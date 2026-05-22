@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, StageBadge } from "@/components/design-system/primitives";
@@ -64,6 +65,12 @@ function OperatorPipelinePage() {
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [search, setSearch] = useState<string>("");
   const [intakeOpen, setIntakeOpen] = useState(false);
+  // `/pipeline?new=1` (e.g. the dashboard "Add Lead" button) opens the
+  // intake modal straight away — there's no standalone /leads route.
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (searchParams?.get("new") === "1") setIntakeOpen(true);
+  }, [searchParams]);
   // Right-click → "Reassign agent…" context menu state. Only super_admin
   // / loan_exec can open this — broker rows don't render the trigger.
   const [reassignTarget, setReassignTarget] = useState<{ loan: Loan; x: number; y: number } | null>(null);

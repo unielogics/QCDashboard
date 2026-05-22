@@ -106,7 +106,7 @@ export function AgentHomeView() {
           <div style={{ color: t.ink3, fontSize: 13, marginTop: 4 }}>{dateline}</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Link href="/leads" style={{ ...qcBtnPrimary(t), textDecoration: "none" }}>
+          <Link href="/pipeline?new=1" style={{ ...qcBtnPrimary(t), textDecoration: "none" }}>
             <Icon name="plus" size={13} /> Add Lead
           </Link>
         </div>
