@@ -47,6 +47,7 @@ export interface AiAgent {
   warmup_mode: boolean;
   max_followups: number;
   cadence: number[];
+  voice_profile_id: string | null;
   last_tested_at: string | null;
   activated_at: string | null;
   created_at: string | null;
@@ -120,11 +121,19 @@ export interface AiAgentExitRules {
   max_days_in_sequence: number;
 }
 
-export interface AiAgentSampleMessage {
+export interface VoiceSituation {
+  key: string;
+  label: string;
+  hint: string;
+}
+
+export interface VoiceProfile {
   id: string;
-  touchpoint_key: string;
-  channel: string;
-  sample_text: string;
+  name: string;
+  templates: Record<string, string>;
+  used_by?: number;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 export interface AiAgentTestScenario {
@@ -191,8 +200,6 @@ export const useAiAgentShowingGuide = (id: string | null) =>
   useSubResource<AiAgentSynth>(id, "showing-guide", "showing-guide");
 export const useAiAgentExitRules = (id: string | null) =>
   useSubResource<AiAgentExitRules>(id, "exit-rules", "exit-rules");
-export const useAiAgentSampleMessages = (id: string | null) =>
-  useSubResource<AiAgentSampleMessage[]>(id, "sample-messages", "samples");
 export const useAiAgentTestScenarios = (id: string | null) =>
   useSubResource<AiAgentTestScenario[]>(id, "test-scenarios", "tests");
 export const useAiAgentMessages = (id: string | null) =>
@@ -372,28 +379,85 @@ export const useSaveExitRules = () =>
     ["exit-rules"],
   );
 
-export const useAddSampleMessage = () =>
-  useAgentMutation<{
-    id: string;
-    touchpoint_key: string;
-    channel: string;
-    sample_text: string;
-  }>(
-    (api, { id, touchpoint_key, channel, sample_text }) =>
-      api(`/ai-agents/${id}/sample-messages`, {
+// ── Voice profiles — broker-scoped, reusable across AI agents ──────
+
+export function useVoiceSituations() {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["ai-voice-situations"],
+    queryFn: () => apiCall<VoiceSituation[]>("/ai-voice-profiles/situations"),
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+export function useVoiceProfiles() {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["ai-voice-profiles"],
+    queryFn: () => apiCall<VoiceProfile[]>("/ai-voice-profiles"),
+  });
+}
+
+export function useCreateVoiceProfile() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; templates: Record<string, string> }) =>
+      apiCall<VoiceProfile>("/ai-voice-profiles", {
         method: "POST",
-        body: JSON.stringify({ touchpoint_key, channel, sample_text }),
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ai-voice-profiles"] }),
+  });
+}
+
+export function useSaveVoiceProfile() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      profileId,
+      name,
+      templates,
+    }: {
+      profileId: string;
+      name: string;
+      templates: Record<string, string>;
+    }) =>
+      apiCall<VoiceProfile>(`/ai-voice-profiles/${profileId}`, {
+        method: "PUT",
+        body: JSON.stringify({ name, templates }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ai-voice-profiles"] });
+      qc.invalidateQueries({ queryKey: ["ai-agents"] });
+    },
+  });
+}
+
+export function useDeleteVoiceProfile() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (profileId: string) =>
+      apiCall<{ ok: boolean }>(`/ai-voice-profiles/${profileId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ai-voice-profiles"] });
+      qc.invalidateQueries({ queryKey: ["ai-agents"] });
+    },
+  });
+}
+
+export const useLinkVoiceProfile = () =>
+  useAgentMutation<{ id: string; voice_profile_id: string }>(
+    (api, { id, voice_profile_id }) =>
+      api(`/ai-agents/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ voice_profile_id }),
       }),
     (i) => i.id,
-    ["samples"],
-  );
-
-export const useDeleteSampleMessage = () =>
-  useAgentMutation<{ id: string; sampleId: string }>(
-    (api, { id, sampleId }) =>
-      api(`/ai-agents/${id}/sample-messages/${sampleId}`, { method: "DELETE" }),
-    (i) => i.id,
-    ["samples"],
   );
 
 export const useRunTest = () =>

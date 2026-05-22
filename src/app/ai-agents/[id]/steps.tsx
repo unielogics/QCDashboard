@@ -13,14 +13,12 @@ import {
 } from "@/hooks/useApi";
 import {
   useAddKnowledgeLink,
-  useAddSampleMessage,
   useAiAgentExitRules,
   useAiAgentGoal,
   useAiAgentKnowledgeLinks,
   useAiAgentLeads,
   useAiAgentMessages,
   useAiAgentPlaybook,
-  useAiAgentSampleMessages,
   useAiAgentShowingGuide,
   useAiAgentTargeting,
   useAiAgentTargetingPreview,
@@ -32,7 +30,12 @@ import {
   useAssignWarmupLeads,
   useCompleteTraining,
   useCreateWarmupContact,
-  useDeleteSampleMessage,
+  useCreateVoiceProfile,
+  useDeleteVoiceProfile,
+  useLinkVoiceProfile,
+  useSaveVoiceProfile,
+  useVoiceProfiles,
+  useVoiceSituations,
   useGeneratePlaybook,
   useGenerateShowingGuide,
   usePatchAiAgent,
@@ -68,7 +71,7 @@ export const STEP_DEFS: { key: string; label: string }[] = [
   { key: "training", label: "Training Studio" },
   { key: "playbook", label: "Playbook" },
   { key: "showing_guide", label: "Showing Guide" },
-  { key: "followups", label: "Follow-ups & Exit" },
+  { key: "followups", label: "Voice & Exit" },
   { key: "test", label: "Test Scenarios" },
   { key: "launch", label: "Launch Controls" },
   { key: "warmup", label: "Warm-up & Launch" },
@@ -713,191 +716,265 @@ export function ShowingGuidePanel({ agent }: PanelProps) {
   );
 }
 
-// ── Step 8: Follow-ups & Exit ───────────────────────────────────────
+// ── Step 8: Voice & Exit ────────────────────────────────────────────
 //
-// One coherent idea: the follow-up SEQUENCE. Each row is a message the
-// agent sends, in order — when it goes out, and (optionally) an example
-// of how you'd word it so the AI matches your voice. The day numbers
-// are the cadence; the examples are the per-message training samples.
-
-type SeqStep = { day: number; example: string };
-
-function touchpointKeyFor(i: number, total: number): string {
-  if (i === 0) return "intro";
-  if (i >= total - 1) return "breakup";
-  return `followup_${i}`;
-}
-
-function stepLabel(i: number, total: number): string {
-  if (i === 0) return "Intro message";
-  if (i >= total - 1 && total > 1) return "Break-up message";
-  return `Follow-up ${i}`;
-}
+// Follow-up timing + message content are the AI's job. The broker's
+// job in this step is twofold:
+//   (1) Pick — or create — a reusable Voice Profile: a small set of
+//       templates that capture how this broker actually writes to
+//       clients (greeting, late-item ask, under-contract update, …).
+//       One profile can be linked to many AI Agents.
+//   (2) Set the exit rules — when the AI should give up.
 
 export function FollowupsPanel({ agent }: PanelProps) {
   const { t } = useTheme();
-  const patch = usePatchAiAgent();
   const rulesQuery = useAiAgentExitRules(agent.id);
   const saveRules = useSaveExitRules();
-  const samplesQuery = useAiAgentSampleMessages(agent.id);
-  const addSample = useAddSampleMessage();
-  const delSample = useDeleteSampleMessage();
+  const profilesQuery = useVoiceProfiles();
+  const situationsQuery = useVoiceSituations();
+  const createProfile = useCreateVoiceProfile();
+  const saveProfile = useSaveVoiceProfile();
+  const deleteProfile = useDeleteVoiceProfile();
+  const linkProfile = useLinkVoiceProfile();
 
-  const [steps, setSteps] = useState<SeqStep[]>([]);
   const [maxMessages, setMaxMessages] = useState(5);
   const [maxDays, setMaxDays] = useState(14);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
+  const [draftTemplates, setDraftTemplates] = useState<Record<string, string>>({});
+  const [savedHint, setSavedHint] = useState(false);
   const seeded = useRef(false);
 
-  // Seed the sequence once both the cadence (on the agent) and the
-  // saved examples have loaded.
   useEffect(() => {
     if (seeded.current) return;
-    if (samplesQuery.isLoading || rulesQuery.isLoading) return;
+    if (rulesQuery.isLoading) return;
     seeded.current = true;
-    const cad = agent.cadence?.length ? agent.cadence : [0, 2, 5, 8, 12];
-    const byTp = new Map<string, string>();
-    (samplesQuery.data ?? []).forEach((s) => {
-      if (!byTp.has(s.touchpoint_key)) byTp.set(s.touchpoint_key, s.sample_text);
-    });
-    setSteps(
-      cad.map((day, i) => ({
-        day,
-        example: byTp.get(touchpointKeyFor(i, cad.length)) ?? "",
-      })),
-    );
     const r = rulesQuery.data;
     if (r && Object.keys(r).length) {
       setMaxMessages(r.max_email_attempts);
       setMaxDays(r.max_days_in_sequence);
-    } else {
-      setMaxMessages(Math.max(5, cad.length));
     }
-  }, [
-    samplesQuery.isLoading,
-    rulesQuery.isLoading,
-    samplesQuery.data,
-    rulesQuery.data,
-    agent.cadence,
-  ]);
+  }, [rulesQuery.isLoading, rulesQuery.data]);
 
-  const editStep = (i: number, p: Partial<SeqStep>) =>
-    setSteps((s) => s.map((x, idx) => (idx === i ? { ...x, ...p } : x)));
-  const addStep = () =>
-    setSteps((s) => [...s, { day: (s[s.length - 1]?.day ?? 0) + 3, example: "" }]);
-  const removeStep = (i: number) =>
-    setSteps((s) => (s.length > 1 ? s.filter((_, idx) => idx !== i) : s));
+  const profiles = profilesQuery.data ?? [];
+  const situations = situationsQuery.data ?? [];
+  const linkedId = agent.voice_profile_id;
+  const linked = profiles.find((p) => p.id === linkedId) ?? null;
 
-  const save = async () => {
-    setSaving(true);
-    setSaved(false);
-    try {
-      await patch.mutateAsync({
-        id: agent.id,
-        patch: { cadence: steps.map((s) => s.day) },
+  const startCreate = () => {
+    setEditingId("new");
+    setDraftName("");
+    setDraftTemplates({});
+  };
+  const startEdit = (p: typeof profiles[number]) => {
+    setEditingId(p.id);
+    setDraftName(p.name);
+    setDraftTemplates({ ...(p.templates ?? {}) });
+  };
+  const cancelEdit = () => setEditingId(null);
+
+  const filledCount = Object.values(draftTemplates).filter(
+    (v) => (v ?? "").trim(),
+  ).length;
+
+  const saveDraft = async () => {
+    if (!draftName.trim() || filledCount < 3) return;
+    if (editingId === "new") {
+      const created = await createProfile.mutateAsync({
+        name: draftName.trim(),
+        templates: draftTemplates,
       });
-      await saveRules.mutateAsync({
+      await linkProfile.mutateAsync({
         id: agent.id,
-        rules: {
-          max_email_attempts: maxMessages,
-          max_no_reply_followups: maxMessages,
-          max_days_in_sequence: maxDays,
-        },
+        voice_profile_id: created.id,
       });
-      // The sequence editor owns the examples — replace them wholesale.
-      for (const s of samplesQuery.data ?? []) {
-        await delSample.mutateAsync({ id: agent.id, sampleId: s.id });
-      }
-      const total = steps.length;
-      for (let i = 0; i < steps.length; i++) {
-        const txt = steps[i].example.trim();
-        if (txt) {
-          await addSample.mutateAsync({
-            id: agent.id,
-            touchpoint_key: touchpointKeyFor(i, total),
-            channel: "email",
-            sample_text: txt,
-          });
-        }
-      }
-      setSaved(true);
-    } finally {
-      setSaving(false);
+    } else if (editingId) {
+      await saveProfile.mutateAsync({
+        profileId: editingId,
+        name: draftName.trim(),
+        templates: draftTemplates,
+      });
     }
+    setEditingId(null);
+  };
+
+  const linkExisting = (pid: string) =>
+    linkProfile.mutate({ id: agent.id, voice_profile_id: pid });
+
+  const saveExit = async () => {
+    setSavedHint(false);
+    await saveRules.mutateAsync({
+      id: agent.id,
+      rules: {
+        max_email_attempts: maxMessages,
+        max_no_reply_followups: maxMessages,
+        max_days_in_sequence: maxDays,
+      },
+    });
+    setSavedHint(true);
   };
 
   return (
     <div>
       <PanelHeader
-        title="Follow-ups & Exit"
-        desc="The sequence of messages this agent sends, in order — and when it should give up."
+        title="Voice & Exit"
+        desc="The AI handles when and how often to follow up. Your job: teach it your voice once (and reuse it across agents), and set when it should give up."
       />
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {steps.map((step, i) => (
-          <Card key={i} pad={14}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 10,
-                marginBottom: 8,
-              }}
-            >
-              <div style={{ fontSize: 14, fontWeight: 700, color: t.ink }}>
-                {stepLabel(i, steps.length)}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12.5, color: t.ink3 }}>Sends on day</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={step.day}
-                  onChange={(e) => editStep(i, { day: +e.target.value })}
-                  style={{ ...numStyle(t), width: 64 }}
-                />
-                {steps.length > 1 && (
-                  <button
-                    onClick={() => removeStep(i)}
-                    title="Remove this message"
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      color: t.ink3,
-                      cursor: "pointer",
-                      fontSize: 18,
-                      lineHeight: 1,
-                      padding: 2,
-                    }}
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            </div>
-            <TextAreaField
-              value={step.example}
-              onChange={(v) => editStep(i, { example: v })}
-              rows={3}
-              placeholder="Example (optional) — write this message the way you would, and the AI will match your tone."
-            />
-          </Card>
-        ))}
-      </div>
-      <div style={{ marginTop: 10 }}>
-        <Btn onClick={addStep}>
-          <Icon name="plus" size={13} /> Add a follow-up
-        </Btn>
-      </div>
-
+      {/* Voice profile picker */}
       <div
         style={{
           fontSize: 12,
           fontWeight: 800,
           color: t.ink3,
-          margin: "24px 0 10px",
+          margin: "4px 0 8px",
+          textTransform: "uppercase",
+          letterSpacing: 0.6,
+        }}
+      >
+        Voice profile
+      </div>
+      {linked ? (
+        <Card pad={14} style={{ marginBottom: 10 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: t.ink }}>
+                {linked.name}
+              </div>
+              <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>
+                {Object.keys(linked.templates ?? {}).length} template
+                {Object.keys(linked.templates ?? {}).length === 1 ? "" : "s"} ·
+                {" "}
+                used by {linked.used_by ?? 1} agent
+                {(linked.used_by ?? 1) === 1 ? "" : "s"}
+              </div>
+            </div>
+            <Btn onClick={() => startEdit(linked)}>Edit</Btn>
+          </div>
+        </Card>
+      ) : (
+        <div style={{ fontSize: 13, color: t.ink3, marginBottom: 10 }}>
+          No voice profile linked yet — pick one below, or create your first.
+        </div>
+      )}
+
+      {profiles.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: t.ink3, marginBottom: 6 }}>
+            Use one of your saved profiles:
+          </div>
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+            {profiles.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => linkExisting(p.id)}
+                style={{
+                  padding: "7px 12px",
+                  borderRadius: 999,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  border: `1px solid ${p.id === linkedId ? t.ink : t.lineStrong}`,
+                  background: p.id === linkedId ? t.ink : t.surface,
+                  color: p.id === linkedId ? t.inverse : t.ink2,
+                }}
+              >
+                {p.name}
+                {p.id === linkedId ? " ✓" : ""}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <Btn onClick={startCreate}>
+        <Icon name="plus" size={13} /> Create a new voice profile
+      </Btn>
+
+      {/* Editor (create / edit) */}
+      {editingId && (
+        <Card pad={16} style={{ marginTop: 14 }}>
+          <FieldRow
+            label="Profile name"
+            hint="Name this set so you can reuse it on other AI agents."
+          >
+            <TextField
+              value={draftName}
+              onChange={setDraftName}
+              placeholder="e.g. My friendly buyer voice"
+            />
+          </FieldRow>
+          <div style={{ fontSize: 13, color: t.ink2, margin: "4px 0 12px" }}>
+            Fill in <strong>at least 3</strong> of the situations below the way
+            you&apos;d actually write them. The AI reads these as your style
+            guide — it won&apos;t copy them word-for-word, but it&apos;ll match
+            your tone.
+          </div>
+          {situations.map((s) => (
+            <FieldRow key={s.key} label={s.label} hint={s.hint}>
+              <TextAreaField
+                value={draftTemplates[s.key] ?? ""}
+                onChange={(v) =>
+                  setDraftTemplates((d) => ({ ...d, [s.key]: v }))
+                }
+                rows={3}
+                placeholder="Write this exactly how you'd send it to a real client…"
+              />
+            </FieldRow>
+          ))}
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <Btn
+              variant="primary"
+              onClick={saveDraft}
+              disabled={
+                !draftName.trim() ||
+                filledCount < 3 ||
+                createProfile.isPending ||
+                saveProfile.isPending
+              }
+            >
+              {filledCount < 3
+                ? `Add ${3 - filledCount} more to save`
+                : editingId === "new"
+                  ? "Save & use"
+                  : "Save"}
+            </Btn>
+            <Btn onClick={cancelEdit}>Cancel</Btn>
+            {editingId !== "new" && editingId && (
+              <Btn
+                variant="danger"
+                onClick={async () => {
+                  if (
+                    !confirm(
+                      "Delete this voice profile? Agents using it will lose their tonality reference.",
+                    )
+                  )
+                    return;
+                  await deleteProfile.mutateAsync(editingId);
+                  setEditingId(null);
+                }}
+              >
+                Delete profile
+              </Btn>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* Exit rules */}
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 800,
+          color: t.ink3,
+          margin: "26px 0 10px",
           textTransform: "uppercase",
           letterSpacing: 0.6,
         }}
@@ -926,12 +1003,18 @@ export function FollowupsPanel({ agent }: PanelProps) {
           />
         </label>
       </div>
-
-      <div style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 12 }}>
-        <Btn variant="primary" onClick={save} disabled={saving}>
-          {saving ? "Saving…" : "Save follow-ups"}
+      <div
+        style={{
+          marginTop: 14,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <Btn variant="primary" onClick={saveExit} disabled={saveRules.isPending}>
+          {saveRules.isPending ? "Saving…" : "Save exit rules"}
         </Btn>
-        {saved && (
+        {savedHint && (
           <span style={{ fontSize: 13, color: t.profit, fontWeight: 600 }}>
             Saved
           </span>
