@@ -3,12 +3,17 @@
 // ClientFileModal — the borrower's stage-aware file detail surface,
 // opened from the client /pipeline table (ClientFilePipeline).
 //
-// Layout: a wide overlay with a two-pane body —
+// Rendered as a FULL in-content panel: it fills the main content area
+// (right of the sidebar, below the top bar) rather than a viewport
+// overlay, so the left nav stays visible and usable. ClientFilePipeline
+// swaps the table for this panel while a file is open.
+//
+// Layout: a two-pane body —
 //   · main pane: tabbed content, tab set chosen by file status
 //   · right rail: the AI chat, persistent on every tab
 //   · top strip: the AI's plain-English read of the file
 //
-// RE Working files show Property / Schedule / Documents / Activity.
+// RE Working files show Property / Schedule / Documents.
 // In Funding (and Funded) files add read-only Loan Terms / Conditions /
 // Prequal / HUD so the borrower can watch the funding team's work.
 //
@@ -27,19 +32,16 @@ import {
   useDocuments,
   useHudLines,
   useLoan,
-  useLoanActivity,
   useLoanPrequalRequests,
   type MyFileRow,
 } from "@/hooks/useApi";
 import { ClientLoanChatTab } from "@/app/loans/[id]/components/ClientLoanChatTab";
 import { DocsTab } from "@/app/loans/[id]/tabs/DocsTab";
-import { ActivityTab } from "@/app/loans/[id]/tabs/ActivityTab";
 
 type TabId =
   | "property"
   | "schedule"
   | "documents"
-  | "activity"
   | "terms"
   | "conditions"
   | "prequal"
@@ -49,7 +51,6 @@ const RE_WORKING_TABS: { id: TabId; label: string; icon: string }[] = [
   { id: "property", label: "Property", icon: "home" },
   { id: "schedule", label: "Schedule", icon: "cal" },
   { id: "documents", label: "Documents", icon: "doc" },
-  { id: "activity", label: "Activity", icon: "audit" },
 ];
 
 const IN_FUNDING_TABS: { id: TabId; label: string; icon: string }[] = [
@@ -73,7 +74,6 @@ export function ClientFileModal({
 
   const { data: currentUser } = useCurrentUser();
   const { data: loan } = useLoan(loanId);
-  const { data: activity = [], isLoading: activityLoading } = useLoanActivity(loanId);
 
   const tabs = useMemo(
     () => (isFunding ? [...RE_WORKING_TABS, ...IN_FUNDING_TABS] : RE_WORKING_TABS),
@@ -93,216 +93,195 @@ export function ClientFileModal({
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
       style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.6)",
-        zIndex: 200,
+        // Full in-content panel — fills the main area; the sidebar +
+        // top bar stay visible and usable.
+        height: "calc(100vh - 112px)",
+        minHeight: 520,
+        background: t.surface,
+        border: `1px solid ${t.line}`,
+        borderRadius: 14,
+        boxShadow: t.shadow,
+        overflow: "hidden",
         display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "center",
-        padding: "40px 16px",
-        overflowY: "auto",
+        flexDirection: "column",
       }}
     >
+      {/* Header */}
       <div
-        onClick={(e) => e.stopPropagation()}
         style={{
-          width: "100%",
-          maxWidth: 1140,
-          background: t.surface,
-          border: `1px solid ${t.line}`,
-          borderRadius: 16,
-          boxShadow: t.shadowLg,
-          overflow: "hidden",
           display: "flex",
-          flexDirection: "column",
-          minHeight: 560,
+          alignItems: "center",
+          gap: 12,
+          padding: "14px 18px",
+          borderBottom: `1px solid ${t.line}`,
         }}
       >
-        {/* Header */}
+        <button
+          onClick={onClose}
+          style={{
+            all: "unset",
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "6px 10px",
+            borderRadius: 8,
+            background: t.surface2,
+            border: `1px solid ${t.line}`,
+            color: t.ink2,
+            fontSize: 12,
+            fontWeight: 700,
+            flexShrink: 0,
+          }}
+        >
+          <Icon name="arrowL" size={12} /> All files
+        </button>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Pill bg={statusPill.bg} color={statusPill.fg}>
+              {statusPill.label}
+            </Pill>
+            <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>
+              {file.ref} · {file.stage_detail}
+            </span>
+          </div>
+          <div
+            style={{
+              fontSize: 18,
+              fontWeight: 800,
+              color: t.ink,
+              marginTop: 3,
+              letterSpacing: -0.2,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {file.address || file.ref}
+          </div>
+        </div>
+      </div>
+
+      {/* AI intelligence strip */}
+      {file.ai_status ? (
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "16px 20px",
+            alignItems: "flex-start",
+            gap: 9,
+            padding: "10px 18px",
             borderBottom: `1px solid ${t.line}`,
+            background: t.petrolSoft,
           }}
         >
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Pill bg={statusPill.bg} color={statusPill.fg}>
-                {statusPill.label}
-              </Pill>
-              <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>
-                {file.ref} · {file.stage_detail}
-              </span>
-            </div>
-            <div
-              style={{
-                fontSize: 19,
-                fontWeight: 800,
-                color: t.ink,
-                marginTop: 4,
-                letterSpacing: -0.2,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {file.address || file.ref}
-            </div>
+          <Icon name="ai" size={13} color={t.petrol} />
+          <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
+            <span style={{ fontWeight: 800, color: t.petrol }}>Where things stand · </span>
+            {file.ai_status}
           </div>
-          <button
-            onClick={onClose}
-            aria-label="Close"
+        </div>
+      ) : null}
+
+      {/* Two-pane body */}
+      <div style={{ display: "flex", minHeight: 0, flex: 1 }}>
+        {/* Main pane */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+          {/* Tab strip */}
+          <div
             style={{
-              all: "unset",
-              cursor: "pointer",
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              display: "grid",
-              placeItems: "center",
-              color: t.ink3,
+              display: "flex",
+              gap: 2,
+              padding: "10px 16px",
+              borderBottom: `1px solid ${t.line}`,
+              flexWrap: "wrap",
             }}
           >
-            <Icon name="x" size={16} />
-          </button>
+            {tabs.map((x) => {
+              const on = x.id === activeTab;
+              return (
+                <button
+                  key={x.id}
+                  onClick={() => setTab(x.id)}
+                  style={{
+                    all: "unset",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "7px 12px",
+                    borderRadius: 8,
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    color: on ? t.ink : t.ink3,
+                    background: on ? t.surface2 : "transparent",
+                  }}
+                >
+                  <Icon name={x.icon} size={12} />
+                  {x.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Panel */}
+          <div style={{ padding: 16, overflowY: "auto", flex: 1, minHeight: 0 }}>
+            {activeTab === "property" ? (
+              <PropertyPanel file={file} loan={loan} t={t} />
+            ) : activeTab === "schedule" ? (
+              <SchedulePanel loan={loan} hasLoan={hasLoan} t={t} />
+            ) : activeTab === "documents" ? (
+              hasLoan && loan ? (
+                <DocsTab loan={loan} canRequest={false} canUpload />
+              ) : (
+                <SetupNotice t={t} label="Document upload opens once your agent moves this file forward." />
+              )
+            ) : activeTab === "terms" ? (
+              <LoanTermsPanel loan={loan} t={t} />
+            ) : activeTab === "conditions" ? (
+              <ConditionsPanel loanId={loanId} t={t} />
+            ) : activeTab === "prequal" ? (
+              <PrequalPanel loanId={loanId} t={t} />
+            ) : activeTab === "hud" ? (
+              <HudPanel loanId={loanId} t={t} />
+            ) : null}
+          </div>
         </div>
 
-        {/* AI intelligence strip */}
-        {file.ai_status ? (
+        {/* Persistent AI chat rail */}
+        <div
+          style={{
+            width: 360,
+            flexShrink: 0,
+            borderLeft: `1px solid ${t.line}`,
+            background: t.bg,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+          }}
+        >
           <div
             style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 9,
-              padding: "10px 20px",
+              padding: "10px 14px",
               borderBottom: `1px solid ${t.line}`,
-              background: t.petrolSoft,
-            }}
-          >
-            <Icon name="ai" size={13} color={t.petrol} />
-            <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
-              <span style={{ fontWeight: 800, color: t.petrol }}>Where things stand · </span>
-              {file.ai_status}
-            </div>
-          </div>
-        ) : null}
-
-        {/* Two-pane body */}
-        <div style={{ display: "flex", minHeight: 0, flex: 1 }}>
-          {/* Main pane */}
-          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-            {/* Tab strip */}
-            <div
-              style={{
-                display: "flex",
-                gap: 2,
-                padding: "10px 16px",
-                borderBottom: `1px solid ${t.line}`,
-                flexWrap: "wrap",
-              }}
-            >
-              {tabs.map((x) => {
-                const on = x.id === activeTab;
-                return (
-                  <button
-                    key={x.id}
-                    onClick={() => setTab(x.id)}
-                    style={{
-                      all: "unset",
-                      cursor: "pointer",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      padding: "7px 12px",
-                      borderRadius: 8,
-                      fontSize: 12.5,
-                      fontWeight: 700,
-                      color: on ? t.ink : t.ink3,
-                      background: on ? t.surface2 : "transparent",
-                    }}
-                  >
-                    <Icon name={x.icon} size={12} />
-                    {x.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Panel */}
-            <div style={{ padding: 16, overflowY: "auto", flex: 1, minHeight: 360 }}>
-              {activeTab === "property" ? (
-                <PropertyPanel file={file} loan={loan} t={t} />
-              ) : activeTab === "schedule" ? (
-                <SchedulePanel loan={loan} hasLoan={hasLoan} t={t} />
-              ) : activeTab === "documents" ? (
-                hasLoan && loan ? (
-                  <DocsTab loan={loan} canRequest={false} />
-                ) : (
-                  <SetupNotice t={t} label="Document upload opens once your agent moves this file forward." />
-                )
-              ) : activeTab === "activity" ? (
-                hasLoan ? (
-                  <ActivityTab activity={activity} isLoading={activityLoading} />
-                ) : (
-                  <SetupNotice t={t} label="Activity will appear here as work happens on the file." />
-                )
-              ) : activeTab === "terms" ? (
-                <LoanTermsPanel loan={loan} t={t} />
-              ) : activeTab === "conditions" ? (
-                <ConditionsPanel loanId={loanId} t={t} />
-              ) : activeTab === "prequal" ? (
-                <PrequalPanel loanId={loanId} t={t} />
-              ) : activeTab === "hud" ? (
-                <HudPanel loanId={loanId} t={t} />
-              ) : null}
-            </div>
-          </div>
-
-          {/* Persistent AI chat rail */}
-          <div
-            style={{
-              width: 360,
-              flexShrink: 0,
-              borderLeft: `1px solid ${t.line}`,
-              background: t.bg,
               display: "flex",
-              flexDirection: "column",
-              minHeight: 0,
+              alignItems: "center",
+              gap: 7,
             }}
           >
-            <div
-              style={{
-                padding: "10px 14px",
-                borderBottom: `1px solid ${t.line}`,
-                display: "flex",
-                alignItems: "center",
-                gap: 7,
-              }}
-            >
-              <Icon name="chat" size={13} color={t.petrol} />
-              <span style={{ fontSize: 12.5, fontWeight: 800, color: t.ink }}>
-                Chat
-              </span>
-              <span style={{ fontSize: 11, color: t.ink3 }}>· AI + your team</span>
-            </div>
-            <div style={{ flex: 1, minHeight: 0, padding: 12, overflowY: "auto" }}>
-              {hasLoan && loanId && currentUser ? (
-                <ClientLoanChatTab loanId={loanId} user={currentUser} />
-              ) : (
-                <SetupNotice
-                  t={t}
-                  label="Chat opens here once your file is active. In the meantime your agent is the best contact."
-                />
-              )}
-            </div>
+            <Icon name="chat" size={13} color={t.petrol} />
+            <span style={{ fontSize: 12.5, fontWeight: 800, color: t.ink }}>Chat</span>
+            <span style={{ fontSize: 11, color: t.ink3 }}>· AI + your team</span>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, padding: 12, overflowY: "auto" }}>
+            {hasLoan && loanId && currentUser ? (
+              <ClientLoanChatTab loanId={loanId} user={currentUser} />
+            ) : (
+              <SetupNotice
+                t={t}
+                label="Chat opens here once your file is active. In the meantime your agent is the best contact."
+              />
+            )}
           </div>
         </div>
       </div>
@@ -627,7 +606,7 @@ function HudPanel({
   const total = lines.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
   return (
     <Card pad={0}>
-      {lines.map((l, i) => (
+      {lines.map((l) => (
         <div
           key={l.id}
           style={{

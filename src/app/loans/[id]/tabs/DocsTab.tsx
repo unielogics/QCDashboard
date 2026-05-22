@@ -12,7 +12,21 @@ import { ContextMenu, useContextMenu, type ContextMenuItem } from "@/components/
 import { UploadOnBehalfModal } from "../components/UploadOnBehalfModal";
 import type { Document, Loan } from "@/lib/types";
 
-export function DocsTab({ loan, canRequest }: { loan: Loan; canRequest: boolean }) {
+export function DocsTab({
+  loan,
+  canRequest,
+  // Whether the viewer can attach/upload files. Distinct from
+  // `canRequest` (operator-only: request a doc, upload-on-behalf,
+  // mark complete). Borrowers can't request but absolutely can
+  // upload — this defaults true so a client viewing their own file
+  // gets a working upload affordance on every requested row plus a
+  // general "Upload a document" button.
+  canUpload = true,
+}: {
+  loan: Loan;
+  canRequest: boolean;
+  canUpload?: boolean;
+}) {
   const { t } = useTheme();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -103,6 +117,10 @@ export function DocsTab({ loan, canRequest }: { loan: Loan; canRequest: boolean 
               <Icon name="plus" size={13} /> Request doc
             </button>
           </div>
+        ) : canUpload ? (
+          // Non-operator viewer (borrower) — a general upload entry so
+          // they can always attach a file, even with nothing requested.
+          <DocUploadButton loanId={loan.id} label="Upload a document" />
         ) : null}
       </div>
 
@@ -122,9 +140,25 @@ export function DocsTab({ loan, canRequest }: { loan: Loan; canRequest: boolean 
       ) : null}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 16 }}>
-        {docs.length === 0 && <div style={{ fontSize: 13, color: t.ink3 }}>No documents on file yet.</div>}
+        {docs.length === 0 && (
+          <div
+            style={{
+              display: "flex", flexDirection: "column", alignItems: "center",
+              gap: 12, padding: "28px 16px", textAlign: "center",
+            }}
+          >
+            <Icon name="doc" size={26} style={{ color: t.ink4 }} />
+            <div style={{ fontSize: 13, color: t.ink3, maxWidth: 360, lineHeight: 1.5 }}>
+              No documents on file yet.
+              {canUpload
+                ? " Upload anything we'll need — bank statements, tax returns, the purchase contract — and we'll sort it."
+                : ""}
+            </div>
+            {canUpload ? <DocUploadButton loanId={loan.id} label="Upload a document" /> : null}
+          </div>
+        )}
         {docs.map((d) => {
-          const showUpload = canRequest && (d.status === "requested" || d.status === "pending" || d.status === "flagged");
+          const showUpload = canUpload && (d.status === "requested" || d.status === "pending" || d.status === "flagged");
           const showMarkComplete = canRequest && d.status !== "verified";
           return (
             <div

@@ -83,6 +83,16 @@ export function ClientFilePipeline() {
     });
   }, [files, filter]);
 
+  // While a file is open the panel takes over the whole content area
+  // (right of the sidebar) — a full in-content view, not a popup.
+  if (openFile) {
+    return (
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <ClientFileModal file={openFile} onClose={() => setOpenFile(null)} />
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: 24, maxWidth: 1240, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
       <div>
@@ -170,10 +180,6 @@ export function ClientFilePipeline() {
           ))}
         </Card>
       )}
-
-      {openFile ? (
-        <ClientFileModal file={openFile} onClose={() => setOpenFile(null)} />
-      ) : null}
     </div>
   );
 }
