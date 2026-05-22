@@ -711,117 +711,229 @@ export function ShowingGuidePanel({ agent }: PanelProps) {
 }
 
 // ── Step 8: Follow-ups & Exit ───────────────────────────────────────
+//
+// One coherent idea: the follow-up SEQUENCE. Each row is a message the
+// agent sends, in order — when it goes out, and (optionally) an example
+// of how you'd word it so the AI matches your voice. The day numbers
+// are the cadence; the examples are the per-message training samples.
 
-const TOUCHPOINTS = ["intro", "followup_1", "followup_2", "followup_3", "breakup", "doc_nudge", "review_request"];
+type SeqStep = { day: number; example: string };
+
+function touchpointKeyFor(i: number, total: number): string {
+  if (i === 0) return "intro";
+  if (i >= total - 1) return "breakup";
+  return `followup_${i}`;
+}
+
+function stepLabel(i: number, total: number): string {
+  if (i === 0) return "Intro message";
+  if (i >= total - 1 && total > 1) return "Break-up message";
+  return `Follow-up ${i}`;
+}
 
 export function FollowupsPanel({ agent }: PanelProps) {
   const { t } = useTheme();
   const patch = usePatchAiAgent();
-  const { data: rules } = useAiAgentExitRules(agent.id);
+  const rulesQuery = useAiAgentExitRules(agent.id);
   const saveRules = useSaveExitRules();
-  const { data: samples = [] } = useAiAgentSampleMessages(agent.id);
+  const samplesQuery = useAiAgentSampleMessages(agent.id);
   const addSample = useAddSampleMessage();
   const delSample = useDeleteSampleMessage();
 
-  const [cadence, setCadence] = useState(agent.cadence.join(", "));
-  const [maxEmail, setMaxEmail] = useState(5);
-  const [maxNoReply, setMaxNoReply] = useState(4);
+  const [steps, setSteps] = useState<SeqStep[]>([]);
+  const [maxMessages, setMaxMessages] = useState(5);
   const [maxDays, setMaxDays] = useState(14);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const seeded = useRef(false);
+
+  // Seed the sequence once both the cadence (on the agent) and the
+  // saved examples have loaded.
   useEffect(() => {
-    if (rules && !seeded.current && Object.keys(rules).length) {
-      seeded.current = true;
-      setMaxEmail(rules.max_email_attempts);
-      setMaxNoReply(rules.max_no_reply_followups);
-      setMaxDays(rules.max_days_in_sequence);
+    if (seeded.current) return;
+    if (samplesQuery.isLoading || rulesQuery.isLoading) return;
+    seeded.current = true;
+    const cad = agent.cadence?.length ? agent.cadence : [0, 2, 5, 8, 12];
+    const byTp = new Map<string, string>();
+    (samplesQuery.data ?? []).forEach((s) => {
+      if (!byTp.has(s.touchpoint_key)) byTp.set(s.touchpoint_key, s.sample_text);
+    });
+    setSteps(
+      cad.map((day, i) => ({
+        day,
+        example: byTp.get(touchpointKeyFor(i, cad.length)) ?? "",
+      })),
+    );
+    const r = rulesQuery.data;
+    if (r && Object.keys(r).length) {
+      setMaxMessages(r.max_email_attempts);
+      setMaxDays(r.max_days_in_sequence);
+    } else {
+      setMaxMessages(Math.max(5, cad.length));
     }
-  }, [rules]);
+  }, [
+    samplesQuery.isLoading,
+    rulesQuery.isLoading,
+    samplesQuery.data,
+    rulesQuery.data,
+    agent.cadence,
+  ]);
 
-  const [tp, setTp] = useState("intro");
-  const [sampleText, setSampleText] = useState("");
+  const editStep = (i: number, p: Partial<SeqStep>) =>
+    setSteps((s) => s.map((x, idx) => (idx === i ? { ...x, ...p } : x)));
+  const addStep = () =>
+    setSteps((s) => [...s, { day: (s[s.length - 1]?.day ?? 0) + 3, example: "" }]);
+  const removeStep = (i: number) =>
+    setSteps((s) => (s.length > 1 ? s.filter((_, idx) => idx !== i) : s));
 
-  const saveCadence = () => {
-    const days = cadence.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
-    patch.mutate({ id: agent.id, patch: { cadence: days } });
+  const save = async () => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await patch.mutateAsync({
+        id: agent.id,
+        patch: { cadence: steps.map((s) => s.day) },
+      });
+      await saveRules.mutateAsync({
+        id: agent.id,
+        rules: {
+          max_email_attempts: maxMessages,
+          max_no_reply_followups: maxMessages,
+          max_days_in_sequence: maxDays,
+        },
+      });
+      // The sequence editor owns the examples — replace them wholesale.
+      for (const s of samplesQuery.data ?? []) {
+        await delSample.mutateAsync({ id: agent.id, sampleId: s.id });
+      }
+      const total = steps.length;
+      for (let i = 0; i < steps.length; i++) {
+        const txt = steps[i].example.trim();
+        if (txt) {
+          await addSample.mutateAsync({
+            id: agent.id,
+            touchpoint_key: touchpointKeyFor(i, total),
+            channel: "email",
+            sample_text: txt,
+          });
+        }
+      }
+      setSaved(true);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div>
       <PanelHeader
         title="Follow-ups & Exit"
-        desc="Set the cadence, when to stop, and give the AI a sample message per touchpoint so it learns your voice."
+        desc="The sequence of messages this agent sends, in order — and when it should give up."
       />
-      <FieldRow label="Cadence — days from enrollment" hint="Comma-separated. Default 0, 2, 5, 8, 12.">
-        <div style={{ display: "flex", gap: 8 }}>
-          <TextField value={cadence} onChange={setCadence} />
-          <Btn onClick={saveCadence} disabled={patch.isPending}>Save</Btn>
-        </div>
-      </FieldRow>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-        <FieldRow label="Max email attempts">
-          <input type="number" value={maxEmail} onChange={(e) => setMaxEmail(+e.target.value)} style={numStyle(t)} />
-        </FieldRow>
-        <FieldRow label="Max no-reply follow-ups">
-          <input type="number" value={maxNoReply} onChange={(e) => setMaxNoReply(+e.target.value)} style={numStyle(t)} />
-        </FieldRow>
-        <FieldRow label="Max days in sequence">
-          <input type="number" value={maxDays} onChange={(e) => setMaxDays(+e.target.value)} style={numStyle(t)} />
-        </FieldRow>
-      </div>
-      <Btn
-        variant="primary"
-        onClick={() =>
-          saveRules.mutate({
-            id: agent.id,
-            rules: {
-              max_email_attempts: maxEmail,
-              max_no_reply_followups: maxNoReply,
-              max_days_in_sequence: maxDays,
-            },
-          })
-        }
-        disabled={saveRules.isPending}
-      >
-        Save exit rules
-      </Btn>
-
-      <div style={{ fontSize: 12, fontWeight: 800, color: t.ink3, margin: "22px 0 8px", textTransform: "uppercase", letterSpacing: 0.6 }}>
-        Sample messages
-      </div>
-      {samples.map((s) => (
-        <Card key={s.id} pad={12} style={{ marginBottom: 8 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-            <div>
-              <Pill>{s.touchpoint_key}</Pill>
-              <div style={{ fontSize: 13, color: t.ink2, marginTop: 6, whiteSpace: "pre-wrap" }}>{s.sample_text}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {steps.map((step, i) => (
+          <Card key={i} pad={14}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                marginBottom: 8,
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 700, color: t.ink }}>
+                {stepLabel(i, steps.length)}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12.5, color: t.ink3 }}>Sends on day</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={step.day}
+                  onChange={(e) => editStep(i, { day: +e.target.value })}
+                  style={{ ...numStyle(t), width: 64 }}
+                />
+                {steps.length > 1 && (
+                  <button
+                    onClick={() => removeStep(i)}
+                    title="Remove this message"
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      color: t.ink3,
+                      cursor: "pointer",
+                      fontSize: 18,
+                      lineHeight: 1,
+                      padding: 2,
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             </div>
-            <Btn variant="danger" onClick={() => delSample.mutate({ id: agent.id, sampleId: s.id })}>
-              Delete
-            </Btn>
-          </div>
-        </Card>
-      ))}
-      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <select value={tp} onChange={(e) => setTp(e.target.value)} style={{ ...numStyle(t), width: 150 }}>
-          {TOUCHPOINTS.map((x) => (
-            <option key={x} value={x}>{x}</option>
-          ))}
-        </select>
+            <TextAreaField
+              value={step.example}
+              onChange={(v) => editStep(i, { example: v })}
+              rows={3}
+              placeholder="Example (optional) — write this message the way you would, and the AI will match your tone."
+            />
+          </Card>
+        ))}
       </div>
-      <div style={{ marginTop: 8 }}>
-        <TextAreaField value={sampleText} onChange={setSampleText} rows={3} placeholder="Paste an example of how you'd write this message…" />
+      <div style={{ marginTop: 10 }}>
+        <Btn onClick={addStep}>
+          <Icon name="plus" size={13} /> Add a follow-up
+        </Btn>
       </div>
-      <Btn
-        onClick={async () => {
-          if (!sampleText.trim()) return;
-          await addSample.mutateAsync({ id: agent.id, touchpoint_key: tp, channel: "email", sample_text: sampleText.trim() });
-          setSampleText("");
+
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 800,
+          color: t.ink3,
+          margin: "24px 0 10px",
+          textTransform: "uppercase",
+          letterSpacing: 0.6,
         }}
-        disabled={addSample.isPending || !sampleText.trim()}
       >
-        Add sample message
-      </Btn>
+        When to stop
+      </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+        <label style={{ fontSize: 13, color: t.ink2 }}>
+          <div style={{ marginBottom: 5 }}>Stop after this many messages</div>
+          <input
+            type="number"
+            min={1}
+            value={maxMessages}
+            onChange={(e) => setMaxMessages(+e.target.value)}
+            style={{ ...numStyle(t), width: 120 }}
+          />
+        </label>
+        <label style={{ fontSize: 13, color: t.ink2 }}>
+          <div style={{ marginBottom: 5 }}>…or after this many days</div>
+          <input
+            type="number"
+            min={1}
+            value={maxDays}
+            onChange={(e) => setMaxDays(+e.target.value)}
+            style={{ ...numStyle(t), width: 120 }}
+          />
+        </label>
+      </div>
+
+      <div style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 12 }}>
+        <Btn variant="primary" onClick={save} disabled={saving}>
+          {saving ? "Saving…" : "Save follow-ups"}
+        </Btn>
+        {saved && (
+          <span style={{ fontSize: 13, color: t.profit, fontWeight: 600 }}>
+            Saved
+          </span>
+        )}
+      </div>
     </div>
   );
 }
