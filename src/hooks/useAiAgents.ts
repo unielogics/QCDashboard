@@ -434,6 +434,31 @@ export const useWarmupSend = () =>
     ["messages"],
   );
 
+export const useAssignWarmupLeads = () =>
+  useAgentMutation<{ id: string; client_ids: string[] }, { assigned: number }>(
+    (api, { id, client_ids }) =>
+      api<{ assigned: number }>(`/ai-agents/${id}/leads/assign`, {
+        method: "POST",
+        body: JSON.stringify({ client_ids }),
+      }),
+    (i) => i.id,
+    ["leads"],
+  );
+
+export const useCreateWarmupContact = () =>
+  useAgentMutation<
+    { id: string; name: string; email: string; phone?: string },
+    { client_id: string; name: string }
+  >(
+    (api, { id, name, email, phone }) =>
+      api<{ client_id: string; name: string }>(
+        `/ai-agents/${id}/leads/create`,
+        { method: "POST", body: JSON.stringify({ name, email, phone }) },
+      ),
+    (i) => i.id,
+    ["leads"],
+  );
+
 export const useActivateAiAgent = () =>
   useAgentMutation<{ id: string }>(
     (api, { id }) => api(`/ai-agents/${id}/activate`, { method: "POST" }),

@@ -8,6 +8,7 @@ import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import {
   useAgentKnowledge,
+  useClients,
   useUploadAgentKnowledge,
 } from "@/hooks/useApi";
 import {
@@ -28,7 +29,9 @@ import {
   useActivateAiAgent,
   useApprovePlaybook,
   useApproveShowingGuide,
+  useAssignWarmupLeads,
   useCompleteTraining,
+  useCreateWarmupContact,
   useDeleteSampleMessage,
   useGeneratePlaybook,
   useGenerateShowingGuide,
@@ -1042,67 +1045,246 @@ export function LaunchPanel({ agent }: PanelProps) {
 }
 
 // ── Step 11: Warm-up & Launch ───────────────────────────────────────
+//
+// Pick or create the contacts to warm up with. Delegating a contact
+// puts the agent into warm-up mode — the AI starts working those
+// contacts on its own (drafting, not sending). The broker can leave
+// and come back to review the drafts, then activate for good.
 
 export function WarmupPanel({ agent }: PanelProps) {
   const { t } = useTheme();
+  const { data: leads = [] } = useAiAgentLeads(agent.id);
   const { data: messages = [] } = useAiAgentMessages(agent.id);
+  const { data: clients = [] } = useClients();
+  const assign = useAssignWarmupLeads();
+  const createContact = useCreateWarmupContact();
   const warmup = useWarmupSend();
   const activate = useActivateAiAgent();
   const pause = usePauseAiAgent();
+
+  const [pick, setPick] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
   const [err, setErr] = useState<string[]>([]);
+
+  const enrolledIds = new Set(leads.map((l) => l.client_id));
+  const available = clients.filter((c) => !enrolledIds.has(c.id));
+  const inWarmup = agent.status === "active" && agent.warmup_mode;
 
   const doActivate = async () => {
     setErr([]);
     try {
       await activate.mutateAsync({ id: agent.id });
     } catch (e: unknown) {
-      const detail = (e as { body?: { detail?: { blockers?: string[] } } })?.body?.detail;
+      const detail = (e as { body?: { detail?: { blockers?: string[] } } })?.body
+        ?.detail;
       setErr(detail?.blockers ?? ["Activation blocked — complete the earlier steps."]);
     }
+  };
+
+  const addExisting = async () => {
+    if (!pick) return;
+    await assign.mutateAsync({ id: agent.id, client_ids: [pick] });
+    setPick("");
+  };
+
+  const createAndAdd = async () => {
+    if (!newName.trim() || !newEmail.trim()) return;
+    await createContact.mutateAsync({
+      id: agent.id,
+      name: newName.trim(),
+      email: newEmail.trim(),
+    });
+    setNewName("");
+    setNewEmail("");
   };
 
   return (
     <div>
       <PanelHeader
         title="Warm-up & Launch"
-        desc="Send real messages one at a time to validate the AI, then activate the agent for good."
+        desc="Pick or create a few contacts to warm up with. The AI starts working them right away — you can leave, then come back to review the drafts and activate."
       />
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-        <Btn
-          variant="primary"
-          onClick={() => warmup.mutate({ id: agent.id, touchpoint_key: "intro" })}
-          disabled={warmup.isPending}
+
+      {/* Status banner */}
+      {agent.status === "active" ? (
+        <Card
+          pad={14}
+          style={{
+            marginBottom: 16,
+            borderColor: inWarmup ? t.warn : t.profit,
+          }}
         >
-          {warmup.isPending ? "Composing…" : "Compose a warm-up message"}
-        </Btn>
-        {agent.status === "active" ? (
-          <Btn onClick={() => pause.mutate({ id: agent.id })}>Pause agent</Btn>
-        ) : null}
-        <Btn variant="primary" onClick={doActivate} disabled={activate.isPending}>
-          {agent.warmup_mode ? "Graduate to full activation" : "Activate AI Agent"}
-        </Btn>
+          <div
+            style={{
+              fontSize: 13.5,
+              fontWeight: 700,
+              color: inWarmup ? t.warn : t.profit,
+            }}
+          >
+            {inWarmup
+              ? `Warm-up active — the AI is working ${leads.length} contact${
+                  leads.length === 1 ? "" : "s"
+                }.`
+              : "This AI Agent is fully active."}
+          </div>
+          {inWarmup && (
+            <div style={{ fontSize: 12.5, color: t.ink3, marginTop: 4 }}>
+              It drafts messages on its own every cycle. You can leave and come
+              back any time — review the drafts below, then activate.
+            </div>
+          )}
+        </Card>
+      ) : null}
+
+      {/* Warm-up contacts */}
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 800,
+          color: t.ink3,
+          margin: "4px 0 8px",
+          textTransform: "uppercase",
+          letterSpacing: 0.6,
+        }}
+      >
+        Warm-up contacts ({leads.length})
       </div>
-      {agent.status === "active" && (
-        <Pill color={t.profit} bg={t.profitBg}>
-          {agent.warmup_mode ? "Active — warm-up mode" : "Active"}
-        </Pill>
+      {leads.length === 0 && (
+        <div style={{ fontSize: 13, color: t.ink3, marginBottom: 6 }}>
+          No contacts yet — add one below to start warming up.
+        </div>
       )}
+      {leads.map((l) => (
+        <Card key={l.id} pad={12} style={{ marginBottom: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: t.ink }}>
+                {l.name}
+              </div>
+              <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>
+                {l.email ?? "no email"} · {l.status} · {l.attempts_made} sent
+              </div>
+            </div>
+            <Btn
+              onClick={() =>
+                warmup.mutate({
+                  id: agent.id,
+                  client_id: l.client_id,
+                  touchpoint_key: "intro",
+                })
+              }
+              disabled={warmup.isPending}
+            >
+              Draft a message now
+            </Btn>
+          </div>
+        </Card>
+      ))}
+
+      {/* Add a contact */}
+      <Card pad={14} style={{ marginTop: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, marginBottom: 10 }}>
+          Add a contact to warm up with
+        </div>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            alignItems: "center",
+            marginBottom: 14,
+          }}
+        >
+          <select
+            value={pick}
+            onChange={(e) => setPick(e.target.value)}
+            style={{ ...numStyle(t), width: 260 }}
+          >
+            <option value="">Select an existing contact…</option>
+            {available.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {c.email ? ` — ${c.email}` : ""}
+              </option>
+            ))}
+          </select>
+          <Btn onClick={addExisting} disabled={!pick || assign.isPending}>
+            Add
+          </Btn>
+        </div>
+        <div style={{ fontSize: 12, color: t.ink3, marginBottom: 8 }}>
+          …or create a brand-new contact:
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            placeholder="Name"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            style={{ ...numStyle(t), width: 180 }}
+          />
+          <input
+            placeholder="Email"
+            type="email"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            style={{ ...numStyle(t), width: 220 }}
+          />
+          <Btn
+            onClick={createAndAdd}
+            disabled={!newName.trim() || !newEmail.trim() || createContact.isPending}
+          >
+            Create &amp; add
+          </Btn>
+        </div>
+      </Card>
+
+      {/* Launch controls */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
+        <Btn variant="primary" onClick={doActivate} disabled={activate.isPending}>
+          {inWarmup ? "Activate (graduate from warm-up)" : "Activate AI Agent"}
+        </Btn>
+        {agent.status === "active" && (
+          <Btn onClick={() => pause.mutate({ id: agent.id })}>Pause agent</Btn>
+        )}
+      </div>
       {err.length > 0 && (
         <Card pad={14} style={{ marginTop: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: t.warn, marginBottom: 6 }}>
             Activation blocked:
           </div>
           {err.map((b, i) => (
-            <div key={i} style={{ fontSize: 13, color: t.ink2, padding: "3px 0" }}>• {b}</div>
+            <div key={i} style={{ fontSize: 13, color: t.ink2, padding: "3px 0" }}>
+              • {b}
+            </div>
           ))}
         </Card>
       )}
 
-      <div style={{ fontSize: 12, fontWeight: 800, color: t.ink3, margin: "20px 0 8px", textTransform: "uppercase", letterSpacing: 0.6 }}>
-        Outbox ({messages.length})
+      {/* Outbox */}
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 800,
+          color: t.ink3,
+          margin: "22px 0 8px",
+          textTransform: "uppercase",
+          letterSpacing: 0.6,
+        }}
+      >
+        Drafts &amp; sent ({messages.length})
       </div>
       {messages.length === 0 && (
-        <div style={{ fontSize: 13, color: t.ink3 }}>No messages yet.</div>
+        <div style={{ fontSize: 13, color: t.ink3 }}>
+          Nothing yet. Drafts appear here as the AI works your warm-up contacts.
+        </div>
       )}
       {messages.map((m) => (
         <Card key={m.id} pad={14} style={{ marginBottom: 8 }}>
@@ -1112,7 +1294,14 @@ export function WarmupPanel({ agent }: PanelProps) {
             </div>
             <Pill>{m.is_warmup ? "warm-up" : m.status}</Pill>
           </div>
-          <div style={{ fontSize: 13, color: t.ink2, marginTop: 6, whiteSpace: "pre-wrap" }}>
+          <div
+            style={{
+              fontSize: 13,
+              color: t.ink2,
+              marginTop: 6,
+              whiteSpace: "pre-wrap",
+            }}
+          >
             {m.body}
           </div>
         </Card>
