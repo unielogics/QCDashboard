@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 const isAuthPage = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
+  "/forgot-password(.*)",
 ]);
 
 // Public pages — no Clerk auth required. The legal documents must be

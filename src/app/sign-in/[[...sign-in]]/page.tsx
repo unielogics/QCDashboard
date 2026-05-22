@@ -1,6 +1,7 @@
 "use client";
 
 import { SignIn, useAuth } from "@clerk/nextjs";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { AuthMarketingShell } from "@/components/auth/AuthMarketingShell";
@@ -28,6 +29,14 @@ export default function SignInPage() {
   return (
     <AuthMarketingShell>
       <SignIn appearance={CLERK_DARK_APPEARANCE} routing="path" path="/sign-in" />
+      <div style={{ textAlign: "center", marginTop: 14 }}>
+        <Link
+          href="/forgot-password"
+          style={{ color: "#94A3B8", fontSize: 13, textDecoration: "none", fontWeight: 600 }}
+        >
+          Forgot your password?
+        </Link>
+      </div>
     </AuthMarketingShell>
   );
 }
