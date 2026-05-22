@@ -3584,6 +3584,21 @@ export function useUploadAgentKnowledge() {
   });
 }
 
+export function useAddPastedKnowledge() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ filename, text }: { filename: string; text: string }) =>
+      apiCall<AgentKnowledgeDocument>(`/me/ai-knowledge/paste`, {
+        method: "POST",
+        body: JSON.stringify({ filename, text }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["agentKnowledge"] });
+    },
+  });
+}
+
 export function useDeleteAgentKnowledge() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();

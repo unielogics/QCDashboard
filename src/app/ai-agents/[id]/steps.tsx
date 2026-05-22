@@ -7,6 +7,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import {
+  useAddPastedKnowledge,
   useAgentKnowledge,
   useClients,
   useUploadAgentKnowledge,
@@ -70,8 +71,6 @@ export const STEP_DEFS: { key: string; label: string }[] = [
   { key: "knowledge", label: "Knowledge" },
   { key: "targeting", label: "Targeting" },
   { key: "training", label: "Training Studio" },
-  { key: "playbook", label: "Playbook" },
-  { key: "showing_guide", label: "Showing Guide" },
   { key: "followups", label: "Voice & Exit" },
   { key: "test", label: "Test Scenarios" },
   { key: "launch", label: "Launch Controls" },
@@ -236,7 +235,10 @@ export function KnowledgePanel({ agent }: PanelProps) {
   const upload = useUploadAgentKnowledge();
   const addLink = useAddKnowledgeLink();
   const removeLink = useRemoveKnowledgeLink();
+  const pasteKnowledge = useAddPastedKnowledge();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [pasteTitle, setPasteTitle] = useState("");
+  const [pasteBody, setPasteBody] = useState("");
 
   const linkedDocIds = new Set(links.map((l) => l.knowledge_document_id));
   const reusable = library.filter((d) => !linkedDocIds.has(d.id));
@@ -255,11 +257,25 @@ export function KnowledgePanel({ agent }: PanelProps) {
     });
   };
 
+  const onPaste = async () => {
+    const text = pasteBody.trim();
+    if (!text) return;
+    const filename = pasteTitle.trim().slice(0, 120) || "Pasted note";
+    const doc = await pasteKnowledge.mutateAsync({ filename, text });
+    await addLink.mutateAsync({
+      id: agent.id,
+      knowledge_document_id: doc.id,
+      attach_to_emails: false,
+    });
+    setPasteTitle("");
+    setPasteBody("");
+  };
+
   return (
     <div>
       <PanelHeader
         title="Knowledge"
-        desc="Give the AI product sheets, FAQs, neighbourhood guides — or reuse a file you already uploaded."
+        desc="Give the AI product sheets, FAQs, market notes, or anything else it should know — upload a file or paste it directly. The AI summarizes each item and uses it when it questions you in Training."
       />
       <input
         ref={fileRef}
@@ -271,6 +287,34 @@ export function KnowledgePanel({ agent }: PanelProps) {
       <Btn variant="primary" onClick={() => fileRef.current?.click()} disabled={upload.isPending}>
         <Icon name="upload" size={14} /> {upload.isPending ? "Uploading…" : "Upload a file"}
       </Btn>
+
+      {/* Paste a note inline — no file needed */}
+      <Card pad={14} style={{ marginTop: 14 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, marginBottom: 8 }}>
+          Or paste a note
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <TextField
+            value={pasteTitle}
+            onChange={setPasteTitle}
+            placeholder="Title — e.g. My bio, Common objections, Neighbourhood overview"
+          />
+        </div>
+        <TextAreaField
+          value={pasteBody}
+          onChange={setPasteBody}
+          rows={5}
+          placeholder="Paste anything the AI should know. The AI will summarize it like an uploaded file."
+        />
+        <div style={{ marginTop: 8 }}>
+          <Btn
+            onClick={onPaste}
+            disabled={!pasteBody.trim() || pasteKnowledge.isPending || addLink.isPending}
+          >
+            {pasteKnowledge.isPending ? "Adding…" : "Add as knowledge"}
+          </Btn>
+        </div>
+      </Card>
 
       <div style={{ fontSize: 12, fontWeight: 800, color: t.ink3, margin: "20px 0 8px", textTransform: "uppercase", letterSpacing: 0.6 }}>
         Attached to this agent ({links.length})
@@ -584,15 +628,24 @@ export function TrainingPanel({ agent }: PanelProps) {
           </div>
         </>
       ) : (
-        <Pill color={t.profit} bg={t.profitBg}>
-          Training complete
-        </Pill>
+        <>
+          <Pill color={t.profit} bg={t.profitBg}>Training complete</Pill>
+          {/* Once the chat is done, the broker generates + approves the
+              two synthesized artifacts inline — these used to be their
+              own Steps 6 & 7 in the rail. */}
+          <div style={{ marginTop: 22, paddingTop: 18, borderTop: `1px solid ${t.line}` }}>
+            <PlaybookPanel agent={agent} />
+          </div>
+          <div style={{ marginTop: 24, paddingTop: 18, borderTop: `1px solid ${t.line}` }}>
+            <ShowingGuidePanel agent={agent} />
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-// ── Steps 6 & 7: Playbook + Showing Guide ───────────────────────────
+// ── Steps 6 & 7 (now embedded in Training): Playbook + Showing Guide ─
 
 function RenderSynth({ content }: { content: Record<string, unknown> }) {
   const { t } = useTheme();
