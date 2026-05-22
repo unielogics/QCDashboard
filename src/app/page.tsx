@@ -1168,6 +1168,14 @@ function TodaysOverduePanel({
     loanId && loansByLoanId[loanId]
       ? `/pipeline?file=${loanId}&tab=${tab}`
       : "/pipeline";
+  // Route the deep-link by what the item is ABOUT, not just task-vs-event.
+  // A calendar event of kind "doc" (a document-due reminder) and a task
+  // from the documents source both open the Documents tab — only genuine
+  // schedule items (calls, inspections, closings) open Schedule.
+  const tabForEvent = (kind: string): string =>
+    kind === "doc" ? "documents" : "schedule";
+  const tabForTask = (source: string): string =>
+    source === "calendar" ? "schedule" : "documents";
 
   const items: Array<{
     key: string;
@@ -1194,7 +1202,7 @@ function TodaysOverduePanel({
       label: ev.title,
       sub: isClient && evFile ? `${evFile} · ${evWhen}` : evWhen,
       href: isClient
-        ? clientHref(ev.loan_id, "schedule")
+        ? clientHref(ev.loan_id, tabForEvent(ev.kind))
         : ev.loan_id ? `/loans/${ev.loan_id}` : "/calendar",
     });
   }
@@ -1216,7 +1224,7 @@ function TodaysOverduePanel({
       sub: isClient
         ? taskFile ?? "Your file"
         : `${task.source} · conf ${(task.confidence * 100).toFixed(0)}%${task.loan_id && loansByLoanId[task.loan_id] ? ` · ${loansByLoanId[task.loan_id].deal_id}` : ""}`,
-      href: isClient ? clientHref(task.loan_id, "documents") : "/ai-inbox",
+      href: isClient ? clientHref(task.loan_id, tabForTask(task.source)) : "/ai-inbox",
     });
   }
 

@@ -28,6 +28,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { loanTypeLabel } from "@/lib/types";
 import {
+  useCalendar,
   useCurrentUser,
   useDocuments,
   useHudLines,
@@ -393,34 +394,149 @@ function SchedulePanel({
   hasLoan: boolean;
   t: ReturnType<typeof useTheme>["t"];
 }) {
+  const { data: allEvents } = useCalendar();
+
+  // Events scoped to THIS file, soonest first. Overdue items are kept,
+  // never filtered out — a missed milestone has to stay visible.
+  const events = useMemo(() => {
+    if (!loan?.id || !allEvents) return [];
+    return allEvents
+      .filter((ev) => ev.loan_id === loan.id)
+      .sort(
+        (a, b) =>
+          new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime(),
+      );
+  }, [allEvents, loan?.id]);
+
   if (!hasLoan) {
     return <SetupNotice t={t} label="Showings and key dates appear here once the file is active." />;
   }
+
+  const now = Date.now();
   const closeDate = loan?.close_date ? new Date(loan.close_date) : null;
+
+  const kindLabel = (k: string): string =>
+    ({
+      call: "Call",
+      doc: "Document",
+      ai: "AI task",
+      inspect: "Inspection",
+      milestone: "Milestone",
+      lock: "Rate lock",
+      pay: "Payment",
+      closing: "Closing",
+    })[k] ?? "Event";
+
   return (
-    <Card pad={18}>
-      <FieldGrid
-        t={t}
-        rows={[
-          {
-            label: "Target close date",
-            value:
-              closeDate && !Number.isNaN(closeDate.getTime())
-                ? closeDate.toLocaleDateString("en-US", {
-                    month: "long",
-                    day: "numeric",
-                    year: "numeric",
-                  })
-                : null,
-          },
-        ]}
-      />
-      <div style={{ fontSize: 12, color: t.ink3, marginTop: 14, lineHeight: 1.55 }}>
-        Your agent and the funding team coordinate inspections, appraisal,
-        and closing. Anything that needs you will show up in Chat and on
-        your To-Do list.
-      </div>
-    </Card>
+    <div style={{ display: "grid", gap: 14 }}>
+      <Card pad={18}>
+        <FieldGrid
+          t={t}
+          rows={[
+            {
+              label: "Target close date",
+              value:
+                closeDate && !Number.isNaN(closeDate.getTime())
+                  ? closeDate.toLocaleDateString("en-US", {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                    })
+                  : null,
+            },
+          ]}
+        />
+        <div style={{ fontSize: 12, color: t.ink3, marginTop: 14, lineHeight: 1.55 }}>
+          Your agent and the funding team coordinate inspections, appraisal,
+          and closing. Anything that needs you will show up in Chat and on
+          your To-Do list.
+        </div>
+      </Card>
+
+      <Card pad={18}>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            color: t.ink,
+            marginBottom: 12,
+          }}
+        >
+          Key dates
+        </div>
+        {events.length === 0 ? (
+          <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.55 }}>
+            No scheduled items yet. Inspections, appraisal, and closing
+            dates appear here as the funding team sets them.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {events.map((ev) => {
+              const when = new Date(ev.starts_at);
+              const isOverdue =
+                when.getTime() < now && ev.status === "pending";
+              const isDone = ev.status === "done";
+              const isCancelled = ev.status === "cancelled";
+              return (
+                <div
+                  key={ev.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: `1px solid ${isOverdue ? t.danger : t.line}`,
+                    background: isOverdue ? `${t.danger}14` : t.surface2,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: isOverdue ? t.danger : t.ink,
+                        textDecoration: isCancelled ? "line-through" : "none",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {ev.title}
+                    </div>
+                    <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
+                      {kindLabel(ev.kind)} ·{" "}
+                      {when.toLocaleString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                      {ev.who ? ` · ${ev.who}` : ""}
+                    </div>
+                  </div>
+                  {isOverdue ? (
+                    <Pill color={t.danger} bg={t.dangerBg}>
+                      Overdue
+                    </Pill>
+                  ) : isDone ? (
+                    <Pill color={t.profit} bg={t.profitBg}>
+                      Done
+                    </Pill>
+                  ) : isCancelled ? (
+                    <Pill>Cancelled</Pill>
+                  ) : (
+                    <Pill>Scheduled</Pill>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 
