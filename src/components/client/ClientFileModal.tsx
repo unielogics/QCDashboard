@@ -63,9 +63,14 @@ const IN_FUNDING_TABS: { id: TabId; label: string; icon: string }[] = [
 export function ClientFileModal({
   file,
   onClose,
+  initialTab,
 }: {
   file: MyFileRow;
   onClose: () => void;
+  // Optional tab to open on — used by dashboard "needs attention"
+  // deep-links (?tab=documents etc.). Falls back to Property; an
+  // out-of-range value is clamped to the first available tab.
+  initialTab?: string;
 }) {
   const { t } = useTheme();
   const loanId = file.loan_uuid;
@@ -79,7 +84,7 @@ export function ClientFileModal({
     () => (isFunding ? [...RE_WORKING_TABS, ...IN_FUNDING_TABS] : RE_WORKING_TABS),
     [isFunding],
   );
-  const [tab, setTab] = useState<TabId>("property");
+  const [tab, setTab] = useState<TabId>((initialTab as TabId) || "property");
   const activeTab = tabs.some((x) => x.id === tab) ? tab : tabs[0].id;
 
   const statusPill =
@@ -94,14 +99,12 @@ export function ClientFileModal({
   return (
     <div
       style={{
-        // Full in-content panel — fills the main area; the sidebar +
-        // top bar stay visible and usable.
-        height: "calc(100vh - 112px)",
-        minHeight: 520,
+        // Full-bleed in-content panel — fills the entire content area
+        // edge-to-edge (the wrapper cancels the <main> padding). The
+        // sidebar + top bar stay visible and usable.
+        height: "calc(100vh - 64px)",
+        minHeight: 560,
         background: t.surface,
-        border: `1px solid ${t.line}`,
-        borderRadius: 14,
-        boxShadow: t.shadow,
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",

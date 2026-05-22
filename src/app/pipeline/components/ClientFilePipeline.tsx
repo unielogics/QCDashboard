@@ -8,7 +8,8 @@
 // Operators never reach this component — pipeline/page.tsx role-branches
 // CLIENT here and everyone else to the operator pipeline.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -51,8 +52,40 @@ const GRID = "4px 116px minmax(0, 1.7fr) 130px minmax(0, 1.3fr) 96px 100px";
 export function ClientFilePipeline() {
   const { t } = useTheme();
   const { data: files = [], isLoading } = useMyFiles();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [filter, setFilter] = useState<FilterId>("all");
   const [openFile, setOpenFile] = useState<MyFileRow | null>(null);
+  // Tab to land on when the modal opens. Set by a dashboard deep-link
+  // (?file=&tab=), undefined for a plain row click.
+  const [openInitialTab, setOpenInitialTab] = useState<string | undefined>(undefined);
+  const deepLinkConsumed = useRef(false);
+
+  // Honor a ?file=<id>&tab=<tab> deep-link (the dashboard "needs
+  // attention" items point here). Fires once, after files load, then
+  // strips the params so close/refresh behaves naturally.
+  const fileParam = searchParams?.get("file") ?? null;
+  const tabParam = searchParams?.get("tab") ?? null;
+  useEffect(() => {
+    if (deepLinkConsumed.current || !fileParam || files.length === 0) return;
+    const match = files.find(
+      (f) =>
+        f.id === fileParam ||
+        f.loan_uuid === fileParam ||
+        f.deal_uuid === fileParam,
+    );
+    if (match) {
+      deepLinkConsumed.current = true;
+      setOpenFile(match);
+      setOpenInitialTab(tabParam ?? undefined);
+      router.replace("/pipeline", { scroll: false });
+    }
+  }, [fileParam, tabParam, files, router]);
+
+  const openFromRow = (f: MyFileRow) => {
+    setOpenInitialTab(undefined);
+    setOpenFile(f);
+  };
 
   const counts = useMemo(() => {
     const c: Record<MyFileStatus, number> = {
@@ -85,10 +118,17 @@ export function ClientFilePipeline() {
 
   // While a file is open the panel takes over the whole content area
   // (right of the sidebar) — a full in-content view, not a popup.
+  // Negative margin cancels the <main> padding so the panel runs
+  // edge-to-edge: maximum size, no surrounding frame/gap.
   if (openFile) {
     return (
-      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-        <ClientFileModal file={openFile} onClose={() => setOpenFile(null)} />
+      <div style={{ margin: -24 }}>
+        <ClientFileModal
+          key={openFile.id}
+          file={openFile}
+          initialTab={openInitialTab}
+          onClose={() => setOpenFile(null)}
+        />
       </div>
     );
   }
@@ -176,7 +216,7 @@ export function ClientFilePipeline() {
         <Card pad={0}>
           <Header t={t} />
           {visible.map((f) => (
-            <Row key={`${f.kind}-${f.id}`} file={f} t={t} onClick={() => setOpenFile(f)} />
+            <Row key={`${f.kind}-${f.id}`} file={f} t={t} onClick={() => openFromRow(f)} />
           ))}
         </Card>
       )}

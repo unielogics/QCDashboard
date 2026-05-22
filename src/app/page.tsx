@@ -175,7 +175,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <TodaysOverduePanel tasks={tasks} events={events} loans={loans} />
+      <TodaysOverduePanel tasks={tasks} events={events} loans={loans} isClient={isClient} />
 
       {/* Today's Market Rates — for all roles (ported from mobile dashboard) */}
       <TodaysMarketRates />
@@ -1134,7 +1134,17 @@ function TopBrokersPanel() {
 }
 
 // ── Today's Overdue panel ────────────────────────────────────────────────
-function TodaysOverduePanel({ tasks, events, loans }: { tasks: AITask[]; events: CalendarEvent[]; loans: Loan[] }) {
+function TodaysOverduePanel({
+  tasks,
+  events,
+  loans,
+  isClient,
+}: {
+  tasks: AITask[];
+  events: CalendarEvent[];
+  loans: Loan[];
+  isClient: boolean;
+}) {
   const { t } = useTheme();
   const now = Date.now();
   const todayEnd = (() => {
@@ -1143,6 +1153,21 @@ function TodaysOverduePanel({ tasks, events, loans }: { tasks: AITask[]; events:
     return d.getTime();
   })();
   const loansByLoanId = Object.fromEntries(loans.map((l) => [l.id, l]));
+
+  // Borrower-facing item wiring. Each "needs attention" item names the
+  // loan file it belongs to, and clicking it deep-links into the client
+  // file modal on the relevant tab (documents for tasks, schedule for
+  // events) rather than the operator surfaces.
+  const loanLabel = (loanId: string | null | undefined): string | null => {
+    if (!loanId) return null;
+    const ln = loansByLoanId[loanId];
+    if (!ln) return null;
+    return ln.address ? `${ln.deal_id} · ${ln.address}` : ln.deal_id;
+  };
+  const clientHref = (loanId: string | null | undefined, tab: string): string =>
+    loanId && loansByLoanId[loanId]
+      ? `/pipeline?file=${loanId}&tab=${tab}`
+      : "/pipeline";
 
   const items: Array<{
     key: string;
@@ -1160,13 +1185,17 @@ function TodaysOverduePanel({ tasks, events, loans }: { tasks: AITask[]; events:
     else if (ts <= todayEnd) urgency = "today";
     else if (ts <= now + 24 * 60 * 60 * 1000 * 3) urgency = "soon";
     if (!urgency) continue;
+    const evWhen = `${new Date(ev.starts_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}${ev.who ? ` · ${ev.who}` : ""}`;
+    const evFile = loanLabel(ev.loan_id);
     items.push({
       key: `ev-${ev.id}`,
       kind: "event",
       urgency,
       label: ev.title,
-      sub: `${new Date(ev.starts_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}${ev.who ? ` · ${ev.who}` : ""}`,
-      href: ev.loan_id ? `/loans/${ev.loan_id}` : "/calendar",
+      sub: isClient && evFile ? `${evFile} · ${evWhen}` : evWhen,
+      href: isClient
+        ? clientHref(ev.loan_id, "schedule")
+        : ev.loan_id ? `/loans/${ev.loan_id}` : "/calendar",
     });
   }
 
@@ -1176,13 +1205,18 @@ function TodaysOverduePanel({ tasks, events, loans }: { tasks: AITask[]; events:
     let urgency: "overdue" | "today" | "soon" = "soon";
     if (ageH > 8) urgency = "overdue";
     else if (ageH > 2) urgency = "today";
+    const taskFile = loanLabel(task.loan_id);
     items.push({
       key: `task-${task.id}`,
       kind: "task",
       urgency,
       label: task.title,
-      sub: `${task.source} · conf ${(task.confidence * 100).toFixed(0)}%${task.loan_id && loansByLoanId[task.loan_id] ? ` · ${loansByLoanId[task.loan_id].deal_id}` : ""}`,
-      href: "/ai-inbox",
+      // Borrower view names the file plainly; operators keep the
+      // source/confidence diagnostics.
+      sub: isClient
+        ? taskFile ?? "Your file"
+        : `${task.source} · conf ${(task.confidence * 100).toFixed(0)}%${task.loan_id && loansByLoanId[task.loan_id] ? ` · ${loansByLoanId[task.loan_id].deal_id}` : ""}`,
+      href: isClient ? clientHref(task.loan_id, "documents") : "/ai-inbox",
     });
   }
 
@@ -1241,24 +1275,45 @@ function TodaysOverduePanel({ tasks, events, loans }: { tasks: AITask[]; events:
             {ranked.length} actionable item{ranked.length > 1 ? "s" : ""} surfaced.
           </div>
         </div>
-        <Link
-          href="/ai-inbox"
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            background: t.surface,
-            color: t.ink2,
-            border: `1px solid ${t.line}`,
-            fontSize: 12,
-            fontWeight: 700,
-            textDecoration: "none",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 5,
-          }}
-        >
-          AI Inbox <Icon name="chevR" size={11} />
-        </Link>
+        {isClient ? (
+          <Link
+            href="/pipeline"
+            style={{
+              padding: "8px 12px",
+              borderRadius: 8,
+              background: t.surface,
+              color: t.ink2,
+              border: `1px solid ${t.line}`,
+              fontSize: 12,
+              fontWeight: 700,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+            }}
+          >
+            My Files <Icon name="chevR" size={11} />
+          </Link>
+        ) : (
+          <Link
+            href="/ai-inbox"
+            style={{
+              padding: "8px 12px",
+              borderRadius: 8,
+              background: t.surface,
+              color: t.ink2,
+              border: `1px solid ${t.line}`,
+              fontSize: 12,
+              fontWeight: 700,
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+            }}
+          >
+            AI Inbox <Icon name="chevR" size={11} />
+          </Link>
+        )}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
         {ranked.map((item) => {

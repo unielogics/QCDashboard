@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useAITasks, useAITaskDecision } from "@/hooks/useApi";
-import { FeedbackOutputType } from "@/lib/enums.generated";
+import { useActiveProfile } from "@/store/role";
+import { FeedbackOutputType, Role } from "@/lib/enums.generated";
 import type { AITask } from "@/lib/types";
 import { FeedbackWidget } from "@/components/FeedbackWidget";
 import { AIInboxCard } from "@/components/AIInboxCard";
@@ -38,6 +40,15 @@ export default function AIInboxPage() {
     [tasks, filter, priority],
   );
   const selected = filtered.find((task) => task.id === selectedId) ?? filtered[0] ?? null;
+
+  // AI Inbox is an operator/agent surface — borrowers must not reach it,
+  // even by typing the URL. Bounce CLIENT logins back to their dashboard.
+  const profile = useActiveProfile();
+  const router = useRouter();
+  useEffect(() => {
+    if (profile.role === Role.CLIENT) router.replace("/");
+  }, [profile.role, router]);
+  if (profile.role === Role.CLIENT) return null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, height: "100%" }}>
