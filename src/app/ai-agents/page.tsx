@@ -10,7 +10,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtnPrimary } from "@/components/design-system/buttons";
-import { useActiveProfile } from "@/store/role";
+import { useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import {
   useAiAgents,
@@ -82,7 +82,7 @@ function StepDots({ steps }: { steps: StepStates }) {
 
 export default function AiAgentsPage() {
   const { t } = useTheme();
-  const profile = useActiveProfile();
+  const { data: me, isLoading: meLoading } = useCurrentUser();
   const router = useRouter();
   const { data: agents = [], isLoading } = useAiAgents();
   const create = useCreateAiAgent();
@@ -90,10 +90,12 @@ export default function AiAgentsPage() {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<AiAgentKind>("buyer_nurture");
 
+  // Only redirect a confirmed non-agent — never on the pre-/auth/me
+  // fallback, which would bounce a real broker mid-load.
   useEffect(() => {
-    if (profile.role !== Role.BROKER) router.replace("/");
-  }, [profile.role, router]);
-  if (profile.role !== Role.BROKER) return null;
+    if (!meLoading && me && me.role !== Role.BROKER) router.replace("/");
+  }, [meLoading, me, router]);
+  if (!meLoading && me && me.role !== Role.BROKER) return null;
 
   const submit = async () => {
     if (!name.trim()) return;

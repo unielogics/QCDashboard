@@ -631,12 +631,17 @@ function SynthPanel({
   const synth: AiAgentSynth | undefined = query.data;
   const status = synth?.generation_status ?? "idle";
 
-  // Poll while the heavy synthesis job runs.
+  // Poll while the heavy synthesis job runs. The refetch fn is held in
+  // a ref so the effect depends only on `status` — depending on the
+  // whole query object (new every render) would clear the interval
+  // before it ever fires.
+  const refetchRef = useRef(query.refetch);
+  refetchRef.current = query.refetch;
   useEffect(() => {
     if (status !== "generating") return;
-    const iv = setInterval(() => query.refetch(), 4000);
+    const iv = setInterval(() => refetchRef.current(), 4000);
     return () => clearInterval(iv);
-  }, [status, query]);
+  }, [status]);
 
   return (
     <div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
@@ -150,21 +150,35 @@ export function useAuthedApi() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const devUser = useDevUser();
 
+  // Live mirror of Clerk's auth state. The api callback closes over a
+  // ref instead of the render-time values so an in-flight request that
+  // mounted before Clerk resolved can still pick up `getToken` /
+  // `isSignedIn` the instant they become available.
+  const authRef = useRef({ isLoaded, isSignedIn, getToken });
+  authRef.current = { isLoaded, isSignedIn, getToken };
+
   return useCallback(
     async function authedApi<T>(path: string, opts: ApiOptions = {}): Promise<T> {
       // Block until Clerk has finished resolving the session. Without this,
       // the first wave of queries (ai-tasks, settings, /auth/me) fires before
       // getToken() is wired and the backend 401s every one of them.
-      if (!isLoaded) {
-        return new Promise<T>(() => {
-          /* never resolves — useCallback dep change will replace this fn,
-             react-query will refetch with the new identity once isLoaded. */
-        });
+      //
+      // We WAIT on a ref (which tracks the live value) rather than
+      // returning a never-resolving promise. A never-resolving promise
+      // leaves the query stuck in `fetching` forever — changing the
+      // queryFn identity does NOT restart an already-pending query — so
+      // any query that mounted during the brief pre-Clerk window (e.g.
+      // on a hard page load) would hang on its loading state forever.
+      let waited = 0;
+      while (!authRef.current.isLoaded && waited < 15000) {
+        await new Promise((r) => setTimeout(r, 120));
+        waited += 120;
       }
+      const { isSignedIn: signedIn, getToken: getTok } = authRef.current;
       let token: string | null = null;
-      if (isSignedIn) {
+      if (signedIn) {
         try {
-          token = await getToken();
+          token = await getTok();
         } catch {
           token = null;
         }

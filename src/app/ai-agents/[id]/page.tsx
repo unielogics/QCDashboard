@@ -8,9 +8,10 @@ import Link from "next/link";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useActiveProfile } from "@/store/role";
+import { useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { useAiAgent, type StepState } from "@/hooks/useAiAgents";
+import { Btn } from "./ui";
 import { STEP_DEFS, StepPanel } from "./steps";
 
 function StateDot({ state }: { state: StepState }) {
@@ -34,20 +35,60 @@ export default function AiAgentBuilderPage() {
   const { t } = useTheme();
   const params = useParams();
   const router = useRouter();
-  const profile = useActiveProfile();
+  const { data: me, isLoading: meLoading } = useCurrentUser();
   const id = typeof params.id === "string" ? params.id : null;
-  const { data: agent, isLoading } = useAiAgent(id);
+  const { data: agent, isLoading, isError, refetch } = useAiAgent(id);
   const [active, setActive] = useState("basics");
 
+  // Only redirect once we KNOW the signed-in user isn't an agent —
+  // never on the pre-/auth/me fallback (which would bounce a real
+  // broker mid-load).
   useEffect(() => {
-    if (profile.role !== Role.BROKER) router.replace("/");
-  }, [profile.role, router]);
-  if (profile.role !== Role.BROKER) return null;
+    if (!meLoading && me && me.role !== Role.BROKER) router.replace("/");
+  }, [meLoading, me, router]);
 
-  if (isLoading || !agent) {
+  if (meLoading) {
+    return (
+      <Card pad={20}>
+        <span style={{ color: t.ink3, fontSize: 13 }}>Loading…</span>
+      </Card>
+    );
+  }
+  if (me && me.role !== Role.BROKER) return null;
+
+  if (!id) {
+    return (
+      <Card pad={20}>
+        <span style={{ color: t.ink3, fontSize: 13 }}>Invalid AI Agent link.</span>
+      </Card>
+    );
+  }
+
+  if (isLoading) {
     return (
       <Card pad={20}>
         <span style={{ color: t.ink3, fontSize: 13 }}>Loading AI Agent…</span>
+      </Card>
+    );
+  }
+
+  if (isError || !agent) {
+    return (
+      <Card pad={22}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: t.ink }}>
+          Couldn&apos;t load this AI Agent.
+        </div>
+        <p style={{ fontSize: 13, color: t.ink3, margin: "6px 0 14px" }}>
+          It may have been removed, or the connection dropped.
+        </p>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Btn variant="primary" onClick={() => refetch()}>
+            Retry
+          </Btn>
+          <Link href="/ai-agents" style={{ textDecoration: "none" }}>
+            <Btn>Back to AI Agents</Btn>
+          </Link>
+        </div>
       </Card>
     );
   }
