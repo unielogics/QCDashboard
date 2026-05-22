@@ -61,6 +61,7 @@ import {
   SelectField,
   TextAreaField,
   TextField,
+  useRegisterSave,
 } from "./ui";
 
 export const STEP_DEFS: { key: string; label: string }[] = [
@@ -100,8 +101,8 @@ export function BasicsPanel({ agent }: PanelProps) {
   const [persona, setPersona] = useState(agent.persona_mode);
   const [sendMode, setSendMode] = useState(agent.send_mode);
 
-  const save = () =>
-    patch.mutate({
+  const save = async () => {
+    await patch.mutateAsync({
       id: agent.id,
       patch: {
         name,
@@ -112,6 +113,8 @@ export function BasicsPanel({ agent }: PanelProps) {
         send_mode: sendMode,
       },
     });
+  };
+  useRegisterSave(save);
 
   return (
     <div>
@@ -157,9 +160,6 @@ export function BasicsPanel({ agent }: PanelProps) {
           ]}
         />
       </FieldRow>
-      <Btn variant="primary" onClick={save} disabled={patch.isPending}>
-        {patch.isPending ? "Saving…" : "Save"}
-      </Btn>
     </div>
   );
 }
@@ -187,8 +187,8 @@ export function GoalPanel({ agent }: PanelProps) {
     }
   }, [goal]);
 
-  const submit = () =>
-    save.mutate({
+  const submit = async () => {
+    await save.mutateAsync({
       id: agent.id,
       goal: {
         primary_goal: primaryGoal,
@@ -199,6 +199,8 @@ export function GoalPanel({ agent }: PanelProps) {
         auto_reply_boundaries: {},
       },
     });
+  };
+  useRegisterSave(submit);
 
   return (
     <div>
@@ -221,9 +223,6 @@ export function GoalPanel({ agent }: PanelProps) {
       <FieldRow label="What a qualified reply looks like (optional)">
         <TextField value={qualified} onChange={setQualified} />
       </FieldRow>
-      <Btn variant="primary" onClick={submit} disabled={save.isPending}>
-        {save.isPending ? "Saving…" : "Save goal"}
-      </Btn>
     </div>
   );
 }
@@ -241,6 +240,10 @@ export function KnowledgePanel({ agent }: PanelProps) {
 
   const linkedDocIds = new Set(links.map((l) => l.knowledge_document_id));
   const reusable = library.filter((d) => !linkedDocIds.has(d.id));
+
+  // Nothing to "save" — uploads/links happen on click. Save & Next
+  // just advances.
+  useRegisterSave(async () => {});
 
   const onUpload = async (f: File | undefined) => {
     if (!f) return;
@@ -377,6 +380,10 @@ export function TargetingPanel({ agent }: PanelProps) {
     [domain, stages, temps, neverClosed, skipLoan, skipOwned, enrollMode],
   );
 
+  useRegisterSave(async () => {
+    await save.mutateAsync({ id: agent.id, targeting: payload });
+  });
+
   return (
     <div>
       <PanelHeader
@@ -437,13 +444,6 @@ export function TargetingPanel({ agent }: PanelProps) {
         />
       </FieldRow>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <Btn
-          variant="primary"
-          onClick={() => save.mutate({ id: agent.id, targeting: payload })}
-          disabled={save.isPending}
-        >
-          {save.isPending ? "Saving…" : "Save targeting"}
-        </Btn>
         <Btn onClick={() => preview.mutate(agent.id)} disabled={preview.isPending}>
           Preview matches
         </Btn>
@@ -501,6 +501,10 @@ export function TrainingPanel({ agent }: PanelProps) {
   const complete = useCompleteTraining();
   const [msg, setMsg] = useState("");
   const messages = training?.messages ?? [];
+
+  // Each chat turn already persists itself; nothing extra to save on
+  // step navigation.
+  useRegisterSave(async () => {});
 
   const send = async () => {
     if (!msg.trim()) return;
@@ -684,6 +688,7 @@ export function PlaybookPanel({ agent }: PanelProps) {
   const query = useAiAgentPlaybook(agent.id);
   const generate = useGeneratePlaybook();
   const approve = useApprovePlaybook();
+  useRegisterSave(async () => {});
   return (
     <SynthPanel
       agent={agent}
@@ -702,6 +707,7 @@ export function ShowingGuidePanel({ agent }: PanelProps) {
   const query = useAiAgentShowingGuide(agent.id);
   const generate = useGenerateShowingGuide();
   const approve = useApproveShowingGuide();
+  useRegisterSave(async () => {});
   return (
     <SynthPanel
       agent={agent}
@@ -813,6 +819,8 @@ export function FollowupsPanel({ agent }: PanelProps) {
     });
     setSavedHint(true);
   };
+
+  useRegisterSave(saveExit);
 
   return (
     <div>
@@ -1003,23 +1011,11 @@ export function FollowupsPanel({ agent }: PanelProps) {
           />
         </label>
       </div>
-      <div
-        style={{
-          marginTop: 14,
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-        }}
-      >
-        <Btn variant="primary" onClick={saveExit} disabled={saveRules.isPending}>
-          {saveRules.isPending ? "Saving…" : "Save exit rules"}
-        </Btn>
-        {savedHint && (
-          <span style={{ fontSize: 13, color: t.profit, fontWeight: 600 }}>
-            Saved
-          </span>
-        )}
-      </div>
+      {savedHint && (
+        <div style={{ marginTop: 12, fontSize: 13, color: t.profit, fontWeight: 600 }}>
+          Saved
+        </div>
+      )}
     </div>
   );
 }
@@ -1045,6 +1041,7 @@ export function TestPanel({ agent }: PanelProps) {
   const runTest = useRunTest();
   const review = useReviewTestScenario();
   const [prompt, setPrompt] = useState("");
+  useRegisterSave(async () => {});
 
   return (
     <div>
@@ -1096,6 +1093,7 @@ export function TestPanel({ agent }: PanelProps) {
 export function LaunchPanel({ agent }: PanelProps) {
   const { t } = useTheme();
   const blockers = agent.gate_blockers ?? [];
+  useRegisterSave(async () => {});
   return (
     <div>
       <PanelHeader
@@ -1153,6 +1151,10 @@ export function WarmupPanel({ agent }: PanelProps) {
   const enrolledIds = new Set(leads.map((l) => l.client_id));
   const available = clients.filter((c) => !enrolledIds.has(c.id));
   const inWarmup = agent.status === "active" && agent.warmup_mode;
+
+  // Terminal step. Activation is its own button below — Save & Next
+  // is hidden by the page footer for the last step.
+  useRegisterSave(async () => {});
 
   const doActivate = async () => {
     setErr([]);

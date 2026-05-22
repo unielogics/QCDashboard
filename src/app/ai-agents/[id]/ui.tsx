@@ -2,7 +2,15 @@
 
 // Shared form primitives for the AI Agent builder panels.
 
-import type { CSSProperties, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  type CSSProperties,
+  type MutableRefObject,
+  type ReactNode,
+} from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 
 export function useUi() {
@@ -175,6 +183,55 @@ export function PanelHeader({
       <p style={{ fontSize: 13, color: t.ink3, margin: "6px 0 0" }}>{desc}</p>
     </div>
   );
+}
+
+// ── Builder save-handler context ────────────────────────────────────
+//
+// The 11-step builder behaves like a wizard: each panel can register
+// what "Save & Next" should do, and the page's footer / left-rail
+// invokes that registered handler before navigating. Panels that have
+// nothing to save register a no-op.
+
+type SaveHandler = () => Promise<void>;
+
+const SaveHandlerCtx =
+  createContext<MutableRefObject<SaveHandler | null> | null>(null);
+
+export function BuilderStepProvider({
+  saveHandlerRef,
+  children,
+}: {
+  saveHandlerRef: MutableRefObject<SaveHandler | null>;
+  children: ReactNode;
+}) {
+  return (
+    <SaveHandlerCtx.Provider value={saveHandlerRef}>
+      {children}
+    </SaveHandlerCtx.Provider>
+  );
+}
+
+/**
+ * Each step panel calls this with its current save fn. The page reads
+ * the registered fn off a shared ref when the footer's "Save & Next"
+ * is clicked. Panels with nothing to save pass an async no-op.
+ */
+export function useRegisterSave(saveFn: SaveHandler) {
+  const ctxRef = useContext(SaveHandlerCtx);
+  // Keep the latest closure addressable without re-running the effect
+  // on every keystroke.
+  const liveRef = useRef(saveFn);
+  liveRef.current = saveFn;
+  useEffect(() => {
+    if (!ctxRef) return;
+    const wrapper: SaveHandler = () => liveRef.current();
+    ctxRef.current = wrapper;
+    return () => {
+      // Only clear if no later panel has replaced us — prevents a
+      // race where the next panel mounts before this one tears down.
+      if (ctxRef.current === wrapper) ctxRef.current = null;
+    };
+  }, [ctxRef]);
 }
 
 export function ChipToggle({
