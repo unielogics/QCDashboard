@@ -4826,3 +4826,44 @@ export function useDecideCapitalPartnerApplication() {
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Borrower file pipeline — GET /me/files.
+//
+// The deduped union of the logged-in borrower's Deals (re_working) +
+// Loans (in_funding / funded / lost). Drives the client-side /pipeline
+// table. Borrower-only on the backend.
+// ---------------------------------------------------------------------------
+
+export type MyFileStatus =
+  | "re_working"
+  | "in_funding"
+  | "funded"
+  | "lost";
+
+export interface MyFileRow {
+  id: string;
+  kind: "deal" | "loan";
+  ref: string;
+  status: MyFileStatus;
+  stage_detail: string;
+  address: string | null;
+  city: string | null;
+  loan_type: string | null;
+  amount: number | null;
+  ai_status: string | null;
+  updated_at: string;
+  deal_uuid: string | null;
+  loan_uuid: string | null;
+}
+
+export function useMyFiles() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["my-files", devUser],
+    queryFn: () => apiCall<MyFileRow[]>("/me/files"),
+    refetchOnWindowFocus: true,
+    staleTime: 20 * 1000,
+  });
+}

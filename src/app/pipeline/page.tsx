@@ -11,18 +11,29 @@ import { loanTypeLabel, type Document } from "@/lib/types";
 import { getFileCompletion } from "@/app/loans/[id]/fileReadiness";
 import { SmartIntakeModal } from "./components/SmartIntakeModal";
 import { LeadsPipelineView } from "./components/LeadsPipelineView";
+import { ClientFilePipeline } from "./components/ClientFilePipeline";
 import { useActiveProfile } from "@/store/role";
 import { LoanAgentPicker } from "@/components/LoanAgentPicker";
 import type { Loan } from "@/lib/types";
 
 type PipelineMode = "leads" | "funding";
 
+// Role split: a CLIENT (borrower) login gets the merged file table +
+// stage-aware modal; everyone else (agent/broker, loan-exec, super-admin)
+// gets the operator pipeline below, byte-for-byte unchanged. Branching in
+// a thin wrapper keeps each side's hooks from running for the other role.
+export default function PipelinePage() {
+  const profile = useActiveProfile();
+  if (profile.role === "client") return <ClientFilePipeline />;
+  return <OperatorPipelinePage />;
+}
+
 const STAGE_KEYS = ["prequalified", "collecting_docs", "lender_connected", "processing", "closing", "funded"] as const;
 const STAGE_LABELS = ["Prequalified", "Collecting Docs", "Lender Connected", "Processing", "Closing", "Funded"];
 
 type SortKey = "deal_id" | "address" | "type" | "amount" | "dscr" | "stage" | "close_date";
 
-export default function PipelinePage() {
+function OperatorPipelinePage() {
   const { t } = useTheme();
   const { data: loans = [] } = useLoans();
   const loanIds = useMemo(() => loans.map((l) => l.id), [loans]);
