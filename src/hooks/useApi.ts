@@ -4867,3 +4867,71 @@ export function useMyFiles() {
     staleTime: 20 * 1000,
   });
 }
+
+// ---------------------------------------------------------------------------
+// AI training — per-task instructions/tone config + corrections review.
+// Backed by /lending-admin/ai-training/* (super-admin).
+// ---------------------------------------------------------------------------
+
+export interface AiTaskConfig {
+  task_key: string;
+  label: string;
+  instructions: string;
+  tone: string;
+  dos: string[];
+  donts: string[];
+  examples: string[];
+}
+
+export interface AiTrainingFeedbackItem {
+  kind: "rating" | "correction";
+  output_type: string | null;
+  loan_id: string | null;
+  text: string;
+  created_at: string;
+}
+
+export function useAiTaskConfigs() {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["ai-training", "tasks"],
+    queryFn: () =>
+      apiCall<{ tasks: AiTaskConfig[] }>("/lending-admin/ai-training/tasks"),
+  });
+}
+
+export function useSaveAiTaskConfig() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      taskKey,
+      payload,
+    }: {
+      taskKey: string;
+      payload: {
+        instructions: string;
+        tone: string;
+        dos: string[];
+        donts: string[];
+        examples: string[];
+      };
+    }) =>
+      apiCall<AiTaskConfig>(`/lending-admin/ai-training/tasks/${taskKey}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ai-training", "tasks"] });
+    },
+  });
+}
+
+export function useAiTrainingFeedback() {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["ai-training", "feedback"],
+    queryFn: () =>
+      apiCall<AiTrainingFeedbackItem[]>("/lending-admin/ai-training/feedback"),
+  });
+}

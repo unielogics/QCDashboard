@@ -211,6 +211,13 @@ export default function LendingAISettingsPage() {
               onChange={(next) => mutate({ ...draft, identity: next })}
             />
           </Section>
+
+          <Section t={t} kicker="Step 6" title="AI training per task"
+            copy="Tune the instructions and tone for each borrower-facing AI task — document nudges, Nurture AI chat, re-engagement — and review what operators have flagged.">
+            <Link href="/admin/lending-ai/training" style={linkButton(t)}>
+              Open AI training →
+            </Link>
+          </Section>
         </div>
       )}
     </div>
