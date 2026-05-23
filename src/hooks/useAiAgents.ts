@@ -513,11 +513,14 @@ export const useWarmupSend = () =>
   );
 
 export const useAssignWarmupLeads = () =>
-  useAgentMutation<{ id: string; client_ids: string[] }, { assigned: number }>(
-    (api, { id, client_ids }) =>
+  useAgentMutation<
+    { id: string; client_ids: string[]; deal_id?: string },
+    { assigned: number }
+  >(
+    (api, { id, client_ids, deal_id }) =>
       api<{ assigned: number }>(`/ai-agents/${id}/leads/assign`, {
         method: "POST",
-        body: JSON.stringify({ client_ids }),
+        body: JSON.stringify({ client_ids, ...(deal_id ? { deal_id } : {}) }),
       }),
     (i) => i.id,
     ["leads"],
@@ -548,3 +551,67 @@ export const usePauseAiAgent = () =>
     (api, { id }) => api(`/ai-agents/${id}/pause`, { method: "POST" }),
     (i) => i.id,
   );
+
+// ── Per-client / per-deal active-agent strip ──────────────────────
+
+export interface AssignedAgentRow {
+  lead_id: string;
+  ai_agent_id: string;
+  name: string;
+  ai_display_name: string | null;
+  kind: AiAgentKind;
+  status: string;
+  deal_id?: string | null;
+  client_id?: string | null;
+  attempts_made: number;
+  last_outbound_at: string | null;
+}
+
+export function useClientAiAgents(clientId: string | null) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["client-ai-agents", clientId],
+    queryFn: () =>
+      apiCall<AssignedAgentRow[]>(`/clients/${clientId}/ai-agents`),
+    enabled: !!clientId,
+  });
+}
+
+export function useDealAiAgents(dealId: string | null) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["deal-ai-agents", dealId],
+    queryFn: () => apiCall<AssignedAgentRow[]>(`/deals/${dealId}/ai-agents`),
+    enabled: !!dealId,
+  });
+}
+
+function useLeadAction(action: "pause" | "resume" | "remove") {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      agentId,
+      leadId,
+    }: {
+      agentId: string;
+      leadId: string;
+      // For invalidation only:
+      clientId?: string;
+      dealId?: string;
+    }) =>
+      apiCall<{ ok: boolean; status: string }>(
+        `/ai-agents/${agentId}/leads/${leadId}${action === "remove" ? "" : `/${action}`}`,
+        { method: action === "remove" ? "DELETE" : "POST" },
+      ),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["client-ai-agents", vars.clientId] });
+      qc.invalidateQueries({ queryKey: ["deal-ai-agents", vars.dealId] });
+      qc.invalidateQueries({ queryKey: ["ai-agent", vars.agentId, "leads"] });
+    },
+  });
+}
+
+export const usePauseAiAgentLead = () => useLeadAction("pause");
+export const useResumeAiAgentLead = () => useLeadAction("resume");
+export const useRemoveAiAgentLead = () => useLeadAction("remove");

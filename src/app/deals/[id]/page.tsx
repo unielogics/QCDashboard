@@ -12,6 +12,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import { ActiveAgentStrip } from "@/components/ActiveAgentStrip";
 import {
   useClient,
   useClientAiFollowUp,
@@ -137,6 +138,8 @@ export default function DealPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* AI agents currently working this deal — pause / remove inline. */}
+      <ActiveAgentStrip dealId={deal.id} />
       {/* Slim summary header — modeled on /loans/[id] header pattern. */}
       <div
         style={{

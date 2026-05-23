@@ -9,13 +9,14 @@ import Link from "next/link";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtnPrimary } from "@/components/design-system/buttons";
+import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import {
   useAiAgents,
   useCreateAiAgent,
   type AiAgentKind,
+  type AiAgentListRow,
   type AiAgentStatus,
   type StepStates,
 } from "@/hooks/useAiAgents";
@@ -186,22 +187,83 @@ export default function AiAgentsPage() {
           <span style={{ color: t.ink3, fontSize: 13 }}>Loading…</span>
         </Card>
       ) : agents.length === 0 ? (
-        <Card pad={28}>
+        <Card pad={26}>
           <div style={{ textAlign: "center", color: t.ink3 }}>
             <Icon name="spark" size={26} />
             <p style={{ fontSize: 14, marginTop: 10 }}>
-              No AI Agents yet. Create your first one to get started.
+              No AI Agents yet. Start with one of the two real-estate
+              starters below — you can edit everything once it's drafted.
             </p>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 14,
+              marginTop: 18,
+            }}
+          >
+            {(
+              [
+                {
+                  kind: "buyer_nurture" as AiAgentKind,
+                  title: "Buyer-side starter",
+                  desc: "Works new buyer leads + buyer searches — first touch through to under-contract.",
+                  agentName: "Buyer follow-up",
+                  audience: "Buyer leads I've added to my pipeline.",
+                },
+                {
+                  kind: "seller_followup" as AiAgentKind,
+                  title: "Seller-side starter",
+                  desc: "Works active listings + seller leads — confirmations, listing-prep nudges, offer follow-ups.",
+                  agentName: "Listing follow-up",
+                  audience: "Seller leads + active listings I'm working.",
+                },
+              ]
+            ).map((preset) => (
+              <Card key={preset.kind} pad={16} style={{ cursor: "pointer" }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: t.ink }}>
+                  {preset.title}
+                </div>
+                <div style={{ fontSize: 12.5, color: t.ink3, margin: "6px 0 14px" }}>
+                  {preset.desc}
+                </div>
+                <button
+                  style={{ ...qcBtnPrimary(t), width: "100%" }}
+                  disabled={create.isPending}
+                  onClick={async () => {
+                    const agent = await create.mutateAsync({
+                      name: preset.agentName,
+                      kind: preset.kind,
+                      audience: preset.audience,
+                    });
+                    router.push(`/ai-agents/${agent.id}`);
+                  }}
+                >
+                  <Icon name="plus" size={13} /> Start with this
+                </button>
+              </Card>
+            ))}
           </div>
         </Card>
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-            gap: 14,
-          }}
-        >
+        <>
+          <SuggestedWorkflows
+            agents={agents}
+            t={t}
+            onCreate={async (preset) => {
+              const agent = await create.mutateAsync(preset);
+              router.push(`/ai-agents/${agent.id}`);
+            }}
+            disabled={create.isPending}
+          />
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+              gap: 14,
+            }}
+          >
           {agents.map((a) => (
             <Link
               key={a.id}
@@ -216,8 +278,15 @@ export default function AiAgentsPage() {
                     gap: 10,
                   }}
                 >
-                  <div style={{ fontSize: 15, fontWeight: 700, color: t.ink }}>
-                    {a.name}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: t.ink }}>
+                      {a.name}
+                    </div>
+                    {a.ai_display_name && (
+                      <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>
+                        Introduces as {a.ai_display_name}
+                      </div>
+                    )}
                   </div>
                   <Pill
                     color={
@@ -251,8 +320,93 @@ export default function AiAgentsPage() {
               </Card>
             </Link>
           ))}
-        </div>
+          </div>
+        </>
       )}
+    </div>
+  );
+}
+
+// Heuristic suggestion strip: surface starter workflows the broker
+// hasn't built yet. Frontend-only — no backend AI call.
+const SUGGESTION_CATALOG: { kind: AiAgentKind; title: string; desc: string; agentName: string; audience: string }[] = [
+  {
+    kind: "past_client",
+    title: "Past-client re-engagement",
+    desc: "Reach out to clients you've closed with — referrals, anniversaries, market check-ins.",
+    agentName: "Past-client nurture",
+    audience: "Clients I've closed with at least once.",
+  },
+  {
+    kind: "investor_outreach",
+    title: "Investor outreach",
+    desc: "Work investor leads — DSCR opportunities, off-market chatter, repeat-buyer rhythms.",
+    agentName: "Investor outreach",
+    audience: "Investor-side clients in my pipeline.",
+  },
+  {
+    kind: "open_house",
+    title: "Open-house follow-up",
+    desc: "Same-week nudges to walk-through visitors who didn't book a private showing.",
+    agentName: "Open-house follow-up",
+    audience: "Buyers who attended my open houses.",
+  },
+  {
+    kind: "review_request",
+    title: "Post-close review request",
+    desc: "After a deal closes, ask for the review on Google / Zillow that drives your next lead.",
+    agentName: "Review request",
+    audience: "Clients who closed in the last 90 days.",
+  },
+];
+
+function SuggestedWorkflows({
+  agents,
+  t,
+  onCreate,
+  disabled,
+}: {
+  agents: AiAgentListRow[];
+  t: ReturnType<typeof useTheme>["t"];
+  onCreate: (preset: { name: string; kind: AiAgentKind; audience: string }) => void | Promise<void>;
+  disabled: boolean;
+}) {
+  const haveKinds = new Set(agents.map((a) => a.kind));
+  const missing = SUGGESTION_CATALOG.filter((s) => !haveKinds.has(s.kind));
+  if (missing.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <SectionLabel>Suggested workflows</SectionLabel>
+      <div style={{ fontSize: 12.5, color: t.ink3, margin: "6px 0 12px" }}>
+        Standard real-estate workflows you haven&apos;t built yet — one click to draft.
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+          gap: 12,
+        }}
+      >
+        {missing.map((s) => (
+          <Card key={s.kind} pad={14}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: t.ink }}>
+              {s.title}
+            </div>
+            <div style={{ fontSize: 12, color: t.ink3, margin: "5px 0 10px" }}>
+              {s.desc}
+            </div>
+            <button
+              style={qcBtn(t)}
+              disabled={disabled}
+              onClick={() =>
+                onCreate({ name: s.agentName, kind: s.kind, audience: s.audience })
+              }
+            >
+              <Icon name="plus" size={12} /> Create
+            </button>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

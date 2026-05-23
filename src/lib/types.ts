@@ -154,6 +154,10 @@ export interface Client {
   originating_agent_id?: string | null;
   current_agent_id?: string | null;
   source_channel?: string | null;
+  // Preferred language (alembic 0066). The AI composer writes outbound
+  // messages in this language when set. Free-form string; the client
+  // edit form offers a dropdown of common values.
+  language?: string | null;
   // Per-client AI cadence override (alembic 0025). Free-shape JSONB
   // the agent uses to dial nudge frequency, channel preferences, and
   // follow-up rhythm for this specific lead. Read by the cadence

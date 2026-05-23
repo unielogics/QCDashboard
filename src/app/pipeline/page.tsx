@@ -15,6 +15,7 @@ import { LeadsPipelineView } from "./components/LeadsPipelineView";
 import { ClientFilePipeline } from "./components/ClientFilePipeline";
 import { useActiveProfile } from "@/store/role";
 import { LoanAgentPicker } from "@/components/LoanAgentPicker";
+import { AIAgentAssignPicker } from "./components/AIAgentAssignPicker";
 import type { Loan } from "@/lib/types";
 
 type PipelineMode = "leads" | "funding";
@@ -71,9 +72,11 @@ function OperatorPipelinePage() {
   useEffect(() => {
     if (searchParams?.get("new") === "1") setIntakeOpen(true);
   }, [searchParams]);
-  // Right-click → "Reassign agent…" context menu state. Only super_admin
-  // / loan_exec can open this — broker rows don't render the trigger.
+  // Right-click → context menu. Internal users get "Reassign agent…"
+  // (broker reassignment); brokers + internal both get "Assign AI
+  // agent…" which opens the AIAgentAssignPicker.
   const [reassignTarget, setReassignTarget] = useState<{ loan: Loan; x: number; y: number } | null>(null);
+  const [assignAiTarget, setAssignAiTarget] = useState<{ loan: Loan; x: number; y: number } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ loan: Loan; x: number; y: number } | null>(null);
 
   const canCreateLead = isBroker || profile.role === "super_admin";
@@ -344,12 +347,12 @@ function OperatorPipelinePage() {
                     key={loan.id}
                     href={`/loans/${loan.id}`}
                     onContextMenu={
-                      isInternal
+                      isInternal || isBroker
                         ? (e) => {
-                            // Super_admin / loan_exec → swap the browser's
-                            // context menu for our own "Reassign agent…"
-                            // popover anchored at the cursor. Brokers fall
-                            // through to the browser default.
+                            // Internal users get "Reassign agent…" +
+                            // "Assign AI agent…". Brokers get just the AI
+                            // assign action — same popover, role-gated
+                            // items inside.
                             e.preventDefault();
                             e.stopPropagation();
                             setContextMenu({ loan, x: e.clientX, y: e.clientY });
@@ -425,7 +428,7 @@ function OperatorPipelinePage() {
                         key={loan.id}
                         href={`/loans/${loan.id}`}
                         onContextMenu={
-                          isInternal
+                          isInternal || isBroker
                             ? (e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -484,8 +487,12 @@ function OperatorPipelinePage() {
           x={contextMenu.x}
           y={contextMenu.y}
           loan={contextMenu.loan}
+          canReassign={isInternal}
           onReassign={() =>
             setReassignTarget({ loan: contextMenu.loan, x: contextMenu.x, y: contextMenu.y })
+          }
+          onAssignAI={() =>
+            setAssignAiTarget({ loan: contextMenu.loan, x: contextMenu.x, y: contextMenu.y })
           }
           onClose={() => setContextMenu(null)}
         />
@@ -496,6 +503,18 @@ function OperatorPipelinePage() {
           anchor={{ x: reassignTarget.x, y: reassignTarget.y }}
           onClose={() => {
             setReassignTarget(null);
+            setContextMenu(null);
+          }}
+        />
+      ) : null}
+      {assignAiTarget ? (
+        <AIAgentAssignPicker
+          clientId={assignAiTarget.loan.client_id}
+          dealId={assignAiTarget.loan.source_deal_id ?? undefined}
+          source="pipeline"
+          anchor={{ x: assignAiTarget.x, y: assignAiTarget.y }}
+          onClose={() => {
+            setAssignAiTarget(null);
             setContextMenu(null);
           }}
         />
@@ -512,13 +531,17 @@ function PipelineRowContextMenu({
   x,
   y,
   loan,
+  canReassign,
   onReassign,
+  onAssignAI,
   onClose,
 }: {
   x: number;
   y: number;
   loan: Loan;
+  canReassign: boolean;
   onReassign: () => void;
+  onAssignAI: () => void;
   onClose: () => void;
 }) {
   const { t } = useTheme();
@@ -572,10 +595,41 @@ function PipelineRowContextMenu({
       >
         {loan.deal_id} · {loan.broker_name ?? "Unassigned"}
       </div>
+      {canReassign && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onReassign();
+          }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 10px",
+            borderRadius: 4,
+            border: "none",
+            background: "transparent",
+            color: t.ink,
+            fontSize: 13,
+            cursor: "pointer",
+            textAlign: "left",
+            fontFamily: "inherit",
+          }}
+          onMouseOver={(e) =>
+            ((e.currentTarget as HTMLElement).style.background = t.surface2)
+          }
+          onMouseOut={(e) =>
+            ((e.currentTarget as HTMLElement).style.background = "transparent")
+          }
+        >
+          <Icon name="user" size={12} stroke={2.2} />
+          {loan.broker_id ? "Reassign agent…" : "Assign agent…"}
+        </button>
+      )}
       <button
         onClick={(e) => {
           e.stopPropagation();
-          onReassign();
+          onAssignAI();
         }}
         style={{
           display: "flex",
@@ -591,11 +645,15 @@ function PipelineRowContextMenu({
           textAlign: "left",
           fontFamily: "inherit",
         }}
-        onMouseOver={(e) => ((e.currentTarget as HTMLElement).style.background = t.surface2)}
-        onMouseOut={(e) => ((e.currentTarget as HTMLElement).style.background = "transparent")}
+        onMouseOver={(e) =>
+          ((e.currentTarget as HTMLElement).style.background = t.surface2)
+        }
+        onMouseOut={(e) =>
+          ((e.currentTarget as HTMLElement).style.background = "transparent")
+        }
       >
-        <Icon name="user" size={12} stroke={2.2} />
-        {loan.broker_id ? "Reassign agent…" : "Assign agent…"}
+        <Icon name="spark" size={12} stroke={2.2} />
+        Assign AI agent…
       </button>
     </div>
   );

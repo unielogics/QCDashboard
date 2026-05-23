@@ -13,6 +13,7 @@ import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { RealtorReadinessCard } from "@/components/RealtorReadinessCard";
 import { ClientAIPlanCard } from "@/components/ClientAIPlanCard";
 import { CreditReportDetail } from "@/components/CreditReportDetail";
+import { ActiveAgentStrip } from "@/components/ActiveAgentStrip";
 import { useActiveProfile } from "@/store/role";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { parseIntStrict } from "@/lib/formCoerce";
@@ -92,6 +93,7 @@ export default function ClientDetailPage() {
         city: client.city ?? "",
         tier: client.tier,
         fico: client.fico,
+        language: client.language ?? "",
       });
     }
   }, [client?.id]);
@@ -129,6 +131,8 @@ export default function ClientDetailPage() {
         city: draft.city ?? null,
         tier: (draft.tier ?? client.tier).toString(),
         fico: draft.fico == null || draft.fico === ("" as unknown as number) ? null : Number(draft.fico),
+        language:
+          (draft.language ?? client.language ?? "").toString().trim() || null,
       });
       setEditing(false);
     } catch (e) {
@@ -138,6 +142,7 @@ export default function ClientDetailPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <ActiveAgentStrip clientId={client.id} />
       <Card pad={20}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ width: 56, height: 56, borderRadius: 28, background: client.avatar_color ?? t.petrol, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800, flexShrink: 0 }}>
@@ -335,6 +340,24 @@ export default function ClientDetailPage() {
                 onChange={(v) => setDraft((d) => ({ ...d, fico: (parseIntStrict(v) || null) as Client["fico"] }))}
                 placeholder="720"
               />
+            </Field>
+            <Field t={t} label="Preferred language">
+              <select
+                value={(draft.language ?? "") as string}
+                onChange={(e) => setDraft((d) => ({ ...d, language: e.target.value }))}
+                style={{
+                  width: "100%", padding: "10px 12px", borderRadius: 9, background: t.surface2,
+                  border: `1px solid ${t.line}`, color: t.ink, fontSize: 13, fontFamily: "inherit",
+                }}
+              >
+                <option value="">— Not set —</option>
+                <option value="English">English</option>
+                <option value="Spanish">Spanish</option>
+                <option value="Portuguese">Portuguese</option>
+                <option value="Mandarin">Mandarin</option>
+                <option value="French">French</option>
+                <option value="Other">Other</option>
+              </select>
             </Field>
           </div>
           {error && <div style={{ color: t.danger, fontSize: 12, fontWeight: 700, marginTop: 10 }}>{error}</div>}

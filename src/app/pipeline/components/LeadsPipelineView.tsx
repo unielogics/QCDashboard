@@ -11,6 +11,8 @@ import { useClients, useCreateDeal, useLoans, usePipelineClientSummary, type Dea
 import { useActiveProfile } from "@/store/role";
 import type { Client, ClientStage, ClientType, DealType, Loan, PipelineClientSummary } from "@/lib/types";
 import { AiStatusBadge } from "@/components/AiStatusBadge";
+import { useAiAgents, useAssignWarmupLeads } from "@/hooks/useAiAgents";
+import { AIAgentAssignPicker } from "./AIAgentAssignPicker";
 
 const RELATIONSHIP_STAGES = [
   "lead",
@@ -183,6 +185,14 @@ export function LeadsPipelineView({ view, search }: Props) {
   // /deals/{id}. Otherwise open the create-file modal first.
   const router = useRouter();
   const [createFor, setCreateFor] = useState<EnrichedClient | null>(null);
+  // Right-click on a client card → AIAgentAssignPicker. Single-item
+  // context (no intermediate menu) since this is the only broker
+  // action that currently lives on these cards.
+  const [assignAiFor, setAssignAiFor] = useState<{
+    clientId: string;
+    x: number;
+    y: number;
+  } | null>(null);
   function openFile(client: EnrichedClient) {
     const s = summariesByClient.get(client.id);
     if (s?.primary_deal_id) {
@@ -276,6 +286,11 @@ export function LeadsPipelineView({ view, search }: Props) {
             <button
               key={client.id}
               onClick={() => openFile(client)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setAssignAiFor({ clientId: client.id, x: e.clientX, y: e.clientY });
+              }}
               style={{
                 display: "grid",
                 gridTemplateColumns: gridCols,
@@ -352,6 +367,14 @@ export function LeadsPipelineView({ view, search }: Props) {
           )}
         </Card>
         {createFor ? <CreateFileModal client={createFor} onClose={() => setCreateFor(null)} /> : null}
+        {assignAiFor ? (
+          <AIAgentAssignPicker
+            clientId={assignAiFor.clientId}
+            source="clients"
+            anchor={{ x: assignAiFor.x, y: assignAiFor.y }}
+            onClose={() => setAssignAiFor(null)}
+          />
+        ) : null}
       </>
     );
   }
@@ -388,6 +411,15 @@ export function LeadsPipelineView({ view, search }: Props) {
                   <button
                     key={client.id}
                     onClick={() => openFile(client)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setAssignAiFor({
+                        clientId: client.id,
+                        x: e.clientX,
+                        y: e.clientY,
+                      });
+                    }}
                     style={{
                       background: tint ? tint.bg : t.surface,
                       padding: 11,
@@ -446,6 +478,14 @@ export function LeadsPipelineView({ view, search }: Props) {
         })}
       </div>
       {createFor ? <CreateFileModal client={createFor} onClose={() => setCreateFor(null)} /> : null}
+      {assignAiFor ? (
+        <AIAgentAssignPicker
+          clientId={assignAiFor.clientId}
+          source="clients"
+          anchor={{ x: assignAiFor.x, y: assignAiFor.y }}
+          onClose={() => setAssignAiFor(null)}
+        />
+      ) : null}
     </>
   );
 }
@@ -811,6 +851,8 @@ function CreateFileModal({ client, onClose }: { client: EnrichedClient; onClose:
   const { t } = useTheme();
   const router = useRouter();
   const create = useCreateDeal(client.id);
+  const { data: aiAgents = [] } = useAiAgents();
+  const assignAgent = useAssignWarmupLeads();
   const defaultType: DealType =
     client.client_type === "seller" ? "seller" : "buyer";
   const defaultTitle =
@@ -821,7 +863,21 @@ function CreateFileModal({ client, onClose }: { client: EnrichedClient; onClose:
     deal_type: defaultType,
     title: defaultTitle,
   });
+  const [aiAgentId, setAiAgentId] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
+
+  // Filter the agent dropdown to ones that make sense for this deal
+  // side. Buyer-side deals → buyer/investor/borrower nurture + custom.
+  // Seller-side deals → seller-followup/open-house + custom. Past-client
+  // & review-request are client-flow and excluded here.
+  const eligibleAgents = aiAgents.filter((a) => {
+    if (a.status === "archived") return false;
+    if (a.kind === "past_client" || a.kind === "review_request") return false;
+    if (body.deal_type === "seller") {
+      return ["seller_followup", "open_house", "custom"].includes(a.kind);
+    }
+    return ["buyer_nurture", "investor_outreach", "custom"].includes(a.kind);
+  });
 
   async function save() {
     if (!body.title.trim()) {
@@ -831,6 +887,21 @@ function CreateFileModal({ client, onClose }: { client: EnrichedClient; onClose:
     setErr(null);
     try {
       const created = await create.mutateAsync(body);
+      // If an agent was picked, enroll the lead with the new deal_id
+      // so the AI starts working it immediately.
+      if (aiAgentId) {
+        try {
+          await assignAgent.mutateAsync({
+            id: aiAgentId,
+            client_ids: [client.id],
+            deal_id: created.id,
+          });
+        } catch (assignErr) {
+          // Don't block the navigation on assign failure — the file
+          // was created. Surface a soft warning.
+          console.warn("AI agent assign failed:", assignErr);
+        }
+      }
       onClose();
       router.push(`/deals/${created.id}`);
     } catch (e) {
@@ -914,6 +985,37 @@ function CreateFileModal({ client, onClose }: { client: EnrichedClient; onClose:
               color: t.ink,
             }}
           />
+        </label>
+        <label style={{ display: "block" }}>
+          <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" }}>
+            Assign AI agent (optional)
+          </span>
+          <select
+            value={aiAgentId}
+            onChange={(e) => setAiAgentId(e.target.value)}
+            style={{
+              marginTop: 4,
+              width: "100%",
+              padding: 8,
+              fontSize: 13,
+              borderRadius: 6,
+              border: `1px solid ${t.line}`,
+              background: t.surface,
+              color: t.ink,
+            }}
+          >
+            <option value="">— None for now —</option>
+            {eligibleAgents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+                {a.ai_display_name ? ` (${a.ai_display_name})` : ""}
+              </option>
+            ))}
+          </select>
+          <div style={{ fontSize: 11, color: t.ink3, marginTop: 4 }}>
+            The AI will start drafting outreach for this lead the moment
+            the file is created.
+          </div>
         </label>
         {err ? <div style={{ fontSize: 12, color: t.danger }}>{err}</div> : null}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>

@@ -372,7 +372,10 @@ export function KnowledgePanel({ agent }: PanelProps) {
 // ── Step 4: Targeting ───────────────────────────────────────────────
 
 const STAGES = ["lead", "contacted", "verified", "ready_for_lending", "processing", "funded"];
-const TEMPS = ["hot", "warm", "cold"];
+const TEMPS = ["new", "hot", "warm", "cold"];
+const LANGUAGES = ["English", "Spanish", "Portuguese", "Mandarin", "French", "Other"];
+const DEAL_TYPES = ["buyer", "seller", "investor", "borrower"];
+const DEAL_STATUSES = ["open", "active", "paused", "won"];
 
 export function TargetingPanel({ agent }: PanelProps) {
   const { t } = useTheme();
@@ -384,6 +387,10 @@ export function TargetingPanel({ agent }: PanelProps) {
   const [domain, setDomain] = useState("clients");
   const [stages, setStages] = useState<string[]>([]);
   const [temps, setTemps] = useState<string[]>([]);
+  const [languages, setLanguages] = useState<string[]>([]);
+  const [dealTypes, setDealTypes] = useState<string[]>([]);
+  const [dealStatuses, setDealStatuses] = useState<string[]>([]);
+  const [minFunded, setMinFunded] = useState<number>(0);
   const [neverClosed, setNeverClosed] = useState(false);
   const [skipLoan, setSkipLoan] = useState(true);
   const [skipOwned, setSkipOwned] = useState(true);
@@ -398,6 +405,10 @@ export function TargetingPanel({ agent }: PanelProps) {
       const exc = targeting.exclude_rules ?? {};
       setStages((inc.stages as string[]) ?? []);
       setTemps((inc.lead_temperatures as string[]) ?? []);
+      setLanguages((inc.languages as string[]) ?? []);
+      setDealTypes((inc.deal_types as string[]) ?? []);
+      setDealStatuses((inc.deal_statuses as string[]) ?? []);
+      setMinFunded(Number(inc.min_funded_count ?? 0));
       setNeverClosed(Boolean(inc.never_closed));
       setSkipLoan(exc.skip_in_loan_process !== false);
       setSkipOwned(exc.skip_owned_by_other_ai_agent !== false);
@@ -408,12 +419,19 @@ export function TargetingPanel({ agent }: PanelProps) {
   const toggle = (arr: string[], v: string, set: (a: string[]) => void) =>
     set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
+  const showPipeline = domain === "pipeline" || domain === "both";
+  const showClients = domain === "clients" || domain === "both";
+
   const payload = useMemo(
     () => ({
       domain: domain as "pipeline" | "clients" | "both",
       include_rules: {
         ...(stages.length ? { stages } : {}),
         ...(temps.length ? { lead_temperatures: temps } : {}),
+        ...(languages.length ? { languages } : {}),
+        ...(dealTypes.length ? { deal_types: dealTypes } : {}),
+        ...(dealStatuses.length ? { deal_statuses: dealStatuses } : {}),
+        ...(minFunded > 0 ? { min_funded_count: minFunded } : {}),
         ...(neverClosed ? { never_closed: true } : {}),
       },
       exclude_rules: {
@@ -422,7 +440,19 @@ export function TargetingPanel({ agent }: PanelProps) {
       },
       enrollment_mode: enrollMode as "auto" | "review",
     }),
-    [domain, stages, temps, neverClosed, skipLoan, skipOwned, enrollMode],
+    [
+      domain,
+      stages,
+      temps,
+      languages,
+      dealTypes,
+      dealStatuses,
+      minFunded,
+      neverClosed,
+      skipLoan,
+      skipOwned,
+      enrollMode,
+    ],
   );
 
   useRegisterSave(async () => {
@@ -446,26 +476,99 @@ export function TargetingPanel({ agent }: PanelProps) {
           ]}
         />
       </FieldRow>
-      <FieldRow label="Include — pipeline stages">
-        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-          {STAGES.map((s) => (
-            <ChipToggle key={s} label={s.replace(/_/g, " ")} active={stages.includes(s)} onClick={() => toggle(stages, s, setStages)} />
-          ))}
-        </div>
-      </FieldRow>
-      <FieldRow label="Include — lead temperature">
-        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-          {TEMPS.map((s) => (
-            <ChipToggle key={s} label={s} active={temps.includes(s)} onClick={() => toggle(temps, s, setTemps)} />
-          ))}
-        </div>
-      </FieldRow>
-      <FieldRow label="Special filters">
-        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: t.ink2 }}>
-          <input type="checkbox" checked={neverClosed} onChange={(e) => setNeverClosed(e.target.checked)} />
-          Only clients who have never closed a deal with me
-        </label>
-      </FieldRow>
+      {showPipeline && (
+        <>
+          <FieldRow label="Pipeline — deal type">
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              {DEAL_TYPES.map((s) => (
+                <ChipToggle
+                  key={s}
+                  label={s}
+                  active={dealTypes.includes(s)}
+                  onClick={() => toggle(dealTypes, s, setDealTypes)}
+                />
+              ))}
+            </div>
+          </FieldRow>
+          <FieldRow label="Pipeline — deal status">
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              {DEAL_STATUSES.map((s) => (
+                <ChipToggle
+                  key={s}
+                  label={s}
+                  active={dealStatuses.includes(s)}
+                  onClick={() => toggle(dealStatuses, s, setDealStatuses)}
+                />
+              ))}
+            </div>
+          </FieldRow>
+        </>
+      )}
+      {showClients && (
+        <>
+          <FieldRow label="Clients — pipeline stage">
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              {STAGES.map((s) => (
+                <ChipToggle
+                  key={s}
+                  label={s.replace(/_/g, " ")}
+                  active={stages.includes(s)}
+                  onClick={() => toggle(stages, s, setStages)}
+                />
+              ))}
+            </div>
+          </FieldRow>
+          <FieldRow label="Clients — lead temperature">
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              {TEMPS.map((s) => (
+                <ChipToggle
+                  key={s}
+                  label={s}
+                  active={temps.includes(s)}
+                  onClick={() => toggle(temps, s, setTemps)}
+                />
+              ))}
+            </div>
+          </FieldRow>
+          <FieldRow label="Clients — preferred language">
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              {LANGUAGES.map((s) => (
+                <ChipToggle
+                  key={s}
+                  label={s}
+                  active={languages.includes(s)}
+                  onClick={() => toggle(languages, s, setLanguages)}
+                />
+              ))}
+            </div>
+          </FieldRow>
+          <FieldRow
+            label="Clients — closed deals (proxy for relationship depth)"
+            hint="e.g. 1+ for past clients, 0 for never-closed."
+          >
+            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: t.ink2 }}>
+                Minimum&nbsp;
+                <input
+                  type="number"
+                  min={0}
+                  value={minFunded}
+                  onChange={(e) => setMinFunded(Math.max(0, +e.target.value || 0))}
+                  style={{ ...numStyle(t), width: 80 }}
+                />
+              </label>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: t.ink2 }}>
+                <input
+                  type="checkbox"
+                  checked={neverClosed}
+                  onChange={(e) => setNeverClosed(e.target.checked)}
+                />
+                Only never-closed clients
+              </label>
+            </div>
+          </FieldRow>
+        </>
+      )}
       <FieldRow label="Avoid overlap with higher-priority work">
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: t.ink2 }}>
