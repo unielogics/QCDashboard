@@ -35,6 +35,7 @@ import {
   useDeleteVoiceProfile,
   useLinkVoiceProfile,
   useSaveVoiceProfile,
+  useStartTraining,
   useVoiceProfiles,
   useVoiceSituations,
   useGeneratePlaybook,
@@ -540,15 +541,38 @@ function AgentLeadList({ agentId }: { agentId: string }) {
 
 export function TrainingPanel({ agent }: PanelProps) {
   const { t } = useTheme();
-  const { data: training } = useAiAgentTraining(agent.id);
+  const trainingQuery = useAiAgentTraining(agent.id);
+  const training = trainingQuery.data;
   const turn = usePostTrainingTurn();
   const complete = useCompleteTraining();
+  const start = useStartTraining();
   const [msg, setMsg] = useState("");
   const messages = training?.messages ?? [];
 
   // Each chat turn already persists itself; nothing extra to save on
   // step navigation.
   useRegisterSave(async () => {});
+
+  // The AI speaks first — kick off the opening question as soon as the
+  // panel mounts with a fresh (empty, not-yet-completed) session. The
+  // backend's /training/start is idempotent, but we still guard with a
+  // ref so a quick remount doesn't fire twice.
+  const kickedRef = useRef(false);
+  useEffect(() => {
+    if (kickedRef.current) return;
+    if (trainingQuery.isLoading) return;
+    if (training?.completed) return;
+    if (messages.length > 0) return;
+    if (start.isPending) return;
+    kickedRef.current = true;
+    start.mutate({ id: agent.id });
+  }, [
+    trainingQuery.isLoading,
+    training?.completed,
+    messages.length,
+    agent.id,
+    start,
+  ]);
 
   const send = async () => {
     if (!msg.trim()) return;
@@ -561,12 +585,14 @@ export function TrainingPanel({ agent }: PanelProps) {
     <div>
       <PanelHeader
         title="Training Studio"
-        desc="Chat with an AI coach about your market, style, and the objections you hear. It learns how you sell."
+        desc="The AI coach reads everything from the earlier steps and challenges you with 5–10 targeted questions to fill the gaps."
       />
       <Card pad={14} style={{ maxHeight: 380, overflowY: "auto", marginBottom: 12 }}>
         {messages.length === 0 && (
           <div style={{ fontSize: 13, color: t.ink3 }}>
-            Start by telling the coach what this agent should do and who it's for.
+            {start.isPending
+              ? "Getting your AI coach ready…"
+              : "The coach is about to ask its first question…"}
           </div>
         )}
         {messages.map((m, i) => (

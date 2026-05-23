@@ -319,6 +319,20 @@ export const useRunTargeting = () =>
     ["leads"],
   );
 
+export const useStartTraining = () =>
+  useAgentMutation<
+    { id: string },
+    { session_id: string; kicked_off: boolean; reply?: string }
+  >(
+    (api, { id }) =>
+      api<{ session_id: string; kicked_off: boolean; reply?: string }>(
+        `/ai-agents/${id}/training/start`,
+        { method: "POST" },
+      ),
+    (i) => i.id,
+    ["training"],
+  );
+
 export const usePostTrainingTurn = () =>
   useAgentMutation<{ id: string; message: string }, { session_id: string; reply: string }>(
     (api, { id, message }) =>
