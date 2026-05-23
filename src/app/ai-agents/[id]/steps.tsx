@@ -375,7 +375,6 @@ const STAGES = ["lead", "contacted", "verified", "ready_for_lending", "processin
 const TEMPS = ["new", "hot", "warm", "cold"];
 const LANGUAGES = ["English", "Spanish", "Portuguese", "Mandarin", "French", "Other"];
 const DEAL_TYPES = ["buyer", "seller", "investor", "borrower"];
-const DEAL_STATUSES = ["open", "active", "paused", "won"];
 
 export function TargetingPanel({ agent }: PanelProps) {
   const { t } = useTheme();
@@ -389,7 +388,10 @@ export function TargetingPanel({ agent }: PanelProps) {
   const [temps, setTemps] = useState<string[]>([]);
   const [languages, setLanguages] = useState<string[]>([]);
   const [dealTypes, setDealTypes] = useState<string[]>([]);
-  const [dealStatuses, setDealStatuses] = useState<string[]>([]);
+  const [newlyAdded, setNewlyAdded] = useState(false);
+  const [didNotClose, setDidNotClose] = useState(false);
+  const [noAiAssigned, setNoAiAssigned] = useState(false);
+  const [minDaysInPipeline, setMinDaysInPipeline] = useState<number>(0);
   const [minFunded, setMinFunded] = useState<number>(0);
   const [neverClosed, setNeverClosed] = useState(false);
   const [skipLoan, setSkipLoan] = useState(true);
@@ -407,7 +409,10 @@ export function TargetingPanel({ agent }: PanelProps) {
       setTemps((inc.lead_temperatures as string[]) ?? []);
       setLanguages((inc.languages as string[]) ?? []);
       setDealTypes((inc.deal_types as string[]) ?? []);
-      setDealStatuses((inc.deal_statuses as string[]) ?? []);
+      setNewlyAdded(Boolean(inc.newly_added));
+      setDidNotClose(Boolean(inc.did_not_close));
+      setNoAiAssigned(Boolean(inc.no_ai_assigned));
+      setMinDaysInPipeline(Number(inc.min_days_in_pipeline ?? 0));
       setMinFunded(Number(inc.min_funded_count ?? 0));
       setNeverClosed(Boolean(inc.never_closed));
       setSkipLoan(exc.skip_in_loan_process !== false);
@@ -430,7 +435,10 @@ export function TargetingPanel({ agent }: PanelProps) {
         ...(temps.length ? { lead_temperatures: temps } : {}),
         ...(languages.length ? { languages } : {}),
         ...(dealTypes.length ? { deal_types: dealTypes } : {}),
-        ...(dealStatuses.length ? { deal_statuses: dealStatuses } : {}),
+        ...(newlyAdded ? { newly_added: true } : {}),
+        ...(didNotClose ? { did_not_close: true } : {}),
+        ...(noAiAssigned ? { no_ai_assigned: true } : {}),
+        ...(minDaysInPipeline > 0 ? { min_days_in_pipeline: minDaysInPipeline } : {}),
         ...(minFunded > 0 ? { min_funded_count: minFunded } : {}),
         ...(neverClosed ? { never_closed: true } : {}),
       },
@@ -446,7 +454,10 @@ export function TargetingPanel({ agent }: PanelProps) {
       temps,
       languages,
       dealTypes,
-      dealStatuses,
+      newlyAdded,
+      didNotClose,
+      noAiAssigned,
+      minDaysInPipeline,
       minFunded,
       neverClosed,
       skipLoan,
@@ -490,17 +501,48 @@ export function TargetingPanel({ agent }: PanelProps) {
               ))}
             </div>
           </FieldRow>
-          <FieldRow label="Pipeline — deal status">
-            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-              {DEAL_STATUSES.map((s) => (
-                <ChipToggle
-                  key={s}
-                  label={s}
-                  active={dealStatuses.includes(s)}
-                  onClick={() => toggle(dealStatuses, s, setDealStatuses)}
+          <FieldRow
+            label="Pipeline — operational signals"
+            hint="Pick what kind of file this AI agent should pick up."
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: t.ink2 }}>
+                <input
+                  type="checkbox"
+                  checked={newlyAdded}
+                  onChange={(e) => setNewlyAdded(e.target.checked)}
                 />
-              ))}
+                Newly added (created in the last 14 days)
+              </label>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: t.ink2 }}>
+                <input
+                  type="checkbox"
+                  checked={didNotClose}
+                  onChange={(e) => setDidNotClose(e.target.checked)}
+                />
+                Did not close (lost / fell through)
+              </label>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: t.ink2 }}>
+                <input
+                  type="checkbox"
+                  checked={noAiAssigned}
+                  onChange={(e) => setNoAiAssigned(e.target.checked)}
+                />
+                No AI agent assigned to it yet
+              </label>
             </div>
+          </FieldRow>
+          <FieldRow
+            label="Pipeline — days in pipeline"
+            hint="Only files that have been open at least this long."
+          >
+            <input
+              type="number"
+              min={0}
+              value={minDaysInPipeline}
+              onChange={(e) => setMinDaysInPipeline(Math.max(0, +e.target.value || 0))}
+              style={{ ...numStyle(t), width: 120 }}
+            />
           </FieldRow>
         </>
       )}

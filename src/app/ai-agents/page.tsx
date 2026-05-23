@@ -15,6 +15,7 @@ import { Role } from "@/lib/enums.generated";
 import {
   useAiAgents,
   useCreateAiAgent,
+  useSetDefaultAgent,
   type AiAgentKind,
   type AiAgentListRow,
   type AiAgentStatus,
@@ -22,6 +23,8 @@ import {
 } from "@/hooks/useAiAgents";
 
 const KIND_LABELS: Record<AiAgentKind, string> = {
+  new_deal_buyer: "New deal — buyer",
+  new_deal_seller: "New deal — seller",
   buyer_nurture: "Buyer nurture",
   seller_followup: "Seller / listing follow-up",
   past_client: "Past-client re-engagement",
@@ -87,9 +90,16 @@ export default function AiAgentsPage() {
   const router = useRouter();
   const { data: agents = [], isLoading } = useAiAgents();
   const create = useCreateAiAgent();
+  const setDefault = useSetDefaultAgent();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
-  const [kind, setKind] = useState<AiAgentKind>("buyer_nurture");
+  const [kind, setKind] = useState<AiAgentKind>("new_deal_buyer");
+  // Right-click context menu on agent cards.
+  const [agentMenu, setAgentMenu] = useState<{
+    agent: AiAgentListRow;
+    x: number;
+    y: number;
+  } | null>(null);
 
   // Only redirect a confirmed non-agent — never on the pre-/auth/me
   // fallback, which would bounce a real broker mid-load.
@@ -206,18 +216,18 @@ export default function AiAgentsPage() {
             {(
               [
                 {
-                  kind: "buyer_nurture" as AiAgentKind,
-                  title: "Buyer-side starter",
-                  desc: "Works new buyer leads + buyer searches — first touch through to under-contract.",
-                  agentName: "Buyer follow-up",
-                  audience: "Buyer leads I've added to my pipeline.",
+                  kind: "new_deal_buyer" as AiAgentKind,
+                  title: "New deal — buyer",
+                  desc: "Works a brand-new buyer purchase — gather contract docs, push to under-contract, hand off to lending.",
+                  agentName: "New deal — buyer",
+                  audience: "Brand-new buyer deals from my pipeline.",
                 },
                 {
-                  kind: "seller_followup" as AiAgentKind,
-                  title: "Seller-side starter",
-                  desc: "Works active listings + seller leads — confirmations, listing-prep nudges, offer follow-ups.",
-                  agentName: "Listing follow-up",
-                  audience: "Seller leads + active listings I'm working.",
+                  kind: "new_deal_seller" as AiAgentKind,
+                  title: "New deal — seller",
+                  desc: "Works a brand-new listing — confirmations, photo / staging nudges, offer follow-ups.",
+                  agentName: "New deal — seller",
+                  audience: "Brand-new seller listings from my pipeline.",
                 },
               ]
             ).map((preset) => (
@@ -269,6 +279,16 @@ export default function AiAgentsPage() {
               key={a.id}
               href={`/ai-agents/${a.id}`}
               style={{ textDecoration: "none" }}
+              onContextMenu={(e) => {
+                if (
+                  a.kind === "new_deal_buyer" ||
+                  a.kind === "new_deal_seller"
+                ) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setAgentMenu({ agent: a, x: e.clientX, y: e.clientY });
+                }
+              }}
             >
               <Card pad={18} style={{ cursor: "pointer", height: "100%" }}>
                 <div
@@ -279,7 +299,20 @@ export default function AiAgentsPage() {
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: t.ink }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: t.ink, display: "flex", alignItems: "center", gap: 6 }}>
+                      {(a.is_default_new_deal_buyer ||
+                        a.is_default_new_deal_seller) && (
+                        <span
+                          title={
+                            a.is_default_new_deal_buyer
+                              ? "Default for New Deal — Buyer"
+                              : "Default for New Deal — Seller"
+                          }
+                          style={{ color: t.gold ?? t.warn, fontSize: 14, lineHeight: 1 }}
+                        >
+                          ★
+                        </span>
+                      )}
                       {a.name}
                     </div>
                     {a.ai_display_name && (
@@ -323,6 +356,122 @@ export default function AiAgentsPage() {
           </div>
         </>
       )}
+      {agentMenu ? (
+        <AgentCardContextMenu
+          agent={agentMenu.agent}
+          x={agentMenu.x}
+          y={agentMenu.y}
+          onSetDefault={(slot, on) => {
+            void setDefault.mutateAsync({ id: agentMenu.agent.id, slot, on });
+            setAgentMenu(null);
+          }}
+          onClose={() => setAgentMenu(null)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function AgentCardContextMenu({
+  agent,
+  x,
+  y,
+  onSetDefault,
+  onClose,
+}: {
+  agent: AiAgentListRow;
+  x: number;
+  y: number;
+  onSetDefault: (slot: "new_deal_buyer" | "new_deal_seller", on: boolean) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTheme();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    const onClick = () => onClose();
+    window.addEventListener("keydown", onKey);
+    const id = window.setTimeout(() => {
+      window.addEventListener("click", onClick);
+    }, 0);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("click", onClick);
+      window.clearTimeout(id);
+    };
+  }, [onClose]);
+
+  const slot: "new_deal_buyer" | "new_deal_seller" =
+    agent.kind === "new_deal_seller" ? "new_deal_seller" : "new_deal_buyer";
+  const isDefault =
+    slot === "new_deal_buyer"
+      ? agent.is_default_new_deal_buyer
+      : agent.is_default_new_deal_seller;
+  const slotLabel =
+    slot === "new_deal_buyer" ? "New Deal — Buyer" : "New Deal — Seller";
+
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+      style={{
+        position: "fixed",
+        top: y,
+        left: x,
+        zIndex: 80,
+        minWidth: 240,
+        background: t.surface,
+        border: `1px solid ${t.line}`,
+        borderRadius: 8,
+        boxShadow: "0 14px 32px rgba(0,0,0,0.32)",
+        padding: 4,
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+      }}
+    >
+      <div
+        style={{
+          padding: "8px 10px 4px",
+          fontSize: 10,
+          fontWeight: 900,
+          color: t.ink3,
+          letterSpacing: 0.6,
+          textTransform: "uppercase",
+        }}
+      >
+        {agent.name}
+      </div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onSetDefault(slot, !isDefault);
+        }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 10px",
+          borderRadius: 4,
+          border: "none",
+          background: "transparent",
+          color: t.ink,
+          fontSize: 13,
+          cursor: "pointer",
+          textAlign: "left",
+          fontFamily: "inherit",
+        }}
+        onMouseOver={(e) =>
+          ((e.currentTarget as HTMLElement).style.background = t.surface2)
+        }
+        onMouseOut={(e) =>
+          ((e.currentTarget as HTMLElement).style.background = "transparent")
+        }
+      >
+        <span style={{ color: t.gold ?? t.warn, fontSize: 14 }}>★</span>
+        {isDefault ? `Unset as default ${slotLabel}` : `Set as default ${slotLabel}`}
+      </button>
     </div>
   );
 }

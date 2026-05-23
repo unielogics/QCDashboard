@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
@@ -867,17 +867,48 @@ function CreateFileModal({ client, onClose }: { client: EnrichedClient; onClose:
   const [err, setErr] = useState<string | null>(null);
 
   // Filter the agent dropdown to ones that make sense for this deal
-  // side. Buyer-side deals → buyer/investor/borrower nurture + custom.
-  // Seller-side deals → seller-followup/open-house + custom. Past-client
-  // & review-request are client-flow and excluded here.
+  // side. New-deal-buyer / -seller agents are the canonical fit; we
+  // also surface the broader nurture / outreach kinds so a broker who
+  // configured their own past-deal flow can pick it.
   const eligibleAgents = aiAgents.filter((a) => {
     if (a.status === "archived") return false;
     if (a.kind === "past_client" || a.kind === "review_request") return false;
     if (body.deal_type === "seller") {
-      return ["seller_followup", "open_house", "custom"].includes(a.kind);
+      return [
+        "new_deal_seller",
+        "seller_followup",
+        "open_house",
+        "custom",
+      ].includes(a.kind);
     }
-    return ["buyer_nurture", "investor_outreach", "custom"].includes(a.kind);
+    return [
+      "new_deal_buyer",
+      "buyer_nurture",
+      "investor_outreach",
+      "custom",
+    ].includes(a.kind);
   });
+
+  // Auto-select the broker's default new-deal agent (if starred) the
+  // first time the form is rendered for this side. The broker can
+  // still override the pick.
+  const defaultSelected = useRef(false);
+  useEffect(() => {
+    if (defaultSelected.current) return;
+    if (aiAgentId) {
+      defaultSelected.current = true;
+      return;
+    }
+    const def = aiAgents.find((a) =>
+      body.deal_type === "seller"
+        ? a.is_default_new_deal_seller
+        : a.is_default_new_deal_buyer,
+    );
+    if (def) {
+      defaultSelected.current = true;
+      setAiAgentId(def.id);
+    }
+  }, [aiAgents, body.deal_type, aiAgentId]);
 
   async function save() {
     if (!body.title.trim()) {

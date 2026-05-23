@@ -20,6 +20,8 @@ export type AiAgentStatus =
   | "archived";
 
 export type AiAgentKind =
+  | "new_deal_buyer"
+  | "new_deal_seller"
   | "buyer_nurture"
   | "seller_followup"
   | "past_client"
@@ -48,6 +50,8 @@ export interface AiAgent {
   max_followups: number;
   cadence: number[];
   voice_profile_id: string | null;
+  is_default_new_deal_buyer: boolean;
+  is_default_new_deal_seller: boolean;
   last_tested_at: string | null;
   activated_at: string | null;
   created_at: string | null;
@@ -549,6 +553,16 @@ export const useActivateAiAgent = () =>
 export const usePauseAiAgent = () =>
   useAgentMutation<{ id: string }>(
     (api, { id }) => api(`/ai-agents/${id}/pause`, { method: "POST" }),
+    (i) => i.id,
+  );
+
+export const useSetDefaultAgent = () =>
+  useAgentMutation<{ id: string; slot: "new_deal_buyer" | "new_deal_seller"; on: boolean }>(
+    (api, { id, slot, on }) =>
+      api(`/ai-agents/${id}/set-default`, {
+        method: "POST",
+        body: JSON.stringify({ slot, on }),
+      }),
     (i) => i.id,
   );
 
