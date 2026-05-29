@@ -261,6 +261,20 @@ export default function SettingsPage() {
             <span style={{ flex: 1 }}>Lending AI</span>
             <span style={{ fontSize: 11, opacity: 0.7 }}>→</span>
           </Link>
+          <Link
+            href="/admin/token-usage"
+            style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 10,
+              padding: "10px 12px", borderRadius: 9, border: "none",
+              background: "transparent", color: t.ink2,
+              fontSize: 13, fontWeight: 700, cursor: "pointer",
+              textDecoration: "none", marginTop: 4,
+            }}
+          >
+            <Icon name="trend" size={14} />
+            <span style={{ flex: 1 }}>AI token usage</span>
+            <span style={{ fontSize: 11, opacity: 0.7 }}>→</span>
+          </Link>
           <div style={{ height: 1, background: t.line, margin: "6px 4px" }} />
 
           {SECTIONS.filter(s => !s.hidden).map((s) => (

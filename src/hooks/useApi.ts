@@ -4964,3 +4964,91 @@ export function useAiTrainingFeedback() {
       apiCall<AiTrainingFeedbackItem[]>("/lending-admin/ai-training/feedback"),
   });
 }
+
+// ── Token-usage reporting (super-admin) ────────────────────────────
+
+export interface TokenUsageSummary {
+  from: string;
+  to: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  total_tokens: number;
+  cache_hit_pct: number;
+  cost_usd: number;
+}
+
+export interface TokenUsageRow {
+  key: string;
+  label: string;
+  kind?: string;
+  id?: string;
+  calls: number;
+  tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+export interface TokenUsagePoint {
+  day: string;
+  calls: number;
+  tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+export type TokenUsageDimension =
+  | "activity"
+  | "model"
+  | "agent"
+  | "broker"
+  | "file";
+
+function _usageQs(from?: string, to?: string): string {
+  const p = new URLSearchParams();
+  if (from) p.set("from_date", from);
+  if (to) p.set("to_date", to);
+  const s = p.toString();
+  return s ? `?${s}` : "";
+}
+
+export function useTokenUsageSummary(from?: string, to?: string) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["token-usage", "summary", from ?? "", to ?? ""],
+    queryFn: () =>
+      apiCall<TokenUsageSummary>(
+        `/lending-admin/token-usage/summary${_usageQs(from, to)}`,
+      ),
+  });
+}
+
+export function useTokenUsageBreakdown(
+  dimension: TokenUsageDimension,
+  from?: string,
+  to?: string,
+) {
+  const apiCall = useAuthedApi();
+  const qs = _usageQs(from, to);
+  const sep = qs ? "&" : "?";
+  return useQuery({
+    queryKey: ["token-usage", "breakdown", dimension, from ?? "", to ?? ""],
+    queryFn: () =>
+      apiCall<TokenUsageRow[]>(
+        `/lending-admin/token-usage/breakdown${qs}${sep}dimension=${dimension}`,
+      ),
+  });
+}
+
+export function useTokenUsageTimeseries(from?: string, to?: string) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["token-usage", "timeseries", from ?? "", to ?? ""],
+    queryFn: () =>
+      apiCall<TokenUsagePoint[]>(
+        `/lending-admin/token-usage/timeseries${_usageQs(from, to)}`,
+      ),
+  });
+}
