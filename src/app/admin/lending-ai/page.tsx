@@ -218,6 +218,13 @@ export default function LendingAISettingsPage() {
               Open AI training →
             </Link>
           </Section>
+
+          <Section t={t} kicker="Step 7" title="Usage and spend"
+            copy="Review daily AI cost, average spend per client file, category-level alerts, and manual controls for expensive AI surfaces.">
+            <Link href="/admin/lending-ai/usage" style={linkButton(t)}>
+              Open usage dashboard →
+            </Link>
+          </Section>
         </div>
       )}
     </div>

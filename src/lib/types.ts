@@ -760,6 +760,17 @@ export interface AICadenceSettings {
   weekend_ops: boolean;
   confidence_floor_default: number;
 }
+export interface AISpendSettings {
+  daily_warning_usd: number;
+  daily_critical_usd: number;
+  avg_client_file_warning_usd: number;
+  avg_client_file_critical_usd: number;
+  chat_enabled: boolean;
+  automations_enabled: boolean;
+  document_scanning_enabled: boolean;
+  summaries_enabled: boolean;
+  lender_ai_enabled: boolean;
+}
 export interface ReferralSettings {
   require_approval: boolean;
   auto_link_from_url: boolean;
@@ -819,6 +830,7 @@ export interface AppSettingsData {
   // here and overlays the per-broker checklist overrides on top.
   transaction_checklists?: Record<string, LoanTypeChecklist>;
   ai_cadence: AICadenceSettings;
+  ai_spend: AISpendSettings;
   referrals: ReferralSettings;
   pricing: PricingSettings;
   security: SecuritySettings;
@@ -831,6 +843,7 @@ export interface AppSettingsRead {
 export type AppSettingsUpdate = Partial<{
   checklists: Record<string, LoanTypeChecklist>;
   ai_cadence: AICadenceSettings;
+  ai_spend: AISpendSettings;
   referrals: ReferralSettings;
   pricing: PricingSettings;
   security: SecuritySettings;

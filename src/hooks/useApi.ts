@@ -873,6 +873,64 @@ export function useAIChat() {
   });
 }
 
+export interface AIUsageBucket {
+  key: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_usd: number;
+}
+
+export interface AIUsageSummary {
+  day_start: string;
+  total_calls: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_estimated_cost_usd: number;
+  alert_level: "ok" | "warning" | "critical" | string;
+  daily_warning_usd: number;
+  daily_critical_usd: number;
+  avg_client_file_warning_usd: number;
+  avg_client_file_critical_usd: number;
+  avg_cost_per_client_usd: number;
+  avg_cost_per_loan_file_usd: number;
+  chat_enabled: boolean;
+  automations_enabled: boolean;
+  document_scanning_enabled: boolean;
+  summaries_enabled: boolean;
+  lender_ai_enabled: boolean;
+  by_category: AIUsageBucket[];
+  by_feature: AIUsageBucket[];
+  by_client: AIUsageBucket[];
+  by_loan_file: AIUsageBucket[];
+  top_calls: Array<{
+    id: string;
+    created_at: string | null;
+    feature: string;
+    category: string;
+    model: string;
+    input_tokens: number;
+    output_tokens: number;
+    estimated_cost_usd: number;
+    user_id: string | null;
+    broker_id: string | null;
+    client_id: string | null;
+    loan_id: string | null;
+    thread_id: string | null;
+    metadata: Record<string, unknown> | null;
+  }>;
+}
+
+export function useAdminAIUsageToday() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["adminAIUsageToday", devUser],
+    queryFn: () => apiCall<AIUsageSummary>("/admin/ai-usage/today"),
+    refetchInterval: 60_000,
+  });
+}
+
 // ── Persisted Underwriter chat threads (Phase 8) ──────────────────────────
 
 export function useAIChatThreads() {

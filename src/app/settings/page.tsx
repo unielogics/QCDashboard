@@ -121,6 +121,7 @@ export default function SettingsPage() {
           weekend_ops: false,
           confidence_floor_default: 0.8,
         },
+        ai_spend: defaultAISpend(),
         referrals: {
           require_approval: true,
           auto_link_from_url: true,
@@ -1373,6 +1374,7 @@ function withDefaults(data: AppSettingsData): AppSettingsData {
       weekend_ops: false,
       confidence_floor_default: 0.8,
     },
+    ai_spend: data.ai_spend ?? defaultAISpend(),
     referrals: data.referrals ?? {
       require_approval: true,
       auto_link_from_url: true,
@@ -1414,6 +1416,20 @@ function withDefaults(data: AppSettingsData): AppSettingsData {
       show_ltv_toggle: true,
     },
     letterhead: data.letterhead ?? defaultLetterhead(),
+  };
+}
+
+function defaultAISpend() {
+  return {
+    daily_warning_usd: 10,
+    daily_critical_usd: 25,
+    avg_client_file_warning_usd: 1.5,
+    avg_client_file_critical_usd: 3,
+    chat_enabled: true,
+    automations_enabled: true,
+    document_scanning_enabled: true,
+    summaries_enabled: true,
+    lender_ai_enabled: true,
   };
 }
 
