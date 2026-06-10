@@ -10,10 +10,11 @@
 //      playbook configured in Settings → AI → Lead Templates, and
 //      lets the agent bulk-create AgentTasks from a checklist.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
 import {
   useAgentPlaybook,
   useClientTasks,
@@ -308,7 +309,10 @@ function NewTaskModal({
 
   return (
     <ModalShell onClose={onClose}>
-      <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>New task</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>New task</div>
+        <ModalCloseButton onClick={onClose} />
+      </div>
       <Field label="Title">
         <input value={body.title} onChange={(e) => setBody({ ...body, title: e.target.value })} style={inputStyle(t)} placeholder='e.g. "Send pre-approval letter"' />
       </Field>
@@ -500,8 +504,17 @@ function TemplateDrawerModal({ deal, onClose }: { deal: Deal; onClose: () => voi
 
 function ModalShell({ onClose, width = 520, children }: { onClose: () => void; width?: number; children: React.ReactNode }) {
   const { t } = useTheme();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
     <div
+      role="dialog"
+      aria-modal="true"
       onClick={onClose}
       style={{
         position: "fixed",

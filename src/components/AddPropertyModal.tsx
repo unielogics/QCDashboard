@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card } from "@/components/design-system/primitives";
+import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
 import type { ClientPropertyInput } from "@/hooks/useApi";
 
 interface Props {
@@ -97,16 +98,7 @@ export function AddPropertyModal({ clientSide, onSubmit, onClose }: Props) {
             <h2 style={{ fontSize: 18, fontWeight: 800, color: t.ink, margin: 0, flex: 1 }}>
               Add property
             </h2>
-            <button
-              onClick={onClose}
-              style={{
-                background: "transparent", border: `1px solid ${t.line}`,
-                padding: "4px 8px", borderRadius: 6, color: t.ink3,
-                cursor: "pointer", fontSize: 12,
-              }}
-            >
-              Close
-            </button>
+            <ModalCloseButton onClick={onClose} />
           </div>
 
           {/* Side picker */}

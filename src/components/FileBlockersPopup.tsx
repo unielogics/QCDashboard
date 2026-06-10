@@ -9,6 +9,7 @@
 
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
+import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
 import type { Document } from "@/lib/types";
 
 export interface BlockerWarning {
@@ -73,18 +74,7 @@ export function FileBlockersPopup({
               {total === 0 ? "Nothing to fix — this file is clear" : `${total} item${total === 1 ? "" : "s"} need attention`}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: "6px 10px", borderRadius: 9,
-              background: t.surface2, color: t.ink2,
-              border: `1px solid ${t.line}`, cursor: "pointer",
-              fontSize: 11.5, fontWeight: 800, fontFamily: "inherit",
-            }}
-          >
-            Close
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
         <div style={{ padding: 14, overflow: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
           {warnings.map((warning) => (

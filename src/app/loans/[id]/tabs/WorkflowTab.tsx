@@ -16,6 +16,7 @@ import { useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
 import {
   useAddCustomDocument,
   useLoanWorkflow,
@@ -416,7 +417,10 @@ function AddCustomModal({
           display: "flex", flexDirection: "column", gap: 14,
         }}
       >
-        <div style={{ fontSize: 14, fontWeight: 800, color: t.ink }}>Add custom doc to this loan</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: t.ink }}>Add custom doc to this loan</div>
+          <ModalCloseButton onClick={onClose} />
+        </div>
         <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
           <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>
             Name (what the borrower sees)

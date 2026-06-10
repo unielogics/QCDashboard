@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel, VerifiedBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { useBrokers, useClient, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
@@ -1514,6 +1515,15 @@ function LendingHandoffModal({
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
   const succeeded = result !== null;
 
@@ -1536,8 +1546,10 @@ function LendingHandoffModal({
           maxWidth: 520, width: "100%",
           background: t.surface, borderRadius: 14, border: `1px solid ${t.line}`,
           padding: 24, display: "flex", flexDirection: "column", gap: 14,
+          position: "relative",
         }}
       >
+        <ModalCloseButton onClick={onClose} label="Close handoff" style={{ position: "absolute", top: 12, right: 12 }} />
         {!succeeded ? (
           <>
             <div>

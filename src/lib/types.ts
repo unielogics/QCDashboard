@@ -94,6 +94,8 @@ export interface Loan {
   baseline_profile_snapshot?: Record<string, unknown> | null;
   handoff_summary?: string | null;
   funding_file_kind?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // Output of the "Pocket Assistant" summarizer — see qcbackend/app/services/ai/summarizer.py

@@ -25,6 +25,7 @@ import { useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { loanTypeLabel } from "@/lib/types";
 import {
@@ -165,6 +166,7 @@ export function ClientFileModal({
             {file.address || file.ref}
           </div>
         </div>
+        <ModalCloseButton onClick={onClose} label="Close file" />
       </div>
 
       {/* AI intelligence strip */}

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { useClients, useCreateDeal, useLoans, usePipelineClientSummary, type DealCreateBody } from "@/hooks/useApi";
@@ -866,6 +867,14 @@ function CreateFileModal({ client, onClose }: { client: EnrichedClient; onClose:
   const [aiAgentId, setAiAgentId] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   // Filter the agent dropdown to ones that make sense for this deal
   // side. New-deal-buyer / -seller agents are the canonical fit; we
   // also surface the broader nurture / outreach kinds so a broker who
@@ -967,8 +976,11 @@ function CreateFileModal({ client, onClose }: { client: EnrichedClient; onClose:
           gap: 12,
         }}
       >
-        <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>
-          New file for {client.name}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>
+            New file for {client.name}
+          </div>
+          <ModalCloseButton onClick={onClose} />
         </div>
         <div style={{ fontSize: 12, color: t.ink3 }}>
           Each file is a transaction path you're working — buyer search, seller listing,

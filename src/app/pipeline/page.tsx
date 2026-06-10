@@ -2,16 +2,22 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useDealSecretarySummary, useDocuments, useLoans, type DSPipelineSummaryItem } from "@/hooks/useApi";
+import {
+  useClients,
+  useDealSecretarySummary,
+  useDocuments,
+  useLoans,
+  usePipelineClientSummary,
+  type DSPipelineSummaryItem,
+} from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
-import { loanTypeLabel, type Document } from "@/lib/types";
+import { loanTypeLabel, type Client, type Document } from "@/lib/types";
 import { getFileCompletion } from "@/app/loans/[id]/fileReadiness";
 import { SmartIntakeModal } from "./components/SmartIntakeModal";
-import { LeadsPipelineView } from "./components/LeadsPipelineView";
 import { ClientFilePipeline } from "./components/ClientFilePipeline";
 import { useActiveProfile } from "@/store/role";
 import { LoanAgentPicker } from "@/components/LoanAgentPicker";
@@ -35,6 +41,16 @@ const STAGE_LABELS = ["Prequalified", "Collecting Docs", "Lender Connected", "Pr
 
 type SortKey = "deal_id" | "address" | "type" | "amount" | "dscr" | "stage" | "close_date";
 
+type FundingRow = {
+  loan: Loan;
+  loanDocs: Document[];
+  readiness: { score: number; label: string };
+  openDocs: Document[];
+  flaggedDocs: Document[];
+  summary: DSPipelineSummaryItem | undefined;
+  action: PipelineAction;
+};
+
 function OperatorPipelinePage() {
   const { t } = useTheme();
   const { data: loans = [] } = useLoans();
@@ -55,6 +71,7 @@ function OperatorPipelinePage() {
   const isBroker = profile.role === "broker";
   const isInternal = profile.role === "super_admin" || profile.role === "loan_exec";
   const { data: allDocs = [] } = useDocuments();
+  const { data: clients = [] } = useClients();
   // Everyone lands on Funding Files. Brokers stay there; operators can
   // switch into the firm-wide relationship view.
   const [mode, setMode] = useState<PipelineMode>("funding");
@@ -124,8 +141,7 @@ function OperatorPipelinePage() {
     );
   }, [sorted, search]);
 
-  const totalValue = visibleLoans.reduce((acc, l) => acc + Number(l.amount), 0);
-  const fundingRows = useMemo(() => visibleLoans.map((loan) => {
+  const buildFundingRow = useCallback((loan: Loan): FundingRow => {
     const loanDocs = docsByLoan.get(loan.id) ?? [];
     const readiness = getFileCompletion(loan, loanDocs);
     const openDocs = loanDocs.filter((doc) => doc.status !== "verified" && doc.status !== "skipped");
@@ -140,7 +156,10 @@ function OperatorPipelinePage() {
       summary,
       action: getPipelineAction(readiness.score, openDocs.length, flaggedDocs.length, summary),
     };
-  }), [visibleLoans, docsByLoan, summaryByLoanId]);
+  }, [docsByLoan, summaryByLoanId]);
+  const totalValue = visibleLoans.reduce((acc, l) => acc + Number(l.amount), 0);
+  const fundingRows = useMemo(() => visibleLoans.map(buildFundingRow), [visibleLoans, buildFundingRow]);
+  const allFundingRows = useMemo(() => loans.map(buildFundingRow), [loans, buildFundingRow]);
   const underwritingReady = fundingRows.filter((row) => row.readiness.score >= 85 && row.openDocs.length === 0).length;
   const needsStructure = fundingRows.filter((row) => row.readiness.score < 65).length;
   const openConditionCount = fundingRows.reduce((acc, row) => acc + row.openDocs.length, 0);
@@ -175,7 +194,7 @@ function OperatorPipelinePage() {
               onClick={() => setMode("leads")}
               style={modeSegBtn(t, activeMode === "leads")}
             >
-              <Icon name="user" size={12} stroke={2.2} /> Agent Relationships
+              <Icon name="user" size={12} stroke={2.2} /> Agents
             </button>
           </div>
         ) : null}
@@ -204,7 +223,7 @@ function OperatorPipelinePage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={activeMode === "funding" ? "Search address or ID..." : "Search clients..."}
+              placeholder={activeMode === "funding" ? "Search address or ID..." : "Search agents, clients, files..."}
               style={{
                 flex: 1,
                 border: "none",
@@ -242,26 +261,27 @@ function OperatorPipelinePage() {
             </select>
           )}
 
-          {/* Segmented Kanban / Table toggle — design lines 39–44 */}
-          <div
-            style={{
-              display: "inline-flex",
-              background: t.surface,
-              border: `1px solid ${t.line}`,
-              borderRadius: 10,
-              padding: 3,
-            }}
-          >
-            <button
-              onClick={() => setView("kanban")}
-              style={segBtn(t, view === "kanban")}
+          {activeMode === "funding" ? (
+            <div
+              style={{
+                display: "inline-flex",
+                background: t.surface,
+                border: `1px solid ${t.line}`,
+                borderRadius: 10,
+                padding: 3,
+              }}
             >
-              <Icon name="layers" size={14} /> Kanban
-            </button>
-            <button onClick={() => setView("table")} style={segBtn(t, view === "table")}>
-              <Icon name="filter" size={14} /> Table
-            </button>
-          </div>
+              <button
+                onClick={() => setView("kanban")}
+                style={segBtn(t, view === "kanban")}
+              >
+                <Icon name="layers" size={14} /> Kanban
+              </button>
+              <button onClick={() => setView("table")} style={segBtn(t, view === "table")}>
+                <Icon name="filter" size={14} /> Table
+              </button>
+            </div>
+          ) : null}
 
           {(activeMode === "funding" ? canCreateDeal : canCreateLead) && (
             <button
@@ -306,7 +326,11 @@ function OperatorPipelinePage() {
       ) : null}
 
       {activeMode === "leads" ? (
-        <LeadsPipelineView view={view} search={search} />
+        <AgentsPipelineView
+          clients={clients}
+          rows={allFundingRows}
+          search={search}
+        />
       ) : view === "table" ? (
         // Operators (super_admin / loan_exec) get an extra "Agent" column —
         // brokers don't see it because their list is implicitly scoped to
@@ -517,6 +541,390 @@ function OperatorPipelinePage() {
       ) : null}
     </div>
   );
+}
+
+interface AgentGroup {
+  key: string;
+  brokerId: string | null;
+  name: string;
+  loans: FundingRow[];
+  activeLoans: FundingRow[];
+  clients: Client[];
+  latestFileAt: number;
+  latestRelationshipAt: number;
+  totalValue: number;
+}
+
+function toTime(value: string | null | undefined): number {
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function formatShortDate(value: number): string {
+  if (!value) return "No files";
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatRelativeDays(value: number): string {
+  if (!value) return "No file activity";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(value);
+  d.setHours(0, 0, 0, 0);
+  const days = Math.round((today.getTime() - d.getTime()) / 86_400_000);
+  if (days <= 0) return "Updated today";
+  if (days === 1) return "Updated yesterday";
+  return `Updated ${days}d ago`;
+}
+
+function buildAgentGroups(clients: Client[], rows: FundingRow[]): AgentGroup[] {
+  const groups = new Map<string, AgentGroup>();
+  const ensure = (brokerId: string | null, name: string | null | undefined) => {
+    const key = brokerId ?? "unassigned";
+    const existing = groups.get(key);
+    if (existing) {
+      if (!existing.name || existing.name === "Unassigned") {
+        existing.name = name || "Unassigned";
+      }
+      return existing;
+    }
+    const group: AgentGroup = {
+      key,
+      brokerId,
+      name: name || "Unassigned",
+      loans: [],
+      activeLoans: [],
+      clients: [],
+      latestFileAt: 0,
+      latestRelationshipAt: 0,
+      totalValue: 0,
+    };
+    groups.set(key, group);
+    return group;
+  };
+
+  rows.forEach((row) => {
+    const group = ensure(row.loan.broker_id ?? null, row.loan.broker_name);
+    const updatedAt = toTime(row.loan.updated_at) || toTime(row.loan.created_at) || toTime(row.loan.close_date);
+    group.loans.push(row);
+    if (String(row.loan.stage) !== "funded") {
+      group.activeLoans.push(row);
+      group.totalValue += Number(row.loan.amount || 0);
+    }
+    group.latestFileAt = Math.max(group.latestFileAt, updatedAt);
+  });
+
+  clients.forEach((client) => {
+    const group = ensure(client.broker_id ?? null, client.broker_name);
+    group.clients.push(client);
+    group.latestRelationshipAt = Math.max(group.latestRelationshipAt, toTime(client.last_seen_at) || toTime(client.since));
+  });
+
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      loans: [...group.loans].sort((a, b) => toTime(b.loan.updated_at) - toTime(a.loan.updated_at)),
+      activeLoans: [...group.activeLoans].sort((a, b) => toTime(b.loan.updated_at) - toTime(a.loan.updated_at)),
+      clients: [...group.clients].sort((a, b) => {
+        const bt = toTime(b.last_seen_at) || toTime(b.since);
+        const at = toTime(a.last_seen_at) || toTime(a.since);
+        return bt - at;
+      }),
+    }))
+    .sort((a, b) => {
+      if (b.latestFileAt !== a.latestFileAt) return b.latestFileAt - a.latestFileAt;
+      if (b.latestRelationshipAt !== a.latestRelationshipAt) return b.latestRelationshipAt - a.latestRelationshipAt;
+      return a.name.localeCompare(b.name);
+    });
+}
+
+function AgentsPipelineView({
+  clients,
+  rows,
+  search,
+}: {
+  clients: Client[];
+  rows: FundingRow[];
+  search: string;
+}) {
+  const { t } = useTheme();
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const clientIds = useMemo(() => clients.map((client) => client.id), [clients]);
+  const { data: summaries = [] } = usePipelineClientSummary(clientIds);
+  const summaryByClientId = useMemo(() => {
+    const map = new Map<string, (typeof summaries)[number]>();
+    summaries.forEach((summary) => map.set(summary.client_id, summary));
+    return map;
+  }, [summaries]);
+
+  const groups = useMemo(() => buildAgentGroups(clients, rows), [clients, rows]);
+  const visibleGroups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return groups;
+    return groups
+      .map((group) => {
+        const agentMatch = group.name.toLowerCase().includes(q);
+        if (agentMatch) return group;
+        const activeLoans = group.activeLoans.filter((row) =>
+          row.loan.deal_id.toLowerCase().includes(q) ||
+          row.loan.address.toLowerCase().includes(q) ||
+          (row.loan.client_name ?? "").toLowerCase().includes(q) ||
+          (row.loan.city ?? "").toLowerCase().includes(q),
+        );
+        const clients = group.clients.filter((client) =>
+          client.name.toLowerCase().includes(q) ||
+          (client.email ?? "").toLowerCase().includes(q) ||
+          (client.city ?? "").toLowerCase().includes(q),
+        );
+        return { ...group, activeLoans, clients };
+      })
+      .filter((group) => group.activeLoans.length > 0 || group.clients.length > 0);
+  }, [groups, search]);
+
+  const totalAgents = groups.filter((group) => group.key !== "unassigned").length;
+  const totalActiveFiles = groups.reduce((sum, group) => sum + group.activeLoans.length, 0);
+  const totalRelationships = groups.reduce((sum, group) => sum + group.clients.length, 0);
+  const totalValue = groups.reduce((sum, group) => sum + group.totalValue, 0);
+
+  const toggle = (key: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          gap: 8,
+        }}
+      >
+        <MiniMetric label="Agents" value={totalAgents} tone="neutral" />
+        <MiniMetric label="Active files" value={totalActiveFiles} tone={totalActiveFiles ? "watch" : "neutral"} />
+        <MiniMetric label="Relationships" value={totalRelationships} tone="neutral" />
+        <MiniMetric label="Active volume" value={QC_FMT.short(totalValue)} tone={totalValue ? "ready" : "neutral"} />
+      </div>
+
+      <Card pad={0}>
+        <div style={{ padding: 16, borderBottom: `1px solid ${t.line}`, background: t.surface2 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.4, color: t.ink3, textTransform: "uppercase" }}>
+            Agents
+          </div>
+          <div style={{ marginTop: 4, fontSize: 13, color: t.ink2 }}>
+            Latest activity, active files, assigned relationships, and volume by owner.
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "32px minmax(0, 1.45fr) 118px 118px 118px 150px",
+            gap: 12,
+            padding: "12px 16px",
+            fontSize: 11,
+            fontWeight: 800,
+            color: t.ink3,
+            textTransform: "uppercase",
+            letterSpacing: 1.2,
+            borderBottom: `1px solid ${t.line}`,
+          }}
+        >
+          <div />
+          <div>Agent</div>
+          <div style={{ textAlign: "right" }}>Active files</div>
+          <div style={{ textAlign: "right" }}>Relationships</div>
+          <div style={{ textAlign: "right" }}>Volume</div>
+          <div>Latest file</div>
+        </div>
+
+        {visibleGroups.map((group) => {
+          const isOpen = expanded.has(group.key);
+          return (
+            <div key={group.key} style={{ borderBottom: `1px solid ${t.line}` }}>
+              <button
+                type="button"
+                onClick={() => toggle(group.key)}
+                style={{
+                  width: "100%",
+                  display: "grid",
+                  gridTemplateColumns: "32px minmax(0, 1.45fr) 118px 118px 118px 150px",
+                  gap: 12,
+                  padding: "14px 16px",
+                  border: "none",
+                  background: isOpen ? t.surface2 : "transparent",
+                  color: t.ink,
+                  textAlign: "left",
+                  alignItems: "center",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                <Icon name={isOpen ? "chevD" : "chevR"} size={16} style={{ color: t.ink3 }} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {group.name}
+                  </div>
+                  <div style={{ marginTop: 2, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", fontSize: 11.5, color: t.ink3 }}>
+                    <span>{formatRelativeDays(group.latestFileAt)}</span>
+                    {group.key === "unassigned" ? <Pill bg={t.warnBg} color={t.warn}>Needs owner</Pill> : null}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", fontSize: 13, fontWeight: 900, color: group.activeLoans.length ? t.ink : t.ink3 }}>
+                  {group.activeLoans.length}
+                </div>
+                <div style={{ textAlign: "right", fontSize: 13, fontWeight: 900, color: group.clients.length ? t.ink : t.ink3 }}>
+                  {group.clients.length}
+                </div>
+                <div style={{ textAlign: "right", fontSize: 13, fontWeight: 900, color: group.totalValue ? t.ink : t.ink3 }}>
+                  {group.totalValue ? QC_FMT.short(group.totalValue) : "-"}
+                </div>
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: group.latestFileAt ? t.ink2 : t.ink3 }}>
+                    {formatShortDate(group.latestFileAt)}
+                  </div>
+                </div>
+              </button>
+
+              {isOpen ? (
+                <div style={{ padding: "0 16px 16px 48px", display: "grid", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase", margin: "4px 0 8px" }}>
+                      Active funding files
+                    </div>
+                    {group.activeLoans.length > 0 ? (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        {group.activeLoans.map((row) => (
+                          <Link
+                            key={row.loan.id}
+                            href={`/loans/${row.loan.id}`}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "86px minmax(0, 1.35fr) 120px 110px 90px 112px",
+                              gap: 10,
+                              alignItems: "center",
+                              padding: "9px 10px",
+                              borderRadius: 8,
+                              border: `1px solid ${t.line}`,
+                              background: t.surface,
+                              color: t.ink,
+                              textDecoration: "none",
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 900, color: t.ink2 }}>{row.loan.deal_id}</div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 12.5, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {row.loan.address}
+                              </div>
+                              <div style={{ marginTop: 1, fontSize: 11, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {row.loan.client_name ?? "No client"}{row.loan.city ? ` / ${row.loan.city}` : ""}
+                              </div>
+                            </div>
+                            <ReadinessCell score={row.readiness.score} label={row.readiness.label} />
+                            <div style={{ fontSize: 12, fontWeight: 850, color: t.ink2 }}>
+                              {loanTypeLabel(row.loan.type)}
+                              <div style={{ fontSize: 11, color: t.ink3 }}>{String(row.loan.stage).replace(/_/g, " ")}</div>
+                            </div>
+                            <div style={{ textAlign: "right", fontSize: 12.5, fontWeight: 900 }}>{QC_FMT.short(Number(row.loan.amount))}</div>
+                            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                              <ConditionCell open={row.openDocs.length} flagged={row.flaggedDocs.length} total={row.loanDocs.length} />
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ padding: 12, borderRadius: 8, border: `1px solid ${t.line}`, color: t.ink3, fontSize: 12.5 }}>
+                        No active funding files for this agent.
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase", margin: "2px 0 8px" }}>
+                      Relationships
+                    </div>
+                    {group.clients.length > 0 ? (
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 8 }}>
+                        {group.clients.map((client) => {
+                          const summary = summaryByClientId.get(client.id);
+                          return (
+                            <div
+                              key={client.id}
+                              style={{
+                                padding: 10,
+                                borderRadius: 8,
+                                border: `1px solid ${t.line}`,
+                                background: t.surface,
+                                display: "grid",
+                                gap: 7,
+                              }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 900, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {client.name}
+                                </div>
+                                <div style={{ fontSize: 11.5, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {client.email ?? "No email"}{client.city ? ` / ${client.city}` : ""}
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <Link href={`/clients/${client.id}/workspace`} style={agentMiniLink(t)}>
+                                  <Icon name="clients" size={11} /> Client
+                                </Link>
+                                {summary?.primary_deal_id ? (
+                                  <Link href={`/deals/${summary.primary_deal_id}`} style={agentMiniLink(t)}>
+                                    <Icon name="file" size={11} /> Deal
+                                  </Link>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{ padding: 12, borderRadius: 8, border: `1px solid ${t.line}`, color: t.ink3, fontSize: 12.5 }}>
+                        No relationships assigned to this agent.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+
+        {visibleGroups.length === 0 ? (
+          <div style={{ padding: 24, textAlign: "center", color: t.ink3, fontSize: 13 }}>
+            {search ? `No agents, files, or relationships match "${search}".` : "No agents or relationships found."}
+          </div>
+        ) : null}
+      </Card>
+    </div>
+  );
+}
+
+function agentMiniLink(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "5px 8px",
+    borderRadius: 7,
+    background: t.surface2,
+    color: t.ink2,
+    border: `1px solid ${t.line}`,
+    textDecoration: "none",
+    fontSize: 11.5,
+    fontWeight: 800,
+  };
 }
 
 // Right-click context menu for funding-mode pipeline rows. Currently

@@ -8,10 +8,11 @@
 // of the schedule-class categories. Same backing model the Tasks tab
 // uses, just filtered.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
 import {
   useClientTasks,
   useCreateAgentTask,
@@ -511,6 +512,14 @@ function NewEventModal({
   });
   const [err, setErr] = useState<string | null>(null);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   async function save() {
     if (!body.title.trim()) {
       setErr("Title is required");
@@ -555,7 +564,10 @@ function NewEventModal({
           gap: 12,
         }}
       >
-        <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>New schedule event</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>New schedule event</div>
+          <ModalCloseButton onClick={onClose} />
+        </div>
         <Field label="Type">
           <select
             value={body.category ?? "showing"}

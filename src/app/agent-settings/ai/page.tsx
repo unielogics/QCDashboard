@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
 import { AIPreviewPanel } from "@/components/AIPreviewPanel";
 import {
   isAINotDeployed,
@@ -1481,6 +1482,14 @@ function RequirementConfigurePopup({
     } finally { setSaving(false); }
   };
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div
       role="dialog"
@@ -1503,18 +1512,21 @@ function RequirementConfigurePopup({
           display: "flex", flexDirection: "column",
         }}
       >
-        <div style={{ padding: "14px 16px", borderBottom: `1px solid ${t.line}` }}>
-          <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
-            Configure
+        <div style={{ padding: "14px 16px", borderBottom: `1px solid ${t.line}`, display: "flex", gap: 12, alignItems: "flex-start" }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
+              Configure
+            </div>
+            <div style={{ marginTop: 2, fontSize: 17, fontWeight: 900, color: t.ink }}>
+              {row.label}
+            </div>
+            <div style={{ marginTop: 2, fontSize: 11, color: t.ink3 }}>
+              {owner === "platform"
+                ? "Editing forks a personal copy — your changes won't affect the firm-wide default."
+                : "Your personal default. Applies to every new lead going forward."}
+            </div>
           </div>
-          <div style={{ marginTop: 2, fontSize: 17, fontWeight: 900, color: t.ink }}>
-            {row.label}
-          </div>
-          <div style={{ marginTop: 2, fontSize: 11, color: t.ink3 }}>
-            {owner === "platform"
-              ? "Editing forks a personal copy — your changes won't affect the firm-wide default."
-              : "Your personal default. Applies to every new lead going forward."}
-          </div>
+          <ModalCloseButton onClick={onClose} />
         </div>
 
         <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1703,6 +1715,14 @@ function AddTemplateRowModal({
     }
   }
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div
       onClick={onClose}
@@ -1731,8 +1751,11 @@ function AddTemplateRowModal({
           gap: 12,
         }}
       >
-        <div style={{ fontSize: 15, fontWeight: 800, color: t.ink }}>
-          Add row to {side === "buyer" ? "Buyer" : "Seller"} template
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: t.ink }}>
+            Add row to {side === "buyer" ? "Buyer" : "Seller"} template
+          </div>
+          <ModalCloseButton onClick={onClose} />
         </div>
         <div style={{ fontSize: 12, color: t.ink3 }}>
           Defines a new playbook requirement. Applies automatically to every new {side} deal
