@@ -1,17 +1,17 @@
 "use client";
 
-// Manual super-admin prequalification creation. Mirrors the
+// Manual prequalification creation for brokers and funding operators. Mirrors the
 // borrower-side PreQualRequestModal wizard (loan type, deal details,
-// LTV math, F&F scope-of-work) but adds two admin-only pieces:
+// LTV math, F&F scope-of-work) but adds two broker/funding-team pieces:
 //
-//   1. Client linkage (mandatory). The admin either searches for an
+//   1. Client linkage (mandatory). The operator either searches for an
 //      existing client or creates one inline. The picked client_id
 //      becomes the requester for the prequal — backend is responsible
 //      for stamping requester_id from it.
 //
 //   2. Credit override panel. Manually-created prequals usually have
 //      no ISoftPull on file, which would normally block the eligibility
-//      math. The admin enters FICO + property count + year-of-ownership
+//      math. The operator enters FICO + property count + year-of-ownership
 //      so computeEligibility() unlocks the same tier-cap math the
 //      borrower wizard uses. Override is per-prequal and persists on
 //      the request row — it does NOT touch the Client's credit record.
@@ -326,7 +326,7 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
     <RightPanel
       open={open}
       onClose={onClose}
-      eyebrow="Manual prequalification · super-admin"
+      eyebrow="Manual prequalification"
       title="Create prequalification"
       ariaLabel="Create manual prequalification"
       footer={footer}
@@ -341,8 +341,8 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
               Pending review
             </div>
             <div style={{ marginTop: 8, fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
-              The new prequalification is in the queue. Open it to approve and
-              generate the letter PDF.
+              The new prequalification is in the queue. The funding team can
+              approve it and generate the letter PDF.
             </div>
           </div>
         </Card>
@@ -440,7 +440,7 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
 
               {/* ── Credit override ────────────────────────────────────── */}
               <Card pad={16}>
-                <SectionLabel>Credit override (super-admin)</SectionLabel>
+                <SectionLabel>Credit override</SectionLabel>
                 <div style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.45, marginBottom: 12 }}>
                   Manually-created prequals usually don&apos;t have a soft pull on file.
                   Set the FICO + portfolio context here so the LTV math unlocks. The

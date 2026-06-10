@@ -2518,7 +2518,7 @@ export function useDocumentsForClient(clientId: string | null | undefined) {
 //                                 borrower viewing their own loan)
 //   useSubmitPrequalRequest()   - borrower POST; spawns Loan stub if
 //                                 no loan_id given
-//   useAdminPrequalQueue()      - firm-wide queue (operator-only)
+//   useAdminPrequalQueue()      - prequal queue (broker-scoped or firm-wide)
 //   useApprovePrequalRequest()  - PUT approve; renders PDF
 //   useRejectPrequalRequest()   - PUT reject; mandatory admin_notes
 
@@ -2588,7 +2588,7 @@ export function useSubmitPrequalRequest() {
   });
 }
 
-// Super-admin manual prequalification creation. Backend dependency:
+// Broker/funding-team manual prequalification creation. Backend dependency:
 // POST /admin/prequal-requests must accept client_id (stamps the
 // requester from the linked Client) and persist manual_credit_override
 // so the approve / PDF path can compute LTV without a real CreditSummary.

@@ -55,11 +55,10 @@ function OperatorPipelinePage() {
   const isBroker = profile.role === "broker";
   const isInternal = profile.role === "super_admin" || profile.role === "loan_exec";
   const { data: allDocs = [] } = useDocuments();
-  // Everyone now lands on Funding Files (deal-id-focused). Brokers get
-  // the same Files/Relationships toggle operators have, matching the
-  // mobile pipeline so the desktop experience and available functions
-  // line up across surfaces.
+  // Everyone lands on Funding Files. Brokers stay there; operators can
+  // switch into the firm-wide relationship view.
   const [mode, setMode] = useState<PipelineMode>("funding");
+  const activeMode: PipelineMode = isBroker ? "funding" : mode;
   const [view, setView] = useState<"table" | "kanban">("table");
   const [sortKey, setSortKey] = useState<SortKey>("amount");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -79,7 +78,7 @@ function OperatorPipelinePage() {
   const [assignAiTarget, setAssignAiTarget] = useState<{ loan: Loan; x: number; y: number } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ loan: Loan; x: number; y: number } | null>(null);
 
-  const canCreateLead = isBroker || profile.role === "super_admin";
+  const canCreateLead = profile.role === "super_admin";
   // Brokers now default to (and live in) Funding Files mode, mirroring
   // the mobile pipeline FAB → /agent/loan/new. They must be able to
   // start a file here too — SmartIntakeModal finds-or-creates the
@@ -151,40 +150,37 @@ function OperatorPipelinePage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: 0, color: t.ink, margin: 0 }}>
-          {isInternal && mode === "funding" ? "Underwriting CRM" : "Pipeline"}
+          {isInternal && activeMode === "funding" ? "Underwriting CRM" : "Pipeline"}
         </h1>
 
-        {/* Files / Relationships toggle — available to brokers AND
-            operators, mirroring the mobile pipeline. "Funding Files"
-            is the deal-id-focused loan table (default). "Agent
-            Relationships" is the client funnel; per-client detail
-            opens from the Clients tab. */}
-        <div style={{
-          display: "inline-flex",
-          background: t.surface,
-          border: `1px solid ${t.line}`,
-          borderRadius: 10,
-          padding: 3,
-          gap: 2,
-          marginLeft: 4,
-        }}>
-          <button
-            type="button"
-            onClick={() => setMode("funding")}
-            style={modeSegBtn(t, mode === "funding")}
-          >
-            <Icon name="file" size={12} stroke={2.2} /> Funding Files
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("leads")}
-            style={modeSegBtn(t, mode === "leads")}
-          >
-            <Icon name="user" size={12} stroke={2.2} /> Agent Relationships
-          </button>
-        </div>
+        {isInternal ? (
+          <div style={{
+            display: "inline-flex",
+            background: t.surface,
+            border: `1px solid ${t.line}`,
+            borderRadius: 10,
+            padding: 3,
+            gap: 2,
+            marginLeft: 4,
+          }}>
+            <button
+              type="button"
+              onClick={() => setMode("funding")}
+              style={modeSegBtn(t, activeMode === "funding")}
+            >
+              <Icon name="file" size={12} stroke={2.2} /> Funding Files
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("leads")}
+              style={modeSegBtn(t, activeMode === "leads")}
+            >
+              <Icon name="user" size={12} stroke={2.2} /> Agent Relationships
+            </button>
+          </div>
+        ) : null}
 
-        {mode === "funding" ? (
+        {activeMode === "funding" ? (
           <span style={{ color: t.ink3, fontSize: 14 }}>
             · {visibleLoans.length} loans · {QC_FMT.short(totalValue)} value
           </span>
@@ -208,7 +204,7 @@ function OperatorPipelinePage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={mode === "funding" ? "Search address or ID..." : "Search clients..."}
+              placeholder={activeMode === "funding" ? "Search address or ID..." : "Search clients..."}
               style={{
                 flex: 1,
                 border: "none",
@@ -223,7 +219,7 @@ function OperatorPipelinePage() {
 
           {/* Loan-type filter only applies in Funding mode (Leads don't have a
               loan type yet; that gets locked when Start Funding fires). */}
-          {mode === "funding" && (
+          {activeMode === "funding" && (
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
@@ -267,7 +263,7 @@ function OperatorPipelinePage() {
             </button>
           </div>
 
-          {(mode === "funding" ? canCreateDeal : canCreateLead) && (
+          {(activeMode === "funding" ? canCreateDeal : canCreateLead) && (
             <button
               onClick={() => setIntakeOpen(true)}
               style={{
@@ -297,7 +293,7 @@ function OperatorPipelinePage() {
           then originates a Loan with property + ask + AI cadence. */}
       <SmartIntakeModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
 
-      {mode === "funding" ? (
+      {activeMode === "funding" ? (
         <FundingMetricsRow
           totalFiles={fundingRows.length}
           ready={underwritingReady}
@@ -309,7 +305,7 @@ function OperatorPipelinePage() {
         />
       ) : null}
 
-      {mode === "leads" ? (
+      {activeMode === "leads" ? (
         <LeadsPipelineView view={view} search={search} />
       ) : view === "table" ? (
         // Operators (super_admin / loan_exec) get an extra "Agent" column —

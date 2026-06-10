@@ -4,7 +4,7 @@
 // experience are DERIVED from the profile (read-only), never typed.
 // All math is client-side (src/lib/fixFlip). Hedged language only.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primitives";
@@ -14,8 +14,10 @@ import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
 import {
   useClient,
+  useClients,
   useClosingCostTiers,
   useCurrentCredit,
+  useAdminCreateManualPrequal,
   useFixFlipScenario,
   useFixFlipScenarios,
   useMyClient,
@@ -98,31 +100,53 @@ export default function FixAndFlipAnalyzerPage() {
   const sp = useSearchParams();
   const queryClientId = sp?.get("clientId") ?? null;
   const { data: myClient } = useMyClient();
+  const profile = useActiveProfile();
+  const canLinkClient =
+    profile.role === Role.BROKER ||
+    profile.role === Role.SUPER_ADMIN ||
+    profile.role === Role.LOAN_EXEC;
+  const canCreatePrequal = canLinkClient;
+  const clientsQuery = useClients();
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(queryClientId);
+  const [overrideFicoText, setOverrideFicoText] = useState("");
+  useEffect(() => {
+    if (queryClientId) setSelectedClientId(queryClientId);
+  }, [queryClientId]);
+  useEffect(() => {
+    setOverrideFicoText("");
+  }, [selectedClientId]);
   // Prefer ?clientId= (agent/operator opening a borrower); else the
   // signed-in client's own profile.
-  const profileClientId = queryClientId ?? myClient?.id ?? null;
-  const { data: client } = useClient(queryClientId);
+  const profileClientId = selectedClientId ?? myClient?.id ?? null;
+  const { data: client } = useClient(selectedClientId);
   const { data: credit } = useCurrentCredit(profileClientId);
 
-  const profileClient = queryClientId ? client : myClient;
+  const profileClient = selectedClientId ? client : myClient;
   const derivedCredit =
     credit?.fico ?? profileClient?.fico ?? undefined;
+  const overrideFico = (() => {
+    const n = Number(overrideFicoText.replace(/[^0-9]/g, ""));
+    return Number.isFinite(n) && n >= 300 && n <= 850 ? n : undefined;
+  })();
+  const effectiveCredit = derivedCredit ?? (canLinkClient ? overrideFico : undefined);
   const derivedExperience = deriveExperienceTier(profileClient?.experience);
 
   const save = useSaveFixFlipScenario();
   const update = useUpdateFixFlipScenario();
+  const createPrequal = useAdminCreateManualPrequal();
   const [savedId, setSavedId] = useState<string | null>(null);
   const [i, setI] = useState<FixFlipInputs>(DEFAULTS);
   const [stepIdx, setStepIdx] = useState(0);
   const [tab, setTab] = useState<Tab>("Summary");
   const [flash, setFlash] = useState<string | null>(null);
+  const [prequalFlash, setPrequalFlash] = useState<string | null>(null);
   const [coverage, setCoverage] = useState<"financed" | "self">("financed");
   const step: Step = STEPS[stepIdx];
 
   // Credit + experience always come from the profile, never the form.
   const inputs: FixFlipInputs = useMemo(
-    () => ({ ...i, creditScore: derivedCredit, experience: derivedExperience }),
-    [i, derivedCredit, derivedExperience],
+    () => ({ ...i, creditScore: effectiveCredit, experience: derivedExperience }),
+    [i, effectiveCredit, derivedExperience],
   );
   const { data: closingTiers } = useClosingCostTiers();
   const resultFinanced = useMemo(
@@ -142,7 +166,6 @@ export default function FixAndFlipAnalyzerPage() {
   // table of every user's runs; "+" opens the wizard; a row opens
   // that run read-only. Brokers/clients keep the create wizard.
   const router = useRouter();
-  const profile = useActiveProfile();
   const isOperator =
     profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
   const wantNew = sp?.get("new") === "1";
@@ -169,6 +192,7 @@ export default function FixAndFlipAnalyzerPage() {
   const autoSave = async () => {
     if (resultFinanced.validationErrors.length) return;
     const body = {
+      client_id: profileClientId ?? null,
       status: "saved",
       payload: { inputs, result: resultFinanced } as unknown as Record<string, unknown>,
       deal_score: resultFinanced.dealScore,
@@ -179,7 +203,6 @@ export default function FixAndFlipAnalyzerPage() {
         await update.mutateAsync({ id: savedId, ...body });
       } else {
         const row = await save.mutateAsync({
-          client_id: profileClientId ?? undefined,
           ...body,
         });
         setSavedId(row.id);
@@ -189,6 +212,76 @@ export default function FixAndFlipAnalyzerPage() {
       setFlash(e instanceof Error ? e.message : "Couldn't save scenario.");
     }
     setTimeout(() => setFlash(null), 3000);
+  };
+
+  const createPrequalification = async () => {
+    setPrequalFlash(null);
+    if (!selectedClientId) {
+      setPrequalFlash("Link one of your clients before creating a prequalification.");
+      return;
+    }
+    if (effectiveCredit == null) {
+      setPrequalFlash("Add a borrower FICO before creating a prequalification.");
+      return;
+    }
+    if (result.validationErrors.length) {
+      setPrequalFlash("Resolve the analyzer errors before creating a prequalification.");
+      return;
+    }
+
+    const propertyAddress =
+      [
+        inputs.address.street,
+        [inputs.address.city, inputs.address.state, inputs.address.zip]
+          .filter(Boolean)
+          .join(" "),
+      ]
+        .filter(Boolean)
+        .join(", ") || "Property TBD";
+    const constructionTotal = Math.round(inputs.rehabCost + result.rehabContingencyAmount);
+    const notes = [
+      "Created from Fix & Flip Deal Analyzer.",
+      `Construction scenario: ${coverage === "financed" ? "construction financed" : "borrower-funded construction"}.`,
+      `Deal grade: ${result.dealGrade}; score ${result.dealScore}/100.`,
+      `Estimated cash to close: ${$(result.estimatedCashToClose)}.`,
+      `Projected net profit: ${$(result.projectedNetProfit)}.`,
+    ].join(" ");
+
+    try {
+      await createPrequal.mutateAsync({
+        client_id: selectedClientId,
+        target_property_address: propertyAddress,
+        purchase_price: inputs.purchasePrice,
+        requested_loan_amount: Math.max(1, Math.round(result.loanAmount)),
+        loan_type: "fix_flip",
+        expected_closing_date: null,
+        borrower_notes: notes,
+        borrower_entity: null,
+        arv_estimate: inputs.arv,
+        sow_items: [
+          {
+            category: "Rehab / construction",
+            description: `Analyzer ${coverage === "financed" ? "financed" : "self-funded"} construction budget, including contingency.`,
+            total_usd: constructionTotal,
+          },
+        ],
+        manual_credit_override: {
+          fico: effectiveCredit,
+          property_count: 0,
+          has_year_of_ownership: false,
+        },
+      });
+      setPrequalFlash("Pending prequalification created for funding review.");
+      if (savedId) {
+        try {
+          await update.mutateAsync({ id: savedId, status: "converted_to_prequal" });
+        } catch {
+          // Non-critical: the prequalification is already in the queue.
+        }
+      }
+    } catch (e) {
+      setPrequalFlash(e instanceof Error ? e.message : "Could not create prequalification.");
+    }
   };
 
   const inputStyle = {
@@ -253,6 +346,58 @@ export default function FixAndFlipAnalyzerPage() {
 
       {flash ? <div style={{ fontSize: 12.5, color: flash.includes("Couldn") ? t.danger : t.profit, fontWeight: 600 }}>{flash}</div> : null}
 
+      {canLinkClient ? (
+        <Card pad={14}>
+          <SectionLabel>Borrower link</SectionLabel>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+            <select
+              value={selectedClientId ?? ""}
+              onChange={(e) => setSelectedClientId(e.target.value || null)}
+              style={{
+                ...inputStyle,
+                width: "min(100%, 420px)",
+                marginTop: 0,
+              }}
+            >
+              <option value="">Unlinked analysis</option>
+              {(clientsQuery.data ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}{c.email ? ` - ${c.email}` : ""}
+                </option>
+              ))}
+            </select>
+            <span style={{ fontSize: 12, color: t.ink3 }}>
+              Credit and experience come from the linked borrower profile.
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
+            <span style={{ fontSize: 12, color: t.ink3 }}>Credit</span>
+            {derivedCredit != null ? (
+              <Pill bg={t.petrolSoft} color={t.petrol}>FICO {derivedCredit}</Pill>
+            ) : overrideFico != null ? (
+              <Pill bg={t.warnBg} color={t.warn}>FICO {overrideFico} override</Pill>
+            ) : (
+              <Pill bg={t.chip} color={t.ink3}>Not on file</Pill>
+            )}
+            {derivedCredit == null ? (
+              <label style={{ display: "block", minWidth: 180 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>Analyzer FICO override</span>
+                <input
+                  value={overrideFicoText}
+                  onChange={(e) => setOverrideFicoText(e.target.value)}
+                  placeholder="720"
+                  inputMode="numeric"
+                  style={{ ...inputStyle, marginTop: 4 }}
+                />
+              </label>
+            ) : null}
+            <span style={{ fontSize: 12, color: t.ink3 }}>
+              Override is used only for this analyzer/prequal request.
+            </span>
+          </div>
+        </Card>
+      ) : null}
+
       <Card pad={20}>
         {step === "Property" ? (
           <div>
@@ -311,8 +456,10 @@ export default function FixAndFlipAnalyzerPage() {
             <SectionLabel>Borrower profile</SectionLabel>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
               <span style={{ fontSize: 12, color: t.ink3 }}>Credit score</span>
-              {derivedCredit != null ? (
-                <Pill bg={t.petrolSoft} color={t.petrol}>{derivedCredit}</Pill>
+              {effectiveCredit != null ? (
+                <Pill bg={derivedCredit != null ? t.petrolSoft : t.warnBg} color={derivedCredit != null ? t.petrol : t.warn}>
+                  {effectiveCredit}{derivedCredit == null ? " override" : ""}
+                </Pill>
               ) : (
                 <Pill bg={t.chip} color={t.ink3}>Not on file</Pill>
               )}
@@ -320,7 +467,7 @@ export default function FixAndFlipAnalyzerPage() {
               <Pill bg={t.chip} color={t.ink2}>{EXP_LABEL[derivedExperience]}</Pill>
             </div>
             <div style={{ fontSize: 11.5, color: t.ink3, marginBottom: 14 }}>
-              Credit &amp; experience are pulled from the borrower&apos;s profile, not entered here.
+              Credit &amp; experience are pulled from the borrower&apos;s profile. Broker/operator FICO override applies only to this analysis and pending prequal request.
             </div>
             <SectionLabel>Recap</SectionLabel>
             <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.7 }}>
@@ -373,6 +520,36 @@ export default function FixAndFlipAnalyzerPage() {
                   ))}
                 </div>
               </div>
+              {canCreatePrequal ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: 12, borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface }}>
+                  <button
+                    onClick={createPrequalification}
+                    disabled={createPrequal.isPending}
+                    style={{
+                      ...qcBtnPrimary(t),
+                      opacity: createPrequal.isPending ? 0.6 : 1,
+                      cursor: createPrequal.isPending ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {createPrequal.isPending ? "Creating..." : "Create pending prequalification"}
+                  </button>
+                  <span style={{ flex: 1, minWidth: 220, fontSize: 12, color: t.ink3 }}>
+                    Requires a linked client and borrower FICO. Funding team approval is still required.
+                  </span>
+                  {prequalFlash ? (
+                    <span
+                      style={{
+                        width: "100%",
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        color: prequalFlash.includes("created") ? t.profit : t.danger,
+                      }}
+                    >
+                      {prequalFlash}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {TABS.map((x) => (
                   <button key={x} onClick={() => setTab(x)} style={{ all: "unset", cursor: "pointer", padding: "6px 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 700, border: `1px solid ${tab === x ? t.petrol : t.line}`, background: tab === x ? t.petrolSoft : "transparent", color: tab === x ? t.petrol : t.ink3 }}>{x}</button>

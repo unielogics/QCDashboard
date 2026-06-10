@@ -1,6 +1,6 @@
 "use client";
 
-// AI Agents — the broker's roster of configurable AI workers. Each card
+// AI Outreach Agents — the broker's roster of configurable outreach workers. Each card
 // links into the 11-step builder. Agent-only surface.
 
 import { useEffect, useState } from "react";
@@ -128,25 +128,25 @@ export default function AiAgentsPage() {
       >
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: t.ink }}>
-            AI Agents
+            AI Outreach Agents
           </h1>
           <p style={{ fontSize: 13, color: t.ink3, margin: "6px 0 0", maxWidth: 560 }}>
-            Build trained AI workers for your different workflows — new-deal
-            follow-up, past-client nurture, review requests. Each one is
-            trained, tested, and pointed at a slice of your pipeline.
+            Build broker-controlled outreach agents for new-deal follow-up,
+            past-client nurture, review requests, and other internal workflows.
+            Each one is trained, tested, and pointed at a slice of your pipeline.
           </p>
         </div>
         <button
           style={qcBtnPrimary(t)}
           onClick={() => setCreating((v) => !v)}
         >
-          <Icon name="plus" size={15} /> New AI Agent
+          <Icon name="plus" size={15} /> New outreach agent
         </button>
       </div>
 
       {creating && (
         <Card pad={18}>
-          <SectionLabel>Create an AI Agent</SectionLabel>
+          <SectionLabel>Create an outreach agent</SectionLabel>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
             <input
               autoFocus
@@ -201,7 +201,7 @@ export default function AiAgentsPage() {
           <div style={{ textAlign: "center", color: t.ink3 }}>
             <Icon name="spark" size={26} />
             <p style={{ fontSize: 14, marginTop: 10 }}>
-              No AI Agents yet. Start with one of the two real-estate
+              No outreach agents yet. Start with one of the two real-estate
               starters below — you can edit everything once it's drafted.
             </p>
           </div>

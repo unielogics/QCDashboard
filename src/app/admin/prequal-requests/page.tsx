@@ -65,6 +65,10 @@ export default function AdminPrequalQueuePage() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selected, setSelected] = useState<PrequalRequest | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const canUnderwrite =
+    profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
+  const canCreatePrequal =
+    profile.role === Role.BROKER || profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
   // Right-click context menu state. The row that fired the menu plus
   // viewport coordinates so we can render at the cursor without an extra
   // library. Cleared on any document click / Escape — see effect below.
@@ -184,8 +188,8 @@ export default function AdminPrequalQueuePage() {
         <Card pad={28}>
           <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>Operator-only</div>
           <div style={{ fontSize: 13, color: t.ink2, marginTop: 6, lineHeight: 1.5 }}>
-            Prequalifications are for underwriters. Borrowers should submit
-            requests from the Simulator&apos;s My Loans tab.
+            Prequalifications are for agents and the funding team. Borrowers should submit
+            requests from their file view.
           </div>
           <button onClick={() => router.push("/")} style={{ ...qcBtn(t), marginTop: 14 }}>
             Back to dashboard
@@ -212,12 +216,12 @@ export default function AdminPrequalQueuePage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Prequalifications</h1>
           <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
-            Click a row to open the review panel. Right-click for quick actions
-            (open, print the latest letter). Headers sort the queue; pending
-            always groups to the top.
+            {canUnderwrite
+              ? "Click a row to open the review panel. Right-click for quick actions (open, print the latest letter). Headers sort the queue; pending always groups to the top."
+              : "Create and track pending prequalification requests for your clients. The funding team reviews and issues letters."}
           </div>
         </div>
-        {profile.role === Role.SUPER_ADMIN ? (
+        {canCreatePrequal ? (
           <button
             onClick={() => setCreateOpen(true)}
             style={{ ...qcBtnPrimary(t), display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}
@@ -299,21 +303,25 @@ export default function AdminPrequalQueuePage() {
               key={r.id}
               req={r}
               t={t}
-              onOpen={() => setSelected(r)}
+              onOpen={() => {
+                if (canUnderwrite) setSelected(r);
+              }}
               onContextMenu={(e) => {
                 e.preventDefault();
-                setMenu({ req: r, x: e.clientX, y: e.clientY });
+                if (canUnderwrite) setMenu({ req: r, x: e.clientX, y: e.clientY });
               }}
             />
           ))}
         </Card>
       )}
 
-      <PrequalReviewModal
-        open={!!selected}
-        onClose={() => setSelected(null)}
-        request={selected}
-      />
+      {canUnderwrite ? (
+        <PrequalReviewModal
+          open={!!selected}
+          onClose={() => setSelected(null)}
+          request={selected}
+        />
+      ) : null}
 
       <AdminPrequalCreateModal
         open={createOpen}
