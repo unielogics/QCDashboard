@@ -2441,12 +2441,13 @@ export function useFreeCalc() {
 // Self-edit profile hooks for borrower (Profile → Investor Profile dialog).
 // Backed by /clients/me on the backend (super-admins / brokers should use
 // /clients/{id} + useUpdateClient instead).
-export function useMyClient() {
+export function useMyClient(enabled = true) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["my-client", devUser],
     queryFn: () => apiCall<Client>("/clients/me"),
+    enabled,
     // 404 is expected for operator users with no client linkage — don't retry.
     retry: (failureCount, error) => !isNotFound(error) && failureCount < 1,
   });

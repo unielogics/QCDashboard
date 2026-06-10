@@ -22,7 +22,7 @@ interface Props {
 
 export function InvestorProfileDialog({ open, onClose }: Props) {
   const { t } = useTheme();
-  const { data: client, isLoading, error } = useMyClient();
+  const { data: client, isLoading, error } = useMyClient(open);
   const update = useUpdateMyClient();
 
   const [phone, setPhone] = useState("");

@@ -12,6 +12,7 @@ import {
   useDocuments,
   useLoans,
   usePipelineClientSummary,
+  useCurrentUser,
   type DSPipelineSummaryItem,
 } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
@@ -19,7 +20,6 @@ import { loanTypeLabel, type Client, type Document } from "@/lib/types";
 import { getFileCompletion } from "@/app/loans/[id]/fileReadiness";
 import { SmartIntakeModal } from "./components/SmartIntakeModal";
 import { ClientFilePipeline } from "./components/ClientFilePipeline";
-import { useActiveProfile } from "@/store/role";
 import { LoanAgentPicker } from "@/components/LoanAgentPicker";
 import { AIAgentAssignPicker } from "./components/AIAgentAssignPicker";
 import type { Loan } from "@/lib/types";
@@ -31,9 +31,19 @@ type PipelineMode = "leads" | "funding";
 // gets the operator pipeline below, byte-for-byte unchanged. Branching in
 // a thin wrapper keeps each side's hooks from running for the other role.
 export default function PipelinePage() {
-  const profile = useActiveProfile();
-  if (profile.role === "client") return <ClientFilePipeline />;
-  return <OperatorPipelinePage />;
+  const { t } = useTheme();
+  const { data: user, isLoading } = useCurrentUser();
+
+  if (!user) {
+    return (
+      <div style={{ padding: 24, color: t.ink3, fontSize: 13 }}>
+        {isLoading ? "Loading pipeline..." : "Loading account..."}
+      </div>
+    );
+  }
+
+  if (user.role === "client") return <ClientFilePipeline />;
+  return <OperatorPipelinePage role={user.role} />;
 }
 
 const STAGE_KEYS = ["prequalified", "collecting_docs", "lender_connected", "processing", "closing", "funded"] as const;
@@ -51,7 +61,7 @@ type FundingRow = {
   action: PipelineAction;
 };
 
-function OperatorPipelinePage() {
+function OperatorPipelinePage({ role }: { role: string }) {
   const { t } = useTheme();
   const { data: loans = [] } = useLoans();
   const loanIds = useMemo(() => loans.map((l) => l.id), [loans]);
@@ -61,15 +71,14 @@ function OperatorPipelinePage() {
     secretarySummaries.forEach((s) => map.set(s.loan_id, s));
     return map;
   }, [secretarySummaries]);
-  const profile = useActiveProfile();
   // Top-level mode: Funding Files (loan/deal files keyed on deal_id)
   // vs Agent Relationships (the client funnel). Mirrors the mobile
   // PipelineScreen, which defaults brokers to the "files" view and
   // offers a Files/Relationships toggle. The relationship DETAIL
   // (workflow / property / readiness per client) lives on the
   // Clients tab → /clients/[id], not as the pipeline default.
-  const isBroker = profile.role === "broker";
-  const isInternal = profile.role === "super_admin" || profile.role === "loan_exec";
+  const isBroker = role === "broker";
+  const isInternal = role === "super_admin" || role === "loan_exec";
   const { data: allDocs = [] } = useDocuments();
   const { data: clients = [] } = useClients();
   // Everyone lands on Funding Files. Brokers stay there; operators can
@@ -95,7 +104,7 @@ function OperatorPipelinePage() {
   const [assignAiTarget, setAssignAiTarget] = useState<{ loan: Loan; x: number; y: number } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ loan: Loan; x: number; y: number } | null>(null);
 
-  const canCreateLead = profile.role === "super_admin";
+  const canCreateLead = role === "super_admin";
   // Brokers now default to (and live in) Funding Files mode, mirroring
   // the mobile pipeline FAB → /agent/loan/new. They must be able to
   // start a file here too — SmartIntakeModal finds-or-creates the

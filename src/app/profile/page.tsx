@@ -281,7 +281,9 @@ export default function ProfilePage() {
         initialEmail={user.email}
         mode={pullMode}
       />
-      <InvestorProfileDialog open={investorOpen} onClose={() => setInvestorOpen(false)} />
+      {isClient ? (
+        <InvestorProfileDialog open={investorOpen} onClose={() => setInvestorOpen(false)} />
+      ) : null}
     </div>
   );
 }
