@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { qcBtn } from "@/components/design-system/buttons";
 import { ClientSearchBlock, type ClientPickResult } from "@/components/ClientSearchBlock";
-import { AnalysisFloatingAction, AnalysisRunInspect, AnalysisRunsTable } from "@/components/analysis/AnalysisRunsWorkspace";
+import { AnalysisActionsMenu, AnalysisFloatingAction, AnalysisRunInspect, AnalysisRunsTable } from "@/components/analysis/AnalysisRunsWorkspace";
+import { FinancialInsightPanel } from "@/components/analysis/FinancialInsightPanel";
 import { GoogleAddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import {
   useAnalysisRun,
@@ -84,6 +84,7 @@ export default function DealAnalyzerPage() {
   const [points, setPoints] = useState(1);
   const [overrideFicoText, setOverrideFicoText] = useState("");
   const lastPropertyLookupKey = useRef<string | null>(null);
+  const lastAutosaveKey = useRef<string | null>(null);
 
   const credit = useCurrentCredit(selectedClient?.id);
   const borrowerFico = credit.data?.fico ?? null;
@@ -182,8 +183,8 @@ export default function DealAnalyzerPage() {
     return () => window.clearTimeout(id);
   }, [addressParts, lookupProperty, propertyLookupKey]);
 
-  const ensureSavedRun = async (): Promise<AnalysisRun | null> => {
-    setMessage(null);
+  const ensureSavedRun = async (opts?: { quiet?: boolean }): Promise<AnalysisRun | null> => {
+    if (!opts?.quiet) setMessage(null);
     const output = calc.data ?? (await calculate());
     const inputs: Record<string, unknown> = {
       product,
@@ -215,7 +216,7 @@ export default function DealAnalyzerPage() {
       ? await updateRun.mutateAsync({ id: savedRun.id, patch: payload })
       : await createRun.mutateAsync(payload);
     setSavedRun(row);
-    setMessage("Analysis saved.");
+    if (!opts?.quiet) setMessage("Analysis saved.");
     return row;
   };
 
@@ -286,13 +287,71 @@ export default function DealAnalyzerPage() {
     updateRun.isPending ||
     shareRun.isPending ||
     convertRun.isPending;
+  const autosaveKey = useMemo(
+    () =>
+      JSON.stringify({
+        product,
+        selectedClientId: selectedClient?.id ?? null,
+        fullAddress,
+        purchasePrice,
+        loanAmount,
+        monthlyRent,
+        annualTaxes,
+        annualInsurance,
+        monthlyHoa,
+        ratePct,
+        points,
+        effectiveFico,
+      }),
+    [annualInsurance, annualTaxes, effectiveFico, fullAddress, loanAmount, monthlyHoa, monthlyRent, points, product, purchasePrice, ratePct, selectedClient?.id],
+  );
+
+  useEffect(() => {
+    if (!calc.data || createRun.isPending || updateRun.isPending) return;
+    if (lastAutosaveKey.current === autosaveKey) return;
+    lastAutosaveKey.current = autosaveKey;
+    void ensureSavedRun({ quiet: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autosaveKey, calc.data, createRun.isPending, updateRun.isPending]);
+
+  const workflowActions = [
+    {
+      label: calc.data ? "Refresh and autosave" : "Calculate and autosave",
+      description: "Runs pricing and saves this analyzer file.",
+      icon: "refresh",
+      onClick: () => { void ensureSavedRun(); },
+      disabled: busy,
+    },
+    {
+      label: "Share to client",
+      description: "Auto-saves first, then shares the client report.",
+      icon: "send",
+      onClick: () => { void shareToClient(); },
+      disabled: busy,
+      disabledHint: !selectedClient ? "Link a client first" : undefined,
+    },
+    {
+      label: "Create prequalification",
+      description: "Auto-saves first, then creates funding review.",
+      icon: "flag",
+      onClick: () => { void createPrequal(); },
+      disabled: busy,
+      disabledHint: !selectedClient ? "Link a client first" : !effectiveFico ? "FICO required" : undefined,
+    },
+    {
+      label: "New Fix & Flip analysis",
+      description: "Switch to the renovation analyzer workflow.",
+      icon: "hammer",
+      onClick: () => router.push("/deal-analyzer/fix-and-flip?new=1"),
+      disabled: busy,
+    },
+  ];
 
   if (isListFirstRole && runId) {
     return (
       <AnalysisRunInspect
         run={inspectedRun}
         loading={inspectedRunLoading}
-        backLabel="Back to analyzer runs"
         onBack={() => router.push("/deal-analyzer")}
       />
     );
@@ -333,21 +392,23 @@ export default function DealAnalyzerPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 1120, margin: "0 auto" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
+          <div style={{ fontSize: 11, color: t.petrol, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase" }}>Deal Analyzer</div>
+          <h1 style={{ margin: "4px 0 0", color: t.ink, fontSize: 25, lineHeight: 1.1 }}>DSCR Deal Screen</h1>
+        </div>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <AnalysisActionsMenu actions={workflowActions} />
           {isListFirstRole ? (
             <button
               type="button"
               onClick={() => router.push("/deal-analyzer")}
-              style={{ all: "unset", cursor: "pointer", color: t.petrol, fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}
+              aria-label="Close"
+              title="Close"
+              style={{ all: "unset", cursor: "pointer", width: 34, height: 34, borderRadius: 9, border: `1px solid ${t.line}`, color: t.ink2, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
             >
-              <Icon name="chevL" size={12} /> Previous runs
+              <Icon name="x" size={15} />
             </button>
           ) : null}
-          <div style={{ fontSize: 11, color: t.petrol, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase" }}>Deal Analyzer</div>
-          <h1 style={{ margin: "4px 0 0", color: t.ink, fontSize: 25, lineHeight: 1.1 }}>DSCR Deal Screen</h1>
         </div>
-        <Link href="/deal-analyzer/fix-and-flip" style={{ ...qcBtn(t), textDecoration: "none" }}>
-          <Icon name="hammer" size={14} /> Fix &amp; Flip Analyzer
-        </Link>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.05fr) minmax(320px, .95fr)", gap: 14, alignItems: "start" }}>
@@ -462,6 +523,25 @@ export default function DealAnalyzerPage() {
             ) : null}
           </Card>
 
+          {calc.data ? (
+            <FinancialInsightPanel
+              product={product}
+              inputs={{
+                purchase_price: purchasePrice,
+                market_value: purchasePrice,
+                loan_amount: loanAmount,
+                requested_loan_amount: loanAmount,
+                monthly_rent: monthlyRent,
+                annual_taxes: annualTaxes,
+                annual_insurance: annualInsurance,
+                monthly_hoa: monthlyHoa,
+                rate: ratePct / 100,
+                discount_points: points,
+              }}
+              output={calc.data as unknown as Record<string, unknown>}
+            />
+          ) : null}
+
           <Card pad={14}>
             <SectionLabel>Report</SectionLabel>
             {report ? (
@@ -480,20 +560,9 @@ export default function DealAnalyzerPage() {
           </Card>
 
           <Card pad={14}>
-            <SectionLabel>Actions</SectionLabel>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button onClick={calculate} disabled={busy} style={qcBtn(t)}>
-                <Icon name="refresh" size={14} /> {calc.isPending ? "Calculating..." : "Calculate"}
-              </button>
-              <button onClick={ensureSavedRun} disabled={busy} style={qcBtnPrimary(t)}>
-                <Icon name="docCheck" size={14} /> {createRun.isPending || updateRun.isPending ? "Saving..." : "Save analysis"}
-              </button>
-              <button onClick={shareToClient} disabled={busy || !selectedClient} style={qcBtn(t)}>
-                <Icon name="send" size={14} /> Share to client
-              </button>
-              <button onClick={createPrequal} disabled={busy || !selectedClient} style={qcBtn(t)}>
-                <Icon name="flag" size={14} /> Create prequalification
-              </button>
+            <SectionLabel>Status</SectionLabel>
+            <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5 }}>
+              Runs auto-save after calculation. Use the top-right Actions menu to refresh, share, or create a pending prequalification.
             </div>
             {message ? (
               <div style={{ marginTop: 10, fontSize: 12.5, color: /created|saved|shared|refreshed|attached/i.test(message) ? t.profit : t.warn, fontWeight: 700 }}>

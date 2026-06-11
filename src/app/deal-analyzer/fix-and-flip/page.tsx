@@ -1064,13 +1064,15 @@ function RunInspect({
   loading: boolean;
   onBack: () => void;
 }) {
-  const back = (
+  const close = (
     <button
       type="button"
       onClick={onBack}
-      style={{ all: "unset", cursor: "pointer", color: t.petrol, fontSize: 13, fontWeight: 700 }}
+      aria-label="Close"
+      title="Close"
+      style={{ all: "unset", cursor: "pointer", width: 34, height: 34, borderRadius: 9, border: `1px solid ${t.line}`, color: t.ink2, display: "inline-flex", alignItems: "center", justifyContent: "center", alignSelf: "flex-end" }}
     >
-      ← Back to all runs
+      <Icon name="x" size={15} />
     </button>
   );
   if (loading) {
@@ -1079,7 +1081,7 @@ function RunInspect({
   if (!row) {
     return (
       <div style={{ maxWidth: 860, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
-        {back}
+        {close}
         <Card pad={20}><div style={{ fontSize: 13, color: t.ink2 }}>Run not found.</div></Card>
       </div>
     );
@@ -1091,14 +1093,16 @@ function RunInspect({
     typeof v === "number" ? $(v) : "—";
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
-      {back}
-      <div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>
-          Viewing {runCreator(row)}&apos;s run
-        </h1>
-        <p style={{ fontSize: 12.5, color: t.ink3, margin: "4px 0 0" }}>
-          {new Date(row.created_at).toLocaleString()} · {runAddress(row)} · read-only
-        </p>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>
+            Viewing {runCreator(row)}&apos;s run
+          </h1>
+          <p style={{ fontSize: 12.5, color: t.ink3, margin: "4px 0 0" }}>
+            {new Date(row.created_at).toLocaleString()} · {runAddress(row)} · read-only
+          </p>
+        </div>
+        {close}
       </div>
       {!result ? (
         <Card pad={20}>

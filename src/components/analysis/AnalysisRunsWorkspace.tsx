@@ -8,6 +8,7 @@ import { Card, Pill, SectionLabel } from "@/components/design-system/primitives"
 import { Icon } from "@/components/design-system/Icon";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
+import { FinancialInsightPanel } from "@/components/analysis/FinancialInsightPanel";
 import { useClients } from "@/hooks/useApi";
 import type { AnalysisRun } from "@/lib/types";
 
@@ -16,6 +17,8 @@ export interface AnalysisRunAction {
   description?: string;
   icon?: string;
   onClick: () => void;
+  disabled?: boolean;
+  disabledHint?: string;
 }
 
 const PRODUCT_LABEL: Record<AnalysisRun["product"], string> = {
@@ -33,11 +36,13 @@ const SOURCE_LABEL: Record<AnalysisRun["tool_source"], string> = {
 function dateLabel(iso: string, withTime = false) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "Unknown";
-  return date.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    ...(withTime ? { hour: "numeric", minute: "2-digit" } : {}),
-  });
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const base = `${months[date.getUTCMonth()]} ${date.getUTCDate()}`;
+  if (!withTime) return base;
+  const hours = date.getUTCHours();
+  const mins = String(date.getUTCMinutes()).padStart(2, "0");
+  const hour12 = hours % 12 || 12;
+  return `${base}, ${hour12}:${mins} ${hours >= 12 ? "PM" : "AM"} UTC`;
 }
 
 function readNumber(payload: Record<string, unknown> | null | undefined, keys: string[]) {
@@ -249,12 +254,10 @@ export function AnalysisRunsTable({
 export function AnalysisRunInspect({
   run,
   loading,
-  backLabel = "Back to runs",
   onBack,
 }: {
   run: AnalysisRun | undefined;
   loading?: boolean;
-  backLabel?: string;
   onBack: () => void;
 }) {
   const { t } = useTheme();
@@ -272,23 +275,25 @@ export function AnalysisRunInspect({
   if (!run) {
     return (
       <div style={{ padding: 24, maxWidth: 900, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
-        <BackButton label={backLabel} onBack={onBack} />
+        <CloseButton onClose={onBack} />
         <Card pad={20}><div style={{ fontSize: 13, color: t.ink2 }}>Run not found.</div></Card>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 960, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
-      <BackButton label={backLabel} onBack={onBack} />
-      <div>
-        <div style={{ fontSize: 11, color: t.petrol, fontWeight: 800, letterSpacing: 1.2, textTransform: "uppercase" }}>
-          {SOURCE_LABEL[run.tool_source] ?? run.tool_source}
+    <div style={{ padding: 24, maxWidth: 1180, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 11, color: t.petrol, fontWeight: 800, letterSpacing: 1.2, textTransform: "uppercase" }}>
+            {SOURCE_LABEL[run.tool_source] ?? run.tool_source}
+          </div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: t.ink, margin: "3px 0 0" }}>{titleFor(run)}</h1>
+          <div style={{ fontSize: 12.5, color: t.ink3, marginTop: 4 }}>
+            {PRODUCT_LABEL[run.product] ?? run.product} - updated {dateLabel(run.updated_at, true)}
+          </div>
         </div>
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: t.ink, margin: "3px 0 0" }}>{titleFor(run)}</h1>
-        <div style={{ fontSize: 12.5, color: t.ink3, marginTop: 4 }}>
-          {PRODUCT_LABEL[run.product] ?? run.product} - updated {dateLabel(run.updated_at, true)}
-        </div>
+        <CloseButton onClose={onBack} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
@@ -297,6 +302,8 @@ export function AnalysisRunInspect({
         <Mini t={t} label="Status" value={run.status.replace(/_/g, " ")} />
         <Mini t={t} label="Shared" value={run.shared_at ? dateLabel(run.shared_at) : "No"} />
       </div>
+
+      <FinancialInsightPanel product={run.product} inputs={run.inputs} output={run.calculator_output} />
 
       <Card pad={14}>
         <SectionLabel>Links</SectionLabel>
@@ -348,7 +355,7 @@ function ReportBlock({ report }: { report: Record<string, unknown> }) {
   );
 }
 
-function AnalysisActionsMenu({ actions }: { actions: AnalysisRunAction[] }) {
+export function AnalysisActionsMenu({ actions }: { actions: AnalysisRunAction[] }) {
   const { t } = useTheme();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -419,21 +426,24 @@ function AnalysisActionsMenu({ actions }: { actions: AnalysisRunAction[] }) {
             <button
               key={action.label}
               type="button"
+              disabled={action.disabled}
               onClick={() => {
+                if (action.disabled) return;
                 setOpen(false);
                 action.onClick();
               }}
               style={{
                 all: "unset",
-                cursor: "pointer",
+                cursor: action.disabled ? "not-allowed" : "pointer",
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
                 padding: "9px 10px",
                 borderRadius: 8,
-                color: t.ink,
+                color: action.disabled ? t.ink3 : t.ink,
+                opacity: action.disabled ? 0.55 : 1,
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = t.surface2; }}
+              onMouseEnter={(e) => { if (!action.disabled) e.currentTarget.style.background = t.surface2; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
             >
               <span style={{ width: 24, color: t.petrol, display: "inline-flex", justifyContent: "center", flexShrink: 0 }}>
@@ -443,6 +453,9 @@ function AnalysisActionsMenu({ actions }: { actions: AnalysisRunAction[] }) {
                 <span style={{ display: "block", fontSize: 12.5, fontWeight: 800 }}>{action.label}</span>
                 {action.description ? (
                   <span style={{ display: "block", fontSize: 11.2, color: t.ink3, marginTop: 1 }}>{action.description}</span>
+                ) : null}
+                {action.disabled && action.disabledHint ? (
+                  <span style={{ display: "block", fontSize: 11.2, color: t.warn, marginTop: 1 }}>{action.disabledHint}</span>
                 ) : null}
               </span>
             </button>
@@ -544,11 +557,29 @@ function Mini({ t, label, value }: { t: ReturnType<typeof useTheme>["t"]; label:
   );
 }
 
-function BackButton({ label, onBack }: { label: string; onBack: () => void }) {
+function CloseButton({ onClose }: { onClose: () => void }) {
   const { t } = useTheme();
   return (
-    <button type="button" onClick={onBack} style={{ all: "unset", cursor: "pointer", color: t.petrol, fontSize: 13, fontWeight: 800, alignSelf: "flex-start" }}>
-      <Icon name="chevL" size={13} /> {label}
+    <button
+      type="button"
+      onClick={onClose}
+      aria-label="Close"
+      title="Close"
+      style={{
+        all: "unset",
+        cursor: "pointer",
+        width: 34,
+        height: 34,
+        borderRadius: 9,
+        border: `1px solid ${t.line}`,
+        color: t.ink2,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      <Icon name="x" size={15} />
     </button>
   );
 }

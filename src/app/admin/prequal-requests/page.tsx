@@ -66,6 +66,7 @@ export default function AdminPrequalQueuePage() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [selected, setSelected] = useState<PrequalRequest | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const canUnderwrite =
     profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
   const canCreatePrequal =
@@ -74,6 +75,10 @@ export default function AdminPrequalQueuePage() {
   // viewport coordinates so we can render at the cursor without an extra
   // library. Cleared on any document click / Escape — see effect below.
   const [menu, setMenu] = useState<{ req: PrequalRequest; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   useEffect(() => {
     const status = searchParams?.get("status") as FilterId | null;
@@ -311,6 +316,7 @@ export default function AdminPrequalQueuePage() {
               key={r.id}
               req={r}
               t={t}
+              hydrated={hydrated}
               onOpen={() => {
                 if (canUnderwrite) setSelected(r);
               }}
@@ -513,7 +519,21 @@ function relativeDays(iso: string | null | undefined): string | null {
   const weeks = Math.round(days / 7);
   if (weeks > 0 && weeks < 8) return `in ${weeks} wks`;
   if (weeks < 0 && weeks > -8) return `${-weeks} wks ago`;
-  return target.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return shortDateLabel(iso);
+}
+
+function shortDateLabel(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const datePart = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  if (datePart) {
+    const monthIdx = Number(datePart[2]) - 1;
+    const day = Number(datePart[3]);
+    if (months[monthIdx] && Number.isFinite(day)) return `${months[monthIdx]} ${day}`;
+  }
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return `${months[parsed.getUTCMonth()]} ${parsed.getUTCDate()}`;
 }
 
 function HeaderRow({
@@ -578,11 +598,13 @@ function HeaderRow({
 function Row({
   req,
   t,
+  hydrated,
   onOpen,
   onContextMenu,
 }: {
   req: PrequalRequest;
   t: ReturnType<typeof useTheme>["t"];
+  hydrated: boolean;
   onOpen: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }) {
@@ -606,8 +628,10 @@ function Row({
   const isSuperseded = req.superseded_by_id != null;
   const isRevision = (req.version_num ?? 1) > 1;
   const stripe = isSuperseded ? t.ink4 : statusStripe(t, req.status);
-  const closingRel = relativeDays(req.expected_closing_date);
-  const submittedRel = relativeDays(req.created_at);
+  const closingRel = hydrated ? relativeDays(req.expected_closing_date) : null;
+  const closingAbs = shortDateLabel(req.expected_closing_date);
+  const submittedRel = hydrated ? relativeDays(req.created_at) : null;
+  const submittedAbs = shortDateLabel(req.created_at);
 
   return (
     <div
@@ -733,10 +757,10 @@ function Row({
         {req.expected_closing_date ? (
           <>
             <div style={{ fontSize: 12, color: t.ink2, fontWeight: 700 }}>
-              {closingRel ?? new Date(req.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              {closingRel ?? closingAbs}
             </div>
             <div style={{ fontSize: 10.5, color: t.ink3, marginTop: 2, fontFeatureSettings: '"tnum"' }}>
-              {new Date(req.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              {closingAbs}
             </div>
           </>
         ) : (
@@ -745,7 +769,7 @@ function Row({
       </div>
 
       <div style={{ fontSize: 12, color: t.ink3, fontFeatureSettings: '"tnum"' }}>
-        {submittedRel ?? "—"}
+        {submittedRel ?? submittedAbs ?? "—"}
       </div>
     </div>
   );

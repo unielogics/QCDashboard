@@ -11,14 +11,15 @@
 //             the operator wiggle-room: product, property type, base rate,
 //             taxes / insurance / HOA, raw loan amount, full HUD-1 detail.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { ClientSearchBlock, type ClientPickResult } from "@/components/ClientSearchBlock";
-import { AnalysisFloatingAction, AnalysisRunInspect, AnalysisRunsTable } from "@/components/analysis/AnalysisRunsWorkspace";
+import { AnalysisActionsMenu, AnalysisFloatingAction, AnalysisRunInspect, AnalysisRunsTable } from "@/components/analysis/AnalysisRunsWorkspace";
+import { FinancialInsightPanel } from "@/components/analysis/FinancialInsightPanel";
 import { GoogleAddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import {
   useAdminLoanScenarios,
@@ -144,7 +145,6 @@ export default function SimulatorPage() {
       <AnalysisRunInspect
         run={inspectedAnalysisRun}
         loading={inspectedAnalysisRunLoading}
-        backLabel="Back to simulator runs"
         onBack={() => router.push("/simulator")}
       />
     );
@@ -205,28 +205,30 @@ export default function SimulatorPage() {
     <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
-          {isListFirstRole ? (
-            <button
-              type="button"
-              onClick={() => router.push("/simulator")}
-              style={{ all: "unset", cursor: "pointer", color: t.petrol, fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}
-            >
-              <Icon name="chevL" size={12} /> Previous runs
-            </button>
-          ) : null}
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Simulate</h1>
           <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
             Run pricing math from scratch or against any loan in your pipeline. Operators set the
             allowed ranges in Settings → Simulator.
           </div>
         </div>
-        <div style={{ display: "inline-flex", gap: 4 }}>
+        <div style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
           <ModeButton t={t} active={mode === "free"} onClick={() => setMode("free")}>
             <Icon name="calc" size={12} /> Free calculation
           </ModeButton>
           <ModeButton t={t} active={mode === "loan"} onClick={() => setMode("loan")}>
             <Icon name="layers" size={12} /> From a loan
           </ModeButton>
+          {isListFirstRole ? (
+            <button
+              type="button"
+              onClick={() => router.push("/simulator")}
+              aria-label="Close"
+              title="Close"
+              style={{ all: "unset", cursor: "pointer", width: 34, height: 34, borderRadius: 9, border: `1px solid ${t.line}`, color: t.ink2, display: "inline-flex", alignItems: "center", justifyContent: "center", marginLeft: 4 }}
+            >
+              <Icon name="x" size={15} />
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -970,6 +972,7 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
   const [savedRun, setSavedRun] = useState<AnalysisRun | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [overrideFicoText, setOverrideFicoText] = useState("");
+  const lastAutosaveKey = useRef<string | null>(null);
   // Property values — Market Value for stabilized products, BRV+ARV for reno.
   const [marketValue, setMarketValue] = useState(650_000);
   const [brv, setBrv] = useState(450_000);
@@ -1021,8 +1024,8 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
     setActionMessage(null);
   }, [type, selectedClient?.id, address, marketValue, brv, arv, amount, points, annualTaxes, annualInsurance, monthlyHoa, monthlyRent, effectiveFico]);
 
-  const ensureSavedRun = async () => {
-    setActionMessage(null);
+  const ensureSavedRun = async (opts?: { quiet?: boolean }) => {
+    if (!opts?.quiet) setActionMessage(null);
     if (!analysisProduct) {
       setActionMessage("Save/share is currently available for DSCR and Fix & Flip calculations.");
       return null;
@@ -1069,7 +1072,7 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
       ? await updateAnalysis.mutateAsync({ id: savedRun.id, patch: payload })
       : await createAnalysis.mutateAsync(payload);
     setSavedRun(row);
-    setActionMessage("Simulation saved.");
+    if (!opts?.quiet) setActionMessage("Simulation saved.");
     return row;
   };
 
@@ -1116,9 +1119,69 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
     updateAnalysis.isPending ||
     shareAnalysis.isPending ||
     convertAnalysis.isPending;
+  const analysisInputs = useMemo<Record<string, unknown>>(
+    () => ({
+      address: address.trim() || "Property TBD",
+      property_type: propertyType,
+      requested_loan_amount: amount,
+      loan_amount: amount,
+      rate: baseRate,
+      discount_points: points,
+      annual_taxes: annualTaxes,
+      annual_insurance: annualInsurance,
+      monthly_hoa: monthlyHoa,
+      monthly_rent: isDscr ? monthlyRent : null,
+      fico: effectiveFico,
+      purchase_price: isDscr ? marketValue : brv,
+      market_value: marketValue,
+      brv,
+      arv,
+    }),
+    [address, amount, annualInsurance, annualTaxes, arv, baseRate, brv, effectiveFico, isDscr, marketValue, monthlyHoa, monthlyRent, points, propertyType],
+  );
+  const autosaveKey = useMemo(
+    () => JSON.stringify({ type, selectedClientId: selectedClient?.id ?? null, ...analysisInputs }),
+    [analysisInputs, selectedClient?.id, type],
+  );
+
+  useEffect(() => {
+    if (!calc.data || !analysisProduct || actionBusy) return;
+    if (lastAutosaveKey.current === autosaveKey) return;
+    lastAutosaveKey.current = autosaveKey;
+    void ensureSavedRun({ quiet: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionBusy, analysisProduct, autosaveKey, calc.data]);
+
+  const workflowActions = [
+    {
+      label: calc.data ? "Refresh and autosave" : "Calculate and autosave",
+      description: "Runs simulator pricing and saves this file.",
+      icon: "refresh",
+      onClick: () => { void ensureSavedRun(); },
+      disabled: calc.isPending || actionBusy,
+    },
+    {
+      label: "Share to client",
+      description: "Auto-saves first, then shares the client report.",
+      icon: "send",
+      onClick: () => { void shareToClient(); },
+      disabled: calc.isPending || actionBusy,
+    },
+    {
+      label: "Create prequalification",
+      description: "Auto-saves first, then creates funding review.",
+      icon: "flag",
+      onClick: () => { void createPrequal(); },
+      disabled: calc.isPending || actionBusy,
+    },
+  ];
 
   return (
     <>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <AnalysisActionsMenu actions={workflowActions} />
+      </div>
+
       <Card pad={16}>
         <SectionLabel>Client and property</SectionLabel>
         {selectedClient ? (
@@ -1261,12 +1324,6 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
         </div>
       </Card>
 
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <button onClick={submit} disabled={calc.isPending} style={qcBtnPrimary(t)}>
-          <Icon name="refresh" size={13} /> {calc.isPending ? "Calculating…" : "Calculate"}
-        </button>
-      </div>
-
       {calc.error && (
         <Pill bg={t.dangerBg} color={t.danger}>
           {calcErrorMessage(calc.error)}
@@ -1274,18 +1331,17 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
       )}
       {calc.data && <ResultsCard t={t} result={calc.data} />}
       {calc.data && (
+        <FinancialInsightPanel
+          product={analysisProduct}
+          inputs={analysisInputs}
+          output={calc.data as unknown as Record<string, unknown>}
+        />
+      )}
+      {calc.data && (
         <Card pad={14}>
-          <SectionLabel>Save and handoff</SectionLabel>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={ensureSavedRun} disabled={actionBusy || !analysisProduct} style={qcBtnPrimary(t)}>
-              <Icon name="docCheck" size={14} /> {createAnalysis.isPending || updateAnalysis.isPending ? "Saving..." : "Save simulation"}
-            </button>
-            <button onClick={shareToClient} disabled={actionBusy || !selectedClient || !analysisProduct} style={qcBtn(t)}>
-              <Icon name="send" size={14} /> Share to client
-            </button>
-            <button onClick={createPrequal} disabled={actionBusy || !selectedClient || !analysisProduct} style={qcBtn(t)}>
-              <Icon name="flag" size={14} /> Create prequalification
-            </button>
+          <SectionLabel>Status</SectionLabel>
+          <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5 }}>
+            Simulations auto-save after calculation. Use the top-right Actions menu to refresh, share, or create a pending prequalification.
           </div>
           {actionMessage ? (
             <div style={{ marginTop: 10, color: /saved|shared|created/i.test(actionMessage) ? t.profit : t.warn, fontSize: 12.5, fontWeight: 700 }}>
@@ -2311,13 +2367,15 @@ function SimInspect({
   loading: boolean;
   onBack: () => void;
 }) {
-  const back = (
+  const close = (
     <button
       type="button"
       onClick={onBack}
-      style={{ all: "unset", cursor: "pointer", color: t.petrol, fontSize: 13, fontWeight: 700 }}
+      aria-label="Close"
+      title="Close"
+      style={{ all: "unset", cursor: "pointer", width: 34, height: 34, borderRadius: 9, border: `1px solid ${t.line}`, color: t.ink2, display: "inline-flex", alignItems: "center", justifyContent: "center", alignSelf: "flex-end" }}
     >
-      ← Back to all runs
+      <Icon name="x" size={15} />
     </button>
   );
   if (loading) {
@@ -2326,7 +2384,7 @@ function SimInspect({
   if (!row) {
     return (
       <div style={{ padding: 24, maxWidth: 860, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
-        {back}
+        {close}
         <Card pad={20}><div style={{ fontSize: 13, color: t.ink2 }}>Run not found.</div></Card>
       </div>
     );
@@ -2334,15 +2392,17 @@ function SimInspect({
   const s = row.recalc_snapshot ?? {};
   return (
     <div style={{ padding: 24, maxWidth: 860, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
-      {back}
-      <div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>
-          {row.name} · {row.created_by_name || row.created_by_email || "—"}
-        </h1>
-        <p style={{ fontSize: 12.5, color: t.ink3, margin: "4px 0 0" }}>
-          {new Date(row.created_at).toLocaleString()} ·{" "}
-          {row.loan_deal_id ?? "—"}{row.loan_address ? ` · ${row.loan_address}` : ""} · read-only
-        </p>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>
+            {row.name} · {row.created_by_name || row.created_by_email || "—"}
+          </h1>
+          <p style={{ fontSize: 12.5, color: t.ink3, margin: "4px 0 0" }}>
+            {new Date(row.created_at).toLocaleString()} ·{" "}
+            {row.loan_deal_id ?? "—"}{row.loan_address ? ` · ${row.loan_address}` : ""} · read-only
+          </p>
+        </div>
+        {close}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
         <Card pad={14}><KPI label="Loan amount" value={usd0(row.loan_amount)} /></Card>
