@@ -1030,17 +1030,29 @@ function SecretField({
   onChange: (value: string) => void;
   disabled: boolean;
 }) {
+  const maskedValue = "************";
+  const showingSavedKey = configured && !value;
+
   return (
     <Field t={t} label={label}>
       <input
         type="password"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={configured ? "Configured - leave blank to keep" : "Paste key"}
+        value={showingSavedKey ? maskedValue : value}
+        onFocus={(e) => {
+          if (showingSavedKey) e.currentTarget.select();
+        }}
+        onChange={(e) => {
+          if (showingSavedKey && e.target.value === maskedValue) return;
+          onChange(e.target.value);
+        }}
+        placeholder={configured ? "" : "Paste key"}
         disabled={disabled}
         autoComplete="off"
         style={inputStyle(t)}
       />
+      <div style={{ marginTop: 6, fontSize: 11.5, color: configured ? t.profit : t.ink3, lineHeight: 1.45, fontWeight: configured ? 700 : 500 }}>
+        {configured ? "Saved key is configured. Type a new key to replace it." : "No key saved yet."}
+      </div>
       <div style={{ marginTop: 6, fontSize: 11.5, color: t.ink3, lineHeight: 1.45 }}>{helper}</div>
     </Field>
   );
