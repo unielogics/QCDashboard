@@ -89,7 +89,7 @@ export function ThreadChatView({
       setInput("");
       setStaged([]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "AI failed to respond.");
+      setError(e instanceof Error ? e.message : "Elara failed to respond.");
     }
   };
 
@@ -170,7 +170,7 @@ export function ThreadChatView({
             color: t.petrol,
           }}
         >
-          AI Intelligent Underwriter
+          Elara
         </div>
         <div
           style={{

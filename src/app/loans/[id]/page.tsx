@@ -47,14 +47,14 @@ const INTERNAL_TABS = [
   { id: "workflow", label: "Conditions", icon: "cal" as const },
   { id: "prequal", label: "Pre-Qual", icon: "docCheck" as const },
   { id: "hud", label: "HUD", icon: "file" as const },
-  { id: "workspace", label: "AI Secretary", icon: "ai" as const },
+  { id: "workspace", label: "Elara", icon: "ai" as const },
   { id: "thread", label: "Lender", icon: "chat" as const },
   { id: "activity", label: "Activity", icon: "audit" as const },
 ] as const;
 
 const AGENT_TABS = [
   { id: "agent", label: "Client Status", icon: "clients" as const },
-  // Broker access to the 4-mode loan chat (Live Chat / Ask AI /
+  // Broker access to the 4-mode loan chat (Live Chat / Ask Elara /
   // Suggest / Instruct) — same surface super_admin gets, rendered
   // inline as a tab rather than via the slide-out.
   { id: "loan_chat", label: "Chat", icon: "chat" as const },
@@ -94,7 +94,7 @@ export default function LoanDetailPage() {
   const recalc = useRecalc();
   // Post-creation redirects (SmartIntakeModal, prequal accept) can deep-
   // link with `?tab=workspace` so the operator lands directly on the
-  // AI Secretary tab to configure the new file before doing anything
+  // Elara tab to configure the new file before doing anything
   // else. Honored once at mount; subsequent tab switches are user-driven.
   const searchParams = useSearchParams();
   const initialTabHint = searchParams?.get("tab") || null;
@@ -437,7 +437,7 @@ export default function LoanDetailPage() {
           stageMut={stageMut}
           onCopilot={() => setAiOpen(true)}
           onOpenLoanChat={() => {
-            // Switch to the AI Secretary tab and signal it to open the
+            // Switch to Elara tab and signal it to open the
             // LoanChatSlideOut. The tab reads the ?chat=open param on
             // mount + when activeTab flips to workspace, then strips it
             // so a refresh doesn't re-open the chat.
@@ -845,7 +845,7 @@ function CompactStageStrip({
             cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
           }}
         >
-          <Icon name="sparkles" size={12} /> Co-pilot
+          <Icon name="sparkles" size={12} /> Elara
         </button>
       </div>
 

@@ -546,7 +546,7 @@ export function LenderThread({ loan, lender }: Props) {
           >
             <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
               {gmailCanSend
-                ? "Send Now and Instruct AI will deliver via Gmail."
+                ? "Send Now and Instruct Elara will deliver via Gmail."
                 : "Messages will be saved locally only — recipients will NOT receive them."}
               <div style={{ marginTop: 8 }}>
                 <button
@@ -719,7 +719,7 @@ function labelForDayKey(yyyymmdd: string): string {
 }
 
 function modeLabel(m: LenderThreadReplyMode): string {
-  return m === "send_now" ? "Send now" : m === "instruct_ai" ? "Instruct AI" : "Save draft";
+  return m === "send_now" ? "Send now" : m === "instruct_ai" ? "Instruct Elara" : "Save draft";
 }
 
 function modeHint(m: LenderThreadReplyMode, lenderName: string): string {
@@ -727,7 +727,7 @@ function modeHint(m: LenderThreadReplyMode, lenderName: string): string {
     case "send_now":
       return `Sends your message directly to ${lenderName} via Gmail. Preview before send.`;
     case "instruct_ai":
-      return `Tell the AI what to ask or say. AI's draft is shown for review before send.`;
+      return `Tell Elara what to ask or say. AI's draft is shown for review before send.`;
     case "save_draft":
       return `Saves your message as a draft for later approval.`;
   }
@@ -738,7 +738,7 @@ function modePlaceholder(m: LenderThreadReplyMode): string {
     case "send_now":
       return "Write the email body as you would to the lender…";
     case "instruct_ai":
-      return "Tell the AI what to say to the lender on your behalf…";
+      return "Tell Elara what to say to the lender on your behalf…";
     case "save_draft":
       return "Write the message you want to save for later approval…";
   }

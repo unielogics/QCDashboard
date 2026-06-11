@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
@@ -8,14 +8,15 @@ import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primit
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { ClientSearchBlock, type ClientPickResult } from "@/components/ClientSearchBlock";
+import { RecentAnalysisRunsCard } from "@/components/analysis/RecentAnalysisRunsCard";
+import { GoogleAddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import {
-  useAddressAutocomplete,
+  useAnalysisRuns,
   useConvertAnalysisRunToPrequal,
   useCreateAnalysisRun,
   useCurrentCredit,
   useFreeCalc,
   usePropertyIntelligenceLookup,
-  useResolveAddress,
   useShareAnalysisRun,
   useUpdateAnalysisRun,
 } from "@/hooks/useApi";
@@ -47,23 +48,10 @@ function estimateRange(raw: Record<string, unknown> | null | undefined, key: "va
   return { estimate, low, high };
 }
 
-function addressLine(parts: AddressParts | null, fallback: string): string {
-  if (!parts) return fallback.trim();
-  return (
-    parts.full ||
-    [parts.street, [parts.city, parts.state, parts.zip].filter(Boolean).join(" ")]
-      .filter(Boolean)
-      .join(", ")
-  ).trim();
-}
-
-function useDebouncedValue(value: string, ms = 250) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const id = window.setTimeout(() => setDebounced(value), ms);
-    return () => window.clearTimeout(id);
-  }, [value, ms]);
-  return debounced;
+function canLookupAddress(parts: AddressParts | null): parts is AddressParts {
+  if (!parts) return false;
+  if (parts.full?.trim()) return true;
+  return Boolean(parts.street?.trim() && parts.city?.trim() && parts.state?.trim());
 }
 
 export default function DealAnalyzerPage() {
@@ -71,8 +59,7 @@ export default function DealAnalyzerPage() {
   const sp = useSearchParams();
   const [product, setProduct] = useState<AnalysisProduct>((sp?.get("product") as AnalysisProduct) || "dscr_purchase");
   const [selectedClient, setSelectedClient] = useState<ClientPickResult | null>(null);
-  const [addressText, setAddressText] = useState("");
-  const [resolvedAddress, setResolvedAddress] = useState<AddressParts | null>(null);
+  const [addressParts, setAddressParts] = useState<AddressParts | null>(null);
   const [snapshot, setSnapshot] = useState<PropertyIntelligenceSnapshot | null>(null);
   const [savedRun, setSavedRun] = useState<AnalysisRun | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -85,8 +72,7 @@ export default function DealAnalyzerPage() {
   const [ratePct, setRatePct] = useState(7.75);
   const [points, setPoints] = useState(1);
   const [overrideFicoText, setOverrideFicoText] = useState("");
-  const [sessionToken] = useState(() => `qc-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const debouncedAddress = useDebouncedValue(addressText);
+  const lastPropertyLookupKey = useRef<string | null>(null);
 
   const credit = useCurrentCredit(selectedClient?.id);
   const borrowerFico = credit.data?.fico ?? null;
@@ -96,16 +82,29 @@ export default function DealAnalyzerPage() {
   })();
   const effectiveFico = borrowerFico ?? overrideFico;
 
-  const suggestions = useAddressAutocomplete(debouncedAddress, sessionToken);
-  const resolveAddress = useResolveAddress();
   const propertyLookup = usePropertyIntelligenceLookup();
   const calc = useFreeCalc();
   const createRun = useCreateAnalysisRun();
   const updateRun = useUpdateAnalysisRun();
   const shareRun = useShareAnalysisRun();
   const convertRun = useConvertAnalysisRunToPrequal();
+  const recentSince = useMemo(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), []);
+  const { data: recentRuns = [] } = useAnalysisRuns({
+    tool_source: "deal_analyzer",
+    updated_since: recentSince,
+    limit: 50,
+  });
 
-  const fullAddress = addressLine(resolvedAddress, addressText);
+  const fullAddress = formatAddressParts(addressParts);
+  const propertyLookupKey = useMemo(() => {
+    if (!canLookupAddress(addressParts)) return "";
+    return [
+      selectedClient?.id ?? "",
+      fullAddress,
+      addressParts.latitude ?? "",
+      addressParts.longitude ?? "",
+    ].join("|");
+  }, [addressParts, fullAddress, selectedClient?.id]);
   const ltv = purchasePrice > 0 ? loanAmount / purchasePrice : null;
   const valueRange = estimateRange(snapshot?.rentcast_value, "value");
   const rentRange = estimateRange(snapshot?.rentcast_rent, "rent");
@@ -137,32 +136,39 @@ export default function DealAnalyzerPage() {
     return out;
   };
 
-  const lookupProperty = async () => {
+  const lookupProperty = useCallback(async (parts: AddressParts) => {
     setMessage(null);
-    let parts = resolvedAddress;
-    if (!parts) {
-      const resolved = await resolveAddress.mutateAsync({ address: addressText, session_token: sessionToken });
-      parts = resolved.address;
-      setResolvedAddress(parts);
-      setAddressText(addressLine(parts, addressText));
-    }
-    if (!parts || !addressLine(parts, addressText)) {
-      setMessage("Enter an address before requesting property intelligence.");
+    if (!canLookupAddress(parts)) {
+      setMessage("Complete the property address before property intelligence runs.");
       return;
     }
-    const row = await propertyLookup.mutateAsync({
-      address: parts,
-      client_id: selectedClient?.id ?? null,
-      property_type: "single_family",
-      force_refresh: false,
-    });
-    setSnapshot(row);
-    const vr = estimateRange(row.rentcast_value, "value");
-    const rr = estimateRange(row.rentcast_rent, "rent");
-    if (vr?.estimate && purchasePrice === 575_000) setPurchasePrice(Math.round(vr.estimate));
-    if (rr?.estimate && monthlyRent === 3900) setMonthlyRent(Math.round(rr.estimate));
-    setMessage("Property intelligence attached.");
-  };
+    try {
+      const row = await propertyLookup.mutateAsync({
+        address: parts,
+        client_id: selectedClient?.id ?? null,
+        property_type: "single_family",
+        force_refresh: false,
+      });
+      setSnapshot(row);
+      const vr = estimateRange(row.rentcast_value, "value");
+      const rr = estimateRange(row.rentcast_rent, "rent");
+      if (vr?.estimate && purchasePrice === 575_000) setPurchasePrice(Math.round(vr.estimate));
+      if (rr?.estimate && monthlyRent === 3900) setMonthlyRent(Math.round(rr.estimate));
+      setMessage("Property intelligence attached automatically.");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Property intelligence could not be attached.");
+    }
+  }, [monthlyRent, propertyLookup, purchasePrice, selectedClient?.id]);
+
+  useEffect(() => {
+    if (!addressParts || !propertyLookupKey) return;
+    if (lastPropertyLookupKey.current === propertyLookupKey) return;
+    const id = window.setTimeout(() => {
+      lastPropertyLookupKey.current = propertyLookupKey;
+      void lookupProperty(addressParts);
+    }, 500);
+    return () => window.clearTimeout(id);
+  }, [addressParts, lookupProperty, propertyLookupKey]);
 
   const ensureSavedRun = async (): Promise<AnalysisRun | null> => {
     setMessage(null);
@@ -263,7 +269,6 @@ export default function DealAnalyzerPage() {
 
   const busy =
     calc.isPending ||
-    resolveAddress.isPending ||
     propertyLookup.isPending ||
     createRun.isPending ||
     updateRun.isPending ||
@@ -281,6 +286,12 @@ export default function DealAnalyzerPage() {
           <Icon name="hammer" size={14} /> Fix &amp; Flip Analyzer
         </Link>
       </div>
+
+      <RecentAnalysisRunsCard
+        runs={recentRuns}
+        title="Saved analyzer runs - last 30 days"
+        emptyText="Saved Deal Analyzer runs will appear here after you save, share, or create a prequalification."
+      />
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.05fr) minmax(320px, .95fr)", gap: 14, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
@@ -326,44 +337,24 @@ export default function DealAnalyzerPage() {
 
           <Card pad={14}>
             <SectionLabel>Property intelligence</SectionLabel>
-            <div style={{ position: "relative" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${t.line}`, background: t.surface2, borderRadius: 9, padding: "0 11px" }}>
-                <Icon name="search" size={14} />
-                <input
-                  value={addressText}
-                  onChange={(e) => {
-                    setAddressText(e.target.value);
-                    setResolvedAddress(null);
-                    setSnapshot(null);
-                  }}
-                  placeholder="Start typing property address..."
-                  style={{ flex: 1, minWidth: 0, padding: "10px 0", background: "transparent", border: "none", color: t.ink, outline: "none", fontSize: 13 }}
-                />
-              </div>
-              {suggestions.data?.length ? (
-                <div style={{ position: "absolute", zIndex: 20, top: "100%", left: 0, right: 0, marginTop: 4, background: t.surface, border: `1px solid ${t.line}`, borderRadius: 9, boxShadow: "0 8px 24px rgba(0,0,0,.18)", maxHeight: 260, overflow: "auto" }}>
-                  {suggestions.data.map((s) => (
-                    <button
-                      key={s.place_id}
-                      onClick={async () => {
-                        const resolved = await resolveAddress.mutateAsync({ place_id: s.place_id, session_token: sessionToken });
-                        setResolvedAddress(resolved.address);
-                        setAddressText(addressLine(resolved.address, s.text));
-                      }}
-                      style={{ all: "unset", display: "block", boxSizing: "border-box", width: "100%", padding: "10px 12px", cursor: "pointer", borderBottom: `1px solid ${t.line}` }}
-                    >
-                      <div style={{ color: t.ink, fontWeight: 700, fontSize: 12.5 }}>{s.text}</div>
-                      {s.secondary_text ? <div style={{ color: t.ink3, fontSize: 11 }}>{s.secondary_text}</div> : null}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
+            <GoogleAddressInput
+              value={addressParts}
+              onChange={(next) => {
+                setAddressParts(next);
+                setSnapshot(null);
+              }}
+              helperText="RentCast, Google, and FEMA checks run automatically once a complete address is selected or entered."
+            />
             <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <button onClick={lookupProperty} disabled={busy || !addressText.trim()} style={qcBtn(t)}>
-                <Icon name="scan" size={14} /> {propertyLookup.isPending ? "Pulling..." : "Pull RentCast / FEMA"}
-              </button>
-              {snapshot ? <Pill bg={t.profitBg} color={t.profit}>Snapshot attached</Pill> : <Pill bg={t.chip} color={t.ink3}>No snapshot</Pill>}
+              {propertyLookup.isPending ? (
+                <Pill bg={t.petrolSoft} color={t.petrol}>Checking RentCast / FEMA</Pill>
+              ) : snapshot ? (
+                <Pill bg={t.profitBg} color={t.profit}>Snapshot attached</Pill>
+              ) : canLookupAddress(addressParts) ? (
+                <Pill bg={t.chip} color={t.ink3}>Property intelligence queued</Pill>
+              ) : (
+                <Pill bg={t.chip} color={t.ink3}>Waiting for complete address</Pill>
+              )}
             </div>
             {snapshot ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginTop: 12 }}>

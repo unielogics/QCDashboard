@@ -10,6 +10,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useLoan, useUpdateDealById, useUpdateProperty } from "@/hooks/useApi";
+import { GoogleAddressInput } from "@/components/property/GoogleAddressInput";
 import { PropertyMap } from "@/components/property/PropertyMap";
 import type { Deal, DSTaskRow, Loan } from "@/lib/types";
 import type { PropertyType } from "@/lib/enums.generated";
@@ -121,6 +122,18 @@ export function PropertyTab({
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((d) => ({ ...d, [key]: value }));
+    setDirty(true);
+    setSavedAt(null);
+  }
+
+  function setAddressParts(next: { street?: string | null; city?: string | null; state?: string | null; zip?: string | null }) {
+    setDraft((d) => ({
+      ...d,
+      address: next.street ?? "",
+      city: next.city ?? "",
+      state: next.state ?? "",
+      zip: next.zip ?? "",
+    }));
     setDirty(true);
     setSavedAt(null);
   }
@@ -240,20 +253,11 @@ export function PropertyTab({
       <Section title="Address">
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(220px, 0.6fr)", gap: 14 }}>
           <div>
-            <Grid cols="3fr 1.5fr 0.6fr 0.8fr">
-              <Field label="Street address" required={redFlags.address}>
-                <input value={draft.address} onChange={(e) => set("address", e.target.value)} placeholder="123 Main St" style={inputStyle(t, redFlags.address)} />
-              </Field>
-              <Field label="City" required={redFlags.city}>
-                <input value={draft.city} onChange={(e) => set("city", e.target.value)} placeholder="Tampa" style={inputStyle(t, redFlags.city)} />
-              </Field>
-              <Field label="State" required={redFlags.state}>
-                <input maxLength={2} value={draft.state} onChange={(e) => set("state", e.target.value.toUpperCase())} placeholder="FL" style={inputStyle(t, redFlags.state)} />
-              </Field>
-              <Field label="ZIP" required={redFlags.zip}>
-                <input value={draft.zip} onChange={(e) => set("zip", e.target.value)} placeholder="33602" style={inputStyle(t, redFlags.zip)} />
-              </Field>
-            </Grid>
+            <GoogleAddressInput
+              value={{ street: draft.address, city: draft.city, state: draft.state, zip: draft.zip }}
+              onChange={setAddressParts}
+              helperText="Select a Google suggestion to split street, city, state, and ZIP. Use manual entry when the address is not listed."
+            />
           </div>
           {draft.address ? (
             <div style={{ borderRadius: 8, overflow: "hidden", border: `1px solid ${t.line}` }}>

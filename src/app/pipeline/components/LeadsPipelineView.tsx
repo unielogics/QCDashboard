@@ -493,7 +493,7 @@ export function LeadsPipelineView({ view, search }: Props) {
 
 // Where a click on a relationship row should land. If the client has
 // active loans, jump straight to the loan detail page — the agent gets
-// the full funding pipeline view (stage strip, AI Secretary, docs,
+// the full funding pipeline view (stage strip, Elara, docs,
 // conditions). When they don't, fall back to the relationship
 // workspace (Overview / Properties / Activity / Documents / Notes).
 //

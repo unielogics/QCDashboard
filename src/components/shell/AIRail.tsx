@@ -55,7 +55,7 @@ export default function AIRail() {
     } catch (e) {
       setChatLog((log) => [
         ...log,
-        { from: "ai", text: e instanceof Error ? `(error) ${e.message}` : "Co-pilot is unavailable right now.", stub: true },
+        { from: "ai", text: e instanceof Error ? `(error) ${e.message}` : "Elara is unavailable right now.", stub: true },
       ]);
     }
   };
@@ -80,7 +80,7 @@ export default function AIRail() {
             <Icon name="sparkles" size={14} />
           </div>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>QC Co-pilot</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>Elara</div>
             <div style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700 }}>
               ● ONLINE · {tasks.length} QUEUED
             </div>
@@ -142,7 +142,7 @@ export default function AIRail() {
             ))}
             {aiChat.isPending && (
               <div style={{ alignSelf: "flex-start", padding: "10px 12px", fontSize: 12, color: t.ink3 }}>
-                Co-pilot is thinking…
+                Elara is thinking…
               </div>
             )}
             {chatLog.length === 1 && !aiChat.isPending && (
@@ -202,7 +202,7 @@ export default function AIRail() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKey}
-            placeholder="Ask co-pilot…"
+            placeholder="Ask Elara…"
             style={{
               flex: 1, padding: "10px 12px", borderRadius: 10,
               background: t.surface2, border: `1px solid ${t.line}`, color: t.ink, fontSize: 13,

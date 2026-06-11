@@ -1,6 +1,6 @@
 "use client";
 
-// AI Intelligent Underwriter — borrower-facing chat panel
+// Elara — borrower-facing chat panel
 // (topbar slide-in shortcut). The full Messages page does the
 // same job at /messages; this is the at-a-glance entry from any
 // other page.
@@ -150,7 +150,7 @@ export function AIChatPanel({ open, onClose }: Props) {
       setInput("");
       setStaged([]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "AI failed to respond.");
+      setError(e instanceof Error ? e.message : "Elara failed to respond.");
     }
   };
 
@@ -197,7 +197,7 @@ export function AIChatPanel({ open, onClose }: Props) {
         case "open_calendar_event":
           return;
         case "request_prequalification": {
-          // AI Secretary path — agent typed something like "Marcus is
+          // Elara path — agent typed something like "Marcus is
           // ready for prequal" → AI emits this action card → click
           // confirms → fires the same endpoint as the
           // "Ready for Prequalification" button on /clients/[id].
@@ -257,7 +257,7 @@ export function AIChatPanel({ open, onClose }: Props) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="AI Intelligent Underwriter chat"
+      aria-label="Elara chat"
       style={{
         position: "fixed",
         inset: 0,
@@ -401,7 +401,7 @@ export function AIChatPanel({ open, onClose }: Props) {
                   color: t.petrol,
                 }}
               >
-                AI Intelligent Underwriter
+                Elara
               </div>
               <div
                 style={{
@@ -456,7 +456,7 @@ export function AIChatPanel({ open, onClose }: Props) {
           >
             {!activeThreadId ? (
               <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.55 }}>
-                Pick a conversation on the left to start chatting. The AI sees the
+                Pick a conversation on the left to start chatting. Elara sees the
                 full context for whichever scope you choose — account-wide for
                 general questions, loan-specific for deal-level questions.
               </div>

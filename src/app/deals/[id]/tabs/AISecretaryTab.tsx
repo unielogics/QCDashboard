@@ -1,6 +1,6 @@
 "use client";
 
-// AI Secretary tab — agent-side workbench. Same shape as the funding
+// Elara tab — agent-side workbench. Same shape as the funding
 // /loans/[id] surface (DealWorkspaceTab): header strip + action pills
 // + two-column body with Resolution Queue (left) and a numbered
 // handoff table (right). Phase rendered:
@@ -104,14 +104,14 @@ export function AISecretaryTab({
   if (isLoading) {
     return (
       <Card pad={20}>
-        <div style={{ color: t.ink3, fontSize: 13 }}>Loading AI Secretary…</div>
+        <div style={{ color: t.ink3, fontSize: 13 }}>Loading Elara…</div>
       </Card>
     );
   }
   if (!view) {
     return (
       <Card pad={20}>
-        <SectionLabel>AI Secretary unavailable</SectionLabel>
+        <SectionLabel>Elara unavailable</SectionLabel>
         <div style={{ marginTop: 8, fontSize: 13, color: t.ink3 }}>Couldn&apos;t load the view. Try refreshing.</div>
       </Card>
     );
@@ -129,7 +129,7 @@ export function AISecretaryTab({
   // into a handoff row yet. Drag into the right column to assign.
   //
   // Field-fill rows (property_data / borrower_info / credit) are pulled
-  // OUT of the queue here — the AI can't help fill a form, so we route
+  // OUT of the queue here — Elara can't help fill a form, so we route
   // those to the relevant tab (Property / Loan Overview) as red count
   // badges instead. The classifier lives in fieldFillRequirements.ts.
   const placedKeys = new Set<string>();
@@ -208,11 +208,11 @@ export function AISecretaryTab({
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
           <span style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.4, textTransform: "uppercase" }}>
-            AI Secretary
+            Elara
           </span>
           <div style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>
             {mode === "off" || aiTasksCount === 0
-              ? "Standing by — drop tasks into AI to start"
+              ? "Standing by — drop tasks into Elara to start"
               : `${aiIsLive ? "Working" : "Drafting"} · ${aiTasksCount} task${aiTasksCount === 1 ? "" : "s"} active`}
           </div>
         </div>
@@ -496,7 +496,7 @@ function FieldFillBanner({
       <Icon name="alert" size={14} color={t.danger} stroke={2.2} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12.5, fontWeight: 800, color: t.ink }}>
-          Field data the AI can&apos;t fill for you
+          Field datElara can&apos;t fill for you
         </div>
         <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>
           These rows were pulled out of the queue — finish them on the tab where they live.
@@ -738,7 +738,7 @@ function FollowUpRhythmEditor({
   return (
     <ModalShell onClose={onClose} title="Follow-up rhythm" icon="cal">
       <div style={{ fontSize: 12, color: t.ink3 }}>
-        Controls how often the AI re-engages this client between replies. Per-deal overrides win; otherwise the
+        Controls how often Elara re-engages this client between replies. Per-deal overrides win; otherwise the
         firm default or system floor applies.
       </div>
       <FollowUpEditor value={draft} onChange={setDraft} fallback={SYSTEM_FLOOR} fallbackLabel="System floor" />
@@ -761,7 +761,7 @@ function InstructionsEditor({ open, onClose }: { open: boolean; onClose: () => v
   return (
     <ModalShell onClose={onClose} title="Instructions" icon="sliders">
       <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.5 }}>
-        Standing rules the AI honors across every task on this file are configured in{" "}
+        Standing rules Elara honors across every task on this file are configured in{" "}
         <strong>Settings → AI → Lead Templates</strong>. Per-task instructions live on each task itself —
         click a task in the Resolution Queue or in a numbered row to edit.
       </div>
@@ -811,7 +811,7 @@ function AssignmentEditor({
   return (
     <ModalShell onClose={onClose} title={task.label} icon="spark" subtitle={`${task.requirement_key} · ${task.owner_type} · ${task.status}`}>
       <div style={{ fontSize: 12, color: t.ink3 }}>
-        Free-text instructions the AI uses when chasing this requirement. Stays per-task, never leaks to the
+        Free-text instructions Elara uses when chasing this requirement. Stays per-task, never leaks to the
         borrower unless you flag it borrower-visible.
       </div>
       <textarea

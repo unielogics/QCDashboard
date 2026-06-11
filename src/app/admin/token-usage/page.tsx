@@ -80,7 +80,7 @@ export default function TokenUsagePage() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: t.ink }}>
-            AI token usage
+            Elara token usage
           </h1>
           <p style={{ fontSize: 13, color: t.ink3, margin: "6px 0 0", maxWidth: 620 }}>
             Every AI call is logged with what it cost and what it was for.

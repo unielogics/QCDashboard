@@ -27,6 +27,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { RightPanel } from "@/components/design-system/RightPanel";
+import { GoogleAddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import {
   useAdminCreateManualPrequal,
   useCreateClient,
@@ -39,6 +40,7 @@ import {
 import { PrequalSowEditor } from "@/components/PrequalSowEditor";
 import { computeEligibility } from "@/lib/eligibility";
 import {
+  type AddressParts,
   PREQUAL_LOAN_TYPE_LABELS,
   PREQUAL_LTV_CAPS,
   type PrequalLoanType,
@@ -78,6 +80,7 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
   // ── Deal fields (mirrors borrower modal) ──────────────────────────
   const [loanType, setLoanType] = useState<PrequalLoanType>("dscr_purchase");
   const [address, setAddress] = useState("");
+  const [addressParts, setAddressParts] = useState<AddressParts | null>(null);
   const [purchaseText, setPurchaseText] = useState("");
   const [loanText, setLoanText] = useState("");
   const [closingDate, setClosingDate] = useState("");
@@ -104,6 +107,7 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
     setOverrideOwnership(false);
     setLoanType("dscr_purchase");
     setAddress("");
+    setAddressParts(null);
     setPurchaseText("");
     setLoanText("");
     setClosingDate("");
@@ -537,13 +541,17 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
               {/* ── Deal details ───────────────────────────────────────── */}
               <Card pad={16}>
                 <SectionLabel>Deal details</SectionLabel>
-                <Input
-                  t={t}
-                  label="Target property address"
-                  value={address}
-                  onChange={setAddress}
-                  placeholder="123 Main St, Anytown, NJ 07026"
-                />
+                <div style={{ marginBottom: 10 }}>
+                  <GoogleAddressInput
+                    value={addressParts}
+                    onChange={(next) => {
+                      setAddressParts(next);
+                      setAddress(formatAddressParts(next));
+                    }}
+                    label="Target property address"
+                    helperText="Search Google and select the property, or use manual entry if the address is not listed."
+                  />
+                </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <Input
                     t={t}

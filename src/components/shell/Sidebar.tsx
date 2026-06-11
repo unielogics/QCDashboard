@@ -40,7 +40,7 @@ const AGENT_NAV: NavItem[] = [
   { href: "/clients", label: "Clients", icon: "clients" },
   { href: "/pipeline", label: "My Pipeline", icon: "layers" },
   { href: "/admin/prequal-requests", label: "Prequalifications", icon: "docCheck" },
-  { href: "/ai-inbox", label: "AI Inbox", icon: "bolt" },
+  { href: "/ai-inbox", label: "Elara Inbox", icon: "bolt" },
   { href: "/ai-agents", label: "AI Outreach", icon: "spark" },
   // /vault intentionally omitted for agents — they collect docs from
   // INSIDE a deal (Documents tab on the loan/client detail page) rather
@@ -55,7 +55,7 @@ const AGENT_NAV: NavItem[] = [
 const OPERATOR_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: "home" },
   { href: "/pipeline", label: "Pipeline", icon: "layers" },
-  { href: "/ai-inbox", label: "AI Inbox", icon: "bolt", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
+  { href: "/ai-inbox", label: "Elara Inbox", icon: "bolt", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
   { href: "/clients", label: "Clients", icon: "clients", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
   { href: "/vault", label: "Vault", icon: "vault" },
   { href: "/admin/prequal-requests", label: "Prequalifications", icon: "docCheck", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },

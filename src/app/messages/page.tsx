@@ -173,7 +173,7 @@ function BorrowerMessagesView() {
           <div style={{ padding: 32, color: t.ink3, fontSize: 13, lineHeight: 1.5 }}>
             <div style={{ fontWeight: 700, color: t.ink, marginBottom: 6 }}>Pick a thread to start.</div>
             Use the <strong>Account thread</strong> for general questions, or pick a loan
-            to chat about a specific deal. The AI sees your full context — credit, docs,
+            to chat about a specific deal. Elara sees your full context — credit, docs,
             outstanding requests — and can also auto-message you when a doc is reviewed
             or a deadline is approaching.
           </div>

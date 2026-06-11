@@ -321,7 +321,7 @@ export default function ClientDetailPage() {
 
       <ClientStageCard t={t} client={client} canEdit={canEdit} clientLoans={clientLoans} />
 
-      {/* Realtor-phase AI Plan card. The Realtor AI Secretary is for
+      {/* Realtor-phase AI Plan card. The Realtor Elara is for
           nurturing pre-funding leads — once the client has any active
           loan, the funding workspace at /loans/[id] is the canonical
           AI surface and this card just shows stale "0% Ready" noise.
@@ -542,7 +542,7 @@ export default function ClientDetailPage() {
           <Icon name="spark" size={14} />
           The Next Best Action engine ships in P0B (deterministic rules) and
           P1 (LLM-driven). Tasks generated for this Borrower will route to the
-          Agent Inbox (relationship work) and the Funding AI Inbox (lender
+          Agent Inbox (relationship work) and the Funding Elara Inbox (lender
           packaging, doc validation, escalations) per the shared Deal
           Intelligence Core routing rules.
         </div>
@@ -1618,7 +1618,7 @@ function LendingHandoffModal({
               <li>Identify missing lending items the Lending AI needs to collect</li>
               <li>Create a prequal quote in the funding queue</li>
               <li>Spawn a lending-side AI thread that already knows everything</li>
-              <li>Notify the funding team via the AI Inbox</li>
+              <li>Notify the funding team via Elara Inbox</li>
             </ul>
             {error && (
               <div style={{

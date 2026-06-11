@@ -28,7 +28,7 @@ const TRIGGERS = [
 ];
 
 const ACTIONS = [
-  { value: "draft_message", label: "Draft message (review in AI Inbox)" },
+  { value: "draft_message", label: "Draft message (review in Elara Inbox)" },
   { value: "create_task", label: "Create task" },
   { value: "escalate", label: "Escalate to underwriter" },
   { value: "mark_stalled", label: "Mark stalled" },

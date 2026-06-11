@@ -41,7 +41,7 @@ export default function AIInboxPage() {
   );
   const selected = filtered.find((task) => task.id === selectedId) ?? filtered[0] ?? null;
 
-  // AI Inbox is an operator/agent surface — borrowers must not reach it,
+  // Elara Inbox is an operator/agent surface — borrowers must not reach it,
   // even by typing the URL. Bounce CLIENT logins back to their dashboard.
   const profile = useActiveProfile();
   const router = useRouter();
@@ -52,7 +52,7 @@ export default function AIInboxPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, height: "100%" }}>
-      {/* Header with the AI Inbox / AI Rules tab toggle. AI Rules is the
+      {/* Header with Elara Inbox / Elara Rules tab toggle. Elara Rules is the
           standing-config surface that earlier lived at /ai-tasks; folded in
           here so the Agent has one mental model — "AI" = both the queue of
           drafted actions awaiting my approval AND the rules that produce them. */}
@@ -178,7 +178,7 @@ export default function AIInboxPage() {
   );
 }
 
-// AI Rules surface — the standing config that produces the queue you see in
+// Elara Rules surface — the standing config that produces the queue you see in
 // the Inbox tab. Lives next to the live work queue (rather than a separate
 // page) so the Agent has a single mental model for "the AI." The engine that
 // evaluates these rules ships in P1; this view is the configuration shell.

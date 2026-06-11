@@ -78,7 +78,7 @@ export function RealtorReadinessCard({ profile, onOpenChat }: Props) {
           </div>
           {known.length === 0 ? (
             <div style={{ fontSize: 12, color: t.ink3, fontStyle: "italic" }}>
-              Nothing captured yet — talk to your AI Secretary about this client to start filling this in.
+              Nothing captured yet — talk to Elara about this client to start filling this in.
             </div>
           ) : (
             <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>

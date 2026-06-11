@@ -1,10 +1,10 @@
 "use client";
 
 // LoanChatSlideOut — 1/3-width slide-in panel from the right side of
-// the AI Secretary tab. Renders the AI ↔ client conversation for this
+// Elara tab. Renders the AI ↔ client conversation for this
 // loan (DealChatThread + DealChatInput).
 //
-// Opens via the "Loan chat" button in the AI Secretary header. ESC or
+// Opens via the "Loan chat" button in Elara header. ESC or
 // the close button hides it. Click outside also closes (the backdrop).
 // State is owned by the parent so other affordances can open/close it
 // programmatically (e.g. the AIQuestionsPopover answering a question

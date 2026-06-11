@@ -34,6 +34,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPetrol } from "@/components/design-system/buttons";
 import { RightPanel } from "@/components/design-system/RightPanel";
+import { GoogleAddressInput } from "@/components/property/GoogleAddressInput";
 import {
   useBrokerSettings,
   useClient,
@@ -64,7 +65,6 @@ import type {
 } from "@/lib/types";
 import type { Role as RoleType } from "@/lib/enums.generated";
 import type { QCTokens } from "@/components/design-system/tokens";
-import { US_STATES } from "@/lib/usStates";
 
 type DealSide = "buyer" | "seller";
 
@@ -506,7 +506,7 @@ export function SmartIntakeModal({
       setDocOverrides({ skipNames: new Set(), dueOverrides: {} });
       setCustomDocs([]);
       onClose();
-      // Land the operator on the AI Secretary tab so they can confirm
+      // Land the operator on Elara tab so they can confirm
       // the playbook-derived baseline before the AI starts its 30-min
       // first-touch tick. The `tab=workspace` query param is honored
       // once at mount (loans/[id]/page.tsx).
@@ -1157,15 +1157,18 @@ function AssetStepView({
           {isSeller ? "Property they're selling" : "Target property (optional)"}
         </SectionHeader>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <Field t={t} label="Street address" full required={isSeller}>
-            <Input t={t} value={form.subjectAddress} onChange={(v) => update("subjectAddress", v)} placeholder="123 Main St" />
-          </Field>
-          <Field t={t} label="City">
-            <Input t={t} value={form.subjectCity} onChange={(v) => update("subjectCity", v)} placeholder="Brooklyn" />
-          </Field>
-          <Field t={t} label="State">
-            <StateSelect t={t} value={form.subjectState} onChange={(v) => update("subjectState", v)} />
-          </Field>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <GoogleAddressInput
+              value={{ street: form.subjectAddress, city: form.subjectCity, state: form.subjectState }}
+              onChange={(next) => {
+                update("subjectAddress", next.street ?? "");
+                update("subjectCity", next.city ?? "");
+                update("subjectState", next.state ?? "");
+              }}
+              showZip={false}
+              helperText="Search Google and select the property, or use manual entry if the address is not listed."
+            />
+          </div>
           <Field t={t} label="Property type">
             <Select
               t={t}
@@ -1213,15 +1216,20 @@ function AssetStepView({
                   }}
                 >
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    <Field t={t} label="Street address" full>
-                      <Input t={t} value={asset.address} onChange={(v) => onUpdateAsset(idx, { address: v })} placeholder="55 Park Ave" />
-                    </Field>
-                    <Field t={t} label="City">
-                      <Input t={t} value={asset.city} onChange={(v) => onUpdateAsset(idx, { city: v })} placeholder="Brooklyn" />
-                    </Field>
-                    <Field t={t} label="State">
-                      <StateSelect t={t} value={asset.state} onChange={(v) => onUpdateAsset(idx, { state: v })} />
-                    </Field>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <GoogleAddressInput
+                        value={{ street: asset.address, city: asset.city, state: asset.state }}
+                        onChange={(next) =>
+                          onUpdateAsset(idx, {
+                            address: next.street ?? "",
+                            city: next.city ?? "",
+                            state: next.state ?? "",
+                          })
+                        }
+                        showZip={false}
+                        helperText="Search Google and select the property, or use manual entry if the address is not listed."
+                      />
+                    </div>
                     <Field t={t} label="Use">
                       <Select
                         t={t}
@@ -2124,43 +2132,6 @@ function Select({
       {options.map((o) => (
         <option key={o.value} value={o.value}>
           {o.label}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-// Standardized US state dropdown — reads from @/lib/usStates so every
-// address-collection form across the app stays in lockstep.
-function StateSelect({
-  t,
-  value,
-  onChange,
-}: {
-  t: QCTokens;
-  value: string;
-  onChange: (code: string) => void;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      style={{
-        width: "100%",
-        padding: "10px 12px",
-        borderRadius: 9,
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        color: value ? t.ink : t.ink3,
-        fontSize: 13,
-        fontFamily: "inherit",
-        outline: "none",
-      }}
-    >
-      <option value="">Select state…</option>
-      {US_STATES.map((s) => (
-        <option key={s.code} value={s.code}>
-          {s.name} ({s.code})
         </option>
       ))}
     </select>

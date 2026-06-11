@@ -98,7 +98,7 @@ export interface Loan {
   updated_at: string;
 }
 
-// Output of the "Pocket Assistant" summarizer — see qcbackend/app/services/ai/summarizer.py
+// Output of the "Elara" summarizer — see qcbackend/app/services/ai/summarizer.py
 export type MarketWarning = "Rate Pressure" | "Rate Stability" | "Rate Easing";
 export interface LivingLoanProfile {
   current_status: string;
@@ -930,7 +930,7 @@ export interface ChatAction {
     | "confirm_document_routing"
     | "complete_property_intake"
     | "open_calendar_event"
-    // AI Secretary actions emitted by the Realtor AI. Each maps to
+    // Elara actions emitted by the Realtor AI. Each maps to
     // a backend confirm-endpoint; the agent's tap fires the side
     // effect. The AI never writes state without operator approval.
     | "request_prequalification"
@@ -1848,6 +1848,8 @@ export interface PrequalRequest {
   id: string;
   loan_id: string | null;
   requester_id: string;
+  client_id?: string | null;
+  client_name?: string | null;
   target_property_address: string;
   // For F&F: purchase_price is the BRV (Before Repair Value). For
   // DSCR / Bridge it's the property purchase / value. Same column,
@@ -2490,7 +2492,7 @@ export const DS_CATEGORY_META: Record<
 
 export const DS_OUTREACH_MODE_LABELS: Record<DSOutreachMode, { title: string; sub: string }> = {
   off:              { title: "Off",              sub: "Plan only — nothing sends" },
-  draft_first:      { title: "Draft first",      sub: "Drafts land in AI Inbox" },
+  draft_first:      { title: "Draft first",      sub: "Drafts land in Elara Inbox" },
   portal_auto:      { title: "Portal auto-send", sub: "Safest default" },
   portal_email:     { title: "Portal + Email",   sub: "Email also auto-sends" },
   portal_email_sms: { title: "Portal + Email + SMS", sub: "SMS only with consent" },

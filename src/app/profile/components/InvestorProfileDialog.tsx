@@ -249,7 +249,7 @@ export function InvestorProfileDialog({ open, onClose }: Props) {
                 <SectionLabel>Properties owned</SectionLabel>
                 <div style={{ fontSize: 11.5, color: t.ink3, marginBottom: 8 }}>
                   Free-form — list addresses, types, current values, monthly rent. Your
-                  underwriter and the &quot;Pocket Assistant&quot; both read this when scoring deals.
+                  underwriter and the &quot;Elara&quot; both read this when scoring deals.
                 </div>
                 <textarea
                   value={properties}

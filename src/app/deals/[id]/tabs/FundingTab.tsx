@@ -64,7 +64,7 @@ export function FundingTab({ loan, clientId: _clientId }: { loan: Loan; clientId
         <Card pad={16}>
           <SectionLabel>Outstanding documents · {missing.length}</SectionLabel>
           <div style={{ fontSize: 12, color: t.ink3, marginTop: 4, marginBottom: 8 }}>
-            Items the funding team is still chasing. Drives the AI Secretary follow-up cadence.
+            Items the funding team is still chasing. Drives Elara follow-up cadence.
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {missing.map((d) => (

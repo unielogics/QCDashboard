@@ -34,7 +34,7 @@ import { qcBtn, qcBtnPetrol } from "@/components/design-system/buttons";
 import { RightPanel } from "@/components/design-system/RightPanel";
 import { useCreateClient, useBufferWizardIntent, useSendIntakeLink } from "@/hooks/useApi";
 import { ClientSearchBlock } from "@/components/ClientSearchBlock";
-import { US_STATES } from "@/lib/usStates";
+import { GoogleAddressInput } from "@/components/property/GoogleAddressInput";
 import type { QCTokens } from "@/components/design-system/tokens";
 
 type Side = "buyer" | "seller";
@@ -483,35 +483,18 @@ function OwnedAssetsEditor({
                   borderTop: `1px solid ${t.line}`,
                 }}
               >
-                <Input
-                  t={t}
-                  value={a.address}
-                  onChange={(v) => updateRow(idx, { address: v })}
-                  placeholder="Street address"
+                <GoogleAddressInput
+                  value={{ street: a.address, city: a.city, state: a.state }}
+                  onChange={(next) =>
+                    updateRow(idx, {
+                      address: next.street ?? "",
+                      city: next.city ?? "",
+                      state: next.state ?? "",
+                    })
+                  }
+                  showZip={false}
+                  helperText="Search Google and select the property, or use manual entry if the address is not listed."
                 />
-                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 8 }}>
-                  <Input
-                    t={t}
-                    value={a.city}
-                    onChange={(v) => updateRow(idx, { city: v })}
-                    placeholder="City"
-                  />
-                  <select
-                    value={a.state}
-                    onChange={(e) => updateRow(idx, { state: e.target.value.toUpperCase().slice(0, 2) })}
-                    style={{
-                      ...inputBaseStyle(t),
-                      padding: "8px 10px",
-                    }}
-                  >
-                    <option value="">ST</option>
-                    {US_STATES.map((s) => (
-                      <option key={s.code} value={s.code}>
-                        {s.code}
-                      </option>
-                    ))}
-                  </select>
-                </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {([
                     ["primary", "Primary"],

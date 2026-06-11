@@ -1,8 +1,8 @@
 "use client";
 
 // Mode-aware chat input. The available modes depend on the current user's role:
-//   super_admin → [Chat, Instruct AI]   (Chat triggers a 1h AI pause)
-//   broker      → [Ask the AI, Suggest to Inbox, Instruct AI]  (no Chat — can't write to client thread)
+//   super_admin → [Chat, Instruct Elara]   (Chat triggers a 1h Elara pause)
+//   broker      → [Ask Elara, Suggest to Inbox, Instruct Elara]  (no Chat — can't write to client thread)
 //   loan_exec   → same as super_admin minus the pause (acts as broker_question)
 //   client      → just textarea, mode=Chat, hidden when paused
 
@@ -29,19 +29,19 @@ interface Props {
 }
 
 const SUPER_ADMIN_MODES: ModeOption[] = [
-  { mode: DealChatMode.CHAT, label: "Chat", hint: "Send to the client thread (pauses AI for 1h)", icon: "send" },
-  { mode: DealChatMode.INSTRUCT, label: "Instruct AI", hint: "Save as a persistent loan instruction", icon: "shield" },
-  { mode: DealChatMode.BROKER_QUESTION, label: "Ask AI", hint: "Internal Q&A — borrower won't see this", icon: "ai" },
+  { mode: DealChatMode.CHAT, label: "Chat", hint: "Send to the client thread (pauses Elara for 1h)", icon: "send" },
+  { mode: DealChatMode.INSTRUCT, label: "Instruct Elara", hint: "Save as a persistent loan instruction", icon: "shield" },
+  { mode: DealChatMode.BROKER_QUESTION, label: "Ask Elara", hint: "Internal Q&A — borrower won't see this", icon: "ai" },
 ];
 
 const BROKER_MODES: ModeOption[] = [
   // Live Chat — leftmost / default so brokers in a hand-on moment land
   // in the right mode without an extra click. Same backend semantics as
-  // super_admin's CHAT (pauses AI for 1h, client_visible=true).
-  { mode: DealChatMode.LIVE_CHAT, label: "Live Chat", hint: "Reply directly to the client (pauses AI for 1h)", icon: "send" },
-  { mode: DealChatMode.BROKER_QUESTION, label: "Ask the AI", hint: "Internal Q&A — borrower won't see this", icon: "ai" },
+  // super_admin's CHAT (pauses Elara for 1h, client_visible=true).
+  { mode: DealChatMode.LIVE_CHAT, label: "Live Chat", hint: "Reply directly to the client (pauses Elara for 1h)", icon: "send" },
+  { mode: DealChatMode.BROKER_QUESTION, label: "Ask Elara", hint: "Internal Q&A — borrower won't see this", icon: "ai" },
   { mode: DealChatMode.BROKER_SUGGESTION, label: "Suggest to Inbox", hint: "Files an item for super-admin review", icon: "send" },
-  { mode: DealChatMode.INSTRUCT, label: "Instruct AI", hint: "Save as a persistent loan instruction", icon: "shield" },
+  { mode: DealChatMode.INSTRUCT, label: "Instruct Elara", hint: "Save as a persistent loan instruction", icon: "shield" },
 ];
 
 export function DealChatInput({ loanId, user, pausedUntil }: Props) {
@@ -88,8 +88,8 @@ export function DealChatInput({ loanId, user, pausedUntil }: Props) {
       setBody("");
       setStaged(null);
       if (res.kind === "instruction") setFlash("Instruction saved.");
-      else if (res.kind === "ai_task") setFlash("Suggestion filed in AI Inbox.");
-      else if (res.paused_until) setFlash("AI paused for 1h.");
+      else if (res.kind === "ai_task") setFlash("Suggestion filed in Elara Inbox.");
+      else if (res.paused_until) setFlash("Elara paused for 1h.");
       else setFlash(null);
       if (flash) setTimeout(() => setFlash(null), 2400);
     } catch (e) {
@@ -111,7 +111,7 @@ export function DealChatInput({ loanId, user, pausedUntil }: Props) {
           fontWeight: 700,
         }}
       >
-        Your operator is replying directly. The AI will resume shortly.
+        Your operator is replying directly. Elara will resume shortly.
       </div>
     );
   }

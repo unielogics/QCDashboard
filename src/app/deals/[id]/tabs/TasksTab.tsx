@@ -1,7 +1,7 @@
 "use client";
 
 // Tasks tab — agent CRM workflow tasks on this deal. Distinct from
-// the Schedule tab (calendar events) and the AI Secretary tab (CRS-
+// the Schedule tab (calendar events) and Elara tab (CRS-
 // backed AI tasks). Two surfaces:
 //
 //   1. The tasks already saved on this deal (AgentTask rows whose

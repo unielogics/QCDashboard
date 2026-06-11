@@ -192,7 +192,7 @@ export default function AgentSettingsPage() {
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", padding: 6, gap: 2 }}>
-          {/* AI Assistant — routes to the new page; the four other items
+          {/* Elara — routes to the new page; the four other items
               still use the existing in-page section state. */}
           <Link
             href="/agent-settings/ai"
@@ -212,7 +212,7 @@ export default function AgentSettingsPage() {
             }}
           >
             <Icon name="spark" size={14} />
-            AI Assistant
+            Elara
             <span style={{ marginLeft: "auto", fontSize: 11, opacity: 0.7 }}>→</span>
           </Link>
           <div style={{ height: 1, background: t.line, margin: "6px 8px" }} />
@@ -253,26 +253,26 @@ export default function AgentSettingsPage() {
         </div>
       </Card>
 
-      {/* Body — banner removed; the AI Assistant sidebar entry above
+      {/* Body — banner removed; Elara sidebar entry above
           is the canonical entry point. */}
       <div style={{ minHeight: 0, display: "flex", flexDirection: "column", gap: 14 }}>
 
         {/* Legacy banner — shows when a deprecated section is open. The
             old AI Cadence + Doc Checklist sections still write to the
-            old broker-settings JSON, but the AI itself reads from
+            old broker-settings JSON, but Elara itself reads from
             client_ai_plan (Lending AI). */}
         {SECTIONS.find(s => s.id === section)?.legacy ? (
           <Card pad={14} style={{ borderLeft: `3px solid ${t.warn}`, background: t.warnBg }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
-                  ⚠ Legacy section — superseded by AI Assistant
+                  ⚠ Legacy section — superseded by Elara
                 </div>
                 <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
                   {section === "cadence"
-                    ? "Your AI now follows the conditional rules in AI Assistant → Follow-Up. This preset only feeds the older non-AI doc-reminder pipeline."
-                    : "Your AI now reads requirements from AI Assistant → Buyer / Seller Rules. This list only pre-populates the legacy loans.required_docs field at loan creation."}
-                  {" "}Edits here keep working but the AI ignores them.
+                    ? "Elara now follows the conditional rules in Elara → Follow-Up. This preset only feeds the older non-AI doc-reminder pipeline."
+                    : "Elara now reads requirements from Elara → Buyer / Seller Rules. This list only pre-populates the legacy loans.required_docs field at loan creation."}
+                  {" "}Edits here keep working but Elara ignores them.
                 </div>
               </div>
               <Link href="/agent-settings/ai" style={{ textDecoration: "none" }}>
@@ -282,7 +282,7 @@ export default function AgentSettingsPage() {
                   border: `1px solid ${t.petrol}`, background: t.surface,
                   whiteSpace: "nowrap",
                 }}>
-                  Open AI Assistant →
+                  Open Elara →
                 </span>
               </Link>
             </div>
@@ -539,7 +539,7 @@ function CadenceSection({ draft, setDraft, dirty, saving, onSave }: CadenceProps
         <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />
       </div>
       <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
-        How aggressively the AI nudges your leads to send in the docs they owe.
+        How aggressively Elara nudges your leads to send in the docs they owe.
         Pick a preset; you can override per-lead when you add a lead.
       </div>
 
@@ -692,7 +692,7 @@ function ChecklistsSection({ draft, setDraft, dirty, saving, onSave }: Checklist
         <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />
       </div>
       <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
-        What the AI will collect from your buyer-side and seller-side leads.
+        What Elara will collect from your buyer-side and seller-side leads.
         Click any row to see its full detail. Disable starter items you don&apos;t
         want, and add your own. You can further override per-lead when you add a lead.
       </div>
@@ -763,7 +763,7 @@ function ChecklistsSection({ draft, setDraft, dirty, saving, onSave }: Checklist
                     lineHeight: 1.5,
                   }}>
                     <div>
-                      <strong style={{ color: t.ink }}>What the AI collects:</strong> {name}
+                      <strong style={{ color: t.ink }}>What Elara collects:</strong> {name}
                     </div>
                     <div style={{ marginTop: 4 }}>
                       <strong style={{ color: t.ink }}>Side:</strong> {activeSide}
@@ -771,8 +771,8 @@ function ChecklistsSection({ draft, setDraft, dirty, saving, onSave }: Checklist
                     <div style={{ marginTop: 4 }}>
                       <strong style={{ color: t.ink }}>Status:</strong>{" "}
                       {disabled
-                        ? "Disabled on your leads — the AI won't request this."
-                        : "Active — the AI will request this from each new lead."}
+                        ? "Disabled on your leads — Elara won't request this."
+                        : "Active — Elara will request this from each new lead."}
                     </div>
                     <div style={{ marginTop: 8, fontSize: 11.5, color: t.ink3, fontStyle: "italic" }}>
                       Starter docs are firm-managed. To edit due dates or wording,

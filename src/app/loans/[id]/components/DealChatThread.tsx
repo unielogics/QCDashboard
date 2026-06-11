@@ -51,7 +51,7 @@ export function DealChatThread({ loanId, user, messages, pausedUntil }: Props) {
         >
           <Icon name="pause" size={14} style={{ color: t.warn }} />
           <div style={{ flex: 1, fontSize: 12, color: t.ink2 }}>
-            <strong style={{ color: t.warn }}>AI paused</strong> after operator override —
+            <strong style={{ color: t.warn }}>Elara paused</strong> after operator override —
             resumes in ~{pauseRemaining} min.
           </div>
           {isSuperAdmin && (
@@ -134,7 +134,7 @@ function Bubble({
     }
   })();
   const labelText = (() => {
-    if (message.from_role === DealChatRole.AI) return "Smart Assistant";
+    if (message.from_role === DealChatRole.AI) return "Elara";
     const roleWord = (() => {
       switch (message.from_role) {
         case DealChatRole.SUPER_ADMIN: return "Operator";

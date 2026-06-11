@@ -110,10 +110,12 @@ import type {
   AgentTaskVisibility,
   AddressResolveResponse,
   AddressSuggestion,
+  AnalysisProduct,
   AnalysisRun,
   AnalysisRunCreate,
   AnalysisRunPrequalRequest,
   AnalysisRunPrequalResponse,
+  AnalysisSource,
   AnalysisRunUpdate,
   ProviderSettingsRead,
   ProviderSettingsUpdate,
@@ -1711,7 +1713,7 @@ export function useCreateClient() {
 // Creates a PrequalRequest server-side + spawns an AITask in the
 // funding queue. Used by:
 //   - "Ready for Prequalification" button on /clients/[id]
-//   - AI Secretary action card (kind: "request_prequalification")
+//   - Elara action card (kind: "request_prequalification")
 export function useRequestPrequalification() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
@@ -2550,7 +2552,10 @@ export function usePropertyIntelligenceLookup() {
 export function useAnalysisRuns(filters?: {
   client_id?: string | null;
   loan_id?: string | null;
-  product?: string | null;
+  product?: AnalysisProduct | null;
+  tool_source?: AnalysisSource | null;
+  updated_since?: string | null;
+  limit?: number | null;
 }) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
@@ -2558,6 +2563,9 @@ export function useAnalysisRuns(filters?: {
   if (filters?.client_id) qs.set("client_id", filters.client_id);
   if (filters?.loan_id) qs.set("loan_id", filters.loan_id);
   if (filters?.product) qs.set("product", filters.product);
+  if (filters?.tool_source) qs.set("tool_source", filters.tool_source);
+  if (filters?.updated_since) qs.set("updated_since", filters.updated_since);
+  if (filters?.limit) qs.set("limit", String(filters.limit));
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   return useQuery({
     queryKey: ["analysis-runs", filters ?? {}, devUser],
@@ -4629,7 +4637,7 @@ export function useBootstrapDealSecretary(loanId: string) {
   });
 }
 
-// One-click "Start AI Secretary". Flips outreach_mode to portal_auto
+// One-click "Start Elara". Flips outreach_mode to portal_auto
 // (or whatever's passed) AND fires first-touch outreach immediately
 // for every AI-owned task — no 30-min cron wait.
 export interface DSStartResponse {
@@ -4997,7 +5005,7 @@ export function useUnassignClientTask(clientId: string) {
 
 /** POST /clients/{id}/ai-follow-up/bootstrap?deal_id=… or ?loan_id=…
  *  Idempotently re-seeds CRS + ClientAIPlan for the selected scope.
- *  Used by the AI Secretary tab's "Bootstrap" repair button on
+ *  Used by Elara tab's "Bootstrap" repair button on
  *  /deals/[id] when the workbench is empty. */
 export function useBootstrapClientAiFollowUp(clientId: string) {
   const apiCall = useAuthedApi();

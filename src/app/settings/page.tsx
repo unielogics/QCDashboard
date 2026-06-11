@@ -277,7 +277,7 @@ export default function SettingsPage() {
             }}
           >
             <Icon name="trend" size={14} />
-            <span style={{ flex: 1 }}>AI token usage</span>
+            <span style={{ flex: 1 }}>Elara token usage</span>
             <span style={{ fontSize: 11, opacity: 0.7 }}>→</span>
           </Link>
           <div style={{ height: 1, background: t.line, margin: "6px 4px" }} />

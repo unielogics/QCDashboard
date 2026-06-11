@@ -7,7 +7,7 @@
 // review panel — no need to find the small Open button.
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -56,6 +56,7 @@ export default function AdminPrequalQueuePage() {
   const { t } = useTheme();
   const profile = useActiveProfile();
   const router = useRouter();
+  const searchParams = useSearchParams();
   // Default to "all" so admin lands on a populated queue regardless of
   // status. Pending floats to the top (STATUS_RANK), so the action
   // bias is preserved without hiding approved / loan-opened rows from
@@ -73,6 +74,13 @@ export default function AdminPrequalQueuePage() {
   // viewport coordinates so we can render at the cursor without an extra
   // library. Cleared on any document click / Escape — see effect below.
   const [menu, setMenu] = useState<{ req: PrequalRequest; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const status = searchParams?.get("status") as FilterId | null;
+    if (status && FILTERS.some((f) => f.id === status)) {
+      setFilter(status);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (!menu) return;

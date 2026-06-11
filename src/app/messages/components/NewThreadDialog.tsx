@@ -14,9 +14,10 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { GoogleAddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import { useClients, useCreateLoan, useLoans } from "@/hooks/useApi";
 import { LoanType, PropertyType } from "@/lib/enums.generated";
-import type { Client, Loan } from "@/lib/types";
+import type { AddressParts, Client, Loan } from "@/lib/types";
 
 const LOAN_TYPE_OPTIONS: { value: LoanType; label: string }[] = [
   { value: LoanType.DSCR, label: "DSCR Rental (30-yr)" },
@@ -48,6 +49,7 @@ export function NewThreadDialog({ open, onClose, onThreadReady }: Props) {
     amount: "",
     property_type: PropertyType.SFR as PropertyType,
   });
+  const [newLoanAddress, setNewLoanAddress] = useState<AddressParts | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,6 +58,7 @@ export function NewThreadDialog({ open, onClose, onThreadReady }: Props) {
       setSearch("");
       setPickedClient(null);
       setNewLoan({ type: LoanType.DSCR, address: "", amount: "", property_type: PropertyType.SFR });
+      setNewLoanAddress(null);
       setErr(null);
     }
   }, [open]);
@@ -314,14 +317,14 @@ export function NewThreadDialog({ open, onClose, onThreadReady }: Props) {
                   ))}
                 </select>
               </Field>
-              <Field t={t} label="Property address">
-                <input
-                  value={newLoan.address}
-                  onChange={(e) => setNewLoan({ ...newLoan, address: e.target.value })}
-                  placeholder="123 Main St, Charlotte NC"
-                  style={inputStyle(t)}
-                />
-              </Field>
+              <GoogleAddressInput
+                value={newLoanAddress}
+                onChange={(next) => {
+                  setNewLoanAddress(next);
+                  setNewLoan((p) => ({ ...p, address: formatAddressParts(next) }));
+                }}
+                helperText="Search Google and select the property, or use manual entry if the address is not listed."
+              />
               <Field t={t} label="Loan amount ($)">
                 <input
                   type="number"
@@ -335,7 +338,7 @@ export function NewThreadDialog({ open, onClose, onThreadReady }: Props) {
               </Field>
 
               <div style={{ fontSize: 11, color: t.ink3, lineHeight: 1.5 }}>
-                Once created, the &quot;Pocket Assistant&quot; uses the per-loan-type checklist
+                Once created, the &quot;Elara&quot; uses the per-loan-type checklist
                 (Settings → Doc checklists) to start collecting required documents from{" "}
                 {pickedClient.name}.
               </div>

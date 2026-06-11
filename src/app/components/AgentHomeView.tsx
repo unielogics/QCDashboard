@@ -20,6 +20,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { qcBtnPrimary } from "@/components/design-system/buttons";
 import { QC_FMT } from "@/components/design-system/tokens";
 import {
+  useAdminPrequalQueue,
   useCurrentUser,
   useLeadFunnel,
   useLoans,
@@ -60,6 +61,7 @@ export function AgentHomeView() {
   const { data: myLoans = [] } = useLoans("mine");
   const { data: funnel } = useLeadFunnel();
   const { data: nextActions = [] } = useNextActions();
+  const { data: prequalRequests = [] } = useAdminPrequalQueue();
 
   const firstName = (() => {
     if (!user) return null;
@@ -82,6 +84,8 @@ export function AgentHomeView() {
   const fundedVolume = funded.reduce((s, l) => s + Number(l.amount || 0), 0);
   const inFlightVolume = inFlight.reduce((s, l) => s + Number(l.amount || 0), 0);
   const atRisk = myLoans.filter((l) => l.deal_health === "at_risk" || l.deal_health === "stuck");
+  const pendingPrequals = prequalRequests.filter((r) => r.status === "pending").length;
+  const approvedPrequals = prequalRequests.filter((r) => r.status === "approved").length;
 
   return (
     <div
@@ -146,6 +150,34 @@ export function AgentHomeView() {
           sub={sampleSub(funnel?.prequal_conversion)}
           icon="check"
         />
+      </div>
+
+      <SectionLabel>Prequalifications</SectionLabel>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: 12,
+        }}
+      >
+        <Link href="/admin/prequal-requests?status=pending" style={{ textDecoration: "none" }}>
+          <KPI
+            label="Pending Prequals"
+            value={pendingPrequals}
+            sub="Awaiting funding review"
+            icon="docCheck"
+            accent={pendingPrequals ? t.warn : t.ink3}
+          />
+        </Link>
+        <Link href="/admin/prequal-requests?status=approved" style={{ textDecoration: "none" }}>
+          <KPI
+            label="Approved Prequals"
+            value={approvedPrequals}
+            sub="Letters issued"
+            icon="check"
+            accent={approvedPrequals ? t.profit : t.ink3}
+          />
+        </Link>
       </div>
 
       {/* Active state — pulled from current Loans list filtered to broker_id */}

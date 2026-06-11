@@ -8,7 +8,7 @@
 //   5. ProTermsCard (CLIENT role only — soft-pull lock/unlock)
 //   6. Pipeline at a glance + Today (operator: 5-stage counters; borrower/broker: top-3 loan cards)
 //   7. Portfolio Health (3 stat tiles — for all roles, ported from mobile)
-//   8. AI co-pilot + Top brokers (renamed from Top exposures, source swapped)
+//   8. Elara + Top brokers (renamed from Top exposures, source swapped)
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -428,7 +428,7 @@ export default function DashboardPage() {
               </Link>
             }
           >
-            AI co-pilot · pending approval
+            Elara · pending approval
           </SectionLabel>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {tasks.filter((task) => task.status === "pending").slice(0, 3).map((task) => (
@@ -460,7 +460,7 @@ export default function DashboardPage() {
             ))}
             {tasks.filter((task) => task.status === "pending").length === 0 && (
               <div style={{ padding: 16, fontSize: 13, color: t.ink3, textAlign: "center" }}>
-                Nothing pending — the co-pilot is caught up.
+                Nothing pending — Elara is caught up.
               </div>
             )}
           </div>
@@ -1319,7 +1319,7 @@ function TodaysOverduePanel({
               gap: 5,
             }}
           >
-            AI Inbox <Icon name="chevR" size={11} />
+            Elara Inbox <Icon name="chevR" size={11} />
           </Link>
         )}
       </div>

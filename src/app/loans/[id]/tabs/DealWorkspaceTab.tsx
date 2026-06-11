@@ -1,6 +1,6 @@
 "use client";
 
-// AI Secretary tab — the canonical place to manage what the AI is
+// Elara tab — the canonical place to manage what Elara is
 // handling on a loan without forcing operators into drag/drop setup.
 //
 // Top-to-bottom:
@@ -133,12 +133,12 @@ export function DealWorkspaceTab({ loanId, onOpenTab }: { loanId: string; onOpen
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
       {secretaryLoading ? (
-        <div style={{ padding: 16, color: t.ink3, fontSize: 13 }}>Loading AI Secretary…</div>
+        <div style={{ padding: 16, color: t.ink3, fontSize: 13 }}>Loading Elara…</div>
       ) : !secretary ? (
         <Card pad={14}>
-          <SectionLabel>AI Secretary</SectionLabel>
+          <SectionLabel>Elara</SectionLabel>
           <div style={{ marginTop: 8, fontSize: 12.5, color: t.ink3 }}>
-            This loan pre-dates the AI Deal Secretary feature. Click below to populate
+            This loan pre-dates Elara Deal Secretary feature. Click below to populate
             the task list from your firm&apos;s playbook — safe to re-run, no outreach fires.
           </div>
           <button
@@ -236,7 +236,7 @@ function SecretaryConsole({
   // table; "current" = the live timeline (Next up / In progress / etc.).
   const [rightView, setRightView] = useState<"handoff" | "current">("handoff");
   // Side panel state — Instructions / Loan chat / AI questions affordances
-  // now live in the AI Secretary header. Single-modal-at-a-time.
+  // now live in Elara header. Single-modal-at-a-time.
   const [panel, setPanel] = useState<"chat" | "instructions" | "ai-questions" | "follow-up" | null>(null);
   // Handoff table rows (per-loan localStorage).
   const [handoffRows, setHandoffRows] = useState<HandoffRow[]>([]);
@@ -363,7 +363,7 @@ function SecretaryConsole({
     const d = String(now.getDate()).padStart(2, "0");
     return `${now.getFullYear()}-${m}-${d}`;
   };
-  // When the operator drags an overdue queue item onto the AI Secretary,
+  // When the operator drags an overdue queue item onto Elara,
   // the implied promise is "yes I'm still on this, just give it a fresh
   // shot today." Roll the due date forward so the cadence engine + the
   // overdue indicator both reset. No-op when the item wasn't overdue or
@@ -498,7 +498,7 @@ function SecretaryConsole({
         {
           onSuccess: () => {
             maybeRollDueDateToToday(payload);
-            setFlash(`Added "${label}" to AI Secretary.`);
+            setFlash(`Added "${label}" to Elara.`);
             window.setTimeout(() => setFlash(null), 2400);
           },
           onError: (err) => {
@@ -529,13 +529,13 @@ function SecretaryConsole({
         <span style={{ fontSize: 18 }} aria-hidden>🤖</span>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
-            AI Secretary
+            Elara
           </div>
           <div style={{ marginTop: 1, fontSize: 13.5, fontWeight: 900, color: t.ink, lineHeight: 1.2 }}>
             {mode === "off"
-              ? "Paused — drop tasks into AI to start"
+              ? "Paused — drop tasks into Elara to start"
               : aiTasks.length === 0
-                ? "Standing by — drop tasks into AI to start"
+                ? "Standing by — drop tasks into Elara to start"
                 : `${aiIsLive ? "Working" : "Drafting"} · ${aiTasks.length} task${aiTasks.length === 1 ? "" : "s"} active${waiting ? ` · ${waiting} waiting` : ""}${stalled ? ` · ${stalled} stalled` : ""}`}
           </div>
         </div>
@@ -829,7 +829,7 @@ function SecretaryConsole({
   );
 }
 
-// Drop zone wrapping the AI Secretary timeline. Receives drags from
+// Drop zone wrapping Elara timeline. Receives drags from
 // the Resolution Queue + (later) outside drops.
 function AISecretaryDropZone({ children }: { children: React.ReactNode }) {
   const { t } = useTheme();
@@ -1206,7 +1206,7 @@ function ResolutionRow({
   meta: string;
   action: string;
   onClick: () => void;
-  /** Pass to make the row draggable into the AI Secretary drop zone.
+  /** Pass to make the row draggable into Elara drop zone.
    *  Omit for the empty-state placeholder row. */
   dragId?: string;
   dragData?: Record<string, unknown>;
@@ -1241,7 +1241,7 @@ function ResolutionRow({
         opacity: drag.isDragging ? 0.4 : 1,
         userSelect: "none",
       }}
-      title={draggable ? "Drag onto AI Secretary to delegate, or click for details" : undefined}
+      title={draggable ? "Drag onto Elara to delegate, or click for details" : undefined}
     >
       <span style={{ width: 28, height: 28, borderRadius: 9, display: "grid", placeItems: "center", color, background: bg }}>
         <Icon name={icon} size={13} />

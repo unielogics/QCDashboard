@@ -188,7 +188,7 @@ export default function LendingAISettingsPage() {
           </Section>
 
           <Section t={t} kicker="Step 3" title="Document verification rules"
-            copy="What the AI may complete on its own vs. what an underwriter must verify. Per-document detail lives in the verification editor.">
+            copy="What Elara may complete on its own vs. what an underwriter must verify. Per-document detail lives in the verification editor.">
             <VerificationSummarySection t={t} />
           </Section>
 
@@ -204,7 +204,7 @@ export default function LendingAISettingsPage() {
           </Section>
 
           <Section t={t} kicker="Step 5" title="Compliance guardrails"
-            copy="Hard rules the AI follows on every conversation. These take precedence over per-agent or per-client overrides.">
+            copy="Hard rules Elara follows on every conversation. These take precedence over per-agent or per-client overrides.">
             <GuardrailsSection
               t={t}
               identity={identity}
@@ -258,7 +258,7 @@ function PageHeader({
           Super Admin AI Settings
         </h1>
         <p style={{ fontSize: 13, color: t.ink3, margin: 0, maxWidth: 720 }}>
-          Firm-wide controls for the AI Secretary — brand identity, lending
+          Firm-wide controls for Elara — brand identity, lending
           playbooks, verification policy, outreach defaults, working schedule,
           and compliance boundaries. Agents may customize their own settings;
           these are the rules every conversation falls back to.
@@ -555,7 +555,7 @@ function VerificationSummarySection({ t }: { t: ReturnType<typeof useTheme>["t"]
     {
       title: "Requires human verify",
       tone: "warn" as const,
-      body: "Material underwriting items that should never be fully approved by the AI.",
+      body: "Material underwriting items that should never be fully approved by Elara.",
       examples: ["Purchase contract", "Entity documents", "Scope of work"],
     },
     {
@@ -696,7 +696,7 @@ function OutreachAndScheduleSection({
             Working schedule
           </div>
           <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, marginBottom: 12 }}>
-            The AI can prepare messages anytime, but it only initiates borrower outreach during this schedule.
+            Elara can prepare messages anytime, but it only initiates borrower outreach during this schedule.
           </div>
 
           <div style={{ display: "grid", gap: 10 }}>
@@ -937,7 +937,7 @@ function GuardrailsSection({
           Forbidden topics and redirect
         </div>
         <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, marginBottom: 12 }}>
-          The AI refuses to engage on these and offers the redirect template instead.
+          Elara refuses to engage on these and offers the redirect template instead.
         </div>
 
         <div style={{ display: "grid", gap: 10 }}>

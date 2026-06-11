@@ -1,7 +1,7 @@
 "use client";
 
 // FollowUpRhythmModal — operator-side per-file follow-up config.
-// Opened from the AI Secretary header's "Follow-up rhythm" button.
+// Opened from Elara header's "Follow-up rhythm" button.
 // PATCHes ClientAIPlan.ai_secretary_settings.follow_up.
 
 import { useEffect, useState } from "react";

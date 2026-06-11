@@ -11,10 +11,13 @@ import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primit
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { ClientSearchBlock } from "@/components/ClientSearchBlock";
+import { RecentAnalysisRunsCard } from "@/components/analysis/RecentAnalysisRunsCard";
+import { GoogleAddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
 import {
   useClient,
+  useAnalysisRuns,
   useClosingCostTiers,
   useConvertAnalysisRunToPrequal,
   useCreateAnalysisRun,
@@ -28,7 +31,6 @@ import {
   useUpdateFixFlipScenario,
   type FixFlipScenarioRow,
 } from "@/hooks/useApi";
-import { US_STATES } from "@/lib/usStates";
 import { analyzeFixFlip } from "@/lib/fixFlip/calc";
 import type {
   ExperienceTier,
@@ -178,11 +180,15 @@ export default function FixAndFlipAnalyzerPage() {
   const runId = sp?.get("run") ?? null;
   const allRuns = useFixFlipScenarios();
   const inspected = useFixFlipScenario(runId);
+  const recentSince = useMemo(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), []);
+  const { data: recentRuns = [] } = useAnalysisRuns({
+    tool_source: "deal_analyzer",
+    updated_since: recentSince,
+    limit: 50,
+  });
 
   const set = <K extends keyof FixFlipInputs>(k: K, v: FixFlipInputs[K]) =>
     setI((p) => ({ ...p, [k]: v }));
-  const setAddr = (k: "street" | "city" | "state" | "zip", v: string) =>
-    setI((p) => ({ ...p, address: { ...p.address, [k]: v } }));
   const num = (s: string) => Number(s.replace(/[^0-9.]/g, "")) || 0;
 
   // Per-step required fields (no county; state via dropdown).
@@ -262,15 +268,7 @@ export default function FixAndFlipAnalyzerPage() {
       return;
     }
 
-    const propertyAddress =
-      [
-        inputs.address.street,
-        [inputs.address.city, inputs.address.state, inputs.address.zip]
-          .filter(Boolean)
-          .join(" "),
-      ]
-        .filter(Boolean)
-        .join(", ") || "Property TBD";
+    const propertyAddress = formatAddressParts(inputs.address, "Property TBD") || "Property TBD";
     const notes = [
       "Created from Fix & Flip Deal Analyzer.",
       `Construction scenario: ${coverage === "financed" ? "construction financed" : "borrower-funded construction"}.`,
@@ -302,15 +300,7 @@ export default function FixAndFlipAnalyzerPage() {
       return;
     }
 
-    const propertyAddress =
-      [
-        inputs.address.street,
-        [inputs.address.city, inputs.address.state, inputs.address.zip]
-          .filter(Boolean)
-          .join(" "),
-      ]
-        .filter(Boolean)
-        .join(", ") || "Property TBD";
+    const propertyAddress = formatAddressParts(inputs.address, "Property TBD") || "Property TBD";
     const notes = [
       "Created from Fix & Flip Deal Analyzer.",
       `Construction scenario: ${coverage === "financed" ? "construction financed" : "borrower-funded construction"}.`,
@@ -390,6 +380,12 @@ export default function FixAndFlipAnalyzerPage() {
         </p>
       </div>
 
+      <RecentAnalysisRunsCard
+        runs={recentRuns}
+        title="Saved analyzer runs - last 30 days"
+        emptyText="Saved Deal Analyzer runs will appear here after you save, share, or create a prequalification."
+      />
+
       {/* Stepper */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {STEPS.map((s, idx) => {
@@ -461,19 +457,23 @@ export default function FixAndFlipAnalyzerPage() {
         {step === "Property" ? (
           <div>
             <SectionLabel>Property</SectionLabel>
-            {fld('Street address', inputs.address.street, (s) => setAddr("street", s))}
-            <div style={{ display: "flex", gap: 10 }}>
-              <div style={{ flex: 2 }}>{fld('City', inputs.address.city, (s) => setAddr("city", s))}</div>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: "block", marginBottom: 12 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>State</span>
-                  <select value={inputs.address.state} onChange={(e) => setAddr("state", e.target.value)} style={inputStyle}>
-                    <option value="">Select…</option>
-                    {US_STATES.map((s) => <option key={s.code} value={s.code}>{s.code} — {s.name}</option>)}
-                  </select>
-                </label>
-              </div>
-              <div style={{ flex: 1 }}>{fld('ZIP', inputs.address.zip, (s) => setAddr("zip", s))}</div>
+            <div style={{ marginBottom: 12 }}>
+              <GoogleAddressInput
+                value={inputs.address}
+                onChange={(next) =>
+                  setI((p) => ({
+                    ...p,
+                    address: {
+                      ...p.address,
+                      street: next.street ?? "",
+                      city: next.city ?? "",
+                      state: next.state ?? "",
+                      zip: next.zip ?? "",
+                    },
+                  }))
+                }
+                helperText="Select a Google suggestion to split the address automatically, or use manual entry when the property is not listed."
+              />
             </div>
             <label style={{ display: "block" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>Property type</span>

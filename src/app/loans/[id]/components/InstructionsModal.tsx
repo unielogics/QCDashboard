@@ -2,7 +2,7 @@
 
 // InstructionsModal — wraps InstructionStrip in a modal. Replaces the
 // in-line "Instructions" tab in the old DealWorkspaceTab layout. The
-// header AI Secretary action button toggles it open.
+// header Elara action button toggles it open.
 
 import { useEffect } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";

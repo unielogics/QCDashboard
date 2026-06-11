@@ -19,8 +19,8 @@ export default function TopBar() {
   const { data: tasks = [] } = useAITasks();
   const { data: chatThreads = [] } = useAIChatThreads();
   const hasUnreadChat = chatThreads.some((th) => th.unread);
-  // AI Intelligent Underwriter chat — borrower-facing entry point.
-  // Operators have the existing AIRail co-pilot for per-loan + AI-task
+  // Elara chat — borrower-facing entry point.
+  // Operators have the existing AIRail Elara for per-loan + AI-task
   // workflows; this is the cross-account, conversational surface
   // borrowers (and operators on borrower-style questions) reach for.
   // Open state lives in the UI store so other surfaces (e.g. the
@@ -124,16 +124,16 @@ export default function TopBar() {
       )}
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
-        {/* AI Secretary — agent-only entry point for account-wide
+        {/* Elara — agent-only entry point for account-wide
             questions ("how many leads this week?", "what did Marcus
             email me?", etc.). Opens the same AIChatPanel as the
             general chat icon — distinct affordance with the agent's
-            name nearby so it feels like "your assistant". */}
+            name nearby so the entry point feels personal. */}
         {isAgent && (
           <button
             onClick={() => setAiChatOpen(true)}
-            aria-label="AI Secretary"
-            title="AI Secretary — ask account-wide questions"
+            aria-label="Elara"
+            title="Elara — ask account-wide questions"
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -149,7 +149,7 @@ export default function TopBar() {
             }}
           >
             <Icon name="spark" size={14} />
-            {user?.name ? `${user.name.split(" ")[0]}'s AI` : "AI Secretary"}
+            Elara
           </button>
         )}
 
@@ -174,12 +174,12 @@ export default function TopBar() {
           <Icon name={isDark ? "sun" : "moon"} size={14} />
         </button>
 
-        {/* AI Intelligent Underwriter chat — visible to all roles.
+        {/* Elara chat — visible to all roles.
             Opens a right-side panel mirroring the mobile sheet. */}
         <button
           onClick={() => setAiChatOpen(true)}
-          aria-label={hasUnreadChat ? "AI Intelligent Underwriter — new message" : "AI Intelligent Underwriter"}
-          title={hasUnreadChat ? "New AI message" : "Ask AI Intelligent Underwriter"}
+          aria-label={hasUnreadChat ? "Elara — new message" : "Elara"}
+          title={hasUnreadChat ? "New Elara message" : "Ask Elara"}
           style={{
             position: "relative",
             width: 32,
@@ -243,7 +243,7 @@ export default function TopBar() {
           />
         </button>
 
-        {/* Co-pilot toggle — only for non-client roles, with pending-task badge.
+        {/* Elara toggle — only for non-client roles, with pending-task badge.
             Account / sign-out controls live in the sidebar footer now. */}
         {!isClient && (
           <button
@@ -263,7 +263,7 @@ export default function TopBar() {
             }}
           >
             <Icon name="bolt" size={14} />
-            Co-pilot
+            Elara
             {!aiOpen && pendingTasks > 0 && (
               <span
                 style={{

@@ -40,7 +40,7 @@ import { DealNotesFloatingButton, DealNotesPanel } from "@/components/DealNotesF
 
 const TAB_ORDER = [
   { id: "property", label: "Property", icon: "home" as const },
-  { id: "ai", label: "AI Secretary", icon: "spark" as const },
+  { id: "ai", label: "Elara", icon: "spark" as const },
   { id: "chat", label: "Chat", icon: "chat" as const },
   { id: "tasks", label: "Tasks", icon: "doc" as const },
   { id: "schedule", label: "Schedule", icon: "cal" as const },

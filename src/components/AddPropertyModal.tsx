@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card } from "@/components/design-system/primitives";
 import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
+import { GoogleAddressInput } from "@/components/property/GoogleAddressInput";
 import type { ClientPropertyInput } from "@/hooks/useApi";
 
 interface Props {
@@ -27,9 +28,6 @@ const PROPERTY_TYPES = [
   { value: "industrial", label: "Industrial" },
   { value: "land", label: "Land" },
 ];
-
-const STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"];
-
 
 export function AddPropertyModal({ clientSide, onSubmit, onClose }: Props) {
   const { t } = useTheme();
@@ -113,23 +111,17 @@ export function AddPropertyModal({ clientSide, onSubmit, onClose }: Props) {
             </div>
           </Field>
 
-          <Field label="Address" t={t}>
-            <input value={address} onChange={e => setAddress(e.target.value)} placeholder="123 Main St" style={input(t)} />
-          </Field>
-
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 90px 110px", gap: 10 }}>
-            <Field label="City" t={t}>
-              <input value={city} onChange={e => setCity(e.target.value)} style={input(t)} />
-            </Field>
-            <Field label="State" t={t}>
-              <select value={stateField} onChange={e => setStateField(e.target.value)} style={input(t)}>
-                <option value="">—</option>
-                {STATES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </Field>
-            <Field label="ZIP" t={t}>
-              <input value={zip} onChange={e => setZip(e.target.value)} style={input(t)} />
-            </Field>
+          <div style={{ marginBottom: 10 }}>
+            <GoogleAddressInput
+              value={{ street: address, city, state: stateField, zip }}
+              onChange={(next) => {
+                setAddress(next.street ?? "");
+                setCity(next.city ?? "");
+                setStateField(next.state ?? "");
+                setZip(next.zip ?? "");
+              }}
+              helperText="Search Google and select the property, or use manual entry if the address is not listed."
+            />
           </div>
 
           <Field label="Property type" t={t}>

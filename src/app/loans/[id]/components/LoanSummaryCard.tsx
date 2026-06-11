@@ -1,7 +1,7 @@
 "use client";
 
 // Living Loan Profile — renders the structured 4-section output produced by
-// the "Pocket Assistant" summarizer (qcbackend/app/services/ai/summarizer.py).
+// the "Elara" summarizer (qcbackend/app/services/ai/summarizer.py).
 // Falls back to the legacy plain-text status_summary for loans that haven't
 // been refreshed since the upgrade.
 
@@ -42,7 +42,7 @@ export function LoanSummaryCard({ loan }: { loan: Loan }) {
                 alignItems: "center",
                 gap: 5,
               }}
-              title="Re-run the 'Pocket Assistant' summarizer"
+              title="Re-run the 'Elara' summarizer"
             >
               <Icon name="ai" size={11} />
               {refresh.isPending ? "Refreshing…" : "Refresh"}
@@ -71,7 +71,7 @@ export function LoanSummaryCard({ loan }: { loan: Loan }) {
         <div style={{ fontSize: 13.5, color: t.ink, lineHeight: 1.55 }}>{loan.status_summary}</div>
       ) : (
         <div style={{ fontSize: 13.5, color: t.ink3 }}>
-          No profile yet. Click <strong>Refresh</strong> to have the &quot;Pocket Assistant&quot; generate one from
+          No profile yet. Click <strong>Refresh</strong> to have the &quot;Elara&quot; generate one from
           the most recent activity and live FRED rates.
         </div>
       )}

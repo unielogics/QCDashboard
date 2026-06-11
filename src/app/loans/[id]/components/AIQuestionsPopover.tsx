@@ -4,7 +4,7 @@
 // has pending clarifying questions for the operator. Replaces the
 // previous "AI questions" tab in the merged Loan-Chat container.
 //
-// Renders as a docked popover anchored to the AI Secretary header.
+// Renders as a docked popover anchored to Elara header.
 // When closed it collapses to a single button showing the count. The
 // pulse animation only runs when there are unanswered questions so the
 // affordance is impossible to miss without being obnoxious.
@@ -17,7 +17,7 @@ import type { DSAIQuestion } from "@/hooks/useApi";
 interface Props {
   questions: DSAIQuestion[];
   onAnswer: (questionId: string, answer: string) => Promise<void>;
-  /** When set, AI Secretary header renders a badge with the count. */
+  /** When set, Elara header renders a badge with the count. */
   open: boolean;
   onClose: () => void;
 }

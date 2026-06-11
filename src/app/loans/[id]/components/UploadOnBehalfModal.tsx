@@ -312,7 +312,7 @@ function scanBadge(status: string | undefined | null): { label: string; bg: (t: 
     case "flagged":
       return { label: "AI flagged", bg: (t) => t.dangerBg, fg: (t) => t.danger };
     case "failed":
-      return { label: "AI failed", bg: (t) => t.warnBg, fg: (t) => t.warn };
+      return { label: "Elara failed", bg: (t) => t.warnBg, fg: (t) => t.warn };
     default:
       return null;
   }

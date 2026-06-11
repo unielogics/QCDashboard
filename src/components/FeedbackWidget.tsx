@@ -1,7 +1,7 @@
 "use client";
 
 // Reusable thumbs-up / thumbs-down + comment widget. Used in:
-//   - AI Inbox detail panel (output_type='ai_task')
+//   - Elara Inbox detail panel (output_type='ai_task')
 //   - Deal Workspace AI chat bubbles (output_type='chat_reply')
 // One vote per user per output (backend upserts). Counts roll up across
 // all operators viewing the same task.
@@ -16,7 +16,7 @@ interface Props {
   outputType: FeedbackOutputType;
   outputId: string;
   loanId?: string | null;
-  // Compact = chat bubble use; full = AI Inbox detail panel
+  // Compact = chat bubble use; full = Elara Inbox detail panel
   compact?: boolean;
 }
 

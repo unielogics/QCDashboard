@@ -3,7 +3,7 @@
 // "Preview before send" modal. The operator types into the composer
 // and clicks Preview → this modal shows the EXACT subject/to/body
 // that will be transmitted to Gmail, plus a clear Gmail-readiness
-// banner. For Instruct AI mode this is where the operator sees the
+// banner. For Instruct Elara mode this is where the operator sees the
 // AI's drafted body before it gets sent.
 //
 // Calls POST /loans/{id}/lender-thread/preview — that endpoint writes
@@ -138,7 +138,7 @@ export function LenderThreadPreviewModal({
             <div style={{ fontSize: 12.5, color: t.ink3 }}>
               Building the email…
               {mode === "instruct_ai"
-                ? " (Instruct AI runs the LLM to draft the body — give it a moment.)"
+                ? " (Instruct Elara runs the LLM to draft the body — give it a moment.)"
                 : ""}
             </div>
           </Card>
@@ -303,5 +303,5 @@ function FieldLabel({
 }
 
 function modeLabel(m: LenderThreadReplyMode): string {
-  return m === "send_now" ? "Send" : m === "instruct_ai" ? "Instruct AI" : "Save draft";
+  return m === "send_now" ? "Send" : m === "instruct_ai" ? "Instruct Elara" : "Save draft";
 }

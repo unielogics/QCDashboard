@@ -111,7 +111,7 @@ function explainWhy(task: AITask, dp: Record<string, unknown>): string | null {
   const days = (dp.days_unresponsive as number) || null;
 
   if (trigger === "requirement_missing" && reqLabel) {
-    return `Your AI asked for ${reqLabel} but hasn't received it yet. Your follow-up rules say to nudge after this long.`;
+    return `Elara asked for ${reqLabel} but hasn't received it yet. Your follow-up rules say to nudge after this long.`;
   }
   if (trigger === "agreement_unsigned" && reqLabel) {
     return `${reqLabel} was sent but hasn't been signed. Your follow-up rules say to remind at this point.`;

@@ -101,7 +101,7 @@ export function InstructionStrip({ loanId, instructions, canEdit }: Props) {
 
       {instructions.length === 0 && !composing && (
         <div style={{ fontSize: 12.5, color: t.ink3, padding: "6px 0" }}>
-          No active instructions. Add one from the chat input (mode: <strong>Instruct AI</strong>) or the
+          No active instructions. Add one from the chat input (mode: <strong>Instruct Elara</strong>) or the
           + button above.
         </div>
       )}

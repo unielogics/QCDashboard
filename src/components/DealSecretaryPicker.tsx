@@ -161,7 +161,7 @@ export function DealSecretaryPicker({
             {view.left.length === 0 ? <EmptyHint side="left" /> : null}
           </Column>
 
-          <Column id="ai-column" title="My AI Secretary" subtitle={`${view.right.length} task${view.right.length === 1 ? "" : "s"} assigned to AI`}>
+          <Column id="ai-column" title="Elara" subtitle={`${view.right.length} task${view.right.length === 1 ? "" : "s"} assigned to AI`}>
             {view.right.map((r) => (
               <DraggableTaskCard
                 key={r.requirement_key}

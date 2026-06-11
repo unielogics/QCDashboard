@@ -3,7 +3,7 @@
 // LoanChatTab — inline version of LoanChatSlideOut, rendered as a
 // full-width tab on the loan detail page. Same DealChatThread +
 // DealChatInput surface, so the 4-mode broker composer (Live Chat,
-// Ask AI, Suggest, Instruct) is reachable directly from the tabs
+// Ask Elara, Suggest, Instruct) is reachable directly from the tabs
 // instead of only as a slide-out.
 //
 // Why both: brokers explicitly asked for a TAB on desktop so the

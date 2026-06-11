@@ -41,16 +41,16 @@ export function WorkspaceAiWorkbench({ clientId, scope, isOperator }: WorkspaceA
   if (isLoading) {
     return (
       <Card pad={20}>
-        <div style={{ color: t.ink3, fontSize: 13 }}>Loading AI Secretary…</div>
+        <div style={{ color: t.ink3, fontSize: 13 }}>Loading Elara…</div>
       </Card>
     );
   }
   if (error || !view) {
     return (
       <Card pad={20}>
-        <SectionLabel>AI Secretary unavailable</SectionLabel>
+        <SectionLabel>Elara unavailable</SectionLabel>
         <div style={{ marginTop: 8, fontSize: 13, color: t.ink3 }}>
-          Couldn&apos;t load the AI Secretary view. Try refreshing.
+          Couldn&apos;t load Elara view. Try refreshing.
         </div>
       </Card>
     );

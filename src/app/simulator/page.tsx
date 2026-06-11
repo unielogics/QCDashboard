@@ -18,8 +18,11 @@ import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primit
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { ClientSearchBlock, type ClientPickResult } from "@/components/ClientSearchBlock";
+import { RecentAnalysisRunsCard } from "@/components/analysis/RecentAnalysisRunsCard";
+import { GoogleAddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import {
   useAdminLoanScenarios,
+  useAnalysisRuns,
   useConvertAnalysisRunToPrequal,
   useCreateAnalysisRun,
   useCurrentUser,
@@ -39,7 +42,7 @@ import { PreQualRequestList } from "@/components/PreQualRequestList";
 import { PreQualRequestModal } from "@/components/PreQualRequestModal";
 import { LoanType, PropertyType, Role } from "@/lib/enums.generated";
 import { QC_FMT } from "@/components/design-system/tokens";
-import type { AnalysisProduct, AnalysisRun, FredSeriesSummary, RecalcResponse, SimulatorSettings } from "@/lib/types";
+import type { AddressParts, AnalysisProduct, AnalysisRun, FredSeriesSummary, RecalcResponse, SimulatorSettings } from "@/lib/types";
 import { EligibilityBanner } from "@/components/EligibilityBanner";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { useCreditSummary } from "@/hooks/useApi";
@@ -101,6 +104,24 @@ export default function SimulatorPage() {
   const wantNew = spq?.get("new") === "1";
   const runId = spq?.get("run") ?? null;
   const adminRuns = useAdminLoanScenarios(!!isOperator);
+  const recentSince = useMemo(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), []);
+  const { data: simulatorRuns = [] } = useAnalysisRuns({
+    tool_source: "simulator",
+    updated_since: recentSince,
+    limit: 50,
+  });
+  const { data: recalcRuns = [] } = useAnalysisRuns({
+    tool_source: "loan_recalc",
+    updated_since: recentSince,
+    limit: 50,
+  });
+  const recentRuns = useMemo(
+    () =>
+      [...simulatorRuns, ...recalcRuns]
+        .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))
+        .slice(0, 50),
+    [recalcRuns, simulatorRuns],
+  );
 
   // CLIENT view — same gated, ARV-driven simulator as mobile.
   if (isClient) {
@@ -152,6 +173,12 @@ export default function SimulatorPage() {
           </ModeButton>
         </div>
       </div>
+
+      <RecentAnalysisRunsCard
+        runs={recentRuns}
+        title="Saved simulations - last 30 days"
+        emptyText="Saved simulations and file recalculations will appear here after you save, share, or create a prequalification."
+      />
 
       {mode === "free" ? <FreeCalcMode t={t} sim={sim} /> : <FromLoanMode t={t} sim={sim} loans={loans} />}
     </div>
@@ -888,6 +915,7 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
   const [type, setType] = useState<LoanType>(LoanType.DSCR);
   const [propertyType, setPropertyType] = useState<PropertyType>(PropertyType.SFR);
   const [selectedClient, setSelectedClient] = useState<ClientPickResult | null>(null);
+  const [addressParts, setAddressParts] = useState<AddressParts | null>(null);
   const [address, setAddress] = useState("");
   const [savedRun, setSavedRun] = useState<AnalysisRun | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -1064,14 +1092,14 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
           </div>
         )}
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 180px", gap: 12 }}>
-          <Field t={t} label="Property address">
-            <input
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Subject property address"
-              style={inputStyle(t)}
-            />
-          </Field>
+          <GoogleAddressInput
+            value={addressParts}
+            onChange={(next) => {
+              setAddressParts(next);
+              setAddress(formatAddressParts(next));
+            }}
+            helperText="Select a Google suggestion to split the address automatically, or enter the address manually if it is not listed."
+          />
           <Field t={t} label="Borrower FICO">
             {borrowerFico ? (
               <Pill bg={t.petrolSoft} color={t.petrol} style={{ marginTop: 7 }}>FICO {borrowerFico}</Pill>

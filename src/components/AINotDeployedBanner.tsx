@@ -12,7 +12,7 @@ import { Card } from "@/components/design-system/primitives";
 
 interface Props {
   /** What the user was trying to reach (used in the message). */
-  surface: "AI Assistant" | "Lending AI" | "Client AI Plan";
+  surface: "Elara" | "Lending AI" | "Client AI Plan";
 }
 
 

@@ -10,7 +10,8 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useDocuments, useLoan, useMessages, useRecalc, useSendMessage, useUpdateLoan } from "@/hooks/useApi";
+import { GoogleAddressInput } from "@/components/property/GoogleAddressInput";
+import { useDocuments, useLoan, useMessages, useRecalc, useSendMessage, useUpdateLoan, useUpdateProperty } from "@/hooks/useApi";
 import { useDealChannel } from "@/hooks/useDealChannel";
 import { useActiveProfile } from "@/store/role";
 import { Role, MessageFrom, PropertyType, PropertyTypeOptions } from "@/lib/enums.generated";
@@ -135,9 +136,11 @@ function LivingForm({
   recalcData: ReturnType<typeof useRecalc>["data"];
 }) {
   const { t } = useTheme();
+  const updateProperty = useUpdateProperty();
   const [draft, setDraft] = useState({
     address: loan.address,
     city: loan.city ?? "",
+    state: loan.state ?? "",
     property_type: loan.property_type,
     annual_taxes: String(loan.annual_taxes ?? ""),
     monthly_rent: loan.monthly_rent != null ? String(loan.monthly_rent) : "",
@@ -149,6 +152,7 @@ function LivingForm({
     setDraft({
       address: loan.address,
       city: loan.city ?? "",
+      state: loan.state ?? "",
       property_type: loan.property_type,
       annual_taxes: String(loan.annual_taxes ?? ""),
       monthly_rent: loan.monthly_rent != null ? String(loan.monthly_rent) : "",
@@ -161,16 +165,50 @@ function LivingForm({
     updateLoan.mutate({ loanId: loan.id, ...patch });
   };
 
+  const addressChanged =
+    draft.address !== loan.address ||
+    draft.city !== (loan.city ?? "") ||
+    draft.state !== (loan.state ?? "");
+
+  const commitAddress = () => {
+    if (!canEdit || !addressChanged) return;
+    updateProperty.mutate({
+      loanId: loan.id,
+      address: draft.address,
+      city: draft.city || null,
+      state: draft.state || null,
+    });
+  };
+
   return (
     <div style={{ borderRight: `1px solid ${t.line}`, padding: 16, overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
       <SectionLabel>Living loan file</SectionLabel>
 
-      <Field t={t} label="Property address">
-        <Input t={t} value={draft.address} onChange={(v) => setDraft((d) => ({ ...d, address: v }))} onBlur={() => commit({ address: draft.address })} disabled={!canEdit} />
-      </Field>
-      <Field t={t} label="City">
-        <Input t={t} value={draft.city} onChange={(v) => setDraft((d) => ({ ...d, city: v }))} onBlur={() => commit({ city: draft.city || null })} disabled={!canEdit} />
-      </Field>
+      <div>
+        <GoogleAddressInput
+          value={{ street: draft.address, city: draft.city, state: draft.state }}
+          onChange={(next) =>
+            setDraft((d) => ({
+              ...d,
+              address: next.street ?? "",
+              city: next.city ?? "",
+              state: next.state ?? "",
+            }))
+          }
+          showZip={false}
+          disabled={!canEdit}
+          helperText="Search Google and select the property, or use manual entry if the address is not listed."
+        />
+        {canEdit ? (
+          <button
+            onClick={commitAddress}
+            disabled={!addressChanged || updateProperty.isPending}
+            style={{ ...qcBtn(t), marginTop: 8, opacity: !addressChanged || updateProperty.isPending ? 0.5 : 1 }}
+          >
+            <Icon name="check" size={13} /> {updateProperty.isPending ? "Saving..." : "Apply address"}
+          </button>
+        ) : null}
+      </div>
       <Field t={t} label="Property type">
         <select
           value={draft.property_type}
@@ -288,7 +326,7 @@ function AIMonitor({
       <div ref={scrollerRef} style={{ flex: 1, padding: 16, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
         {(!messages || messages.length === 0) && (
           <div style={{ fontSize: 12.5, color: t.ink3, padding: 12, borderRadius: 9, background: t.surface2, border: `1px solid ${t.line}` }}>
-            No conversation yet — once the AI sends the intro message, the live thread appears here.
+            No conversation yet — once Elara sends the intro message, the live thread appears here.
           </div>
         )}
         {messages?.map((m) => (

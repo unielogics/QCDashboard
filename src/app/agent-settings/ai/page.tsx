@@ -121,7 +121,7 @@ export default function AgentAISettingsPage() {
     return (
       <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
         <PageHeader t={t} dirty={false} saving={false} onClose={() => router.push("/agent-settings")} onSave={save} />
-        <AINotDeployedBanner surface="AI Assistant" />
+        <AINotDeployedBanner surface="Elara" />
       </div>
     );
   }
@@ -169,7 +169,7 @@ export default function AgentAISettingsPage() {
         t={t}
         kicker="Step 3"
         title="AI attempt limit & working schedule"
-        copy="Set the AI's working hours and how many tries before it escalates to you. The AI never initiates outside these hours."
+        copy="Set Elara's working hours and how many tries before it escalates to you. Elara never initiates outside these hours."
       >
         <AttemptAndScheduleSection
           t={t}
@@ -223,7 +223,7 @@ export default function AgentAISettingsPage() {
         t={t}
         kicker="Step 5"
         title="Knowledge & voice"
-        copy="Upload PDFs and paste FAQ the AI should know. Set tone, follow-up style, and signature."
+        copy="Upload PDFs and paste FAQ Elara should know. Set tone, follow-up style, and signature."
       >
         <KnowledgeAndVoiceSection
           t={t}
@@ -405,7 +405,7 @@ function SendingControlSection({
     {
       value: "draft_only",
       title: "Draft only",
-      body: "Writes messages into the AI Inbox. Nothing sends without your approval.",
+      body: "Writes messages into Elara Inbox. Nothing sends without your approval.",
     },
     {
       value: "ask_before_sending",
@@ -456,7 +456,7 @@ function SendingControlSection({
       <BehaviorNote
         icon="lightbulb"
         title="Per-file overrides stay easy"
-        body="Open a deal's AI Secretary and change its outreach mode any time. This setting only affects new deals."
+        body="Open a deal's Elara and change its outreach mode any time. This setting only affects new deals."
         style={{ marginTop: 12 }}
       />
     </>
@@ -518,7 +518,7 @@ function TemplateCard({
   }
 
   if (isAINotDeployed(error)) {
-    return <AINotDeployedBanner surface="AI Assistant" />;
+    return <AINotDeployedBanner surface="Elara" />;
   }
 
   return (
@@ -690,7 +690,7 @@ function AttemptAndScheduleSection({
           }}
         />
         <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-          <ToggleRow t={t} value={createTask} onChange={onCreateTask} title="Create task for me" body="When the limit is reached, drop a task in my AI Inbox." />
+          <ToggleRow t={t} value={createTask} onChange={onCreateTask} title="Create task for me" body="When the limit is reached, drop a task in my Elara Inbox." />
           <ToggleRow t={t} value={markStalled} onChange={onMarkStalled} title="Mark lead stalled" body="Also flag the lead as stalled so it leaves your active list." />
         </div>
       </div>
@@ -703,7 +703,7 @@ function AttemptAndScheduleSection({
           Working schedule
         </div>
         <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, marginBottom: 12 }}>
-          The AI can think and prepare anytime, but only starts new outreach during these hours.
+          Elara can think and prepare anytime, but only starts new outreach during these hours.
         </div>
 
         <div style={{ display: "grid", gap: 10 }}>
@@ -881,7 +881,7 @@ function ReadyForLendingSection({
   }
 
   if (isAINotDeployed(buyer.error)) {
-    return <AINotDeployedBanner surface="AI Assistant" />;
+    return <AINotDeployedBanner surface="Elara" />;
   }
 
   return (
@@ -982,7 +982,7 @@ function KnowledgeUploadCard({
     }}>
       <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 4 }}>Knowledge</div>
       <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, marginBottom: 12 }}>
-        The AI uses your FAQ text and any uploaded documents as context whenever it speaks for you.
+        Elara uses your FAQ text and any uploaded documents as context whenever it speaks for you.
       </div>
 
       {/* Dropzone */}
@@ -1027,7 +1027,7 @@ function KnowledgeUploadCard({
 
       {/* Document list */}
       {isAINotDeployed(list.error) ? (
-        <AINotDeployedBanner surface="AI Assistant" />
+        <AINotDeployedBanner surface="Elara" />
       ) : list.data && list.data.length > 0 ? (
         <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
           {list.data.map((doc) => (
@@ -1041,7 +1041,7 @@ function KnowledgeUploadCard({
         <textarea
           value={faqText}
           onChange={(e) => onFaq(e.target.value)}
-          placeholder="Paste anything the AI should know — product details, company background, common questions and answers."
+          placeholder="Paste anything Elara should know — product details, company background, common questions and answers."
           style={{ ...inputStyle(t), minHeight: 120, resize: "vertical" }}
         />
       </FieldBlock>
@@ -1109,7 +1109,7 @@ function VoiceCard({
     }}>
       <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 4 }}>Voice</div>
       <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, marginBottom: 12 }}>
-        How the AI talks for you. Funding-side borrower messaging is configured in Lending AI Settings.
+        How Elara talks for you. Funding-side borrower messaging is configured in Lending AI Settings.
       </div>
 
       <FieldBlock label="Tone" t={t}>
@@ -1314,7 +1314,7 @@ function ChipText({ children, t, bg, fg }: { children: React.ReactNode; t: Retur
 
 function ownerLabel(owner?: string): string {
   switch (owner) {
-    case "ai": return "My AI Secretary";
+    case "ai": return "Elara";
     case "shared": return "Shared";
     case "funding_locked": return "Locked";
     default: return "My Tasks";
@@ -1549,7 +1549,7 @@ function RequirementConfigurePopup({
                     fontSize: 12, fontWeight: 800, fontFamily: "inherit",
                   }}
                 >
-                  {opt === "human" ? "My Tasks" : opt === "ai" ? "My AI Secretary" : "Shared"}
+                  {opt === "human" ? "My Tasks" : opt === "ai" ? "Elara" : "Shared"}
                 </button>
               ))}
             </div>
@@ -1824,7 +1824,7 @@ function AddTemplateRowModal({
               }}
             >
               <option value="human">My Tasks (I handle it)</option>
-              <option value="ai">My AI Secretary</option>
+              <option value="ai">Elara</option>
               <option value="shared">Shared</option>
             </select>
           </label>

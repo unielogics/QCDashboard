@@ -3,7 +3,7 @@
 // FollowUpEditor — three-knob AI re-engagement cadence config.
 //
 // Reused in three places:
-//   • /loans/[id] AI Secretary tab — per-loan override
+//   • /loans/[id] Elara tab — per-loan override
 //   • /clients/[id]/workspace      — per-client (agent side) override
 //   • /admin/lending-ai/playbooks  — firm-default
 //

@@ -25,7 +25,7 @@ interface ModeOption {
 
 const SUPER_ADMIN_MODES: ModeOption[] = [
   { mode: DealChatMode.CHAT, label: "Chat", hint: "Send to the client thread (operator takeover)" },
-  { mode: DealChatMode.BROKER_QUESTION, label: "Ask AI", hint: "Internal Q&A — borrower won't see this" },
+  { mode: DealChatMode.BROKER_QUESTION, label: "Ask Elara", hint: "Internal Q&A — borrower won't see this" },
 ];
 
 const BROKER_MODES: ModeOption[] = [
@@ -60,7 +60,7 @@ export function DealAgentChatTab({ dealId, user }: Props) {
     try {
       const res = await send.mutateAsync({ dealId, body: text, mode });
       setBody("");
-      if (res.kind === "ai_task") setFlash("Filed to AI Inbox.");
+      if (res.kind === "ai_task") setFlash("Filed to Elara Inbox.");
       else setFlash(null);
     } catch (e) {
       setFlash(e instanceof Error ? e.message : "Send failed.");
@@ -200,7 +200,7 @@ function Bubble({ m, user }: { m: LoanChatMessage; user: User }) {
   const bg = isInternal ? t.surface2 : isAI ? t.petrolSoft : isMe ? t.brandSoft : t.surface2;
   const borderC = isInternal ? t.line : isAI ? t.petrol : isMe ? t.brand : t.line;
   const label = (() => {
-    if (m.from_role === DealChatRole.AI) return "Smart Assistant";
+    if (m.from_role === DealChatRole.AI) return "Elara";
     const roleWord =
       m.from_role === DealChatRole.BROKER ? "Agent"
       : m.from_role === DealChatRole.BROKER_INTERNAL ? "Agent (private)"
