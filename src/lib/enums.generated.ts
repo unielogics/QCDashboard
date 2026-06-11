@@ -777,6 +777,7 @@ export const RequirementCategoryOptions = [
 
 export const Role = {
   SUPER_ADMIN: "super_admin",
+  REGIONAL_MANAGER: "regional_manager",
   BROKER: "broker",
   LOAN_EXEC: "loan_exec",
   CLIENT: "client",
@@ -785,6 +786,7 @@ export const Role = {
 export type Role = (typeof Role)[keyof typeof Role];
 export const RoleOptions = [
   { value: "super_admin", label: "Super Admin" },
+  { value: "regional_manager", label: "Regional Manager" },
   { value: "broker", label: "Broker" },
   { value: "loan_exec", label: "Loan Exec" },
   { value: "client", label: "Client" },

@@ -867,6 +867,39 @@ export interface UserRow {
   created_at: string | null;
 }
 
+export interface PortfolioMetrics {
+  agent_count: number;
+  client_count: number;
+  active_loans: number;
+  pipeline_value: number;
+  funded_ytd: number;
+  pull_through: number | null;
+  high_priority_tasks: number;
+  overdue_items: number;
+}
+
+export interface ManagedAgent {
+  user_id: string;
+  email: string;
+  name: string;
+  broker_id: string | null;
+  display_name: string | null;
+  linked_at: string;
+  metrics: PortfolioMetrics;
+}
+
+export interface RegionalManagerSummary {
+  id: string;
+  email: string;
+  name: string;
+  created_at: string | null;
+  metrics: PortfolioMetrics;
+}
+
+export interface RegionalManagerDetail extends RegionalManagerSummary {
+  agents: ManagedAgent[];
+}
+
 // ── AI chat ────────────────────────────────────────────────────────────────
 export interface AIChatTurn {
   role: "user" | "assistant";

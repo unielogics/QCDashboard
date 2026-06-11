@@ -7,10 +7,17 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { QC_FMT } from "@/components/design-system/tokens";
 import {
   useCurrentUser,
   useDeleteUser,
+  useAddRegionalManagerAgent,
   useProviderSettings,
+  useBrokers,
+  useInviteRegionalManager,
+  useRegionalManagerDetail,
+  useRegionalManagers,
+  useRemoveRegionalManagerAgent,
   useSettings,
   useUpdateProviderSettings,
   useUpdateSettings,
@@ -49,6 +56,7 @@ const SECTIONS = [
   { id: "property_intelligence", label: "Property Intel", icon: "map" as const, hidden: false },
   { id: "letterhead", label: "Firm letterhead", icon: "docCheck" as const, hidden: false },
   { id: "security", label: "Security", icon: "shield" as const, hidden: false },
+  { id: "regional_managers", label: "Regional Managers", icon: "clients" as const, hidden: false },
   { id: "team", label: "Team", icon: "clients" as const, hidden: false },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
@@ -374,6 +382,7 @@ export default function SettingsPage() {
               saving={update.isPending}
             />
           )}
+          {section === "regional_managers" && <RegionalManagersSection canEdit={canEdit} />}
           {section === "simulator" && (
             <SimulatorSection
               draft={draft}
@@ -1103,9 +1112,171 @@ function SecretField({
 
 const ASSIGNABLE_ROLES: { value: Role; label: string }[] = [
   { value: Role.BROKER, label: "Agent" },
+  { value: Role.REGIONAL_MANAGER, label: "Regional Manager" },
   { value: Role.LOAN_EXEC, label: "Underwriter" },
   { value: Role.SUPER_ADMIN, label: "Super Admin" },
 ];
+
+function RegionalManagersSection({ canEdit }: { canEdit: boolean }) {
+  const { t } = useTheme();
+  const { data: managers = [], isLoading, error } = useRegionalManagers();
+  const { data: brokers = [] } = useBrokers();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [agentUserId, setAgentUserId] = useState("");
+  const inviteManager = useInviteRegionalManager();
+  const addAgent = useAddRegionalManagerAgent(selectedId);
+  const removeAgent = useRemoveRegionalManagerAgent(selectedId);
+  const selected = selectedId ?? managers[0]?.id ?? null;
+  const detail = useRegionalManagerDetail(selected);
+
+  useEffect(() => {
+    if (!selectedId && managers[0]?.id) setSelectedId(managers[0].id);
+  }, [managers, selectedId]);
+
+  if (!canEdit) {
+    return (
+      <Card pad={20}>
+        <div style={{ fontSize: 12.5, color: t.ink3 }}>Regional manager management is super-admin only.</div>
+      </Card>
+    );
+  }
+
+  const createManager = async () => {
+    if (!email.trim() || !name.trim()) return;
+    const row = await inviteManager.mutateAsync({ email: email.trim(), name: name.trim() });
+    setEmail("");
+    setName("");
+    setSelectedId(row.id);
+  };
+  const assignAgent = async () => {
+    if (!agentUserId) return;
+    await addAgent.mutateAsync({ agent_user_id: agentUserId });
+    setAgentUserId("");
+  };
+
+  const linkedUserIds = new Set(detail.data?.agents.map((a) => a.user_id) ?? []);
+  const availableAgents = brokers.filter((b) => !linkedUserIds.has(b.user_id));
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 14, alignItems: "flex-start" }}>
+      <Card pad={16}>
+        <SectionLabel>Invite regional manager</SectionLabel>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" style={inputStyle(t)} />
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@company.com" style={inputStyle(t)} />
+          <button
+            onClick={createManager}
+            disabled={!name.trim() || !email.trim() || inviteManager.isPending}
+            style={{ ...qcBtnPrimary(t), justifyContent: "center", opacity: name.trim() && email.trim() ? 1 : 0.5 }}
+          >
+            <Icon name="plus" size={13} /> Invite manager
+          </button>
+        </div>
+        <div style={{ height: 18 }} />
+        <SectionLabel>Managers</SectionLabel>
+        {isLoading && <div style={{ fontSize: 13, color: t.ink3 }}>Loading...</div>}
+        {error && <Pill bg={t.dangerBg} color={t.danger}>Failed to load managers</Pill>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {managers.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setSelectedId(m.id)}
+              style={{
+                all: "unset",
+                cursor: "pointer",
+                border: `1px solid ${selected === m.id ? t.petrol : t.line}`,
+                background: selected === m.id ? t.petrolSoft : t.surface2,
+                borderRadius: 9,
+                padding: "10px 12px",
+              }}
+            >
+              <div style={{ fontSize: 13, color: t.ink, fontWeight: 800 }}>{m.name}</div>
+              <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>{m.email}</div>
+              <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 4 }}>
+                {m.metrics.agent_count} agents · {QC_FMT.short(m.metrics.pipeline_value)} pipeline
+              </div>
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      <Card pad={16}>
+        {detail.data ? (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <SectionLabel>{detail.data.name}</SectionLabel>
+                <div style={{ fontSize: 12, color: t.ink3 }}>{detail.data.email}</div>
+              </div>
+              <Pill bg={t.brandSoft} color={t.brand}>Regional Manager</Pill>
+            </div>
+            <RegionalMetrics metrics={detail.data.metrics} />
+            <div style={{ display: "flex", gap: 8, alignItems: "center", margin: "16px 0" }}>
+              <select value={agentUserId} onChange={(e) => setAgentUserId(e.target.value)} style={{ ...inputStyle(t), flex: 1 }}>
+                <option value="">Assign existing agent...</option>
+                {availableAgents.map((b) => (
+                  <option key={b.user_id} value={b.user_id}>{b.display_name}</option>
+                ))}
+              </select>
+              <button onClick={assignAgent} disabled={!agentUserId || addAgent.isPending} style={qcBtnPrimary(t)}>
+                <Icon name="plus" size={13} /> Assign
+              </button>
+            </div>
+            <SectionLabel>Portfolio agents</SectionLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {detail.data.agents.map((agent) => (
+                <div key={agent.user_id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 90px 110px 32px", gap: 10, alignItems: "center", padding: 10, border: `1px solid ${t.line}`, borderRadius: 9 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>{agent.display_name ?? agent.name}</div>
+                    <div style={{ fontSize: 11.5, color: t.ink3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{agent.email}</div>
+                  </div>
+                  <div style={{ fontSize: 12, color: t.ink2 }}>{agent.metrics.client_count} clients</div>
+                  <div style={{ fontSize: 12, color: t.ink2 }}>{QC_FMT.short(agent.metrics.pipeline_value)}</div>
+                  <button
+                    aria-label={`Remove ${agent.name}`}
+                    onClick={() => removeAgent.mutate(agent.user_id)}
+                    style={{ all: "unset", cursor: "pointer", width: 28, height: 28, display: "grid", placeItems: "center", color: t.ink3 }}
+                  >
+                    <Icon name="x" size={13} />
+                  </button>
+                </div>
+              ))}
+              {detail.data.agents.length === 0 && <div style={{ fontSize: 13, color: t.ink3 }}>No assigned agents yet.</div>}
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 13, color: t.ink3 }}>Select or invite a regional manager.</div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function RegionalMetrics({ metrics }: { metrics: import("@/lib/types").PortfolioMetrics }) {
+  const { t } = useTheme();
+  const items = [
+    ["Agents", metrics.agent_count],
+    ["Clients", metrics.client_count],
+    ["Active loans", metrics.active_loans],
+    ["Pipeline", QC_FMT.short(metrics.pipeline_value)],
+    ["Funded YTD", QC_FMT.short(metrics.funded_ytd)],
+    ["Pull-through", metrics.pull_through == null ? "—" : `${Math.round(metrics.pull_through * 100)}%`],
+    ["High priority", metrics.high_priority_tasks],
+    ["Overdue", metrics.overdue_items],
+  ];
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginTop: 14 }}>
+      {items.map(([label, value]) => (
+        <div key={label} style={{ border: `1px solid ${t.line}`, borderRadius: 8, padding: 10, background: t.surface2 }}>
+          <div style={{ fontSize: 10.5, color: t.ink3, textTransform: "uppercase", fontWeight: 800, letterSpacing: 0.8 }}>{label}</div>
+          <div style={{ fontSize: 18, color: t.ink, fontWeight: 800, marginTop: 4 }}>{value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function TeamSection({ canEdit }: { canEdit: boolean }) {
   const { t } = useTheme();

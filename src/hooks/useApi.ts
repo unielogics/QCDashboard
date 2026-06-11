@@ -121,6 +121,9 @@ import type {
   ProviderSettingsUpdate,
   PropertyIntelligenceLookupRequest,
   PropertyIntelligenceSnapshot,
+  ManagedAgent,
+  RegionalManagerDetail,
+  RegionalManagerSummary,
   ShareAnalysisResponse,
 } from "@/lib/types";
 import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurpose, PropertyType, Role, DealChatMode, FeedbackOutputType, FeedbackRating, AmortizationStyle } from "@/lib/enums.generated";
@@ -1738,6 +1741,112 @@ export function useRequestPrequalification() {
       qc.invalidateQueries({ queryKey: ["client", clientId] });
       qc.invalidateQueries({ queryKey: ["clients"] });
       qc.invalidateQueries({ queryKey: ["ai-tasks"] });
+    },
+  });
+}
+
+export function useRegionalManagers() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["regional-managers", devUser],
+    queryFn: () => apiCall<RegionalManagerSummary[]>("/regional-managers"),
+  });
+}
+
+export function useInviteRegionalManager() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { email: string; name: string }) =>
+      apiCall<RegionalManagerSummary>("/regional-managers", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["regional-managers"] });
+      qc.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+}
+
+export function useRegionalManagerDetail(managerId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["regional-manager", managerId, devUser],
+    queryFn: () => apiCall<RegionalManagerDetail>(`/regional-managers/${managerId}`),
+    enabled: !!managerId,
+  });
+}
+
+export function useAddRegionalManagerAgent(managerId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { agent_user_id?: string; email?: string; name?: string }) =>
+      apiCall<ManagedAgent>(`/regional-managers/${managerId}/agents`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["regional-manager", managerId] });
+      qc.invalidateQueries({ queryKey: ["regional-managers"] });
+    },
+  });
+}
+
+export function useRemoveRegionalManagerAgent(managerId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (agentUserId: string) =>
+      apiCall<void>(`/regional-managers/${managerId}/agents/${agentUserId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["regional-manager", managerId] });
+      qc.invalidateQueries({ queryKey: ["regional-managers"] });
+    },
+  });
+}
+
+export function useMyRegionalAgents() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["regional-manager-agents", devUser],
+    queryFn: () => apiCall<ManagedAgent[]>("/regional-managers/me/agents"),
+  });
+}
+
+export function useInviteMyRegionalAgent() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { email: string; name: string }) =>
+      apiCall<ManagedAgent>("/regional-managers/me/agents", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["regional-manager-agents"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-report"] });
+      qc.invalidateQueries({ queryKey: ["loans"] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+    },
+  });
+}
+
+export function useRemoveMyRegionalAgent() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (agentUserId: string) =>
+      apiCall<void>(`/regional-managers/me/agents/${agentUserId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["regional-manager-agents"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-report"] });
+      qc.invalidateQueries({ queryKey: ["loans"] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
     },
   });
 }
