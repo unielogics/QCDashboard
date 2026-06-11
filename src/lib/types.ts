@@ -1946,8 +1946,12 @@ export interface ProviderSettingsRead {
   rentcast_configured: boolean;
   google_server_configured: boolean;
   google_maps_browser_key_configured: boolean;
+  google_maps_ios_key_configured: boolean;
+  google_maps_android_key_configured: boolean;
   google_maps_mobile_key_configured: boolean;
   google_maps_browser_key: string | null;
+  google_maps_ios_key: string | null;
+  google_maps_android_key: string | null;
   google_maps_mobile_key: string | null;
   property_analysis_ai_enabled: boolean;
   property_intelligence_cache_ttl_hours: number;
@@ -1957,6 +1961,8 @@ export interface ProviderSettingsUpdate {
   rentcast_api_key?: string | null;
   google_server_api_key?: string | null;
   google_maps_browser_key?: string | null;
+  google_maps_ios_key?: string | null;
+  google_maps_android_key?: string | null;
   google_maps_mobile_key?: string | null;
   property_analysis_ai_enabled?: boolean | null;
   property_intelligence_cache_ttl_hours?: number | null;

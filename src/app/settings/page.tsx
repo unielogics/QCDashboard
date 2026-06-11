@@ -847,7 +847,8 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
   const [rentcastKey, setRentcastKey] = useState("");
   const [googleServerKey, setGoogleServerKey] = useState("");
   const [googleBrowserKey, setGoogleBrowserKey] = useState("");
-  const [googleMobileKey, setGoogleMobileKey] = useState("");
+  const [googleIosKey, setGoogleIosKey] = useState("");
+  const [googleAndroidKey, setGoogleAndroidKey] = useState("");
   const [aiEnabled, setAiEnabled] = useState(true);
   const [ttlHours, setTtlHours] = useState(24);
   const [flash, setFlash] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
@@ -862,7 +863,8 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
     rentcastKey.trim() ||
     googleServerKey.trim() ||
     googleBrowserKey.trim() ||
-    googleMobileKey.trim() ||
+    googleIosKey.trim() ||
+    googleAndroidKey.trim() ||
     (data && (aiEnabled !== data.property_analysis_ai_enabled || ttlHours !== data.property_intelligence_cache_ttl_hours));
 
   const save = async () => {
@@ -874,13 +876,15 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
     if (rentcastKey.trim()) payload.rentcast_api_key = rentcastKey.trim();
     if (googleServerKey.trim()) payload.google_server_api_key = googleServerKey.trim();
     if (googleBrowserKey.trim()) payload.google_maps_browser_key = googleBrowserKey.trim();
-    if (googleMobileKey.trim()) payload.google_maps_mobile_key = googleMobileKey.trim();
+    if (googleIosKey.trim()) payload.google_maps_ios_key = googleIosKey.trim();
+    if (googleAndroidKey.trim()) payload.google_maps_android_key = googleAndroidKey.trim();
     try {
       await update.mutateAsync(payload);
       setRentcastKey("");
       setGoogleServerKey("");
       setGoogleBrowserKey("");
-      setGoogleMobileKey("");
+      setGoogleIosKey("");
+      setGoogleAndroidKey("");
       setFlash({ kind: "ok", msg: "Provider settings saved." });
     } catch (e) {
       setFlash({ kind: "err", msg: e instanceof Error ? e.message : "Save failed." });
@@ -914,7 +918,8 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
             <StatusPill label="RentCast" ok={!!data?.rentcast_configured} />
             <StatusPill label="Google Places/Geocoding" ok={!!data?.google_server_configured} />
             <StatusPill label="Google Maps web" ok={!!data?.google_maps_browser_key_configured} />
-            <StatusPill label="Google Maps mobile" ok={!!data?.google_maps_mobile_key_configured} />
+            <StatusPill label="Google Maps iOS" ok={!!data?.google_maps_ios_key_configured} />
+            <StatusPill label="Google Maps Android" ok={!!data?.google_maps_android_key_configured} />
           </div>
 
           <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.55, marginBottom: 14 }}>
@@ -951,11 +956,20 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
             />
             <SecretField
               t={t}
-              label="Google Maps mobile key"
-              helper="Used by the mobile app for map and address features."
-              configured={!!data?.google_maps_mobile_key_configured}
-              value={googleMobileKey}
-              onChange={setGoogleMobileKey}
+              label="Google Maps iOS key"
+              helper="Use an iOS apps restriction with bundle ID com.qualifiedcommercial.mobile. Restrict APIs to Maps SDK for iOS and Places SDK for iOS if used."
+              configured={!!data?.google_maps_ios_key_configured}
+              value={googleIosKey}
+              onChange={setGoogleIosKey}
+              disabled={!canEdit}
+            />
+            <SecretField
+              t={t}
+              label="Google Maps Android key"
+              helper="Use an Android apps restriction with package com.qualifiedcommercial.mobile and the app signing SHA-1 fingerprint. Restrict APIs to Maps SDK for Android and Places SDK for Android if used."
+              configured={!!data?.google_maps_android_key_configured}
+              value={googleAndroidKey}
+              onChange={setGoogleAndroidKey}
               disabled={!canEdit}
             />
           </div>
