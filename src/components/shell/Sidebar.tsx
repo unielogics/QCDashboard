@@ -40,6 +40,8 @@ const AGENT_NAV: NavItem[] = [
   { href: "/clients", label: "Clients", icon: "clients" },
   { href: "/pipeline", label: "My Pipeline", icon: "layers" },
   { href: "/admin/prequal-requests", label: "Prequalifications", icon: "docCheck" },
+  { href: "/deal-analyzer", label: "Deal Analyzer", icon: "hammer" },
+  { href: "/simulator", label: "Simulation", icon: "calc" },
   { href: "/ai-inbox", label: "Elara Inbox", icon: "bolt" },
   { href: "/ai-agents", label: "AI Outreach", icon: "spark" },
   // /vault intentionally omitted for agents — they collect docs from
@@ -47,7 +49,6 @@ const AGENT_NAV: NavItem[] = [
   // than from a global firm-wide vault. Operators keep their /vault
   // entry below.
   { href: "/messages", label: "Messages", icon: "chat" },
-  { href: "/deal-analyzer", label: "Deal Analyzer", icon: "hammer" },
   { href: "/reports", label: "Performance", icon: "trend" },
   { href: "/agent-settings", label: "Settings", icon: "gear" },
 ];

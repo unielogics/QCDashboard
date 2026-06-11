@@ -18,10 +18,11 @@ import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primit
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { ClientSearchBlock, type ClientPickResult } from "@/components/ClientSearchBlock";
-import { RecentAnalysisRunsCard } from "@/components/analysis/RecentAnalysisRunsCard";
+import { AnalysisFloatingAction, AnalysisRunInspect, AnalysisRunsTable } from "@/components/analysis/AnalysisRunsWorkspace";
 import { GoogleAddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import {
   useAdminLoanScenarios,
+  useAnalysisRun,
   useAnalysisRuns,
   useConvertAnalysisRunToPrequal,
   useCreateAnalysisRun,
@@ -101,16 +102,21 @@ export default function SimulatorPage() {
   const spq = useSearchParams();
   const isOperator =
     user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC;
+  const isBroker = user?.role === Role.BROKER;
+  const isListFirstRole = isBroker || isOperator;
   const wantNew = spq?.get("new") === "1";
+  const startType = spq?.get("type") ?? "";
   const runId = spq?.get("run") ?? null;
+  const analysisRunId = spq?.get("analysisRun") ?? null;
   const adminRuns = useAdminLoanScenarios(!!isOperator);
+  const { data: inspectedAnalysisRun, isLoading: inspectedAnalysisRunLoading } = useAnalysisRun(analysisRunId);
   const recentSince = useMemo(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), []);
-  const { data: simulatorRuns = [] } = useAnalysisRuns({
+  const { data: simulatorRuns = [], isLoading: simulatorRunsLoading } = useAnalysisRuns({
     tool_source: "simulator",
     updated_since: recentSince,
     limit: 50,
   });
-  const { data: recalcRuns = [] } = useAnalysisRuns({
+  const { data: recalcRuns = [], isLoading: recalcRunsLoading } = useAnalysisRuns({
     tool_source: "loan_recalc",
     updated_since: recentSince,
     limit: 50,
@@ -123,14 +129,29 @@ export default function SimulatorPage() {
     [recalcRuns, simulatorRuns],
   );
 
+  useEffect(() => {
+    if (!wantNew) return;
+    setMode(startType === "file" ? "loan" : "free");
+  }, [startType, wantNew]);
+
   // CLIENT view — same gated, ARV-driven simulator as mobile.
   if (isClient) {
     return <ClientSimulatorPage />;
   }
 
-  // Operator (super-admin / loan-exec): land on a system-wide table
-  // of every user's simulator runs; "+" opens the wizard; a row opens
-  // that run read-only. Brokers keep the wizard.
+  if (isListFirstRole && analysisRunId) {
+    return (
+      <AnalysisRunInspect
+        run={inspectedAnalysisRun}
+        loading={inspectedAnalysisRunLoading}
+        backLabel="Back to simulator runs"
+        onBack={() => router.push("/simulator")}
+      />
+    );
+  }
+
+  // Preserve legacy operator scenario inspection links while the default
+  // simulator landing moves to analysis_runs below.
   if (isOperator && runId) {
     return (
       <SimInspect
@@ -141,15 +162,41 @@ export default function SimulatorPage() {
       />
     );
   }
-  if (isOperator && !wantNew) {
+
+  if (isListFirstRole && !wantNew) {
+    const actions = [
+      {
+        label: "New broker calculator",
+        description: "Run pricing math from scratch.",
+        icon: "calc",
+        onClick: () => router.push("/simulator?new=1&type=calculator"),
+      },
+      {
+        label: "New client estimate",
+        description: "Link a client and save/share the estimate.",
+        icon: "clients",
+        onClick: () => router.push("/simulator?new=1&type=client"),
+      },
+      {
+        label: "Recalculate from funding file",
+        description: "Recalculate an existing file.",
+        icon: "layers",
+        onClick: () => router.push("/simulator?new=1&type=file"),
+      },
+    ];
     return (
-      <SimRunsTable
-        t={t}
-        rows={adminRuns.data ?? []}
-        loading={adminRuns.isLoading}
-        onNew={() => router.push("/simulator?new=1")}
-        onOpen={(id) => router.push(`/simulator?run=${id}`)}
-      />
+      <>
+        <AnalysisRunsTable
+          title="Simulate"
+          description="Saved simulator and funding-file recalculation runs from the last 30 days."
+          emptyText="No saved simulations or file recalculations in the last 30 days."
+          runs={recentRuns}
+          loading={simulatorRunsLoading || recalcRunsLoading}
+          onOpen={(id) => router.push(`/simulator?analysisRun=${id}`)}
+          actions={isBroker ? actions : undefined}
+        />
+        {!isBroker ? <AnalysisFloatingAction label="Start a new simulation" actions={actions} /> : null}
+      </>
     );
   }
 
@@ -158,6 +205,15 @@ export default function SimulatorPage() {
     <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
+          {isListFirstRole ? (
+            <button
+              type="button"
+              onClick={() => router.push("/simulator")}
+              style={{ all: "unset", cursor: "pointer", color: t.petrol, fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}
+            >
+              <Icon name="chevL" size={12} /> Previous runs
+            </button>
+          ) : null}
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Simulate</h1>
           <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
             Run pricing math from scratch or against any loan in your pipeline. Operators set the
@@ -173,12 +229,6 @@ export default function SimulatorPage() {
           </ModeButton>
         </div>
       </div>
-
-      <RecentAnalysisRunsCard
-        runs={recentRuns}
-        title="Saved simulations - last 30 days"
-        emptyText="Saved simulations and file recalculations will appear here after you save, share, or create a prequalification."
-      />
 
       {mode === "free" ? <FreeCalcMode t={t} sim={sim} /> : <FromLoanMode t={t} sim={sim} loans={loans} />}
     </div>

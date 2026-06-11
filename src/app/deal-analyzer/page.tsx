@@ -2,25 +2,27 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { ClientSearchBlock, type ClientPickResult } from "@/components/ClientSearchBlock";
-import { RecentAnalysisRunsCard } from "@/components/analysis/RecentAnalysisRunsCard";
+import { AnalysisFloatingAction, AnalysisRunInspect, AnalysisRunsTable } from "@/components/analysis/AnalysisRunsWorkspace";
 import { GoogleAddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import {
+  useAnalysisRun,
   useAnalysisRuns,
   useConvertAnalysisRunToPrequal,
   useCreateAnalysisRun,
+  useCurrentUser,
   useCurrentCredit,
   useFreeCalc,
   usePropertyIntelligenceLookup,
   useShareAnalysisRun,
   useUpdateAnalysisRun,
 } from "@/hooks/useApi";
-import { LoanType, PropertyType } from "@/lib/enums.generated";
+import { LoanType, PropertyType, Role } from "@/lib/enums.generated";
 import type { AddressParts, AnalysisProduct, AnalysisRun, PropertyIntelligenceSnapshot, RecalcResponse } from "@/lib/types";
 
 const money = (n: number | null | undefined) =>
@@ -56,7 +58,16 @@ function canLookupAddress(parts: AddressParts | null): parts is AddressParts {
 
 export default function DealAnalyzerPage() {
   const { t } = useTheme();
+  const router = useRouter();
   const sp = useSearchParams();
+  const { data: currentUser } = useCurrentUser();
+  const isBroker = currentUser?.role === Role.BROKER;
+  const isListFirstRole =
+    isBroker ||
+    currentUser?.role === Role.SUPER_ADMIN ||
+    currentUser?.role === Role.LOAN_EXEC;
+  const wantNew = sp?.get("new") === "1";
+  const runId = sp?.get("run") ?? null;
   const [product, setProduct] = useState<AnalysisProduct>((sp?.get("product") as AnalysisProduct) || "dscr_purchase");
   const [selectedClient, setSelectedClient] = useState<ClientPickResult | null>(null);
   const [addressParts, setAddressParts] = useState<AddressParts | null>(null);
@@ -89,11 +100,12 @@ export default function DealAnalyzerPage() {
   const shareRun = useShareAnalysisRun();
   const convertRun = useConvertAnalysisRunToPrequal();
   const recentSince = useMemo(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), []);
-  const { data: recentRuns = [] } = useAnalysisRuns({
+  const { data: recentRuns = [], isLoading: recentRunsLoading } = useAnalysisRuns({
     tool_source: "deal_analyzer",
     updated_since: recentSince,
     limit: 50,
   });
+  const { data: inspectedRun, isLoading: inspectedRunLoading } = useAnalysisRun(runId);
 
   const fullAddress = formatAddressParts(addressParts);
   const propertyLookupKey = useMemo(() => {
@@ -275,10 +287,61 @@ export default function DealAnalyzerPage() {
     shareRun.isPending ||
     convertRun.isPending;
 
+  if (isListFirstRole && runId) {
+    return (
+      <AnalysisRunInspect
+        run={inspectedRun}
+        loading={inspectedRunLoading}
+        backLabel="Back to analyzer runs"
+        onBack={() => router.push("/deal-analyzer")}
+      />
+    );
+  }
+
+  if (isListFirstRole && !wantNew) {
+    const actions = [
+      {
+        label: "New DSCR analysis",
+        description: "Screen rent, value, PITIA, and DSCR.",
+        icon: "calc",
+        onClick: () => router.push("/deal-analyzer?new=1&product=dscr_purchase"),
+      },
+      {
+        label: "New Fix & Flip analysis",
+        description: "Open the renovation analyzer workflow.",
+        icon: "hammer",
+        onClick: () => router.push("/deal-analyzer/fix-and-flip?new=1"),
+      },
+    ];
+    return (
+      <>
+        <AnalysisRunsTable
+          title="Deal Analyzer"
+          description="Saved analyzer files from the last 30 days. Open a run to review the report, linked client, loan, share state, or prequalification handoff."
+          emptyText="No saved Deal Analyzer runs in the last 30 days."
+          runs={recentRuns}
+          loading={recentRunsLoading}
+          onOpen={(id) => router.push(`/deal-analyzer?run=${id}`)}
+          actions={isBroker ? actions : undefined}
+        />
+        {!isBroker ? <AnalysisFloatingAction label="Start a new analysis" actions={actions} /> : null}
+      </>
+    );
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 1120, margin: "0 auto" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
+          {isListFirstRole ? (
+            <button
+              type="button"
+              onClick={() => router.push("/deal-analyzer")}
+              style={{ all: "unset", cursor: "pointer", color: t.petrol, fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}
+            >
+              <Icon name="chevL" size={12} /> Previous runs
+            </button>
+          ) : null}
           <div style={{ fontSize: 11, color: t.petrol, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase" }}>Deal Analyzer</div>
           <h1 style={{ margin: "4px 0 0", color: t.ink, fontSize: 25, lineHeight: 1.1 }}>DSCR Deal Screen</h1>
         </div>
@@ -286,12 +349,6 @@ export default function DealAnalyzerPage() {
           <Icon name="hammer" size={14} /> Fix &amp; Flip Analyzer
         </Link>
       </div>
-
-      <RecentAnalysisRunsCard
-        runs={recentRuns}
-        title="Saved analyzer runs - last 30 days"
-        emptyText="Saved Deal Analyzer runs will appear here after you save, share, or create a prequalification."
-      />
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.05fr) minmax(320px, .95fr)", gap: 14, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
