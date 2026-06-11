@@ -79,6 +79,7 @@ export default function DashboardPage() {
 
   const isClient = user?.role === Role.CLIENT;
   const isBroker = user?.role === Role.BROKER;
+  const isRegionalManager = user?.role === Role.REGIONAL_MANAGER;
   const showOperatorPipeline = !isClient && !isBroker;
 
   const datelineDate = today.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
@@ -193,7 +194,7 @@ export default function DashboardPage() {
               </Link>
             }
           >
-            {showOperatorPipeline ? "Pipeline at a glance" : "Your loans"}
+            {isRegionalManager ? "Portfolio pipeline" : showOperatorPipeline ? "Pipeline at a glance" : "Your loans"}
           </SectionLabel>
 
           {showOperatorPipeline ? (
@@ -466,10 +467,30 @@ export default function DashboardPage() {
           </div>
         </Card>
 
-        <TopBrokersPanel />
+        {isRegionalManager ? <RegionalAgentsPanel /> : <TopBrokersPanel />}
       </div>
       )}
     </div>
+  );
+}
+
+function RegionalAgentsPanel() {
+  const { t } = useTheme();
+  return (
+    <Card pad={16}>
+      <SectionLabel
+        action={
+          <Link href="/regional-agents" style={{ color: t.petrol, fontWeight: 700, fontSize: 12, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
+            Agents <Icon name="arrowR" size={12} />
+          </Link>
+        }
+      >
+        Regional portfolio
+      </SectionLabel>
+      <div style={{ fontSize: 13, color: t.ink3, lineHeight: 1.5 }}>
+        View your assigned agents, invite new agents, and monitor portfolio metrics.
+      </div>
+    </Card>
   );
 }
 

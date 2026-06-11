@@ -64,7 +64,7 @@ export function _setActiveProfileFromUser(
     role,
     homeRail: role !== "client",
     canSee: {
-      aiInbox: role === "super_admin" || role === "broker" || role === "loan_exec",
+      aiInbox: role === "super_admin" || role === "broker" || role === "loan_exec" || role === "regional_manager",
       rewards: role === "super_admin",
       settings: role === "super_admin",
     },

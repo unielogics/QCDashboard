@@ -53,6 +53,17 @@ const AGENT_NAV: NavItem[] = [
   { href: "/agent-settings", label: "Settings", icon: "gear" },
 ];
 
+const REGIONAL_MANAGER_NAV: NavItem[] = [
+  { href: "/", label: "Dashboard", icon: "home" },
+  { href: "/pipeline", label: "Portfolio Pipeline", icon: "layers" },
+  { href: "/clients", label: "Clients", icon: "clients" },
+  { href: "/messages", label: "Messages", icon: "chat" },
+  { href: "/calendar", label: "Calendar", icon: "cal" },
+  { href: "/reports", label: "Reports", icon: "trend" },
+  { href: "/regional-agents", label: "Agents", icon: "clients" },
+  { href: "/profile", label: "Profile", icon: "user" },
+];
+
 const OPERATOR_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: "home" },
   { href: "/pipeline", label: "Pipeline", icon: "layers" },
@@ -75,6 +86,7 @@ const OPERATOR_NAV: NavItem[] = [
 
 const ROLE_LABEL: Record<string, string> = {
   super_admin: "Super Admin",
+  regional_manager: "Regional Manager",
   broker: "Agent",
   loan_exec: "Underwriter",
   client: "Client",
@@ -94,7 +106,10 @@ export default function Sidebar() {
   // Pick the IA variant by role. Agents get the Funding Command Center IA;
   // every other role keeps the existing operator nav. Until /auth/me resolves,
   // hide role-gated items rather than flicker.
-  const NAV = user?.role === Role.BROKER ? AGENT_NAV : OPERATOR_NAV;
+  const NAV =
+    user?.role === Role.BROKER ? AGENT_NAV
+    : user?.role === Role.REGIONAL_MANAGER ? REGIONAL_MANAGER_NAV
+    : OPERATOR_NAV;
   const items = NAV.filter((n) => !n.roles || (user && n.roles.includes(user.role as Role)));
 
   const initials = user?.name

@@ -17,6 +17,7 @@ interface Props {
 
 const ROLE_OPTIONS: { value: Role; label: string; sub: string }[] = [
   { value: Role.BROKER, label: "Agent", sub: "Owns deals, sees their assigned pipeline." },
+  { value: Role.REGIONAL_MANAGER, label: "Regional Manager", sub: "Sees assigned agents and their portfolio metrics." },
   { value: Role.LOAN_EXEC, label: "Underwriter", sub: "Sees all loans, runs UW + risk scoring." },
   { value: Role.SUPER_ADMIN, label: "Super Admin", sub: "Full access: settings, team, every loan." },
 ];
