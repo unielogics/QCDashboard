@@ -1949,6 +1949,8 @@ export interface ProviderSettingsRead {
   google_maps_ios_key_configured: boolean;
   google_maps_android_key_configured: boolean;
   google_maps_mobile_key_configured: boolean;
+  rentcast_api_key: string | null;
+  google_server_api_key: string | null;
   google_maps_browser_key: string | null;
   google_maps_ios_key: string | null;
   google_maps_android_key: string | null;

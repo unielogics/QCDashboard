@@ -932,6 +932,7 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
               label="RentCast property data key"
               helper="Used for property details, value estimates, rent estimates, and market data."
               configured={!!data?.rentcast_configured}
+              savedValue={data?.rentcast_api_key ?? null}
               value={rentcastKey}
               onChange={setRentcastKey}
               disabled={!canEdit}
@@ -941,6 +942,7 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
               label="Google Places and Geocoding key"
               helper="Used by the API for address autocomplete, place lookup, and geocoding."
               configured={!!data?.google_server_configured}
+              savedValue={data?.google_server_api_key ?? null}
               value={googleServerKey}
               onChange={setGoogleServerKey}
               disabled={!canEdit}
@@ -950,6 +952,7 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
               label="Google Maps web key"
               helper="Used by the desktop web app for browser-based map and address features."
               configured={!!data?.google_maps_browser_key_configured}
+              savedValue={data?.google_maps_browser_key ?? null}
               value={googleBrowserKey}
               onChange={setGoogleBrowserKey}
               disabled={!canEdit}
@@ -959,6 +962,7 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
               label="Google Maps iOS key"
               helper="Use an iOS apps restriction with bundle ID com.qualifiedcommercial.mobile. Restrict APIs to Maps SDK for iOS and Places SDK for iOS if used."
               configured={!!data?.google_maps_ios_key_configured}
+              savedValue={data?.google_maps_ios_key ?? null}
               value={googleIosKey}
               onChange={setGoogleIosKey}
               disabled={!canEdit}
@@ -968,6 +972,7 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
               label="Google Maps Android key"
               helper="Use an Android apps restriction with package com.qualifiedcommercial.mobile and the app signing SHA-1 fingerprint. Restrict APIs to Maps SDK for Android and Places SDK for Android if used."
               configured={!!data?.google_maps_android_key_configured}
+              savedValue={data?.google_maps_android_key ?? null}
               value={googleAndroidKey}
               onChange={setGoogleAndroidKey}
               disabled={!canEdit}
@@ -1018,6 +1023,7 @@ function SecretField({
   label,
   helper,
   configured,
+  savedValue,
   value,
   onChange,
   disabled,
@@ -1026,30 +1032,65 @@ function SecretField({
   label: string;
   helper: string;
   configured: boolean;
+  savedValue?: string | null;
   value: string;
   onChange: (value: string) => void;
   disabled: boolean;
 }) {
+  const [revealed, setRevealed] = useState(false);
   const maskedValue = "************";
   const showingSavedKey = configured && !value;
+  const revealableValue = value || savedValue || "";
+  const canReveal = !!revealableValue;
+  const displayValue = showingSavedKey
+    ? revealed && savedValue
+      ? savedValue
+      : maskedValue
+    : value;
 
   return (
     <Field t={t} label={label}>
-      <input
-        type="password"
-        value={showingSavedKey ? maskedValue : value}
-        onFocus={(e) => {
-          if (showingSavedKey) e.currentTarget.select();
-        }}
-        onChange={(e) => {
-          if (showingSavedKey && e.target.value === maskedValue) return;
-          onChange(e.target.value);
-        }}
-        placeholder={configured ? "" : "Paste key"}
-        disabled={disabled}
-        autoComplete="off"
-        style={inputStyle(t)}
-      />
+      <div style={{ position: "relative" }}>
+        <input
+          type={revealed && canReveal ? "text" : "password"}
+          value={displayValue}
+          onFocus={(e) => {
+            if (showingSavedKey) e.currentTarget.select();
+          }}
+          onChange={(e) => {
+            if (showingSavedKey && e.target.value === maskedValue) return;
+            onChange(e.target.value);
+          }}
+          placeholder={configured ? "" : "Paste key"}
+          disabled={disabled}
+          autoComplete="off"
+          style={{ ...inputStyle(t), paddingRight: 44 }}
+        />
+        <button
+          type="button"
+          aria-label={revealed ? "Hide key" : "Show key"}
+          title={revealed ? "Hide key" : "Show key"}
+          onClick={() => setRevealed((v) => !v)}
+          disabled={!canReveal}
+          style={{
+            position: "absolute",
+            right: 6,
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            border: "none",
+            background: "transparent",
+            color: canReveal ? t.ink3 : `${t.ink3}66`,
+            display: "grid",
+            placeItems: "center",
+            cursor: canReveal ? "pointer" : "not-allowed",
+          }}
+        >
+          <Icon name={revealed ? "eyeOff" : "eye"} size={16} />
+        </button>
+      </div>
       <div style={{ marginTop: 6, fontSize: 11.5, color: configured ? t.profit : t.ink3, lineHeight: 1.45, fontWeight: configured ? 700 : 500 }}>
         {configured ? "Saved key is configured. Type a new key to replace it." : "No key saved yet."}
       </div>
