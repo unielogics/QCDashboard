@@ -7,6 +7,7 @@ import { useUI } from "@/store/ui";
 import { useAIChatThreads, useAITasks, useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { AIChatPanel } from "@/components/AIChatPanel";
+import { usePrimaryShortcutLabel } from "@/lib/platformShortcuts";
 
 export default function TopBar() {
   const { t, isDark, toggle } = useTheme();
@@ -19,6 +20,7 @@ export default function TopBar() {
   const { data: tasks = [] } = useAITasks();
   const { data: chatThreads = [] } = useAIChatThreads();
   const hasUnreadChat = chatThreads.some((th) => th.unread);
+  const searchShortcutLabel = usePrimaryShortcutLabel("k");
   // Elara chat — borrower-facing entry point.
   // Operators have the existing AIRail Elara for per-loan + AI-task
   // workflows; this is the cross-account, conversational surface
@@ -30,7 +32,6 @@ export default function TopBar() {
   const setAiChatOpen = useUI((s) => s.setAiOpen);
 
   const isClient = user?.role === Role.CLIENT;
-  const isAgent = user?.role === Role.BROKER;
   const pendingTasks = tasks.filter((task) => task.status === "pending").length;
 
   return (
@@ -97,7 +98,7 @@ export default function TopBar() {
             fontFamily: 'JetBrains Mono, ui-monospace, monospace',
           }}
         >
-          ⌘K
+          {searchShortcutLabel}
         </span>
       </button>
 
@@ -124,35 +125,6 @@ export default function TopBar() {
       )}
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
-        {/* Elara — agent-only entry point for account-wide
-            questions ("how many leads this week?", "what did Marcus
-            email me?", etc.). Opens the same AIChatPanel as the
-            general chat icon — distinct affordance with the agent's
-            name nearby so the entry point feels personal. */}
-        {isAgent && (
-          <button
-            onClick={() => setAiChatOpen(true)}
-            aria-label="Elara"
-            title="Elara — ask account-wide questions"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 7,
-              padding: "7px 12px",
-              borderRadius: 9,
-              background: t.brandSoft,
-              border: `1px solid ${t.brand}40`,
-              color: t.brand,
-              fontSize: 12.5,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            <Icon name="spark" size={14} />
-            Elara
-          </button>
-        )}
-
         {/* Theme toggle — sun/moon per design */}
         <button
           onClick={toggle}

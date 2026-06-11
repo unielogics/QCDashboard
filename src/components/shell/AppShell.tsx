@@ -11,6 +11,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { useCurrentUser } from "@/hooks/useApi";
 import { useRecordPendingConsent } from "@/hooks/useRecordPendingConsent";
 import { _setActiveProfileFromUser } from "@/store/role";
+import { isPrimaryShortcut } from "@/lib/platformShortcuts";
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const { t } = useTheme();
@@ -43,10 +44,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
   // Auto-close the AI rail on screen change (per chat2.md final state)
   useEffect(() => { setAiOpen(false); }, [pathname, setAiOpen]);
 
-  // ⌘K opens GlobalSearch
+  // Primary shortcut opens GlobalSearch: Ctrl+K on Windows/Linux, ⌘K on macOS.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      if (isPrimaryShortcut(e, "k")) {
         e.preventDefault();
         setSearchOpen(true);
       }
