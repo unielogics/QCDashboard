@@ -912,15 +912,20 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
         <>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
             <StatusPill label="RentCast" ok={!!data?.rentcast_configured} />
-            <StatusPill label="Google server" ok={!!data?.google_server_configured} />
-            <StatusPill label="Maps web" ok={!!data?.google_maps_browser_key_configured} />
-            <StatusPill label="Maps mobile" ok={!!data?.google_maps_mobile_key_configured} />
+            <StatusPill label="Google Places/Geocoding" ok={!!data?.google_server_configured} />
+            <StatusPill label="Google Maps web" ok={!!data?.google_maps_browser_key_configured} />
+            <StatusPill label="Google Maps mobile" ok={!!data?.google_maps_mobile_key_configured} />
+          </div>
+
+          <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.55, marginBottom: 14 }}>
+            Keys are stored encrypted. Leave a field blank to keep the existing saved key.
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <SecretField
               t={t}
-              label="RentCast API key"
+              label="RentCast property data key"
+              helper="Used for property details, value estimates, rent estimates, and market data."
               configured={!!data?.rentcast_configured}
               value={rentcastKey}
               onChange={setRentcastKey}
@@ -928,7 +933,8 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
             />
             <SecretField
               t={t}
-              label="Google server API key"
+              label="Google Places and Geocoding key"
+              helper="Used by the API for address autocomplete, place lookup, and geocoding."
               configured={!!data?.google_server_configured}
               value={googleServerKey}
               onChange={setGoogleServerKey}
@@ -936,7 +942,8 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
             />
             <SecretField
               t={t}
-              label="Google web map key"
+              label="Google Maps web key"
+              helper="Used by the desktop web app for browser-based map and address features."
               configured={!!data?.google_maps_browser_key_configured}
               value={googleBrowserKey}
               onChange={setGoogleBrowserKey}
@@ -944,7 +951,8 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
             />
             <SecretField
               t={t}
-              label="Google mobile map key"
+              label="Google Maps mobile key"
+              helper="Used by the mobile app for map and address features."
               configured={!!data?.google_maps_mobile_key_configured}
               value={googleMobileKey}
               onChange={setGoogleMobileKey}
@@ -994,6 +1002,7 @@ function StatusPill({ label, ok }: { label: string; ok: boolean }) {
 function SecretField({
   t,
   label,
+  helper,
   configured,
   value,
   onChange,
@@ -1001,6 +1010,7 @@ function SecretField({
 }: {
   t: ReturnType<typeof useTheme>["t"];
   label: string;
+  helper: string;
   configured: boolean;
   value: string;
   onChange: (value: string) => void;
@@ -1017,6 +1027,7 @@ function SecretField({
         autoComplete="off"
         style={inputStyle(t)}
       />
+      <div style={{ marginTop: 6, fontSize: 11.5, color: t.ink3, lineHeight: 1.45 }}>{helper}</div>
     </Field>
   );
 }
