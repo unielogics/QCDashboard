@@ -26,10 +26,18 @@ import type {
   LenderAttachmentInitResponse,
   LenderAttachmentRef,
   LenderCreate,
+  LenderDownloadResponse,
   LenderLoansResponse,
+  LenderPackageCreate,
+  LenderPackageRead,
+  LenderPortalPackageListItem,
   LenderUpdate,
   LenderSendRequest,
   LenderSendResponse,
+  LenderTermFields,
+  LenderTermManualCreate,
+  LenderTermRead,
+  LenderTermUpdate,
   LenderThreadEntryAudit,
   LenderThreadPreviewRequest,
   LenderThreadPreviewResponse,
@@ -100,6 +108,18 @@ import type {
   AgentTaskOwnerType,
   AgentTaskStatus,
   AgentTaskVisibility,
+  AddressResolveResponse,
+  AddressSuggestion,
+  AnalysisRun,
+  AnalysisRunCreate,
+  AnalysisRunPrequalRequest,
+  AnalysisRunPrequalResponse,
+  AnalysisRunUpdate,
+  ProviderSettingsRead,
+  ProviderSettingsUpdate,
+  PropertyIntelligenceLookupRequest,
+  PropertyIntelligenceSnapshot,
+  ShareAnalysisResponse,
 } from "@/lib/types";
 import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurpose, PropertyType, Role, DealChatMode, FeedbackOutputType, FeedbackRating, AmortizationStyle } from "@/lib/enums.generated";
 import type { ClosingCostTier } from "@/lib/fixFlip/types";
@@ -1720,6 +1740,29 @@ export function useRequestPrequalification() {
   });
 }
 
+export interface SendIntakeLinkResponse {
+  url: string;
+  sent_via: "portal" | "email" | "sms";
+  sent_at: string;
+}
+
+export function useSendIntakeLink() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ clientId, channel }: { clientId: string; channel?: "portal" | "email" | "sms" }) =>
+      apiCall<SendIntakeLinkResponse>(`/clients/${clientId}/send-intake-link`, {
+        method: "POST",
+        body: JSON.stringify({ channel: channel ?? null }),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["client", vars.clientId] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.invalidateQueries({ queryKey: ["engagement", vars.clientId] });
+    },
+  });
+}
+
 // Realtor AI ChatAction confirm-endpoints (alembic 0030). Each fires
 // when the agent taps a card the AI emitted in chat. v1 stubs record
 // intent + spawn an AITask; full integrations land in follow-up.
@@ -2438,6 +2481,168 @@ export function useFreeCalc() {
   });
 }
 
+// Property intelligence and shared analysis-run workflow. Backend:
+// /property-intelligence/* and /analysis-runs/*.
+export function useProviderSettings() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["property-intelligence", "provider-settings", devUser],
+    queryFn: () => apiCall<ProviderSettingsRead>("/property-intelligence/provider-settings"),
+    retry: aiQueryRetry,
+  });
+}
+
+export function useUpdateProviderSettings() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ProviderSettingsUpdate) =>
+      apiCall<ProviderSettingsRead>("/property-intelligence/provider-settings", {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["property-intelligence", "provider-settings"] }),
+  });
+}
+
+export function useAddressAutocomplete(input: string, sessionToken?: string | null) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const q = input.trim();
+  return useQuery({
+    queryKey: ["property-intelligence", "address-autocomplete", q, sessionToken ?? null, devUser],
+    queryFn: () =>
+      apiCall<AddressSuggestion[]>("/property-intelligence/address/autocomplete", {
+        method: "POST",
+        body: JSON.stringify({ input: q, session_token: sessionToken ?? null }),
+      }),
+    enabled: q.length >= 2,
+    staleTime: 5 * 60 * 1000,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useResolveAddress() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (payload: { place_id?: string | null; address?: string | null; session_token?: string | null }) =>
+      apiCall<AddressResolveResponse>("/property-intelligence/address/resolve", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+  });
+}
+
+export function usePropertyIntelligenceLookup() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: PropertyIntelligenceLookupRequest) =>
+      apiCall<PropertyIntelligenceSnapshot>("/property-intelligence/lookup", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["property-intelligence"] }),
+  });
+}
+
+export function useAnalysisRuns(filters?: {
+  client_id?: string | null;
+  loan_id?: string | null;
+  product?: string | null;
+}) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qs = new URLSearchParams();
+  if (filters?.client_id) qs.set("client_id", filters.client_id);
+  if (filters?.loan_id) qs.set("loan_id", filters.loan_id);
+  if (filters?.product) qs.set("product", filters.product);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return useQuery({
+    queryKey: ["analysis-runs", filters ?? {}, devUser],
+    queryFn: () => apiCall<AnalysisRun[]>(`/analysis-runs${suffix}`),
+  });
+}
+
+export function useAnalysisRun(runId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["analysis-run", runId, devUser],
+    queryFn: () => apiCall<AnalysisRun>(`/analysis-runs/${runId}`),
+    enabled: !!runId,
+  });
+}
+
+export function useCreateAnalysisRun() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: AnalysisRunCreate) =>
+      apiCall<AnalysisRun>("/analysis-runs", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (row) => {
+      qc.invalidateQueries({ queryKey: ["analysis-runs"] });
+      qc.invalidateQueries({ queryKey: ["analysis-run", row.id] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+    },
+  });
+}
+
+export function useUpdateAnalysisRun() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: AnalysisRunUpdate }) =>
+      apiCall<AnalysisRun>(`/analysis-runs/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: (row) => {
+      qc.invalidateQueries({ queryKey: ["analysis-runs"] });
+      qc.invalidateQueries({ queryKey: ["analysis-run", row.id] });
+    },
+  });
+}
+
+export function useShareAnalysisRun() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: string) =>
+      apiCall<ShareAnalysisResponse>(`/analysis-runs/${runId}/share-to-client`, {
+        method: "POST",
+      }),
+    onSuccess: ({ analysis_run }) => {
+      qc.invalidateQueries({ queryKey: ["analysis-runs"] });
+      qc.invalidateQueries({ queryKey: ["analysis-run", analysis_run.id] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+    },
+  });
+}
+
+export function useConvertAnalysisRunToPrequal() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ runId, payload }: { runId: string; payload: AnalysisRunPrequalRequest }) =>
+      apiCall<AnalysisRunPrequalResponse>(`/analysis-runs/${runId}/prequal-request`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: ({ analysis_run }) => {
+      qc.invalidateQueries({ queryKey: ["analysis-runs"] });
+      qc.invalidateQueries({ queryKey: ["analysis-run", analysis_run.id] });
+      qc.invalidateQueries({ queryKey: ["prequal-requests"] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.invalidateQueries({ queryKey: ["loans"] });
+    },
+  });
+}
+
 // Self-edit profile hooks for borrower (Profile → Investor Profile dialog).
 // Backed by /clients/me on the backend (super-admins / brokers should use
 // /clients/{id} + useUpdateClient instead).
@@ -2911,6 +3116,203 @@ export function useDraftLenderSend() {
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["emailDrafts", vars.loanId] });
       qc.invalidateQueries({ queryKey: ["activities", vars.loanId] });
+    },
+  });
+}
+
+export function useLoanLenderPackages(loanId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lenderPackages", loanId, devUser],
+    queryFn: () => apiCall<LenderPackageRead[]>(`/loans/${loanId}/lender-packages`),
+    enabled: !!loanId,
+    staleTime: 0,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useCreateLenderPackage() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ loanId, payload }: { loanId: string; payload: LenderPackageCreate }) =>
+      apiCall<LenderPackageRead>(`/loans/${loanId}/lender-packages`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["lenderPackages", vars.loanId, devUser] });
+      qc.invalidateQueries({ queryKey: ["emailDrafts", vars.loanId] });
+      qc.invalidateQueries({ queryKey: ["activities", vars.loanId] });
+    },
+  });
+}
+
+export function useRevokeLenderPackage() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      loanId,
+      packageId,
+      reason,
+    }: {
+      loanId: string;
+      packageId: string;
+      reason?: string | null;
+    }) =>
+      apiCall<LenderPackageRead>(`/loans/${loanId}/lender-packages/${packageId}/revoke`, {
+        method: "POST",
+        body: JSON.stringify({ reason: reason ?? null }),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["lenderPackages", vars.loanId, devUser] });
+      qc.invalidateQueries({ queryKey: ["activities", vars.loanId] });
+    },
+  });
+}
+
+export function useCreateManualLenderTerms() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ loanId, payload }: { loanId: string; payload: LenderTermManualCreate }) =>
+      apiCall<LenderTermRead>(`/loans/${loanId}/lender-terms`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["lenderPackages", vars.loanId, devUser] });
+      qc.invalidateQueries({ queryKey: ["activities", vars.loanId] });
+    },
+  });
+}
+
+export function useUpdateLenderTerms() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      loanId,
+      termId,
+      payload,
+    }: {
+      loanId: string;
+      termId: string;
+      payload: LenderTermUpdate;
+    }) =>
+      apiCall<LenderTermRead>(`/loans/${loanId}/lender-terms/${termId}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["lenderPackages", vars.loanId, devUser] });
+      qc.invalidateQueries({ queryKey: ["activities", vars.loanId] });
+    },
+  });
+}
+
+export function useSelectLenderTerms() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      loanId,
+      termId,
+      applyToLoan,
+    }: {
+      loanId: string;
+      termId: string;
+      applyToLoan: boolean;
+    }) =>
+      apiCall<LenderTermRead>(`/loans/${loanId}/lender-terms/${termId}/select`, {
+        method: "POST",
+        body: JSON.stringify({ apply_to_loan: applyToLoan }),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["lenderPackages", vars.loanId, devUser] });
+      qc.invalidateQueries({ queryKey: ["loan", vars.loanId, devUser] });
+      qc.invalidateQueries({ queryKey: ["loans"] });
+      qc.invalidateQueries({ queryKey: ["loanParticipants", vars.loanId] });
+      qc.invalidateQueries({ queryKey: ["activities", vars.loanId] });
+    },
+  });
+}
+
+export function useLenderPortalPackages() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lenderPortalPackages", devUser],
+    queryFn: () => apiCall<LenderPortalPackageListItem[]>("/lender/packages"),
+    staleTime: 0,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useLenderPortalPackage(packageId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lenderPortalPackage", packageId, devUser],
+    queryFn: () => apiCall<LenderPackageRead>(`/lender/packages/${packageId}`),
+    enabled: !!packageId,
+    staleTime: 0,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useLenderPackageDownload() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: ({
+      packageId,
+      documentId,
+    }: {
+      packageId: string;
+      documentId: string;
+    }) =>
+      apiCall<LenderDownloadResponse>(
+        `/lender/packages/${packageId}/documents/${documentId}/download`,
+      ),
+  });
+}
+
+export function useSubmitLenderPortalTerms() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ packageId, payload }: { packageId: string; payload: LenderTermFields }) =>
+      apiCall<LenderTermRead>(`/lender/packages/${packageId}/terms`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["lenderPortalPackage", vars.packageId, devUser] });
+      qc.invalidateQueries({ queryKey: ["lenderPortalPackages", devUser] });
+    },
+  });
+}
+
+export function useMarkLenderNoQuote() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (packageId: string) =>
+      apiCall<LenderPackageRead>(`/lender/packages/${packageId}/no-quote`, {
+        method: "POST",
+      }),
+    onSuccess: (_, packageId) => {
+      qc.invalidateQueries({ queryKey: ["lenderPortalPackage", packageId, devUser] });
+      qc.invalidateQueries({ queryKey: ["lenderPortalPackages", devUser] });
     },
   });
 }

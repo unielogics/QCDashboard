@@ -10,7 +10,9 @@ import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import {
   useCurrentUser,
   useDeleteUser,
+  useProviderSettings,
   useSettings,
+  useUpdateProviderSettings,
   useUpdateSettings,
   useUpdateUserRole,
   useUsers,
@@ -26,6 +28,7 @@ import type {
   LetterheadSettings,
   LoanTypeChecklist,
   PricingSettings,
+  ProviderSettingsUpdate,
   ReferralSettings,
   SecuritySettings,
   SimulatorSettings,
@@ -43,6 +46,7 @@ const SECTIONS = [
   { id: "pricing", label: "Pricing", icon: "rates" as const, hidden: false },
   { id: "simulator", label: "Simulator", icon: "calc" as const, hidden: false },
   { id: "deal_analyzer", label: "Deal Analyzer", icon: "calc" as const, hidden: false },
+  { id: "property_intelligence", label: "Property Intel", icon: "map" as const, hidden: false },
   { id: "letterhead", label: "Firm letterhead", icon: "docCheck" as const, hidden: false },
   { id: "security", label: "Security", icon: "shield" as const, hidden: false },
   { id: "team", label: "Team", icon: "clients" as const, hidden: false },
@@ -381,6 +385,7 @@ export default function SettingsPage() {
             />
           )}
           {section === "deal_analyzer" && <DealAnalyzerSection />}
+          {section === "property_intelligence" && <PropertyIntelligenceSection canEdit={canEdit} />}
           {section === "letterhead" && (
             <LetterheadSection
               draft={draft}
@@ -830,6 +835,189 @@ function SecuritySection({ draft, setDraft, canEdit, dirty, onSave, saving }: Se
         />
       </Field>
     </Card>
+  );
+}
+
+// ── Section: Property Intelligence ──────────────────────────────────────
+
+function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
+  const { t } = useTheme();
+  const { data, isLoading, error } = useProviderSettings();
+  const update = useUpdateProviderSettings();
+  const [rentcastKey, setRentcastKey] = useState("");
+  const [googleServerKey, setGoogleServerKey] = useState("");
+  const [googleBrowserKey, setGoogleBrowserKey] = useState("");
+  const [googleMobileKey, setGoogleMobileKey] = useState("");
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [ttlHours, setTtlHours] = useState(24);
+  const [flash, setFlash] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
+
+  useEffect(() => {
+    if (!data) return;
+    setAiEnabled(data.property_analysis_ai_enabled);
+    setTtlHours(data.property_intelligence_cache_ttl_hours);
+  }, [data]);
+
+  const dirty =
+    rentcastKey.trim() ||
+    googleServerKey.trim() ||
+    googleBrowserKey.trim() ||
+    googleMobileKey.trim() ||
+    (data && (aiEnabled !== data.property_analysis_ai_enabled || ttlHours !== data.property_intelligence_cache_ttl_hours));
+
+  const save = async () => {
+    if (!canEdit) return;
+    const payload: ProviderSettingsUpdate = {
+      property_analysis_ai_enabled: aiEnabled,
+      property_intelligence_cache_ttl_hours: ttlHours,
+    };
+    if (rentcastKey.trim()) payload.rentcast_api_key = rentcastKey.trim();
+    if (googleServerKey.trim()) payload.google_server_api_key = googleServerKey.trim();
+    if (googleBrowserKey.trim()) payload.google_maps_browser_key = googleBrowserKey.trim();
+    if (googleMobileKey.trim()) payload.google_maps_mobile_key = googleMobileKey.trim();
+    try {
+      await update.mutateAsync(payload);
+      setRentcastKey("");
+      setGoogleServerKey("");
+      setGoogleBrowserKey("");
+      setGoogleMobileKey("");
+      setFlash({ kind: "ok", msg: "Provider settings saved." });
+    } catch (e) {
+      setFlash({ kind: "err", msg: e instanceof Error ? e.message : "Save failed." });
+    }
+    setTimeout(() => setFlash(null), 2600);
+  };
+
+  return (
+    <Card pad={20}>
+      <SectionLabel
+        action={canEdit && (
+          <button
+            onClick={save}
+            disabled={!dirty || update.isPending}
+            style={{ ...qcBtnPrimary(t), opacity: dirty && !update.isPending ? 1 : 0.5, cursor: dirty && !update.isPending ? "pointer" : "not-allowed" }}
+          >
+            <Icon name="check" size={13} /> {update.isPending ? "Saving..." : "Save providers"}
+          </button>
+        )}
+      >
+        Property intelligence
+      </SectionLabel>
+
+      {isLoading ? (
+        <div style={{ fontSize: 13, color: t.ink3 }}>Loading provider settings...</div>
+      ) : error ? (
+        <Pill bg={t.dangerBg} color={t.danger}>{error instanceof Error ? error.message : "Provider settings unavailable"}</Pill>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+            <StatusPill label="RentCast" ok={!!data?.rentcast_configured} />
+            <StatusPill label="Google server" ok={!!data?.google_server_configured} />
+            <StatusPill label="Maps web" ok={!!data?.google_maps_browser_key_configured} />
+            <StatusPill label="Maps mobile" ok={!!data?.google_maps_mobile_key_configured} />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <SecretField
+              t={t}
+              label="RentCast API key"
+              configured={!!data?.rentcast_configured}
+              value={rentcastKey}
+              onChange={setRentcastKey}
+              disabled={!canEdit}
+            />
+            <SecretField
+              t={t}
+              label="Google server API key"
+              configured={!!data?.google_server_configured}
+              value={googleServerKey}
+              onChange={setGoogleServerKey}
+              disabled={!canEdit}
+            />
+            <SecretField
+              t={t}
+              label="Google web map key"
+              configured={!!data?.google_maps_browser_key_configured}
+              value={googleBrowserKey}
+              onChange={setGoogleBrowserKey}
+              disabled={!canEdit}
+            />
+            <SecretField
+              t={t}
+              label="Google mobile map key"
+              configured={!!data?.google_maps_mobile_key_configured}
+              value={googleMobileKey}
+              onChange={setGoogleMobileKey}
+              disabled={!canEdit}
+            />
+          </div>
+
+          <div style={{ height: 14 }} />
+          <Toggle
+            t={t}
+            label="Generate AI property reports"
+            sub="Uses the tracked light AI model and reuses cached reports when inputs do not materially change."
+            value={aiEnabled}
+            onChange={setAiEnabled}
+            disabled={!canEdit}
+          />
+          <Field t={t} label="Property cache TTL (hours)">
+            <input
+              type="number"
+              min={1}
+              max={720}
+              value={ttlHours}
+              onChange={(e) => setTtlHours(Math.max(1, Math.min(720, Number(e.target.value) || 24)))}
+              disabled={!canEdit}
+              style={inputStyle(t)}
+            />
+          </Field>
+
+          {flash ? (
+            <div style={{ marginTop: 10 }}>
+              <Pill bg={flash.kind === "ok" ? t.profitBg : t.dangerBg} color={flash.kind === "ok" ? t.profit : t.danger}>
+                {flash.msg}
+              </Pill>
+            </div>
+          ) : null}
+        </>
+      )}
+    </Card>
+  );
+}
+
+function StatusPill({ label, ok }: { label: string; ok: boolean }) {
+  const { t } = useTheme();
+  return <Pill bg={ok ? t.profitBg : t.warnBg} color={ok ? t.profit : t.warn}>{label}: {ok ? "configured" : "missing"}</Pill>;
+}
+
+function SecretField({
+  t,
+  label,
+  configured,
+  value,
+  onChange,
+  disabled,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  label: string;
+  configured: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <Field t={t} label={label}>
+      <input
+        type="password"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={configured ? "Configured - leave blank to keep" : "Paste key"}
+        disabled={disabled}
+        autoComplete="off"
+        style={inputStyle(t)}
+      />
+    </Field>
   );
 }
 

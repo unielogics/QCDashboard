@@ -47,7 +47,7 @@ const AGENT_NAV: NavItem[] = [
   // than from a global firm-wide vault. Operators keep their /vault
   // entry below.
   { href: "/messages", label: "Messages", icon: "chat" },
-  { href: "/deal-analyzer/fix-and-flip", label: "Deal Analyzer", icon: "hammer" },
+  { href: "/deal-analyzer", label: "Deal Analyzer", icon: "hammer" },
   { href: "/reports", label: "Performance", icon: "trend" },
   { href: "/agent-settings", label: "Settings", icon: "gear" },
 ];
@@ -65,7 +65,7 @@ const OPERATOR_NAV: NavItem[] = [
   { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "cal" },
   { href: "/simulator", label: "Simulate", icon: "calc" },
-  { href: "/deal-analyzer/fix-and-flip", label: "Deal Analyzer", icon: "hammer" },
+  { href: "/deal-analyzer", label: "Deal Analyzer", icon: "hammer" },
   { href: "/rates", label: "Rate Sheet", icon: "sliders", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
   { href: "/reports", label: "Reports", icon: "trend", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
   { href: "/rewards", label: "Rewards", icon: "trophy", roles: [Role.SUPER_ADMIN] },

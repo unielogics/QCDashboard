@@ -17,23 +17,29 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { ClientSearchBlock, type ClientPickResult } from "@/components/ClientSearchBlock";
 import {
   useAdminLoanScenarios,
+  useConvertAnalysisRunToPrequal,
+  useCreateAnalysisRun,
   useCurrentUser,
+  useCurrentCredit,
   useFreeCalc,
   useFredSeries,
   useLoans,
   useMyCredit,
   useMyPrequalRequests,
   useRecalc,
+  useShareAnalysisRun,
   useSettings,
+  useUpdateAnalysisRun,
   type AdminLoanScenarioRow,
 } from "@/hooks/useApi";
 import { PreQualRequestList } from "@/components/PreQualRequestList";
 import { PreQualRequestModal } from "@/components/PreQualRequestModal";
 import { LoanType, PropertyType, Role } from "@/lib/enums.generated";
 import { QC_FMT } from "@/components/design-system/tokens";
-import type { FredSeriesSummary, RecalcResponse, SimulatorSettings } from "@/lib/types";
+import type { AnalysisProduct, AnalysisRun, FredSeriesSummary, RecalcResponse, SimulatorSettings } from "@/lib/types";
 import { EligibilityBanner } from "@/components/EligibilityBanner";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { useCreditSummary } from "@/hooks/useApi";
@@ -866,11 +872,26 @@ function isReno(type: LoanType): boolean {
   return type === LoanType.FIX_AND_FLIP || type === LoanType.GROUND_UP;
 }
 
+function analysisProductFor(type: LoanType): AnalysisProduct | null {
+  if (type === LoanType.DSCR) return "dscr_purchase";
+  if (type === LoanType.FIX_AND_FLIP) return "fix_flip";
+  return null;
+}
+
 function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: SimulatorSettings }) {
   const calc = useFreeCalc();
   const { data: fred } = useFredSeries();
+  const createAnalysis = useCreateAnalysisRun();
+  const updateAnalysis = useUpdateAnalysisRun();
+  const shareAnalysis = useShareAnalysisRun();
+  const convertAnalysis = useConvertAnalysisRunToPrequal();
   const [type, setType] = useState<LoanType>(LoanType.DSCR);
   const [propertyType, setPropertyType] = useState<PropertyType>(PropertyType.SFR);
+  const [selectedClient, setSelectedClient] = useState<ClientPickResult | null>(null);
+  const [address, setAddress] = useState("");
+  const [savedRun, setSavedRun] = useState<AnalysisRun | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [overrideFicoText, setOverrideFicoText] = useState("");
   // Property values — Market Value for stabilized products, BRV+ARV for reno.
   const [marketValue, setMarketValue] = useState(650_000);
   const [brv, setBrv] = useState(450_000);
@@ -881,9 +902,17 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
   const [annualInsurance, setAnnualInsurance] = useState(1800);
   const [monthlyHoa, setMonthlyHoa] = useState(0);
   const [monthlyRent, setMonthlyRent] = useState(4500);
+  const credit = useCurrentCredit(selectedClient?.id);
+  const borrowerFico = credit.data?.fico ?? null;
+  const overrideFico = (() => {
+    const n = Number(overrideFicoText.replace(/[^0-9]/g, ""));
+    return Number.isFinite(n) && n >= 300 && n <= 850 ? n : null;
+  })();
+  const effectiveFico = borrowerFico ?? overrideFico;
 
   const isDscr = type === LoanType.DSCR;
   const reno = isReno(type);
+  const analysisProduct = analysisProductFor(type);
 
   const { rate: baseRate, source: rateSource, series: rateSeries } = pickRate(type, fred);
   // Effective rate after points buy-down (matches backend pricing_quote): each
@@ -909,8 +938,156 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
     });
   };
 
+  useEffect(() => {
+    setSavedRun(null);
+    setActionMessage(null);
+  }, [type, selectedClient?.id, address, marketValue, brv, arv, amount, points, annualTaxes, annualInsurance, monthlyHoa, monthlyRent, effectiveFico]);
+
+  const ensureSavedRun = async () => {
+    setActionMessage(null);
+    if (!analysisProduct) {
+      setActionMessage("Save/share is currently available for DSCR and Fix & Flip calculations.");
+      return null;
+    }
+    const output = calc.data ?? (await calc.mutateAsync({
+      type,
+      property_type: propertyType,
+      loan_amount: amount,
+      base_rate: baseRate,
+      discount_points: points,
+      annual_taxes: annualTaxes,
+      annual_insurance: annualInsurance,
+      monthly_hoa: monthlyHoa,
+      monthly_rent: isDscr ? monthlyRent : null,
+    }));
+    const targetAddress = address.trim() || "Property TBD";
+    const inputs: Record<string, unknown> = {
+      address: targetAddress,
+      property_type: propertyType,
+      requested_loan_amount: amount,
+      loan_amount: amount,
+      rate: baseRate,
+      discount_points: points,
+      annual_taxes: annualTaxes,
+      annual_insurance: annualInsurance,
+      monthly_hoa: monthlyHoa,
+      monthly_rent: isDscr ? monthlyRent : null,
+      fico: effectiveFico,
+      purchase_price: isDscr ? marketValue : brv,
+      market_value: marketValue,
+      brv,
+      arv,
+    };
+    const payload = {
+      product: analysisProduct,
+      tool_source: "simulator" as const,
+      title: `${analysisProduct === "fix_flip" ? "Fix & Flip" : "DSCR"} simulator - ${targetAddress}`,
+      client_id: selectedClient?.id ?? null,
+      target_property_address: targetAddress,
+      inputs,
+      calculator_output: output as unknown as Record<string, unknown>,
+    };
+    const row = savedRun
+      ? await updateAnalysis.mutateAsync({ id: savedRun.id, patch: payload })
+      : await createAnalysis.mutateAsync(payload);
+    setSavedRun(row);
+    setActionMessage("Simulation saved.");
+    return row;
+  };
+
+  const shareToClient = async () => {
+    if (!selectedClient) {
+      setActionMessage("Link a client before sharing this simulation.");
+      return;
+    }
+    const row = await ensureSavedRun();
+    if (!row) return;
+    const shared = await shareAnalysis.mutateAsync(row.id);
+    setSavedRun(shared.analysis_run);
+    setActionMessage("Simulation shared to the client portal.");
+  };
+
+  const createPrequal = async () => {
+    if (!selectedClient) {
+      setActionMessage("Link a client before creating a prequalification.");
+      return;
+    }
+    if (!effectiveFico) {
+      setActionMessage("Add borrower FICO or an analyzer-only override before creating a prequalification.");
+      return;
+    }
+    const row = await ensureSavedRun();
+    if (!row) return;
+    const converted = await convertAnalysis.mutateAsync({
+      runId: row.id,
+      payload: {
+        notes: "Created from Simulator.",
+        manual_credit_override: {
+          fico: effectiveFico,
+          property_count: 0,
+          has_year_of_ownership: false,
+        },
+      },
+    });
+    setSavedRun(converted.analysis_run);
+    setActionMessage("Pending prequalification created for funding review.");
+  };
+
+  const actionBusy =
+    createAnalysis.isPending ||
+    updateAnalysis.isPending ||
+    shareAnalysis.isPending ||
+    convertAnalysis.isPending;
+
   return (
     <>
+      <Card pad={16}>
+        <SectionLabel>Client and property</SectionLabel>
+        {selectedClient ? (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+            <div>
+              <div style={{ color: t.ink, fontSize: 14, fontWeight: 800 }}>{selectedClient.name}</div>
+              <div style={{ color: t.ink3, fontSize: 12 }}>{selectedClient.email ?? selectedClient.phone ?? "Client linked"}</div>
+            </div>
+            <button onClick={() => setSelectedClient(null)} style={qcBtn(t)}>
+              <Icon name="x" size={13} /> Clear
+            </button>
+          </div>
+        ) : (
+          <div style={{ marginBottom: 12 }}>
+            <ClientSearchBlock
+              t={t}
+              onPick={setSelectedClient}
+              label="Search client"
+              helperText="Required before sharing to client or creating a pending prequalification."
+            />
+          </div>
+        )}
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 180px", gap: 12 }}>
+          <Field t={t} label="Property address">
+            <input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="Subject property address"
+              style={inputStyle(t)}
+            />
+          </Field>
+          <Field t={t} label="Borrower FICO">
+            {borrowerFico ? (
+              <Pill bg={t.petrolSoft} color={t.petrol} style={{ marginTop: 7 }}>FICO {borrowerFico}</Pill>
+            ) : (
+              <input
+                value={overrideFicoText}
+                onChange={(e) => setOverrideFicoText(e.target.value)}
+                inputMode="numeric"
+                placeholder="720"
+                style={inputStyle(t)}
+              />
+            )}
+          </Field>
+        </div>
+      </Card>
+
       <Card pad={16}>
         <SectionLabel>Loan parameters</SectionLabel>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
@@ -1018,6 +1195,34 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
         </Pill>
       )}
       {calc.data && <ResultsCard t={t} result={calc.data} />}
+      {calc.data && (
+        <Card pad={14}>
+          <SectionLabel>Save and handoff</SectionLabel>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={ensureSavedRun} disabled={actionBusy || !analysisProduct} style={qcBtnPrimary(t)}>
+              <Icon name="docCheck" size={14} /> {createAnalysis.isPending || updateAnalysis.isPending ? "Saving..." : "Save simulation"}
+            </button>
+            <button onClick={shareToClient} disabled={actionBusy || !selectedClient || !analysisProduct} style={qcBtn(t)}>
+              <Icon name="send" size={14} /> Share to client
+            </button>
+            <button onClick={createPrequal} disabled={actionBusy || !selectedClient || !analysisProduct} style={qcBtn(t)}>
+              <Icon name="flag" size={14} /> Create prequalification
+            </button>
+          </div>
+          {actionMessage ? (
+            <div style={{ marginTop: 10, color: /saved|shared|created/i.test(actionMessage) ? t.profit : t.warn, fontSize: 12.5, fontWeight: 700 }}>
+              {actionMessage}
+            </div>
+          ) : null}
+          {savedRun ? (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+              <Pill bg={t.chip} color={t.ink2}>Status {savedRun.status.replace(/_/g, " ")}</Pill>
+              {savedRun.shared_at ? <Pill bg={t.profitBg} color={t.profit}>Shared</Pill> : null}
+              {savedRun.prequal_request_id ? <Pill bg={t.petrolSoft} color={t.petrol}>Prequal queued</Pill> : null}
+            </div>
+          ) : null}
+        </Card>
+      )}
     </>
   );
 }

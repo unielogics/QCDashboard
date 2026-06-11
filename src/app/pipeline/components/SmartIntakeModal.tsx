@@ -1662,15 +1662,15 @@ function CommunicationStepView({
             emptyLabel="Funding Team queue"
           />
         </Field>
-        <Field t={t} label="Borrower invite behavior">
+        <Field t={t} label="Borrower app invite behavior">
           <Select
             t={t}
             value={form.inviteBehavior}
             onChange={(v) => update("inviteBehavior", v as InviteBehavior)}
             options={[
-              { value: "send_immediately", label: "Send invite immediately" },
+              { value: "send_immediately", label: "Send app invite immediately" },
               { value: "save_draft", label: "Save draft only" },
-              { value: "send_after_review", label: "Send after review" },
+              { value: "send_after_review", label: "Send app invite after review" },
             ]}
           />
         </Field>

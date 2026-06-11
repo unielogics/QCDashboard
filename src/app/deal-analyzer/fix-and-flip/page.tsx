@@ -10,18 +10,21 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { ClientSearchBlock } from "@/components/ClientSearchBlock";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
 import {
   useClient,
-  useClients,
   useClosingCostTiers,
+  useConvertAnalysisRunToPrequal,
+  useCreateAnalysisRun,
   useCurrentCredit,
-  useAdminCreateManualPrequal,
   useFixFlipScenario,
   useFixFlipScenarios,
   useMyClient,
   useSaveFixFlipScenario,
+  useShareAnalysisRun,
+  useUpdateAnalysisRun,
   useUpdateFixFlipScenario,
   type FixFlipScenarioRow,
 } from "@/hooks/useApi";
@@ -106,7 +109,6 @@ export default function FixAndFlipAnalyzerPage() {
     profile.role === Role.SUPER_ADMIN ||
     profile.role === Role.LOAN_EXEC;
   const canCreatePrequal = canLinkClient;
-  const clientsQuery = useClients();
   const [selectedClientId, setSelectedClientId] = useState<string | null>(queryClientId);
   const [overrideFicoText, setOverrideFicoText] = useState("");
   useEffect(() => {
@@ -133,8 +135,12 @@ export default function FixAndFlipAnalyzerPage() {
 
   const save = useSaveFixFlipScenario();
   const update = useUpdateFixFlipScenario();
-  const createPrequal = useAdminCreateManualPrequal();
+  const createAnalysis = useCreateAnalysisRun();
+  const updateAnalysis = useUpdateAnalysisRun();
+  const convertAnalysis = useConvertAnalysisRunToPrequal();
+  const shareAnalysis = useShareAnalysisRun();
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [analysisRunId, setAnalysisRunId] = useState<string | null>(null);
   const [i, setI] = useState<FixFlipInputs>(DEFAULTS);
   const [stepIdx, setStepIdx] = useState(0);
   const [tab, setTab] = useState<Tab>("Summary");
@@ -214,6 +220,73 @@ export default function FixAndFlipAnalyzerPage() {
     setTimeout(() => setFlash(null), 3000);
   };
 
+  const analysisPayload = (propertyAddress: string, notes: string) => ({
+    product: "fix_flip" as const,
+    tool_source: "deal_analyzer" as const,
+    title: `Fix & Flip - ${propertyAddress}`,
+    client_id: selectedClientId ?? null,
+    target_property_address: propertyAddress,
+    inputs: {
+      ...inputs,
+      address: propertyAddress,
+      purchase_price: inputs.purchasePrice,
+      brv: inputs.purchasePrice,
+      arv: inputs.arv,
+      rehab_cost: inputs.rehabCost,
+      requested_loan_amount: Math.max(1, Math.round(result.loanAmount)),
+      loan_amount: Math.max(1, Math.round(result.loanAmount)),
+      fico: effectiveCredit,
+      notes,
+      construction_coverage: coverage,
+    } as unknown as Record<string, unknown>,
+    calculator_output: result as unknown as Record<string, unknown>,
+  });
+
+  const ensureAnalysisRun = async (propertyAddress: string, notes: string) => {
+    const payload = analysisPayload(propertyAddress, notes);
+    const row = analysisRunId
+      ? await updateAnalysis.mutateAsync({ id: analysisRunId, patch: payload })
+      : await createAnalysis.mutateAsync(payload);
+    setAnalysisRunId(row.id);
+    return row;
+  };
+
+  const shareToClient = async () => {
+    setPrequalFlash(null);
+    if (!selectedClientId) {
+      setPrequalFlash("Link one of your clients before sharing this analysis.");
+      return;
+    }
+    if (result.validationErrors.length) {
+      setPrequalFlash("Resolve the analyzer errors before sharing.");
+      return;
+    }
+
+    const propertyAddress =
+      [
+        inputs.address.street,
+        [inputs.address.city, inputs.address.state, inputs.address.zip]
+          .filter(Boolean)
+          .join(" "),
+      ]
+        .filter(Boolean)
+        .join(", ") || "Property TBD";
+    const notes = [
+      "Created from Fix & Flip Deal Analyzer.",
+      `Construction scenario: ${coverage === "financed" ? "construction financed" : "borrower-funded construction"}.`,
+      `Deal grade: ${result.dealGrade}; score ${result.dealScore}/100.`,
+      `Estimated cash to close: ${$(result.estimatedCashToClose)}.`,
+      `Projected net profit: ${$(result.projectedNetProfit)}.`,
+    ].join(" ");
+    try {
+      const row = await ensureAnalysisRun(propertyAddress, notes);
+      await shareAnalysis.mutateAsync(row.id);
+      setPrequalFlash("Analysis shared to the client portal.");
+    } catch (e) {
+      setPrequalFlash(e instanceof Error ? e.message : "Could not share analysis.");
+    }
+  };
+
   const createPrequalification = async () => {
     setPrequalFlash(null);
     if (!selectedClientId) {
@@ -238,7 +311,6 @@ export default function FixAndFlipAnalyzerPage() {
       ]
         .filter(Boolean)
         .join(", ") || "Property TBD";
-    const constructionTotal = Math.round(inputs.rehabCost + result.rehabContingencyAmount);
     const notes = [
       "Created from Fix & Flip Deal Analyzer.",
       `Construction scenario: ${coverage === "financed" ? "construction financed" : "borrower-funded construction"}.`,
@@ -248,29 +320,19 @@ export default function FixAndFlipAnalyzerPage() {
     ].join(" ");
 
     try {
-      await createPrequal.mutateAsync({
-        client_id: selectedClientId,
-        target_property_address: propertyAddress,
-        purchase_price: inputs.purchasePrice,
-        requested_loan_amount: Math.max(1, Math.round(result.loanAmount)),
-        loan_type: "fix_flip",
-        expected_closing_date: null,
-        borrower_notes: notes,
-        borrower_entity: null,
-        arv_estimate: inputs.arv,
-        sow_items: [
-          {
-            category: "Rehab / construction",
-            description: `Analyzer ${coverage === "financed" ? "financed" : "self-funded"} construction budget, including contingency.`,
-            total_usd: constructionTotal,
+      const run = await ensureAnalysisRun(propertyAddress, notes);
+      const converted = await convertAnalysis.mutateAsync({
+        runId: run.id,
+        payload: {
+          notes,
+          manual_credit_override: {
+            fico: effectiveCredit,
+            property_count: 0,
+            has_year_of_ownership: false,
           },
-        ],
-        manual_credit_override: {
-          fico: effectiveCredit,
-          property_count: 0,
-          has_year_of_ownership: false,
         },
       });
+      setAnalysisRunId(converted.analysis_run.id);
       setPrequalFlash("Pending prequalification created for funding review.");
       if (savedId) {
         try {
@@ -349,27 +411,24 @@ export default function FixAndFlipAnalyzerPage() {
       {canLinkClient ? (
         <Card pad={14}>
           <SectionLabel>Borrower link</SectionLabel>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
-            <select
-              value={selectedClientId ?? ""}
-              onChange={(e) => setSelectedClientId(e.target.value || null)}
-              style={{
-                ...inputStyle,
-                width: "min(100%, 420px)",
-                marginTop: 0,
-              }}
-            >
-              <option value="">Unlinked analysis</option>
-              {(clientsQuery.data ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}{c.email ? ` - ${c.email}` : ""}
-                </option>
-              ))}
-            </select>
-            <span style={{ fontSize: 12, color: t.ink3 }}>
-              Credit and experience come from the linked borrower profile.
-            </span>
-          </div>
+          {selectedClientId ? (
+            <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginTop: 8 }}>
+              <div>
+                <div style={{ color: t.ink, fontWeight: 800, fontSize: 14 }}>{profileClient?.name ?? "Linked client"}</div>
+                <div style={{ color: t.ink3, fontSize: 12 }}>{profileClient?.email ?? profileClient?.phone ?? "Borrower profile linked"}</div>
+              </div>
+              <button onClick={() => setSelectedClientId(null)} style={qcBtn(t)}>
+                <Icon name="x" size={13} /> Clear
+              </button>
+            </div>
+          ) : (
+            <ClientSearchBlock
+              t={t}
+              onPick={(c) => setSelectedClientId(c.id)}
+              label="Search client"
+              helperText="Credit and experience come from the linked borrower profile."
+            />
+          )}
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
             <span style={{ fontSize: 12, color: t.ink3 }}>Credit</span>
             {derivedCredit != null ? (
@@ -523,15 +582,26 @@ export default function FixAndFlipAnalyzerPage() {
               {canCreatePrequal ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: 12, borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface }}>
                   <button
-                    onClick={createPrequalification}
-                    disabled={createPrequal.isPending}
+                    onClick={shareToClient}
+                    disabled={shareAnalysis.isPending || createAnalysis.isPending || updateAnalysis.isPending}
                     style={{
-                      ...qcBtnPrimary(t),
-                      opacity: createPrequal.isPending ? 0.6 : 1,
-                      cursor: createPrequal.isPending ? "not-allowed" : "pointer",
+                      ...qcBtn(t),
+                      opacity: shareAnalysis.isPending || createAnalysis.isPending || updateAnalysis.isPending ? 0.6 : 1,
+                      cursor: shareAnalysis.isPending || createAnalysis.isPending || updateAnalysis.isPending ? "not-allowed" : "pointer",
                     }}
                   >
-                    {createPrequal.isPending ? "Creating..." : "Create pending prequalification"}
+                    {shareAnalysis.isPending ? "Sharing..." : "Share to client"}
+                  </button>
+                  <button
+                    onClick={createPrequalification}
+                    disabled={convertAnalysis.isPending || createAnalysis.isPending || updateAnalysis.isPending}
+                    style={{
+                      ...qcBtnPrimary(t),
+                      opacity: convertAnalysis.isPending || createAnalysis.isPending || updateAnalysis.isPending ? 0.6 : 1,
+                      cursor: convertAnalysis.isPending || createAnalysis.isPending || updateAnalysis.isPending ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {convertAnalysis.isPending ? "Creating..." : "Create pending prequalification"}
                   </button>
                   <span style={{ flex: 1, minWidth: 220, fontSize: 12, color: t.ink3 }}>
                     Requires a linked client and borrower FICO. Funding team approval is still required.

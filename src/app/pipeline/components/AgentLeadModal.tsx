@@ -32,7 +32,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPetrol } from "@/components/design-system/buttons";
 import { RightPanel } from "@/components/design-system/RightPanel";
-import { useCreateClient, useBufferWizardIntent } from "@/hooks/useApi";
+import { useCreateClient, useBufferWizardIntent, useSendIntakeLink } from "@/hooks/useApi";
 import { ClientSearchBlock } from "@/components/ClientSearchBlock";
 import { US_STATES } from "@/lib/usStates";
 import type { QCTokens } from "@/components/design-system/tokens";
@@ -84,6 +84,7 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
   const { t } = useTheme();
   const router = useRouter();
   const create = useCreateClient();
+  const sendIntakeLink = useSendIntakeLink();
   const bufferWizardIntent = useBufferWizardIntent();
   const [form, setForm] = useState<FormState>(INITIAL);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
@@ -100,8 +101,9 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
       : form.listingIndex != null &&
         (form.ownedAssets[form.listingIndex]?.address.trim().length ?? 0) > 0;
 
+  const isSubmitting = create.isPending || sendIntakeLink.isPending;
   const canSubmit =
-    hasName && hasContact && emailLooksValid && sellerListingValid && !create.isPending;
+    hasName && hasContact && emailLooksValid && sellerListingValid && !isSubmitting;
 
   const reset = () => {
     setForm(INITIAL);
@@ -142,9 +144,20 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
       } catch (e) {
         console.warn("wizard-intent buffer failed", e);
       }
+      let intakeLinkError: string | null = null;
+      if (intent === "save_and_invite") {
+        try {
+          await sendIntakeLink.mutateAsync({ clientId: created.id });
+        } catch (e) {
+          intakeLinkError = e instanceof Error ? e.message : "The intake link was not queued.";
+        }
+      }
       reset();
       onClose();
       router.push(`/clients/${created.id}`);
+      if (intakeLinkError) {
+        window.alert(`Client saved, but the intake link was not queued. ${intakeLinkError}`);
+      }
     } catch (e: unknown) {
       setSubmitErr(e instanceof Error ? e.message : "Failed to save lead");
     }
@@ -160,7 +173,7 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
       ariaLabel="New client capture"
       footer={
         <>
-          <button onClick={onClose} style={qcBtn(t)} disabled={create.isPending}>
+          <button onClick={onClose} style={qcBtn(t)} disabled={isSubmitting}>
             Cancel
           </button>
           <div
@@ -180,14 +193,14 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
               disabled={!canSubmit}
               style={{ ...qcBtn(t), opacity: canSubmit ? 1 : 0.5 }}
             >
-              {create.isPending ? "Saving…" : "Save"}
+              {isSubmitting ? "Saving…" : "Save"}
             </button>
             <button
               onClick={() => void submit("save_and_invite")}
               disabled={!canSubmit}
               style={{ ...qcBtnPetrol(t), opacity: canSubmit ? 1 : 0.5 }}
             >
-              Save + Send Invite
+              {isSubmitting ? "Sending…" : "Save + Send Intake Link"}
             </button>
           </div>
         </>

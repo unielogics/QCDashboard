@@ -107,7 +107,7 @@ export default function LendersAdminPage() {
   };
 
   return (
-    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 10 }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div>
@@ -148,14 +148,14 @@ export default function LendersAdminPage() {
       <ConnectLenderHealthCard />
 
       {/* Search */}
-      <Card pad={12}>
+      <Card pad={10}>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name, contact, domain, product…"
           style={{
             width: "100%",
-            padding: "10px 12px",
+            padding: "9px 12px",
             background: t.surface2,
             border: `1px solid ${t.line}`,
             borderRadius: 10,

@@ -1399,6 +1399,159 @@ export interface LenderSendResponse {
   subject: string;
 }
 
+export type LenderRecipientStatus =
+  | "sent"
+  | "viewed"
+  | "downloaded"
+  | "terms_submitted"
+  | "no_quote"
+  | "expired"
+  | "revoked";
+
+export type LenderTermSource = "portal" | "email" | "phone" | "manual";
+export type LenderTermStatus =
+  | "pending"
+  | "received"
+  | "selected"
+  | "not_selected"
+  | "declined"
+  | "withdrawn";
+
+export interface LenderTermFields {
+  requested_amount?: number | null;
+  approved_amount?: number | null;
+  base_rate?: number | null;
+  final_rate?: number | null;
+  discount_points?: number | null;
+  origination_pct?: number | null;
+  lender_fees?: number | null;
+  term_months?: number | null;
+  amortization_style?: string | null;
+  interest_only?: boolean | null;
+  prepay_penalty?: string | null;
+  ltv?: number | null;
+  ltc?: number | null;
+  dscr?: number | null;
+  reserves_required?: number | null;
+  estimated_close_days?: number | null;
+  expires_at?: string | null;
+  conditions?: string[] | null;
+  missing_items?: string[] | null;
+  construction_holdback_pct?: number | null;
+  draw_count?: number | null;
+  exit_strategy?: string | null;
+  notes?: string | null;
+}
+
+export interface LenderTermManualCreate extends LenderTermFields {
+  lender_id: string;
+  package_recipient_id?: string | null;
+  source: "email" | "phone" | "manual";
+  status?: LenderTermStatus;
+}
+
+export interface LenderTermUpdate extends LenderTermFields {
+  source?: LenderTermSource;
+  status?: LenderTermStatus;
+}
+
+export interface LenderTermRead extends LenderTermFields {
+  id: string;
+  loan_id: string;
+  lender_id: string;
+  lender_name?: string | null;
+  package_id?: string | null;
+  package_recipient_id?: string | null;
+  source: LenderTermSource;
+  status: LenderTermStatus;
+  selected_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LenderPackageCreate {
+  lender_ids: string[];
+  document_ids: string[];
+  expires_in_days: 1 | 3 | 7 | 14;
+  subject?: string | null;
+  message?: string | null;
+}
+
+export interface LenderPackageDocumentRead {
+  id: string;
+  document_id: string;
+  display_name: string;
+  category?: string | null;
+  status?: string | null;
+  received_on?: string | null;
+  verified_at?: string | null;
+}
+
+export interface LenderPackageRecipientRead {
+  id: string;
+  package_id: string;
+  lender_id: string;
+  lender_name?: string | null;
+  email: string;
+  status: LenderRecipientStatus;
+  email_draft_id?: string | null;
+  viewed_at?: string | null;
+  downloaded_at?: string | null;
+  terms_submitted_at?: string | null;
+  no_quote_at?: string | null;
+  last_event_at?: string | null;
+  term?: LenderTermRead | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LenderPackageEventRead {
+  id: string;
+  package_id: string;
+  recipient_id?: string | null;
+  lender_id?: string | null;
+  actor_user_id?: string | null;
+  event: string;
+  detail?: Record<string, unknown> | null;
+  occurred_at: string;
+}
+
+export interface LenderPackageRead {
+  id: string;
+  loan_id: string;
+  deal_id?: string | null;
+  address?: string | null;
+  subject: string;
+  message?: string | null;
+  status: string;
+  expires_at: string;
+  revoked_at?: string | null;
+  documents: LenderPackageDocumentRead[];
+  recipients: LenderPackageRecipientRead[];
+  events: LenderPackageEventRead[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LenderPortalPackageListItem {
+  id: string;
+  loan_id: string;
+  deal_id: string;
+  address: string;
+  subject: string;
+  status: string;
+  recipient_status: LenderRecipientStatus;
+  expires_at: string;
+  viewed_at?: string | null;
+  terms_submitted_at?: string | null;
+  created_at: string;
+}
+
+export interface LenderDownloadResponse {
+  download_url: string;
+  expires_in_seconds: number;
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Connect-Lender diagnostics + per-lender loan drilldown
 // (Super Admin → Lenders tab)
@@ -1737,6 +1890,7 @@ export interface PrequalRequest {
   // 2/3/... for each successive Updated Version.
   parent_prequal_request_id: string | null;
   superseded_by_id: string | null;
+  source_analysis_run_id: string | null;
   version_num: number;
 }
 
@@ -1779,6 +1933,156 @@ export interface PrequalRequestReject {
 export interface PrequalSellerOutcome {
   // Optional borrower note about the outcome (e.g. "seller countered to 410k").
   note?: string | null;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Analysis runs + property intelligence. Backend: app/schemas/analysis.py.
+// ────────────────────────────────────────────────────────────────────────────
+
+export type AnalysisProduct = "dscr_purchase" | "dscr_refi" | "fix_flip";
+export type AnalysisSource = "deal_analyzer" | "simulator" | "loan_recalc";
+
+export interface ProviderSettingsRead {
+  rentcast_configured: boolean;
+  google_server_configured: boolean;
+  google_maps_browser_key_configured: boolean;
+  google_maps_mobile_key_configured: boolean;
+  google_maps_browser_key: string | null;
+  google_maps_mobile_key: string | null;
+  property_analysis_ai_enabled: boolean;
+  property_intelligence_cache_ttl_hours: number;
+}
+
+export interface ProviderSettingsUpdate {
+  rentcast_api_key?: string | null;
+  google_server_api_key?: string | null;
+  google_maps_browser_key?: string | null;
+  google_maps_mobile_key?: string | null;
+  property_analysis_ai_enabled?: boolean | null;
+  property_intelligence_cache_ttl_hours?: number | null;
+}
+
+export interface AddressParts {
+  street?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  full?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+export interface AddressSuggestion {
+  place_id: string;
+  text: string;
+  secondary_text: string | null;
+}
+
+export interface AddressResolveResponse {
+  address: AddressParts;
+  google_place: Record<string, unknown> | null;
+}
+
+export interface PropertyIntelligenceSnapshot {
+  id: string;
+  created_by_id: string | null;
+  client_id: string | null;
+  deal_id: string | null;
+  loan_id: string | null;
+  normalized_address: string;
+  address_hash: string;
+  source_status: Record<string, unknown> | null;
+  address: AddressParts & Record<string, unknown>;
+  google_place: Record<string, unknown> | null;
+  rentcast_property: Record<string, unknown> | null;
+  rentcast_value: Record<string, unknown> | null;
+  rentcast_rent: Record<string, unknown> | null;
+  rentcast_market: Record<string, unknown> | null;
+  fema_flood: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PropertyIntelligenceLookupRequest {
+  address: AddressParts;
+  client_id?: string | null;
+  deal_id?: string | null;
+  loan_id?: string | null;
+  property_type?: string | null;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  square_footage?: number | null;
+  force_refresh?: boolean;
+}
+
+export interface AnalysisRun {
+  id: string;
+  created_by_id: string | null;
+  client_id: string | null;
+  deal_id: string | null;
+  loan_id: string | null;
+  property_snapshot_id: string | null;
+  prequal_request_id: string | null;
+  product: AnalysisProduct;
+  tool_source: AnalysisSource;
+  status: string;
+  title: string;
+  target_property_address: string | null;
+  inputs: Record<string, unknown>;
+  calculator_output: Record<string, unknown> | null;
+  ai_report: Record<string, unknown> | null;
+  sanitized_client_report: Record<string, unknown> | null;
+  report_version: number;
+  shared_at: string | null;
+  shared_by_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AnalysisRunCreate {
+  product: AnalysisProduct;
+  tool_source?: AnalysisSource;
+  title?: string | null;
+  client_id?: string | null;
+  deal_id?: string | null;
+  loan_id?: string | null;
+  property_snapshot_id?: string | null;
+  target_property_address?: string | null;
+  inputs?: Record<string, unknown>;
+  calculator_output?: Record<string, unknown> | null;
+}
+
+export interface AnalysisRunUpdate {
+  title?: string | null;
+  client_id?: string | null;
+  deal_id?: string | null;
+  loan_id?: string | null;
+  property_snapshot_id?: string | null;
+  target_property_address?: string | null;
+  inputs?: Record<string, unknown> | null;
+  calculator_output?: Record<string, unknown> | null;
+  status?: string | null;
+}
+
+export interface AnalysisRunPrequalRequest {
+  expected_closing_date?: string | null;
+  borrower_entity?: string | null;
+  notes?: string | null;
+  manual_credit_override?: {
+    fico: number;
+    property_count: number;
+    has_year_of_ownership: boolean;
+  } | null;
+}
+
+export interface AnalysisRunPrequalResponse {
+  analysis_run: AnalysisRun;
+  prequal_request: PrequalRequest;
+}
+
+export interface ShareAnalysisResponse {
+  analysis_run: AnalysisRun;
+  shared: boolean;
 }
 
 // ────────────────────────────────────────────────────────────────────────────

@@ -2,11 +2,10 @@
 
 // Super-admin diagnostic for the Connect-Lender feature chain.
 //
-// Surfaces the result of GET /admin/connect-lender/health as a list of
-// traffic-light rows so the operator can see exactly which link is
-// missing (Gmail config, active lenders, eligible loans, Anthropic
-// key, mock vs real inbound). Lives at the top of the Lenders tab.
+// Kept compact so the lender roster stays the primary surface. The
+// full probe details are still available behind the Details toggle.
 
+import { useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -27,154 +26,163 @@ function statusColors(t: ReturnType<typeof useTheme>["t"], status: HealthStatus)
 export function ConnectLenderHealthCard() {
   const { t } = useTheme();
   const { data, isLoading, isError, error } = useConnectLenderHealth();
+  const [expanded, setExpanded] = useState(false);
+
+  const attentionCheck = useMemo(() => {
+    if (!data) return null;
+    return data.checks.find((c) => c.status === "fail") ?? data.checks.find((c) => c.status === "warn") ?? null;
+  }, [data]);
+
+  const overall = data ? statusColors(t, data.overall) : null;
 
   return (
     <Card pad={0}>
       <div
         style={{
-          padding: "12px 16px",
-          borderBottom: `1px solid ${t.line}`,
+          padding: "9px 14px",
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          gap: 10,
+          flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 190 }}>
           <Icon name="shieldChk" size={14} stroke={2.5} />
-          <SectionLabel>Connect Lender — health</SectionLabel>
+          <SectionLabel style={{ marginBottom: 0 }}>Connect Lender — health</SectionLabel>
         </div>
-        {data ? (
-          <Pill
-            bg={statusColors(t, data.overall).bg}
-            color={statusColors(t, data.overall).fg}
-          >
-            {statusColors(t, data.overall).label}
-          </Pill>
-        ) : null}
-      </div>
 
-      <div style={{ padding: 16 }}>
         {isLoading ? (
-          <div style={{ fontSize: 12.5, color: t.ink3 }}>Running checks…</div>
+          <div style={{ fontSize: 12.5, color: t.ink3 }}>Running checks...</div>
         ) : isError ? (
-          <div style={{ fontSize: 12.5, color: t.danger }}>
-            Probe failed: {(error as Error)?.message ?? "Unknown error"}.
-            The /admin/connect-lender/health endpoint may not be deployed yet.
+          <div style={{ fontSize: 12.5, color: t.danger, minWidth: 0 }}>
+            Probe failed: {(error as Error)?.message ?? "Unknown error"}. The /admin/connect-lender/health endpoint may not be deployed yet.
           </div>
         ) : data ? (
           <>
-            <div
+            {overall ? <Pill bg={overall.bg} color={overall.fg}>{overall.label}</Pill> : null}
+            <InlineStat label="Active lenders" value={data.active_lender_count} />
+            <InlineStat label="Connectable" value={data.eligible_loan_count} />
+            <InlineStat label="Connected" value={data.connected_loan_count} />
+            {attentionCheck ? (
+              <div
+                style={{
+                  minWidth: 0,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  color: statusColors(t, attentionCheck.status).fg,
+                  fontSize: 12,
+                  fontWeight: 750,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <Icon name="alert" size={12} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {attentionCheck.name}
+                </span>
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
               style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 1fr",
-                gap: 12,
-                marginBottom: 14,
+                all: "unset",
+                marginLeft: "auto",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "5px 8px",
+                borderRadius: 7,
+                color: t.ink2,
+                background: t.surface2,
+                border: `1px solid ${t.line}`,
+                fontSize: 11.5,
+                fontWeight: 800,
               }}
             >
-              <Stat t={t} label="Active lenders" value={data.active_lender_count} />
-              <Stat
-                t={t}
-                label="Loans connectable"
-                value={data.eligible_loan_count}
-              />
-              <Stat
-                t={t}
-                label="Loans connected"
-                value={data.connected_loan_count}
-              />
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {data.checks.map((c) => {
-                const sc = statusColors(t, c.status);
-                return (
-                  <div
-                    key={c.name}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "auto 1fr",
-                      gap: 10,
-                      alignItems: "start",
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      background: t.surface2,
-                      border: `1px solid ${t.line}`,
-                    }}
-                  >
-                    <Pill bg={sc.bg} color={sc.fg}>
-                      {sc.label}
-                    </Pill>
-                    <div>
-                      <div
-                        style={{
-                          fontSize: 12.5,
-                          fontWeight: 700,
-                          color: t.ink,
-                        }}
-                      >
-                        {c.name}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11.5,
-                          color: t.ink3,
-                          marginTop: 2,
-                          lineHeight: 1.45,
-                        }}
-                      >
-                        {c.detail}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+              {expanded ? "Hide" : "Details"}
+              <Icon name={expanded ? "chevU" : "chevD"} size={11} />
+            </button>
           </>
         ) : null}
       </div>
+
+      {expanded && data ? (
+        <div
+          style={{
+            padding: "0 14px 12px",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            gap: 6,
+          }}
+        >
+          {data.checks.map((c) => {
+            const sc = statusColors(t, c.status);
+            return (
+              <div
+                key={c.name}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "auto 1fr",
+                  gap: 8,
+                  alignItems: "start",
+                  padding: "7px 9px",
+                  borderRadius: 8,
+                  background: t.surface2,
+                  border: `1px solid ${t.line}`,
+                }}
+              >
+                <Pill bg={sc.bg} color={sc.fg}>
+                  {sc.label}
+                </Pill>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: t.ink }}>
+                    {c.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: t.ink3, marginTop: 2, lineHeight: 1.35 }}>
+                    {c.detail}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </Card>
   );
 }
 
-function Stat({
-  t,
-  label,
-  value,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  label: string;
-  value: number;
-}) {
+function InlineStat({ label, value }: { label: string; value: number }) {
+  const { t } = useTheme();
   return (
     <div
       style={{
-        padding: 10,
-        borderRadius: 10,
+        display: "inline-flex",
+        alignItems: "baseline",
+        gap: 5,
+        padding: "4px 8px",
+        borderRadius: 8,
         background: t.surface2,
         border: `1px solid ${t.line}`,
       }}
     >
-      <div
+      <span
         style={{
           fontSize: 10,
-          fontWeight: 700,
-          letterSpacing: 1.2,
+          fontWeight: 800,
+          letterSpacing: 0.8,
           textTransform: "uppercase",
           color: t.ink3,
         }}
       >
         {label}
-      </div>
-      <div
-        style={{
-          fontSize: 22,
-          fontWeight: 800,
-          color: t.ink,
-          marginTop: 2,
-          letterSpacing: -0.4,
-        }}
-      >
+      </span>
+      <span style={{ fontSize: 14, fontWeight: 900, color: t.ink, fontFeatureSettings: '"tnum"' }}>
         {value}
-      </div>
+      </span>
     </div>
   );
 }

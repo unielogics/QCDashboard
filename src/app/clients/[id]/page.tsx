@@ -8,7 +8,7 @@ import { Card, KPI, Pill, SectionLabel, VerifiedBadge } from "@/components/desig
 import { Icon } from "@/components/design-system/Icon";
 import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useBrokers, useClient, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
+import { useBrokers, useClient, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useSendIntakeLink, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { RealtorReadinessCard } from "@/components/RealtorReadinessCard";
@@ -42,9 +42,11 @@ export default function ClientDetailPage() {
   const { data: engagement = [] } = useEngagement(id);
   const updateClient = useUpdateClient();
   const requestPrequal = useRequestPrequalification();
+  const sendIntakeLink = useSendIntakeLink();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<Client>>({});
   const [error, setError] = useState<string | null>(null);
+  const [intakeLinkStatus, setIntakeLinkStatus] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [prequalErr, setPrequalErr] = useState<string | null>(null);
   const [chatPickerOpen, setChatPickerOpen] = useState(false);
@@ -121,6 +123,23 @@ export default function ClientDetailPage() {
     setChatPickerOpen(true);
   };
 
+  const onSendIntakeLink = async () => {
+    if (!client) return;
+    setIntakeLinkStatus(null);
+    try {
+      const res = await sendIntakeLink.mutateAsync({ clientId: client.id });
+      setIntakeLinkStatus({
+        tone: "ok",
+        text: `Intake link queued via ${res.sent_via}.`,
+      });
+    } catch (e) {
+      setIntakeLinkStatus({
+        tone: "error",
+        text: e instanceof Error ? e.message : "Failed to send intake link.",
+      });
+    }
+  };
+
   const handleSave = async () => {
     setError(null);
     try {
@@ -154,6 +173,25 @@ export default function ClientDetailPage() {
             <div style={{ fontSize: 13, color: t.ink3 }}>{client.email ?? "—"} · {client.phone ?? "—"} · {client.city ?? "—"}</div>
           </div>
           <Pill>{client.tier}</Pill>
+          {canEdit && (
+            <button
+              onClick={() => void onSendIntakeLink()}
+              disabled={sendIntakeLink.isPending || (!client.email && !client.phone)}
+              title={!client.email && !client.phone ? "Add an email or phone before sending an intake link." : "Send intake link"}
+              style={{
+                padding: "8px 12px", borderRadius: 9,
+                background: t.surface2, color: !client.email && !client.phone ? t.ink4 : t.ink,
+                border: `1px solid ${t.line}`,
+                fontSize: 12, fontWeight: 700,
+                display: "inline-flex", alignItems: "center", gap: 5,
+                cursor: sendIntakeLink.isPending ? "wait" : (!client.email && !client.phone ? "not-allowed" : "pointer"),
+                opacity: sendIntakeLink.isPending ? 0.65 : 1,
+              }}
+            >
+              <Icon name="send" size={12} />
+              {sendIntakeLink.isPending ? "Sending…" : "Send intake link"}
+            </button>
+          )}
           {canEdit && chatLoans.length > 0 && (
             <button
               onClick={onMessageClient}
@@ -219,6 +257,17 @@ export default function ClientDetailPage() {
           )}
           {prequalErr && (
             <span style={{ fontSize: 11, color: t.danger, fontWeight: 700 }}>{prequalErr}</span>
+          )}
+          {intakeLinkStatus && (
+            <span
+              style={{
+                fontSize: 11,
+                color: intakeLinkStatus.tone === "ok" ? t.petrol : t.danger,
+                fontWeight: 700,
+              }}
+            >
+              {intakeLinkStatus.text}
+            </span>
           )}
           {canEdit && !editing && (
             <button

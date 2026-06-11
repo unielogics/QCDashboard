@@ -29,6 +29,7 @@ import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
 import type { ConnectLenderNotifyToggle, Lender, Loan, LoanParticipant } from "@/lib/types";
 import { LenderSendModal } from "./LenderSendModal";
+import { LenderPackagesPanel } from "./LenderPackagesPanel";
 import { LenderThread } from "./LenderThread";
 
 interface Props {
@@ -38,7 +39,8 @@ interface Props {
 export function LenderConnectCard({ loan }: Props) {
   const { t } = useTheme();
   const profile = useActiveProfile();
-  const isSuperAdmin = profile.role === Role.SUPER_ADMIN;
+  const isInternal = profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
+  const canManageConnection = profile.role === Role.SUPER_ADMIN;
 
   const { data: matchingLenders = [], isLoading: matchLoading } = useLenders({
     product: loan.type,
@@ -119,8 +121,8 @@ export function LenderConnectCard({ loan }: Props) {
     return { cc, bcc };
   }, [participants]);
 
-  if (!isSuperAdmin) {
-    return null; // Only super-admins manage lender connection
+  if (!isInternal) {
+    return null;
   }
 
   return (
@@ -153,6 +155,7 @@ export function LenderConnectCard({ loan }: Props) {
             onEditNotify={() => startEdit(connectedLender)}
             onDisconnect={handleDisconnect}
             disconnecting={disconnect.isPending}
+            canManageConnection={canManageConnection}
           />
         ) : editingNotify ? (
           <NotifyForm
@@ -183,19 +186,20 @@ export function LenderConnectCard({ loan }: Props) {
               }
               startEdit(null);
             }}
+            onSend={() => setShowSend(true)}
+            canManageConnection={canManageConnection}
             error={error}
           />
         )}
       </div>
 
-      {connectedLender ? (
-        <LenderSendModal
-          open={showSend}
-          onClose={() => setShowSend(false)}
-          loan={loan}
-          lender={connectedLender}
-        />
-      ) : null}
+      <LenderSendModal
+        open={showSend}
+        onClose={() => setShowSend(false)}
+        loan={loan}
+        primaryLender={connectedLender ?? null}
+      />
+      <LenderPackagesPanel loan={loan} />
       {connectedLender ? (
         <div style={{ padding: "0 16px 16px" }}>
           <LenderThread loan={loan} lender={connectedLender} />
@@ -216,6 +220,8 @@ interface EmptyViewProps {
   pickedLenderId: string;
   setPickedLenderId: (v: string) => void;
   onConnect: () => void;
+  onSend: () => void;
+  canManageConnection: boolean;
   error: string | null;
 }
 
@@ -230,109 +236,115 @@ function EmptyView({
   pickedLenderId,
   setPickedLenderId,
   onConnect,
+  onSend,
+  canManageConnection,
   error,
 }: EmptyViewProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
-        Connecting a lender wires this deal to the One-Way Mirror redaction pipeline,
-        adds a hide-identity participant row, and promotes stage to LENDER_CONNECTED.
-      </div>
-      {matchLoading ? (
-        <div style={{ fontSize: 12.5, color: t.ink3 }}>Loading matching lenders…</div>
-      ) : dropdownLenders.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5 }}>
-          No active lenders {showAll ? "exist" : `service this loan's product yet (${allLenders.length} active overall)`}.
-          {!showAll && allLenders.length > 0 ? (
+      {canManageConnection ? (
+        <>
+          <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
+            Connecting a lender wires this deal to the One-Way Mirror redaction pipeline,
+            adds a hide-identity participant row, and promotes stage to LENDER_CONNECTED.
+          </div>
+          {matchLoading ? (
+            <div style={{ fontSize: 12.5, color: t.ink3 }}>Loading matching lenders…</div>
+          ) : dropdownLenders.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5 }}>
+              No active lenders {showAll ? "exist" : `service this loan's product yet (${allLenders.length} active overall)`}.
+              {!showAll && allLenders.length > 0 ? (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    onClick={() => setShowAll(true)}
+                    style={{
+                      all: "unset",
+                      cursor: "pointer",
+                      color: t.brand,
+                      textDecoration: "underline",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Show all
+                  </button>
+                </>
+              ) : null}{" "}
+              Or add one in <strong>Admin → Lenders</strong>.
+            </div>
+          ) : (
             <>
-              {" "}
-              <button
-                type="button"
-                onClick={() => setShowAll(true)}
+              <select
+                value={pickedLenderId}
+                onChange={(e) => setPickedLenderId(e.target.value)}
                 style={{
-                  all: "unset",
-                  cursor: "pointer",
-                  color: t.brand,
-                  textDecoration: "underline",
-                  fontWeight: 700,
+                  width: "100%",
+                  padding: "10px 12px",
+                  background: t.surface2,
+                  border: `1px solid ${t.line}`,
+                  borderRadius: 10,
+                  color: t.ink,
+                  fontSize: 13,
+                  fontFamily: "inherit",
                 }}
               >
-                Show all
-              </button>
+                <option value="">— pick a lender —</option>
+                {dropdownLenders.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                    {l.contact_name ? ` · ${l.contact_name}` : ""}
+                  </option>
+                ))}
+              </select>
+              {!showAll && matchingCount < allLenders.length ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAll(true)}
+                  style={{
+                    all: "unset",
+                    cursor: "pointer",
+                    fontSize: 11.5,
+                    color: t.ink3,
+                    textDecoration: "underline",
+                    alignSelf: "flex-start",
+                  }}
+                >
+                  Show all {allLenders.length} lenders (currently filtered to product match)
+                </button>
+              ) : showAll ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAll(false)}
+                  style={{
+                    all: "unset",
+                    cursor: "pointer",
+                    fontSize: 11.5,
+                    color: t.ink3,
+                    textDecoration: "underline",
+                    alignSelf: "flex-start",
+                  }}
+                >
+                  Filter back to product matches
+                </button>
+              ) : null}
             </>
-          ) : null}{" "}
-          Or add one in <strong>Admin → Lenders</strong>.
-        </div>
-      ) : (
-        <>
-          <select
-            value={pickedLenderId}
-            onChange={(e) => setPickedLenderId(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              background: t.surface2,
-              border: `1px solid ${t.line}`,
-              borderRadius: 10,
-              color: t.ink,
-              fontSize: 13,
-              fontFamily: "inherit",
-            }}
-          >
-            <option value="">— pick a lender —</option>
-            {dropdownLenders.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-                {l.contact_name ? ` · ${l.contact_name}` : ""}
-              </option>
-            ))}
-          </select>
-          {!showAll && matchingCount < allLenders.length ? (
-            <button
-              type="button"
-              onClick={() => setShowAll(true)}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                fontSize: 11.5,
-                color: t.ink3,
-                textDecoration: "underline",
-                alignSelf: "flex-start",
-              }}
-            >
-              Show all {allLenders.length} lenders (currently filtered to product match)
-            </button>
-          ) : showAll ? (
-            <button
-              type="button"
-              onClick={() => setShowAll(false)}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                fontSize: 11.5,
-                color: t.ink3,
-                textDecoration: "underline",
-                alignSelf: "flex-start",
-              }}
-            >
-              Filter back to product matches
-            </button>
-          ) : null}
+          )}
         </>
-      )}
+      ) : null}
       {error ? <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill> : null}
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
         <button
           type="button"
-          onClick={onConnect}
-          disabled={!pickedLenderId || dropdownLenders.length === 0}
+          onClick={onSend}
+          disabled={allLenders.length === 0}
           style={{
             all: "unset",
-            cursor: pickedLenderId ? "pointer" : "not-allowed",
-            padding: "9px 16px",
+            cursor: allLenders.length === 0 ? "not-allowed" : "pointer",
+            padding: "9px 14px",
             borderRadius: 10,
-            background: pickedLenderId ? t.petrol : t.chip,
-            color: pickedLenderId ? "#fff" : t.ink4,
+            border: `1px solid ${t.line}`,
+            color: allLenders.length === 0 ? t.ink4 : t.petrol,
             fontSize: 13,
             fontWeight: 700,
             display: "inline-flex",
@@ -340,8 +352,30 @@ function EmptyView({
             gap: 6,
           }}
         >
-          <Icon name="link" size={12} stroke={3} /> Connect lender
+          <Icon name="shield" size={12} stroke={3} /> Send package
         </button>
+        {canManageConnection ? (
+          <button
+            type="button"
+            onClick={onConnect}
+            disabled={!pickedLenderId || dropdownLenders.length === 0}
+            style={{
+              all: "unset",
+              cursor: pickedLenderId ? "pointer" : "not-allowed",
+              padding: "9px 16px",
+              borderRadius: 10,
+              background: pickedLenderId ? t.petrol : t.chip,
+              color: pickedLenderId ? "#fff" : t.ink4,
+              fontSize: 13,
+              fontWeight: 700,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <Icon name="link" size={12} stroke={3} /> Connect lender
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -356,6 +390,7 @@ interface ConnectedViewProps {
   onEditNotify: () => void;
   onDisconnect: () => void;
   disconnecting: boolean;
+  canManageConnection: boolean;
 }
 
 function ConnectedView({
@@ -367,6 +402,7 @@ function ConnectedView({
   onEditNotify,
   onDisconnect,
   disconnecting,
+  canManageConnection,
 }: ConnectedViewProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -387,22 +423,24 @@ function ConnectedView({
           </div>
         ) : null}
       </div>
-      <div style={{ fontSize: 11.5, color: t.ink3 }}>
-        Notify list: {ccCount} CC · {bccCount} BCC.{" "}
-        <button
-          type="button"
-          onClick={onEditNotify}
-          style={{
-            all: "unset",
-            cursor: "pointer",
-            textDecoration: "underline",
-            color: t.brand,
-            fontWeight: 700,
-          }}
-        >
-          Edit
-        </button>
-      </div>
+      {canManageConnection ? (
+        <div style={{ fontSize: 11.5, color: t.ink3 }}>
+          Notify list: {ccCount} CC · {bccCount} BCC.{" "}
+          <button
+            type="button"
+            onClick={onEditNotify}
+            style={{
+              all: "unset",
+              cursor: "pointer",
+              textDecoration: "underline",
+              color: t.brand,
+              fontWeight: 700,
+            }}
+          >
+            Edit
+          </button>
+        </div>
+      ) : null}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button
           type="button"
@@ -423,23 +461,25 @@ function ConnectedView({
         >
           <Icon name="external" size={12} stroke={3} /> Send package
         </button>
-        <button
-          type="button"
-          onClick={onDisconnect}
-          disabled={disconnecting}
-          style={{
-            all: "unset",
-            cursor: disconnecting ? "wait" : "pointer",
-            padding: "9px 14px",
-            borderRadius: 10,
-            border: `1px solid ${t.line}`,
-            fontSize: 12.5,
-            color: t.danger,
-            opacity: disconnecting ? 0.6 : 1,
-          }}
-        >
-          {disconnecting ? "Disconnecting…" : "Disconnect"}
-        </button>
+        {canManageConnection ? (
+          <button
+            type="button"
+            onClick={onDisconnect}
+            disabled={disconnecting}
+            style={{
+              all: "unset",
+              cursor: disconnecting ? "wait" : "pointer",
+              padding: "9px 14px",
+              borderRadius: 10,
+              border: `1px solid ${t.line}`,
+              fontSize: 12.5,
+              color: t.danger,
+              opacity: disconnecting ? 0.6 : 1,
+            }}
+          >
+            {disconnecting ? "Disconnecting…" : "Disconnect"}
+          </button>
+        ) : null}
       </div>
     </div>
   );
