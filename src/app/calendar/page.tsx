@@ -31,6 +31,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const PX_PER_MINUTE = 2.25;
 const MIN_EVENT_HEIGHT = 56;
 const NOW_LINE_RATIO = 0.4;
+const DEFAULT_DAY_START_MINUTE = 8 * 60;
+const DEFAULT_DAY_END_MINUTE = 20 * 60;
 
 export default function CalendarPage() {
   const { t } = useTheme();
@@ -575,6 +577,16 @@ function ClientActivityFeed({ rows }: { rows: CalendarActivityItem[] }) {
 
 function TodosRail({ todos, windowDays }: { todos: Todo[]; windowDays: Window }) {
   const { t } = useTheme();
+  const groups = groupTodos(todos, windowDays);
+  const counts = useMemo(
+    () => ({
+      overdue: todos.filter((x) => x.urgency === "overdue").length,
+      today: todos.filter((x) => x.urgency === "today").length,
+      upcoming: todos.filter((x) => x.urgency === "soon" || x.urgency === "later").length,
+    }),
+    [todos],
+  );
+
   return (
     <Card pad={14}>
       <SectionLabel
@@ -598,48 +610,88 @@ function TodosRail({ todos, windowDays }: { todos: Todo[]; windowDays: Window })
         Todos · next {windowDays}d
       </SectionLabel>
 
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, margin: "10px 0" }}>
+        <TodoMetric label="Overdue" value={counts.overdue} tone="overdue" />
+        <TodoMetric label="Today" value={counts.today} tone="today" />
+        <TodoMetric label="Upcoming" value={counts.upcoming} tone="soon" />
+      </div>
+
       {todos.length === 0 ? (
         <div style={{ fontSize: 12.5, color: t.ink3, padding: "8px 0" }}>
           Nothing pending in this window.
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {todos.map((todo) => (
-            <Link
-              key={todo.key}
-              href={todo.href}
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 10,
-                padding: "10px 12px",
-                borderRadius: 9,
-                background: t.surface2,
-                border: `1px solid ${t.line}`,
-                borderLeft: `3px solid ${todoAccent(t, todo.urgency)}`,
-                textDecoration: "none",
-                color: "inherit",
-              }}
-            >
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {todo.title}
-                </div>
-                <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
-                  {todo.sub}
-                </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {groups.map((group) => (
+            <div key={group.key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 2px" }}>
+                <span style={{ width: 7, height: 7, borderRadius: 99, background: todoAccent(t, group.tone) }} />
+                <span style={{ fontSize: 10.5, fontWeight: 850, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
+                  {group.label}
+                </span>
+                <span style={{ flex: 1, height: 1, background: t.line }} />
+                <span style={{ fontSize: 11, color: t.ink4, fontVariantNumeric: "tabular-nums" }}>{group.items.length}</span>
               </div>
-              <Pill
-                bg={todo.urgency === "overdue" ? t.dangerBg : todo.urgency === "today" ? t.warnBg : t.chip}
-                color={todo.urgency === "overdue" ? t.danger : todo.urgency === "today" ? t.warn : t.ink2}
-              >
-                {todo.urgency}
-              </Pill>
-            </Link>
+              {group.items.map((todo) => (
+                <Link
+                  key={todo.key}
+                  href={todo.href}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    padding: "9px 10px",
+                    borderRadius: 9,
+                    background: t.surface2,
+                    border: `1px solid ${t.line}`,
+                    borderLeft: `3px solid ${todoAccent(t, todo.urgency)}`,
+                    textDecoration: "none",
+                    color: "inherit",
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {todo.title}
+                    </div>
+                    <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
+                      {todo.sub}
+                    </div>
+                  </div>
+                  <Pill
+                    bg={todo.urgency === "overdue" ? t.dangerBg : todo.urgency === "today" ? t.warnBg : t.chip}
+                    color={todo.urgency === "overdue" ? t.danger : todo.urgency === "today" ? t.warn : t.ink2}
+                  >
+                    {todo.urgency}
+                  </Pill>
+                </Link>
+              ))}
+            </div>
           ))}
         </div>
       )}
     </Card>
+  );
+}
+
+function TodoMetric({ label, value, tone }: { label: string; value: number; tone: Todo["urgency"] }) {
+  const { t } = useTheme();
+  return (
+    <div
+      style={{
+        border: `1px solid ${t.line}`,
+        background: t.surface2,
+        borderRadius: 8,
+        padding: "8px 9px",
+        minWidth: 0,
+      }}
+    >
+      <div style={{ fontSize: 17, fontWeight: 900, color: todoAccent(t, tone), lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
+        {value}
+      </div>
+      <div style={{ fontSize: 10, color: t.ink3, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase", marginTop: 5 }}>
+        {label}
+      </div>
+    </div>
   );
 }
 
@@ -668,10 +720,10 @@ function buildTimelineLayout(events: CalendarEvent[], now: Date) {
     })
     .sort((a, b) => a.startMinute - b.startMinute || a.endMinute - b.endMinute);
 
-  const minMinute = Math.min(nowMinute, ...raw.map((x) => x.startMinute));
-  const maxMinute = Math.max(nowMinute, ...raw.map((x) => x.endMinute));
-  const rangeStart = Math.max(0, Math.floor(minMinute / 60) * 60 - 60);
-  const rangeEnd = Math.min(24 * 60, Math.ceil(maxMinute / 60) * 60 + 60);
+  const minMinute = Math.min(DEFAULT_DAY_START_MINUTE, nowMinute, ...raw.map((x) => x.startMinute));
+  const maxMinute = Math.max(DEFAULT_DAY_END_MINUTE, nowMinute + 30, ...raw.map((x) => x.endMinute));
+  const rangeStart = Math.max(0, Math.floor(minMinute / 60) * 60);
+  const rangeEnd = Math.min(24 * 60, Math.ceil(maxMinute / 60) * 60);
   const height = Math.max(420, (rangeEnd - rangeStart) * PX_PER_MINUTE);
   const items: TimelineItem[] = [];
 
@@ -707,7 +759,7 @@ function buildTimelineLayout(events: CalendarEvent[], now: Date) {
     rangeStart,
     rangeEnd,
     height,
-    currentOffset: (nowMinute - rangeStart) * PX_PER_MINUTE,
+    currentOffset: clampNumber((nowMinute - rangeStart) * PX_PER_MINUTE, 0, height),
     items,
     hours,
   };
@@ -830,6 +882,27 @@ interface Todo {
   urgency: "overdue" | "today" | "soon" | "later";
 }
 
+interface TodoGroup {
+  key: string;
+  label: string;
+  tone: Todo["urgency"];
+  items: Todo[];
+}
+
+function groupTodos(todos: Todo[], windowDays: Window): TodoGroup[] {
+  const specs: TodoGroup[] = [
+    { key: "overdue", label: "Needs attention", tone: "overdue", items: [] },
+    { key: "today", label: "Due today", tone: "today", items: [] },
+    { key: "upcoming", label: `Next ${windowDays} days`, tone: "soon", items: [] },
+  ];
+  for (const todo of todos) {
+    if (todo.urgency === "overdue") specs[0].items.push(todo);
+    else if (todo.urgency === "today") specs[1].items.push(todo);
+    else specs[2].items.push(todo);
+  }
+  return specs.filter((group) => group.items.length > 0);
+}
+
 function buildTodos(
   tasks: AITask[],
   docs: Document[],
@@ -889,4 +962,8 @@ function buildTodos(
 
 function todoAccent(t: ReturnType<typeof useTheme>["t"], urgency: Todo["urgency"]): string {
   return urgency === "overdue" ? t.danger : urgency === "today" ? t.warn : urgency === "soon" ? t.petrol : t.line;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(value, max));
 }

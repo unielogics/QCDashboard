@@ -23,6 +23,7 @@ import Link from "next/link";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import { qcBtn } from "@/components/design-system/buttons";
 import {
   useBrokerSettings,
   useCurrentUser,
@@ -32,6 +33,7 @@ import {
 import { Role } from "@/lib/enums.generated";
 import type {
   AgentCadenceOverride,
+  AgentBookingSettings,
   AgentChecklistOverlay,
   AgentLetterhead,
   AgentSettingsData,
@@ -78,6 +80,7 @@ const SIDES: { id: LoanSide; label: string }[] = [
 
 const SECTIONS = [
   { id: "identity", label: "Identity & Letterhead", icon: "user" as const, legacy: false },
+  { id: "booking", label: "Booking Page", icon: "cal" as const, legacy: false },
   { id: "cadence", label: "AI Cadence", icon: "bell" as const, legacy: true },
   { id: "checklists", label: "Doc Checklist", icon: "vault" as const, legacy: true },
 ] as const;
@@ -97,8 +100,24 @@ function emptyLetterhead(): AgentLetterhead {
   };
 }
 
+function emptyBooking(): AgentBookingSettings {
+  return {
+    enabled: false,
+    slug: null,
+    title: null,
+    intro: null,
+    primary_color: "#5eead4",
+    background_color: "#05070d",
+    duration_min: 30,
+    timezone: "America/New_York",
+    available_days: [1, 2, 3, 4, 5],
+    start_time: "09:00",
+    end_time: "17:00",
+  };
+}
+
 function emptyAgentSettings(): AgentSettingsData {
-  return { checklists: {}, cadence: null, letterhead: emptyLetterhead() };
+  return { checklists: {}, cadence: null, letterhead: emptyLetterhead(), booking: emptyBooking() };
 }
 
 // Map a saved cadence override → preset id. "Standard" = no override (null).
@@ -142,6 +161,7 @@ export default function AgentSettingsPage() {
       checklists: data.checklists ?? {},
       cadence: data.cadence ?? null,
       letterhead: data.letterhead ?? emptyLetterhead(),
+      booking: data.booking ?? emptyBooking(),
     };
     setDraft(seeded);
     setOriginalJson(JSON.stringify(seeded));
@@ -291,6 +311,16 @@ export default function AgentSettingsPage() {
 
         {section === "identity" && (
           <IdentitySection
+            draft={draft}
+            setDraft={setDraft}
+            user={user ?? null}
+            dirty={dirty}
+            saving={update.isPending}
+            onSave={onSave}
+          />
+        )}
+        {section === "booking" && (
+          <BookingSection
             draft={draft}
             setDraft={setDraft}
             user={user ?? null}
@@ -481,7 +511,212 @@ function IdentitySection({ draft, setDraft, user, dirty, saving, onSave }: Ident
 }
 
 // ───────────────────────────────────────────────────────────────────
-// Section 2: AI Cadence — preset cards + advanced disclosure
+// Section 2: Public booking page
+// ───────────────────────────────────────────────────────────────────
+interface BookingProps {
+  draft: AgentSettingsData;
+  setDraft: React.Dispatch<React.SetStateAction<AgentSettingsData>>;
+  user: { name: string; email: string } | null;
+  dirty: boolean;
+  saving: boolean;
+  onSave: () => void;
+}
+
+const WEEKDAYS = [
+  { id: 1, label: "Mon" },
+  { id: 2, label: "Tue" },
+  { id: 3, label: "Wed" },
+  { id: 4, label: "Thu" },
+  { id: 5, label: "Fri" },
+  { id: 6, label: "Sat" },
+  { id: 0, label: "Sun" },
+];
+
+function BookingSection({ draft, setDraft, user, dirty, saving, onSave }: BookingProps) {
+  const { t } = useTheme();
+  const booking = draft.booking ?? emptyBooking();
+  const slug = booking.slug || defaultBookingSlug(user?.name || user?.email || "agent");
+  const bookingPath = `/book/${slug}`;
+  const publicUrl = typeof window === "undefined" ? bookingPath : `${window.location.origin}${bookingPath}`;
+
+  const update = (patch: Partial<AgentBookingSettings>) => {
+    setDraft((d) => ({ ...d, booking: { ...(d.booking ?? emptyBooking()), ...patch } }));
+  };
+
+  const toggleDay = (day: number) => {
+    const current = new Set(booking.available_days ?? []);
+    if (current.has(day)) current.delete(day);
+    else current.add(day);
+    update({ available_days: Array.from(current).sort((a, b) => a - b) });
+  };
+
+  return (
+    <Card>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <SectionLabel>Booking Page</SectionLabel>
+        <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />
+      </div>
+      <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
+        Create a public page where clients and partners can book time with you.
+        Booked calls appear on your calendar timeline as agent-owned events.
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: 16, alignItems: "start" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Toggle
+            label="Enable public booking page"
+            value={booking.enabled}
+            onChange={(enabled) => update({ enabled, slug: booking.slug || slug })}
+          />
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 12 }}>
+            <Field label="Public URL slug">
+              <TextInput
+                value={slug}
+                onChange={(v) => update({ slug: normalizeBookingSlug(v) || null })}
+                placeholder="jonathan-franco"
+              />
+            </Field>
+            <Field label="Meeting length">
+              <select
+                value={booking.duration_min}
+                onChange={(e) => update({ duration_min: Number(e.target.value) })}
+                style={inputStyle(t)}
+              >
+                <option value={15}>15 minutes</option>
+                <option value={30}>30 minutes</option>
+                <option value={45}>45 minutes</option>
+                <option value={60}>60 minutes</option>
+                <option value={90}>90 minutes</option>
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Page title">
+            <TextInput
+              value={booking.title ?? ""}
+              onChange={(v) => update({ title: v || null })}
+              placeholder={`Book a meeting with ${user?.name || "me"}`}
+            />
+          </Field>
+
+          <Field label="Intro text">
+            <textarea
+              value={booking.intro ?? ""}
+              onChange={(e) => update({ intro: e.target.value || null })}
+              placeholder="Choose a time to discuss your file, prequalification, or next steps."
+              rows={3}
+              style={{ ...inputStyle(t), resize: "vertical", lineHeight: 1.45 }}
+            />
+          </Field>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <Field label="Timezone">
+              <TextInput
+                value={booking.timezone}
+                onChange={(v) => update({ timezone: v || "America/New_York" })}
+                placeholder="America/New_York"
+              />
+            </Field>
+            <Field label="Start time">
+              <input
+                type="time"
+                value={booking.start_time}
+                onChange={(e) => update({ start_time: e.target.value || "09:00" })}
+                style={inputStyle(t)}
+              />
+            </Field>
+            <Field label="End time">
+              <input
+                type="time"
+                value={booking.end_time}
+                onChange={(e) => update({ end_time: e.target.value || "17:00" })}
+                style={inputStyle(t)}
+              />
+            </Field>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3, marginBottom: 6 }}>
+              Available days
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {WEEKDAYS.map((day) => {
+                const active = booking.available_days.includes(day.id);
+                return (
+                  <button
+                    key={day.id}
+                    onClick={() => toggleDay(day.id)}
+                    style={{
+                      ...dayChipStyle(t),
+                      background: active ? t.brandSoft : t.surface2,
+                      color: active ? t.brand : t.ink3,
+                      borderColor: active ? t.brand : t.line,
+                    }}
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Accent color">
+              <ColorInput value={booking.primary_color} onChange={(v) => update({ primary_color: v })} />
+            </Field>
+            <Field label="Background color">
+              <ColorInput value={booking.background_color} onChange={(v) => update({ background_color: v })} />
+            </Field>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <Link href={bookingPath} target="_blank" style={{ textDecoration: "none" }}>
+              <span style={{ ...qcBtn(t), display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Icon name="external" size={13} /> Preview page
+              </span>
+            </Link>
+            <div style={{ fontSize: 12, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {publicUrl}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            borderRadius: 14,
+            border: `1px solid ${t.line}`,
+            padding: 18,
+            background: booking.background_color,
+            color: "#ffffff",
+            boxShadow: "0 14px 34px rgba(0,0,0,0.22)",
+          }}
+        >
+          <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 1.5, textTransform: "uppercase", color: booking.primary_color }}>
+            Booking preview
+          </div>
+          <h3 style={{ margin: "10px 0 8px", fontSize: 24, lineHeight: 1.1 }}>
+            {booking.title || `Book a meeting with ${user?.name || "your agent"}`}
+          </h3>
+          <p style={{ margin: 0, color: "rgba(255,255,255,0.72)", fontSize: 13, lineHeight: 1.5 }}>
+            {booking.intro || "Choose a time that works for you. You will receive a confirmation after booking."}
+          </p>
+          <div style={{ marginTop: 18, display: "grid", gap: 8 }}>
+            {["Tomorrow", "Thursday", "Friday"].map((label, idx) => (
+              <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "10px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.06)" }}>
+                <span>{label}</span>
+                <span style={{ color: booking.primary_color, fontWeight: 900 }}>{idx === 0 ? booking.start_time : "10:30"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Section 3: AI Cadence — preset cards + advanced disclosure
 // ───────────────────────────────────────────────────────────────────
 interface CadenceProps {
   draft: AgentSettingsData;
@@ -929,6 +1164,19 @@ function ChecklistsSection({ draft, setDraft, dirty, saving, onSave }: Checklist
 // ───────────────────────────────────────────────────────────────────
 // Primitives
 // ───────────────────────────────────────────────────────────────────
+function defaultBookingSlug(seed: string): string {
+  return normalizeBookingSlug(seed) || "agent";
+}
+
+function normalizeBookingSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-")
+    .slice(0, 64);
+}
+
 function Tabs<T extends string>({ t, value, onChange, options }: {
   t: ReturnType<typeof useTheme>["t"];
   value: T;
@@ -1012,6 +1260,25 @@ function TextInput({ value, onChange, placeholder }: { value: string; onChange: 
   );
 }
 
+function ColorInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { t } = useTheme();
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ width: 42, height: 36, padding: 2, borderRadius: 7, border: `1px solid ${t.line}`, background: t.surface2 }}
+      />
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={inputStyle(t)}
+      />
+    </div>
+  );
+}
+
 function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
   const { t } = useTheme();
   return (
@@ -1077,4 +1344,15 @@ function SaveBtn({ dirty, saving, onClick }: { dirty: boolean; saving: boolean; 
       {saving ? "Saving…" : "Save"}
     </button>
   );
+}
+
+function dayChipStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
+  return {
+    border: `1px solid ${t.line}`,
+    borderRadius: 999,
+    padding: "6px 11px",
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: 800,
+  };
 }

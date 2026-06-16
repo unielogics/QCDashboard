@@ -741,6 +741,20 @@ export interface AgentLetterhead {
   signature_block?: string | null;
 }
 
+export interface AgentBookingSettings {
+  enabled: boolean;
+  slug: string | null;
+  title: string | null;
+  intro: string | null;
+  primary_color: string;
+  background_color: string;
+  duration_min: number;
+  timezone: string;
+  available_days: number[];
+  start_time: string;
+  end_time: string;
+}
+
 // Response from POST /me/broker-settings/headshot/upload-init.
 export interface HeadshotUploadInitResponse {
   s3_key: string;
@@ -755,6 +769,7 @@ export interface AgentSettingsData {
   // Was Record<loan_type, AgentCadenceOverride> in v1.
   cadence: AgentCadenceOverride | null;
   letterhead: AgentLetterhead | null;
+  booking: AgentBookingSettings | null;
 }
 export interface LoanTypeChecklist {
   docs: DocChecklistItem[];
