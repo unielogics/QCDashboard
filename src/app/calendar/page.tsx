@@ -7,6 +7,7 @@ import { Card, Pill, SectionLabel } from "@/components/design-system/primitives"
 import { Icon } from "@/components/design-system/Icon";
 import {
   useAITasks,
+  useBrokerSettings,
   useCalendar,
   useCalendarActivity,
   useCurrentUser,
@@ -17,7 +18,7 @@ import {
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import type { AITask, CalendarActivityItem, CalendarEvent, Document, Loan } from "@/lib/types";
+import type { AITask, AgentBookingSettings, CalendarActivityItem, CalendarEvent, Document, Loan } from "@/lib/types";
 import { EventModal } from "./components/EventModal";
 
 type Window = 7 | 30 | 90;
@@ -67,6 +68,7 @@ export default function CalendarPage() {
 
   const { data: events = [] } = useCalendar(queryWindow);
   const { data: activity = [] } = useCalendarActivity(activityWindow);
+  const { data: brokerSettings } = useBrokerSettings();
   const { data: tasks = [] } = useAITasks();
   const { data: docs = [] } = useDocuments();
   const { data: loans = [] } = useLoans();
@@ -200,11 +202,89 @@ export default function CalendarPage() {
           {isClient ? (
             <ClientActivityFeed rows={activity} />
           ) : (
-            <TodosRail todos={todos} windowDays={windowDays} />
+            <>
+              <CalendarShareCard role={user?.role} booking={brokerSettings?.data.booking ?? null} />
+              <TodosRail todos={todos} windowDays={windowDays} />
+            </>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+function CalendarShareCard({ role, booking }: { role?: Role; booking: AgentBookingSettings | null }) {
+  const { t } = useTheme();
+  const [copied, setCopied] = useState(false);
+  const isBroker = role === Role.BROKER;
+  const bookingPath = isBroker && booking?.enabled && booking.slug ? `/book/${booking.slug}` : null;
+  const bookingUrl = bookingPath && typeof window !== "undefined" ? `${window.location.origin}${bookingPath}` : bookingPath;
+
+  const copy = async () => {
+    if (!bookingUrl) return;
+    await navigator.clipboard.writeText(bookingUrl);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  };
+
+  return (
+    <Card pad={14}>
+      <SectionLabel>Booking link</SectionLabel>
+      {bookingUrl ? (
+        <>
+          <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, margin: "8px 0 10px" }}>
+            Share this public page when someone needs to book time with you. Booked calls land on this calendar.
+          </div>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input
+              readOnly
+              value={bookingUrl}
+              style={{
+                minWidth: 0,
+                flex: 1,
+                border: `1px solid ${t.line}`,
+                background: t.surface2,
+                color: t.ink2,
+                borderRadius: 8,
+                padding: "8px 9px",
+                fontSize: 12,
+              }}
+            />
+            <button onClick={copy} style={{ ...qcBtn(t), padding: "8px 10px" }}>
+              <Icon name={copied ? "check" : "link"} size={12} />
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <Link href={bookingPath ?? "/calendar"} target="_blank" style={{ textDecoration: "none" }}>
+              <span style={{ ...qcBtn(t), display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12 }}>
+                <Icon name="external" size={12} /> Open
+              </span>
+            </Link>
+            <Link href="/agent-settings" style={{ textDecoration: "none" }}>
+              <span style={{ ...qcBtn(t), display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12 }}>
+                <Icon name="gear" size={12} /> Configure
+              </span>
+            </Link>
+          </div>
+        </>
+      ) : isBroker ? (
+        <>
+          <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, margin: "8px 0 10px" }}>
+            Your public booking page is not enabled yet. Configure it once, then the share link will appear here.
+          </div>
+          <Link href="/agent-settings" style={{ textDecoration: "none" }}>
+            <span style={{ ...qcBtnPrimary(t), display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <Icon name="cal" size={12} /> Configure booking page
+            </span>
+          </Link>
+        </>
+      ) : (
+        <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.5, marginTop: 8 }}>
+          Use <strong style={{ color: t.ink }}>New event</strong> for clients, agents, lenders, vendors, and internal team meetings. Public booking links are configured on agent accounts.
+        </div>
+      )}
+    </Card>
   );
 }
 

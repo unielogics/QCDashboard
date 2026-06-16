@@ -35,11 +35,11 @@ interface NavItem {
 //   Underwriter / Borrower. Preserved per Architecture Rule #5: do not break
 //   current operator workflows when reorganizing for Agents.
 const AGENT_NAV: NavItem[] = [
+  { href: "/", label: "Dashboard", icon: "home" },
   { href: "/pipeline", label: "My Pipeline", icon: "layers" },
   { href: "/clients", label: "Clients", icon: "clients" },
   { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "cal" },
-  { href: "/", label: "Dashboard", icon: "home" },
   { href: "/admin/prequal-requests", label: "Prequalifications", icon: "docCheck" },
   { href: "/deal-analyzer", label: "Deal Analyzer", icon: "hammer" },
   { href: "/simulator", label: "Simulation", icon: "calc" },
