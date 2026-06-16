@@ -28,17 +28,18 @@ interface NavItem {
 // Two NAV variants exist:
 //
 //   AGENT_NAV — the Funding Command Center IA for BROKER (Agent) users.
-//   Reorganized around closing work: My Pipeline · Next Best Actions · Leads ·
-//   Deals · Borrowers · Documents · AI Follow-Up · Messages · Funding
-//   Packages · Performance.
+//   Broker daily work starts with file/client communication and calendar,
+//   then secondary analysis, AI, reporting, and settings tools.
 //
 //   OPERATOR_NAV — the existing firm-wide operator nav for Super Admin /
 //   Underwriter / Borrower. Preserved per Architecture Rule #5: do not break
 //   current operator workflows when reorganizing for Agents.
 const AGENT_NAV: NavItem[] = [
-  { href: "/", label: "Dashboard", icon: "home" },
-  { href: "/clients", label: "Clients", icon: "clients" },
   { href: "/pipeline", label: "My Pipeline", icon: "layers" },
+  { href: "/clients", label: "Clients", icon: "clients" },
+  { href: "/messages", label: "Messages", icon: "chat" },
+  { href: "/calendar", label: "Calendar", icon: "cal" },
+  { href: "/", label: "Dashboard", icon: "home" },
   { href: "/admin/prequal-requests", label: "Prequalifications", icon: "docCheck" },
   { href: "/deal-analyzer", label: "Deal Analyzer", icon: "hammer" },
   { href: "/simulator", label: "Simulation", icon: "calc" },
@@ -48,7 +49,6 @@ const AGENT_NAV: NavItem[] = [
   // INSIDE a deal (Documents tab on the loan/client detail page) rather
   // than from a global firm-wide vault. Operators keep their /vault
   // entry below.
-  { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/reports", label: "Performance", icon: "trend" },
   { href: "/agent-settings", label: "Settings", icon: "gear" },
 ];
