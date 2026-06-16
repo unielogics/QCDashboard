@@ -1,32 +1,53 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useCreateEvent, useLoans } from "@/hooks/useApi";
+import { useClients, useCreateEvent, useLoans, useUsers } from "@/hooks/useApi";
 import { CalendarEventKind, AITaskPriority, CalendarEventKindOptions, AITaskPriorityOptions } from "@/lib/enums.generated";
 import { parseIntStrict } from "@/lib/formCoerce";
 
 export function EventModal({ open, onClose, defaultLoanId }: { open: boolean; onClose: () => void; defaultLoanId?: string }) {
   const { t } = useTheme();
   const { data: loans = [] } = useLoans();
+  const { data: clients = [] } = useClients();
+  const { data: users = [] } = useUsers();
   const createEvent = useCreateEvent();
 
   const [loanId, setLoanId] = useState<string>(defaultLoanId ?? "");
   const [kind, setKind] = useState<typeof CalendarEventKind[keyof typeof CalendarEventKind]>(CalendarEventKind.CALL);
   const [title, setTitle] = useState("");
   const [who, setWho] = useState("");
+  const [whoOpen, setWhoOpen] = useState(false);
   const [startsAt, setStartsAt] = useState<string>(() => {
-    // Default: tomorrow at 10am, formatted for datetime-local input
     const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(10, 0, 0, 0);
-    return d.toISOString().slice(0, 16);
+    const nextQuarter = Math.ceil((d.getMinutes() + 5) / 15) * 15;
+    d.setMinutes(nextQuarter, 0, 0);
+    return toDatetimeLocal(d);
   });
   const [durationMin, setDurationMin] = useState("30");
   const [priority, setPriority] = useState<typeof AITaskPriority[keyof typeof AITaskPriority] | "">("");
   const [error, setError] = useState<string | null>(null);
+  const attendeeMatches = useMemo(() => {
+    const q = who.trim().toLowerCase();
+    if (q.length < 2) return [];
+    const clientRows = clients.map((c) => ({
+      id: `client-${c.id}`,
+      label: c.name,
+      sub: [c.email, c.phone].filter(Boolean).join(" · ") || "Client",
+      value: c.email ? `${c.name} <${c.email}>` : c.name,
+    }));
+    const userRows = users.map((u) => ({
+      id: `user-${u.id}`,
+      label: u.name || u.email,
+      sub: `${u.role} · ${u.email}`,
+      value: u.email ? `${u.name || u.email} <${u.email}>` : u.name,
+    }));
+    return [...clientRows, ...userRows]
+      .filter((row) => `${row.label} ${row.sub}`.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [clients, users, who]);
 
   if (!open) return null;
 
@@ -118,7 +139,68 @@ export function EventModal({ open, onClose, defaultLoanId }: { open: boolean; on
             </Field>
           </div>
           <Field t={t} label="Who (optional)">
-            <input value={who} onChange={(e) => setWho(e.target.value)} placeholder="Marisol Vega" style={inputStyle(t)} />
+            <div style={{ position: "relative" }}>
+              <input
+                value={who}
+                onChange={(e) => {
+                  setWho(e.target.value);
+                  setWhoOpen(true);
+                }}
+                onFocus={() => setWhoOpen(true)}
+                placeholder="Search name/email or enter a new email"
+                style={inputStyle(t)}
+              />
+              {whoOpen && attendeeMatches.length > 0 ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    zIndex: 20,
+                    left: 0,
+                    right: 0,
+                    top: "100%",
+                    marginTop: 5,
+                    borderRadius: 10,
+                    border: `1px solid ${t.line}`,
+                    background: t.surface,
+                    boxShadow: t.shadowLg,
+                    overflow: "hidden",
+                  }}
+                >
+                  {attendeeMatches.map((row) => (
+                    <button
+                      key={row.id}
+                      onClick={() => {
+                        setWho(row.value);
+                        setWhoOpen(false);
+                      }}
+                      style={{
+                        all: "unset",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        width: "calc(100% - 24px)",
+                        padding: "9px 12px",
+                        borderBottom: `1px solid ${t.line}`,
+                      }}
+                    >
+                      <Icon name="user" size={13} />
+                      <span style={{ minWidth: 0, flex: 1 }}>
+                        <span style={{ display: "block", fontSize: 12.5, color: t.ink, fontWeight: 800, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+                          {row.label}
+                        </span>
+                        <span style={{ display: "block", fontSize: 11, color: t.ink3, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+                          {row.sub}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <div style={{ fontSize: 11, color: t.ink3, marginTop: 6 }}>
+              Existing users and clients are searchable. A new email can be typed and saved on the event.
+            </div>
           </Field>
           {error && <div style={{ color: t.danger, fontSize: 12, fontWeight: 700 }}>{error}</div>}
         </div>
@@ -137,6 +219,11 @@ export function EventModal({ open, onClose, defaultLoanId }: { open: boolean; on
       </div>
     </div>
   );
+}
+
+function toDatetimeLocal(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function Field({ t, label, required, children }: { t: ReturnType<typeof useTheme>["t"]; label: string; required?: boolean; children: React.ReactNode }) {

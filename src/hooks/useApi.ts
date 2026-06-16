@@ -53,6 +53,7 @@ import type {
   AppSettingsUpdate,
   SignatureUploadInitResponse,
   Broker,
+  CalendarActivityItem,
   CalendarEvent,
   CalendarEventUpdate,
   ChatSendResponse,
@@ -537,12 +538,43 @@ export function useMessages(loanId: string | null | undefined) {
   });
 }
 
-export function useCalendar() {
+export interface CalendarQueryParams {
+  from?: string | null;
+  to?: string | null;
+  days?: number;
+  include_cancelled?: boolean;
+}
+
+function calendarQuery(params?: CalendarQueryParams): string {
+  const qs = new URLSearchParams();
+  if (params?.from) qs.set("from", params.from);
+  if (params?.to) qs.set("to", params.to);
+  if (params?.days != null) qs.set("days", String(params.days));
+  if (params?.include_cancelled != null) qs.set("include_cancelled", String(params.include_cancelled));
+  const query = qs.toString();
+  return query ? `?${query}` : "";
+}
+
+export function useCalendar(params?: CalendarQueryParams) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
   return useQuery({
-    queryKey: ["calendar", devUser],
-    queryFn: () => apiCall<CalendarEvent[]>("/calendar"),
+    queryKey: ["calendar", params ?? {}, devUser],
+    queryFn: () => apiCall<CalendarEvent[]>(`/calendar${calendarQuery(params)}`),
+  });
+}
+
+export function useCalendarActivity(params?: CalendarQueryParams & { limit?: number }) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["calendarActivity", params ?? {}, devUser],
+    queryFn: () => {
+      const base = calendarQuery(params);
+      const join = base ? "&" : "?";
+      const limit = params?.limit != null ? `${join}limit=${encodeURIComponent(String(params.limit))}` : "";
+      return apiCall<CalendarActivityItem[]>(`/calendar/activity${base}${limit}`);
+    },
   });
 }
 
@@ -1542,7 +1574,10 @@ export function useCreateEvent() {
         method: "POST",
         body: JSON.stringify(payload),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["calendar"] });
+      qc.invalidateQueries({ queryKey: ["calendarActivity"] });
+    },
   });
 }
 
@@ -1564,7 +1599,10 @@ export function useUpdateCalendarEvent() {
         method: "PATCH",
         body: JSON.stringify(patch),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["calendar"] });
+      qc.invalidateQueries({ queryKey: ["calendarActivity"] });
+    },
   });
 }
 
@@ -1577,7 +1615,10 @@ export function useDeleteCalendarEvent() {
   return useMutation({
     mutationFn: (id: string) =>
       apiCall<void>(`/calendar/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["calendar"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["calendar"] });
+      qc.invalidateQueries({ queryKey: ["calendarActivity"] });
+    },
   });
 }
 
@@ -2186,6 +2227,7 @@ export function useCreateCalendarEvent() {
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["loanTodo", vars.loan_id] });
       qc.invalidateQueries({ queryKey: ["calendar"] });
+      qc.invalidateQueries({ queryKey: ["calendarActivity"] });
     },
   });
 }

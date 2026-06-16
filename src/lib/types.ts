@@ -303,6 +303,17 @@ export interface CalendarEventUpdate {
   status?: CalendarEventStatus;
 }
 
+export interface CalendarActivityItem {
+  id: string;
+  loan_id: string | null;
+  client_id: string | null;
+  kind: string;
+  summary: string;
+  actor_label: string | null;
+  occurred_at: string;
+  payload: Record<string, unknown> | null;
+}
+
 export interface Broker {
   id: string;
   user_id: string;
