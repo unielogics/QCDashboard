@@ -19,6 +19,8 @@ const isPublicPage = createRouteMatcher([
   // these without an account. The backend validates the token; we just
   // need to not bounce them off the edge.
   "/hud/share(.*)",
+  "/buckets/request(.*)",
+  "/buckets/share(.*)",
 ]);
 
 // Super-admin-only routes. Edge-level hard-deny so a non-super-admin who
@@ -34,6 +36,7 @@ const isSuperAdminOnlyPage = createRouteMatcher([
   "/admin/lenders(.*)",
   "/admin/borrowers(.*)",
   "/admin/capital-partner-applications(.*)",
+  "/admin/buckets(.*)",
   "/settings(.*)",
 ]);
 

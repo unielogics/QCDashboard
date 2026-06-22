@@ -71,6 +71,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
     pathname.startsWith("/terms") ||
     pathname.startsWith("/privacy") ||
     pathname.startsWith("/book") ||
+    pathname.startsWith("/buckets/request") ||
+    pathname.startsWith("/buckets/share") ||
     // Token-resolved HUD shares — opened by title / escrow / insurance
     // contacts without an account, so we render them bare.
     pathname.startsWith("/hud/share");
