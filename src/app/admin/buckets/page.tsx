@@ -159,6 +159,7 @@ export default function BucketsAdminPage() {
   const createDocs = createPackage === "urchoice" ? URCHOICE_DEALER_DOCS : templates;
   const selectedCreateDocs = createDocs.filter((doc) => createChecked[doc.id]);
   const selectedShareFileIds = Object.entries(shareFiles).filter(([, selected]) => selected).map(([id]) => id);
+  const visibleFiles = useMemo(() => uniqueBucketFiles(detail?.files ?? []), [detail?.files]);
   const filteredBuckets = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return buckets;
@@ -531,12 +532,12 @@ export default function BucketsAdminPage() {
               ) : null}
 
               <PanelBox>
-                <SectionLabel action={`${detail.files.length} uploaded`}>Files</SectionLabel>
-                {detail.files.length === 0 ? (
+                <SectionLabel action={`${visibleFiles.length} uploaded`}>Files</SectionLabel>
+                {visibleFiles.length === 0 ? (
                   <EmptyInline icon="file" title="No files uploaded yet" body="Files uploaded through request links will appear here." />
                 ) : (
                   <div style={{ display: "grid", gap: 8 }}>
-                    {detail.files.map((file) => (
+                    {visibleFiles.map((file) => (
                       <div key={file.id} style={fileRowStyle(t)}>
                         <label style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                           <input type="checkbox" checked={!!shareFiles[file.id]} onChange={(e) => setShareFiles({ ...shareFiles, [file.id]: e.target.checked })} />
@@ -942,6 +943,24 @@ function normalizedUploadInvites(invites: UploadInvite[], draft: { recipient_nam
     });
   }
   return rows;
+}
+
+function uniqueBucketFiles(files: BucketFile[]): BucketFile[] {
+  const seen = new Set<string>();
+  return [...files]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .filter((file) => {
+      const key = [
+        file.file_name.trim().toLowerCase(),
+        file.size_bytes,
+        file.requested_document_id || "general",
+        (file.uploaded_by_email || file.uploaded_by_name || "").trim().toLowerCase(),
+      ].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 }
 
 function statusLabel(status: string) {

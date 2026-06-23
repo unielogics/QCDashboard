@@ -34,6 +34,7 @@ export default function BucketRequestPage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const submitInFlightRef = useRef(false);
   const [info, setInfo] = useState<RequestInfo | null>(null);
   const [session, setSession] = useState<UploadSession | null>(null);
   const [passcode, setPasscode] = useState("");
@@ -92,14 +93,25 @@ export default function BucketRequestPage() {
   }
 
   function addFiles(nextFiles: FileList | File[]) {
-    const incoming = Array.from(nextFiles).map((file) => ({
-      id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
-      file,
-      requestedDocumentId: "",
-      status: "ready" as const,
-    }));
-    setFiles((current) => [...current, ...incoming]);
+    setFiles((current) => {
+      const seen = new Set(current.map((item) => localFileKey(item.file)));
+      const incoming = Array.from(nextFiles)
+        .filter((file) => {
+          const key = localFileKey(file);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .map((file) => ({
+          id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
+          file,
+          requestedDocumentId: "",
+          status: "ready" as const,
+        }));
+      return [...current, ...incoming];
+    });
     setStatus("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function removeFile(id: string) {
@@ -125,7 +137,8 @@ export default function BucketRequestPage() {
   }
 
   async function submitDocuments() {
-    if (!session || !canSubmit) return;
+    if (!session || !canSubmit || submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     setIsUploading(true);
     setStatus("Submitting documents...");
     let noteSaved = noteSubmitted;
@@ -187,6 +200,7 @@ export default function BucketRequestPage() {
       setStatus(message);
       setFiles((current) => current.map((item) => (item.status === "uploading" ? { ...item, status: "error", message } : item)));
     } finally {
+      submitInFlightRef.current = false;
       setIsUploading(false);
     }
   }
@@ -373,6 +387,10 @@ function formatSize(size: number): string {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function localFileKey(file: File): string {
+  return `${file.name}|${file.size}|${file.lastModified}`;
 }
 
 function statusLabel(status: QueuedFile["status"], message?: string): string {
