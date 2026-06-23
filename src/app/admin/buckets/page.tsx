@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill, SectionLabel } from "@/components/design-system/primitives";
+import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
 import { useCurrentUser } from "@/hooks/useApi";
 import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
@@ -109,6 +110,7 @@ export default function BucketsAdminPage() {
   const [shareForm, setShareForm] = useState({ recipient_name: "", recipient_email: "", passcode: "", can_download: false });
   const [createdShare, setCreatedShare] = useState<{ url: string; passcode?: string | null } | null>(null);
   const [adminNote, setAdminNote] = useState("");
+  const [reviewFile, setReviewFile] = useState<BucketFile | null>(null);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
@@ -278,8 +280,25 @@ export default function BucketsAdminPage() {
 
   async function openFile(file: BucketFile, download = false) {
     if (!detail) return;
+    if (!download) {
+      setReviewFile(file);
+      return;
+    }
     const res = await call<{ url: string }>(`/buckets/admin/${detail.id}/files/${file.id}/url?download=${download}`);
     window.open(res.url, "_blank", "noopener,noreferrer");
+  }
+
+  async function loadAdminReview(file: BucketFile): Promise<BucketFileReview> {
+    if (!detail) throw new Error("Bucket detail is not loaded.");
+    return call<BucketFileReview>(`/buckets/admin/${detail.id}/files/${file.id}/review`);
+  }
+
+  async function saveAdminAnnotation(file: BucketFile, payload: { page_number: number; x: number; y: number; width: number; height: number; comment: string }): Promise<BucketFileAnnotation> {
+    if (!detail) throw new Error("Bucket detail is not loaded.");
+    return call<BucketFileAnnotation>(`/buckets/admin/${detail.id}/files/${file.id}/annotations`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   }
 
   async function copyText(text: string) {
@@ -636,6 +655,14 @@ export default function BucketsAdminPage() {
             </div>
           </div>
         </ModalFrame>
+      ) : null}
+      {reviewFile ? (
+        <BucketFileReviewPanel
+          title="Admin file review"
+          loadReview={() => loadAdminReview(reviewFile)}
+          saveAnnotation={(payload) => saveAdminAnnotation(reviewFile, payload)}
+          onClose={() => setReviewFile(null)}
+        />
       ) : null}
     </div>
   );

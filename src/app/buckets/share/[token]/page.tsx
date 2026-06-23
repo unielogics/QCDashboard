@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
 import { apiBase } from "@/lib/api";
 
-type FileRow = { id: string; file_name: string; content_type: string; created_at: string; preview_url?: string | null; download_url?: string | null };
+type FileRow = { id: string; file_name: string; content_type: string; size_bytes?: number; created_at: string; preview_url?: string | null; download_url?: string | null };
 type Note = { id: string; author_name: string; content: string; created_at: string };
 type Access = {
   bucket: { name: string; client_name?: string | null; purpose?: string | null };
@@ -26,6 +27,7 @@ export default function BucketSharePage() {
   const [passcode, setPasscode] = useState("");
   const [info, setInfo] = useState<ShareInfo | null>(null);
   const [access, setAccess] = useState<Access | null>(null);
+  const [reviewFile, setReviewFile] = useState<FileRow | null>(null);
   const [note, setNote] = useState("");
   const [status, setStatus] = useState("Loading secure room...");
 
@@ -51,6 +53,7 @@ export default function BucketSharePage() {
       return;
     }
     setAccess(await res.json());
+    setReviewFile(null);
     setStatus("");
   }
 
@@ -67,6 +70,26 @@ export default function BucketSharePage() {
     }
     setNote("");
     await openRoom();
+  }
+
+  async function loadSharedReview(file: FileRow): Promise<BucketFileReview> {
+    const res = await fetch(`${apiBase}/api/v1/buckets/share/${token}/files/${file.id}/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ passcode }),
+    });
+    if (!res.ok) throw new Error("Could not open file review.");
+    return res.json();
+  }
+
+  async function saveSharedAnnotation(file: FileRow, payload: { page_number: number; x: number; y: number; width: number; height: number; comment: string }): Promise<BucketFileAnnotation> {
+    const res = await fetch(`${apiBase}/api/v1/buckets/share/${token}/files/${file.id}/annotations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...payload, passcode }),
+    });
+    if (!res.ok) throw new Error("Could not save review comment.");
+    return res.json();
   }
 
   return (
@@ -101,7 +124,7 @@ export default function BucketSharePage() {
                     <div style={{ color: "#64748b", fontSize: 12 }}>Uploaded {formatDate(f.created_at)}</div>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    {f.preview_url ? <a style={linkButton} href={f.preview_url} target="_blank">Preview</a> : null}
+                    {f.preview_url ? <button style={button} onClick={() => setReviewFile(f)}>Preview</button> : null}
                     {f.download_url ? <a style={linkButton} href={f.download_url} target="_blank">Download</a> : <span style={{ color: "#64748b", fontSize: 13 }}>Download disabled</span>}
                   </div>
                 </div>
@@ -121,6 +144,14 @@ export default function BucketSharePage() {
         )}
         {status ? <p style={{ color: "#b45309", fontWeight: 700 }}>{status}</p> : null}
       </section>
+      {reviewFile ? (
+        <BucketFileReviewPanel
+          title="Shared file review"
+          loadReview={() => loadSharedReview(reviewFile)}
+          saveAnnotation={(payload) => saveSharedAnnotation(reviewFile, payload)}
+          onClose={() => setReviewFile(null)}
+        />
+      ) : null}
     </main>
   );
 }
