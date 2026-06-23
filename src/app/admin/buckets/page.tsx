@@ -21,6 +21,8 @@ type Bucket = {
   status: string;
   created_at: string;
   updated_at: string;
+  file_count?: number;
+  uploaded_file_count?: number;
 };
 type RequestedDoc = {
   id: string;
@@ -86,6 +88,7 @@ export default function BucketsAdminPage() {
   const [detail, setDetail] = useState<BucketDetail | null>(null);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createResult, setCreateResult] = useState<{ links: UploadInviteLink[] } | null>(null);
@@ -126,6 +129,21 @@ export default function BucketsAdminPage() {
     setShareFiles({});
     setShareOpen(false);
     setCreatedShare(null);
+  }
+
+  async function deleteBucket(bucket: Bucket) {
+    const confirmed = window.confirm(`Delete bucket "${bucket.name}"? It will be removed from the bucket list.`);
+    if (!confirmed) return;
+    setDeletingId(bucket.id);
+    setNotice(null);
+    try {
+      await call<void>(`/buckets/admin/${bucket.id}`, { method: "DELETE" });
+      if (detail?.id === bucket.id) setDetail(null);
+      await loadBuckets();
+      setNotice("Bucket deleted.");
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   useEffect(() => {
@@ -301,7 +319,7 @@ export default function BucketsAdminPage() {
             <input style={{ ...field, width: "100%", paddingLeft: 32 }} placeholder="Search buckets" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
         </div>
-        <BucketTable buckets={filteredBuckets} onSelect={loadBucket} />
+        <BucketTable buckets={filteredBuckets} deletingId={deletingId} onSelect={loadBucket} onDelete={deleteBucket} />
       </PanelBox>
 
       {createOpen ? (
@@ -600,36 +618,57 @@ export default function BucketsAdminPage() {
   );
 }
 
-function BucketTable({ buckets, onSelect }: { buckets: Bucket[]; onSelect: (id: string) => void }) {
+function BucketTable({
+  buckets,
+  deletingId,
+  onSelect,
+  onDelete,
+}: {
+  buckets: Bucket[];
+  deletingId: string | null;
+  onSelect: (id: string) => void;
+  onDelete: (bucket: Bucket) => void;
+}) {
   const { t } = useTheme();
   if (buckets.length === 0) {
     return <div style={{ padding: 18, color: t.ink3, fontSize: 13 }}>No buckets yet. Use Create bucket to start.</div>;
   }
+  const columns = "minmax(220px, 1.4fr) minmax(130px, .8fr) minmax(150px, .75fr) 78px minmax(160px, .7fr) 84px 44px";
   return (
     <div>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 1.5fr) minmax(160px, 1fr) 180px 120px 110px", gap: 12, padding: "10px 14px", color: t.ink3, background: t.surface2, borderBottom: `1px solid ${t.line}`, fontSize: 11, fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase" }}>
+      <div style={{ display: "grid", gridTemplateColumns: columns, gap: 12, padding: "10px 14px", color: t.ink3, background: t.surface2, borderBottom: `1px solid ${t.line}`, fontSize: 11, fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase" }}>
         <div>Bucket</div>
         <div>Client</div>
         <div>Type</div>
+        <div>Files</div>
         <div>Status</div>
         <div>Updated</div>
+        <div></div>
       </div>
       {buckets.map((bucket) => (
-        <button
+        <div
           key={bucket.id}
+          role="button"
+          tabIndex={0}
           onClick={() => onSelect(bucket.id)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onSelect(bucket.id);
+            }
+          }}
           style={{
-            all: "unset",
             boxSizing: "border-box",
             width: "100%",
             display: "grid",
-            gridTemplateColumns: "minmax(240px, 1.5fr) minmax(160px, 1fr) 180px 120px 110px",
+            gridTemplateColumns: columns,
             gap: 12,
             alignItems: "center",
             padding: "13px 14px",
             borderBottom: `1px solid ${t.line}`,
             background: t.surface,
             cursor: "pointer",
+            outline: "none",
           }}
         >
           <div style={{ minWidth: 0 }}>
@@ -637,10 +676,23 @@ function BucketTable({ buckets, onSelect }: { buckets: Bucket[]; onSelect: (id: 
             <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bucket.purpose || "No purpose"}</div>
           </div>
           <div style={{ color: t.ink2, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bucket.client_name || "No client"}</div>
-          <div style={{ color: t.ink2, fontSize: 13 }}>{bucket.bucket_type || "Bucket"}</div>
-          <div><Pill>{statusLabel(bucket.status)}</Pill></div>
+          <div style={{ color: t.ink2, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bucket.bucket_type || "Bucket"}</div>
+          <div style={{ color: t.ink2, fontSize: 13, fontWeight: 800 }}>{bucket.uploaded_file_count ?? 0}</div>
+          <div style={{ minWidth: 0 }}><Pill>{statusLabel(bucket.status)}</Pill></div>
           <div style={{ color: t.ink3, fontSize: 13 }}>{formatDate(bucket.updated_at)}</div>
-        </button>
+          <button
+            style={{ ...iconButtonStyle(t), color: t.danger }}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete(bucket);
+            }}
+            disabled={deletingId === bucket.id}
+            aria-label={`Delete ${bucket.name}`}
+            title="Delete bucket"
+          >
+            <Icon name="x" size={14} />
+          </button>
+        </div>
       ))}
     </div>
   );
