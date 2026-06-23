@@ -62,8 +62,8 @@ type BucketDetail = Bucket & {
 };
 type Template = { id: string; name: string; category?: string | null; required: boolean };
 type PackageKey = "standard" | "urchoice";
-type UploadInvite = { id: string; recipient_name: string; recipient_email: string };
-type UploadInviteLink = { name: string; email?: string; url: string };
+type UploadInvite = { id: string; recipient_name: string; recipient_email: string; passcode: string };
+type UploadInviteLink = { name: string; email?: string; url: string; passcode: string };
 
 const BUCKET_TYPES = ["Loan File", "UrChoice Dealer Funding", "Partner Package", "Borrower", "Funding Opportunity"];
 const URCHOICE_DEALER_DOCS: Template[] = [
@@ -98,7 +98,7 @@ export default function BucketsAdminPage() {
     bucket_type: "Loan File",
     description: "",
   });
-  const [createInviteDraft, setCreateInviteDraft] = useState({ recipient_name: "", recipient_email: "" });
+  const [createInviteDraft, setCreateInviteDraft] = useState({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
   const [createInvites, setCreateInvites] = useState<UploadInvite[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareFiles, setShareFiles] = useState<Record<string, boolean>>({});
@@ -172,13 +172,17 @@ export default function BucketsAdminPage() {
       for (const invite of invites) {
         const uploadLink = await call<{ upload_url: string }>(`/buckets/admin/${row.id}/upload-links`, {
           method: "POST",
-          body: JSON.stringify({ recipient_name: invite.recipient_name, recipient_email: invite.recipient_email.trim() || null }),
+          body: JSON.stringify({
+            recipient_name: invite.recipient_name,
+            recipient_email: invite.recipient_email.trim() || null,
+            passcode: invite.passcode,
+          }),
         });
-        uploadLinks.push({ name: invite.recipient_name, email: invite.recipient_email || undefined, url: uploadLink.upload_url });
+        uploadLinks.push({ name: invite.recipient_name, email: invite.recipient_email || undefined, url: uploadLink.upload_url, passcode: invite.passcode });
       }
       await loadBuckets();
       setBucketForm({ name: "", client_name: "", purpose: "", bucket_type: "Loan File", description: "" });
-      setCreateInviteDraft({ recipient_name: "", recipient_email: "" });
+      setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
       setCreateInvites([]);
       setCreateChecked({});
       setCreatePackage("standard");
@@ -201,9 +205,10 @@ export default function BucketsAdminPage() {
         id: crypto.randomUUID(),
         recipient_name: createInviteDraft.recipient_name.trim(),
         recipient_email: createInviteDraft.recipient_email.trim(),
+        passcode: createInviteDraft.passcode.trim() || generateAccessCode(),
       },
     ]);
-    setCreateInviteDraft({ recipient_name: "", recipient_email: "" });
+    setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
   }
 
   function generateShareCode() {
@@ -271,7 +276,7 @@ export default function BucketsAdminPage() {
           style={primary}
           onClick={() => {
             setCreateResult(null);
-            setCreateInviteDraft({ recipient_name: "", recipient_email: "" });
+            setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
             setCreateInvites([]);
             setCreateOpen(true);
           }}
@@ -311,15 +316,16 @@ export default function BucketsAdminPage() {
                       <div style={{ minWidth: 0 }}>
                         <strong style={{ color: t.ink }}>{link.name}</strong>
                         <div style={{ color: t.ink3, fontSize: 12 }}>{link.email || "No email entered"}</div>
+                        <div style={{ color: t.ink2, fontSize: 13, marginTop: 4 }}>Upload access code: <strong>{link.passcode}</strong></div>
                         <code style={{ display: "block", color: t.ink2, overflowWrap: "anywhere", fontSize: 12, marginTop: 4 }}>{link.url}</code>
                       </div>
-                      <button style={secondary} onClick={() => copyText(link.url)}>Copy</button>
+                      <button style={secondary} onClick={() => copyText(`Upload link: ${link.url}\nAccess code: ${link.passcode}`)}>Copy</button>
                     </div>
                   ))}
                 </div>
               </PanelBox>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                <button style={secondary} onClick={() => copyText(createResult.links.map((link) => `${link.name}: ${link.url}`).join("\n"))}>Copy all</button>
+                <button style={secondary} onClick={() => copyText(createResult.links.map((link) => `${link.name}: ${link.url}\nAccess code: ${link.passcode}`).join("\n\n"))}>Copy all</button>
                 <button style={primary} onClick={() => setCreateOpen(false)}>Done</button>
               </div>
             </div>
@@ -383,10 +389,15 @@ export default function BucketsAdminPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto", gap: 10, marginTop: 12 }}>
                   <input style={field} placeholder="Person or company name" value={createInviteDraft.recipient_name} onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, recipient_name: e.target.value })} />
                   <input style={field} placeholder="Email optional" value={createInviteDraft.recipient_email} onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, recipient_email: e.target.value })} />
+                  <input style={field} placeholder="Upload access code" value={createInviteDraft.passcode} onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, passcode: e.target.value })} />
+                  <button style={secondary} onClick={() => setCreateInviteDraft({ ...createInviteDraft, passcode: generateAccessCode() })}>
+                    Generate code
+                  </button>
                   <button style={secondary} onClick={addCreateInvite} disabled={!createInviteDraft.recipient_name.trim()}>
                     <Icon name="plus" size={14} />
                     Add invite
                   </button>
+                  <div style={{ color: t.ink3, fontSize: 12, alignSelf: "center" }}>Send this code with the upload link.</div>
                 </div>
                 {createInvites.length ? (
                   <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
@@ -395,6 +406,7 @@ export default function BucketsAdminPage() {
                         <div style={{ minWidth: 0 }}>
                           <strong style={{ color: t.ink }}>{invite.recipient_name}</strong>
                           <div style={{ color: t.ink3, fontSize: 12 }}>{invite.recipient_email || "No email entered"}</div>
+                          <div style={{ color: t.ink2, fontSize: 13, marginTop: 2 }}>Upload access code: <strong>{invite.passcode}</strong></div>
                         </div>
                         <button
                           style={iconButtonStyle(t)}
@@ -825,13 +837,14 @@ const modalBackdropStyle: CSSProperties = {
   justifyContent: "stretch",
 };
 
-function normalizedUploadInvites(invites: UploadInvite[], draft: { recipient_name: string; recipient_email: string }): UploadInvite[] {
+function normalizedUploadInvites(invites: UploadInvite[], draft: { recipient_name: string; recipient_email: string; passcode: string }): UploadInvite[] {
   const rows = [...invites];
   if (draft.recipient_name.trim()) {
     rows.push({
       id: "draft",
       recipient_name: draft.recipient_name.trim(),
       recipient_email: draft.recipient_email.trim(),
+      passcode: draft.passcode.trim() || generateAccessCode(),
     });
   }
   return rows;
