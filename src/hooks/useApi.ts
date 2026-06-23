@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { useActiveProfile } from "@/store/role";
-import type { User } from "@/lib/types";
+import type { NotificationList, User } from "@/lib/types";
 import type {
   Activity,
   AIChatRequest,
@@ -302,6 +302,35 @@ export function useAITasks() {
   return useQuery({
     queryKey: ["aiTasks", devUser],
     queryFn: () => apiCall<AITask[]>("/ai-tasks"),
+  });
+}
+
+export function useNotifications(status: "all" | "unread" = "all") {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["notifications", status, devUser],
+    queryFn: () => apiCall<NotificationList>(`/notifications?status=${status}`),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient();
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (id: string) => apiCall(`/notifications/${id}/read`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+}
+
+export function useMarkAllNotificationsRead() {
+  const qc = useQueryClient();
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: () => apiCall<void>("/notifications/read-all", { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   });
 }
 

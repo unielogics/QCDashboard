@@ -2309,6 +2309,32 @@ export type VisibilityScope =
 // Super Admin / Funding Team. `scope: "mine"` excludes unassigned records.
 export type ListScope = "mine" | "all";
 
+export interface Notification {
+  id: string;
+  recipient_user_id: string;
+  event_type: string;
+  category: string;
+  priority: string;
+  title: string;
+  body: string;
+  target_type: string | null;
+  target_id: string | null;
+  deep_link: string | null;
+  channels: string[];
+  meta: Record<string, unknown>;
+  batch_key: string | null;
+  read_at: string | null;
+  pushed_at: string | null;
+  emailed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationList {
+  unread_count: number;
+  items: Notification[];
+}
+
 
 // ────────────────────────────────────────────────────────────────────
 // AI Deal Secretary — mirrors app/schemas/deal_secretary.py exactly.
