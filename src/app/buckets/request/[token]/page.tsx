@@ -129,43 +129,59 @@ export default function BucketRequestPage() {
     setIsUploading(true);
     setStatus("Submitting documents...");
     let noteSaved = noteSubmitted;
+    let uploadedCount = 0;
+    let failedCount = 0;
     try {
       for (const item of files.filter((queued) => queued.status !== "uploaded")) {
-        updateFileState(item.id, { status: "uploading", message: "Preparing secure upload" });
-        const init = await fetch(`${apiBase}/api/v1/buckets/request/${token}/upload-init`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            requested_document_id: item.requestedDocumentId || null,
-            file_name: item.file.name,
-            content_type: item.file.type || "application/octet-stream",
-            size_bytes: item.file.size,
-            uploader_name: name.trim(),
-            uploader_email: email.trim() || null,
-            passcode: passcode.trim(),
-          }),
-        });
-        if (!init.ok) throw new Error(await responseMessage(init, `Could not start upload for ${item.file.name}.`));
-        const payload = (await init.json()) as { file_id: string; upload_url: string; required_headers: Record<string, string> };
-        updateFileState(item.id, { message: "Uploading to secure storage" });
-        const put = await fetch(payload.upload_url, { method: "PUT", body: item.file, headers: payload.required_headers });
-        if (!put.ok) throw new Error(`Secure storage rejected ${item.file.name} (${put.status}).`);
-        updateFileState(item.id, { message: "Confirming upload" });
-        const done = await fetch(`${apiBase}/api/v1/buckets/request/${token}/complete`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ file_id: payload.file_id, note: !noteSaved ? note.trim() || null : null }),
-        });
-        if (!done.ok) throw new Error(await responseMessage(done, `Could not confirm ${item.file.name}.`));
-        if (!noteSaved && note.trim()) {
-          noteSaved = true;
-          setNoteSubmitted(true);
+        try {
+          updateFileState(item.id, { status: "uploading", message: "Preparing secure upload" });
+          const init = await fetch(`${apiBase}/api/v1/buckets/request/${token}/upload-init`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              requested_document_id: item.requestedDocumentId || null,
+              file_name: item.file.name,
+              content_type: item.file.type || "application/octet-stream",
+              size_bytes: item.file.size,
+              uploader_name: name.trim(),
+              uploader_email: email.trim() || null,
+              passcode: passcode.trim(),
+            }),
+          });
+          if (!init.ok) throw new Error(await responseMessage(init, `Could not start upload for ${item.file.name}.`));
+          const payload = (await init.json()) as { file_id: string; upload_url: string; required_headers: Record<string, string> };
+          updateFileState(item.id, { message: "Uploading to secure storage" });
+          const put = await fetch(payload.upload_url, { method: "PUT", body: item.file, headers: payload.required_headers });
+          if (!put.ok) throw new Error(`Secure storage rejected ${item.file.name} (${put.status}).`);
+          updateFileState(item.id, { message: "Confirming upload" });
+          const done = await fetch(`${apiBase}/api/v1/buckets/request/${token}/complete`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ file_id: payload.file_id, note: !noteSaved ? note.trim() || null : null }),
+          });
+          if (!done.ok) throw new Error(await responseMessage(done, `Could not confirm ${item.file.name}.`));
+          if (!noteSaved && note.trim()) {
+            noteSaved = true;
+            setNoteSubmitted(true);
+          }
+          uploadedCount += 1;
+          updateFileState(item.id, { status: "uploaded", message: "Submitted" });
+        } catch (e) {
+          failedCount += 1;
+          const message = e instanceof Error ? e.message : "Upload failed.";
+          updateFileState(item.id, { status: "error", message });
         }
-        updateFileState(item.id, { status: "uploaded", message: "Submitted" });
       }
-      setStatus("Documents submitted. Qualified Commercial has received this upload.");
-      setNote("");
-      setNoteSubmitted(false);
+      if (uploadedCount > 0 && failedCount === 0) {
+        setStatus("Documents submitted. Qualified Commercial has received this upload.");
+        setNote("");
+        setNoteSubmitted(false);
+      } else if (uploadedCount > 0) {
+        setStatus(`${uploadedCount} document${uploadedCount === 1 ? "" : "s"} submitted. ${failedCount} file${failedCount === 1 ? "" : "s"} need retry.`);
+        if (noteSaved) setNote("");
+      } else {
+        setStatus("No documents uploaded. Review the failed file messages and try again.");
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : "Upload failed.";
       setStatus(message);
@@ -292,7 +308,7 @@ export default function BucketRequestPage() {
               <button style={{ ...primaryButton, width: "100%", marginTop: 16 }} onClick={() => submitDocuments().catch(() => undefined)} disabled={!canSubmit || isUploading}>
                 {isUploading ? "Submitting documents..." : "Submit documents"}
               </button>
-              {status ? <p style={status.includes("failed") || status.includes("Could not") || status.includes("rejected") ? errorText : statusText}>{status}</p> : null}
+              {status ? <p style={isUploadErrorStatus(status) ? errorText : statusText}>{status}</p> : null}
             </div>
 
             <aside style={sidePanel}>
@@ -365,6 +381,10 @@ function statusLabel(status: QueuedFile["status"], message?: string): string {
   if (status === "uploading") return "Uploading";
   if (status === "error") return "Needs retry";
   return "Ready";
+}
+
+function isUploadErrorStatus(value: string): boolean {
+  return value.includes("failed") || value.includes("Could not") || value.includes("rejected") || value.includes("need retry") || value.includes("No documents uploaded");
 }
 
 function allowsMultipleFiles(doc: RequestedDoc): boolean {
