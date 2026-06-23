@@ -102,7 +102,7 @@ export default function BucketsAdminPage() {
   const [createInvites, setCreateInvites] = useState<UploadInvite[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareFiles, setShareFiles] = useState<Record<string, boolean>>({});
-  const [shareForm, setShareForm] = useState({ recipient_name: "", recipient_email: "", can_download: false });
+  const [shareForm, setShareForm] = useState({ recipient_name: "", recipient_email: "", passcode: "", can_download: false });
   const [createdShare, setCreatedShare] = useState<{ url: string; passcode?: string | null } | null>(null);
   const [adminNote, setAdminNote] = useState("");
 
@@ -172,7 +172,7 @@ export default function BucketsAdminPage() {
       for (const invite of invites) {
         const uploadLink = await call<{ upload_url: string }>(`/buckets/admin/${row.id}/upload-links`, {
           method: "POST",
-          body: JSON.stringify({ recipient_name: invite.recipient_name, recipient_email: invite.recipient_email }),
+          body: JSON.stringify({ recipient_name: invite.recipient_name, recipient_email: invite.recipient_email.trim() || null }),
         });
         uploadLinks.push({ name: invite.recipient_name, email: invite.recipient_email || undefined, url: uploadLink.upload_url });
       }
@@ -206,6 +206,10 @@ export default function BucketsAdminPage() {
     setCreateInviteDraft({ recipient_name: "", recipient_email: "" });
   }
 
+  function generateShareCode() {
+    setShareForm((form) => ({ ...form, passcode: generateAccessCode() }));
+  }
+
   async function createShareLink() {
     if (!detail || !shareForm.recipient_name.trim() || selectedShareFileIds.length === 0) return;
     setBusy(true);
@@ -214,11 +218,13 @@ export default function BucketsAdminPage() {
         method: "POST",
         body: JSON.stringify({
           ...shareForm,
+          recipient_email: shareForm.recipient_email.trim() || null,
+          passcode: shareForm.passcode.trim() || undefined,
           file_ids: selectedShareFileIds,
         }),
       });
       setCreatedShare({ url: res.share_url ?? "", passcode: res.passcode });
-      setShareForm({ recipient_name: "", recipient_email: "", can_download: false });
+      setShareForm({ recipient_name: "", recipient_email: "", passcode: "", can_download: false });
       setShareFiles({});
       await loadBucket(detail.id);
       setNotice("Share link created.");
@@ -434,25 +440,38 @@ export default function BucketsAdminPage() {
               {shareOpen ? (
                 <PanelBox style={{ borderColor: t.petrol }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                    <SectionLabel style={{ margin: 0 }}>Share selected files</SectionLabel>
+                    <SectionLabel style={{ margin: 0 }}>Invite file viewer</SectionLabel>
                     <div style={{ color: t.ink3, fontSize: 12 }}>{selectedShareFileIds.length} selected</div>
                   </div>
                   {createdShare ? (
                     <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                      <div style={{ color: t.ink2, fontSize: 13 }}>
+                        Send this personalized link and access code to the invited viewer. No email is sent automatically.
+                      </div>
                       <code style={{ color: t.ink, overflowWrap: "anywhere", fontSize: 12.5 }}>{createdShare.url}</code>
-                      {createdShare.passcode ? <div style={{ color: t.ink2, fontSize: 13 }}>Passcode: <strong>{createdShare.passcode}</strong></div> : null}
-                      <button style={secondary} onClick={() => copyText(createdShare.passcode ? `${createdShare.url}\nPasscode: ${createdShare.passcode}` : createdShare.url)}>Copy share</button>
+                      {createdShare.passcode ? <div style={{ color: t.ink2, fontSize: 13 }}>Access code: <strong>{createdShare.passcode}</strong></div> : null}
+                      <button style={secondary} onClick={() => copyText(createdShare.passcode ? `Secure file room: ${createdShare.url}\nAccess code: ${createdShare.passcode}` : createdShare.url)}>Copy invite</button>
                     </div>
                   ) : (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginTop: 10 }}>
-                      <input style={field} placeholder="Recipient name" value={shareForm.recipient_name} onChange={(e) => setShareForm({ ...shareForm, recipient_name: e.target.value })} />
-                      <input style={field} placeholder="Recipient email optional" value={shareForm.recipient_email} onChange={(e) => setShareForm({ ...shareForm, recipient_email: e.target.value })} />
+                      <input style={field} placeholder="Viewer name" value={shareForm.recipient_name} onChange={(e) => setShareForm({ ...shareForm, recipient_name: e.target.value })} />
+                      <input style={field} placeholder="Viewer email optional" value={shareForm.recipient_email} onChange={(e) => setShareForm({ ...shareForm, recipient_email: e.target.value })} />
                       <label style={{ display: "flex", alignItems: "center", gap: 6, color: t.ink2, fontSize: 12 }}>
                         <input type="checkbox" checked={shareForm.can_download} onChange={(e) => setShareForm({ ...shareForm, can_download: e.target.checked })} />
                         Download
                       </label>
+                      <input
+                        style={field}
+                        placeholder="Access code"
+                        value={shareForm.passcode}
+                        onChange={(e) => setShareForm({ ...shareForm, passcode: e.target.value })}
+                      />
+                      <button style={secondary} onClick={generateShareCode}>
+                        Generate code
+                      </button>
+                      <div style={{ color: t.ink3, fontSize: 12, alignSelf: "center" }}>Use this code when sending the invite.</div>
                       <button style={{ ...primary, gridColumn: "1 / -1" }} onClick={createShareLink} disabled={busy || selectedShareFileIds.length === 0 || !shareForm.recipient_name.trim()}>
-                        Create share link
+                        Create invite link
                       </button>
                     </div>
                   )}
@@ -824,7 +843,7 @@ function statusLabel(status: string) {
 
 function formatDate(value?: string | null) {
   if (!value) return "Never";
-  return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(value));
 }
 
 function formatSize(bytes: number) {
@@ -837,4 +856,11 @@ function formatSize(bytes: number) {
     unit += 1;
   }
   return `${size.toFixed(size >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
+function generateAccessCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 8; i += 1) code += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return code;
 }

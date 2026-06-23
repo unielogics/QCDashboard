@@ -28,7 +28,7 @@ export default function BucketRequestPage() {
   useEffect(() => {
     fetch(`${apiBase}/api/v1/buckets/request/${token}`)
       .then((r) => r.ok ? r.json() : Promise.reject(new Error("Link unavailable")))
-      .then((data) => { setInfo(data); setName(data.recipient_name || ""); setStatus(""); })
+      .then((data) => { setInfo(data); setStatus(""); })
       .catch((e) => setStatus(e.message));
   }, [token]);
 
@@ -43,8 +43,8 @@ export default function BucketRequestPage() {
         file_name: file.name,
         content_type: file.type || "application/octet-stream",
         size_bytes: file.size,
-        uploader_name: name,
-        uploader_email: email || null,
+        uploader_name: name.trim(),
+        uploader_email: email.trim() || null,
         passcode: passcode || null,
       }),
     });
@@ -71,11 +71,17 @@ export default function BucketRequestPage() {
         <h1 style={{ margin: 0, fontSize: 24 }}>Secure Document Upload</h1>
         {info ? (
           <>
-            <p style={{ color: "#64748b" }}>{info.bucket.name}{info.bucket.purpose ? ` · ${info.bucket.purpose}` : ""}</p>
+            <p style={{ color: "#64748b" }}>
+              Upload invite for <strong>{info.recipient_name}</strong>{info.bucket.name ? ` · ${info.bucket.name}` : ""}
+              {info.bucket.purpose ? ` · ${info.bucket.purpose}` : ""}
+            </p>
+            <div style={callout}>
+              Before uploading, enter the name of the person submitting these files. This helps Qualified Commercial track exactly who sent each document.
+            </div>
             <div style={{ display: "grid", gap: 10 }}>
-              <input style={field} placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
+              <input style={field} placeholder="Your full name" value={name} onChange={(e) => setName(e.target.value)} />
               <input style={field} placeholder="Email optional" value={email} onChange={(e) => setEmail(e.target.value)} />
-              {info.requires_passcode ? <input style={field} placeholder="Passcode" value={passcode} onChange={(e) => setPasscode(e.target.value)} /> : null}
+              {info.requires_passcode ? <input style={field} placeholder="Access code" value={passcode} onChange={(e) => setPasscode(e.target.value)} /> : null}
               <select style={field} value={docId} onChange={(e) => setDocId(e.target.value)}>
                 <option value="">General upload</option>
                 {info.requested_documents.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -98,3 +104,4 @@ export default function BucketRequestPage() {
 
 const field = { height: 42, border: "1px solid #cbd5e1", borderRadius: 8, padding: "0 12px", font: "inherit", background: "#fff" };
 const button = { height: 44, border: "none", borderRadius: 8, padding: "0 14px", font: "inherit", fontWeight: 800, background: "#111827", color: "#fff", cursor: "pointer" };
+const callout = { border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1e3a8a", borderRadius: 8, padding: 12, margin: "0 0 14px", fontSize: 14 };
