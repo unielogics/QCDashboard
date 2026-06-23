@@ -16,13 +16,21 @@ type Bucket = {
   bucket_type?: string | null;
   client_name?: string | null;
   purpose?: string | null;
+  description?: string | null;
   status: string;
   created_at: string;
   updated_at: string;
 };
-type RequestedDoc = { id: string; name: string; category?: string | null; required: boolean; status: string };
+type RequestedDoc = {
+  id: string;
+  name: string;
+  category?: string | null;
+  required: boolean;
+  status: string;
+};
 type BucketFile = {
   id: string;
+  requested_document_id?: string | null;
   file_name: string;
   content_type: string;
   size_bytes: number;
@@ -73,18 +81,13 @@ export default function BucketsAdminPage() {
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [detail, setDetail] = useState<BucketDetail | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [packageKey, setPackageKey] = useState<PackageKey>("standard");
-  const [customDoc, setCustomDoc] = useState("");
-  const [uploadRecipient, setUploadRecipient] = useState({ recipient_name: "", recipient_email: "" });
-  const [shareForm, setShareForm] = useState({ recipient_name: "", recipient_email: "", can_download: false });
-  const [adminNote, setAdminNote] = useState("");
-  const [createdLink, setCreatedLink] = useState<{ label: string; url: string; passcode?: string | null } | null>(null);
+  const [createResult, setCreateResult] = useState<{ label: string; url: string } | null>(null);
+  const [createPackage, setCreatePackage] = useState<PackageKey>("standard");
+  const [createChecked, setCreateChecked] = useState<Record<string, boolean>>({});
   const [bucketForm, setBucketForm] = useState({
     name: "",
     client_name: "",
@@ -92,28 +95,33 @@ export default function BucketsAdminPage() {
     bucket_type: "Loan File",
     description: "",
   });
+  const [createUploader, setCreateUploader] = useState({ recipient_name: "", recipient_email: "" });
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareFiles, setShareFiles] = useState<Record<string, boolean>>({});
+  const [shareForm, setShareForm] = useState({ recipient_name: "", recipient_email: "", can_download: false });
+  const [createdShare, setCreatedShare] = useState<{ url: string; passcode?: string | null } | null>(null);
+  const [adminNote, setAdminNote] = useState("");
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
     return api<T>(path, { ...init, authToken: token ?? undefined });
   }
 
-  async function refreshAll(nextSelected = selectedId) {
+  async function loadBuckets() {
     const [bucketRows, templateRows] = await Promise.all([
       call<Bucket[]>("/buckets"),
       call<Template[]>("/buckets/templates"),
     ]);
     setBuckets(bucketRows);
     setTemplates(templateRows);
-    const id = nextSelected ?? bucketRows[0]?.id ?? null;
-    setSelectedId(id);
-    setDetail(id ? await call<BucketDetail>(`/buckets/admin/${id}`) : null);
   }
 
-  async function loadBucket(id: string) {
-    setSelectedId(id);
-    setDetail(await call<BucketDetail>(`/buckets/admin/${id}`));
-    setCreatedLink(null);
+  async function loadBucket(bucketId: string) {
+    const row = await call<BucketDetail>(`/buckets/admin/${bucketId}`);
+    setDetail(row);
+    setShareFiles({});
+    setShareOpen(false);
+    setCreatedShare(null);
   }
 
   useEffect(() => {
@@ -121,97 +129,78 @@ export default function BucketsAdminPage() {
   }, [meLoading, me, router]);
 
   useEffect(() => {
-    if (me?.role === Role.SUPER_ADMIN) refreshAll().catch((e) => setNotice(String(e)));
+    if (me?.role === Role.SUPER_ADMIN) loadBuckets().catch((e) => setNotice(String(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.role]);
 
-  const packageDocs = packageKey === "urchoice" ? URCHOICE_DEALER_DOCS : templates;
-  const selectedDocCount = packageDocs.filter((doc) => checked[doc.id]).length;
+  const createDocs = createPackage === "urchoice" ? URCHOICE_DEALER_DOCS : templates;
+  const selectedCreateDocs = createDocs.filter((doc) => createChecked[doc.id]);
+  const selectedShareFileIds = Object.entries(shareFiles).filter(([, selected]) => selected).map(([id]) => id);
   const filteredBuckets = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return buckets;
-    return buckets.filter((b) => [b.name, b.client_name, b.purpose, b.bucket_type, b.status].filter(Boolean).join(" ").toLowerCase().includes(q));
+    return buckets.filter((bucket) =>
+      [bucket.name, bucket.client_name, bucket.purpose, bucket.bucket_type, bucket.status]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
   }, [buckets, search]);
-  const missingCount = detail?.requested_documents.filter((doc) => doc.status !== "uploaded").length ?? 0;
 
   if (meLoading) return <PanelBox style={{ color: t.ink2 }}>Loading Buckets...</PanelBox>;
   if (me && me.role !== Role.SUPER_ADMIN) return null;
 
-  async function createBucket() {
+  async function createBucketWorkflow() {
     if (!bucketForm.name.trim()) return;
     setBusy(true);
+    setNotice(null);
     try {
       const row = await call<Bucket>("/buckets", { method: "POST", body: JSON.stringify(bucketForm) });
-      setBucketForm({ name: "", client_name: "", purpose: "", bucket_type: "Loan File", description: "" });
-      setCreateOpen(false);
-      await refreshAll(row.id);
-      setNotice("Bucket created.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function addSelectedDocs() {
-    if (!selectedId || selectedDocCount === 0) return;
-    setBusy(true);
-    try {
-      for (const doc of packageDocs.filter((item) => checked[item.id])) {
-        await call(`/buckets/admin/${selectedId}/requested-documents`, {
+      for (const doc of selectedCreateDocs) {
+        await call(`/buckets/admin/${row.id}/requested-documents`, {
           method: "POST",
           body: JSON.stringify({ name: doc.name, category: doc.category, required: doc.required }),
         });
       }
-      setChecked({});
-      await refreshAll(selectedId);
-      setNotice("Document request list updated.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function addCustomDoc() {
-    if (!selectedId || !customDoc.trim()) return;
-    setBusy(true);
-    try {
-      await call(`/buckets/admin/${selectedId}/requested-documents`, {
-        method: "POST",
-        body: JSON.stringify({ name: customDoc.trim(), required: true, is_custom: true, save_to_library: true }),
-      });
-      setCustomDoc("");
-      await refreshAll(selectedId);
-      setNotice("Custom document added.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function createUploadLink() {
-    if (!selectedId || !uploadRecipient.recipient_name.trim()) return;
-    setBusy(true);
-    try {
-      const res = await call<{ upload_url: string }>(`/buckets/admin/${selectedId}/upload-links`, {
-        method: "POST",
-        body: JSON.stringify(uploadRecipient),
-      });
-      setCreatedLink({ label: "Upload link", url: res.upload_url });
-      setUploadRecipient({ recipient_name: "", recipient_email: "" });
-      setNotice("Upload link created.");
+      let uploadLink: { upload_url: string } | null = null;
+      if (createUploader.recipient_name.trim()) {
+        uploadLink = await call<{ upload_url: string }>(`/buckets/admin/${row.id}/upload-links`, {
+          method: "POST",
+          body: JSON.stringify(createUploader),
+        });
+      }
+      await loadBuckets();
+      setBucketForm({ name: "", client_name: "", purpose: "", bucket_type: "Loan File", description: "" });
+      setCreateUploader({ recipient_name: "", recipient_email: "" });
+      setCreateChecked({});
+      setCreatePackage("standard");
+      if (uploadLink) {
+        setCreateResult({ label: "Upload link", url: uploadLink.upload_url });
+      } else {
+        setCreateOpen(false);
+        setNotice("Bucket created.");
+      }
     } finally {
       setBusy(false);
     }
   }
 
   async function createShareLink() {
-    if (!selectedId || !shareForm.recipient_name.trim()) return;
+    if (!detail || !shareForm.recipient_name.trim() || selectedShareFileIds.length === 0) return;
     setBusy(true);
     try {
-      const res = await call<Share>(`/buckets/admin/${selectedId}/shares`, {
+      const res = await call<Share>(`/buckets/admin/${detail.id}/shares`, {
         method: "POST",
-        body: JSON.stringify(shareForm),
+        body: JSON.stringify({
+          ...shareForm,
+          file_ids: selectedShareFileIds,
+        }),
       });
-      setCreatedLink({ label: "Share link", url: res.share_url ?? "", passcode: res.passcode });
+      setCreatedShare({ url: res.share_url ?? "", passcode: res.passcode });
       setShareForm({ recipient_name: "", recipient_email: "", can_download: false });
-      await refreshAll(selectedId);
+      setShareFiles({});
+      await loadBucket(detail.id);
       setNotice("Share link created.");
     } finally {
       setBusy(false);
@@ -219,26 +208,24 @@ export default function BucketsAdminPage() {
   }
 
   async function addNote() {
-    if (!selectedId || !adminNote.trim()) return;
-    await call(`/buckets/admin/${selectedId}/notes`, {
+    if (!detail || !adminNote.trim()) return;
+    await call(`/buckets/admin/${detail.id}/notes`, {
       method: "POST",
       body: JSON.stringify({ content: adminNote, visibility: "admin" }),
     });
     setAdminNote("");
-    await refreshAll(selectedId);
-    setNotice("Note added.");
+    await loadBucket(detail.id);
   }
 
   async function openFile(file: BucketFile, download = false) {
-    if (!selectedId) return;
-    const res = await call<{ url: string }>(`/buckets/admin/${selectedId}/files/${file.id}/url?download=${download}`);
+    if (!detail) return;
+    const res = await call<{ url: string }>(`/buckets/admin/${detail.id}/files/${file.id}/url?download=${download}`);
     window.open(res.url, "_blank", "noopener,noreferrer");
   }
 
-  async function copyCreatedLink() {
-    if (!createdLink?.url) return;
-    await navigator.clipboard.writeText(createdLink.passcode ? `${createdLink.url}\nPasscode: ${createdLink.passcode}` : createdLink.url);
-    setNotice("Link copied.");
+  async function copyText(text: string) {
+    await navigator.clipboard.writeText(text);
+    setNotice("Copied.");
   }
 
   const field = inputStyle(t);
@@ -250,9 +237,17 @@ export default function BucketsAdminPage() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
         <div>
           <h1 style={{ margin: 0, color: t.ink, fontSize: 28, fontWeight: 850 }}>Buckets</h1>
-          <p style={{ margin: "5px 0 0", color: t.ink3, fontSize: 13 }}>Secure document rooms for requests and controlled sharing.</p>
+          <p style={{ margin: "5px 0 0", color: t.ink3, fontSize: 13 }}>
+            Secure document rooms for collecting and selectively sharing files.
+          </p>
         </div>
-        <button style={primary} onClick={() => setCreateOpen(true)}>
+        <button
+          style={primary}
+          onClick={() => {
+            setCreateResult(null);
+            setCreateOpen(true);
+          }}
+        >
           <Icon name="plus" size={15} />
           Create bucket
         </button>
@@ -273,227 +268,252 @@ export default function BucketsAdminPage() {
             <input style={{ ...field, width: "100%", paddingLeft: 32 }} placeholder="Search buckets" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
         </div>
-        <BucketTable buckets={filteredBuckets} selectedId={selectedId} onSelect={loadBucket} />
+        <BucketTable buckets={filteredBuckets} onSelect={loadBucket} />
       </PanelBox>
 
-      {detail ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <PanelBox>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start" }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <h2 style={{ margin: 0, color: t.ink, fontSize: 22, fontWeight: 850 }}>{detail.name}</h2>
-                  <Pill>{detail.bucket_type || "Bucket"}</Pill>
-                  <Pill>{statusLabel(detail.status)}</Pill>
-                </div>
-                <div style={{ marginTop: 7, color: t.ink3, fontSize: 13 }}>
-                  {detail.client_name || "No client"} | {detail.purpose || "No purpose"} | Updated {formatDate(detail.updated_at)}
-                </div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 84px)", gap: 8 }}>
-                <Metric label="Requested" value={detail.requested_documents.length} />
-                <Metric label="Missing" value={missingCount} />
-                <Metric label="Files" value={detail.files.length} />
-                <Metric label="Shares" value={detail.shares.length} />
-              </div>
-            </div>
-          </PanelBox>
-
-          {createdLink ? (
-            <PanelBox style={{ borderColor: t.petrol, display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 12, alignItems: "center" }}>
-              <div style={{ minWidth: 0 }}>
-                <SectionLabel style={{ marginBottom: 6 }}>{createdLink.label}</SectionLabel>
-                <code style={{ display: "block", color: t.ink, overflowWrap: "anywhere", fontSize: 12.5 }}>{createdLink.url}</code>
-                {createdLink.passcode ? <div style={{ color: t.ink2, fontSize: 13, marginTop: 6 }}>Passcode: <strong>{createdLink.passcode}</strong></div> : null}
-              </div>
-              <button style={secondary} onClick={copyCreatedLink}>
-                <Icon name="doc" size={14} />
-                Copy
-              </button>
-            </PanelBox>
-          ) : null}
-
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
-            <PanelBox>
-              <WorkflowHeader step="1" title="Request files" subtitle="Build the checklist and send one upload link." />
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
-                <select
-                  style={field}
-                  value={packageKey}
-                  onChange={(e) => {
-                    setPackageKey(e.target.value as PackageKey);
-                    setChecked({});
-                  }}
-                >
-                  <option value="standard">Standard Lending File</option>
-                  <option value="urchoice">UrChoice Dealer Funding</option>
-                </select>
-                <input style={field} placeholder="Custom document" value={customDoc} onChange={(e) => setCustomDoc(e.target.value)} />
-              </div>
-              <div style={{ display: "grid", gap: 8, maxHeight: 260, overflowY: "auto", marginTop: 12, paddingRight: 2 }}>
-                {packageDocs.map((doc) => (
-                  <label key={doc.id} style={checkRowStyle(t)}>
-                    <input type="checkbox" checked={!!checked[doc.id]} onChange={(e) => setChecked({ ...checked, [doc.id]: e.target.checked })} />
-                    <span>
-                      <span style={{ display: "block", color: t.ink, fontWeight: 750 }}>{doc.name}</span>
-                      <span style={{ color: t.ink3, fontSize: 12 }}>{doc.category || "Standard Lending File"}</span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                <button style={primary} onClick={addSelectedDocs} disabled={busy || selectedDocCount === 0}>
-                  Add selected{selectedDocCount ? ` (${selectedDocCount})` : ""}
-                </button>
-                <button style={secondary} onClick={addCustomDoc} disabled={busy || !customDoc.trim()}>
-                  Add custom
-                </button>
-              </div>
-              <div style={{ height: 1, background: t.line, margin: "14px 0" }} />
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8 }}>
-                <input style={field} placeholder="Uploader name" value={uploadRecipient.recipient_name} onChange={(e) => setUploadRecipient({ ...uploadRecipient, recipient_name: e.target.value })} />
-                <input style={field} placeholder="Uploader email optional" value={uploadRecipient.recipient_email} onChange={(e) => setUploadRecipient({ ...uploadRecipient, recipient_email: e.target.value })} />
-                <button style={primary} onClick={createUploadLink} disabled={busy || !uploadRecipient.recipient_name.trim()}>
-                  <Icon name="upload" size={14} />
-                  Link
-                </button>
-              </div>
-            </PanelBox>
-
-            <PanelBox>
-              <WorkflowHeader step="2" title="Share files" subtitle="Send a gated document room to a lender or reviewer." />
-              <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
-                <input style={field} placeholder="Shared user name" value={shareForm.recipient_name} onChange={(e) => setShareForm({ ...shareForm, recipient_name: e.target.value })} />
-                <input style={field} placeholder="Shared user email" value={shareForm.recipient_email} onChange={(e) => setShareForm({ ...shareForm, recipient_email: e.target.value })} />
-                <label style={{ display: "flex", alignItems: "center", gap: 8, color: t.ink2, fontSize: 13 }}>
-                  <input type="checkbox" checked={shareForm.can_download} onChange={(e) => setShareForm({ ...shareForm, can_download: e.target.checked })} />
-                  Enable downloads for this share
-                </label>
-                <button style={primary} onClick={createShareLink} disabled={busy || !shareForm.recipient_name.trim()}>
-                  <Icon name="link" size={14} />
-                  Create share link
-                </button>
-              </div>
-              <div style={{ height: 1, background: t.line, margin: "14px 0" }} />
-              <SectionLabel action={`${detail.shares.length} active`}>Shared access</SectionLabel>
-              <div style={{ display: "grid", gap: 8 }}>
-                {detail.shares.length === 0 ? (
-                  <EmptyInline icon="lock" title="No shared access yet" body="Create a share link after files are ready for review." />
-                ) : detail.shares.map((share) => (
-                  <div key={share.id} style={smallRowStyle(t)}>
-                    <div style={{ minWidth: 0 }}>
-                      <strong style={{ color: t.ink }}>{share.recipient_name}</strong>
-                      <div style={{ color: t.ink3, fontSize: 12 }}>{share.view_count} views | {share.can_download ? "downloads on" : "view only"}</div>
-                    </div>
-                    <Pill>{statusLabel(share.status)}</Pill>
-                  </div>
-                ))}
-              </div>
-            </PanelBox>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) minmax(360px, .85fr)", gap: 12, alignItems: "start" }}>
-            <PanelBox>
-              <SectionLabel action={`${detail.requested_documents.length} requested`}>Current request list</SectionLabel>
-              <div style={{ display: "grid", gap: 8 }}>
-                {detail.requested_documents.length === 0 ? (
-                  <EmptyInline icon="docCheck" title="No checklist yet" body="Use workflow 1 to add the documents you need." />
-                ) : detail.requested_documents.map((doc) => (
-                  <div key={doc.id} style={smallRowStyle(t)}>
-                    <div style={{ minWidth: 0 }}>
-                      <strong style={{ color: t.ink }}>{doc.name}</strong>
-                      <div style={{ color: t.ink3, fontSize: 12 }}>{doc.category || "General"}{doc.required ? " | Required" : ""}</div>
-                    </div>
-                    <Pill color={doc.status === "uploaded" ? t.profit : undefined} bg={doc.status === "uploaded" ? t.profitBg : undefined}>
-                      {statusLabel(doc.status)}
-                    </Pill>
-                  </div>
-                ))}
-              </div>
-            </PanelBox>
-
-            <PanelBox>
-              <SectionLabel action={`${detail.files.length} uploaded`}>Files</SectionLabel>
-              <div style={{ display: "grid", gap: 8 }}>
-                {detail.files.length === 0 ? (
-                  <EmptyInline icon="file" title="No uploads yet" body="Uploaded files will appear here." />
-                ) : detail.files.map((file) => (
-                  <div key={file.id} style={smallRowStyle(t)}>
-                    <div style={{ minWidth: 0 }}>
-                      <strong style={{ color: t.ink }}>{file.file_name}</strong>
-                      <div style={{ color: t.ink3, fontSize: 12 }}>{file.uploaded_by_name || "Unknown"} | {formatSize(file.size_bytes)}</div>
-                    </div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button style={secondary} onClick={() => openFile(file, false)}>Preview</button>
-                      <button style={secondary} onClick={() => openFile(file, true)}>Download</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </PanelBox>
-          </div>
-
-          <PanelBox>
-            <SectionLabel>Internal notes</SectionLabel>
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
-              <input style={field} placeholder="Add an admin note" value={adminNote} onChange={(e) => setAdminNote(e.target.value)} />
-              <button style={secondary} onClick={addNote} disabled={!adminNote.trim()}>Add note</button>
-            </div>
-            {detail.notes.length ? (
-              <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-                {detail.notes.map((note) => (
-                  <div key={note.id} style={{ color: t.ink2, fontSize: 13, borderTop: `1px solid ${t.line}`, paddingTop: 8 }}>
-                    <strong>{note.author_name || "Admin"}</strong> | {formatDate(note.created_at)}: {note.content}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </PanelBox>
-        </div>
-      ) : (
-        <EmptyState />
-      )}
-
       {createOpen ? (
-        <div style={modalBackdropStyle}>
-          <div style={{ ...panelStyle(t), width: "min(560px, calc(100vw - 40px))", padding: 18 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 14 }}>
-              <div>
-                <h2 style={{ margin: 0, color: t.ink, fontSize: 20 }}>Create bucket</h2>
-                <div style={{ color: t.ink3, fontSize: 13, marginTop: 3 }}>Set up the document room first. Workflows come after creation.</div>
+        <ModalFrame title="Create bucket" subtitle="Set up the bucket and request files in one flow." onClose={() => setCreateOpen(false)} width="min(760px, calc(100vw - 40px))">
+          {createResult ? (
+            <div style={{ display: "grid", gap: 14 }}>
+              <PanelBox style={{ borderColor: t.petrol }}>
+                <SectionLabel>{createResult.label}</SectionLabel>
+                <code style={{ display: "block", color: t.ink, overflowWrap: "anywhere", fontSize: 12.5 }}>{createResult.url}</code>
+              </PanelBox>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button style={secondary} onClick={() => copyText(createResult.url)}>Copy link</button>
+                <button style={primary} onClick={() => setCreateOpen(false)}>Done</button>
               </div>
-              <button style={iconButtonStyle(t)} onClick={() => setCreateOpen(false)} aria-label="Close create bucket">
-                <Icon name="x" size={16} />
-              </button>
             </div>
-            <div style={{ display: "grid", gap: 10 }}>
-              <input style={field} placeholder="Bucket name" value={bucketForm.name} onChange={(e) => setBucketForm({ ...bucketForm, name: e.target.value })} />
-              <input style={field} placeholder="Client / borrower" value={bucketForm.client_name} onChange={(e) => setBucketForm({ ...bucketForm, client_name: e.target.value })} />
-              <select style={field} value={bucketForm.bucket_type} onChange={(e) => setBucketForm({ ...bucketForm, bucket_type: e.target.value })}>
-                {BUCKET_TYPES.map((type) => <option key={type}>{type}</option>)}
-              </select>
-              <input style={field} placeholder="Purpose, deal, or package" value={bucketForm.purpose} onChange={(e) => setBucketForm({ ...bucketForm, purpose: e.target.value })} />
-              <textarea style={{ ...field, minHeight: 82, paddingTop: 10, resize: "vertical" }} placeholder="Description optional" value={bucketForm.description} onChange={(e) => setBucketForm({ ...bucketForm, description: e.target.value })} />
-              <button style={{ ...primary, width: "100%" }} onClick={createBucket} disabled={busy || !bucketForm.name.trim()}>
-                <Icon name="plus" size={15} />
-                Create bucket
-              </button>
+          ) : (
+            <div style={{ display: "grid", gap: 16 }}>
+              <PanelBox>
+                <WorkflowHeader step="1" title="Bucket details" />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+                  <input style={field} placeholder="Bucket name" value={bucketForm.name} onChange={(e) => setBucketForm({ ...bucketForm, name: e.target.value })} />
+                  <input style={field} placeholder="Client / borrower" value={bucketForm.client_name} onChange={(e) => setBucketForm({ ...bucketForm, client_name: e.target.value })} />
+                  <select style={field} value={bucketForm.bucket_type} onChange={(e) => setBucketForm({ ...bucketForm, bucket_type: e.target.value })}>
+                    {BUCKET_TYPES.map((type) => <option key={type}>{type}</option>)}
+                  </select>
+                  <input style={field} placeholder="Purpose, deal, or package" value={bucketForm.purpose} onChange={(e) => setBucketForm({ ...bucketForm, purpose: e.target.value })} />
+                  <textarea
+                    style={{ ...field, gridColumn: "1 / -1", minHeight: 74, paddingTop: 10, resize: "vertical" }}
+                    placeholder="Description optional"
+                    value={bucketForm.description}
+                    onChange={(e) => setBucketForm({ ...bucketForm, description: e.target.value })}
+                  />
+                </div>
+              </PanelBox>
+
+              <PanelBox>
+                <WorkflowHeader step="2" title="Request files" />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+                  <select
+                    style={field}
+                    value={createPackage}
+                    onChange={(e) => {
+                      setCreatePackage(e.target.value as PackageKey);
+                      setCreateChecked({});
+                    }}
+                  >
+                    <option value="standard">Standard Lending File</option>
+                    <option value="urchoice">UrChoice Dealer Funding</option>
+                  </select>
+                  <div style={{ color: t.ink3, fontSize: 12, alignSelf: "center" }}>
+                    {selectedCreateDocs.length} selected
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 8, maxHeight: 260, overflowY: "auto", marginTop: 12 }}>
+                  {createDocs.map((doc) => (
+                    <label key={doc.id} style={checkRowStyle(t)}>
+                      <input type="checkbox" checked={!!createChecked[doc.id]} onChange={(e) => setCreateChecked({ ...createChecked, [doc.id]: e.target.checked })} />
+                      <span>
+                        <span style={{ display: "block", color: t.ink, fontWeight: 750 }}>{doc.name}</span>
+                        <span style={{ color: t.ink3, fontSize: 12 }}>{doc.category || "Standard Lending File"}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </PanelBox>
+
+              <PanelBox>
+                <WorkflowHeader step="3" title="Optional upload link" />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+                  <input style={field} placeholder="Uploader name" value={createUploader.recipient_name} onChange={(e) => setCreateUploader({ ...createUploader, recipient_name: e.target.value })} />
+                  <input style={field} placeholder="Uploader email optional" value={createUploader.recipient_email} onChange={(e) => setCreateUploader({ ...createUploader, recipient_email: e.target.value })} />
+                </div>
+              </PanelBox>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button style={secondary} onClick={() => setCreateOpen(false)}>Cancel</button>
+                <button style={primary} onClick={createBucketWorkflow} disabled={busy || !bucketForm.name.trim()}>
+                  Create bucket
+                </button>
+              </div>
+            </div>
+          )}
+        </ModalFrame>
+      ) : null}
+
+      {detail ? (
+        <ModalFrame
+          title={detail.name}
+          subtitle={`${detail.client_name || "No client"} | ${detail.purpose || "No purpose"} | ${detail.bucket_type || "Bucket"}`}
+          onClose={() => setDetail(null)}
+          width="min(1180px, calc(100vw - 36px))"
+          action={
+            <button style={iconButtonStyle(t)} onClick={() => setShareOpen((value) => !value)} aria-label="Share selected files" title="Share selected files">
+              <Icon name="link" size={16} />
+            </button>
+          }
+        >
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.35fr) minmax(320px, .65fr)", gap: 12, alignItems: "start" }}>
+            <div style={{ display: "grid", gap: 12 }}>
+              {shareOpen ? (
+                <PanelBox style={{ borderColor: t.petrol }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                    <SectionLabel style={{ margin: 0 }}>Share selected files</SectionLabel>
+                    <div style={{ color: t.ink3, fontSize: 12 }}>{selectedShareFileIds.length} selected</div>
+                  </div>
+                  {createdShare ? (
+                    <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                      <code style={{ color: t.ink, overflowWrap: "anywhere", fontSize: 12.5 }}>{createdShare.url}</code>
+                      {createdShare.passcode ? <div style={{ color: t.ink2, fontSize: 13 }}>Passcode: <strong>{createdShare.passcode}</strong></div> : null}
+                      <button style={secondary} onClick={() => copyText(createdShare.passcode ? `${createdShare.url}\nPasscode: ${createdShare.passcode}` : createdShare.url)}>Copy share</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginTop: 10 }}>
+                      <input style={field} placeholder="Recipient name" value={shareForm.recipient_name} onChange={(e) => setShareForm({ ...shareForm, recipient_name: e.target.value })} />
+                      <input style={field} placeholder="Recipient email optional" value={shareForm.recipient_email} onChange={(e) => setShareForm({ ...shareForm, recipient_email: e.target.value })} />
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, color: t.ink2, fontSize: 12 }}>
+                        <input type="checkbox" checked={shareForm.can_download} onChange={(e) => setShareForm({ ...shareForm, can_download: e.target.checked })} />
+                        Download
+                      </label>
+                      <button style={{ ...primary, gridColumn: "1 / -1" }} onClick={createShareLink} disabled={busy || selectedShareFileIds.length === 0 || !shareForm.recipient_name.trim()}>
+                        Create share link
+                      </button>
+                    </div>
+                  )}
+                </PanelBox>
+              ) : null}
+
+              <PanelBox>
+                <SectionLabel action={`${detail.files.length} uploaded`}>Files</SectionLabel>
+                {detail.files.length === 0 ? (
+                  <EmptyInline icon="file" title="No files uploaded yet" body="Files uploaded through request links will appear here." />
+                ) : (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {detail.files.map((file) => (
+                      <div key={file.id} style={fileRowStyle(t)}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                          <input type="checkbox" checked={!!shareFiles[file.id]} onChange={(e) => setShareFiles({ ...shareFiles, [file.id]: e.target.checked })} />
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{ display: "block", color: t.ink, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.file_name}</span>
+                            <span style={{ color: t.ink3, fontSize: 12 }}>
+                              {file.uploaded_by_name || "Unknown"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}
+                            </span>
+                          </span>
+                        </label>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button style={secondary} onClick={() => openFile(file, false)}>
+                            <Icon name="eye" size={13} />
+                            Preview
+                          </button>
+                          <button style={secondary} onClick={() => openFile(file, true)}>
+                            <Icon name="download" size={13} />
+                            Download
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </PanelBox>
+
+              <PanelBox>
+                <SectionLabel action={`${detail.requested_documents.length} items`}>Tasks</SectionLabel>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {detail.requested_documents.length === 0 ? (
+                    <EmptyInline icon="docCheck" title="No requested-file tasks" body="Tasks are created from requested documents." />
+                  ) : detail.requested_documents.map((doc) => (
+                    <div key={doc.id} style={smallRowStyle(t)}>
+                      <div style={{ minWidth: 0 }}>
+                        <strong style={{ color: t.ink }}>{doc.name}</strong>
+                        <div style={{ color: t.ink3, fontSize: 12 }}>{doc.category || "General"}{doc.required ? " | Required" : ""}</div>
+                      </div>
+                      <Pill color={doc.status === "uploaded" ? t.profit : undefined} bg={doc.status === "uploaded" ? t.profitBg : undefined}>
+                        {statusLabel(doc.status)}
+                      </Pill>
+                    </div>
+                  ))}
+                </div>
+              </PanelBox>
+            </div>
+
+            <div style={{ display: "grid", gap: 12 }}>
+              <PanelBox>
+                <SectionLabel>Notes</SectionLabel>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
+                  <input style={field} placeholder="Add admin note" value={adminNote} onChange={(e) => setAdminNote(e.target.value)} />
+                  <button style={secondary} onClick={addNote} disabled={!adminNote.trim()}>Add</button>
+                </div>
+                <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                  {detail.notes.length === 0 ? (
+                    <div style={{ color: t.ink3, fontSize: 13 }}>No notes yet.</div>
+                  ) : detail.notes.map((note) => (
+                    <div key={note.id} style={{ borderTop: `1px solid ${t.line}`, paddingTop: 8, color: t.ink2, fontSize: 13 }}>
+                      <strong>{note.author_name || "Admin"}</strong> | {formatDate(note.created_at)}
+                      <div style={{ marginTop: 3 }}>{note.content}</div>
+                    </div>
+                  ))}
+                </div>
+              </PanelBox>
+
+              <PanelBox>
+                <SectionLabel action={`${detail.shares.length} links`}>Shares</SectionLabel>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {detail.shares.length === 0 ? (
+                    <div style={{ color: t.ink3, fontSize: 13 }}>No share links yet.</div>
+                  ) : detail.shares.map((share) => (
+                    <div key={share.id} style={smallRowStyle(t)}>
+                      <div style={{ minWidth: 0 }}>
+                        <strong style={{ color: t.ink }}>{share.recipient_name}</strong>
+                        <div style={{ color: t.ink3, fontSize: 12 }}>{share.view_count} views | {share.can_download ? "downloads on" : "view only"}</div>
+                      </div>
+                      <Pill>{statusLabel(share.status)}</Pill>
+                    </div>
+                  ))}
+                </div>
+              </PanelBox>
+
+              <PanelBox>
+                <SectionLabel>Activity</SectionLabel>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {detail.activity.length === 0 ? (
+                    <div style={{ color: t.ink3, fontSize: 13 }}>No activity yet.</div>
+                  ) : detail.activity.slice(0, 12).map((item) => (
+                    <div key={item.id} style={{ color: t.ink2, fontSize: 13, borderTop: `1px solid ${t.line}`, paddingTop: 8 }}>
+                      <strong>{item.action.replace(/_/g, " ")}</strong>
+                      <div style={{ color: t.ink3, fontSize: 12 }}>{item.actor_name || "System"} | {formatDate(item.created_at)}</div>
+                    </div>
+                  ))}
+                </div>
+              </PanelBox>
             </div>
           </div>
-        </div>
+        </ModalFrame>
       ) : null}
     </div>
   );
 }
 
-function BucketTable({ buckets, selectedId, onSelect }: { buckets: Bucket[]; selectedId: string | null; onSelect: (id: string) => void }) {
+function BucketTable({ buckets, onSelect }: { buckets: Bucket[]; onSelect: (id: string) => void }) {
   const { t } = useTheme();
   if (buckets.length === 0) {
     return <div style={{ padding: 18, color: t.ink3, fontSize: 13 }}>No buckets yet. Use Create bucket to start.</div>;
   }
   return (
     <div>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.4fr) minmax(150px, 1fr) 150px 120px 110px", gap: 12, padding: "10px 14px", color: t.ink3, background: t.surface2, borderBottom: `1px solid ${t.line}`, fontSize: 11, fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 1.5fr) minmax(160px, 1fr) 180px 120px 110px", gap: 12, padding: "10px 14px", color: t.ink3, background: t.surface2, borderBottom: `1px solid ${t.line}`, fontSize: 11, fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase" }}>
         <div>Bucket</div>
         <div>Client</div>
         <div>Type</div>
@@ -509,12 +529,12 @@ function BucketTable({ buckets, selectedId, onSelect }: { buckets: Bucket[]; sel
             boxSizing: "border-box",
             width: "100%",
             display: "grid",
-            gridTemplateColumns: "minmax(220px, 1.4fr) minmax(150px, 1fr) 150px 120px 110px",
+            gridTemplateColumns: "minmax(240px, 1.5fr) minmax(160px, 1fr) 180px 120px 110px",
             gap: 12,
             alignItems: "center",
             padding: "13px 14px",
             borderBottom: `1px solid ${t.line}`,
-            background: selectedId === bucket.id ? t.brandSoft : t.surface,
+            background: t.surface,
             cursor: "pointer",
           }}
         >
@@ -532,29 +552,50 @@ function BucketTable({ buckets, selectedId, onSelect }: { buckets: Bucket[]; sel
   );
 }
 
-function WorkflowHeader({ step, title, subtitle }: { step: string; title: string; subtitle: string }) {
+function ModalFrame({
+  title,
+  subtitle,
+  action,
+  children,
+  onClose,
+  width,
+}: {
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  onClose: () => void;
+  width: string;
+}) {
   const { t } = useTheme();
   return (
-    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-      <div style={{ width: 28, height: 28, borderRadius: 8, background: t.ink, color: t.inverse, display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 900, flexShrink: 0 }}>{step}</div>
-      <div>
-        <h3 style={{ margin: 0, color: t.ink, fontSize: 17, fontWeight: 850 }}>{title}</h3>
-        <p style={{ margin: "3px 0 0", color: t.ink3, fontSize: 13 }}>{subtitle}</p>
+    <div style={modalBackdropStyle}>
+      <div style={{ ...panelStyle(t), width, maxHeight: "calc(100vh - 36px)", padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${t.line}` }}>
+          <div style={{ minWidth: 0 }}>
+            <h2 style={{ margin: 0, color: t.ink, fontSize: 20, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</h2>
+            {subtitle ? <div style={{ color: t.ink3, fontSize: 13, marginTop: 3 }}>{subtitle}</div> : null}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {action}
+            <button style={iconButtonStyle(t)} onClick={onClose} aria-label="Close">
+              <Icon name="x" size={16} />
+            </button>
+          </div>
+        </div>
+        <div style={{ padding: 14, overflowY: "auto" }}>{children}</div>
       </div>
     </div>
   );
 }
 
-function EmptyState() {
+function WorkflowHeader({ step, title }: { step: string; title: string }) {
   const { t } = useTheme();
   return (
-    <PanelBox style={{ minHeight: 250, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-      <div>
-        <Icon name="lock" size={28} style={{ color: t.petrol }} />
-        <h2 style={{ margin: "10px 0 4px", color: t.ink, fontSize: 20 }}>Select or create a bucket</h2>
-        <p style={{ margin: 0, color: t.ink3, fontSize: 13 }}>Choose a bucket from the list, then request files or share files from the bucket workspace.</p>
-      </div>
-    </PanelBox>
+    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+      <div style={{ width: 28, height: 28, borderRadius: 8, background: t.ink, color: t.inverse, display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 900, flexShrink: 0 }}>{step}</div>
+      <h3 style={{ margin: 0, color: t.ink, fontSize: 16, fontWeight: 850 }}>{title}</h3>
+    </div>
   );
 }
 
@@ -574,16 +615,6 @@ function EmptyInline({ icon, title, body }: { icon: string; title: string; body:
 function PanelBox({ children, style }: { children: React.ReactNode; style?: CSSProperties }) {
   const { t } = useTheme();
   return <div style={{ ...panelStyle(t), padding: 14, ...style }}>{children}</div>;
-}
-
-function Metric({ label, value }: { label: string; value: number | string }) {
-  const { t } = useTheme();
-  return (
-    <div style={{ ...panelStyle(t), padding: "9px 10px" }}>
-      <div style={{ color: t.ink3, fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase" }}>{label}</div>
-      <div style={{ color: t.ink, fontSize: 20, fontWeight: 900, lineHeight: 1.1, marginTop: 3 }}>{value}</div>
-    </div>
-  );
 }
 
 function panelStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
@@ -655,6 +686,19 @@ function smallRowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
   };
 }
 
+function fileRowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: 10,
+    alignItems: "center",
+    padding: 10,
+    border: `1px solid ${t.line}`,
+    borderRadius: 8,
+    background: t.surface2,
+  };
+}
+
 function iconButtonStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
   return {
     width: 32,
@@ -678,7 +722,7 @@ const modalBackdropStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: 20,
+  padding: 18,
 };
 
 function statusLabel(status: string) {
