@@ -1,107 +1,371 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import type { CSSProperties, DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiBase } from "@/lib/api";
 
 type RequestedDoc = { id: string; name: string; category?: string | null; required: boolean; status: string };
+type BucketSummary = { name: string; client_name?: string | null; purpose?: string | null };
 type RequestInfo = {
-  bucket: { name: string; client_name?: string | null; purpose?: string | null };
+  bucket: BucketSummary;
   recipient_name: string;
-  allow_notes: boolean;
+  recipient_email?: string | null;
   requires_passcode: boolean;
+  status: string;
+};
+type UploadSession = {
+  bucket: BucketSummary;
+  recipient_name: string;
+  recipient_email?: string | null;
+  allow_notes: boolean;
   requested_documents: RequestedDoc[];
+};
+type QueuedFile = {
+  id: string;
+  file: File;
+  requestedDocumentId: string;
+  status: "ready" | "uploading" | "uploaded" | "error";
+  message?: string;
 };
 
 export default function BucketRequestPage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [info, setInfo] = useState<RequestInfo | null>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const [docId, setDocId] = useState("");
+  const [session, setSession] = useState<UploadSession | null>(null);
+  const [passcode, setPasscode] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [passcode, setPasscode] = useState("");
   const [note, setNote] = useState("");
-  const [status, setStatus] = useState("Loading...");
+  const [noteSubmitted, setNoteSubmitted] = useState(false);
+  const [files, setFiles] = useState<QueuedFile[]>([]);
+  const [status, setStatus] = useState("Loading invite...");
+  const [isAccessing, setIsAccessing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     fetch(`${apiBase}/api/v1/buckets/request/${token}`)
-      .then((r) => r.ok ? r.json() : Promise.reject(new Error("Link unavailable")))
-      .then((data) => { setInfo(data); setStatus(""); })
-      .catch((e) => setStatus(e.message));
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("This upload invite is unavailable."))))
+      .then((data: RequestInfo) => {
+        setInfo(data);
+        setStatus("");
+      })
+      .catch((e: Error) => setStatus(e.message));
   }, [token]);
 
-  async function upload() {
-    if (!file || !info || !name.trim()) return;
-    setStatus("Preparing upload...");
-    const init = await fetch(`${apiBase}/api/v1/buckets/request/${token}/upload-init`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        requested_document_id: docId || null,
-        file_name: file.name,
-        content_type: file.type || "application/octet-stream",
-        size_bytes: file.size,
-        uploader_name: name.trim(),
-        uploader_email: email.trim() || null,
-        passcode: passcode || null,
-      }),
-    });
-    if (!init.ok) throw new Error("Upload could not start");
-    const payload = await init.json();
-    setStatus("Uploading file...");
-    const put = await fetch(payload.upload_url, { method: "PUT", body: file, headers: payload.required_headers });
-    if (!put.ok) throw new Error(`S3 upload failed (${put.status})`);
-    setStatus("Completing...");
-    const done = await fetch(`${apiBase}/api/v1/buckets/request/${token}/complete`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ file_id: payload.file_id, note }),
-    });
-    if (!done.ok) throw new Error("Upload completed but could not be confirmed");
-    setFile(null);
-    setNote("");
-    setStatus("Upload complete. Your documents have been securely submitted.");
+  const canSubmit = useMemo(() => {
+    const pending = files.filter((item) => item.status !== "uploaded");
+    return Boolean(session && name.trim() && pending.length > 0 && pending.every((item) => item.status === "ready" || item.status === "error"));
+  }, [files, name, session]);
+
+  async function openInvite() {
+    if (!passcode.trim()) return;
+    setIsAccessing(true);
+    setStatus("");
+    try {
+      const res = await fetch(`${apiBase}/api/v1/buckets/request/${token}/access`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passcode: passcode.trim() }),
+      });
+      if (!res.ok) throw new Error(await responseMessage(res, "The access code did not work."));
+      const data = (await res.json()) as UploadSession;
+      setSession(data);
+      setName(data.recipient_name || "");
+      setEmail(data.recipient_email || "");
+      setStatus("");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "The access code did not work.");
+    } finally {
+      setIsAccessing(false);
+    }
+  }
+
+  function addFiles(nextFiles: FileList | File[]) {
+    const incoming = Array.from(nextFiles).map((file) => ({
+      id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
+      file,
+      requestedDocumentId: "",
+      status: "ready" as const,
+    }));
+    setFiles((current) => [...current, ...incoming]);
+    setStatus("");
+  }
+
+  function removeFile(id: string) {
+    setFiles((current) => current.filter((item) => item.id !== id));
+  }
+
+  function updateFileDoc(id: string, requestedDocumentId: string) {
+    setFiles((current) => current.map((item) => (item.id === id ? { ...item, requestedDocumentId, status: "ready", message: undefined } : item)));
+  }
+
+  function updateFileState(id: string, patch: Partial<QueuedFile>) {
+    setFiles((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }
+
+  function onDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setIsDragging(false);
+    if (event.dataTransfer.files.length > 0) addFiles(event.dataTransfer.files);
+  }
+
+  async function submitDocuments() {
+    if (!session || !canSubmit) return;
+    setIsUploading(true);
+    setStatus("Submitting documents...");
+    let noteSaved = noteSubmitted;
+    try {
+      for (const item of files.filter((queued) => queued.status !== "uploaded")) {
+        updateFileState(item.id, { status: "uploading", message: "Preparing secure upload" });
+        const init = await fetch(`${apiBase}/api/v1/buckets/request/${token}/upload-init`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            requested_document_id: item.requestedDocumentId || null,
+            file_name: item.file.name,
+            content_type: item.file.type || "application/octet-stream",
+            size_bytes: item.file.size,
+            uploader_name: name.trim(),
+            uploader_email: email.trim() || null,
+            passcode: passcode.trim(),
+          }),
+        });
+        if (!init.ok) throw new Error(await responseMessage(init, `Could not start upload for ${item.file.name}.`));
+        const payload = (await init.json()) as { file_id: string; upload_url: string; required_headers: Record<string, string> };
+        updateFileState(item.id, { message: "Uploading to secure storage" });
+        const put = await fetch(payload.upload_url, { method: "PUT", body: item.file, headers: payload.required_headers });
+        if (!put.ok) throw new Error(`Secure storage rejected ${item.file.name} (${put.status}).`);
+        updateFileState(item.id, { message: "Confirming upload" });
+        const done = await fetch(`${apiBase}/api/v1/buckets/request/${token}/complete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ file_id: payload.file_id, note: !noteSaved ? note.trim() || null : null }),
+        });
+        if (!done.ok) throw new Error(await responseMessage(done, `Could not confirm ${item.file.name}.`));
+        if (!noteSaved && note.trim()) {
+          noteSaved = true;
+          setNoteSubmitted(true);
+        }
+        updateFileState(item.id, { status: "uploaded", message: "Submitted" });
+      }
+      setStatus("Documents submitted. Qualified Commercial has received this upload.");
+      setNote("");
+      setNoteSubmitted(false);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Upload failed.";
+      setStatus(message);
+      setFiles((current) => current.map((item) => (item.status === "uploading" ? { ...item, status: "error", message } : item)));
+    } finally {
+      setIsUploading(false);
+    }
   }
 
   return (
-    <main style={{ minHeight: "100vh", background: "#f6f7f9", color: "#17202a", padding: 24 }}>
-      <section style={{ maxWidth: 760, margin: "0 auto", background: "#fff", border: "1px solid #dfe4ea", borderRadius: 10, padding: 22 }}>
-        <h1 style={{ margin: 0, fontSize: 24 }}>Secure Document Upload</h1>
-        {info ? (
-          <>
-            <p style={{ color: "#64748b" }}>
-              Upload invite for <strong>{info.recipient_name}</strong>{info.bucket.name ? ` · ${info.bucket.name}` : ""}
-              {info.bucket.purpose ? ` · ${info.bucket.purpose}` : ""}
-            </p>
-            <div style={callout}>
-              Before uploading, enter the name of the person submitting these files. This helps Qualified Commercial track exactly who sent each document.
+    <main style={page}>
+      {!session ? (
+        <section style={gateCard}>
+          <div style={brand}>Qualified Commercial</div>
+          <h1 style={gateTitle}>Welcome{info?.recipient_name ? `, ${info.recipient_name}` : ""}</h1>
+          <p style={gateCopy}>
+            {info ? (
+              <>
+                Enter your access code to open the secure upload room for <strong>{info.bucket.name}</strong>.
+              </>
+            ) : (
+              "Opening your secure upload invite."
+            )}
+          </p>
+          {info && !info.requires_passcode ? (
+            <div style={errorBox}>This upload invite must be regenerated with an access code. Ask Qualified Commercial for a new invite.</div>
+          ) : null}
+          <div style={gateForm}>
+            <label style={label} htmlFor="passcode">Access code</label>
+            <input
+              id="passcode"
+              style={accessInput}
+              value={passcode}
+              onChange={(e) => setPasscode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") openInvite().catch(() => undefined);
+              }}
+              placeholder="Enter access code"
+              autoComplete="one-time-code"
+              disabled={!info || !info.requires_passcode || isAccessing}
+            />
+            <button style={primaryButton} onClick={() => openInvite().catch(() => undefined)} disabled={!info || !info.requires_passcode || !passcode.trim() || isAccessing}>
+              {isAccessing ? "Checking code..." : "Open upload room"}
+            </button>
+          </div>
+          {status ? <p style={status.includes("did not") || status.includes("unavailable") ? errorText : statusText}>{status}</p> : null}
+        </section>
+      ) : (
+        <section style={workspace}>
+          <header style={header}>
+            <div>
+              <div style={brand}>Secure Document Upload</div>
+              <h1 style={title}>{session.bucket.name}</h1>
+              <p style={muted}>Upload invite for <strong>{session.recipient_name}</strong>{session.bucket.purpose ? ` - ${session.bucket.purpose}` : ""}</p>
             </div>
-            <div style={{ display: "grid", gap: 10 }}>
-              <input style={field} placeholder="Your full name" value={name} onChange={(e) => setName(e.target.value)} />
-              <input style={field} placeholder="Email optional" value={email} onChange={(e) => setEmail(e.target.value)} />
-              {info.requires_passcode ? <input style={field} placeholder="Access code" value={passcode} onChange={(e) => setPasscode(e.target.value)} /> : null}
-              <select style={field} value={docId} onChange={(e) => setDocId(e.target.value)}>
-                <option value="">General upload</option>
-                {info.requested_documents.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-              <input style={field} type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-              {info.allow_notes ? <textarea style={{ ...field, height: 90, paddingTop: 10 }} placeholder="Notes optional" value={note} onChange={(e) => setNote(e.target.value)} /> : null}
-              <button style={button} onClick={() => upload().catch((e) => setStatus(e.message))} disabled={!file || !name.trim()}>Complete Upload</button>
+            <div style={summaryPill}>{files.filter((item) => item.status === "uploaded").length} of {files.length} submitted</div>
+          </header>
+
+          <div style={contentGrid}>
+            <div style={mainPanel}>
+              <div style={identityGrid}>
+                <div>
+                  <label style={label} htmlFor="uploader-name">Your name</label>
+                  <input id="uploader-name" style={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" />
+                </div>
+                <div>
+                  <label style={label} htmlFor="uploader-email">Email optional</label>
+                  <input id="uploader-email" style={field} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
+                </div>
+              </div>
+
+              <input ref={fileInputRef} type="file" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
+              <div
+                style={{ ...dropZone, ...(isDragging ? dropZoneActive : {}) }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={onDrop}
+                role="button"
+                tabIndex={0}
+                onClick={() => fileInputRef.current?.click()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
+                }}
+              >
+                <div style={dropTitle}>Add files</div>
+                <div style={dropCopy}>Drag documents here or choose files from your computer.</div>
+              </div>
+
+              <div style={queueHeader}>
+                <h2 style={sectionTitle}>Selected files</h2>
+                <span style={muted}>{files.length} file{files.length === 1 ? "" : "s"}</span>
+              </div>
+              <div style={queue}>
+                {files.length === 0 ? (
+                  <div style={emptyState}>No files selected yet.</div>
+                ) : files.map((item) => (
+                  <div key={item.id} style={fileRow}>
+                    <div style={fileMeta}>
+                      <strong>{item.file.name}</strong>
+                      <span style={muted}>{formatSize(item.file.size)} - {statusLabel(item.status, item.message)}</span>
+                    </div>
+                    <select
+                      style={select}
+                      value={item.requestedDocumentId}
+                      onChange={(e) => updateFileDoc(item.id, e.target.value)}
+                      disabled={isUploading || item.status === "uploaded"}
+                      aria-label={`What is this document? ${item.file.name}`}
+                    >
+                      <option value="">General upload</option>
+                      {session.requested_documents.map((doc) => <option key={doc.id} value={doc.id}>{doc.name}</option>)}
+                    </select>
+                    <button style={removeButton} onClick={() => removeFile(item.id)} disabled={isUploading || item.status === "uploaded"} aria-label={`Remove ${item.file.name}`}>Remove</button>
+                  </div>
+                ))}
+              </div>
+
+              <button style={{ ...primaryButton, width: "100%", marginTop: 16 }} onClick={() => submitDocuments().catch(() => undefined)} disabled={!canSubmit || isUploading}>
+                {isUploading ? "Submitting documents..." : "Submit documents"}
+              </button>
+              {status ? <p style={status.includes("failed") || status.includes("Could not") || status.includes("rejected") ? errorText : statusText}>{status}</p> : null}
             </div>
-            <h2 style={{ fontSize: 15, marginTop: 22 }}>Requested Documents</h2>
-            <ul style={{ paddingLeft: 20, color: "#475569" }}>
-              {info.requested_documents.map((d) => <li key={d.id}>{d.name}{d.required ? " (required)" : ""}</li>)}
-            </ul>
-          </>
-        ) : null}
-        {status ? <p style={{ color: "#0f766e", fontWeight: 700 }}>{status}</p> : null}
-      </section>
+
+            <aside style={sidePanel}>
+              <section style={sideSection}>
+                <h2 style={sectionTitle}>Requested documents</h2>
+                <div style={docList}>
+                  {session.requested_documents.length === 0 ? (
+                    <div style={emptyState}>No requested documents were added to this bucket.</div>
+                  ) : session.requested_documents.map((doc) => (
+                    <div key={doc.id} style={docItem}>
+                      <span>{doc.name}</span>
+                      <small style={muted}>{doc.required ? "Required" : "Optional"} - {doc.status.replaceAll("_", " ")}</small>
+                    </div>
+                  ))}
+                </div>
+              </section>
+              {session.allow_notes ? (
+                <section style={sideSection}>
+                  <h2 style={sectionTitle}>Notes</h2>
+                  <textarea style={notesField} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add one note for this upload batch." />
+                </section>
+              ) : null}
+            </aside>
+          </div>
+        </section>
+      )}
     </main>
   );
 }
 
-const field = { height: 42, border: "1px solid #cbd5e1", borderRadius: 8, padding: "0 12px", font: "inherit", background: "#fff" };
-const button = { height: 44, border: "none", borderRadius: 8, padding: "0 14px", font: "inherit", fontWeight: 800, background: "#111827", color: "#fff", cursor: "pointer" };
-const callout = { border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1e3a8a", borderRadius: 8, padding: 12, margin: "0 0 14px", fontSize: 14 };
+async function responseMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const payload = await response.json();
+    return typeof payload.detail === "string" ? payload.detail : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function formatSize(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function statusLabel(status: QueuedFile["status"], message?: string): string {
+  if (message) return message;
+  if (status === "uploaded") return "Submitted";
+  if (status === "uploading") return "Uploading";
+  if (status === "error") return "Needs retry";
+  return "Ready";
+}
+
+const page: CSSProperties = { minHeight: "100vh", background: "#f4f6f8", color: "#111827", padding: 24, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" };
+const gateCard: CSSProperties = { maxWidth: 560, margin: "8vh auto 0", background: "#fff", border: "1px solid #d8dee8", borderRadius: 14, padding: 28, boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)" };
+const brand: CSSProperties = { color: "#64748b", fontSize: 12, fontWeight: 800, letterSpacing: 0, textTransform: "uppercase" };
+const gateTitle: CSSProperties = { margin: "14px 0 8px", fontSize: 32, lineHeight: 1.1, letterSpacing: 0 };
+const gateCopy: CSSProperties = { margin: "0 0 20px", color: "#475569", fontSize: 16, lineHeight: 1.5 };
+const gateForm: CSSProperties = { display: "grid", gap: 12 };
+const label: CSSProperties = { display: "block", color: "#334155", fontSize: 13, fontWeight: 800, marginBottom: 6 };
+const accessInput: CSSProperties = { height: 52, border: "1px solid #cbd5e1", borderRadius: 10, padding: "0 14px", font: "inherit", fontSize: 18, background: "#fff" };
+const field: CSSProperties = { width: "100%", height: 44, border: "1px solid #cbd5e1", borderRadius: 10, padding: "0 12px", font: "inherit", background: "#fff", boxSizing: "border-box" };
+const primaryButton: CSSProperties = { height: 48, border: "none", borderRadius: 10, padding: "0 16px", font: "inherit", fontWeight: 900, background: "#111827", color: "#fff", cursor: "pointer" };
+const statusText: CSSProperties = { margin: "14px 0 0", color: "#0f766e", fontWeight: 800 };
+const errorText: CSSProperties = { margin: "14px 0 0", color: "#b91c1c", fontWeight: 800 };
+const errorBox: CSSProperties = { border: "1px solid #fecaca", background: "#fef2f2", color: "#991b1b", borderRadius: 10, padding: 12, marginBottom: 14, fontWeight: 700 };
+const workspace: CSSProperties = { maxWidth: 1180, margin: "0 auto", background: "#fff", border: "1px solid #d8dee8", borderRadius: 16, padding: 24, boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)" };
+const header: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", borderBottom: "1px solid #e5e7eb", paddingBottom: 18, marginBottom: 20 };
+const title: CSSProperties = { margin: "8px 0 4px", fontSize: 30, lineHeight: 1.15, letterSpacing: 0 };
+const muted: CSSProperties = { color: "#64748b" };
+const summaryPill: CSSProperties = { border: "1px solid #d8dee8", borderRadius: 999, padding: "8px 12px", color: "#334155", fontWeight: 800, whiteSpace: "nowrap" };
+const contentGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 20 };
+const mainPanel: CSSProperties = { minWidth: 0 };
+const identityGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: 12, marginBottom: 16 };
+const dropZone: CSSProperties = { border: "2px dashed #94a3b8", borderRadius: 14, padding: 28, textAlign: "center", background: "#f8fafc", cursor: "pointer", transition: "border-color .15s ease, background .15s ease" };
+const dropZoneActive: CSSProperties = { borderColor: "#2563eb", background: "#eff6ff" };
+const dropTitle: CSSProperties = { fontSize: 20, fontWeight: 900, marginBottom: 6 };
+const dropCopy: CSSProperties = { color: "#64748b" };
+const queueHeader: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20, marginBottom: 10 };
+const sectionTitle: CSSProperties = { margin: 0, fontSize: 15, fontWeight: 900, letterSpacing: 0 };
+const queue: CSSProperties = { display: "grid", gap: 10 };
+const emptyState: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, color: "#64748b", background: "#f8fafc" };
+const fileRow: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: 10, alignItems: "center", border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 };
+const fileMeta: CSSProperties = { display: "grid", gap: 4, minWidth: 0 };
+const select: CSSProperties = { height: 42, border: "1px solid #cbd5e1", borderRadius: 10, padding: "0 10px", font: "inherit", background: "#fff", minWidth: 0 };
+const removeButton: CSSProperties = { height: 38, border: "1px solid #d8dee8", borderRadius: 10, background: "#fff", color: "#334155", font: "inherit", fontWeight: 800, cursor: "pointer" };
+const sidePanel: CSSProperties = { display: "grid", gap: 14, alignContent: "start" };
+const sideSection: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 14, padding: 16, background: "#fbfdff" };
+const docList: CSSProperties = { display: "grid", gap: 10, marginTop: 12 };
+const docItem: CSSProperties = { display: "grid", gap: 4, borderBottom: "1px solid #e5e7eb", paddingBottom: 10, fontWeight: 800 };
+const notesField: CSSProperties = { width: "100%", minHeight: 160, border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, font: "inherit", resize: "vertical", boxSizing: "border-box", marginTop: 12 };
