@@ -3,6 +3,7 @@
 import type { CSSProperties, DragEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import { QCMark } from "@/components/QCMark";
 import { apiBase } from "@/lib/api";
 
 type RequestedDoc = { id: string; name: string; category?: string | null; required: boolean; status: string };
@@ -58,7 +59,13 @@ export default function BucketRequestPage() {
 
   const canSubmit = useMemo(() => {
     const pending = files.filter((item) => item.status !== "uploaded");
-    return Boolean(session && name.trim() && pending.length > 0 && pending.every((item) => item.status === "ready" || item.status === "error"));
+    return Boolean(
+      session &&
+      name.trim() &&
+      pending.length > 0 &&
+      pending.every((item) => item.status === "ready" || item.status === "error") &&
+      !hasDuplicateSingleUseDocs(files, session.requested_documents),
+    );
   }, [files, name, session]);
 
   async function openInvite() {
@@ -101,6 +108,10 @@ export default function BucketRequestPage() {
 
   function updateFileDoc(id: string, requestedDocumentId: string) {
     setFiles((current) => current.map((item) => (item.id === id ? { ...item, requestedDocumentId, status: "ready", message: undefined } : item)));
+  }
+
+  function linkedCount(docId: string) {
+    return files.filter((item) => item.requestedDocumentId === docId && item.status !== "error").length;
   }
 
   function updateFileState(id: string, patch: Partial<QueuedFile>) {
@@ -168,7 +179,7 @@ export default function BucketRequestPage() {
     <main style={page}>
       {!session ? (
         <section style={gateCard}>
-          <div style={brand}>Qualified Commercial</div>
+          <BrandHeader />
           <h1 style={gateTitle}>Welcome{info?.recipient_name ? `, ${info.recipient_name}` : ""}</h1>
           <p style={gateCopy}>
             {info ? (
@@ -206,7 +217,7 @@ export default function BucketRequestPage() {
         <section style={workspace}>
           <header style={header}>
             <div>
-              <div style={brand}>Secure Document Upload</div>
+              <BrandHeader eyebrow="Secure Document Upload" />
               <h1 style={title}>{session.bucket.name}</h1>
               <p style={muted}>Upload invite for <strong>{session.recipient_name}</strong>{session.bucket.purpose ? ` - ${session.bucket.purpose}` : ""}</p>
             </div>
@@ -267,7 +278,11 @@ export default function BucketRequestPage() {
                       aria-label={`What is this document? ${item.file.name}`}
                     >
                       <option value="">General upload</option>
-                      {session.requested_documents.map((doc) => <option key={doc.id} value={doc.id}>{doc.name}</option>)}
+                      {session.requested_documents.map((doc) => {
+                        const linkedByOtherFile = files.some((file) => file.id !== item.id && file.requestedDocumentId === doc.id && file.status !== "error");
+                        const disabled = !allowsMultipleFiles(doc) && linkedByOtherFile;
+                        return <option key={doc.id} value={doc.id} disabled={disabled}>{doc.name}{disabled ? " - already linked" : ""}</option>;
+                      })}
                     </select>
                     <button style={removeButton} onClick={() => removeFile(item.id)} disabled={isUploading || item.status === "uploaded"} aria-label={`Remove ${item.file.name}`}>Remove</button>
                   </div>
@@ -286,12 +301,21 @@ export default function BucketRequestPage() {
                 <div style={docList}>
                   {session.requested_documents.length === 0 ? (
                     <div style={emptyState}>No requested documents were added to this bucket.</div>
-                  ) : session.requested_documents.map((doc) => (
-                    <div key={doc.id} style={docItem}>
-                      <span>{doc.name}</span>
-                      <small style={muted}>{doc.required ? "Required" : "Optional"} - {doc.status.replaceAll("_", " ")}</small>
+                  ) : session.requested_documents.map((doc) => {
+                    const count = linkedCount(doc.id);
+                    const linked = count > 0 || doc.status === "uploaded";
+                    return (
+                    <div key={doc.id} style={{ ...docItem, ...(linked ? docItemLinked : {}) }}>
+                      <div style={docTitleRow}>
+                        <span>{doc.name}</span>
+                        <span style={linked ? checkBadge : openBadge}>{linked ? "Checked" : "Open"}</span>
+                      </div>
+                      <small style={muted}>
+                        {doc.required ? "Required" : "Optional"} - {allowsMultipleFiles(doc) ? "multiple files allowed" : "one file"}{count ? ` - ${count} linked` : ""}
+                      </small>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
               {session.allow_notes ? (
@@ -305,6 +329,18 @@ export default function BucketRequestPage() {
         </section>
       )}
     </main>
+  );
+}
+
+function BrandHeader({ eyebrow = "Qualified Commercial" }: { eyebrow?: string }) {
+  return (
+    <div style={brandHeader}>
+      <QCMark size={34} />
+      <div>
+        <div style={brand}>{eyebrow}</div>
+        <div style={brandName}>Qualified Commercial</div>
+      </div>
+    </div>
   );
 }
 
@@ -331,9 +367,26 @@ function statusLabel(status: QueuedFile["status"], message?: string): string {
   return "Ready";
 }
 
+function allowsMultipleFiles(doc: RequestedDoc): boolean {
+  const name = doc.name.toLowerCase();
+  return name.includes("bank statement") || name.includes("tax return") || name.includes("irs");
+}
+
+function hasDuplicateSingleUseDocs(files: QueuedFile[], docs: RequestedDoc[]): boolean {
+  const singleUseDocIds = new Set(docs.filter((doc) => !allowsMultipleFiles(doc)).map((doc) => doc.id));
+  const counts = new Map<string, number>();
+  for (const file of files) {
+    if (!file.requestedDocumentId || file.status === "error" || !singleUseDocIds.has(file.requestedDocumentId)) continue;
+    counts.set(file.requestedDocumentId, (counts.get(file.requestedDocumentId) ?? 0) + 1);
+  }
+  return Array.from(counts.values()).some((count) => count > 1);
+}
+
 const page: CSSProperties = { minHeight: "100vh", background: "#f4f6f8", color: "#111827", padding: 24, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" };
 const gateCard: CSSProperties = { maxWidth: 560, margin: "8vh auto 0", background: "#fff", border: "1px solid #d8dee8", borderRadius: 14, padding: 28, boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)" };
+const brandHeader: CSSProperties = { display: "flex", alignItems: "center", gap: 10 };
 const brand: CSSProperties = { color: "#64748b", fontSize: 12, fontWeight: 800, letterSpacing: 0, textTransform: "uppercase" };
+const brandName: CSSProperties = { color: "#111827", fontSize: 15, fontWeight: 900, lineHeight: 1.2 };
 const gateTitle: CSSProperties = { margin: "14px 0 8px", fontSize: 32, lineHeight: 1.1, letterSpacing: 0 };
 const gateCopy: CSSProperties = { margin: "0 0 20px", color: "#475569", fontSize: 16, lineHeight: 1.5 };
 const gateForm: CSSProperties = { display: "grid", gap: 12 };
@@ -368,4 +421,8 @@ const sidePanel: CSSProperties = { display: "grid", gap: 14, alignContent: "star
 const sideSection: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 14, padding: 16, background: "#fbfdff" };
 const docList: CSSProperties = { display: "grid", gap: 10, marginTop: 12 };
 const docItem: CSSProperties = { display: "grid", gap: 4, borderBottom: "1px solid #e5e7eb", paddingBottom: 10, fontWeight: 800 };
+const docItemLinked: CSSProperties = { border: "1px solid #bbf7d0", borderRadius: 10, padding: 10, background: "#f0fdf4" };
+const docTitleRow: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 };
+const checkBadge: CSSProperties = { border: "1px solid #86efac", borderRadius: 999, padding: "3px 8px", color: "#166534", background: "#dcfce7", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
+const openBadge: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 999, padding: "3px 8px", color: "#64748b", background: "#f8fafc", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
 const notesField: CSSProperties = { width: "100%", minHeight: 160, border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, font: "inherit", resize: "vertical", boxSizing: "border-box", marginTop: 12 };
