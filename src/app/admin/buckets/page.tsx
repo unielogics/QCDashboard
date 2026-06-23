@@ -9,6 +9,7 @@ import { Pill, SectionLabel } from "@/components/design-system/primitives";
 import { useCurrentUser } from "@/hooks/useApi";
 import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
+import { useUI } from "@/store/ui";
 
 type Bucket = {
   id: string;
@@ -61,6 +62,8 @@ type BucketDetail = Bucket & {
 };
 type Template = { id: string; name: string; category?: string | null; required: boolean };
 type PackageKey = "standard" | "urchoice";
+type UploadInvite = { id: string; recipient_name: string; recipient_email: string };
+type UploadInviteLink = { name: string; email?: string; url: string };
 
 const BUCKET_TYPES = ["Loan File", "UrChoice Dealer Funding", "Partner Package", "Borrower", "Funding Opportunity"];
 const URCHOICE_DEALER_DOCS: Template[] = [
@@ -85,7 +88,7 @@ export default function BucketsAdminPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [createResult, setCreateResult] = useState<{ label: string; url: string } | null>(null);
+  const [createResult, setCreateResult] = useState<{ links: UploadInviteLink[] } | null>(null);
   const [createPackage, setCreatePackage] = useState<PackageKey>("standard");
   const [createChecked, setCreateChecked] = useState<Record<string, boolean>>({});
   const [bucketForm, setBucketForm] = useState({
@@ -95,7 +98,8 @@ export default function BucketsAdminPage() {
     bucket_type: "Loan File",
     description: "",
   });
-  const [createUploader, setCreateUploader] = useState({ recipient_name: "", recipient_email: "" });
+  const [createInviteDraft, setCreateInviteDraft] = useState({ recipient_name: "", recipient_email: "" });
+  const [createInvites, setCreateInvites] = useState<UploadInvite[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareFiles, setShareFiles] = useState<Record<string, boolean>>({});
   const [shareForm, setShareForm] = useState({ recipient_name: "", recipient_email: "", can_download: false });
@@ -156,6 +160,7 @@ export default function BucketsAdminPage() {
     setBusy(true);
     setNotice(null);
     try {
+      const invites = normalizedUploadInvites(createInvites, createInviteDraft);
       const row = await call<Bucket>("/buckets", { method: "POST", body: JSON.stringify(bucketForm) });
       for (const doc of selectedCreateDocs) {
         await call(`/buckets/admin/${row.id}/requested-documents`, {
@@ -163,20 +168,22 @@ export default function BucketsAdminPage() {
           body: JSON.stringify({ name: doc.name, category: doc.category, required: doc.required }),
         });
       }
-      let uploadLink: { upload_url: string } | null = null;
-      if (createUploader.recipient_name.trim()) {
-        uploadLink = await call<{ upload_url: string }>(`/buckets/admin/${row.id}/upload-links`, {
+      const uploadLinks: UploadInviteLink[] = [];
+      for (const invite of invites) {
+        const uploadLink = await call<{ upload_url: string }>(`/buckets/admin/${row.id}/upload-links`, {
           method: "POST",
-          body: JSON.stringify(createUploader),
+          body: JSON.stringify({ recipient_name: invite.recipient_name, recipient_email: invite.recipient_email }),
         });
+        uploadLinks.push({ name: invite.recipient_name, email: invite.recipient_email || undefined, url: uploadLink.upload_url });
       }
       await loadBuckets();
       setBucketForm({ name: "", client_name: "", purpose: "", bucket_type: "Loan File", description: "" });
-      setCreateUploader({ recipient_name: "", recipient_email: "" });
+      setCreateInviteDraft({ recipient_name: "", recipient_email: "" });
+      setCreateInvites([]);
       setCreateChecked({});
       setCreatePackage("standard");
-      if (uploadLink) {
-        setCreateResult({ label: "Upload link", url: uploadLink.upload_url });
+      if (uploadLinks.length) {
+        setCreateResult({ links: uploadLinks });
       } else {
         setCreateOpen(false);
         setNotice("Bucket created.");
@@ -184,6 +191,19 @@ export default function BucketsAdminPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function addCreateInvite() {
+    if (!createInviteDraft.recipient_name.trim()) return;
+    setCreateInvites((rows) => [
+      ...rows,
+      {
+        id: crypto.randomUUID(),
+        recipient_name: createInviteDraft.recipient_name.trim(),
+        recipient_email: createInviteDraft.recipient_email.trim(),
+      },
+    ]);
+    setCreateInviteDraft({ recipient_name: "", recipient_email: "" });
   }
 
   async function createShareLink() {
@@ -245,6 +265,8 @@ export default function BucketsAdminPage() {
           style={primary}
           onClick={() => {
             setCreateResult(null);
+            setCreateInviteDraft({ recipient_name: "", recipient_email: "" });
+            setCreateInvites([]);
             setCreateOpen(true);
           }}
         >
@@ -272,15 +294,26 @@ export default function BucketsAdminPage() {
       </PanelBox>
 
       {createOpen ? (
-        <ModalFrame title="Create bucket" subtitle="Set up the bucket and request files in one flow." onClose={() => setCreateOpen(false)} width="min(760px, calc(100vw - 40px))">
+        <ModalFrame title="Create bucket" subtitle="Set up the bucket, choose requested files, and invite uploaders." onClose={() => setCreateOpen(false)}>
           {createResult ? (
             <div style={{ display: "grid", gap: 14 }}>
               <PanelBox style={{ borderColor: t.petrol }}>
-                <SectionLabel>{createResult.label}</SectionLabel>
-                <code style={{ display: "block", color: t.ink, overflowWrap: "anywhere", fontSize: 12.5 }}>{createResult.url}</code>
+                <SectionLabel action={`${createResult.links.length} link${createResult.links.length === 1 ? "" : "s"}`}>Upload invites created</SectionLabel>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {createResult.links.map((link) => (
+                    <div key={`${link.name}-${link.url}`} style={smallRowStyle(t)}>
+                      <div style={{ minWidth: 0 }}>
+                        <strong style={{ color: t.ink }}>{link.name}</strong>
+                        <div style={{ color: t.ink3, fontSize: 12 }}>{link.email || "No email entered"}</div>
+                        <code style={{ display: "block", color: t.ink2, overflowWrap: "anywhere", fontSize: 12, marginTop: 4 }}>{link.url}</code>
+                      </div>
+                      <button style={secondary} onClick={() => copyText(link.url)}>Copy</button>
+                    </div>
+                  ))}
+                </div>
               </PanelBox>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                <button style={secondary} onClick={() => copyText(createResult.url)}>Copy link</button>
+                <button style={secondary} onClick={() => copyText(createResult.links.map((link) => `${link.name}: ${link.url}`).join("\n"))}>Copy all</button>
                 <button style={primary} onClick={() => setCreateOpen(false)}>Done</button>
               </div>
             </div>
@@ -336,10 +369,41 @@ export default function BucketsAdminPage() {
               </PanelBox>
 
               <PanelBox>
-                <WorkflowHeader step="3" title="Optional upload link" />
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
-                  <input style={field} placeholder="Uploader name" value={createUploader.recipient_name} onChange={(e) => setCreateUploader({ ...createUploader, recipient_name: e.target.value })} />
-                  <input style={field} placeholder="Uploader email optional" value={createUploader.recipient_email} onChange={(e) => setCreateUploader({ ...createUploader, recipient_email: e.target.value })} />
+                <WorkflowHeader
+                  step="3"
+                  title="Invite uploaders"
+                  subtitle="Add the people who should receive upload links for this bucket. You can add more than one."
+                />
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto", gap: 10, marginTop: 12 }}>
+                  <input style={field} placeholder="Person or company name" value={createInviteDraft.recipient_name} onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, recipient_name: e.target.value })} />
+                  <input style={field} placeholder="Email optional" value={createInviteDraft.recipient_email} onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, recipient_email: e.target.value })} />
+                  <button style={secondary} onClick={addCreateInvite} disabled={!createInviteDraft.recipient_name.trim()}>
+                    <Icon name="plus" size={14} />
+                    Add invite
+                  </button>
+                </div>
+                {createInvites.length ? (
+                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                    {createInvites.map((invite) => (
+                      <div key={invite.id} style={smallRowStyle(t)}>
+                        <div style={{ minWidth: 0 }}>
+                          <strong style={{ color: t.ink }}>{invite.recipient_name}</strong>
+                          <div style={{ color: t.ink3, fontSize: 12 }}>{invite.recipient_email || "No email entered"}</div>
+                        </div>
+                        <button
+                          style={iconButtonStyle(t)}
+                          onClick={() => setCreateInvites((rows) => rows.filter((row) => row.id !== invite.id))}
+                          aria-label={`Remove ${invite.recipient_name}`}
+                          title="Remove invite"
+                        >
+                          <Icon name="x" size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <div style={{ color: t.ink3, fontSize: 12.5, marginTop: 10 }}>
+                  Upload links are created after the bucket is created. Leave this blank if you only want to set up the bucket for now.
                 </div>
               </PanelBox>
 
@@ -359,7 +423,6 @@ export default function BucketsAdminPage() {
           title={detail.name}
           subtitle={`${detail.client_name || "No client"} | ${detail.purpose || "No purpose"} | ${detail.bucket_type || "Bucket"}`}
           onClose={() => setDetail(null)}
-          width="min(1180px, calc(100vw - 36px))"
           action={
             <button style={iconButtonStyle(t)} onClick={() => setShareOpen((value) => !value)} aria-label="Share selected files" title="Share selected files">
               <Icon name="link" size={16} />
@@ -558,19 +621,33 @@ function ModalFrame({
   action,
   children,
   onClose,
-  width,
 }: {
   title: string;
   subtitle?: string;
   action?: React.ReactNode;
   children: React.ReactNode;
   onClose: () => void;
-  width: string;
 }) {
   const { t } = useTheme();
+  const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
+  const sidebarOffset = sidebarCollapsed ? 68 : 232;
   return (
-    <div style={modalBackdropStyle}>
-      <div style={{ ...panelStyle(t), width, maxHeight: "calc(100vh - 36px)", padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+    <div style={{ ...modalBackdropStyle, left: sidebarOffset }}>
+      <div
+        style={{
+          ...panelStyle(t),
+          width: "100%",
+          height: "100%",
+          borderRadius: 0,
+          borderTop: 0,
+          borderRight: 0,
+          borderBottom: 0,
+          padding: 0,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${t.line}` }}>
           <div style={{ minWidth: 0 }}>
             <h2 style={{ margin: 0, color: t.ink, fontSize: 20, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</h2>
@@ -583,18 +660,21 @@ function ModalFrame({
             </button>
           </div>
         </div>
-        <div style={{ padding: 14, overflowY: "auto" }}>{children}</div>
+        <div style={{ padding: 22, overflowY: "auto", flex: 1 }}>{children}</div>
       </div>
     </div>
   );
 }
 
-function WorkflowHeader({ step, title }: { step: string; title: string }) {
+function WorkflowHeader({ step, title, subtitle }: { step: string; title: string; subtitle?: string }) {
   const { t } = useTheme();
   return (
-    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
       <div style={{ width: 28, height: 28, borderRadius: 8, background: t.ink, color: t.inverse, display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 900, flexShrink: 0 }}>{step}</div>
-      <h3 style={{ margin: 0, color: t.ink, fontSize: 16, fontWeight: 850 }}>{title}</h3>
+      <div>
+        <h3 style={{ margin: 0, color: t.ink, fontSize: 16, fontWeight: 850 }}>{title}</h3>
+        {subtitle ? <div style={{ color: t.ink3, fontSize: 12.5, marginTop: 3 }}>{subtitle}</div> : null}
+      </div>
     </div>
   );
 }
@@ -716,14 +796,27 @@ function iconButtonStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
 
 const modalBackdropStyle: CSSProperties = {
   position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,.48)",
+  top: 0,
+  right: 0,
+  bottom: 0,
+  background: "rgba(0,0,0,.36)",
   zIndex: 200,
   display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 18,
+  alignItems: "stretch",
+  justifyContent: "stretch",
 };
+
+function normalizedUploadInvites(invites: UploadInvite[], draft: { recipient_name: string; recipient_email: string }): UploadInvite[] {
+  const rows = [...invites];
+  if (draft.recipient_name.trim()) {
+    rows.push({
+      id: "draft",
+      recipient_name: draft.recipient_name.trim(),
+      recipient_email: draft.recipient_email.trim(),
+    });
+  }
+  return rows;
+}
 
 function statusLabel(status: string) {
   return status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
