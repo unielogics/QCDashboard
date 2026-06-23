@@ -92,6 +92,7 @@ export default function BucketsAdminPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createResult, setCreateResult] = useState<{ links: UploadInviteLink[] } | null>(null);
+  const [createStatus, setCreateStatus] = useState<{ kind: "working" | "success" | "error"; message: string } | null>(null);
   const [createPackage, setCreatePackage] = useState<PackageKey>("standard");
   const [createChecked, setCreateChecked] = useState<Record<string, boolean>>({});
   const [bucketForm, setBucketForm] = useState({
@@ -177,17 +178,20 @@ export default function BucketsAdminPage() {
     if (!bucketForm.name.trim()) return;
     setBusy(true);
     setNotice(null);
+    setCreateStatus({ kind: "working", message: "Creating bucket..." });
     try {
       const invites = normalizedUploadInvites(createInvites, createInviteDraft);
       const row = await call<Bucket>("/buckets", { method: "POST", body: JSON.stringify(bucketForm) });
-      for (const doc of selectedCreateDocs) {
+      for (const [index, doc] of selectedCreateDocs.entries()) {
+        setCreateStatus({ kind: "working", message: `Adding requested files ${index + 1} of ${selectedCreateDocs.length}...` });
         await call(`/buckets/admin/${row.id}/requested-documents`, {
           method: "POST",
           body: JSON.stringify({ name: doc.name, category: doc.category, required: doc.required }),
         });
       }
       const uploadLinks: UploadInviteLink[] = [];
-      for (const invite of invites) {
+      for (const [index, invite] of invites.entries()) {
+        setCreateStatus({ kind: "working", message: `Creating upload invite ${index + 1} of ${invites.length}...` });
         const uploadLink = await call<{ upload_url: string }>(`/buckets/admin/${row.id}/upload-links`, {
           method: "POST",
           body: JSON.stringify({
@@ -198,6 +202,7 @@ export default function BucketsAdminPage() {
         });
         uploadLinks.push({ name: invite.recipient_name, email: invite.recipient_email || undefined, url: uploadLink.upload_url, passcode: invite.passcode });
       }
+      setCreateStatus({ kind: "working", message: "Refreshing bucket list..." });
       await loadBuckets();
       setBucketForm({ name: "", client_name: "", purpose: "", bucket_type: "Loan File", description: "" });
       setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
@@ -205,11 +210,15 @@ export default function BucketsAdminPage() {
       setCreateChecked({});
       setCreatePackage("standard");
       if (uploadLinks.length) {
+        setCreateStatus({ kind: "success", message: "Bucket created. Upload invite links are ready below." });
         setCreateResult({ links: uploadLinks });
       } else {
         setCreateOpen(false);
-        setNotice("Bucket created.");
+        setCreateStatus(null);
+        setNotice("Bucket created and added to the table.");
       }
+    } catch (error) {
+      setCreateStatus({ kind: "error", message: readableError(error) });
     } finally {
       setBusy(false);
     }
@@ -294,6 +303,7 @@ export default function BucketsAdminPage() {
           style={primary}
           onClick={() => {
             setCreateResult(null);
+            setCreateStatus(null);
             setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
             setCreateInvites([]);
             setCreateOpen(true);
@@ -326,6 +336,7 @@ export default function BucketsAdminPage() {
         <ModalFrame title="Create bucket" subtitle="Set up the bucket, choose requested files, and invite uploaders." onClose={() => setCreateOpen(false)}>
           {createResult ? (
             <div style={{ display: "grid", gap: 14 }}>
+              {createStatus ? <CreateStatusBanner status={createStatus} /> : null}
               <PanelBox style={{ borderColor: t.petrol }}>
                 <SectionLabel action={`${createResult.links.length} link${createResult.links.length === 1 ? "" : "s"}`}>Upload invites created</SectionLabel>
                 <div style={{ display: "grid", gap: 8 }}>
@@ -349,6 +360,7 @@ export default function BucketsAdminPage() {
             </div>
           ) : (
             <div style={{ display: "grid", gap: 16 }}>
+              {createStatus ? <CreateStatusBanner status={createStatus} /> : null}
               <PanelBox>
                 <WorkflowHeader step="1" title="Bucket details" />
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
@@ -444,9 +456,19 @@ export default function BucketsAdminPage() {
               </PanelBox>
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                <button style={secondary} onClick={() => setCreateOpen(false)}>Cancel</button>
-                <button style={primary} onClick={createBucketWorkflow} disabled={busy || !bucketForm.name.trim()}>
-                  Create bucket
+                <button style={secondary} onClick={() => setCreateOpen(false)} disabled={busy}>Cancel</button>
+                <button style={{ ...primary, minWidth: 142, opacity: busy || !bucketForm.name.trim() ? 0.72 : 1 }} onClick={createBucketWorkflow} disabled={busy || !bucketForm.name.trim()}>
+                  {busy ? (
+                    <>
+                      <Icon name="refresh" size={14} />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="plus" size={14} />
+                      Create bucket
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -775,6 +797,26 @@ function EmptyInline({ icon, title, body }: { icon: string; title: string; body:
   );
 }
 
+function CreateStatusBanner({ status }: { status: { kind: "working" | "success" | "error"; message: string } }) {
+  const { t } = useTheme();
+  const isError = status.kind === "error";
+  const isSuccess = status.kind === "success";
+  return (
+    <PanelBox
+      style={{
+        borderColor: isError ? t.danger : isSuccess ? t.profit : t.petrol,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        color: isError ? t.danger : isSuccess ? t.profit : t.ink2,
+      }}
+    >
+      <Icon name={isError ? "alert" : isSuccess ? "check" : "refresh"} size={15} />
+      <span style={{ fontSize: 13, fontWeight: 800 }}>{status.message}</span>
+    </PanelBox>
+  );
+}
+
 function PanelBox({ children, style }: { children: React.ReactNode; style?: CSSProperties }) {
   const { t } = useTheme();
   return <div style={{ ...panelStyle(t), padding: 14, ...style }}>{children}</div>;
@@ -928,4 +970,9 @@ function generateAccessCode() {
   let code = "";
   for (let i = 0; i < 8; i += 1) code += alphabet[Math.floor(Math.random() * alphabet.length)];
   return code;
+}
+
+function readableError(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return "Bucket could not be created. Please try again.";
 }
