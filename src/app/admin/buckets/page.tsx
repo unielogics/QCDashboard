@@ -54,12 +54,19 @@ type AdminQueuedFile = {
 };
 type Share = {
   id: string;
+  token?: string;
   recipient_name: string;
   recipient_email?: string | null;
   can_download: boolean;
+  can_add_notes?: boolean;
+  can_upload?: boolean;
   status: string;
+  expires_at?: string | null;
+  last_accessed_at?: string | null;
+  created_at?: string | null;
   view_count: number;
   download_count: number;
+  files?: BucketFile[];
   share_url?: string | null;
   passcode?: string | null;
 };
@@ -99,8 +106,16 @@ type PackageKey = "standard" | "urchoice";
 type UploadInvite = { id: string; recipient_name: string; recipient_email: string; passcode: string };
 type UploadInviteLink = { name: string; email?: string; url: string; passcode: string };
 type UploadInitResponse = { file_id: string; upload_url: string; required_headers: Record<string, string> };
-type ShareViewerDraft = { id: string; recipient_name: string; recipient_email: string; passcode: string; can_download: boolean };
-type CreatedShareInvite = { id: string; name: string; email?: string; url: string; passcode?: string | null; can_download: boolean };
+type ShareViewerDraft = {
+  id: string;
+  recipient_name: string;
+  recipient_email: string;
+  passcode: string;
+  can_download: boolean;
+  expires_days: number;
+  file_ids: string[];
+  file_search: string;
+};
 type ActivityPage = { items: Activity[]; total: number; limit: number; offset: number };
 type ActivityFilters = { action: string; actor_role: string; target_type: string; q: string; date_from: string; date_to: string };
 
@@ -123,6 +138,7 @@ const ACTIVITY_ACTION_OPTIONS = [
   "share_created",
   "share_updated",
   "share_status_changed",
+  "share_passcode_regenerated",
   "share_accessed",
   "share_passcode_failed",
   "shared_file_review_opened",
@@ -157,6 +173,9 @@ function emptyShareViewerDraft(id = "share-viewer-draft"): ShareViewerDraft {
     recipient_email: "",
     passcode: "",
     can_download: false,
+    expires_days: 7,
+    file_ids: [],
+    file_search: "",
   };
 }
 
@@ -167,6 +186,9 @@ function newShareViewerDraft(): ShareViewerDraft {
     recipient_email: "",
     passcode: generateAccessCode(),
     can_download: false,
+    expires_days: 7,
+    file_ids: [],
+    file_search: "",
   };
 }
 
@@ -211,7 +233,10 @@ export default function BucketsAdminPage() {
   const [shareFiles, setShareFiles] = useState<Record<string, boolean>>({});
   const [sharePopupOpen, setSharePopupOpen] = useState(false);
   const [shareViewers, setShareViewers] = useState<ShareViewerDraft[]>(() => [emptyShareViewerDraft()]);
-  const [createdShareLinks, setCreatedShareLinks] = useState<CreatedShareInvite[]>([]);
+  const [sharePasscodes, setSharePasscodes] = useState<Record<string, string>>({});
+  const [editingShareId, setEditingShareId] = useState<string | null>(null);
+  const [editingShareFileIds, setEditingShareFileIds] = useState<string[]>([]);
+  const [editingShareSearch, setEditingShareSearch] = useState("");
   const [adminUploadFiles, setAdminUploadFiles] = useState<AdminQueuedFile[]>([]);
   const [adminUploadForm, setAdminUploadForm] = useState({ uploader_name: "", uploader_email: "", note: "" });
   const [adminUploadStatus, setAdminUploadStatus] = useState<{ kind: "working" | "success" | "error"; message: string } | null>(null);
@@ -250,7 +275,6 @@ export default function BucketsAdminPage() {
     setShareFiles({});
     setSharePopupOpen(false);
     setShareViewers([newShareViewerDraft()]);
-    setCreatedShareLinks([]);
     setAdminUploadFiles([]);
     setAdminUploadStatus(null);
     setAdminUploadForm((form) => ({ ...form, uploader_name: row.client_name || form.uploader_name || "", uploader_email: "" }));
@@ -343,7 +367,6 @@ export default function BucketsAdminPage() {
   const selectedCreateDocs = createDocs.filter((doc) => createChecked[doc.id]);
   const selectedShareFileIds = Object.entries(shareFiles).filter(([, selected]) => selected).map(([id]) => id);
   const visibleFiles = useMemo(() => uniqueBucketFiles(detail?.files ?? []), [detail?.files]);
-  const selectedShareFiles = visibleFiles.filter((file) => selectedShareFileIds.includes(file.id));
   const activityPage = Math.floor(activityOffset / ACTIVITY_PAGE_SIZE) + 1;
   const activityPageCount = Math.max(1, Math.ceil(activityTotal / ACTIVITY_PAGE_SIZE));
   const canPageActivityBack = Boolean(detail && activityOffset > 0 && !activityLoading);
@@ -473,31 +496,112 @@ export default function BucketsAdminPage() {
 
   function addShareViewer() {
     setShareViewers((viewers) => [...viewers, newShareViewerDraft()]);
-    setCreatedShareLinks([]);
   }
 
   function removeShareViewer(id: string) {
     setShareViewers((viewers) => (viewers.length === 1 ? viewers : viewers.filter((viewer) => viewer.id !== id)));
-    setCreatedShareLinks([]);
   }
 
   function generateShareCode(id: string) {
     updateShareViewer(id, { passcode: generateAccessCode() });
-    setCreatedShareLinks([]);
+  }
+
+  function setShareViewerFileIds(id: string, fileIds: string[]) {
+    updateShareViewer(id, { file_ids: Array.from(new Set(fileIds)) });
+  }
+
+  function toggleShareViewerFile(id: string, fileId: string) {
+    setShareViewers((viewers) =>
+      viewers.map((viewer) => {
+        if (viewer.id !== id) return viewer;
+        const next = viewer.file_ids.includes(fileId)
+          ? viewer.file_ids.filter((value) => value !== fileId)
+          : [...viewer.file_ids, fileId];
+        return { ...viewer, file_ids: next };
+      }),
+    );
+  }
+
+  function shareExpiryDate(days: number) {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    return date.toISOString();
+  }
+
+  function shareFilesFor(share: Share) {
+    return share.files ?? [];
+  }
+
+  function openEditShareFiles(share: Share) {
+    setEditingShareId(share.id);
+    setEditingShareFileIds(shareFilesFor(share).map((file) => file.id));
+    setEditingShareSearch("");
+  }
+
+  async function patchShare(share: Share, body: Record<string, unknown>) {
+    if (!detail) return;
+    const updated = await call<Share>(`/buckets/admin/${detail.id}/shares/${share.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    setDetail((current) => current ? { ...current, shares: current.shares.map((item) => (item.id === updated.id ? updated : item)) } : current);
+  }
+
+  async function saveEditedShareFiles(share: Share) {
+    if (!editingShareFileIds.length) {
+      setNotice("Select at least one file for this share.");
+      return;
+    }
+    await patchShare(share, { file_ids: editingShareFileIds });
+    setEditingShareId(null);
+    setNotice("Share file access updated.");
+  }
+
+  async function regenerateSharePasscode(share: Share) {
+    if (!detail) return;
+    const result = await call<{ share: Share; passcode: string }>(`/buckets/admin/${detail.id}/shares/${share.id}/regenerate-passcode`, {
+      method: "POST",
+    });
+    setSharePasscodes((codes) => ({ ...codes, [share.id]: result.passcode }));
+    setDetail((current) => current ? { ...current, shares: current.shares.map((item) => (item.id === result.share.id ? result.share : item)) } : current);
+    setNotice("Access code regenerated. Copy the invite from the Shares panel.");
+  }
+
+  function copyShareLink(share: Share) {
+    if (!share.share_url) {
+      setNotice("Share link is not available yet. Refresh the bucket and try again.");
+      return;
+    }
+    void copyText(share.share_url);
+  }
+
+  function copyShareInvite(share: Share) {
+    const passcode = sharePasscodes[share.id] || share.passcode;
+    if (!share.share_url || !passcode) {
+      setNotice("Regenerate the access code before copying the full invite.");
+      return;
+    }
+    void copyText(`Secure file room: ${share.share_url}\nAccess code: ${passcode}`);
+  }
+
+  async function setShareStatus(share: Share, statusValue: "active" | "revoked") {
+    if (statusValue === "revoked" && !window.confirm(`Revoke access for ${share.recipient_name}?`)) return;
+    await patchShare(share, { status: statusValue });
+    setNotice(statusValue === "revoked" ? "Share access revoked." : "Share access reactivated.");
   }
 
   const canCreateShareLinks =
     !!detail &&
-    selectedShareFileIds.length > 0 &&
     shareViewers.length > 0 &&
     shareViewers.every((viewer) => viewer.recipient_name.trim()) &&
+    shareViewers.every((viewer) => viewer.file_ids.length > 0) &&
     !busy;
 
   async function createShareLinks() {
     if (!detail || !canCreateShareLinks) return;
     setBusy(true);
     try {
-      const created: CreatedShareInvite[] = [];
+      let createdCount = 0;
       for (const viewer of shareViewers) {
         const passcode = viewer.passcode.trim() || generateAccessCode();
         const res = await call<Share>(`/buckets/admin/${detail.id}/shares`, {
@@ -507,22 +611,18 @@ export default function BucketsAdminPage() {
             recipient_email: viewer.recipient_email.trim() || null,
             passcode,
             can_download: viewer.can_download,
-            file_ids: selectedShareFileIds,
+            expires_at: shareExpiryDate(viewer.expires_days),
+            file_ids: viewer.file_ids,
           }),
         });
-        created.push({
-          id: viewer.id,
-          name: viewer.recipient_name.trim(),
-          email: viewer.recipient_email.trim() || undefined,
-          url: res.share_url ?? "",
-          passcode: res.passcode ?? passcode,
-          can_download: viewer.can_download,
-        });
+        createdCount += 1;
+        setSharePasscodes((codes) => ({ ...codes, [res.id]: res.passcode ?? passcode }));
       }
-      setCreatedShareLinks(created);
       const row = await call<BucketDetail>(`/buckets/admin/${detail.id}`);
       setDetail(row);
-      setNotice(`${created.length} share link${created.length === 1 ? "" : "s"} created.`);
+      setShareViewers([newShareViewerDraft()]);
+      setSharePopupOpen(false);
+      setNotice(`${createdCount} share link${createdCount === 1 ? "" : "s"} created. Copy links and access codes from the Shares panel.`);
     } finally {
       setBusy(false);
     }
@@ -670,6 +770,68 @@ export default function BucketsAdminPage() {
   const field = inputStyle(t);
   const primary = buttonStyle(t, "primary");
   const secondary = buttonStyle(t, "secondary");
+  const requestedDocNameById = new Map((detail?.requested_documents ?? []).map((doc) => [doc.id, doc.name]));
+
+  function renderShareFilePicker(args: {
+    selectedIds: string[];
+    search: string;
+    onSearch: (value: string) => void;
+    onToggle: (fileId: string) => void;
+    onSetSelected: (fileIds: string[]) => void;
+  }) {
+    const query = args.search.trim().toLowerCase();
+    const filtered = visibleFiles.filter((file) => {
+      if (!query) return true;
+      return [
+        file.file_name,
+        file.uploaded_by_name,
+        file.uploaded_by_email,
+        requestedDocNameById.get(file.requested_document_id || ""),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    });
+    const selectedFiles = visibleFiles.filter((file) => args.selectedIds.includes(file.id));
+    return (
+      <div style={shareFilePickerStyle(t)}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+          <strong style={{ color: t.ink, fontSize: 13 }}>{args.selectedIds.length} file{args.selectedIds.length === 1 ? "" : "s"} selected</strong>
+          <button style={miniButtonStyle(t)} onClick={() => args.onSetSelected([])}>Clear</button>
+        </div>
+        {selectedFiles.length ? (
+          <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {selectedFiles.slice(0, 3).map((file) => file.file_name).join(", ")}{selectedFiles.length > 3 ? ` +${selectedFiles.length - 3} more` : ""}
+          </div>
+        ) : (
+          <div style={{ color: t.warn, fontSize: 12, fontWeight: 800 }}>Select at least one file for this viewer.</div>
+        )}
+        <input style={field} value={args.search} onChange={(event) => args.onSearch(event.target.value)} placeholder="Search files" />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button style={secondary} onClick={() => args.onSetSelected(filtered.map((file) => file.id))} disabled={!filtered.length}>Select visible</button>
+          {selectedShareFileIds.length ? (
+            <button style={secondary} onClick={() => args.onSetSelected(selectedShareFileIds)}>Use checked files</button>
+          ) : null}
+        </div>
+        <div style={{ display: "grid", gap: 6, maxHeight: 180, overflowY: "auto" }}>
+          {filtered.length ? filtered.map((file) => (
+            <label key={file.id} style={shareFileOptionStyle(t)}>
+              <input type="checkbox" checked={args.selectedIds.includes(file.id)} onChange={() => args.onToggle(file.id)} />
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", color: t.ink, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.file_name}</span>
+                <span style={{ color: t.ink3, fontSize: 11 }}>
+                  {requestedDocNameById.get(file.requested_document_id || "") || "General upload"} | {formatSize(file.size_bytes)}
+                </span>
+              </span>
+            </label>
+          )) : (
+            <div style={emptyInlineStyle(t)}>No uploaded files match this search.</div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
@@ -962,7 +1124,6 @@ export default function BucketsAdminPage() {
                 }}
                 onClick={() => {
                   setSharePopupOpen((value) => !value);
-                  setCreatedShareLinks([]);
                 }}
                 aria-label="Share selected files"
                 title="Share selected files"
@@ -973,77 +1134,34 @@ export default function BucketsAdminPage() {
                 <div style={sharePopupStyle(t)}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", paddingBottom: 10, borderBottom: `1px solid ${t.line}` }}>
                     <div>
-                      <div style={{ color: t.ink, fontWeight: 900, fontSize: 14 }}>Share selected files</div>
-                      <div style={{ color: t.ink3, fontSize: 12, marginTop: 2 }}>{selectedShareFileIds.length} file{selectedShareFileIds.length === 1 ? "" : "s"} selected</div>
+                      <div style={{ color: t.ink, fontWeight: 900, fontSize: 14 }}>Create share links</div>
+                      <div style={{ color: t.ink3, fontSize: 12, marginTop: 2 }}>Choose files separately for each viewer.</div>
                     </div>
                     <button style={iconButtonStyle(t)} onClick={() => setSharePopupOpen(false)} aria-label="Close share popup">
                       <Icon name="x" size={14} />
                     </button>
                   </div>
 
-                  {createdShareLinks.length ? (
-                    <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                      <div style={successBoxStyle(t)}>
-                        <Icon name="check" size={15} />
-                        {createdShareLinks.length} invite link{createdShareLinks.length === 1 ? "" : "s"} ready
-                      </div>
-                      <div style={{ display: "grid", gap: 8, maxHeight: 240, overflowY: "auto" }}>
-                        {createdShareLinks.map((link) => (
-                          <div key={link.id} style={shareResultStyle(t)}>
-                            <div style={{ minWidth: 0 }}>
-                              <strong style={{ color: t.ink }}>{link.name}</strong>
-                              <div style={{ color: t.ink3, fontSize: 12 }}>{link.email || "No email entered"} | {link.can_download ? "download allowed" : "preview only"}</div>
-                              <code style={{ display: "block", color: t.ink2, overflowWrap: "anywhere", fontSize: 11.5, marginTop: 5 }}>{link.url}</code>
-                              {link.passcode ? <div style={{ color: t.ink2, fontSize: 12, marginTop: 4 }}>Access code: <strong>{link.passcode}</strong></div> : null}
-                            </div>
-                            <button style={secondary} onClick={() => copyText(link.passcode ? `Secure file room: ${link.url}\nAccess code: ${link.passcode}` : link.url)}>Copy</button>
+                  <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                    {visibleFiles.length === 0 ? (
+                      <div style={emptyInlineStyle(t)}>Upload files before creating share links.</div>
+                    ) : null}
+                    <div style={{ display: "grid", gap: 8, maxHeight: 560, overflowY: "auto" }}>
+                      {shareViewers.map((viewer, index) => (
+                        <div key={viewer.id} style={shareViewerRowStyle(t)}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                            <strong style={{ color: t.ink, fontSize: 13 }}>Viewer {index + 1}</strong>
+                            <button style={iconButtonStyle(t)} onClick={() => removeShareViewer(viewer.id)} disabled={shareViewers.length === 1} aria-label={`Remove viewer ${index + 1}`}>
+                              <Icon name="x" size={13} />
+                            </button>
                           </div>
-                        ))}
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                        <button style={secondary} onClick={() => copyText(createdShareLinks.map((link) => `${link.name}: ${link.url}\nAccess code: ${link.passcode || ""}`).join("\n\n"))}>Copy all</button>
-                        <button
-                          style={secondary}
-                          onClick={() => {
-                            setCreatedShareLinks([]);
-                            setShareViewers([newShareViewerDraft()]);
-                          }}
-                        >
-                          New share
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                      {selectedShareFiles.length ? (
-                        <div style={{ display: "grid", gap: 6 }}>
-                          {selectedShareFiles.slice(0, 4).map((file) => (
-                            <div key={file.id} style={selectedFileChipStyle(t)}>
-                              <Icon name="file" size={13} />
-                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.file_name}</span>
-                            </div>
-                          ))}
-                          {selectedShareFiles.length > 4 ? <div style={{ color: t.ink3, fontSize: 12 }}>+{selectedShareFiles.length - 4} more selected</div> : null}
-                        </div>
-                      ) : (
-                        <div style={emptyInlineStyle(t)}>Select files in the Files section before creating share links.</div>
-                      )}
-
-                      <div style={{ display: "grid", gap: 8, maxHeight: 280, overflowY: "auto" }}>
-                        {shareViewers.map((viewer, index) => (
-                          <div key={viewer.id} style={shareViewerRowStyle(t)}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                              <strong style={{ color: t.ink, fontSize: 13 }}>Viewer {index + 1}</strong>
-                              <button style={iconButtonStyle(t)} onClick={() => removeShareViewer(viewer.id)} disabled={shareViewers.length === 1} aria-label={`Remove viewer ${index + 1}`}>
-                                <Icon name="x" size={13} />
-                              </button>
-                            </div>
-                            <input style={field} placeholder="Viewer name" value={viewer.recipient_name} onChange={(event) => updateShareViewer(viewer.id, { recipient_name: event.target.value })} />
-                            <input style={field} placeholder="Viewer email optional" value={viewer.recipient_email} onChange={(event) => updateShareViewer(viewer.id, { recipient_email: event.target.value })} />
-                            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
-                              <input style={field} placeholder="Access code" value={viewer.passcode} onChange={(event) => updateShareViewer(viewer.id, { passcode: event.target.value })} />
-                              <button style={secondary} onClick={() => generateShareCode(viewer.id)}>Generate</button>
-                            </div>
+                          <input style={field} placeholder="Viewer name" value={viewer.recipient_name} onChange={(event) => updateShareViewer(viewer.id, { recipient_name: event.target.value })} />
+                          <input style={field} placeholder="Viewer email optional" value={viewer.recipient_email} onChange={(event) => updateShareViewer(viewer.id, { recipient_email: event.target.value })} />
+                          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
+                            <input style={field} placeholder="Access code" value={viewer.passcode} onChange={(event) => updateShareViewer(viewer.id, { passcode: event.target.value })} />
+                            <button style={secondary} onClick={() => generateShareCode(viewer.id)}>Generate</button>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
                             <label style={permissionRowStyle(t)}>
                               <span>
                                 <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Allow download</strong>
@@ -1051,18 +1169,37 @@ export default function BucketsAdminPage() {
                               </span>
                               <input type="checkbox" checked={viewer.can_download} onChange={(event) => updateShareViewer(viewer.id, { can_download: event.target.checked })} />
                             </label>
+                            <label style={permissionRowStyle(t)}>
+                              <span>
+                                <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Expires</strong>
+                                <span style={{ color: t.ink3, fontSize: 12 }}>Default 7 days.</span>
+                              </span>
+                              <select style={{ ...field, width: 92 }} value={viewer.expires_days} onChange={(event) => updateShareViewer(viewer.id, { expires_days: Number(event.target.value) })}>
+                                <option value={1}>1 day</option>
+                                <option value={7}>7 days</option>
+                                <option value={14}>14 days</option>
+                                <option value={30}>30 days</option>
+                              </select>
+                            </label>
                           </div>
-                        ))}
-                      </div>
-                      <button style={secondary} onClick={addShareViewer}>
-                        <Icon name="plus" size={14} />
-                        Add another user
-                      </button>
-                      <button style={{ ...primary, width: "100%", opacity: canCreateShareLinks ? 1 : 0.68 }} onClick={createShareLinks} disabled={!canCreateShareLinks}>
-                        {busy ? "Creating links..." : "Create share links"}
-                      </button>
+                          {renderShareFilePicker({
+                            selectedIds: viewer.file_ids,
+                            search: viewer.file_search,
+                            onSearch: (value) => updateShareViewer(viewer.id, { file_search: value }),
+                            onToggle: (fileId) => toggleShareViewerFile(viewer.id, fileId),
+                            onSetSelected: (fileIds) => setShareViewerFileIds(viewer.id, fileIds),
+                          })}
+                        </div>
+                      ))}
                     </div>
-                  )}
+                    <button style={secondary} onClick={addShareViewer}>
+                      <Icon name="plus" size={14} />
+                      Add another user
+                    </button>
+                    <button style={{ ...primary, width: "100%", opacity: canCreateShareLinks ? 1 : 0.68 }} onClick={createShareLinks} disabled={!canCreateShareLinks}>
+                      {busy ? "Creating links..." : "Create share links"}
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -1240,15 +1377,77 @@ export default function BucketsAdminPage() {
                 <div style={{ display: "grid", gap: 8 }}>
                   {detail.shares.length === 0 ? (
                     <div style={{ color: t.ink3, fontSize: 13 }}>No share links yet.</div>
-                  ) : detail.shares.map((share) => (
-                    <div key={share.id} style={smallRowStyle(t)}>
-                      <div style={{ minWidth: 0 }}>
-                        <strong style={{ color: t.ink }}>{share.recipient_name}</strong>
-                        <div style={{ color: t.ink3, fontSize: 12 }}>{share.view_count} views | {share.can_download ? "downloads on" : "view only"}</div>
+                  ) : detail.shares.map((share) => {
+                    const files = shareFilesFor(share);
+                    const isExpired = Boolean(share.expires_at && new Date(share.expires_at).getTime() <= Date.now());
+                    const isRevoked = share.status === "revoked";
+                    const effectiveStatus = isRevoked ? "Revoked" : isExpired ? "Expired" : statusLabel(share.status);
+                    const passcodeAvailable = Boolean(sharePasscodes[share.id] || share.passcode);
+                    return (
+                      <div key={share.id} style={{ ...smallRowStyle(t), display: "grid", gap: 10 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, alignItems: "start" }}>
+                          <div style={{ minWidth: 0 }}>
+                            <strong style={{ color: t.ink }}>{share.recipient_name}</strong>
+                            <div style={{ color: t.ink3, fontSize: 12 }}>{share.recipient_email || "No email"} | {files.length} file{files.length === 1 ? "" : "s"}</div>
+                            <div style={{ color: t.ink3, fontSize: 12 }}>
+                              {share.view_count} views | {share.download_count} downloads | {share.can_download ? "downloads on" : "view only"}
+                            </div>
+                            <div style={{ color: t.ink3, fontSize: 12 }}>
+                              Expires {formatDate(share.expires_at)} | Last access {formatDateTime(share.last_accessed_at)}
+                            </div>
+                          </div>
+                          <Pill color={isRevoked || isExpired ? t.danger : undefined} bg={isRevoked || isExpired ? t.dangerBg : undefined}>{effectiveStatus}</Pill>
+                        </div>
+                        {files.length ? (
+                          <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {files.slice(0, 3).map((file) => file.file_name).join(", ")}{files.length > 3 ? ` +${files.length - 3} more` : ""}
+                          </div>
+                        ) : null}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          <button style={secondary} onClick={() => copyShareLink(share)}>Copy link</button>
+                          <button style={secondary} onClick={() => regenerateSharePasscode(share)}>Regenerate code</button>
+                          <button style={secondary} onClick={() => copyShareInvite(share)} disabled={!passcodeAvailable}>Copy invite</button>
+                          <button style={secondary} onClick={() => openEditShareFiles(share)}>Edit files</button>
+                          <select
+                            style={{ ...field, width: 118, height: 34, paddingTop: 0, paddingBottom: 0 }}
+                            defaultValue=""
+                            onChange={(event) => {
+                              const days = Number(event.target.value);
+                              if (days) void patchShare(share, { expires_at: shareExpiryDate(days) }).then(() => setNotice("Share expiration updated."));
+                              event.currentTarget.value = "";
+                            }}
+                          >
+                            <option value="">Extend</option>
+                            <option value={1}>1 day</option>
+                            <option value={7}>7 days</option>
+                            <option value={14}>14 days</option>
+                            <option value={30}>30 days</option>
+                          </select>
+                          {isRevoked ? (
+                            <button style={secondary} onClick={() => setShareStatus(share, "active")} disabled={isExpired}>Reactivate</button>
+                          ) : (
+                            <button style={{ ...secondary, color: t.danger }} onClick={() => setShareStatus(share, "revoked")}>Revoke</button>
+                          )}
+                        </div>
+                        {editingShareId === share.id ? (
+                          <div style={{ display: "grid", gap: 8, paddingTop: 8, borderTop: `1px solid ${t.line}` }}>
+                            <strong style={{ color: t.ink, fontSize: 13 }}>Edit visible files</strong>
+                            {renderShareFilePicker({
+                              selectedIds: editingShareFileIds,
+                              search: editingShareSearch,
+                              onSearch: setEditingShareSearch,
+                              onToggle: (fileId) => setEditingShareFileIds((ids) => ids.includes(fileId) ? ids.filter((id) => id !== fileId) : [...ids, fileId]),
+                              onSetSelected: setEditingShareFileIds,
+                            })}
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                              <button style={secondary} onClick={() => setEditingShareId(null)}>Cancel</button>
+                              <button style={primary} onClick={() => saveEditedShareFiles(share)} disabled={!editingShareFileIds.length}>Save files</button>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
-                      <Pill>{statusLabel(share.status)}</Pill>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </PanelBox>
 
@@ -1691,34 +1890,41 @@ function adminUploadDropZoneStyle(t: ReturnType<typeof useTheme>["t"], active: b
   };
 }
 
-function successBoxStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+function shareFilePickerStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
   return {
-    display: "flex",
-    alignItems: "center",
+    display: "grid",
     gap: 8,
     padding: 10,
-    border: `1px solid ${t.profit}`,
+    border: `1px solid ${t.line}`,
     borderRadius: 8,
-    background: t.profitBg,
-    color: t.profit,
-    fontWeight: 850,
-    fontSize: 13,
+    background: t.surface,
   };
 }
 
-function selectedFileChipStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+function shareFileOptionStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
   return {
-    minWidth: 0,
     display: "flex",
     alignItems: "center",
-    gap: 7,
+    gap: 9,
+    minWidth: 0,
     padding: "7px 8px",
     border: `1px solid ${t.line}`,
     borderRadius: 8,
     background: t.surface2,
+    cursor: "pointer",
+  };
+}
+
+function miniButtonStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+  return {
+    border: `1px solid ${t.line}`,
+    borderRadius: 7,
+    background: t.surface2,
     color: t.ink2,
-    fontSize: 12,
-    fontWeight: 750,
+    padding: "4px 7px",
+    fontSize: 11,
+    fontWeight: 850,
+    cursor: "pointer",
   };
 }
 
@@ -1743,19 +1949,6 @@ function shareViewerRowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties
   return {
     display: "grid",
     gap: 8,
-    padding: 10,
-    border: `1px solid ${t.line}`,
-    borderRadius: 8,
-    background: t.surface2,
-  };
-}
-
-function shareResultStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto",
-    gap: 10,
-    alignItems: "center",
     padding: 10,
     border: `1px solid ${t.line}`,
     borderRadius: 8,
@@ -1859,6 +2052,7 @@ function activityLabel(action: string) {
     share_created: "Share created",
     share_updated: "Share updated",
     share_status_changed: "Share status changed",
+    share_passcode_regenerated: "Share access code regenerated",
     share_accessed: "Share accessed",
     share_passcode_failed: "Share passcode failed",
     shared_file_review_opened: "Shared preview opened",
