@@ -255,6 +255,7 @@ export default function BucketSharePage() {
       {reviewFile ? (
         <BucketFileReviewPanel
           title="Shared file review"
+          downloadUrl={reviewFile.download_url}
           loadReview={() => loadSharedReview(reviewFile)}
           saveAnnotation={(payload) => saveSharedAnnotation(reviewFile, payload)}
           onClose={() => setReviewFile(null)}
