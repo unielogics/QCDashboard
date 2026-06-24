@@ -29,7 +29,9 @@ type RequestedDoc = {
   id: string;
   name: string;
   category?: string | null;
+  description?: string | null;
   required: boolean;
+  allow_multiple_files?: boolean;
   status: string;
 };
 type BucketFile = {
@@ -63,8 +65,17 @@ type BucketDetail = Bucket & {
   notes: Note[];
   activity: Activity[];
 };
-type Template = { id: string; name: string; category?: string | null; required: boolean };
-type PackageKey = "standard" | "urchoice";
+type Template = {
+  id: string;
+  name: string;
+  category?: string | null;
+  description?: string | null;
+  required: boolean;
+  allow_multiple_files?: boolean;
+  is_custom?: boolean;
+  save_to_library?: boolean;
+};
+type PackageKey = "standard" | "urchoice" | "other";
 type UploadInvite = { id: string; recipient_name: string; recipient_email: string; passcode: string };
 type UploadInviteLink = { name: string; email?: string; url: string; passcode: string };
 
@@ -76,7 +87,6 @@ const URCHOICE_DEALER_DOCS: Template[] = [
   { id: "urchoice-bank-statements", name: "6 months bank statement", category: "UrChoice Dealer Funding", required: true },
   { id: "urchoice-tax-returns", name: "Last 2 years of Tax Returns business and personal", category: "UrChoice Dealer Funding", required: true },
   { id: "urchoice-personal-irs", name: "Personal: IRS last 2 years", category: "UrChoice Dealer Funding", required: true },
-  { id: "urchoice-soft-pull", name: "Soft pull to verify credit of at least 680", category: "UrChoice Dealer Funding", required: true },
 ];
 
 export default function BucketsAdminPage() {
@@ -96,6 +106,13 @@ export default function BucketsAdminPage() {
   const [createStatus, setCreateStatus] = useState<{ kind: "working" | "success" | "error"; message: string } | null>(null);
   const [createPackage, setCreatePackage] = useState<PackageKey>("standard");
   const [createChecked, setCreateChecked] = useState<Record<string, boolean>>({});
+  const [customDocs, setCustomDocs] = useState<Template[]>([]);
+  const [customDocDraft, setCustomDocDraft] = useState({
+    name: "",
+    description: "",
+    required: true,
+    allow_multiple_files: false,
+  });
   const [bucketForm, setBucketForm] = useState({
     name: "",
     client_name: "",
@@ -158,7 +175,9 @@ export default function BucketsAdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.role]);
 
-  const createDocs = createPackage === "urchoice" ? URCHOICE_DEALER_DOCS : templates;
+  const reusableOtherDocs = templates.filter((doc) => (doc.category || "").toLowerCase() === "other");
+  const standardDocs = templates.filter((doc) => (doc.category || "").toLowerCase() !== "other");
+  const createDocs = createPackage === "urchoice" ? URCHOICE_DEALER_DOCS : createPackage === "other" ? [...reusableOtherDocs, ...customDocs] : standardDocs;
   const selectedCreateDocs = createDocs.filter((doc) => createChecked[doc.id]);
   const selectedShareFileIds = Object.entries(shareFiles).filter(([, selected]) => selected).map(([id]) => id);
   const visibleFiles = useMemo(() => uniqueBucketFiles(detail?.files ?? []), [detail?.files]);
@@ -189,7 +208,15 @@ export default function BucketsAdminPage() {
         setCreateStatus({ kind: "working", message: `Adding requested files ${index + 1} of ${selectedCreateDocs.length}...` });
         await call(`/buckets/admin/${row.id}/requested-documents`, {
           method: "POST",
-          body: JSON.stringify({ name: doc.name, category: doc.category, required: doc.required }),
+          body: JSON.stringify({
+            name: doc.name,
+            category: doc.category,
+            description: doc.description || null,
+            required: doc.required,
+            allow_multiple_files: !!doc.allow_multiple_files,
+            is_custom: !!doc.is_custom,
+            save_to_library: !!doc.save_to_library,
+          }),
         });
       }
       const uploadLinks: UploadInviteLink[] = [];
@@ -211,6 +238,8 @@ export default function BucketsAdminPage() {
       setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
       setCreateInvites([]);
       setCreateChecked({});
+      setCustomDocs([]);
+      setCustomDocDraft({ name: "", description: "", required: true, allow_multiple_files: false });
       setCreatePackage("standard");
       if (uploadLinks.length) {
         setCreateStatus({ kind: "success", message: "Bucket created. Upload invite links are ready below." });
@@ -239,6 +268,29 @@ export default function BucketsAdminPage() {
       },
     ]);
     setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
+  }
+
+  function toggleCreateDoc(docId: string) {
+    setCreateChecked((checked) => ({ ...checked, [docId]: !checked[docId] }));
+  }
+
+  function addCustomDoc() {
+    const name = customDocDraft.name.trim();
+    if (!name) return;
+    const id = `custom-${crypto.randomUUID()}`;
+    const doc: Template = {
+      id,
+      name,
+      category: "Other",
+      description: customDocDraft.description.trim() || null,
+      required: customDocDraft.required,
+      allow_multiple_files: customDocDraft.allow_multiple_files,
+      is_custom: true,
+      save_to_library: true,
+    };
+    setCustomDocs((rows) => [...rows, doc]);
+    setCreateChecked((checked) => ({ ...checked, [id]: true }));
+    setCustomDocDraft({ name: "", description: "", required: true, allow_multiple_files: false });
   }
 
   function generateShareCode() {
@@ -326,6 +378,8 @@ export default function BucketsAdminPage() {
             setCreateStatus(null);
             setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
             setCreateInvites([]);
+            setCustomDocs([]);
+            setCustomDocDraft({ name: "", description: "", required: true, allow_multiple_files: false });
             setCreateOpen(true);
           }}
         >
@@ -412,20 +466,70 @@ export default function BucketsAdminPage() {
                   >
                     <option value="standard">Standard Lending File</option>
                     <option value="urchoice">UrChoice Dealer Funding</option>
+                    <option value="other">Other</option>
                   </select>
                   <div style={{ color: t.ink3, fontSize: 12, alignSelf: "center" }}>
                     {selectedCreateDocs.length} selected
                   </div>
                 </div>
+                {createPackage === "other" ? (
+                  <div style={{ ...panelStyle(t), padding: 12, marginTop: 12, background: t.surface2 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 10, alignItems: "center" }}>
+                      <input
+                        style={field}
+                        placeholder="Other document option"
+                        value={customDocDraft.name}
+                        onChange={(e) => setCustomDocDraft({ ...customDocDraft, name: e.target.value })}
+                      />
+                      <label style={toggleLabelStyle(t)}>
+                        <input
+                          type="checkbox"
+                          checked={customDocDraft.allow_multiple_files}
+                          onChange={(e) => setCustomDocDraft({ ...customDocDraft, allow_multiple_files: e.target.checked })}
+                        />
+                        Multi-file
+                      </label>
+                      <button style={secondary} onClick={addCustomDoc} disabled={!customDocDraft.name.trim()}>
+                        <Icon name="plus" size={14} />
+                        Add option
+                      </button>
+                      <textarea
+                        style={{ ...field, gridColumn: "1 / -1", minHeight: 70, paddingTop: 10, resize: "vertical" }}
+                        placeholder="Description optional"
+                        value={customDocDraft.description}
+                        onChange={(e) => setCustomDocDraft({ ...customDocDraft, description: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                ) : null}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 8, maxHeight: 260, overflowY: "auto", marginTop: 12 }}>
-                  {createDocs.map((doc) => (
-                    <label key={doc.id} style={checkRowStyle(t)}>
-                      <input type="checkbox" checked={!!createChecked[doc.id]} onChange={(e) => setCreateChecked({ ...createChecked, [doc.id]: e.target.checked })} />
+                  {createDocs.length === 0 ? (
+                    <div style={{ ...emptyInlineStyle(t), gridColumn: "1 / -1" }}>
+                      No Other options yet.
+                    </div>
+                  ) : createDocs.map((doc) => (
+                    <div
+                      key={doc.id}
+                      role="checkbox"
+                      aria-checked={!!createChecked[doc.id]}
+                      tabIndex={0}
+                      style={checkRowStyle(t, !!createChecked[doc.id])}
+                      onClick={() => toggleCreateDoc(doc.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          toggleCreateDoc(doc.id);
+                        }
+                      }}
+                    >
+                      <input type="checkbox" checked={!!createChecked[doc.id]} readOnly tabIndex={-1} />
                       <span>
                         <span style={{ display: "block", color: t.ink, fontWeight: 750 }}>{doc.name}</span>
                         <span style={{ color: t.ink3, fontSize: 12 }}>{doc.category || "Standard Lending File"}</span>
+                        {doc.description ? <span style={{ display: "block", color: t.ink3, fontSize: 12, marginTop: 4 }}>{doc.description}</span> : null}
+                        {doc.allow_multiple_files ? <span style={{ display: "block", color: t.ink2, fontSize: 12, marginTop: 4 }}>Multiple files allowed</span> : null}
                       </span>
-                    </label>
+                    </div>
                   ))}
                 </div>
               </PanelBox>
@@ -592,7 +696,10 @@ export default function BucketsAdminPage() {
                     <div key={doc.id} style={smallRowStyle(t)}>
                       <div style={{ minWidth: 0 }}>
                         <strong style={{ color: t.ink }}>{doc.name}</strong>
-                        <div style={{ color: t.ink3, fontSize: 12 }}>{doc.category || "General"}{doc.required ? " | Required" : ""}</div>
+                        <div style={{ color: t.ink3, fontSize: 12 }}>
+                          {doc.category || "General"}{doc.required ? " | Required" : ""}{doc.allow_multiple_files ? " | Multiple files" : ""}
+                        </div>
+                        {doc.description ? <div style={{ color: t.ink3, fontSize: 12, marginTop: 3 }}>{doc.description}</div> : null}
                       </div>
                       <Pill color={doc.status === "uploaded" ? t.profit : undefined} bg={doc.status === "uploaded" ? t.profitBg : undefined}>
                         {statusLabel(doc.status)}
@@ -891,17 +998,47 @@ function buttonStyle(t: ReturnType<typeof useTheme>["t"], variant: "primary" | "
   };
 }
 
-function checkRowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+function checkRowStyle(t: ReturnType<typeof useTheme>["t"], selected = false): CSSProperties {
   return {
     display: "grid",
     gridTemplateColumns: "18px minmax(0, 1fr)",
     gap: 9,
     alignItems: "start",
     padding: 10,
-    border: `1px solid ${t.line}`,
+    border: `1px solid ${selected ? t.petrol : t.line}`,
+    borderRadius: 8,
+    background: selected ? t.petrolSoft : t.surface2,
+    color: t.ink2,
+    fontSize: 13,
+    cursor: "pointer",
+    outline: "none",
+  };
+}
+
+function toggleLabelStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+  return {
+    height: 38,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 7,
+    padding: "0 10px",
+    border: `1px solid ${t.lineStrong}`,
+    borderRadius: 8,
+    background: t.surface,
+    color: t.ink2,
+    fontSize: 12,
+    fontWeight: 800,
+    whiteSpace: "nowrap",
+  };
+}
+
+function emptyInlineStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+  return {
+    padding: 12,
+    border: `1px dashed ${t.lineStrong}`,
     borderRadius: 8,
     background: t.surface2,
-    color: t.ink2,
+    color: t.ink3,
     fontSize: 13,
   };
 }

@@ -6,7 +6,15 @@ import { useParams } from "next/navigation";
 import { QCMark } from "@/components/QCMark";
 import { apiBase } from "@/lib/api";
 
-type RequestedDoc = { id: string; name: string; category?: string | null; required: boolean; status: string };
+type RequestedDoc = {
+  id: string;
+  name: string;
+  category?: string | null;
+  description?: string | null;
+  required: boolean;
+  allow_multiple_files?: boolean;
+  status: string;
+};
 type BucketSummary = { name: string; client_name?: string | null; purpose?: string | null };
 type RequestInfo = {
   bucket: BucketSummary;
@@ -343,6 +351,7 @@ export default function BucketRequestPage() {
                       <small style={muted}>
                         {doc.required ? "Required" : "Optional"} - {allowsMultipleFiles(doc) ? "multiple files allowed" : "one file"}{count ? ` - ${count} linked` : ""}
                       </small>
+                      {doc.description ? <small style={docDescription}>{doc.description}</small> : null}
                     </div>
                     );
                   })}
@@ -406,6 +415,7 @@ function isUploadErrorStatus(value: string): boolean {
 }
 
 function allowsMultipleFiles(doc: RequestedDoc): boolean {
+  if (typeof doc.allow_multiple_files === "boolean") return doc.allow_multiple_files;
   const name = doc.name.toLowerCase();
   return name.includes("bank statement") || name.includes("tax return") || name.includes("irs");
 }
@@ -461,6 +471,7 @@ const docList: CSSProperties = { display: "grid", gap: 10, marginTop: 12 };
 const docItem: CSSProperties = { display: "grid", gap: 4, borderBottom: "1px solid #e5e7eb", paddingBottom: 10, fontWeight: 800 };
 const docItemLinked: CSSProperties = { border: "1px solid #bbf7d0", borderRadius: 10, padding: 10, background: "#f0fdf4" };
 const docTitleRow: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 };
+const docDescription: CSSProperties = { color: "#475569", fontWeight: 600, lineHeight: 1.4 };
 const checkBadge: CSSProperties = { border: "1px solid #86efac", borderRadius: 999, padding: "3px 8px", color: "#166534", background: "#dcfce7", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
 const openBadge: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 999, padding: "3px 8px", color: "#64748b", background: "#f8fafc", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
 const notesField: CSSProperties = { width: "100%", minHeight: 160, border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, font: "inherit", resize: "vertical", boxSizing: "border-box", marginTop: 12 };
