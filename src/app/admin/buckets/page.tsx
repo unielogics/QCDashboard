@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
@@ -45,6 +45,13 @@ type BucketFile = {
   status: string;
   created_at: string;
 };
+type AdminQueuedFile = {
+  id: string;
+  file: File;
+  requested_document_id: string;
+  status: "ready" | "uploading" | "uploaded" | "error";
+  message?: string;
+};
 type Share = {
   id: string;
   recipient_name: string;
@@ -78,6 +85,7 @@ type Template = {
 type PackageKey = "standard" | "urchoice" | "other";
 type UploadInvite = { id: string; recipient_name: string; recipient_email: string; passcode: string };
 type UploadInviteLink = { name: string; email?: string; url: string; passcode: string };
+type UploadInitResponse = { file_id: string; upload_url: string; required_headers: Record<string, string> };
 
 const BUCKET_TYPES = ["Loan File", "UrChoice Dealer Funding", "Partner Package", "Borrower", "Funding Opportunity"];
 const URCHOICE_DEALER_DOCS: Template[] = [
@@ -94,6 +102,7 @@ export default function BucketsAdminPage() {
   const router = useRouter();
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const { getToken } = useAuth();
+  const adminFileInputRef = useRef<HTMLInputElement | null>(null);
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [detail, setDetail] = useState<BucketDetail | null>(null);
@@ -122,10 +131,13 @@ export default function BucketsAdminPage() {
   });
   const [createInviteDraft, setCreateInviteDraft] = useState({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
   const [createInvites, setCreateInvites] = useState<UploadInvite[]>([]);
-  const [shareOpen, setShareOpen] = useState(false);
   const [shareFiles, setShareFiles] = useState<Record<string, boolean>>({});
   const [shareForm, setShareForm] = useState({ recipient_name: "", recipient_email: "", passcode: "", can_download: false });
   const [createdShare, setCreatedShare] = useState<{ url: string; passcode?: string | null } | null>(null);
+  const [adminUploadFiles, setAdminUploadFiles] = useState<AdminQueuedFile[]>([]);
+  const [adminUploadForm, setAdminUploadForm] = useState({ uploader_name: "", uploader_email: "", note: "" });
+  const [adminUploadStatus, setAdminUploadStatus] = useState<{ kind: "working" | "success" | "error"; message: string } | null>(null);
+  const [adminUploading, setAdminUploading] = useState(false);
   const [adminNote, setAdminNote] = useState("");
   const [reviewFile, setReviewFile] = useState<BucketFile | null>(null);
 
@@ -147,8 +159,10 @@ export default function BucketsAdminPage() {
     const row = await call<BucketDetail>(`/buckets/admin/${bucketId}`);
     setDetail(row);
     setShareFiles({});
-    setShareOpen(false);
     setCreatedShare(null);
+    setAdminUploadFiles([]);
+    setAdminUploadStatus(null);
+    setAdminUploadForm((form) => ({ ...form, uploader_name: row.client_name || form.uploader_name || "", uploader_email: "" }));
   }
 
   async function deleteBucket(bucket: Bucket) {
@@ -181,6 +195,14 @@ export default function BucketsAdminPage() {
   const selectedCreateDocs = createDocs.filter((doc) => createChecked[doc.id]);
   const selectedShareFileIds = Object.entries(shareFiles).filter(([, selected]) => selected).map(([id]) => id);
   const visibleFiles = useMemo(() => uniqueBucketFiles(detail?.files ?? []), [detail?.files]);
+  const selectedShareFiles = visibleFiles.filter((file) => selectedShareFileIds.includes(file.id));
+  const canAdminUpload = Boolean(
+    detail &&
+      adminUploadForm.uploader_name.trim() &&
+      adminUploadFiles.length > 0 &&
+      adminUploadFiles.every((file) => file.status === "ready" || file.status === "error") &&
+      !adminUploading,
+  );
   const filteredBuckets = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return buckets;
@@ -317,6 +339,88 @@ export default function BucketsAdminPage() {
       setNotice("Share link created.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  function addAdminUploadFiles(files: FileList | File[]) {
+    setAdminUploadFiles((current) => {
+      const seen = new Set(current.map((item) => localFileKey(item.file)));
+      const incoming = Array.from(files)
+        .filter((file) => {
+          const key = localFileKey(file);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .map((file) => ({
+          id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
+          file,
+          requested_document_id: "",
+          status: "ready" as const,
+        }));
+      return [...current, ...incoming];
+    });
+    setAdminUploadStatus(null);
+    if (adminFileInputRef.current) adminFileInputRef.current.value = "";
+  }
+
+  function updateAdminUploadFile(id: string, patch: Partial<AdminQueuedFile>) {
+    setAdminUploadFiles((files) => files.map((file) => (file.id === id ? { ...file, ...patch } : file)));
+  }
+
+  function removeAdminUploadFile(id: string) {
+    setAdminUploadFiles((files) => files.filter((file) => file.id !== id));
+  }
+
+  async function submitAdminUploads() {
+    if (!detail || !canAdminUpload) return;
+    setAdminUploading(true);
+    setAdminUploadStatus({ kind: "working", message: "Uploading files..." });
+    let noteSaved = false;
+    let uploadedCount = 0;
+    let failedCount = 0;
+    try {
+      for (const queued of adminUploadFiles.filter((file) => file.status !== "uploaded")) {
+        try {
+          updateAdminUploadFile(queued.id, { status: "uploading", message: "Preparing upload" });
+          const init = await call<UploadInitResponse>(`/buckets/admin/${detail.id}/files/upload-init`, {
+            method: "POST",
+            body: JSON.stringify({
+              requested_document_id: queued.requested_document_id || null,
+              file_name: queued.file.name,
+              content_type: queued.file.type || "application/octet-stream",
+              size_bytes: queued.file.size,
+              uploader_name: adminUploadForm.uploader_name.trim(),
+              uploader_email: adminUploadForm.uploader_email.trim() || null,
+            }),
+          });
+          updateAdminUploadFile(queued.id, { message: "Uploading to storage" });
+          const put = await fetch(init.upload_url, { method: "PUT", body: queued.file, headers: init.required_headers });
+          if (!put.ok) throw new Error(`Storage rejected ${queued.file.name} (${put.status}).`);
+          updateAdminUploadFile(queued.id, { message: "Finalizing" });
+          await call<BucketFile>(`/buckets/admin/${detail.id}/files/complete`, {
+            method: "POST",
+            body: JSON.stringify({ file_id: init.file_id, note: !noteSaved ? adminUploadForm.note.trim() || null : null }),
+          });
+          noteSaved = noteSaved || !!adminUploadForm.note.trim();
+          uploadedCount += 1;
+          updateAdminUploadFile(queued.id, { status: "uploaded", message: "Uploaded" });
+        } catch (error) {
+          failedCount += 1;
+          updateAdminUploadFile(queued.id, { status: "error", message: readableError(error) });
+        }
+      }
+      await loadBucket(detail.id);
+      await loadBuckets();
+      if (failedCount === 0) {
+        setAdminUploadFiles([]);
+        setAdminUploadForm((form) => ({ ...form, note: "" }));
+        setAdminUploadStatus({ kind: "success", message: `${uploadedCount} file${uploadedCount === 1 ? "" : "s"} uploaded.` });
+      } else {
+        setAdminUploadStatus({ kind: "error", message: `${uploadedCount} uploaded. ${failedCount} file${failedCount === 1 ? "" : "s"} need attention.` });
+      }
+    } finally {
+      setAdminUploading(false);
     }
   }
 
@@ -605,54 +709,77 @@ export default function BucketsAdminPage() {
           title={detail.name}
           subtitle={`${detail.client_name || "No client"} | ${detail.purpose || "No purpose"} | ${detail.bucket_type || "Bucket"}`}
           onClose={() => setDetail(null)}
-          action={
-            <button style={iconButtonStyle(t)} onClick={() => setShareOpen((value) => !value)} aria-label="Share selected files" title="Share selected files">
-              <Icon name="link" size={16} />
-            </button>
-          }
         >
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.35fr) minmax(320px, .65fr)", gap: 12, alignItems: "start" }}>
             <div style={{ display: "grid", gap: 12 }}>
-              {shareOpen ? (
-                <PanelBox style={{ borderColor: t.petrol }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                    <SectionLabel style={{ margin: 0 }}>Invite file viewer</SectionLabel>
-                    <div style={{ color: t.ink3, fontSize: 12 }}>{selectedShareFileIds.length} selected</div>
-                  </div>
-                  {createdShare ? (
-                    <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                      <div style={{ color: t.ink2, fontSize: 13 }}>
-                        Send this personalized link and access code to the invited viewer. No email is sent automatically.
+              <PanelBox>
+                <SectionLabel action={`${adminUploadFiles.length} queued`}>Upload on behalf</SectionLabel>
+                <input ref={adminFileInputRef} type="file" multiple hidden onChange={(event) => event.target.files && addAdminUploadFiles(event.target.files)} />
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto", gap: 8 }}>
+                  <input
+                    style={field}
+                    placeholder="Uploaded for"
+                    value={adminUploadForm.uploader_name}
+                    onChange={(event) => setAdminUploadForm({ ...adminUploadForm, uploader_name: event.target.value })}
+                  />
+                  <input
+                    style={field}
+                    placeholder="Email optional"
+                    value={adminUploadForm.uploader_email}
+                    onChange={(event) => setAdminUploadForm({ ...adminUploadForm, uploader_email: event.target.value })}
+                  />
+                  <button style={secondary} onClick={() => adminFileInputRef.current?.click()} disabled={adminUploading}>
+                    <Icon name="upload" size={14} />
+                    Choose files
+                  </button>
+                  <textarea
+                    style={{ ...field, gridColumn: "1 / -1", minHeight: 62, paddingTop: 10, resize: "vertical" }}
+                    placeholder="Internal note optional"
+                    value={adminUploadForm.note}
+                    onChange={(event) => setAdminUploadForm({ ...adminUploadForm, note: event.target.value })}
+                  />
+                </div>
+                {adminUploadFiles.length ? (
+                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                    {adminUploadFiles.map((item) => (
+                      <div key={item.id} style={adminUploadRowStyle(t)}>
+                        <div style={{ minWidth: 0 }}>
+                          <strong style={{ display: "block", color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.file.name}</strong>
+                          <span style={{ color: item.status === "error" ? t.danger : t.ink3, fontSize: 12 }}>
+                            {formatSize(item.file.size)} | {item.message || statusLabel(item.status)}
+                          </span>
+                        </div>
+                        <select
+                          style={field}
+                          value={item.requested_document_id}
+                          onChange={(event) => updateAdminUploadFile(item.id, { requested_document_id: event.target.value, status: "ready", message: undefined })}
+                          disabled={adminUploading || item.status === "uploaded"}
+                          aria-label={`Assign ${item.file.name} to a requested document`}
+                        >
+                          <option value="">General upload</option>
+                          {detail.requested_documents.map((doc) => {
+                            const alreadyUploaded = doc.status === "uploaded" && !doc.allow_multiple_files;
+                            const linkedByQueuedFile = adminUploadFiles.some((file) => file.id !== item.id && file.requested_document_id === doc.id && file.status !== "error");
+                            const disabled = alreadyUploaded || (!doc.allow_multiple_files && linkedByQueuedFile);
+                            return <option key={doc.id} value={doc.id} disabled={disabled}>{doc.name}{disabled ? " - already used" : ""}</option>;
+                          })}
+                        </select>
+                        <button style={iconButtonStyle(t)} onClick={() => removeAdminUploadFile(item.id)} disabled={adminUploading || item.status === "uploaded"} aria-label={`Remove ${item.file.name}`} title="Remove file">
+                          <Icon name="x" size={14} />
+                        </button>
                       </div>
-                      <code style={{ color: t.ink, overflowWrap: "anywhere", fontSize: 12.5 }}>{createdShare.url}</code>
-                      {createdShare.passcode ? <div style={{ color: t.ink2, fontSize: 13 }}>Access code: <strong>{createdShare.passcode}</strong></div> : null}
-                      <button style={secondary} onClick={() => copyText(createdShare.passcode ? `Secure file room: ${createdShare.url}\nAccess code: ${createdShare.passcode}` : createdShare.url)}>Copy invite</button>
-                    </div>
-                  ) : (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginTop: 10 }}>
-                      <input style={field} placeholder="Viewer name" value={shareForm.recipient_name} onChange={(e) => setShareForm({ ...shareForm, recipient_name: e.target.value })} />
-                      <input style={field} placeholder="Viewer email optional" value={shareForm.recipient_email} onChange={(e) => setShareForm({ ...shareForm, recipient_email: e.target.value })} />
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, color: t.ink2, fontSize: 12 }}>
-                        <input type="checkbox" checked={shareForm.can_download} onChange={(e) => setShareForm({ ...shareForm, can_download: e.target.checked })} />
-                        Download
-                      </label>
-                      <input
-                        style={field}
-                        placeholder="Access code"
-                        value={shareForm.passcode}
-                        onChange={(e) => setShareForm({ ...shareForm, passcode: e.target.value })}
-                      />
-                      <button style={secondary} onClick={generateShareCode}>
-                        Generate code
-                      </button>
-                      <div style={{ color: t.ink3, fontSize: 12, alignSelf: "center" }}>Use this code when sending the invite.</div>
-                      <button style={{ ...primary, gridColumn: "1 / -1" }} onClick={createShareLink} disabled={busy || selectedShareFileIds.length === 0 || !shareForm.recipient_name.trim()}>
-                        Create invite link
-                      </button>
-                    </div>
-                  )}
-                </PanelBox>
-              ) : null}
+                    ))}
+                  </div>
+                ) : (
+                  <div style={emptyInlineStyle(t)}>Choose files from your computer and assign them to a requested item or leave them as general uploads.</div>
+                )}
+                {adminUploadStatus ? <CreateStatusBanner status={adminUploadStatus} /> : null}
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+                  <button style={{ ...primary, minWidth: 148, opacity: canAdminUpload ? 1 : 0.68 }} onClick={submitAdminUploads} disabled={!canAdminUpload}>
+                    {adminUploading ? "Uploading..." : "Upload files"}
+                  </button>
+                </div>
+              </PanelBox>
 
               <PanelBox>
                 <SectionLabel action={`${visibleFiles.length} uploaded`}>Files</SectionLabel>
@@ -711,6 +838,63 @@ export default function BucketsAdminPage() {
             </div>
 
             <div style={{ display: "grid", gap: 12 }}>
+              <PanelBox style={{ borderColor: selectedShareFileIds.length ? t.petrol : t.line }}>
+                <SectionLabel action={`${selectedShareFileIds.length} selected`}>Share files</SectionLabel>
+                {createdShare ? (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <div style={successBoxStyle(t)}>
+                      <Icon name="check" size={15} />
+                      Invite link ready
+                    </div>
+                    <div style={shareLinkBoxStyle(t)}>
+                      <code style={{ color: t.ink, overflowWrap: "anywhere", fontSize: 12 }}>{createdShare.url}</code>
+                      {createdShare.passcode ? <div style={{ color: t.ink2, fontSize: 12, marginTop: 6 }}>Access code: <strong>{createdShare.passcode}</strong></div> : null}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <button style={secondary} onClick={() => copyText(createdShare.passcode ? `Secure file room: ${createdShare.url}\nAccess code: ${createdShare.passcode}` : createdShare.url)}>Copy</button>
+                      <button style={secondary} onClick={() => setCreatedShare(null)}>New share</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {selectedShareFiles.length ? (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        {selectedShareFiles.slice(0, 3).map((file) => (
+                          <div key={file.id} style={selectedFileChipStyle(t)}>
+                            <Icon name="file" size={13} />
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.file_name}</span>
+                          </div>
+                        ))}
+                        {selectedShareFiles.length > 3 ? <div style={{ color: t.ink3, fontSize: 12 }}>+{selectedShareFiles.length - 3} more selected</div> : null}
+                      </div>
+                    ) : (
+                      <div style={emptyInlineStyle(t)}>Select files from the Files list to create a share link.</div>
+                    )}
+                    <input style={field} placeholder="Viewer name" value={shareForm.recipient_name} onChange={(e) => setShareForm({ ...shareForm, recipient_name: e.target.value })} />
+                    <input style={field} placeholder="Viewer email optional" value={shareForm.recipient_email} onChange={(e) => setShareForm({ ...shareForm, recipient_email: e.target.value })} />
+                    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
+                      <input
+                        style={field}
+                        placeholder="Access code"
+                        value={shareForm.passcode}
+                        onChange={(e) => setShareForm({ ...shareForm, passcode: e.target.value })}
+                      />
+                      <button style={secondary} onClick={generateShareCode}>Generate</button>
+                    </div>
+                    <label style={permissionRowStyle(t)}>
+                      <span>
+                        <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Allow download</strong>
+                        <span style={{ color: t.ink3, fontSize: 12 }}>Otherwise viewers can preview only.</span>
+                      </span>
+                      <input type="checkbox" checked={shareForm.can_download} onChange={(e) => setShareForm({ ...shareForm, can_download: e.target.checked })} />
+                    </label>
+                    <button style={{ ...primary, width: "100%", opacity: busy || selectedShareFileIds.length === 0 || !shareForm.recipient_name.trim() ? 0.68 : 1 }} onClick={createShareLink} disabled={busy || selectedShareFileIds.length === 0 || !shareForm.recipient_name.trim()}>
+                      Create share link
+                    </button>
+                  </div>
+                )}
+              </PanelBox>
+
               <PanelBox>
                 <SectionLabel>Notes</SectionLabel>
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
@@ -1069,6 +1253,72 @@ function fileRowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
   };
 }
 
+function adminUploadRowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(190px, .8fr) 32px",
+    gap: 8,
+    alignItems: "center",
+    padding: 10,
+    border: `1px solid ${t.line}`,
+    borderRadius: 8,
+    background: t.surface2,
+  };
+}
+
+function successBoxStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: 10,
+    border: `1px solid ${t.profit}`,
+    borderRadius: 8,
+    background: t.profitBg,
+    color: t.profit,
+    fontWeight: 850,
+    fontSize: 13,
+  };
+}
+
+function shareLinkBoxStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+  return {
+    padding: 10,
+    border: `1px solid ${t.line}`,
+    borderRadius: 8,
+    background: t.surface2,
+  };
+}
+
+function selectedFileChipStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+  return {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: 7,
+    padding: "7px 8px",
+    border: `1px solid ${t.line}`,
+    borderRadius: 8,
+    background: t.surface2,
+    color: t.ink2,
+    fontSize: 12,
+    fontWeight: 750,
+  };
+}
+
+function permissionRowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    padding: 10,
+    border: `1px solid ${t.line}`,
+    borderRadius: 8,
+    background: t.surface2,
+  };
+}
+
 function iconButtonStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
   return {
     width: 32,
@@ -1125,6 +1375,10 @@ function uniqueBucketFiles(files: BucketFile[]): BucketFile[] {
       return true;
     })
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+}
+
+function localFileKey(file: File): string {
+  return `${file.name}|${file.size}|${file.lastModified}`;
 }
 
 function statusLabel(status: string) {
