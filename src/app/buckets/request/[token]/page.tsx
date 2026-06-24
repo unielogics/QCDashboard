@@ -261,6 +261,9 @@ export default function BucketRequestPage() {
             </div>
             <div style={summaryPill}>{files.filter((item) => item.status === "uploaded").length} of {files.length} submitted</div>
           </header>
+          <div style={securityNotice}>
+            <strong>Encrypted upload room.</strong> Uploaded documents are encrypted. Access to view these documents is gated and regulated through authorized user controls.
+          </div>
 
           <div style={contentGrid}>
             <div style={mainPanel}>
@@ -450,6 +453,7 @@ const header: CSSProperties = { display: "flex", justifyContent: "space-between"
 const title: CSSProperties = { margin: "8px 0 4px", fontSize: 30, lineHeight: 1.15, letterSpacing: 0 };
 const muted: CSSProperties = { color: "#64748b" };
 const summaryPill: CSSProperties = { border: "1px solid #d8dee8", borderRadius: 999, padding: "8px 12px", color: "#334155", fontWeight: 800, whiteSpace: "nowrap" };
+const securityNotice: CSSProperties = { border: "1px solid #bfdbfe", borderRadius: 12, padding: "11px 13px", color: "#1e3a8a", background: "#eff6ff", fontSize: 13.5, lineHeight: 1.45, marginBottom: 18 };
 const contentGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 20 };
 const mainPanel: CSSProperties = { minWidth: 0 };
 const identityGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: 12, marginBottom: 16 };
