@@ -38,12 +38,14 @@ type ReviewFileType = "pdf" | "image" | "csv" | "text" | "spreadsheet" | "unsupp
 export function BucketFileReviewPanel({
   title = "File review",
   downloadUrl,
+  onDownload,
   loadReview,
   saveAnnotation,
   onClose,
 }: {
   title?: string;
   downloadUrl?: string | null;
+  onDownload?: () => void;
   loadReview: () => Promise<BucketFileReview>;
   saveAnnotation: (payload: DraftRect & { comment: string }) => Promise<BucketFileAnnotation>;
   onClose: () => void;
@@ -221,7 +223,12 @@ export function BucketFileReviewPanel({
             {review ? <div style={fileMeta}>{fileTypeLabel(fileType)}{typeof review.file.size_bytes === "number" ? ` | ${formatSize(review.file.size_bytes)}` : ""}</div> : null}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {downloadUrl ? (
+            {onDownload ? (
+              <button style={primaryButton} onClick={onDownload}>
+                <Icon name="download" size={14} />
+                Download
+              </button>
+            ) : downloadUrl ? (
               <a style={primaryLink} href={downloadUrl} target="_blank" rel="noopener noreferrer">
                 <Icon name="download" size={14} />
                 Download

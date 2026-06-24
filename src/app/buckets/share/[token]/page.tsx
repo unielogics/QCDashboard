@@ -33,6 +33,7 @@ export default function BucketSharePage() {
   const [note, setNote] = useState("");
   const [status, setStatus] = useState("Loading secure room...");
   const [working, setWorking] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`${apiBase}/api/v1/buckets/share/${token}`)
@@ -101,6 +102,27 @@ export default function BucketSharePage() {
     });
     if (!res.ok) throw new Error("Could not save review comment.");
     return res.json();
+  }
+
+  async function downloadSharedFile(file: FileRow) {
+    if (!access?.share.can_download) return;
+    setDownloadingId(file.id);
+    setStatus("");
+    try {
+      const res = await fetch(`${apiBase}/api/v1/buckets/share/${token}/files/${file.id}/download`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passcode: passcode.trim() }),
+      });
+      if (!res.ok) {
+        setStatus("Download is not available for this file.");
+        return;
+      }
+      const payload = (await res.json()) as { url: string };
+      window.open(payload.url, "_blank", "noopener,noreferrer");
+    } finally {
+      setDownloadingId(null);
+    }
   }
 
   const roomName = access?.bucket.name ?? info?.bucket.name ?? "Secure file room";
@@ -204,11 +226,11 @@ export default function BucketSharePage() {
                           Preview
                         </button>
                       ) : null}
-                      {file.download_url ? (
-                        <a style={primaryLinkButton} href={file.download_url} target="_blank" rel="noopener noreferrer">
+                      {access.share.can_download ? (
+                        <button style={primaryLinkButton} onClick={() => downloadSharedFile(file).catch(() => setStatus("Download is not available for this file."))} disabled={downloadingId === file.id}>
                           <Icon name="download" size={14} />
-                          Download
-                        </a>
+                          {downloadingId === file.id ? "Preparing..." : "Download"}
+                        </button>
                       ) : (
                         <span style={downloadDisabled}>Download disabled</span>
                       )}
@@ -255,7 +277,7 @@ export default function BucketSharePage() {
       {reviewFile ? (
         <BucketFileReviewPanel
           title="Shared file review"
-          downloadUrl={reviewFile.download_url}
+          onDownload={access?.share.can_download ? () => downloadSharedFile(reviewFile).catch(() => setStatus("Download is not available for this file.")) : undefined}
           loadReview={() => loadSharedReview(reviewFile)}
           saveAnnotation={(payload) => saveSharedAnnotation(reviewFile, payload)}
           onClose={() => setReviewFile(null)}

@@ -64,7 +64,20 @@ type Share = {
   passcode?: string | null;
 };
 type Note = { id: string; author_name: string; visibility: string; content: string; created_at: string };
-type Activity = { id: string; action: string; actor_name?: string | null; detail?: string | null; created_at: string };
+type Activity = {
+  id: string;
+  action: string;
+  actor_user_id?: string | null;
+  actor_name?: string | null;
+  actor_email?: string | null;
+  actor_role?: string | null;
+  target_type?: string | null;
+  target_id?: string | null;
+  detail?: string | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  created_at: string;
+};
 type BucketDetail = Bucket & {
   requested_documents: RequestedDoc[];
   files: BucketFile[];
@@ -88,9 +101,46 @@ type UploadInviteLink = { name: string; email?: string; url: string; passcode: s
 type UploadInitResponse = { file_id: string; upload_url: string; required_headers: Record<string, string> };
 type ShareViewerDraft = { id: string; recipient_name: string; recipient_email: string; passcode: string; can_download: boolean };
 type CreatedShareInvite = { id: string; name: string; email?: string; url: string; passcode?: string | null; can_download: boolean };
+type ActivityPage = { items: Activity[]; total: number; limit: number; offset: number };
+type ActivityFilters = { action: string; actor_role: string; target_type: string; q: string; date_from: string; date_to: string };
 
 const BUCKET_TYPES = ["Loan File", "UrChoice Dealer Funding", "Partner Package", "Borrower", "Funding Opportunity"];
 const REQUEST_DOCS_PER_PAGE = 10;
+const ACTIVITY_PAGE_SIZE = 12;
+const ACTIVITY_ACTION_OPTIONS = [
+  "bucket_created",
+  "bucket_deleted",
+  "requested_document_added",
+  "upload_link_created",
+  "upload_link_accessed",
+  "upload_passcode_failed",
+  "file_upload_started",
+  "file_uploaded",
+  "file_upload_failed",
+  "admin_file_upload_started",
+  "admin_file_uploaded",
+  "admin_file_upload_failed",
+  "share_created",
+  "share_updated",
+  "share_status_changed",
+  "share_accessed",
+  "share_passcode_failed",
+  "shared_file_review_opened",
+  "shared_file_review_denied",
+  "shared_file_download_requested",
+  "shared_file_download_denied",
+  "shared_note_created",
+  "shared_note_denied",
+  "shared_file_annotation_created",
+  "shared_file_annotation_denied",
+  "note_created",
+  "file_review_opened",
+  "file_preview_url_created",
+  "file_download_url_created",
+  "file_annotation_created",
+];
+const ACTIVITY_ROLE_OPTIONS = ["super_admin", "uploader", "shared_user", "system"];
+const ACTIVITY_TARGET_OPTIONS = ["bucket", "requested_document", "upload_link", "share", "file", "note", "annotation"];
 const URCHOICE_DEALER_DOCS: Template[] = [
   { id: "urchoice-formation", name: "Formation", category: "UrChoice Dealer Funding", required: true },
   { id: "urchoice-ein", name: "EIN", category: "UrChoice Dealer Funding", required: true },
@@ -169,6 +219,11 @@ export default function BucketsAdminPage() {
   const [isAdminUploadDragging, setIsAdminUploadDragging] = useState(false);
   const [adminNote, setAdminNote] = useState("");
   const [reviewFile, setReviewFile] = useState<BucketFile | null>(null);
+  const [activityRows, setActivityRows] = useState<Activity[]>([]);
+  const [activityTotal, setActivityTotal] = useState(0);
+  const [activityOffset, setActivityOffset] = useState(0);
+  const [activityFilters, setActivityFilters] = useState<ActivityFilters>(() => emptyActivityFilters());
+  const [activityLoading, setActivityLoading] = useState(false);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
@@ -187,6 +242,11 @@ export default function BucketsAdminPage() {
   async function loadBucket(bucketId: string) {
     const row = await call<BucketDetail>(`/buckets/admin/${bucketId}`);
     setDetail(row);
+    setActivityRows(row.activity ?? []);
+    setActivityTotal(row.activity?.length ?? 0);
+    const filters = emptyActivityFilters();
+    setActivityFilters(filters);
+    setActivityOffset(0);
     setShareFiles({});
     setSharePopupOpen(false);
     setShareViewers([newShareViewerDraft()]);
@@ -194,6 +254,27 @@ export default function BucketsAdminPage() {
     setAdminUploadFiles([]);
     setAdminUploadStatus(null);
     setAdminUploadForm((form) => ({ ...form, uploader_name: row.client_name || form.uploader_name || "", uploader_email: "" }));
+    await loadBucketActivity(bucketId, 0, filters);
+  }
+
+  async function loadBucketActivity(bucketId: string, offset = activityOffset, filters = activityFilters) {
+    setActivityLoading(true);
+    try {
+      const params = activityParams(offset, filters);
+      const page = await call<ActivityPage>(`/buckets/admin/${bucketId}/activity?${params.toString()}`);
+      setActivityRows(page.items);
+      setActivityTotal(page.total);
+      setActivityOffset(page.offset);
+    } finally {
+      setActivityLoading(false);
+    }
+  }
+
+  function updateActivityFilters(patch: Partial<ActivityFilters>) {
+    if (!detail) return;
+    const next = { ...activityFilters, ...patch };
+    setActivityFilters(next);
+    void loadBucketActivity(detail.id, 0, next);
   }
 
   async function deleteBucket(bucket: Bucket) {
@@ -263,6 +344,10 @@ export default function BucketsAdminPage() {
   const selectedShareFileIds = Object.entries(shareFiles).filter(([, selected]) => selected).map(([id]) => id);
   const visibleFiles = useMemo(() => uniqueBucketFiles(detail?.files ?? []), [detail?.files]);
   const selectedShareFiles = visibleFiles.filter((file) => selectedShareFileIds.includes(file.id));
+  const activityPage = Math.floor(activityOffset / ACTIVITY_PAGE_SIZE) + 1;
+  const activityPageCount = Math.max(1, Math.ceil(activityTotal / ACTIVITY_PAGE_SIZE));
+  const canPageActivityBack = Boolean(detail && activityOffset > 0 && !activityLoading);
+  const canPageActivityForward = Boolean(detail && activityOffset + ACTIVITY_PAGE_SIZE < activityTotal && !activityLoading);
   const canAdminUpload = Boolean(
     detail &&
       adminUploadForm.uploader_name.trim() &&
@@ -1168,16 +1253,101 @@ export default function BucketsAdminPage() {
               </PanelBox>
 
               <PanelBox>
-                <SectionLabel>Activity</SectionLabel>
+                <SectionLabel action={`${activityTotal} total`}>Activity</SectionLabel>
                 <div style={{ display: "grid", gap: 8 }}>
-                  {detail.activity.length === 0 ? (
-                    <div style={{ color: t.ink3, fontSize: 13 }}>No activity yet.</div>
-                  ) : detail.activity.slice(0, 12).map((item) => (
-                    <div key={item.id} style={{ color: t.ink2, fontSize: 13, borderTop: `1px solid ${t.line}`, paddingTop: 8 }}>
-                      <strong>{item.action.replace(/_/g, " ")}</strong>
-                      <div style={{ color: t.ink3, fontSize: 12 }}>{item.actor_name || "System"} | {formatDate(item.created_at)}</div>
+                  <input
+                    style={field}
+                    value={activityFilters.q}
+                    onChange={(event) => updateActivityFilters({ q: event.target.value })}
+                    placeholder="Search activity"
+                  />
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <select style={field} value={activityFilters.action} onChange={(event) => updateActivityFilters({ action: event.target.value })}>
+                      <option value="">All actions</option>
+                      {ACTIVITY_ACTION_OPTIONS.map((action) => (
+                        <option key={action} value={action}>{activityLabel(action)}</option>
+                      ))}
+                    </select>
+                    <select style={field} value={activityFilters.actor_role} onChange={(event) => updateActivityFilters({ actor_role: event.target.value })}>
+                      <option value="">All roles</option>
+                      {ACTIVITY_ROLE_OPTIONS.map((role) => (
+                        <option key={role} value={role}>{statusLabel(role)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <select style={field} value={activityFilters.target_type} onChange={(event) => updateActivityFilters({ target_type: event.target.value })}>
+                    <option value="">All targets</option>
+                    {ACTIVITY_TARGET_OPTIONS.map((target) => (
+                      <option key={target} value={target}>{statusLabel(target)}</option>
+                    ))}
+                  </select>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <input
+                      style={field}
+                      type="date"
+                      value={activityFilters.date_from}
+                      onChange={(event) => updateActivityFilters({ date_from: event.target.value })}
+                      aria-label="Activity from date"
+                    />
+                    <input
+                      style={field}
+                      type="date"
+                      value={activityFilters.date_to}
+                      onChange={(event) => updateActivityFilters({ date_to: event.target.value })}
+                      aria-label="Activity to date"
+                    />
+                  </div>
+                  <button
+                    style={secondary}
+                    onClick={() => {
+                      const filters = emptyActivityFilters();
+                      setActivityFilters(filters);
+                      void loadBucketActivity(detail.id, 0, filters);
+                    }}
+                  >
+                    Clear filters
+                  </button>
+                  <div style={{ display: "grid", gap: 8, minHeight: 360 }}>
+                    {activityLoading && activityRows.length === 0 ? (
+                      <div style={emptyInlineStyle(t)}>Loading activity...</div>
+                    ) : activityRows.length === 0 ? (
+                      <div style={emptyInlineStyle(t)}>No activity matches these filters.</div>
+                    ) : activityRows.map((item) => (
+                      <div key={item.id} style={{ color: t.ink2, fontSize: 13, borderTop: `1px solid ${t.line}`, paddingTop: 8 }}>
+                        <strong style={{ color: t.ink }}>{activityLabel(item.action)}</strong>
+                        <div style={{ color: t.ink3, fontSize: 12 }}>
+                          {activityActor(item)} | {formatDateTime(item.created_at)}
+                        </div>
+                        {item.detail ? <div style={{ marginTop: 3, color: t.ink2 }}>{item.detail}</div> : null}
+                        <div style={{ marginTop: 3, color: t.ink3, fontSize: 12 }}>
+                          {[item.target_type ? statusLabel(item.target_type) : null, item.ip_address].filter(Boolean).join(" | ")}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <button
+                      style={iconButtonStyle(t)}
+                      disabled={!canPageActivityBack}
+                      onClick={() => detail && loadBucketActivity(detail.id, Math.max(0, activityOffset - ACTIVITY_PAGE_SIZE), activityFilters)}
+                      aria-label="Previous activity page"
+                      title="Previous"
+                    >
+                      <Icon name="chevL" size={15} />
+                    </button>
+                    <div style={{ color: t.ink3, fontSize: 12, fontWeight: 800 }}>
+                      {activityPage} / {activityPageCount}
                     </div>
-                  ))}
+                    <button
+                      style={iconButtonStyle(t)}
+                      disabled={!canPageActivityForward}
+                      onClick={() => detail && loadBucketActivity(detail.id, activityOffset + ACTIVITY_PAGE_SIZE, activityFilters)}
+                      aria-label="Next activity page"
+                      title="Next"
+                    >
+                      <Icon name="chevR" size={15} />
+                    </button>
+                  </div>
                 </div>
               </PanelBox>
             </div>
@@ -1672,9 +1842,69 @@ function statusLabel(status: string) {
   return status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function activityLabel(action: string) {
+  const labels: Record<string, string> = {
+    bucket_created: "Bucket created",
+    bucket_deleted: "Bucket deleted",
+    requested_document_added: "Requested document added",
+    upload_link_created: "Upload link created",
+    upload_link_accessed: "Upload link accessed",
+    upload_passcode_failed: "Upload passcode failed",
+    file_upload_started: "Upload started",
+    file_uploaded: "File uploaded",
+    file_upload_failed: "Upload failed",
+    admin_file_upload_started: "Admin upload started",
+    admin_file_uploaded: "Admin file uploaded",
+    admin_file_upload_failed: "Admin upload failed",
+    share_created: "Share created",
+    share_updated: "Share updated",
+    share_status_changed: "Share status changed",
+    share_accessed: "Share accessed",
+    share_passcode_failed: "Share passcode failed",
+    shared_file_review_opened: "Shared preview opened",
+    shared_file_review_denied: "Shared preview denied",
+    shared_file_download_requested: "Shared download requested",
+    shared_file_download_denied: "Shared download denied",
+    shared_note_created: "Shared note created",
+    shared_note_denied: "Shared note denied",
+    shared_file_annotation_created: "Shared annotation created",
+    shared_file_annotation_denied: "Shared annotation denied",
+    note_created: "Admin note created",
+    file_review_opened: "Admin preview opened",
+    file_preview_url_created: "Admin preview URL created",
+    file_download_url_created: "Admin download URL created",
+    file_annotation_created: "Admin annotation created",
+  };
+  return labels[action] ?? statusLabel(action);
+}
+
+function activityActor(item: Activity) {
+  return item.actor_name || item.actor_email || statusLabel(item.actor_role || "") || "System";
+}
+
+function emptyActivityFilters(): ActivityFilters {
+  return { action: "", actor_role: "", target_type: "", q: "", date_from: "", date_to: "" };
+}
+
+function activityParams(offset: number, filters: ActivityFilters) {
+  const params = new URLSearchParams({ limit: String(ACTIVITY_PAGE_SIZE), offset: String(offset) });
+  if (filters.action) params.set("action", filters.action);
+  if (filters.actor_role) params.set("actor_role", filters.actor_role);
+  if (filters.target_type) params.set("target_type", filters.target_type);
+  if (filters.q.trim()) params.set("q", filters.q.trim());
+  if (filters.date_from) params.set("date_from", `${filters.date_from}T00:00:00Z`);
+  if (filters.date_to) params.set("date_to", `${filters.date_to}T23:59:59Z`);
+  return params;
+}
+
 function formatDate(value?: string | null) {
   if (!value) return "Never";
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(value));
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "Never";
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(new Date(value));
 }
 
 function formatSize(bytes: number) {
