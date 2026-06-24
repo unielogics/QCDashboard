@@ -1862,6 +1862,7 @@ function defaultAISpend() {
     daily_critical_usd: 25,
     avg_client_file_warning_usd: 1.5,
     avg_client_file_critical_usd: 3,
+    master_enabled: true,
     chat_enabled: true,
     automations_enabled: true,
     document_scanning_enabled: true,

@@ -3,7 +3,7 @@
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { Card } from "@/components/design-system/primitives";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { useAdminAIUsageToday, useSettings, useUpdateSettings, type AIUsageBucket } from "@/hooks/useApi";
+import { useAdminAIUsageToday, useCurrentUser, useSettings, useUpdateSettings, type AIUsageBucket } from "@/hooks/useApi";
 
 const money = (v: number | null | undefined) => `$${Number(v || 0).toFixed(4)}`;
 const compact = (v: number | null | undefined) => Number(v || 0).toLocaleString();
@@ -12,6 +12,7 @@ const DEFAULT_AI_SPEND = {
   daily_critical_usd: 25,
   avg_client_file_warning_usd: 1.5,
   avg_client_file_critical_usd: 3,
+  master_enabled: true,
   chat_enabled: true,
   automations_enabled: true,
   document_scanning_enabled: true,
@@ -22,9 +23,12 @@ const DEFAULT_AI_SPEND = {
 export default function AIUsagePage() {
   const { t } = useTheme();
   const { data, isLoading } = useAdminAIUsageToday();
+  const { data: me } = useCurrentUser();
   const { data: settings } = useSettings();
   const updateSettings = useUpdateSettings();
   const spend = settings?.data.ai_spend ?? DEFAULT_AI_SPEND;
+  const canToggleMaster = (me?.email || "").toLowerCase() === "franco@qualifiedcommercial.com";
+  const masterEnabled = spend.master_enabled !== false;
   const alertColor = data?.alert_level === "critical" ? t.danger : data?.alert_level === "warning" ? t.warn : t.profit;
   const saveSpend = (patch: Partial<NonNullable<typeof spend>>) => {
     updateSettings.mutate({ ai_spend: { ...spend, ...patch } });
@@ -73,14 +77,53 @@ export default function AIUsagePage() {
           </Card>
 
           {spend ? (
+            <Card
+              pad={14}
+              style={{
+                borderRadius: 8,
+                marginBottom: 12,
+                borderColor: masterEnabled ? t.line : t.danger,
+                background: masterEnabled ? t.surface : t.dangerBg,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 950, color: masterEnabled ? t.ink : t.danger }}>AI System Master Switch</div>
+                  <div style={{ fontSize: 11, color: masterEnabled ? t.ink3 : t.danger, marginTop: 3 }}>
+                    {masterEnabled
+                      ? "When disabled, all Bedrock model calls stop system-wide."
+                      : "AI is disabled system-wide. Deterministic app workflows continue, but model calls are blocked."}
+                  </div>
+                  {!canToggleMaster ? (
+                    <div style={{ fontSize: 11, color: t.ink3, marginTop: 5 }}>
+                      Only franco@qualifiedcommercial.com can change this switch.
+                    </div>
+                  ) : null}
+                </div>
+                <Toggle
+                  label={masterEnabled ? "Enabled" : "Disabled"}
+                  value={masterEnabled}
+                  disabled={!canToggleMaster || updateSettings.isPending}
+                  onChange={(v) => saveSpend({ master_enabled: v })}
+                />
+              </div>
+            </Card>
+          ) : null}
+
+          {spend ? (
             <Card pad={14} style={{ borderRadius: 8, marginBottom: 12 }}>
               <div style={{ fontSize: 13, fontWeight: 900, color: t.ink, marginBottom: 10 }}>Manual category controls</div>
+              {!masterEnabled ? (
+                <div style={{ fontSize: 11, color: t.danger, marginBottom: 10, fontWeight: 850 }}>
+                  Category settings are preserved, but AI calls are blocked until the master switch is enabled.
+                </div>
+              ) : null}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8 }}>
-                <Toggle label="Chat" value={spend.chat_enabled} onChange={(v) => saveSpend({ chat_enabled: v })} />
-                <Toggle label="Automations" value={spend.automations_enabled} onChange={(v) => saveSpend({ automations_enabled: v })} />
-                <Toggle label="Document scanning" value={spend.document_scanning_enabled} onChange={(v) => saveSpend({ document_scanning_enabled: v })} />
-                <Toggle label="Summaries" value={spend.summaries_enabled} onChange={(v) => saveSpend({ summaries_enabled: v })} />
-                <Toggle label="Lender AI" value={spend.lender_ai_enabled} onChange={(v) => saveSpend({ lender_ai_enabled: v })} />
+                <Toggle label="Chat" value={spend.chat_enabled} disabled={!masterEnabled} onChange={(v) => saveSpend({ chat_enabled: v })} />
+                <Toggle label="Automations" value={spend.automations_enabled} disabled={!masterEnabled} onChange={(v) => saveSpend({ automations_enabled: v })} />
+                <Toggle label="Document scanning" value={spend.document_scanning_enabled} disabled={!masterEnabled} onChange={(v) => saveSpend({ document_scanning_enabled: v })} />
+                <Toggle label="Summaries" value={spend.summaries_enabled} disabled={!masterEnabled} onChange={(v) => saveSpend({ summaries_enabled: v })} />
+                <Toggle label="Lender AI" value={spend.lender_ai_enabled} disabled={!masterEnabled} onChange={(v) => saveSpend({ lender_ai_enabled: v })} />
               </div>
             </Card>
           ) : null}
@@ -135,11 +178,11 @@ function NumberControl({ label, value, onChange }: { label: string; value: numbe
   );
 }
 
-function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) {
+function Toggle({ label, value, disabled = false, onChange }: { label: string; value: boolean; disabled?: boolean; onChange: (value: boolean) => void }) {
   const { t } = useTheme();
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 850, color: t.ink }}>
-      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} />
+    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 850, color: disabled ? t.ink3 : t.ink, opacity: disabled ? 0.68 : 1 }}>
+      <input type="checkbox" checked={value} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       {label}
     </label>
   );

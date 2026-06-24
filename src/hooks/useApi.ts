@@ -980,6 +980,7 @@ export interface AIUsageSummary {
   avg_client_file_critical_usd: number;
   avg_cost_per_client_usd: number;
   avg_cost_per_loan_file_usd: number;
+  master_enabled: boolean;
   chat_enabled: boolean;
   automations_enabled: boolean;
   document_scanning_enabled: boolean;
