@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
@@ -100,6 +100,16 @@ const URCHOICE_DEALER_DOCS: Template[] = [
   { id: "urchoice-personal-irs", name: "Personal: IRS last 2 years", category: "UrChoice Dealer Funding", required: true },
 ];
 
+function emptyShareViewerDraft(id = "share-viewer-draft"): ShareViewerDraft {
+  return {
+    id,
+    recipient_name: "",
+    recipient_email: "",
+    passcode: "",
+    can_download: false,
+  };
+}
+
 function newShareViewerDraft(): ShareViewerDraft {
   return {
     id: crypto.randomUUID(),
@@ -146,16 +156,17 @@ export default function BucketsAdminPage() {
     bucket_type: "Loan File",
     description: "",
   });
-  const [createInviteDraft, setCreateInviteDraft] = useState({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
+  const [createInviteDraft, setCreateInviteDraft] = useState({ recipient_name: "", recipient_email: "", passcode: "" });
   const [createInvites, setCreateInvites] = useState<UploadInvite[]>([]);
   const [shareFiles, setShareFiles] = useState<Record<string, boolean>>({});
   const [sharePopupOpen, setSharePopupOpen] = useState(false);
-  const [shareViewers, setShareViewers] = useState<ShareViewerDraft[]>(() => [newShareViewerDraft()]);
+  const [shareViewers, setShareViewers] = useState<ShareViewerDraft[]>(() => [emptyShareViewerDraft()]);
   const [createdShareLinks, setCreatedShareLinks] = useState<CreatedShareInvite[]>([]);
   const [adminUploadFiles, setAdminUploadFiles] = useState<AdminQueuedFile[]>([]);
   const [adminUploadForm, setAdminUploadForm] = useState({ uploader_name: "", uploader_email: "", note: "" });
   const [adminUploadStatus, setAdminUploadStatus] = useState<{ kind: "working" | "success" | "error"; message: string } | null>(null);
   const [adminUploading, setAdminUploading] = useState(false);
+  const [isAdminUploadDragging, setIsAdminUploadDragging] = useState(false);
   const [adminNote, setAdminNote] = useState("");
   const [reviewFile, setReviewFile] = useState<BucketFile | null>(null);
 
@@ -451,6 +462,7 @@ export default function BucketsAdminPage() {
       return [...current, ...incoming];
     });
     setAdminUploadStatus(null);
+    setIsAdminUploadDragging(false);
     if (adminFileInputRef.current) adminFileInputRef.current.value = "";
   }
 
@@ -460,6 +472,24 @@ export default function BucketsAdminPage() {
 
   function removeAdminUploadFile(id: string) {
     setAdminUploadFiles((files) => files.filter((file) => file.id !== id));
+  }
+
+  function onAdminUploadDragOver(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    if (!adminUploading) setIsAdminUploadDragging(true);
+  }
+
+  function onAdminUploadDragLeave(event: DragEvent<HTMLDivElement>) {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setIsAdminUploadDragging(false);
+    }
+  }
+
+  function onAdminUploadDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    if (adminUploading) return;
+    setIsAdminUploadDragging(false);
+    if (event.dataTransfer.files.length > 0) addAdminUploadFiles(event.dataTransfer.files);
   }
 
   async function submitAdminUploads() {
@@ -955,7 +985,7 @@ export default function BucketsAdminPage() {
         >
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.35fr) minmax(320px, .65fr)", gap: 12, alignItems: "start" }}>
             <div style={{ display: "grid", gap: 12 }}>
-              <PanelBox>
+              <PanelBox style={{ borderColor: isAdminUploadDragging ? t.petrol : t.line }}>
                 <SectionLabel action={`${adminUploadFiles.length} queued`}>Upload on behalf</SectionLabel>
                 <input ref={adminFileInputRef} type="file" multiple hidden onChange={(event) => event.target.files && addAdminUploadFiles(event.target.files)} />
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto", gap: 8 }}>
@@ -982,6 +1012,27 @@ export default function BucketsAdminPage() {
                     onChange={(event) => setAdminUploadForm({ ...adminUploadForm, note: event.target.value })}
                   />
                 </div>
+                <div
+                  style={adminUploadDropZoneStyle(t, isAdminUploadDragging)}
+                  onClick={() => adminFileInputRef.current?.click()}
+                  onDragOver={onAdminUploadDragOver}
+                  onDragLeave={onAdminUploadDragLeave}
+                  onDrop={onAdminUploadDrop}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      adminFileInputRef.current?.click();
+                    }
+                  }}
+                >
+                  <Icon name="upload" size={18} />
+                  <div>
+                    <strong style={{ display: "block", color: t.ink }}>Drop files here or choose files</strong>
+                    <span style={{ color: t.ink3, fontSize: 12 }}>Leave a file as General upload when it does not match a requested task.</span>
+                  </div>
+                </div>
                 {adminUploadFiles.length ? (
                   <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                     {adminUploadFiles.map((item) => (
@@ -999,7 +1050,7 @@ export default function BucketsAdminPage() {
                           disabled={adminUploading || item.status === "uploaded"}
                           aria-label={`Assign ${item.file.name} to a requested document`}
                         >
-                          <option value="">General upload</option>
+                          <option value="">General upload / unmatched</option>
                           {detail.requested_documents.map((doc) => {
                             const alreadyUploaded = doc.status === "uploaded" && !doc.allow_multiple_files;
                             const linkedByQueuedFile = adminUploadFiles.some((file) => file.id !== item.id && file.requested_document_id === doc.id && file.status !== "error");
@@ -1449,6 +1500,24 @@ function adminUploadRowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties
     border: `1px solid ${t.line}`,
     borderRadius: 8,
     background: t.surface2,
+  };
+}
+
+function adminUploadDropZoneStyle(t: ReturnType<typeof useTheme>["t"], active: boolean): CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    minHeight: 82,
+    marginTop: 10,
+    padding: 14,
+    border: `1.5px dashed ${active ? t.petrol : t.lineStrong}`,
+    borderRadius: 8,
+    background: active ? t.petrolSoft : t.surface2,
+    color: active ? t.petrol : t.ink2,
+    cursor: "pointer",
+    textAlign: "left",
   };
 }
 
