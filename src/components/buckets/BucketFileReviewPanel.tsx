@@ -290,7 +290,10 @@ export function BucketFileReviewPanel({
           <aside style={sidePanel}>
             <section style={sideSection}>
               <h3 style={sectionTitle}>Add section comment</h3>
-              <p style={muted}>{annotationHelp}</p>
+              <div style={instructionBox}>
+                <strong>{canAnnotate(fileType) ? "To leave a comment: click and drag over the exact area on the document." : "Section comments are available for PDF and image files."}</strong>
+                <span>{annotationHelp}</span>
+              </div>
               {draftRect ? (
                 <div style={{ display: "grid", gap: 8 }}>
                   <textarea style={textarea} value={draftComment} onChange={(event) => setDraftComment(event.target.value)} placeholder="Comment on the marked section" />
@@ -365,6 +368,7 @@ function PdfPage({
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const localStageRef = useRef<HTMLDivElement | null>(null);
+  const renderTaskRef = useRef<any>(null);
   const [renderStatus, setRenderStatus] = useState("");
 
   useEffect(() => {
@@ -372,6 +376,16 @@ function PdfPage({
     async function renderPage() {
       if (!pdfDoc || !canvasRef.current) return;
       setRenderStatus("Rendering...");
+      const previousTask = renderTaskRef.current;
+      if (previousTask) {
+        previousTask.cancel();
+        try {
+          await previousTask.promise;
+        } catch {
+          // Expected when a zoom/resize starts a replacement render.
+        }
+        if (cancelled || !canvasRef.current) return;
+      }
       const page = await pdfDoc.getPage(pageNumber);
       const baseViewport = page.getViewport({ scale: 1 });
       const fitScale = Math.max(0.4, viewerWidth / baseViewport.width);
@@ -384,14 +398,21 @@ function PdfPage({
       canvas.height = viewport.height;
       canvas.style.width = `${viewport.width}px`;
       canvas.style.height = `${viewport.height}px`;
-      await page.render({ canvasContext: context, viewport }).promise;
-      if (!cancelled) setRenderStatus("");
+      const renderTask = page.render({ canvasContext: context, viewport });
+      renderTaskRef.current = renderTask;
+      await renderTask.promise;
+      if (!cancelled) {
+        renderTaskRef.current = null;
+        setRenderStatus("");
+      }
     }
     renderPage().catch((error) => {
+      if (renderTaskRef.current?.promise && error?.name === "RenderingCancelledException") return;
       if (!cancelled) setRenderStatus(error instanceof Error ? error.message : "Could not render page.");
     });
     return () => {
       cancelled = true;
+      renderTaskRef.current?.cancel();
     };
   }, [pageNumber, pdfDoc, viewerWidth, zoom]);
 
@@ -627,6 +648,7 @@ const iconButton: CSSProperties = { width: 36, height: 36, border: "1px solid #d
 const sideSection: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, display: "grid", gap: 8 };
 const sectionTitle: CSSProperties = { margin: 0, color: "#111827", fontSize: 14, fontWeight: 900 };
 const muted: CSSProperties = { margin: 0, color: "#64748b", fontSize: 13, lineHeight: 1.4 };
+const instructionBox: CSSProperties = { display: "grid", gap: 4, border: "1px solid #bfdbfe", borderRadius: 9, padding: 10, color: "#1e3a8a", background: "#eff6ff", fontSize: 13, lineHeight: 1.4 };
 const textarea: CSSProperties = { minHeight: 88, border: "1px solid #cbd5e1", borderRadius: 8, padding: 10, font: "inherit", resize: "vertical" };
 const primaryButton: CSSProperties = { height: 36, border: "none", borderRadius: 8, background: "#111827", color: "#fff", fontWeight: 900, padding: "0 12px", cursor: "pointer" };
 const primaryLink: CSSProperties = { ...primaryButton, display: "inline-flex", alignItems: "center", gap: 7, textDecoration: "none" };
