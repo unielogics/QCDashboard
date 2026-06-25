@@ -1,18 +1,20 @@
 "use client";
 
-// /admin/token-usage — super-admin AI token-spend report. Reads the
-// ai_token_usage ledger via /lending-admin/token-usage/*. Spend per
-// activity / file / AI agent / broker / model, over a date range.
+// /admin/token-usage — canonical Elara AI usage and controls surface.
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, SectionLabel } from "@/components/design-system/primitives";
-import { useCurrentUser } from "@/hooks/useApi";
 import {
+  useAdminAIUsageToday,
+  useCurrentUser,
+  useSettings,
   useTokenUsageBreakdown,
   useTokenUsageSummary,
   useTokenUsageTimeseries,
+  useUpdateSettings,
+  type AIUsageBucket,
   type TokenUsageDimension,
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
@@ -30,6 +32,19 @@ const RANGES: { key: string; label: string; days: number }[] = [
   { key: "30", label: "30 days", days: 30 },
   { key: "90", label: "90 days", days: 90 },
 ];
+
+const DEFAULT_AI_SPEND = {
+  daily_warning_usd: 10,
+  daily_critical_usd: 25,
+  avg_client_file_warning_usd: 1.5,
+  avg_client_file_critical_usd: 3,
+  master_enabled: true,
+  chat_enabled: true,
+  automations_enabled: true,
+  document_scanning_enabled: true,
+  summaries_enabled: true,
+  lender_ai_enabled: true,
+};
 
 function fmtInt(n: number): string {
   return n.toLocaleString("en-US");
@@ -52,6 +67,9 @@ export default function TokenUsagePage() {
   const [dimension, setDimension] = useState<TokenUsageDimension>("activity");
   const from = useMemo(() => isoDaysAgo(rangeDays), [rangeDays]);
 
+  const today = useAdminAIUsageToday();
+  const settings = useSettings();
+  const updateSettings = useUpdateSettings();
   const summary = useTokenUsageSummary(from);
   const breakdown = useTokenUsageBreakdown(dimension, from);
   const series = useTokenUsageTimeseries(from);
@@ -71,20 +89,30 @@ export default function TokenUsagePage() {
   if (me && me.role !== Role.SUPER_ADMIN && me.role !== Role.LOAN_EXEC) return null;
 
   const s = summary.data;
+  const todayData = today.data;
+  const spend = settings.data?.data.ai_spend ?? DEFAULT_AI_SPEND;
+  const isSuperAdmin = me?.role === Role.SUPER_ADMIN;
+  const canToggleMaster = isSuperAdmin && (me?.email || "").toLowerCase() === "franco@qualifiedcommercial.com";
+  const canEditControls = isSuperAdmin;
+  const masterEnabled = spend.master_enabled !== false;
+  const alertColor = todayData?.alert_level === "critical" ? t.danger : todayData?.alert_level === "warning" ? t.warn : t.profit;
   const rows = breakdown.data ?? [];
   const points = series.data ?? [];
   const maxCost = Math.max(1, ...points.map((p) => p.cost_usd));
+  const saveSpend = (patch: Partial<typeof spend>) => {
+    if (!canEditControls) return;
+    updateSettings.mutate({ ai_spend: { ...spend, ...patch } });
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: t.ink }}>
-            Elara token usage
+            Elara AI Usage & Controls
           </h1>
           <p style={{ fontSize: 13, color: t.ink3, margin: "6px 0 0", maxWidth: 620 }}>
-            Every AI call is logged with what it cost and what it was for.
-            Track spend per activity, file, AI agent, broker, and model.
+            Review AI spend across Elara, monitor current Bedrock usage, and control which paid model calls are allowed.
           </p>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
@@ -110,17 +138,77 @@ export default function TokenUsagePage() {
         </div>
       </div>
 
+      {today.isLoading || !todayData ? (
+        <Card pad={16}>Loading AI controls...</Card>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+            <KPI label="Today spend" value={fmtUsd(todayData.total_estimated_cost_usd)} />
+            <KPI label="Today calls" value={fmtInt(todayData.total_calls)} />
+            <KPI label="Avg/client today" value={fmtUsd(todayData.avg_cost_per_client_usd)} />
+            <KPI label="Avg/file today" value={fmtUsd(todayData.avg_cost_per_loan_file_usd)} />
+          </div>
+
+          <Card pad={16} style={{ borderRadius: 8, borderColor: masterEnabled ? t.line : t.danger, background: masterEnabled ? t.surface : t.dangerBg }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
+              <div>
+                <SectionLabel>Admin AI controls</SectionLabel>
+                <div style={{ fontSize: 12, color: masterEnabled ? t.ink3 : t.danger, marginTop: 4 }}>
+                  {masterEnabled
+                    ? "Controls paid Bedrock model calls across chat, automations, summaries, scanning, and lender workflows."
+                    : "AI is disabled system-wide. Deterministic app workflows continue, but model calls are blocked."}
+                </div>
+                {!canEditControls ? (
+                  <div style={{ fontSize: 12, color: t.ink3, marginTop: 4 }}>Read-only for loan executives.</div>
+                ) : !canToggleMaster ? (
+                  <div style={{ fontSize: 12, color: t.ink3, marginTop: 4 }}>Only franco@qualifiedcommercial.com can change the master switch.</div>
+                ) : null}
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 900, color: alertColor, textTransform: "uppercase" }}>
+                {todayData.alert_level}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10, marginBottom: 12 }}>
+              <Toggle
+                label={`AI System ${masterEnabled ? "Enabled" : "Disabled"}`}
+                value={masterEnabled}
+                disabled={!canToggleMaster || updateSettings.isPending}
+                onChange={(v) => saveSpend({ master_enabled: v })}
+              />
+              <Toggle label="Chat" value={spend.chat_enabled} disabled={!canEditControls || !masterEnabled} onChange={(v) => saveSpend({ chat_enabled: v })} />
+              <Toggle label="Automations" value={spend.automations_enabled} disabled={!canEditControls || !masterEnabled} onChange={(v) => saveSpend({ automations_enabled: v })} />
+              <Toggle label="Document scanning" value={spend.document_scanning_enabled} disabled={!canEditControls || !masterEnabled} onChange={(v) => saveSpend({ document_scanning_enabled: v })} />
+              <Toggle label="Summaries" value={spend.summaries_enabled} disabled={!canEditControls || !masterEnabled} onChange={(v) => saveSpend({ summaries_enabled: v })} />
+              <Toggle label="Lender/Funding AI" value={spend.lender_ai_enabled} disabled={!canEditControls || !masterEnabled} onChange={(v) => saveSpend({ lender_ai_enabled: v })} />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+              <NumberControl label="Daily warning" value={spend.daily_warning_usd} disabled={!canEditControls} onChange={(v) => saveSpend({ daily_warning_usd: v })} />
+              <NumberControl label="Daily critical" value={spend.daily_critical_usd} disabled={!canEditControls} onChange={(v) => saveSpend({ daily_critical_usd: v })} />
+              <NumberControl label="Avg/file warning" value={spend.avg_client_file_warning_usd} disabled={!canEditControls} onChange={(v) => saveSpend({ avg_client_file_warning_usd: v })} />
+              <NumberControl label="Avg/file critical" value={spend.avg_client_file_critical_usd} disabled={!canEditControls} onChange={(v) => saveSpend({ avg_client_file_critical_usd: v })} />
+            </div>
+          </Card>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
+            <BucketTable title="Today by category" rows={todayData.by_category} />
+            <BucketTable title="Today by feature" rows={todayData.by_feature} />
+          </div>
+        </>
+      )}
+
       {/* KPI tiles */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-        <KPI label="Est. cost" value={s ? fmtUsd(s.cost_usd) : "—"} />
-        <KPI label="Total tokens" value={s ? fmtInt(s.total_tokens) : "—"} />
+        <KPI label={`${rangeDays}-day est. cost`} value={s ? fmtUsd(s.cost_usd) : "—"} />
+        <KPI label={`${rangeDays}-day tokens`} value={s ? fmtInt(s.total_tokens) : "—"} />
         <KPI label="Cache-hit %" value={s ? `${s.cache_hit_pct}%` : "—"} />
-        <KPI label="AI calls" value={s ? fmtInt(s.calls) : "—"} />
+        <KPI label={`${rangeDays}-day calls`} value={s ? fmtInt(s.calls) : "—"} />
       </div>
 
       {/* Daily spend bar */}
       <Card pad={18}>
-        <SectionLabel>Daily spend</SectionLabel>
+        <SectionLabel>Historical daily spend</SectionLabel>
         {points.length === 0 ? (
           <div style={{ fontSize: 13, color: t.ink3, marginTop: 10 }}>
             No usage logged in this window yet.
@@ -199,5 +287,55 @@ export default function TokenUsagePage() {
         )}
       </Card>
     </div>
+  );
+}
+
+function NumberControl({ label, value, disabled = false, onChange }: { label: string; value: number; disabled?: boolean; onChange: (value: number) => void }) {
+  const { t } = useTheme();
+  return (
+    <label style={{ display: "grid", gap: 5, opacity: disabled ? 0.65 : 1 }}>
+      <span style={{ fontSize: 11, fontWeight: 850, color: t.ink3, textTransform: "uppercase" }}>{label}</span>
+      <input
+        type="number"
+        min={0}
+        step={0.25}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(Number(e.target.value || 0))}
+        style={{ height: 34, borderRadius: 6, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, padding: "0 9px", fontWeight: 800 }}
+      />
+    </label>
+  );
+}
+
+function Toggle({ label, value, disabled = false, onChange }: { label: string; value: boolean; disabled?: boolean; onChange: (value: boolean) => void }) {
+  const { t } = useTheme();
+  return (
+    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 850, color: disabled ? t.ink3 : t.ink, opacity: disabled ? 0.68 : 1 }}>
+      <input type="checkbox" checked={value} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      {label}
+    </label>
+  );
+}
+
+function BucketTable({ title, rows }: { title: string; rows: AIUsageBucket[] }) {
+  const { t } = useTheme();
+  return (
+    <Card pad={14} style={{ borderRadius: 8 }}>
+      <div style={{ fontSize: 13, fontWeight: 900, color: t.ink, marginBottom: 10 }}>{title}</div>
+      <div style={{ display: "grid", gap: 8 }}>
+        {rows.length === 0 ? (
+          <div style={{ color: t.ink3, fontSize: 12 }}>No usage recorded today.</div>
+        ) : rows.map((row) => (
+          <div key={row.key} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 850, color: t.ink }}>{row.key.replace(/_/g, " ")}</div>
+              <div style={{ fontSize: 11, color: t.ink3 }}>{fmtInt(row.calls)} calls · {fmtInt(row.input_tokens + row.output_tokens)} tokens</div>
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 900, color: t.ink }}>{fmtUsd(row.estimated_cost_usd)}</div>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }

@@ -219,10 +219,10 @@ export default function LendingAISettingsPage() {
             </Link>
           </Section>
 
-          <Section t={t} kicker="Step 7" title="Usage and spend"
-            copy="Review daily AI cost, average spend per client file, category-level alerts, and manual controls for expensive AI surfaces.">
-            <Link href="/admin/lending-ai/usage" style={linkButton(t)}>
-              Open usage dashboard →
+          <Section t={t} kicker="Step 7" title="Elara AI usage and controls"
+            copy="Review AI cost, average spend per client file, category-level alerts, and manual controls for paid Bedrock calls.">
+            <Link href="/admin/token-usage" style={linkButton(t)}>
+              Open Elara AI Usage & Controls →
             </Link>
           </Section>
         </div>
