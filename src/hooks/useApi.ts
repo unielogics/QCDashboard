@@ -9,6 +9,7 @@ import type { NotificationList, User } from "@/lib/types";
 import type {
   Activity,
   AIChatRequest,
+  AIChatMessage,
   AIChatResponse,
   AIChatSendResponse,
   AIChatThread,
@@ -127,7 +128,7 @@ import type {
   RegionalManagerSummary,
   ShareAnalysisResponse,
 } from "@/lib/types";
-import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurpose, PropertyType, Role, DealChatMode, FeedbackOutputType, FeedbackRating, AmortizationStyle } from "@/lib/enums.generated";
+import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurpose, PropertyType, Role, DealChatMode, DealChatRole, FeedbackOutputType, FeedbackRating, AmortizationStyle } from "@/lib/enums.generated";
 import type { ClosingCostTier } from "@/lib/fixFlip/types";
 
 export function useDevUser(): string {
@@ -1104,10 +1105,46 @@ export function useSendAIChatMessage() {
           attachment_tokens: attachment_tokens ?? null,
         }),
       }),
-    onSuccess: (_, vars) => {
+    onMutate: async (vars) => {
+      const optimisticId = `local-${Date.now()}`;
+      const optimistic: AIChatMessage = {
+        id: optimisticId,
+        role: "user",
+        body: vars.body || "Uploaded attachments",
+        created_at: new Date().toISOString(),
+        actions: null,
+        attachments: null,
+      };
+      qc.setQueryData<AIChatThreadDetail>(
+        ["aiChatThread", vars.threadId, devUser],
+        (old) => old ? { ...old, messages: [...old.messages, optimistic] } : old,
+      );
+      return { optimisticId };
+    },
+    onSuccess: (res, vars, ctx) => {
+      if (ctx?.optimisticId) {
+        qc.setQueryData<AIChatThreadDetail>(
+          ["aiChatThread", vars.threadId, devUser],
+          (old) => {
+            if (!old) return old;
+            const withoutOptimistic = old.messages.filter((m) => m.id !== ctx.optimisticId);
+            const next = [...withoutOptimistic];
+            if (res.user_message && !next.some((m) => m.id === res.user_message.id)) next.push(res.user_message);
+            if (res.assistant_message && !next.some((m) => m.id === res.assistant_message.id)) next.push(res.assistant_message);
+            return { ...old, messages: next };
+          },
+        );
+      }
       qc.invalidateQueries({ queryKey: ["aiChatThread", vars.threadId, devUser] });
       qc.invalidateQueries({ queryKey: ["aiChatThreads", devUser] });
       qc.invalidateQueries({ queryKey: ["documents"] });
+    },
+    onError: (_err, vars, ctx) => {
+      if (!ctx?.optimisticId) return;
+      qc.setQueryData<AIChatThreadDetail>(
+        ["aiChatThread", vars.threadId, devUser],
+        (old) => old ? { ...old, messages: old.messages.filter((m) => m.id !== ctx.optimisticId) } : old,
+      );
     },
   });
 }
@@ -2095,21 +2132,67 @@ export function useSendDealChat() {
       body,
       mode,
       attachment_document_id,
+      optimistic_from_role,
+      optimistic_client_visible,
     }: {
       loanId: string;
       body: string;
       mode: DealChatMode;
       attachment_document_id?: string | null;
+      optimistic_from_role?: DealChatRole;
+      optimistic_client_visible?: boolean;
     }) =>
       apiCall<ChatSendResponse>(`/loans/${loanId}/chat`, {
         method: "POST",
         body: JSON.stringify({ body, mode, attachment_document_id }),
       }),
-    onSuccess: (_, vars) => {
+    onMutate: async (vars) => {
+      if (vars.mode === "instruct" || vars.mode === "broker_suggestion") return null;
+      const optimisticId = `local-${Date.now()}`;
+      const role = vars.optimistic_from_role ?? (vars.mode === "broker_question" ? "broker_internal" : "client");
+      const optimistic: LoanChatMessage = {
+        id: optimisticId,
+        loan_id: vars.loanId,
+        body: vars.body,
+        from_role: role,
+        from_user_id: null,
+        from_name: "You",
+        client_visible: vars.optimistic_client_visible ?? vars.mode !== "broker_question",
+        created_at: new Date().toISOString(),
+        attachment: vars.attachment_document_id
+          ? { document_id: vars.attachment_document_id, name: "Attachment" }
+          : null,
+      };
+      qc.setQueriesData<LoanChatMessage[]>(
+        { queryKey: ["dealChat", vars.loanId] },
+        (old) => (old ? [...old, optimistic] : [optimistic]),
+      );
+      return { optimisticId };
+    },
+    onSuccess: (res, vars, ctx) => {
+      if (ctx?.optimisticId) {
+        qc.setQueriesData<LoanChatMessage[]>(
+          { queryKey: ["dealChat", vars.loanId] },
+          (old) => {
+            if (!old) return old;
+            const withoutOptimistic = old.filter((m) => m.id !== ctx.optimisticId);
+            const next = res.message ? [...withoutOptimistic, res.message] : withoutOptimistic;
+            if (res.ai_reply && !next.some((m) => m.id === res.ai_reply?.id)) next.push(res.ai_reply);
+            return next;
+          },
+        );
+      }
       qc.invalidateQueries({ queryKey: ["dealChat", vars.loanId] });
       qc.invalidateQueries({ queryKey: ["workspace", vars.loanId] });
       qc.invalidateQueries({ queryKey: ["loanInstructions", vars.loanId] });
       qc.invalidateQueries({ queryKey: ["aiTasks"] });
+    },
+    onError: (_err, vars, ctx) => {
+      if (!ctx?.optimisticId) return;
+      qc.setQueriesData<LoanChatMessage[]>(
+        { queryKey: ["dealChat", vars.loanId] },
+        (old) => old?.filter((m) => m.id !== ctx.optimisticId),
+      );
     },
   });
 }
@@ -2285,13 +2368,64 @@ export function useSendDealAgentChat() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ dealId, body, mode }: { dealId: string; body: string; mode: DealChatMode }) =>
+    mutationFn: ({
+      dealId,
+      body,
+      mode,
+      optimistic_from_role,
+      optimistic_client_visible,
+    }: {
+      dealId: string;
+      body: string;
+      mode: DealChatMode;
+      optimistic_from_role?: DealChatRole;
+      optimistic_client_visible?: boolean;
+    }) =>
       apiCall<ChatSendResponse>(`/deals/${dealId}/chat`, {
         method: "POST",
         body: JSON.stringify({ body, mode }),
       }),
-    onSuccess: (_, vars) => {
+    onMutate: async (vars) => {
+      if (vars.mode === "instruct" || vars.mode === "broker_suggestion") return null;
+      const optimisticId = `local-${Date.now()}`;
+      const optimistic: LoanChatMessage = {
+        id: optimisticId,
+        loan_id: null,
+        body: vars.body,
+        from_role: vars.optimistic_from_role ?? (vars.mode === "broker_question" ? "broker_internal" : "broker"),
+        from_user_id: null,
+        from_name: "You",
+        client_visible: vars.optimistic_client_visible ?? vars.mode !== "broker_question",
+        created_at: new Date().toISOString(),
+        attachment: null,
+      };
+      qc.setQueriesData<LoanChatMessage[]>(
+        { queryKey: ["dealAgentChat", vars.dealId] },
+        (old) => (old ? [...old, optimistic] : [optimistic]),
+      );
+      return { optimisticId };
+    },
+    onSuccess: (res, vars, ctx) => {
+      if (ctx?.optimisticId) {
+        qc.setQueriesData<LoanChatMessage[]>(
+          { queryKey: ["dealAgentChat", vars.dealId] },
+          (old) => {
+            if (!old) return old;
+            const withoutOptimistic = old.filter((m) => m.id !== ctx.optimisticId);
+            const next = res.message ? [...withoutOptimistic, res.message] : withoutOptimistic;
+            if (res.ai_reply && !next.some((m) => m.id === res.ai_reply?.id)) next.push(res.ai_reply);
+            return next;
+          },
+        );
+      }
       qc.invalidateQueries({ queryKey: ["dealAgentChat", vars.dealId] });
+    },
+    onError: (_err, vars, ctx) => {
+      if (!ctx?.optimisticId) return;
+      qc.setQueriesData<LoanChatMessage[]>(
+        { queryKey: ["dealAgentChat", vars.dealId] },
+        (old) => old?.filter((m) => m.id !== ctx.optimisticId),
+      );
     },
   });
 }

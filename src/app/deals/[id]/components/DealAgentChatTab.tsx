@@ -57,12 +57,26 @@ export function DealAgentChatTab({ dealId, user }: Props) {
   const submit = async () => {
     const text = body.trim();
     if (!text || send.isPending) return;
+    setBody("");
     try {
-      const res = await send.mutateAsync({ dealId, body: text, mode });
-      setBody("");
+      const res = await send.mutateAsync({
+        dealId,
+        body: text,
+        mode,
+        optimistic_from_role:
+          mode === DealChatMode.BROKER_QUESTION
+            ? DealChatRole.BROKER_INTERNAL
+            : user.role === Role.CLIENT
+              ? DealChatRole.CLIENT
+              : user.role === Role.BROKER
+                ? DealChatRole.BROKER
+                : DealChatRole.SUPER_ADMIN,
+        optimistic_client_visible: mode !== DealChatMode.BROKER_QUESTION,
+      });
       if (res.kind === "ai_task") setFlash("Filed to Elara Inbox.");
       else setFlash(null);
     } catch (e) {
+      setBody(text);
       setFlash(e instanceof Error ? e.message : "Send failed.");
     }
     setTimeout(() => setFlash(null), 4000);
@@ -158,7 +172,6 @@ export function DealAgentChatTab({ dealId, user }: Props) {
             value={body}
             onChange={(e) => setBody(e.target.value)}
             placeholder={modes.find((m) => m.mode === mode)?.hint ?? "Type a message…"}
-            disabled={send.isPending}
             rows={2}
             style={{
               flex: 1,
@@ -174,11 +187,11 @@ export function DealAgentChatTab({ dealId, user }: Props) {
           />
           <button
             onClick={submit}
-            disabled={!body.trim() || send.isPending}
+            disabled={!body.trim()}
             style={{
               ...qcBtnPrimary(t),
-              opacity: !body.trim() || send.isPending ? 0.5 : 1,
-              cursor: !body.trim() || send.isPending ? "not-allowed" : "pointer",
+              opacity: !body.trim() ? 0.5 : 1,
+              cursor: !body.trim() ? "not-allowed" : "pointer",
             }}
           >
             {send.isPending ? "Sending…" : "Send"}

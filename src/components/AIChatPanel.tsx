@@ -132,6 +132,10 @@ export function AIChatPanel({ open, onClose }: Props) {
     const text = raw.trim();
     if ((!text && staged.length === 0) || sendMessage.isPending) return;
     setError(null);
+    const priorInput = input;
+    const priorStaged = staged;
+    setInput("");
+    setStaged([]);
     try {
       let threadId = activeThreadId;
       if (!threadId) {
@@ -147,9 +151,9 @@ export function AIChatPanel({ open, onClose }: Props) {
         body: text,
         attachment_tokens: tokens.length > 0 ? tokens : null,
       });
-      setInput("");
-      setStaged([]);
     } catch (e) {
+      setInput(priorInput);
+      setStaged(priorStaged);
       setError(e instanceof Error ? e.message : "Elara failed to respond.");
     }
   };
@@ -672,7 +676,7 @@ export function AIChatPanel({ open, onClose }: Props) {
                     ? "Type your question…"
                     : "Pick a conversation first"
               }
-              disabled={sendMessage.isPending || !activeThreadId}
+              disabled={!activeThreadId}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();

@@ -19,7 +19,7 @@ import { useRef, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import { useDealChat, useDealWorkspace, useSendDealChat, useUploadDocument } from "@/hooks/useApi";
-import { DealChatMode } from "@/lib/enums.generated";
+import { DealChatMode, DealChatRole } from "@/lib/enums.generated";
 import type { User } from "@/lib/types";
 import { DealChatThread } from "./DealChatThread";
 
@@ -58,15 +58,18 @@ export function ClientLoanChatTab({ loanId, user }: Props) {
   const submit = async () => {
     const body = draft.trim();
     if ((!body && !staged) || send.isPending) return;
+    const att = staged;
+    setDraft("");
+    setStaged(null);
     try {
       await send.mutateAsync({
         loanId,
-        body: body || (staged ? `Uploaded: ${staged.name}` : ""),
+        body: body || (att ? `Uploaded: ${att.name}` : ""),
         mode: DealChatMode.CHAT,
-        attachment_document_id: staged?.document_id ?? null,
+        attachment_document_id: att?.document_id ?? null,
+        optimistic_from_role: DealChatRole.CLIENT,
+        optimistic_client_visible: true,
       });
-      setDraft("");
-      setStaged(null);
       // No client-side flash on send when un-paused; the AI reply will
       // appear in the thread within seconds. When paused, hint that
       // the operator is handling the conversation.
@@ -75,6 +78,8 @@ export function ClientLoanChatTab({ loanId, user }: Props) {
         setTimeout(() => setFlash(null), 4000);
       }
     } catch (e: unknown) {
+      setDraft(body);
+      if (att) setStaged(att);
       setFlash(e instanceof Error ? e.message : "Send failed");
       setTimeout(() => setFlash(null), 4000);
     }
@@ -264,10 +269,10 @@ export function ClientLoanChatTab({ loanId, user }: Props) {
           />
           <button
             onClick={() => void submit()}
-            disabled={(!draft.trim() && !staged) || send.isPending}
+            disabled={!draft.trim() && !staged}
             style={{
               all: "unset",
-              cursor: (!draft.trim() && !staged) || send.isPending ? "not-allowed" : "pointer",
+              cursor: !draft.trim() && !staged ? "not-allowed" : "pointer",
               padding: "10px 16px",
               borderRadius: 9,
               background: !draft.trim() && !staged ? t.chip : t.brand,

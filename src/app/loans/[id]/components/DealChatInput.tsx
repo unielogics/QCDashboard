@@ -12,7 +12,7 @@ import { Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtnPrimary } from "@/components/design-system/buttons";
 import { useSendDealChat, useUploadDocument } from "@/hooks/useApi";
-import { DealChatMode, Role } from "@/lib/enums.generated";
+import { DealChatMode, DealChatRole, Role } from "@/lib/enums.generated";
 import type { User } from "@/lib/types";
 
 interface ModeOption {
@@ -77,22 +77,35 @@ export function DealChatInput({ loanId, user, pausedUntil }: Props) {
   const clientLockedOut = isClient && pauseRemainingMs > 0;
 
   const submit = async () => {
-    if (!body.trim() && !staged) return;
+    const text = body.trim();
+    if (!text && !staged) return;
+    const att = staged;
+    setBody("");
+    setStaged(null);
     try {
       const res = await send.mutateAsync({
         loanId,
-        body: body.trim() || (staged ? `Uploaded: ${staged.name}` : ""),
+        body: text || (att ? `Uploaded: ${att.name}` : ""),
         mode,
-        attachment_document_id: staged?.document_id ?? null,
+        attachment_document_id: att?.document_id ?? null,
+        optimistic_from_role:
+          mode === DealChatMode.BROKER_QUESTION
+            ? DealChatRole.BROKER_INTERNAL
+            : user.role === Role.BROKER
+              ? DealChatRole.BROKER
+              : user.role === Role.CLIENT
+                ? DealChatRole.CLIENT
+                : DealChatRole.SUPER_ADMIN,
+        optimistic_client_visible: mode !== DealChatMode.BROKER_QUESTION,
       });
-      setBody("");
-      setStaged(null);
       if (res.kind === "instruction") setFlash("Instruction saved.");
       else if (res.kind === "ai_task") setFlash("Suggestion filed in Elara Inbox.");
       else if (res.paused_until) setFlash("Elara paused for 1h.");
       else setFlash(null);
       if (flash) setTimeout(() => setFlash(null), 2400);
     } catch (e) {
+      setBody(text);
+      if (att) setStaged(att);
       setFlash(e instanceof Error ? e.message : "Send failed");
       setTimeout(() => setFlash(null), 2400);
     }
@@ -224,8 +237,8 @@ export function DealChatInput({ loanId, user, pausedUntil }: Props) {
         ) : null}
         <button
           onClick={submit}
-          disabled={(!body.trim() && !staged) || send.isPending}
-          style={{ ...qcBtnPrimary(t), opacity: (body.trim() || staged) && !send.isPending ? 1 : 0.5 }}
+          disabled={!body.trim() && !staged}
+          style={{ ...qcBtnPrimary(t), opacity: body.trim() || staged ? 1 : 0.5 }}
         >
           <Icon name={activeMode.icon} size={13} />
           {send.isPending ? "Sending…" : activeMode.label}

@@ -79,6 +79,10 @@ export function ThreadChatView({
     const text = raw.trim();
     if ((!text && staged.length === 0) || sendMessage.isPending) return;
     setError(null);
+    const priorInput = input;
+    const priorStaged = staged;
+    setInput("");
+    setStaged([]);
     try {
       const tokens = staged.map((s) => s.document_id);
       await sendMessage.mutateAsync({
@@ -86,9 +90,9 @@ export function ThreadChatView({
         body: text,
         attachment_tokens: tokens.length > 0 ? tokens : null,
       });
-      setInput("");
-      setStaged([]);
     } catch (e) {
+      setInput(priorInput);
+      setStaged(priorStaged);
       setError(e instanceof Error ? e.message : "Elara failed to respond.");
     }
   };
@@ -407,7 +411,6 @@ export function ThreadChatView({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={staged.length > 0 ? "Add a note (optional)…" : "Type your question…"}
-          disabled={sendMessage.isPending}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
