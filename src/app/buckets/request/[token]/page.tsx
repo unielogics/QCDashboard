@@ -300,7 +300,7 @@ export default function BucketRequestPage() {
 
               <div style={queueHeader}>
                 <h2 style={sectionTitle}>Selected files</h2>
-                <span style={muted}>{files.length} file{files.length === 1 ? "" : "s"}</span>
+                <span style={muted}>Remove files here before submitting. Submitted files are locked.</span>
               </div>
               <div style={queue}>
                 {files.length === 0 ? (
@@ -325,7 +325,11 @@ export default function BucketRequestPage() {
                         return <option key={doc.id} value={doc.id} disabled={disabled}>{doc.name}{disabled ? " - already linked" : ""}</option>;
                       })}
                     </select>
-                    <button style={removeButton} onClick={() => removeFile(item.id)} disabled={isUploading || item.status === "uploaded"} aria-label={`Remove ${item.file.name}`}>Remove</button>
+                    {item.status === "uploaded" ? (
+                      <span style={submittedBadge}>Submitted</span>
+                    ) : (
+                      <button style={removeButton} onClick={() => removeFile(item.id)} disabled={isUploading} aria-label={`Remove ${item.file.name}`}>Remove</button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -469,6 +473,7 @@ const fileRow: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(a
 const fileMeta: CSSProperties = { display: "grid", gap: 4, minWidth: 0 };
 const select: CSSProperties = { height: 42, border: "1px solid #cbd5e1", borderRadius: 10, padding: "0 10px", font: "inherit", background: "#fff", minWidth: 0 };
 const removeButton: CSSProperties = { height: 38, border: "1px solid #d8dee8", borderRadius: 10, background: "#fff", color: "#334155", font: "inherit", fontWeight: 800, cursor: "pointer" };
+const submittedBadge: CSSProperties = { height: 38, border: "1px solid #bbf7d0", borderRadius: 10, background: "#f0fdf4", color: "#166534", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13 };
 const sidePanel: CSSProperties = { display: "grid", gap: 14, alignContent: "start" };
 const sideSection: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 14, padding: 16, background: "#fbfdff" };
 const docList: CSSProperties = { display: "grid", gap: 10, marginTop: 12 };

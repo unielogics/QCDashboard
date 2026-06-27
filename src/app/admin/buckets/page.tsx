@@ -205,6 +205,7 @@ export default function BucketsAdminPage() {
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createResult, setCreateResult] = useState<{ links: UploadInviteLink[] } | null>(null);
@@ -747,6 +748,30 @@ export default function BucketsAdminPage() {
     }
     const res = await call<{ url: string }>(`/buckets/admin/${detail.id}/files/${file.id}/url?download=${download}`);
     window.open(res.url, "_blank", "noopener,noreferrer");
+  }
+
+  async function deleteFile(file: BucketFile) {
+    if (!detail || deletingFileId) return;
+    const ok = window.confirm(
+      `Delete "${file.file_name}"?\n\nThis removes it from the bucket, revokes share access, and stops preview/download immediately.`,
+    );
+    if (!ok) return;
+    setDeletingFileId(file.id);
+    try {
+      await call(`/buckets/admin/${detail.id}/files/${file.id}`, { method: "DELETE" });
+      setShareFiles((current) => {
+        const next = { ...current };
+        delete next[file.id];
+        return next;
+      });
+      setNotice("File deleted.");
+      await loadBucket(detail.id);
+      await loadBuckets();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not delete file.");
+    } finally {
+      setDeletingFileId(null);
+    }
   }
 
   async function loadAdminReview(file: BucketFile): Promise<BucketFileReview> {
@@ -1322,6 +1347,14 @@ export default function BucketsAdminPage() {
                           <button style={secondary} onClick={() => openFile(file, true)}>
                             <Icon name="download" size={13} />
                             Download
+                          </button>
+                          <button
+                            style={{ ...secondary, color: t.danger, borderColor: t.danger }}
+                            onClick={() => deleteFile(file).catch(() => undefined)}
+                            disabled={deletingFileId === file.id}
+                          >
+                            <Icon name="x" size={13} />
+                            {deletingFileId === file.id ? "Deleting..." : "Delete"}
                           </button>
                         </div>
                       </div>
@@ -2046,6 +2079,7 @@ function activityLabel(action: string) {
     file_upload_started: "Upload started",
     file_uploaded: "File uploaded",
     file_upload_failed: "Upload failed",
+    file_deleted: "File deleted",
     admin_file_upload_started: "Admin upload started",
     admin_file_uploaded: "Admin file uploaded",
     admin_file_upload_failed: "Admin upload failed",
