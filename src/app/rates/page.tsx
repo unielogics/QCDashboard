@@ -15,7 +15,11 @@ const EMPTY_DRAFT: RateSKUInput = {
   rate: 7.5,
   points: 1,
   term: "30 yr",
+  credit_tier: "Base",
   min_fico: 680,
+  max_fico: null,
+  min_loan_amount: 0,
+  max_loan_amount: null,
   max_ltv: 0.75,
   delta_bps: 0,
 };
@@ -42,8 +46,8 @@ export default function RatesPage() {
   const deltaColor = (bps: number) => bps < 0 ? t.profit : bps > 0 ? t.danger : t.ink3;
   const deltaLabel = (bps: number) => `${bps > 0 ? "+" : ""}${bps} bps`;
   const gridColumns = canManage
-    ? "minmax(0, 2fr) 110px 80px 90px 90px 90px 90px 118px"
-    : "minmax(0, 2fr) 110px 80px 90px 90px 90px 90px";
+    ? "minmax(220px, 2fr) 160px 150px 105px 80px 80px 95px 90px 90px 118px"
+    : "minmax(220px, 2fr) 160px 150px 105px 80px 80px 95px 90px 90px";
 
   function openCreate() {
     setError(null);
@@ -62,7 +66,11 @@ export default function RatesPage() {
       rate: rate.rate,
       points: rate.points,
       term: rate.term,
+      credit_tier: rate.credit_tier,
       min_fico: rate.min_fico,
+      max_fico: rate.max_fico,
+      min_loan_amount: rate.min_loan_amount,
+      max_loan_amount: rate.max_loan_amount,
       max_ltv: rate.max_ltv,
       delta_bps: rate.delta_bps,
     });
@@ -85,6 +93,14 @@ export default function RatesPage() {
     }
     if (draft.max_ltv <= 0 || draft.max_ltv > 1) {
       setError("Max LTV must be between 1% and 100%.");
+      return;
+    }
+    if (draft.max_fico !== null && draft.max_fico < draft.min_fico) {
+      setError("Max FICO must be greater than or equal to Min FICO.");
+      return;
+    }
+    if (draft.max_loan_amount !== null && draft.max_loan_amount < draft.min_loan_amount) {
+      setError("Max loan amount must be greater than or equal to Min loan amount.");
       return;
     }
     try {
@@ -150,6 +166,8 @@ export default function RatesPage() {
           textTransform: "uppercase", letterSpacing: 1.2, borderBottom: `1px solid ${t.line}`,
         }}>
           <div>SKU</div>
+          <div>Loan amount</div>
+          <div>Credit tier</div>
           <div>Type</div>
           <div style={{ textAlign: "right" }}>Rate</div>
           <div style={{ textAlign: "right" }}>Points</div>
@@ -168,6 +186,11 @@ export default function RatesPage() {
             <div>
               <div style={{ fontWeight: 700 }}>{r.label}</div>
               <div style={{ fontSize: 11, color: t.ink3, fontFamily: "ui-monospace, SF Mono, monospace" }}>{r.id}</div>
+            </div>
+            <div style={{ color: t.ink2, fontWeight: 700 }}>{amountBand(r)}</div>
+            <div>
+              <div style={{ fontWeight: 800 }}>{r.credit_tier}</div>
+              <div style={{ fontSize: 11, color: t.ink3 }}>{ficoBand(r)}</div>
             </div>
             <div><Pill>{r.loan_type.replace(/_/g, " ")}</Pill></div>
             <div style={{ textAlign: "right", fontWeight: 800, fontFeatureSettings: '"tnum"' }}>{r.rate.toFixed(3)}%</div>
@@ -213,6 +236,26 @@ export default function RatesPage() {
       )}
     </div>
   );
+}
+
+function amountBand(rate: RateSKU): string {
+  const min = rate.min_loan_amount || 0;
+  const max = rate.max_loan_amount;
+  if (!min && !max) return "All amounts";
+  if (min && max) return `${moneyShort(min)} - ${moneyShort(max)}`;
+  if (min) return `${moneyShort(min)}+`;
+  return `Up to ${moneyShort(max ?? 0)}`;
+}
+
+function ficoBand(rate: RateSKU): string {
+  if (rate.max_fico) return `${rate.min_fico}-${rate.max_fico} FICO`;
+  return `${rate.min_fico}+ FICO`;
+}
+
+function moneyShort(value: number): string {
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(value % 1_000_000 === 0 ? 0 : 1)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(value % 1_000 === 0 ? 0 : 1)}k`;
+  return `$${value.toLocaleString("en-US")}`;
 }
 
 function RateModal({
@@ -279,6 +322,9 @@ function RateModal({
           <Field label="Term">
             <input value={draft.term} onChange={(e) => set("term", e.target.value)} style={inputStyle(t)} placeholder="30 yr" />
           </Field>
+          <Field label="Credit tier">
+            <input value={draft.credit_tier} onChange={(e) => set("credit_tier", e.target.value)} style={inputStyle(t)} placeholder="680-719" />
+          </Field>
           <Field label="Rate %">
             <input type="number" step="0.001" value={draft.rate} onChange={(e) => set("rate", Number(e.target.value))} style={inputStyle(t)} />
           </Field>
@@ -287,6 +333,15 @@ function RateModal({
           </Field>
           <Field label="Min FICO">
             <input type="number" step="1" value={draft.min_fico} onChange={(e) => set("min_fico", Number(e.target.value))} style={inputStyle(t)} />
+          </Field>
+          <Field label="Max FICO optional">
+            <input type="number" step="1" value={draft.max_fico ?? ""} onChange={(e) => set("max_fico", e.target.value ? Number(e.target.value) : null)} style={inputStyle(t)} placeholder="No cap" />
+          </Field>
+          <Field label="Min loan amount">
+            <input type="number" step="1000" value={draft.min_loan_amount} onChange={(e) => set("min_loan_amount", Number(e.target.value))} style={inputStyle(t)} />
+          </Field>
+          <Field label="Max loan amount optional">
+            <input type="number" step="1000" value={draft.max_loan_amount ?? ""} onChange={(e) => set("max_loan_amount", e.target.value ? Number(e.target.value) : null)} style={inputStyle(t)} placeholder="No cap" />
           </Field>
           <Field label="Max LTV %">
             <input type="number" step="1" value={Math.round(draft.max_ltv * 100)} onChange={(e) => set("max_ltv", Number(e.target.value) / 100)} style={inputStyle(t)} />

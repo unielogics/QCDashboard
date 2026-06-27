@@ -653,7 +653,11 @@ export interface RateSKU {
   rate: number;
   points: number;
   term: string;
+  credit_tier: string;
   min_fico: number;
+  max_fico: number | null;
+  min_loan_amount: number;
+  max_loan_amount: number | null;
   max_ltv: number;
   delta_bps: number;
 }
@@ -664,7 +668,11 @@ export interface RateSKUInput {
   rate: number;
   points: number;
   term: string;
+  credit_tier: string;
   min_fico: number;
+  max_fico: number | null;
+  min_loan_amount: number;
+  max_loan_amount: number | null;
   max_ltv: number;
   delta_bps: number;
 }
