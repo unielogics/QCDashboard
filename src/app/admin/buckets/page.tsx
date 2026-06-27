@@ -765,6 +765,7 @@ export default function BucketsAdminPage() {
         return next;
       });
       setNotice("File deleted.");
+      setReviewFile((current) => (current?.id === file.id ? null : current));
       await loadBucket(detail.id);
       await loadBuckets();
     } catch (error) {
@@ -1591,6 +1592,7 @@ export default function BucketsAdminPage() {
           title="Admin file review"
           loadReview={() => loadAdminReview(reviewFile)}
           saveAnnotation={(payload) => saveAdminAnnotation(reviewFile, payload)}
+          onDelete={() => deleteFile(reviewFile).catch(() => undefined)}
           onClose={() => setReviewFile(null)}
         />
       ) : null}

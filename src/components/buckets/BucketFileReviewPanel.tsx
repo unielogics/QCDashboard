@@ -39,6 +39,7 @@ export function BucketFileReviewPanel({
   title = "File review",
   downloadUrl,
   onDownload,
+  onDelete,
   loadReview,
   saveAnnotation,
   onClose,
@@ -46,6 +47,7 @@ export function BucketFileReviewPanel({
   title?: string;
   downloadUrl?: string | null;
   onDownload?: () => void;
+  onDelete?: () => void;
   loadReview: () => Promise<BucketFileReview>;
   saveAnnotation: (payload: DraftRect & { comment: string }) => Promise<BucketFileAnnotation>;
   onClose: () => void;
@@ -239,6 +241,12 @@ export function BucketFileReviewPanel({
                 <Icon name="external" size={14} />
                 Open original
               </a>
+            ) : null}
+            {onDelete ? (
+              <button style={dangerButton} onClick={onDelete}>
+                <Icon name="x" size={14} />
+                Delete
+              </button>
             ) : null}
             <button style={iconButton} onClick={onClose} aria-label="Close review">
               <Icon name="x" size={18} />
@@ -669,6 +677,7 @@ const primaryButton: CSSProperties = { height: 36, border: "none", borderRadius:
 const primaryLink: CSSProperties = { ...primaryButton, display: "inline-flex", alignItems: "center", gap: 7, textDecoration: "none" };
 const secondaryButton: CSSProperties = { height: 36, border: "1px solid #cbd5e1", borderRadius: 8, background: "#fff", color: "#334155", fontWeight: 900, padding: "0 12px", cursor: "pointer" };
 const secondaryLink: CSSProperties = { ...secondaryButton, display: "inline-flex", alignItems: "center", gap: 7, textDecoration: "none" };
+const dangerButton: CSSProperties = { ...secondaryButton, display: "inline-flex", alignItems: "center", gap: 7, color: "#b91c1c", borderColor: "#fecaca", background: "#fff5f5" };
 const emptyNote: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 8, padding: 10, color: "#64748b", background: "#f8fafc", fontSize: 13 };
 const annotationButton: CSSProperties = { textAlign: "left", border: "1px solid #e5e7eb", borderRadius: 8, background: "#fff", color: "#334155", padding: 10, display: "grid", gap: 4, cursor: "pointer" };
 const annotationButtonActive: CSSProperties = { borderColor: "#21a7a1", background: "#ecfeff" };
