@@ -1294,6 +1294,7 @@ export interface LoanScenario {
     monthly_pi?: number;
     dscr?: number | null;
     cash_to_close_pricing?: number;
+    total_cash_to_close?: number | null;
   } | null;
   created_by: string | null;
   created_at: string;

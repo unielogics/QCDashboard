@@ -1487,6 +1487,7 @@ function FromLoanMode({
 // ── Shared bits ────────────────────────────────────────────────────────────
 
 function ResultsCard({ t, result }: { t: ReturnType<typeof useTheme>["t"]; result: RecalcResponse }) {
+  const fullCashToClose = result.total_cash_to_close ?? result.cash_to_close_pricing;
   return (
     <Card pad={20}>
       <SectionLabel>Results</SectionLabel>
@@ -1498,7 +1499,8 @@ function ResultsCard({ t, result }: { t: ReturnType<typeof useTheme>["t"]; resul
         ) : (
           <div />
         )}
-        <ResultStat t={t} label="Cash to close" value={QC_FMT.usd(result.cash_to_close_pricing)} />
+        <ResultStat t={t} label="Cash to close" value={QC_FMT.usd(fullCashToClose)} />
+        <ResultStat t={t} label="Pricing cash" value={QC_FMT.usd(result.cash_to_close_pricing)} />
         <ResultStat t={t} label="HUD-1 total" value={QC_FMT.usd(result.hud_total)} />
       </div>
       {result.warnings && result.warnings.length > 0 && (
@@ -2410,7 +2412,7 @@ function SimInspect({
         <Card pad={14}><KPI label="Base rate" value={rate3(row.base_rate)} /></Card>
         <Card pad={14}><KPI label="Final rate" value={rate3(s.final_rate)} /></Card>
         <Card pad={14}><KPI label="Monthly P&I" value={usd0(s.monthly_pi)} /></Card>
-        <Card pad={14}><KPI label="Cash to close" value={usd0(s.cash_to_close_pricing)} /></Card>
+        <Card pad={14}><KPI label="Cash to close" value={usd0(s.total_cash_to_close ?? s.cash_to_close_pricing)} /></Card>
         <Card pad={14}><KPI label="DSCR" value={typeof s.dscr === "number" ? s.dscr.toFixed(2) : "—"} /></Card>
         <Card pad={14}><KPI label="LTV" value={typeof row.ltv === "number" ? `${(row.ltv * 100).toFixed(1)}%` : "—"} /></Card>
       </div>

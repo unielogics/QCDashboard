@@ -67,7 +67,7 @@ function metricFor(run: AnalysisRun) {
   if (dscr) return `${dscr.toFixed(2)}x DSCR`;
   const rate = readNumber(run.calculator_output, ["final_rate", "rate"]);
   if (rate) return `${(rate * 100).toFixed(3)}%`;
-  const cash = readNumber(run.calculator_output, ["cash_to_close_pricing", "total_cash_to_close", "estimatedCashToClose", "cashToClose"]);
+  const cash = readNumber(run.calculator_output, ["total_cash_to_close", "cash_to_close_pricing", "estimatedCashToClose", "cashToClose"]);
   if (cash) return `${QC_FMT.usd(cash, 0)} cash`;
   return "-";
 }
