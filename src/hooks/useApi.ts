@@ -91,6 +91,8 @@ import type {
   PrequalSellerOutcome,
   PrequalStatus,
   RateSKU,
+  RateSKUInput,
+  RateSKUUpdate,
   RecalcResponse,
   ScenarioCreate,
   SmartIntakePayload,
@@ -700,6 +702,42 @@ export function useRates() {
     queryKey: ["rates", devUser],
     queryFn: () => apiCall<RateSKU[]>("/rates"),
     staleTime: 60 * 1000,
+  });
+}
+
+export function useCreateRate() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: RateSKUInput) =>
+      apiCall<RateSKU>("/rates", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["rates"] }),
+  });
+}
+
+export function useUpdateRate() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: RateSKUUpdate }) =>
+      apiCall<RateSKU>(`/rates/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["rates"] }),
+  });
+}
+
+export function useDeleteRate() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiCall<{ status: string }>(`/rates/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["rates"] }),
   });
 }
 

@@ -657,6 +657,18 @@ export interface RateSKU {
   max_ltv: number;
   delta_bps: number;
 }
+export interface RateSKUInput {
+  id: string;
+  label: string;
+  loan_type: LoanType;
+  rate: number;
+  points: number;
+  term: string;
+  min_fico: number;
+  max_ltv: number;
+  delta_bps: number;
+}
+export type RateSKUUpdate = Partial<Omit<RateSKUInput, "id">>;
 
 // ── Dashboard report ───────────────────────────────────────────────────────
 export interface StageBreakdown {
