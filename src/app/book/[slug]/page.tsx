@@ -14,12 +14,16 @@ interface PublicBookingSlot {
 interface PublicBookingProfile {
   slug: string;
   agent_name: string;
+  host_name: string;
+  host_role: string;
   title: string;
   intro: string;
   primary_color: string;
   background_color: string;
   duration_min: number;
   timezone: string;
+  logo_url: string | null;
+  profile_photo_url: string | null;
   slots: PublicBookingSlot[];
 }
 
@@ -136,6 +140,17 @@ export default function PublicBookingPage() {
       <main style={{ width: "min(1120px, calc(100vw - 32px))", margin: "0 auto", padding: "44px 0" }}>
         <header style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 18, alignItems: "start", marginBottom: 24 }}>
           <div>
+            {profile.logo_url ? (
+              <img
+                src={profile.logo_url}
+                alt=""
+                style={{ maxWidth: 220, maxHeight: 54, objectFit: "contain", marginBottom: 22, display: "block" }}
+              />
+            ) : (
+              <div style={{ color: accent, fontSize: 13, fontWeight: 950, letterSpacing: 1.8, textTransform: "uppercase", marginBottom: 22 }}>
+                Qualified Commercial
+              </div>
+            )}
             <div style={{ color: accent, fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: "uppercase" }}>
               {profile.duration_min} minute meeting
             </div>
@@ -146,9 +161,21 @@ export default function PublicBookingPage() {
               {profile.intro}
             </p>
           </div>
-          <div style={{ border: "1px solid rgba(255,255,255,0.14)", borderRadius: 14, padding: "12px 14px", color: "rgba(255,255,255,0.76)", minWidth: 220 }}>
-            <div style={{ color: "#fff", fontWeight: 900 }}>{profile.agent_name}</div>
-            <div style={{ fontSize: 12, marginTop: 4 }}>{profile.timezone}</div>
+          <div style={{ border: "1px solid rgba(255,255,255,0.14)", borderRadius: 16, padding: 14, color: "rgba(255,255,255,0.76)", minWidth: 240, background: "rgba(255,255,255,0.055)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 58, height: 58, borderRadius: 16, overflow: "hidden", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.16)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                {profile.profile_photo_url ? (
+                  <img src={profile.profile_photo_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  <Icon name="user" size={24} />
+                )}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: "#fff", fontWeight: 900 }}>{profile.host_name || profile.agent_name}</div>
+                <div style={{ fontSize: 12, marginTop: 4, textTransform: "capitalize" }}>{profile.host_role.replace(/_/g, " ")}</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 12, marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.12)" }}>{profile.timezone}</div>
           </div>
         </header>
 

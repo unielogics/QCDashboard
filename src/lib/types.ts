@@ -775,6 +775,33 @@ export interface AgentBookingSettings {
   end_time: string;
 }
 
+export interface UserBookingSettings {
+  id: string;
+  user_id: string;
+  enabled: boolean;
+  slug: string | null;
+  title: string | null;
+  intro: string | null;
+  primary_color: string;
+  background_color: string;
+  duration_min: number;
+  timezone: string;
+  available_days: number[];
+  start_time: string;
+  end_time: string;
+  logo_s3_key: string | null;
+  profile_photo_s3_key: string | null;
+  logo_url: string | null;
+  profile_photo_url: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface BookingAssetUploadInitResponse {
+  s3_key: string;
+  upload_url: string | null;
+}
+
 // Response from POST /me/broker-settings/headshot/upload-init.
 export interface HeadshotUploadInitResponse {
   s3_key: string;

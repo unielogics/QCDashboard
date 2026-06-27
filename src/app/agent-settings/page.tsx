@@ -23,7 +23,7 @@ import Link from "next/link";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn } from "@/components/design-system/buttons";
+import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import {
   useBrokerSettings,
   useCurrentUser,
@@ -557,9 +557,14 @@ function BookingSection({ draft, setDraft, user, dirty, saving, onSave }: Bookin
         <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />
       </div>
       <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
-        Create a public page where clients and partners can book time with you.
-        Booked calls appear on your calendar timeline as agent-owned events.
+        Booking pages are now configured from the universal booking settings screen.
+        Use that page to upload your logo, profile photo, and manage your public scheduling link.
       </div>
+      <Link href="/booking-settings" style={{ textDecoration: "none" }}>
+        <span style={{ ...qcBtnPrimary(t), display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 14 }}>
+          <Icon name="external" size={13} /> Open Booking Page Settings
+        </span>
+      </Link>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: 16, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>

@@ -53,6 +53,7 @@ import type {
   AppSettingsRead,
   AppSettingsUpdate,
   SignatureUploadInitResponse,
+  BookingAssetUploadInitResponse,
   Broker,
   CalendarActivityItem,
   CalendarEvent,
@@ -100,6 +101,7 @@ import type {
   StageTransitionRequest,
   SummaryRefreshResponse,
   HeadshotUploadInitResponse,
+  UserBookingSettings,
   UserRow,
   WorkspaceState,
   WorkspaceData,
@@ -538,6 +540,70 @@ export function useUpdateBrokerSettings() {
       qc.invalidateQueries({ queryKey: ["brokerSettings", devUser] });
       // Resolution changed — re-fetch any open workflow views.
       qc.invalidateQueries({ queryKey: ["loanWorkflow"] });
+    },
+  });
+}
+
+// /me/booking-settings — user-owned public booking page settings. Unlike
+// broker-settings, this is available to every authenticated role.
+export function useBookingSettings() {
+  const apiCall = useAuthedApi();
+  const devUser = useDevUser();
+  return useQuery({
+    queryKey: ["bookingSettings", devUser],
+    queryFn: () => apiCall<UserBookingSettings>("/me/booking-settings"),
+    retry: (failureCount, err) => {
+      if (err instanceof ApiError && (err.status === 403 || err.status === 404)) return false;
+      return failureCount < 1;
+    },
+  });
+}
+
+export function useUpdateBookingSettings() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  const devUser = useDevUser();
+  return useMutation({
+    mutationFn: (data: UserBookingSettings) =>
+      apiCall<UserBookingSettings>("/me/booking-settings", {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["bookingSettings", devUser] });
+      qc.invalidateQueries({ queryKey: ["calendar"] });
+    },
+  });
+}
+
+export function useUploadBookingAsset(asset: "logo" | "profile-photo") {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: async (file: File): Promise<{ kind: "s3"; s3_key: string } | { kind: "data_url"; data_url: string }> => {
+      const contentType: "image/png" | "image/jpeg" =
+        file.type === "image/jpeg" ? "image/jpeg" : "image/png";
+      const init = await apiCall<BookingAssetUploadInitResponse>(
+        `/me/booking-settings/${asset}/upload-init`,
+        { method: "POST", body: JSON.stringify({ content_type: contentType }) },
+      );
+      if (!init.upload_url) {
+        const data_url = await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(typeof r.result === "string" ? r.result : "");
+          r.onerror = () => reject(r.error);
+          r.readAsDataURL(file);
+        });
+        return { kind: "data_url", data_url };
+      }
+      const putRes = await fetch(init.upload_url, {
+        method: "PUT",
+        headers: { "Content-Type": contentType, "x-amz-server-side-encryption": "AES256" },
+        body: file,
+      });
+      if (!putRes.ok) {
+        throw new Error(`Booking image upload failed: ${putRes.status}`);
+      }
+      return { kind: "s3", s3_key: init.s3_key };
     },
   });
 }

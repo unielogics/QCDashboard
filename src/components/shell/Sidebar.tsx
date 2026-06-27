@@ -40,6 +40,7 @@ const AGENT_NAV: NavItem[] = [
   { href: "/clients", label: "Clients", icon: "clients" },
   { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "cal" },
+  { href: "/booking-settings", label: "Booking Page", icon: "link" },
   { href: "/admin/prequal-requests", label: "Prequalifications", icon: "docCheck" },
   { href: "/deal-analyzer", label: "Deal Analyzer", icon: "hammer" },
   { href: "/simulator", label: "Simulation", icon: "calc" },
@@ -59,6 +60,7 @@ const REGIONAL_MANAGER_NAV: NavItem[] = [
   { href: "/clients", label: "Clients", icon: "clients" },
   { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "cal" },
+  { href: "/booking-settings", label: "Booking Page", icon: "link" },
   { href: "/reports", label: "Reports", icon: "trend" },
   { href: "/regional-agents", label: "Agents", icon: "clients" },
   { href: "/profile", label: "Profile", icon: "user" },
@@ -77,6 +79,7 @@ const OPERATOR_NAV: NavItem[] = [
   // Lending AI is reached from /settings → "Open Lending AI" banner.
   { href: "/messages", label: "Messages", icon: "chat" },
   { href: "/calendar", label: "Calendar", icon: "cal" },
+  { href: "/booking-settings", label: "Booking Page", icon: "link" },
   { href: "/simulator", label: "Simulate", icon: "calc" },
   { href: "/deal-analyzer", label: "Deal Analyzer", icon: "hammer" },
   { href: "/rates", label: "Rate Sheet", icon: "sliders", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },

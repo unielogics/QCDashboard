@@ -7,7 +7,7 @@ import { Card, Pill, SectionLabel } from "@/components/design-system/primitives"
 import { Icon } from "@/components/design-system/Icon";
 import {
   useAITasks,
-  useBrokerSettings,
+  useBookingSettings,
   useCalendar,
   useCalendarActivity,
   useCurrentUser,
@@ -18,7 +18,7 @@ import {
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import type { AITask, AgentBookingSettings, CalendarActivityItem, CalendarEvent, Document, Loan } from "@/lib/types";
+import type { AITask, CalendarActivityItem, CalendarEvent, Document, Loan, UserBookingSettings } from "@/lib/types";
 import { EventModal } from "./components/EventModal";
 
 type Window = 7 | 30 | 90;
@@ -68,7 +68,7 @@ export default function CalendarPage() {
 
   const { data: events = [] } = useCalendar(queryWindow);
   const { data: activity = [] } = useCalendarActivity(activityWindow);
-  const { data: brokerSettings } = useBrokerSettings();
+  const { data: bookingSettings } = useBookingSettings();
   const { data: tasks = [] } = useAITasks();
   const { data: docs = [] } = useDocuments();
   const { data: loans = [] } = useLoans();
@@ -203,7 +203,7 @@ export default function CalendarPage() {
             <ClientActivityFeed rows={activity} />
           ) : (
             <>
-              <CalendarShareCard role={user?.role} booking={brokerSettings?.data.booking ?? null} />
+              <CalendarShareCard booking={bookingSettings ?? null} />
               <TodosRail todos={todos} windowDays={windowDays} />
             </>
           )}
@@ -213,11 +213,10 @@ export default function CalendarPage() {
   );
 }
 
-function CalendarShareCard({ role, booking }: { role?: Role; booking: AgentBookingSettings | null }) {
+function CalendarShareCard({ booking }: { booking: UserBookingSettings | null }) {
   const { t } = useTheme();
   const [copied, setCopied] = useState(false);
-  const isBroker = role === Role.BROKER;
-  const bookingPath = isBroker && booking?.enabled && booking.slug ? `/book/${booking.slug}` : null;
+  const bookingPath = booking?.enabled && booking.slug ? `/book/${booking.slug}` : null;
   const bookingUrl = bookingPath && typeof window !== "undefined" ? `${window.location.origin}${bookingPath}` : bookingPath;
 
   const copy = async () => {
@@ -261,28 +260,25 @@ function CalendarShareCard({ role, booking }: { role?: Role; booking: AgentBooki
                 <Icon name="external" size={12} /> Open
               </span>
             </Link>
-            <Link href="/agent-settings" style={{ textDecoration: "none" }}>
+            <Link href="/booking-settings" style={{ textDecoration: "none" }}>
               <span style={{ ...qcBtn(t), display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12 }}>
                 <Icon name="gear" size={12} /> Configure
               </span>
             </Link>
           </div>
         </>
-      ) : isBroker ? (
+      ) : (
         <>
           <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, margin: "8px 0 10px" }}>
             Your public booking page is not enabled yet. Configure it once, then the share link will appear here.
           </div>
-          <Link href="/agent-settings" style={{ textDecoration: "none" }}>
+          <Link href="/booking-settings" style={{ textDecoration: "none" }}>
             <span style={{ ...qcBtnPrimary(t), display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
               <Icon name="cal" size={12} /> Configure booking page
             </span>
           </Link>
         </>
-      ) : (
-        <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.5, marginTop: 8 }}>
-          Use <strong style={{ color: t.ink }}>New event</strong> for clients, agents, lenders, vendors, and internal team meetings. Public booking links are configured on agent accounts.
-        </div>
+
       )}
     </Card>
   );
