@@ -42,7 +42,7 @@ import {
 } from "@/hooks/useApi";
 import { PreQualRequestList } from "@/components/PreQualRequestList";
 import { PreQualRequestModal } from "@/components/PreQualRequestModal";
-import { LoanType, PropertyType, Role } from "@/lib/enums.generated";
+import { LoanPurpose, LoanType, PropertyType, Role } from "@/lib/enums.generated";
 import { QC_FMT } from "@/components/design-system/tokens";
 import type { AddressParts, AnalysisProduct, AnalysisRun, FredSeriesSummary, RecalcResponse, SimulatorSettings } from "@/lib/types";
 import { EligibilityBanner } from "@/components/EligibilityBanner";
@@ -50,11 +50,16 @@ import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { useCreditSummary } from "@/hooks/useApi";
 import { RangeGauge } from "@/components/RangeGauge";
 import {
+  DSCR_MAX_LTV_CASH_OUT,
+  DSCR_MAX_LTV_PURCHASE,
+  FF_MAX_ARV_LTV,
+  FF_MAX_LTC,
   bindingConstraintLabel,
   cappedReasonLabel,
   computeEligibility,
   computeSimulator,
   ltvLabel,
+  type BindingConstraint,
   type SimulatorInputs,
   type TransactionType,
 } from "@/lib/eligibility";
@@ -951,6 +956,60 @@ function isReno(type: LoanType): boolean {
   return type === LoanType.FIX_AND_FLIP || type === LoanType.GROUND_UP;
 }
 
+type LoanAmountCap = {
+  max: number;
+  binding: BindingConstraint | "configured";
+  basisLabel: string;
+  capLabel: string;
+};
+
+function roundDollar(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+}
+
+function computeLoanAmountCap({
+  type,
+  marketValue,
+  brv,
+  arv,
+  configuredMax,
+}: {
+  type: LoanType;
+  marketValue: number;
+  brv: number;
+  arv: number;
+  configuredMax: number;
+}): LoanAmountCap {
+  const globalMax = Number.isFinite(configuredMax) && configuredMax > 0 ? configuredMax : Number.POSITIVE_INFINITY;
+
+  if (isReno(type)) {
+    const ltcMax = FF_MAX_LTC * Math.max(0, brv);
+    const arvMax = FF_MAX_ARV_LTV * Math.max(0, arv);
+    const productMax = Math.min(ltcMax, arvMax);
+    const max = roundDollar(Math.min(productMax, globalMax));
+    const binding: BindingConstraint =
+      productMax <= 0 || Math.abs(arvMax - productMax) < 1 ? "arv" : "ltc";
+    return {
+      max,
+      binding,
+      basisLabel: binding === "arv" ? "ARV" : "BRV",
+      capLabel: binding === "arv" ? "70% ARV cap" : "85% LTC cap",
+    };
+  }
+
+  const value = Math.max(0, marketValue);
+  const ltvCap = type === LoanType.CASH_OUT_REFI ? DSCR_MAX_LTV_CASH_OUT : DSCR_MAX_LTV_PURCHASE;
+  const productMax = value * ltvCap;
+  const max = roundDollar(Math.min(productMax, globalMax));
+  const binding: BindingConstraint = type === LoanType.CASH_OUT_REFI ? "refi-cap" : "ltv";
+  return {
+    max,
+    binding,
+    basisLabel: "market value",
+    capLabel: `${(ltvCap * 100).toFixed(0)}% LTV cap`,
+  };
+}
+
 function analysisProductFor(type: LoanType): AnalysisProduct | null {
   if (type === LoanType.DSCR) return "dscr_purchase";
   if (type === LoanType.FIX_AND_FLIP) return "fix_flip";
@@ -996,33 +1055,62 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
   const analysisProduct = analysisProductFor(type);
 
   const { rate: baseRate, source: rateSource, series: rateSeries } = pickRate(type, fred);
+  const loanAmountCap = useMemo(
+    () => computeLoanAmountCap({
+      type,
+      marketValue,
+      brv,
+      arv,
+      configuredMax: sim.amount_max,
+    }),
+    [arv, brv, marketValue, sim.amount_max, type],
+  );
+  const cappedAmount = loanAmountCap.max > 0 ? Math.min(amount, loanAmountCap.max) : amount;
+  const cappedLoanAmount = roundDollar(cappedAmount);
+  const loanAmountWasCapped = amount > cappedLoanAmount;
+  const loanCapHint = loanAmountCap.max > 0
+    ? `Maximum ${QC_FMT.usd(loanAmountCap.max, 0)} · ${loanAmountCap.capLabel} from ${loanAmountCap.basisLabel}`
+    : "Enter property value to calculate the maximum loan amount";
+  useEffect(() => {
+    if (loanAmountCap.max > 0 && amount > loanAmountCap.max) {
+      setAmount(loanAmountCap.max);
+    }
+  }, [amount, loanAmountCap.max]);
   // Effective rate after points buy-down (matches backend pricing_quote): each
   // discount point trims 25 bps off the base rate, capped at the floor.
   const finalRate = Math.max(0.04, baseRate - (points * 25) / 10_000);
   // HUD impact: discount points line item = points% × loan amount.
-  const pointsCost = (points / 100) * amount;
+  const pointsCost = (points / 100) * cappedLoanAmount;
   // Reno LTV reference (FF/GU typically priced off ARV).
-  const arvLtv = reno && arv > 0 ? amount / arv : null;
-  const marketLtv = !reno && marketValue > 0 ? amount / marketValue : null;
-
-  const submit = () => {
-    calc.mutate({
+  const arvLtv = reno && arv > 0 ? cappedLoanAmount / arv : null;
+  const marketLtv = !reno && marketValue > 0 ? cappedLoanAmount / marketValue : null;
+  const freeCalcPayload = useMemo(
+    () => ({
       type,
       property_type: propertyType,
-      loan_amount: amount,
+      loan_amount: cappedLoanAmount,
       base_rate: baseRate,
       discount_points: points,
       annual_taxes: annualTaxes,
       annual_insurance: annualInsurance,
       monthly_hoa: monthlyHoa,
       monthly_rent: isDscr ? monthlyRent : null,
-    });
+      purpose: type === LoanType.CASH_OUT_REFI ? LoanPurpose.CASH_OUT_REFI : LoanPurpose.PURCHASE,
+      arv: reno ? arv : marketValue,
+      brv: reno ? brv : null,
+      rehab_budget: reno ? 0 : null,
+    }),
+    [annualInsurance, annualTaxes, arv, baseRate, brv, cappedLoanAmount, isDscr, marketValue, monthlyHoa, monthlyRent, points, propertyType, reno, type],
+  );
+
+  const submit = () => {
+    calc.mutate(freeCalcPayload);
   };
 
   useEffect(() => {
     setSavedRun(null);
     setActionMessage(null);
-  }, [type, selectedClient?.id, address, marketValue, brv, arv, amount, points, annualTaxes, annualInsurance, monthlyHoa, monthlyRent, effectiveFico]);
+  }, [type, selectedClient?.id, address, marketValue, brv, arv, cappedLoanAmount, points, annualTaxes, annualInsurance, monthlyHoa, monthlyRent, effectiveFico]);
 
   const ensureSavedRun = async (opts?: { quiet?: boolean }) => {
     if (!opts?.quiet) setActionMessage(null);
@@ -1030,23 +1118,15 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
       setActionMessage("Save/share is currently available for DSCR and Fix & Flip calculations.");
       return null;
     }
-    const output = calc.data ?? (await calc.mutateAsync({
-      type,
-      property_type: propertyType,
-      loan_amount: amount,
-      base_rate: baseRate,
-      discount_points: points,
-      annual_taxes: annualTaxes,
-      annual_insurance: annualInsurance,
-      monthly_hoa: monthlyHoa,
-      monthly_rent: isDscr ? monthlyRent : null,
-    }));
+    const output = await calc.mutateAsync(freeCalcPayload);
     const targetAddress = address.trim() || "Property TBD";
     const inputs: Record<string, unknown> = {
       address: targetAddress,
       property_type: propertyType,
-      requested_loan_amount: amount,
-      loan_amount: amount,
+      requested_loan_amount: cappedLoanAmount,
+      loan_amount: cappedLoanAmount,
+      max_loan_amount: loanAmountCap.max,
+      loan_amount_cap: loanAmountCap.capLabel,
       rate: baseRate,
       discount_points: points,
       annual_taxes: annualTaxes,
@@ -1123,8 +1203,10 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
     () => ({
       address: address.trim() || "Property TBD",
       property_type: propertyType,
-      requested_loan_amount: amount,
-      loan_amount: amount,
+      requested_loan_amount: cappedLoanAmount,
+      loan_amount: cappedLoanAmount,
+      max_loan_amount: loanAmountCap.max,
+      loan_amount_cap: loanAmountCap.capLabel,
       rate: baseRate,
       discount_points: points,
       annual_taxes: annualTaxes,
@@ -1137,7 +1219,7 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
       brv,
       arv,
     }),
-    [address, amount, annualInsurance, annualTaxes, arv, baseRate, brv, effectiveFico, isDscr, marketValue, monthlyHoa, monthlyRent, points, propertyType],
+    [address, annualInsurance, annualTaxes, arv, baseRate, brv, cappedLoanAmount, effectiveFico, isDscr, loanAmountCap.capLabel, loanAmountCap.max, marketValue, monthlyHoa, monthlyRent, points, propertyType],
   );
   const autosaveKey = useMemo(
     () => JSON.stringify({ type, selectedClientId: selectedClient?.id ?? null, ...analysisInputs }),
@@ -1269,17 +1351,69 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
             t={t}
             label="Loan amount"
             value={amount}
-            onChange={setAmount}
+            onChange={(next) => setAmount(loanAmountCap.max > 0 ? Math.min(next, loanAmountCap.max) : next)}
+            max={loanAmountCap.max > 0 ? loanAmountCap.max : undefined}
             hint={
               reno
                 ? arvLtv != null
-                  ? `${(arvLtv * 100).toFixed(1)}% loan-to-ARV`
+                  ? `${(arvLtv * 100).toFixed(1)}% loan-to-ARV · ${loanCapHint}`
                   : undefined
                 : marketLtv != null
-                  ? `${(marketLtv * 100).toFixed(1)}% LTV`
-                  : undefined
+                  ? `${(marketLtv * 100).toFixed(1)}% LTV · ${loanCapHint}`
+                  : loanCapHint
             }
           />
+        </div>
+        <div
+          style={{
+            marginTop: 10,
+            padding: "12px 14px",
+            borderRadius: 11,
+            border: `1px solid ${loanAmountWasCapped ? t.warn : t.line}`,
+            background: loanAmountWasCapped ? t.warnBg : t.surface2,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 11, color: t.ink3, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase" }}>
+                Maximum loan available
+              </div>
+              <div style={{ marginTop: 3, color: t.ink, fontSize: 18, fontWeight: 900, fontFeatureSettings: '"tnum"' }}>
+                {loanAmountCap.max > 0 ? QC_FMT.usd(loanAmountCap.max, 0) : "Enter property value"}
+              </div>
+              <div style={{ marginTop: 3, color: loanAmountWasCapped ? t.warn : t.ink3, fontSize: 12, fontWeight: loanAmountWasCapped ? 800 : 600 }}>
+                {loanAmountWasCapped
+                  ? `Requested amount was capped to ${QC_FMT.usd(cappedLoanAmount, 0)}.`
+                  : `${loanAmountCap.capLabel} based on ${loanAmountCap.basisLabel}.`}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAmount(loanAmountCap.max)}
+              disabled={loanAmountCap.max <= 0}
+              style={{
+                ...qcBtn(t),
+                opacity: loanAmountCap.max <= 0 ? 0.55 : 1,
+                pointerEvents: loanAmountCap.max <= 0 ? "none" : "auto",
+              }}
+            >
+              Use max
+            </button>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={Math.max(loanAmountCap.max, 0)}
+            step={Math.max(1000, sim.amount_step)}
+            value={loanAmountCap.max > 0 ? Math.min(amount, loanAmountCap.max) : 0}
+            onChange={(e) => setAmount(Number(e.target.value))}
+            disabled={loanAmountCap.max <= 0}
+            style={{ width: "100%", marginTop: 12, accentColor: t.petrol }}
+          />
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: t.ink3, fontFeatureSettings: '"tnum"' }}>
+            <span>$0</span>
+            <span>{loanAmountCap.max > 0 ? QC_FMT.usd(loanAmountCap.max, 0) : "$0"}</span>
+          </div>
         </div>
 
         <div style={{ height: 14 }} />
@@ -1302,7 +1436,7 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
           min={sim.points_min}
           max={sim.points_max}
           step={sim.points_step}
-          loanAmount={amount}
+          loanAmount={cappedLoanAmount}
           pointsCost={pointsCost}
         />
 
@@ -1656,12 +1790,14 @@ function CurrencyField({
   value,
   onChange,
   hint,
+  max,
 }: {
   t: ReturnType<typeof useTheme>["t"];
   label: string;
   value: number;
   onChange: (n: number) => void;
   hint?: string;
+  max?: number;
 }) {
   // Render the digits formatted with thousands separators while editing —
   // operators size up loan amounts in chunks of $25k, raw "500000" is hard
@@ -1686,7 +1822,8 @@ function CurrencyField({
           value={display}
           onChange={(e) => {
             const raw = e.target.value.replace(/[^0-9]/g, "");
-            onChange(raw === "" ? 0 : Number(raw));
+            const next = raw === "" ? 0 : Number(raw);
+            onChange(max != null ? Math.min(next, max) : next);
           }}
           style={{
             flex: 1,
