@@ -34,6 +34,7 @@ export type BucketFileReview = {
 type DraftRect = { page_number: number; x: number; y: number; width: number; height: number };
 type DragStart = { page_number: number; x: number; y: number };
 type ReviewFileType = "pdf" | "image" | "csv" | "text" | "spreadsheet" | "unsupported";
+const MAXIMIZED_PDF_ZOOM = 1.7;
 
 export function BucketFileReviewPanel({
   title = "File review",
@@ -258,7 +259,7 @@ export function BucketFileReviewPanel({
             {review?.preview_url && fileType === "pdf" ? (
               <>
                 <div style={toolbar}>
-                  <button style={toolButton} onClick={() => setPdfZoom(1)}>Fit width</button>
+                  <button style={toolButton} onClick={() => setPdfZoom(MAXIMIZED_PDF_ZOOM)}>Maximize</button>
                   <button style={toolButton} onClick={() => setPdfZoom((zoom) => Math.max(0.55, Number((zoom - 0.15).toFixed(2))))} aria-label="Zoom out">-</button>
                   <span style={zoomLabel}>{Math.round(pdfZoom * 100)}%</span>
                   <button style={toolButton} onClick={() => setPdfZoom((zoom) => Math.min(2.4, Number((zoom + 0.15).toFixed(2))))} aria-label="Zoom in">+</button>
@@ -653,7 +654,7 @@ const header: CSSProperties = { display: "flex", alignItems: "center", justifyCo
 const eyebrow: CSSProperties = { color: "#64748b", fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0 };
 const heading: CSSProperties = { margin: "3px 0 0", color: "#111827", fontSize: 20, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const fileMeta: CSSProperties = { color: "#64748b", fontSize: 12, fontWeight: 750, marginTop: 3 };
-const body: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))", minHeight: 0 };
+const body: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 5fr) minmax(180px, 1fr)", minHeight: 0 };
 const viewerColumn: CSSProperties = { minWidth: 0, minHeight: 0, overflow: "auto", background: "#eef1f5", padding: 16 };
 const sidePanel: CSSProperties = { borderLeft: "1px solid #e5e7eb", background: "#fff", overflowY: "auto", padding: 14, display: "grid", gap: 12, alignContent: "start" };
 const toolbar: CSSProperties = { position: "sticky", top: 0, zIndex: 4, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 14, padding: 8, border: "1px solid #d8dee8", borderRadius: 10, background: "rgba(255,255,255,.94)", boxShadow: "0 8px 24px rgba(15,23,42,.08)", flexWrap: "wrap" };
