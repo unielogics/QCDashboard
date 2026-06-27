@@ -238,9 +238,11 @@ export function useCurrentUser() {
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
     retry: false, // 401s should not retry
-    // Don't fire until Clerk has resolved the auth state — otherwise we send
-    // a token-less request and immediately 401.
-    enabled: isLoaded,
+    // Don't fire until Clerk has resolved a signed-in session. When Clerk is
+    // loaded but signed out (expired session, explicit sign-out, or a stale
+    // protected tab), a request here would intentionally have no bearer token
+    // and the backend would correctly 401.
+    enabled: isLoaded && isSignedIn === true,
   });
 }
 

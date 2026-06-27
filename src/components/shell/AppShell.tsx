@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
@@ -10,6 +11,7 @@ import { useUI, readPersistedSidebar } from "@/store/ui";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { useCurrentUser } from "@/hooks/useApi";
 import { useRecordPendingConsent } from "@/hooks/useRecordPendingConsent";
+import { SIGN_IN_URL } from "@/lib/appUrl";
 import { _setActiveProfileFromUser } from "@/store/role";
 import { isPrimaryShortcut } from "@/lib/platformShortcuts";
 
@@ -21,6 +23,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useUI((s) => s.setSidebarCollapsed);
   const setSearchOpen = useUI((s) => s.setSearchOpen);
+  const { isLoaded: authLoaded, isSignedIn } = useAuth();
 
   // Rehydrate the user's persisted sidebar choice once, post-mount. Doing
   // this in an effect (rather than at store init) keeps the first client
@@ -76,8 +79,19 @@ export default function AppShell({ children }: { children: ReactNode }) {
     // Token-resolved HUD shares — opened by title / escrow / insurance
     // contacts without an account, so we render them bare.
     pathname.startsWith("/hud/share");
+
+  useEffect(() => {
+    if (!isBareRoute && authLoaded && isSignedIn === false) {
+      window.location.assign(SIGN_IN_URL);
+    }
+  }, [authLoaded, isBareRoute, isSignedIn]);
+
   if (isBareRoute) {
     return <div style={{ background: t.bg, minHeight: "100vh" }}>{children}</div>;
+  }
+
+  if (!authLoaded || isSignedIn === false) {
+    return <div style={{ background: t.bg, minHeight: "100vh" }} />;
   }
 
   return (
