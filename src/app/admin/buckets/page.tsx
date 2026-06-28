@@ -86,6 +86,7 @@ type Activity = {
   created_at: string;
 };
 type BucketDetail = Bucket & {
+  ai_context?: BucketAIContext | null;
   requested_documents: RequestedDoc[];
   files: BucketFile[];
   shares: Share[];
@@ -118,6 +119,42 @@ type ShareViewerDraft = {
 };
 type ActivityPage = { items: Activity[]; total: number; limit: number; offset: number };
 type ActivityFilters = { action: string; actor_role: string; target_type: string; q: string; date_from: string; date_to: string };
+type BucketAIContext = {
+  deal_type?: string | null;
+  documentation_level?: string | null;
+  collateral_type?: string | null;
+  loan_purpose?: string | null;
+  underwriting_focus?: string | null;
+  custom_instructions?: string | null;
+};
+type BucketAIReview = {
+  id: string;
+  status: string;
+  context_snapshot?: BucketAIContext | null;
+  result?: Record<string, unknown> | null;
+  error?: string | null;
+  created_at: string;
+  completed_at?: string | null;
+};
+type BucketAIMessage = {
+  id: string;
+  role: "user" | "assistant";
+  author_name?: string | null;
+  content: string;
+  proposed_context_patch?: BucketAIContext | null;
+  created_at: string;
+};
+type BucketAIActionItem = {
+  id: string;
+  status: "proposed" | "approved" | "rejected" | "completed";
+  route: "admin" | "uploader" | "share";
+  upload_link_id?: string | null;
+  share_id?: string | null;
+  title: string;
+  instructions: string;
+  rationale?: string | null;
+  created_at: string;
+};
 
 const BUCKET_TYPES = ["Loan File", "UrChoice Dealer Funding", "Partner Package", "Borrower", "Funding Opportunity"];
 const REQUEST_DOCS_PER_PAGE = 10;
@@ -250,6 +287,14 @@ export default function BucketsAdminPage() {
   const [activityOffset, setActivityOffset] = useState(0);
   const [activityFilters, setActivityFilters] = useState<ActivityFilters>(() => emptyActivityFilters());
   const [activityLoading, setActivityLoading] = useState(false);
+  const [expandedShareId, setExpandedShareId] = useState<string | null>(null);
+  const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null);
+  const [aiReviews, setAiReviews] = useState<BucketAIReview[]>([]);
+  const [aiMessages, setAiMessages] = useState<BucketAIMessage[]>([]);
+  const [aiActions, setAiActions] = useState<BucketAIActionItem[]>([]);
+  const [aiContextDraft, setAiContextDraft] = useState<BucketAIContext>({});
+  const [aiChatText, setAiChatText] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
@@ -276,10 +321,13 @@ export default function BucketsAdminPage() {
     setShareFiles({});
     setSharePopupOpen(false);
     setShareViewers([newShareViewerDraft()]);
+    setExpandedShareId(null);
+    setExpandedActivityId(null);
     setAdminUploadFiles([]);
     setAdminUploadStatus(null);
     setAdminUploadForm((form) => ({ ...form, uploader_name: row.client_name || form.uploader_name || "", uploader_email: "" }));
-    await loadBucketActivity(bucketId, 0, filters);
+    setAiContextDraft(row.ai_context ?? {});
+    await Promise.all([loadBucketActivity(bucketId, 0, filters), loadBucketAI(bucketId)]);
   }
 
   async function loadBucketActivity(bucketId: string, offset = activityOffset, filters = activityFilters) {
@@ -300,6 +348,74 @@ export default function BucketsAdminPage() {
     const next = { ...activityFilters, ...patch };
     setActivityFilters(next);
     void loadBucketActivity(detail.id, 0, next);
+  }
+
+  async function loadBucketAI(bucketId: string) {
+    const [reviews, messages, actions] = await Promise.all([
+      call<BucketAIReview[]>(`/buckets/admin/${bucketId}/ai-reviews`),
+      call<BucketAIMessage[]>(`/buckets/admin/${bucketId}/ai-chat`),
+      call<BucketAIActionItem[]>(`/buckets/admin/${bucketId}/ai-action-items`),
+    ]);
+    setAiReviews(reviews);
+    setAiMessages(messages);
+    setAiActions(actions);
+  }
+
+  async function queueAIReview() {
+    if (!detail) return;
+    setAiBusy(true);
+    try {
+      await call<BucketAIReview>(`/buckets/admin/${detail.id}/ai-reviews`, {
+        method: "POST",
+        body: JSON.stringify({ context: aiContextDraft }),
+      });
+      await loadBucketAI(detail.id);
+      await loadBucket(detail.id);
+      setNotice("AI review queued. Results will appear after processing.");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function sendAIChat() {
+    if (!detail || !aiChatText.trim()) return;
+    const text = aiChatText.trim();
+    setAiChatText("");
+    setAiBusy(true);
+    try {
+      await call(`/buckets/admin/${detail.id}/ai-chat`, {
+        method: "POST",
+        body: JSON.stringify({ message: text }),
+      });
+      await loadBucketAI(detail.id);
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function applyAIContextPatch(patch: BucketAIContext) {
+    if (!detail) return;
+    setAiBusy(true);
+    try {
+      const row = await call<BucketDetail>(`/buckets/admin/${detail.id}/ai-context/apply`, {
+        method: "POST",
+        body: JSON.stringify(patch),
+      });
+      setDetail((current) => current ? { ...current, ai_context: row.ai_context } : current);
+      setAiContextDraft(row.ai_context ?? {});
+      setNotice("Bucket AI instructions updated.");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function patchAIAction(item: BucketAIActionItem, patch: Partial<BucketAIActionItem>) {
+    if (!detail) return;
+    const updated = await call<BucketAIActionItem>(`/buckets/admin/${detail.id}/ai-action-items/${item.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    setAiActions((items) => items.map((row) => (row.id === item.id ? updated : row)));
   }
 
   async function deleteBucket(bucket: Bucket) {
@@ -1389,6 +1505,97 @@ export default function BucketsAdminPage() {
 
             <div style={{ display: "grid", gap: 12 }}>
               <PanelBox>
+                <SectionLabel action={aiReviews[0] ? statusLabel(aiReviews[0].status) : "No review"}>AI Underwriting Review</SectionLabel>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <input style={field} placeholder="Deal type / program" value={aiContextDraft.deal_type ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, deal_type: event.target.value })} />
+                  <input style={field} placeholder="Documentation level" value={aiContextDraft.documentation_level ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, documentation_level: event.target.value })} />
+                  <input style={field} placeholder="Collateral type" value={aiContextDraft.collateral_type ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, collateral_type: event.target.value })} />
+                  <input style={field} placeholder="Loan purpose" value={aiContextDraft.loan_purpose ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, loan_purpose: event.target.value })} />
+                  <textarea
+                    style={{ ...field, minHeight: 76, paddingTop: 10, resize: "vertical" }}
+                    placeholder="Underwriting focus"
+                    value={aiContextDraft.underwriting_focus ?? ""}
+                    onChange={(event) => setAiContextDraft({ ...aiContextDraft, underwriting_focus: event.target.value })}
+                  />
+                  <textarea
+                    style={{ ...field, minHeight: 86, paddingTop: 10, resize: "vertical" }}
+                    placeholder="Custom AI instructions"
+                    value={aiContextDraft.custom_instructions ?? ""}
+                    onChange={(event) => setAiContextDraft({ ...aiContextDraft, custom_instructions: event.target.value })}
+                  />
+                  <button style={{ ...primary, opacity: aiBusy || !visibleFiles.length ? 0.68 : 1 }} disabled={aiBusy || !visibleFiles.length} onClick={() => queueAIReview().catch((e) => setNotice(String(e)))}>
+                    {aiBusy ? "Working..." : "Run AI review"}
+                  </button>
+                </div>
+                {aiReviews[0] ? (
+                  <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                    {aiReviews[0].error ? <div style={{ ...emptyInlineStyle(t), color: t.danger }}>{aiReviews[0].error}</div> : null}
+                    {aiReviews[0].result ? <AIReviewResult t={t} result={aiReviews[0].result} /> : <div style={emptyInlineStyle(t)}>Review is {statusLabel(aiReviews[0].status).toLowerCase()}.</div>}
+                  </div>
+                ) : (
+                  <div style={{ ...emptyInlineStyle(t), marginTop: 10 }}>Run a review after entering the deal context. The AI will summarize available files, missing items, discrepancies, and underwriter questions.</div>
+                )}
+              </PanelBox>
+
+              <PanelBox>
+                <SectionLabel action={`${aiMessages.length} messages`}>Bucket AI Chat</SectionLabel>
+                <div style={{ display: "grid", gap: 8, maxHeight: 260, overflowY: "auto" }}>
+                  {aiMessages.length === 0 ? (
+                    <div style={emptyInlineStyle(t)}>Ask about this bucket or tell the AI how to adjust its underwriting instructions.</div>
+                  ) : aiMessages.slice(-10).map((message) => (
+                    <div key={message.id} style={{ ...smallRowStyle(t), background: message.role === "assistant" ? t.surface2 : t.surface }}>
+                      <strong style={{ color: t.ink }}>{message.role === "assistant" ? "Bucket AI" : message.author_name || "You"}</strong>
+                      <div style={{ color: t.ink2, fontSize: 13, whiteSpace: "pre-wrap", marginTop: 4 }}>{message.content}</div>
+                      {message.proposed_context_patch ? (
+                        <button style={{ ...secondary, marginTop: 8 }} onClick={() => applyAIContextPatch(message.proposed_context_patch || {}).catch((e) => setNotice(String(e)))}>
+                          Apply suggested instructions
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, marginTop: 10 }}>
+                  <input
+                    style={field}
+                    placeholder="Ask Bucket AI..."
+                    value={aiChatText}
+                    onChange={(event) => setAiChatText(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") sendAIChat().catch((e) => setNotice(String(e)));
+                    }}
+                  />
+                  <button style={secondary} disabled={aiBusy || !aiChatText.trim()} onClick={() => sendAIChat().catch((e) => setNotice(String(e)))}>Send</button>
+                </div>
+              </PanelBox>
+
+              <PanelBox>
+                <SectionLabel action={`${aiActions.filter((item) => item.status === "proposed").length} pending`}>AI Proposed Actions</SectionLabel>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {aiActions.length === 0 ? (
+                    <div style={emptyInlineStyle(t)}>No AI-proposed tasks yet.</div>
+                  ) : aiActions.slice(0, 8).map((item) => (
+                    <div key={item.id} style={smallRowStyle(t)}>
+                      <div style={{ minWidth: 0 }}>
+                        <strong style={{ color: t.ink }}>{item.title}</strong>
+                        <div style={{ color: t.ink3, fontSize: 12 }}>{item.route} | {statusLabel(item.status)}</div>
+                        <div style={{ color: t.ink2, fontSize: 13, marginTop: 4 }}>{item.instructions}</div>
+                        {item.rationale ? <div style={{ color: t.ink3, fontSize: 12, marginTop: 4 }}>{item.rationale}</div> : null}
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                        {item.status === "proposed" ? (
+                          <>
+                            <button style={secondary} onClick={() => patchAIAction(item, { status: "approved" }).catch((e) => setNotice(String(e)))}>Approve</button>
+                            <button style={secondary} onClick={() => patchAIAction(item, { status: "rejected" }).catch((e) => setNotice(String(e)))}>Reject</button>
+                          </>
+                        ) : null}
+                        {item.status === "approved" ? <button style={secondary} onClick={() => patchAIAction(item, { status: "completed" }).catch((e) => setNotice(String(e)))}>Complete</button> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </PanelBox>
+
+              <PanelBox>
                 <SectionLabel>Notes</SectionLabel>
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
                   <input style={field} placeholder="Add admin note" value={adminNote} onChange={(e) => setAdminNote(e.target.value)} />
@@ -1417,11 +1624,30 @@ export default function BucketsAdminPage() {
                     const isRevoked = share.status === "revoked";
                     const effectiveStatus = isRevoked ? "Revoked" : isExpired ? "Expired" : statusLabel(share.status);
                     const passcodeAvailable = Boolean(sharePasscodes[share.id] || share.passcode);
+                    const isOpen = expandedShareId === share.id;
                     return (
-                      <div key={share.id} style={{ ...smallRowStyle(t), display: "grid", gap: 10 }}>
-                        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, alignItems: "start" }}>
-                          <div style={{ minWidth: 0 }}>
+                      <div key={share.id} style={{ ...compactExpandableStyle(t, isOpen), display: "grid", gap: isOpen ? 10 : 0 }}>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedShareId(isOpen ? null : share.id)}
+                          style={compactHeaderButtonStyle(t)}
+                          aria-expanded={isOpen}
+                        >
+                          <div style={{ minWidth: 0, textAlign: "left" }}>
                             <strong style={{ color: t.ink }}>{share.recipient_name}</strong>
+                            <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {files.length} file{files.length === 1 ? "" : "s"} | {share.can_download ? "downloads on" : "view only"} | {share.view_count} views
+                            </div>
+                          </div>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                            <Pill color={isRevoked || isExpired ? t.danger : undefined} bg={isRevoked || isExpired ? t.dangerBg : undefined}>{effectiveStatus}</Pill>
+                            <Icon name={isOpen ? "chevU" : "chevD"} size={14} />
+                          </div>
+                        </button>
+                        {isOpen ? (
+                          <>
+                        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, alignItems: "start", paddingTop: 8, borderTop: `1px solid ${t.line}` }}>
+                          <div style={{ minWidth: 0 }}>
                             <div style={{ color: t.ink3, fontSize: 12 }}>{share.recipient_email || "No email"} | {files.length} file{files.length === 1 ? "" : "s"}</div>
                             <div style={{ color: t.ink3, fontSize: 12 }}>
                               {share.view_count} views | {share.download_count} downloads | {share.can_download ? "downloads on" : "view only"}
@@ -1478,6 +1704,8 @@ export default function BucketsAdminPage() {
                               <button style={primary} onClick={() => saveEditedShareFiles(share)} disabled={!editingShareFileIds.length}>Save files</button>
                             </div>
                           </div>
+                          ) : null}
+                          </>
                         ) : null}
                       </div>
                     );
@@ -1545,18 +1773,36 @@ export default function BucketsAdminPage() {
                       <div style={emptyInlineStyle(t)}>Loading activity...</div>
                     ) : activityRows.length === 0 ? (
                       <div style={emptyInlineStyle(t)}>No activity matches these filters.</div>
-                    ) : activityRows.map((item) => (
-                      <div key={item.id} style={{ color: t.ink2, fontSize: 13, borderTop: `1px solid ${t.line}`, paddingTop: 8 }}>
-                        <strong style={{ color: t.ink }}>{activityLabel(item.action)}</strong>
-                        <div style={{ color: t.ink3, fontSize: 12 }}>
-                          {activityActor(item)} | {formatDateTime(item.created_at)}
+                    ) : activityRows.map((item) => {
+                      const isOpen = expandedActivityId === item.id;
+                      return (
+                        <div key={item.id} style={compactExpandableStyle(t, isOpen)}>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedActivityId(isOpen ? null : item.id)}
+                            style={compactHeaderButtonStyle(t)}
+                            aria-expanded={isOpen}
+                          >
+                            <div style={{ minWidth: 0, textAlign: "left" }}>
+                              <strong style={{ color: t.ink }}>{activityLabel(item.action)}</strong>
+                              <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {activityActor(item)} | {formatDateTime(item.created_at)}
+                              </div>
+                            </div>
+                            <Icon name={isOpen ? "chevU" : "chevD"} size={14} />
+                          </button>
+                          {isOpen ? (
+                            <div style={{ borderTop: `1px solid ${t.line}`, paddingTop: 8, color: t.ink2, fontSize: 13 }}>
+                              {item.detail ? <div style={{ marginBottom: 6 }}>{item.detail}</div> : null}
+                              <div style={{ color: t.ink3, fontSize: 12 }}>
+                                {[item.target_type ? statusLabel(item.target_type) : null, item.target_id, item.ip_address].filter(Boolean).join(" | ")}
+                              </div>
+                              {item.user_agent ? <div style={{ color: t.ink3, fontSize: 12, marginTop: 4, overflowWrap: "anywhere" }}>{item.user_agent}</div> : null}
+                            </div>
+                          ) : null}
                         </div>
-                        {item.detail ? <div style={{ marginTop: 3, color: t.ink2 }}>{item.detail}</div> : null}
-                        <div style={{ marginTop: 3, color: t.ink3, fontSize: 12 }}>
-                          {[item.target_type ? statusLabel(item.target_type) : null, item.ip_address].filter(Boolean).join(" | ")}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                     <button
@@ -1777,6 +2023,38 @@ function CreateStatusBanner({ status }: { status: { kind: "working" | "success" 
   );
 }
 
+function AIReviewResult({ t, result }: { t: ReturnType<typeof useTheme>["t"]; result: Record<string, unknown> }) {
+  const summary = stringValue(result.executive_summary) || stringValue(result.summary);
+  const missing = arrayValue(result.missing_or_incomplete_items);
+  const discrepancies = arrayValue(result.discrepancies);
+  const questions = arrayValue(result.underwriter_questions);
+  const perFile = arrayValue(result.per_file_summaries);
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {summary ? <div style={{ color: t.ink2, fontSize: 13, lineHeight: 1.45 }}>{summary}</div> : null}
+      <AIResultList t={t} title="Missing / incomplete" items={missing} />
+      <AIResultList t={t} title="Discrepancies" items={discrepancies} />
+      <AIResultList t={t} title="Underwriter questions" items={questions} />
+      <AIResultList t={t} title="Per-file notes" items={perFile} />
+    </div>
+  );
+}
+
+function AIResultList({ t, title, items }: { t: ReturnType<typeof useTheme>["t"]; title: string; items: unknown[] }) {
+  if (!items.length) return null;
+  return (
+    <div style={{ display: "grid", gap: 5 }}>
+      <strong style={{ color: t.ink, fontSize: 12.5 }}>{title}</strong>
+      {items.slice(0, 4).map((item, index) => (
+        <div key={`${title}-${index}`} style={{ borderTop: `1px solid ${t.line}`, paddingTop: 6, color: t.ink2, fontSize: 12.5, lineHeight: 1.4 }}>
+          {describeAIItem(item)}
+        </div>
+      ))}
+      {items.length > 4 ? <div style={{ color: t.ink3, fontSize: 12 }}>+{items.length - 4} more</div> : null}
+    </div>
+  );
+}
+
 function PanelBox({ children, style }: { children: React.ReactNode; style?: CSSProperties }) {
   const { t } = useTheme();
   return <div style={{ ...panelStyle(t), padding: 14, ...style }}>{children}</div>;
@@ -1878,6 +2156,32 @@ function smallRowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
     border: `1px solid ${t.line}`,
     borderRadius: 8,
     background: t.surface2,
+  };
+}
+
+function compactExpandableStyle(t: ReturnType<typeof useTheme>["t"], open: boolean): CSSProperties {
+  return {
+    border: `1px solid ${open ? t.lineStrong : t.line}`,
+    borderRadius: 8,
+    background: open ? t.surface2 : t.surface,
+    padding: open ? 10 : 8,
+    transition: "background .15s ease, border-color .15s ease",
+  };
+}
+
+function compactHeaderButtonStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+  return {
+    width: "100%",
+    border: 0,
+    background: "transparent",
+    padding: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    color: t.ink,
+    cursor: "pointer",
+    font: "inherit",
   };
 }
 
@@ -2068,6 +2372,31 @@ function localFileKey(file: File): string {
 
 function statusLabel(status: string) {
   return status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function arrayValue(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function describeAIItem(item: unknown): string {
+  if (typeof item === "string") return item;
+  if (!item || typeof item !== "object") return String(item ?? "");
+  const obj = item as Record<string, unknown>;
+  const parts = [
+    stringValue(obj.title),
+    stringValue(obj.question),
+    stringValue(obj.file_name),
+    stringValue(obj.detail),
+    stringValue(obj.summary),
+    stringValue(obj.instructions),
+    stringValue(obj.reason),
+    stringValue(obj.rationale),
+  ].filter(Boolean);
+  return parts.length ? parts.join(" - ") : JSON.stringify(obj);
 }
 
 function activityLabel(action: string) {

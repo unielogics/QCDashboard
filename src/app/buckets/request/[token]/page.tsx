@@ -28,8 +28,12 @@ type UploadSession = {
   recipient_name: string;
   recipient_email?: string | null;
   allow_notes: boolean;
+  can_use_ai_chat?: boolean;
+  can_view_ai_tasks?: boolean;
   requested_documents: RequestedDoc[];
 };
+type AITask = { id: string; status: string; title: string; instructions: string; rationale?: string | null };
+type AIMessage = { id: string; role: "user" | "assistant"; content: string; created_at: string };
 type QueuedFile = {
   id: string;
   file: File;
@@ -55,6 +59,10 @@ export default function BucketRequestPage() {
   const [isAccessing, setIsAccessing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [aiTasks, setAiTasks] = useState<AITask[]>([]);
+  const [aiMessages, setAiMessages] = useState<AIMessage[]>([]);
+  const [aiText, setAiText] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
 
   useEffect(() => {
     fetch(`${apiBase}/api/v1/buckets/request/${token}`)
@@ -93,10 +101,38 @@ export default function BucketRequestPage() {
       setName(data.recipient_name || "");
       setEmail(data.recipient_email || "");
       setStatus("");
+      if (data.can_view_ai_tasks) loadAITasks().catch(() => undefined);
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "The access code did not work.");
     } finally {
       setIsAccessing(false);
+    }
+  }
+
+  async function loadAITasks() {
+    const res = await fetch(`${apiBase}/api/v1/buckets/request/${token}/ai-tasks?passcode=${encodeURIComponent(passcode.trim())}`);
+    if (res.ok) setAiTasks(await res.json());
+  }
+
+  async function sendAIMessage() {
+    if (!session || !aiText.trim()) return;
+    const text = aiText.trim();
+    setAiText("");
+    setAiBusy(true);
+    try {
+      const res = await fetch(`${apiBase}/api/v1/buckets/request/${token}/ai-chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passcode: passcode.trim(), message: text }),
+      });
+      if (!res.ok) throw new Error(await responseMessage(res, "AI chat is unavailable."));
+      const payload = (await res.json()) as { messages: AIMessage[] };
+      setAiMessages((current) => [...current, ...payload.messages]);
+      if (session.can_view_ai_tasks) await loadAITasks();
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "AI chat is unavailable.");
+    } finally {
+      setAiBusy(false);
     }
   }
 
@@ -370,6 +406,45 @@ export default function BucketRequestPage() {
                   <textarea style={notesField} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add one note for this upload batch." />
                 </section>
               ) : null}
+              {(session.can_use_ai_chat || session.can_view_ai_tasks) ? (
+                <section style={sideSection}>
+                  <h2 style={sectionTitle}>AI instructions</h2>
+                  <p style={{ ...muted, marginTop: 6, lineHeight: 1.4 }}>This assistant only sees your upload request, approved to-dos, and document status.</p>
+                  {session.can_view_ai_tasks ? (
+                    <div style={docList}>
+                      {aiTasks.length === 0 ? <div style={emptyState}>No approved to-dos yet.</div> : aiTasks.map((task) => (
+                        <div key={task.id} style={docItem}>
+                          <div style={docTitleRow}><span>{task.title}</span><span style={checkBadge}>{task.status}</span></div>
+                          <small style={docDescription}>{task.instructions}</small>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {session.can_use_ai_chat ? (
+                    <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                      <div style={{ display: "grid", gap: 8, maxHeight: 180, overflowY: "auto" }}>
+                        {aiMessages.length === 0 ? <div style={emptyState}>Ask what is still needed or how to upload a document.</div> : aiMessages.slice(-6).map((message) => (
+                          <div key={message.id} style={message.role === "assistant" ? aiBubble : aiBubbleUser}>
+                            {message.content}
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
+                        <input
+                          style={field}
+                          value={aiText}
+                          onChange={(e) => setAiText(e.target.value)}
+                          placeholder="Ask for help..."
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") sendAIMessage().catch(() => undefined);
+                          }}
+                        />
+                        <button style={removeButton} onClick={() => sendAIMessage().catch(() => undefined)} disabled={aiBusy || !aiText.trim()}>Send</button>
+                      </div>
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
             </aside>
           </div>
         </section>
@@ -484,3 +559,5 @@ const docDescription: CSSProperties = { color: "#475569", fontWeight: 600, lineH
 const checkBadge: CSSProperties = { border: "1px solid #86efac", borderRadius: 999, padding: "3px 8px", color: "#166534", background: "#dcfce7", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
 const openBadge: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 999, padding: "3px 8px", color: "#64748b", background: "#f8fafc", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
 const notesField: CSSProperties = { width: "100%", minHeight: 160, border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, font: "inherit", resize: "vertical", boxSizing: "border-box", marginTop: 12 };
+const aiBubble: CSSProperties = { border: "1px solid #dbeafe", background: "#eff6ff", color: "#1e3a8a", borderRadius: 10, padding: 10, fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap" };
+const aiBubbleUser: CSSProperties = { border: "1px solid #e2e8f0", background: "#fff", color: "#334155", borderRadius: 10, padding: 10, fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap" };
