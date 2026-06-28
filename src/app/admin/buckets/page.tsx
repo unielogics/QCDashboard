@@ -89,6 +89,7 @@ type BucketDetail = Bucket & {
   ai_context?: BucketAIContext | null;
   requested_documents: RequestedDoc[];
   files: BucketFile[];
+  upload_links?: UploadLink[];
   shares: Share[];
   notes: Note[];
   activity: Activity[];
@@ -107,6 +108,13 @@ type PackageKey = "standard" | "urchoice";
 type UploadInvite = { id: string; recipient_name: string; recipient_email: string; passcode: string };
 type UploadInviteLink = { name: string; email?: string; url: string; passcode: string };
 type UploadInitResponse = { file_id: string; upload_url: string; required_headers: Record<string, string> };
+type UploadLink = {
+  id: string;
+  recipient_name: string;
+  recipient_email?: string | null;
+  status: string;
+  expires_at?: string | null;
+};
 type ShareViewerDraft = {
   id: string;
   recipient_name: string;
@@ -150,10 +158,23 @@ type BucketAIActionItem = {
   route: "admin" | "uploader" | "share";
   upload_link_id?: string | null;
   share_id?: string | null;
+  file_id?: string | null;
+  requested_document_id?: string | null;
   title: string;
   instructions: string;
   rationale?: string | null;
+  created_by?: "ai" | "admin" | string;
   created_at: string;
+};
+type AIMode = "review" | "chat" | "actions";
+type ManualActionDraft = {
+  title: string;
+  instructions: string;
+  route: "admin" | "uploader" | "share";
+  upload_link_id: string;
+  share_id: string;
+  file_id: string;
+  requested_document_id: string;
 };
 
 const BUCKET_TYPES = ["Loan File", "UrChoice Dealer Funding", "Partner Package", "Borrower", "Funding Opportunity"];
@@ -191,9 +212,14 @@ const ACTIVITY_ACTION_OPTIONS = [
   "file_preview_url_created",
   "file_download_url_created",
   "file_annotation_created",
+  "ai_action_created",
+  "ai_action_proposed",
+  "ai_action_approved",
+  "ai_action_rejected",
+  "ai_action_completed",
 ];
 const ACTIVITY_ROLE_OPTIONS = ["super_admin", "uploader", "shared_user", "system"];
-const ACTIVITY_TARGET_OPTIONS = ["bucket", "requested_document", "upload_link", "share", "file", "note", "annotation"];
+const ACTIVITY_TARGET_OPTIONS = ["bucket", "requested_document", "upload_link", "share", "file", "note", "annotation", "ai_action_item"];
 const URCHOICE_DEALER_DOCS: Template[] = [
   { id: "urchoice-formation", name: "Formation", category: "UrChoice Dealer Funding", required: true },
   { id: "urchoice-ein", name: "EIN", category: "UrChoice Dealer Funding", required: true },
@@ -226,6 +252,18 @@ function newShareViewerDraft(): ShareViewerDraft {
     expires_days: 7,
     file_ids: [],
     file_search: "",
+  };
+}
+
+function emptyManualActionDraft(): ManualActionDraft {
+  return {
+    title: "",
+    instructions: "",
+    route: "admin",
+    upload_link_id: "",
+    share_id: "",
+    file_id: "",
+    requested_document_id: "",
   };
 }
 
@@ -295,6 +333,10 @@ export default function BucketsAdminPage() {
   const [aiContextDraft, setAiContextDraft] = useState<BucketAIContext>({});
   const [aiChatText, setAiChatText] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
+  const [aiMode, setAiMode] = useState<AIMode>("review");
+  const [aiPanelOpen, setAiPanelOpen] = useState(true);
+  const [manualActionOpen, setManualActionOpen] = useState(false);
+  const [manualActionDraft, setManualActionDraft] = useState<ManualActionDraft>(() => emptyManualActionDraft());
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
@@ -327,6 +369,10 @@ export default function BucketsAdminPage() {
     setAdminUploadStatus(null);
     setAdminUploadForm((form) => ({ ...form, uploader_name: row.client_name || form.uploader_name || "", uploader_email: "" }));
     setAiContextDraft(row.ai_context ?? {});
+    setAiMode("review");
+    setAiPanelOpen(true);
+    setManualActionOpen(false);
+    setManualActionDraft(emptyManualActionDraft());
     await Promise.all([loadBucketActivity(bucketId, 0, filters), loadBucketAI(bucketId)]);
   }
 
@@ -416,6 +462,42 @@ export default function BucketsAdminPage() {
       body: JSON.stringify(patch),
     });
     setAiActions((items) => items.map((row) => (row.id === item.id ? updated : row)));
+  }
+
+  async function createManualAIAction() {
+    if (!detail || !manualActionDraft.title.trim() || !manualActionDraft.instructions.trim()) return;
+    const payload: Record<string, unknown> = {
+      title: manualActionDraft.title.trim(),
+      instructions: manualActionDraft.instructions.trim(),
+      route: manualActionDraft.route,
+      status: "approved",
+      rationale: "Created manually by admin.",
+    };
+    if (manualActionDraft.route === "uploader") {
+      if (!manualActionDraft.upload_link_id) {
+        setNotice("Select an uploader before creating this task.");
+        return;
+      }
+      payload.upload_link_id = manualActionDraft.upload_link_id;
+    }
+    if (manualActionDraft.route === "share") {
+      if (!manualActionDraft.share_id) {
+        setNotice("Select a share recipient before creating this task.");
+        return;
+      }
+      payload.share_id = manualActionDraft.share_id;
+    }
+    if (manualActionDraft.file_id) payload.file_id = manualActionDraft.file_id;
+    if (manualActionDraft.requested_document_id) payload.requested_document_id = manualActionDraft.requested_document_id;
+
+    const created = await call<BucketAIActionItem>(`/buckets/admin/${detail.id}/ai-action-items`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    setAiActions((items) => [created, ...items]);
+    setManualActionDraft(emptyManualActionDraft());
+    setManualActionOpen(false);
+    setNotice("Task created and routed.");
   }
 
   async function deleteBucket(bucket: Bucket) {
@@ -1256,24 +1338,41 @@ export default function BucketsAdminPage() {
           subtitle={`${detail.client_name || "No client"} | ${detail.purpose || "No purpose"} | ${detail.bucket_type || "Bucket"}`}
           onClose={() => setDetail(null)}
           action={
-            <div ref={shareMenuRef} style={{ position: "relative" }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
               <button
                 style={{
                   ...iconButtonStyle(t),
-                  borderColor: sharePopupOpen ? t.petrol : t.line,
-                  background: sharePopupOpen ? t.petrolSoft : t.surface,
-                  color: sharePopupOpen ? t.petrol : t.ink2,
+                  borderColor: aiPanelOpen ? t.petrol : t.line,
+                  background: aiPanelOpen ? t.petrolSoft : t.surface,
+                  color: aiPanelOpen ? t.petrol : t.ink2,
                 }}
                 onClick={() => {
-                  setSharePopupOpen((value) => !value);
+                  setAiPanelOpen((value) => !value);
+                  setAiMode("actions");
                 }}
-                aria-label="Share selected files"
-                title="Share selected files"
+                aria-label="Toggle AI actions"
+                title="AI review, chat, and tasks"
               >
-                <Icon name="link" size={16} />
+                <Icon name="spark" size={16} />
               </button>
-              {sharePopupOpen ? (
-                <div style={sharePopupStyle(t)}>
+              <div ref={shareMenuRef} style={{ position: "relative" }}>
+                <button
+                  style={{
+                    ...iconButtonStyle(t),
+                    borderColor: sharePopupOpen ? t.petrol : t.line,
+                    background: sharePopupOpen ? t.petrolSoft : t.surface,
+                    color: sharePopupOpen ? t.petrol : t.ink2,
+                  }}
+                  onClick={() => {
+                    setSharePopupOpen((value) => !value);
+                  }}
+                  aria-label="Share selected files"
+                  title="Share selected files"
+                >
+                  <Icon name="link" size={16} />
+                </button>
+                {sharePopupOpen ? (
+                  <div style={sharePopupStyle(t)}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", paddingBottom: 10, borderBottom: `1px solid ${t.line}` }}>
                     <div>
                       <div style={{ color: t.ink, fontWeight: 900, fontSize: 14 }}>Create share links</div>
@@ -1342,8 +1441,9 @@ export default function BucketsAdminPage() {
                       {busy ? "Creating links..." : "Create share links"}
                     </button>
                   </div>
-                </div>
-              ) : null}
+                  </div>
+                ) : null}
+              </div>
             </div>
           }
         >
@@ -1504,96 +1604,189 @@ export default function BucketsAdminPage() {
             </div>
 
             <div style={{ display: "grid", gap: 12 }}>
-              <PanelBox>
-                <SectionLabel action={aiReviews[0] ? statusLabel(aiReviews[0].status) : "No review"}>AI Underwriting Review</SectionLabel>
-                <div style={{ display: "grid", gap: 8 }}>
-                  <input style={field} placeholder="Deal type / program" value={aiContextDraft.deal_type ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, deal_type: event.target.value })} />
-                  <input style={field} placeholder="Documentation level" value={aiContextDraft.documentation_level ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, documentation_level: event.target.value })} />
-                  <input style={field} placeholder="Collateral type" value={aiContextDraft.collateral_type ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, collateral_type: event.target.value })} />
-                  <input style={field} placeholder="Loan purpose" value={aiContextDraft.loan_purpose ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, loan_purpose: event.target.value })} />
-                  <textarea
-                    style={{ ...field, minHeight: 76, paddingTop: 10, resize: "vertical" }}
-                    placeholder="Underwriting focus"
-                    value={aiContextDraft.underwriting_focus ?? ""}
-                    onChange={(event) => setAiContextDraft({ ...aiContextDraft, underwriting_focus: event.target.value })}
-                  />
-                  <textarea
-                    style={{ ...field, minHeight: 86, paddingTop: 10, resize: "vertical" }}
-                    placeholder="Custom AI instructions"
-                    value={aiContextDraft.custom_instructions ?? ""}
-                    onChange={(event) => setAiContextDraft({ ...aiContextDraft, custom_instructions: event.target.value })}
-                  />
-                  <button style={{ ...primary, opacity: aiBusy || !visibleFiles.length ? 0.68 : 1 }} disabled={aiBusy || !visibleFiles.length} onClick={() => queueAIReview().catch((e) => setNotice(String(e)))}>
-                    {aiBusy ? "Working..." : "Run AI review"}
-                  </button>
-                </div>
-                {aiReviews[0] ? (
-                  <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-                    {aiReviews[0].error ? <div style={{ ...emptyInlineStyle(t), color: t.danger }}>{aiReviews[0].error}</div> : null}
-                    {aiReviews[0].result ? <AIReviewResult t={t} result={aiReviews[0].result} /> : <div style={emptyInlineStyle(t)}>Review is {statusLabel(aiReviews[0].status).toLowerCase()}.</div>}
+              {aiPanelOpen ? (
+                <PanelBox>
+                  <SectionLabel
+                    action={
+                      aiMode === "review"
+                        ? (aiReviews[0] ? statusLabel(aiReviews[0].status) : "No review")
+                        : aiMode === "chat"
+                          ? `${aiMessages.length} messages`
+                          : `${aiActions.filter((item) => item.status === "proposed").length} pending`
+                    }
+                  >
+                    Bucket AI Workspace
+                  </SectionLabel>
+                  <div style={modeToggleStyle(t)}>
+                    {([
+                      ["review", "Underwriting review"],
+                      ["chat", "Chat"],
+                      ["actions", "Actions"],
+                    ] as const).map(([mode, label]) => (
+                      <button key={mode} style={modeButtonStyle(t, aiMode === mode)} onClick={() => setAiMode(mode)}>
+                        {label}
+                      </button>
+                    ))}
                   </div>
-                ) : (
-                  <div style={{ ...emptyInlineStyle(t), marginTop: 10 }}>Run a review after entering the deal context. The AI will summarize available files, missing items, discrepancies, and underwriter questions.</div>
-                )}
-              </PanelBox>
 
-              <PanelBox>
-                <SectionLabel action={`${aiMessages.length} messages`}>Bucket AI Chat</SectionLabel>
-                <div style={{ display: "grid", gap: 8, maxHeight: 260, overflowY: "auto" }}>
-                  {aiMessages.length === 0 ? (
-                    <div style={emptyInlineStyle(t)}>Ask about this bucket or tell the AI how to adjust its underwriting instructions.</div>
-                  ) : aiMessages.slice(-10).map((message) => (
-                    <div key={message.id} style={{ ...smallRowStyle(t), background: message.role === "assistant" ? t.surface2 : t.surface }}>
-                      <strong style={{ color: t.ink }}>{message.role === "assistant" ? "Bucket AI" : message.author_name || "You"}</strong>
-                      <div style={{ color: t.ink2, fontSize: 13, whiteSpace: "pre-wrap", marginTop: 4 }}>{message.content}</div>
-                      {message.proposed_context_patch ? (
-                        <button style={{ ...secondary, marginTop: 8 }} onClick={() => applyAIContextPatch(message.proposed_context_patch || {}).catch((e) => setNotice(String(e)))}>
-                          Apply suggested instructions
+                  {aiMode === "review" ? (
+                    <>
+                      <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                        <input style={field} placeholder="Deal type / program" value={aiContextDraft.deal_type ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, deal_type: event.target.value })} />
+                        <input style={field} placeholder="Documentation level" value={aiContextDraft.documentation_level ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, documentation_level: event.target.value })} />
+                        <input style={field} placeholder="Collateral type" value={aiContextDraft.collateral_type ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, collateral_type: event.target.value })} />
+                        <input style={field} placeholder="Loan purpose" value={aiContextDraft.loan_purpose ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, loan_purpose: event.target.value })} />
+                        <textarea
+                          style={{ ...field, minHeight: 66, paddingTop: 10, resize: "vertical" }}
+                          placeholder="Underwriting focus"
+                          value={aiContextDraft.underwriting_focus ?? ""}
+                          onChange={(event) => setAiContextDraft({ ...aiContextDraft, underwriting_focus: event.target.value })}
+                        />
+                        <textarea
+                          style={{ ...field, minHeight: 76, paddingTop: 10, resize: "vertical" }}
+                          placeholder="Custom AI instructions"
+                          value={aiContextDraft.custom_instructions ?? ""}
+                          onChange={(event) => setAiContextDraft({ ...aiContextDraft, custom_instructions: event.target.value })}
+                        />
+                        <button style={{ ...primary, opacity: aiBusy || !visibleFiles.length ? 0.68 : 1 }} disabled={aiBusy || !visibleFiles.length} onClick={() => queueAIReview().catch((e) => setNotice(String(e)))}>
+                          {aiBusy ? "Working..." : "Run AI review"}
                         </button>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, marginTop: 10 }}>
-                  <input
-                    style={field}
-                    placeholder="Ask Bucket AI..."
-                    value={aiChatText}
-                    onChange={(event) => setAiChatText(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") sendAIChat().catch((e) => setNotice(String(e)));
-                    }}
-                  />
-                  <button style={secondary} disabled={aiBusy || !aiChatText.trim()} onClick={() => sendAIChat().catch((e) => setNotice(String(e)))}>Send</button>
-                </div>
-              </PanelBox>
+                      </div>
+                      {aiReviews[0] ? (
+                        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                          {aiReviews[0].error ? <div style={{ ...emptyInlineStyle(t), color: t.danger }}>{aiReviews[0].error}</div> : null}
+                          {aiReviews[0].result ? <AIReviewResult t={t} result={aiReviews[0].result} /> : <div style={emptyInlineStyle(t)}>Review is {statusLabel(aiReviews[0].status).toLowerCase()}.</div>}
+                        </div>
+                      ) : (
+                        <div style={{ ...emptyInlineStyle(t), marginTop: 10 }}>Run a review after entering the deal context. The AI will summarize available files, missing items, discrepancies, and underwriter questions.</div>
+                      )}
+                    </>
+                  ) : null}
 
-              <PanelBox>
-                <SectionLabel action={`${aiActions.filter((item) => item.status === "proposed").length} pending`}>AI Proposed Actions</SectionLabel>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {aiActions.length === 0 ? (
-                    <div style={emptyInlineStyle(t)}>No AI-proposed tasks yet.</div>
-                  ) : aiActions.slice(0, 8).map((item) => (
-                    <div key={item.id} style={smallRowStyle(t)}>
-                      <div style={{ minWidth: 0 }}>
-                        <strong style={{ color: t.ink }}>{item.title}</strong>
-                        <div style={{ color: t.ink3, fontSize: 12 }}>{item.route} | {statusLabel(item.status)}</div>
-                        <div style={{ color: t.ink2, fontSize: 13, marginTop: 4 }}>{item.instructions}</div>
-                        {item.rationale ? <div style={{ color: t.ink3, fontSize: 12, marginTop: 4 }}>{item.rationale}</div> : null}
+                  {aiMode === "chat" ? (
+                    <>
+                      <div style={{ display: "grid", gap: 8, maxHeight: 360, overflowY: "auto", marginTop: 10 }}>
+                        {aiMessages.length === 0 ? (
+                          <div style={emptyInlineStyle(t)}>Ask about this bucket or tell the AI how to adjust its underwriting instructions.</div>
+                        ) : aiMessages.slice(-12).map((message) => (
+                          <div key={message.id} style={{ ...smallRowStyle(t), background: message.role === "assistant" ? t.surface2 : t.surface }}>
+                            <strong style={{ color: t.ink }}>{message.role === "assistant" ? "Bucket AI" : message.author_name || "You"}</strong>
+                            <div style={{ color: t.ink2, fontSize: 13, whiteSpace: "pre-wrap", marginTop: 4 }}>{message.content}</div>
+                            {message.proposed_context_patch ? (
+                              <button style={{ ...secondary, marginTop: 8 }} onClick={() => applyAIContextPatch(message.proposed_context_patch || {}).catch((e) => setNotice(String(e)))}>
+                                Apply suggested instructions
+                              </button>
+                            ) : null}
+                          </div>
+                        ))}
                       </div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                        {item.status === "proposed" ? (
-                          <>
-                            <button style={secondary} onClick={() => patchAIAction(item, { status: "approved" }).catch((e) => setNotice(String(e)))}>Approve</button>
-                            <button style={secondary} onClick={() => patchAIAction(item, { status: "rejected" }).catch((e) => setNotice(String(e)))}>Reject</button>
-                          </>
-                        ) : null}
-                        {item.status === "approved" ? <button style={secondary} onClick={() => patchAIAction(item, { status: "completed" }).catch((e) => setNotice(String(e)))}>Complete</button> : null}
+                      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, marginTop: 10 }}>
+                        <input
+                          style={field}
+                          placeholder="Ask Bucket AI..."
+                          value={aiChatText}
+                          onChange={(event) => setAiChatText(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") sendAIChat().catch((e) => setNotice(String(e)));
+                          }}
+                        />
+                        <button style={secondary} disabled={aiBusy || !aiChatText.trim()} onClick={() => sendAIChat().catch((e) => setNotice(String(e)))}>Send</button>
                       </div>
+                    </>
+                  ) : null}
+
+                  {aiMode === "actions" ? (
+                    <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                      <button style={secondary} onClick={() => setManualActionOpen((value) => !value)}>
+                        <Icon name="plus" size={14} />
+                        Create manual task
+                      </button>
+                      {manualActionOpen ? (
+                        <div style={manualActionFormStyle(t)}>
+                          <input style={field} placeholder="Task title" value={manualActionDraft.title} onChange={(event) => setManualActionDraft({ ...manualActionDraft, title: event.target.value })} />
+                          <textarea
+                            style={{ ...field, minHeight: 74, paddingTop: 10, resize: "vertical" }}
+                            placeholder="Instructions"
+                            value={manualActionDraft.instructions}
+                            onChange={(event) => setManualActionDraft({ ...manualActionDraft, instructions: event.target.value })}
+                          />
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            <select
+                              style={field}
+                              value={manualActionDraft.route}
+                              onChange={(event) => setManualActionDraft({ ...manualActionDraft, route: event.target.value as ManualActionDraft["route"], upload_link_id: "", share_id: "" })}
+                            >
+                              <option value="admin">Route to admin</option>
+                              <option value="uploader">Route to uploader/client</option>
+                              <option value="share">Route to shared viewer</option>
+                            </select>
+                            {manualActionDraft.route === "uploader" ? (
+                              <select style={field} value={manualActionDraft.upload_link_id} onChange={(event) => setManualActionDraft({ ...manualActionDraft, upload_link_id: event.target.value })}>
+                                <option value="">Select uploader</option>
+                                {(detail.upload_links ?? []).map((link) => (
+                                  <option key={link.id} value={link.id}>{link.recipient_name}</option>
+                                ))}
+                              </select>
+                            ) : manualActionDraft.route === "share" ? (
+                              <select style={field} value={manualActionDraft.share_id} onChange={(event) => setManualActionDraft({ ...manualActionDraft, share_id: event.target.value })}>
+                                <option value="">Select share recipient</option>
+                                {detail.shares.map((share) => (
+                                  <option key={share.id} value={share.id}>{share.recipient_name}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <div style={{ ...emptyInlineStyle(t), minHeight: 44, display: "flex", alignItems: "center" }}>Internal admin task</div>
+                            )}
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            <select style={field} value={manualActionDraft.file_id} onChange={(event) => setManualActionDraft({ ...manualActionDraft, file_id: event.target.value })}>
+                              <option value="">No specific file</option>
+                              {visibleFiles.map((file) => (
+                                <option key={file.id} value={file.id}>{file.file_name}</option>
+                              ))}
+                            </select>
+                            <select style={field} value={manualActionDraft.requested_document_id} onChange={(event) => setManualActionDraft({ ...manualActionDraft, requested_document_id: event.target.value })}>
+                              <option value="">No request item</option>
+                              {detail.requested_documents.map((doc) => (
+                                <option key={doc.id} value={doc.id}>{doc.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                            <button style={secondary} onClick={() => setManualActionOpen(false)}>Cancel</button>
+                            <button style={primary} onClick={() => createManualAIAction().catch((e) => setNotice(String(e)))} disabled={!manualActionDraft.title.trim() || !manualActionDraft.instructions.trim()}>
+                              Create task
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                      {aiActions.length === 0 ? (
+                        <div style={emptyInlineStyle(t)}>No action tasks yet. Create one manually or approve AI proposals from chat/review.</div>
+                      ) : aiActions.slice(0, 10).map((item) => (
+                        <div key={item.id} style={smallRowStyle(t)}>
+                          <div style={{ minWidth: 0 }}>
+                            <strong style={{ color: t.ink }}>{item.title}</strong>
+                            <div style={{ color: t.ink3, fontSize: 12 }}>
+                              {statusLabel(item.route)} | {statusLabel(item.status)} | {item.created_by === "admin" ? "Manual" : "AI proposed"}
+                            </div>
+                            <div style={{ color: t.ink2, fontSize: 13, marginTop: 4 }}>{item.instructions}</div>
+                            {item.rationale ? <div style={{ color: t.ink3, fontSize: 12, marginTop: 4 }}>{item.rationale}</div> : null}
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                            {item.status === "proposed" ? (
+                              <>
+                                <button style={secondary} onClick={() => patchAIAction(item, { status: "approved" }).catch((e) => setNotice(String(e)))}>Approve</button>
+                                <button style={secondary} onClick={() => patchAIAction(item, { status: "rejected" }).catch((e) => setNotice(String(e)))}>Reject</button>
+                              </>
+                            ) : null}
+                            {item.status === "approved" ? <button style={secondary} onClick={() => patchAIAction(item, { status: "completed" }).catch((e) => setNotice(String(e)))}>Complete</button> : null}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </PanelBox>
+                  ) : null}
+                </PanelBox>
+              ) : null}
 
               <PanelBox>
                 <SectionLabel>Notes</SectionLabel>
@@ -2267,6 +2460,42 @@ function miniButtonStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
   };
 }
 
+function modeToggleStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 6,
+    padding: 4,
+    border: `1px solid ${t.line}`,
+    borderRadius: 8,
+    background: t.surface2,
+  };
+}
+
+function modeButtonStyle(t: ReturnType<typeof useTheme>["t"], active: boolean): CSSProperties {
+  return {
+    minHeight: 32,
+    border: `1px solid ${active ? t.petrol : "transparent"}`,
+    borderRadius: 7,
+    background: active ? t.petrolSoft : "transparent",
+    color: active ? t.petrol : t.ink2,
+    fontSize: 12,
+    fontWeight: 900,
+    cursor: "pointer",
+  };
+}
+
+function manualActionFormStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+  return {
+    display: "grid",
+    gap: 8,
+    padding: 10,
+    border: `1px solid ${t.line}`,
+    borderRadius: 8,
+    background: t.surface2,
+  };
+}
+
 function sharePopupStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
   return {
     position: "absolute",
@@ -2433,6 +2662,11 @@ function activityLabel(action: string) {
     file_preview_url_created: "Admin preview URL created",
     file_download_url_created: "Admin download URL created",
     file_annotation_created: "Admin annotation created",
+    ai_action_created: "Action task created",
+    ai_action_proposed: "Action task proposed",
+    ai_action_approved: "Action task approved",
+    ai_action_rejected: "Action task rejected",
+    ai_action_completed: "Action task completed",
   };
   return labels[action] ?? statusLabel(action);
 }
