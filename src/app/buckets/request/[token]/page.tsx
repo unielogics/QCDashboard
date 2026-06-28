@@ -294,6 +294,7 @@ export default function BucketRequestPage() {
   );
   const visibleTasks = aiTasks.filter((task) => task.status === "approved" || task.status === "completed");
   const needsAttentionCount = missingDocs.length + visibleTasks.filter((task) => task.status !== "completed").length + summaryItems(session?.ai_summary, "blocked_files").length;
+  const hasAnalysis = hasAnalysisSummary(session?.ai_summary);
 
   return (
     <main style={page}>
@@ -350,7 +351,7 @@ export default function BucketRequestPage() {
           </div>
           <section style={insightPanel}>
             <div>
-              <h2 style={sectionTitle}>Current file summary</h2>
+              <h2 style={sectionTitle}>AI analysis summary</h2>
               <p style={insightCopy}>{summaryText(session.ai_summary, uploadedFiles.length, missingDocs.length)}</p>
             </div>
             <div style={insightGrid}>
@@ -373,6 +374,13 @@ export default function BucketRequestPage() {
                 <span>{summaryItems(session.ai_summary, "blocked_files").slice(0, 2).map(describeAIItem).join(" ")}</span>
               </div>
             ) : null}
+            {hasAnalysis ? (
+              <AIAnalysisSummary summary={session.ai_summary} />
+            ) : (
+              <div style={analysisEmpty}>
+                AI analysis has not been completed for this upload room yet. The file list is available now, and this section will update after Qualified Commercial runs or reruns the bucket review.
+              </div>
+            )}
           </section>
 
           <div style={contentGrid}>
@@ -529,6 +537,12 @@ export default function BucketRequestPage() {
                 <section style={sideSection}>
                   <h2 style={sectionTitle}>Ask AI</h2>
                   <p style={{ ...muted, marginTop: 6, lineHeight: 1.4 }}>Ask questions about what is uploaded, what is still needed, and how to complete the request. This chat cannot change Qualified Commercial instructions.</p>
+                  {hasAnalysis ? (
+                    <div style={chatBaseline}>
+                      <strong>Chat baseline</strong>
+                      <span>{summaryText(session.ai_summary, uploadedFiles.length, missingDocs.length)}</span>
+                    </div>
+                  ) : null}
                   {!session.can_use_ai_chat ? <div style={emptyState}>AI chat is disabled for this upload room.</div> : null}
                   {session.can_use_ai_chat ? (
                     <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
@@ -567,6 +581,60 @@ export default function BucketRequestPage() {
         </section>
       )}
     </main>
+  );
+}
+
+function AIAnalysisSummary({ summary }: { summary?: Record<string, unknown> | null }) {
+  const available = summaryItems(summary, "available_documents");
+  const missing = summaryItems(summary, "missing_or_incomplete_items");
+  const questions = summaryItems(summary, "underwriter_questions");
+  const discrepancies = summaryItems(summary, "discrepancies");
+  const gaps = summaryItems(summary, "proof_of_funds_financial_collateral_gaps");
+  const perFile = summaryItems(summary, "per_file_summaries");
+  const context = summary && typeof summary.ai_context === "object" && summary.ai_context ? summary.ai_context as Record<string, unknown> : {};
+  const contextRows = [
+    ["Deal", stringValue(context.deal_type)],
+    ["Docs", stringValue(context.documentation_level)],
+    ["Collateral", stringValue(context.collateral_type)],
+    ["Purpose", stringValue(context.loan_purpose)],
+  ].filter(([, value]) => value);
+  return (
+    <div style={analysisGrid}>
+      {contextRows.length ? (
+        <div style={analysisBlock}>
+          <strong>Review inputs</strong>
+          <div style={contextPills}>
+            {contextRows.map(([label, value]) => (
+              <span key={label} style={contextPill}>{label}: {value}</span>
+            ))}
+          </div>
+          {stringValue(context.underwriting_focus) ? <p style={analysisText}>{stringValue(context.underwriting_focus)}</p> : null}
+        </div>
+      ) : null}
+      <AnalysisList title="What was analyzed" items={available.length ? available : perFile} empty="No detailed file analysis has been published yet." />
+      <AnalysisList title="Missing or needs clarification" items={[...missing, ...questions, ...gaps, ...discrepancies]} danger empty="No missing items or clarification requests are currently published." />
+      {perFile.length && available.length ? <AnalysisList title="Per-file notes" items={perFile} empty="" /> : null}
+    </div>
+  );
+}
+
+function AnalysisList({ title, items, empty, danger = false }: { title: string; items: unknown[]; empty: string; danger?: boolean }) {
+  return (
+    <div style={danger ? analysisBlockDanger : analysisBlock}>
+      <strong>{title}</strong>
+      {items.length ? (
+        <div style={analysisList}>
+          {items.slice(0, 5).map((item, index) => (
+            <div key={`${title}-${index}`} style={analysisItem}>
+              {describeAIItem(item)}
+            </div>
+          ))}
+          {items.length > 5 ? <small style={muted}>+{items.length - 5} more</small> : null}
+        </div>
+      ) : (
+        <p style={analysisText}>{empty}</p>
+      )}
+    </div>
   );
 }
 
@@ -655,10 +723,27 @@ function summaryItems(summary: Record<string, unknown> | null | undefined, key: 
 
 function summaryText(summary: Record<string, unknown> | null | undefined, uploadedCount: number, missingCount: number): string {
   if (typeof summary?.summary === "string" && summary.summary.trim()) return summary.summary;
+  if (!summary) {
+    return "AI analysis has not been completed yet. Uploaded files are listed below and the summary will update after review.";
+  }
   if (uploadedCount || missingCount) {
     return `${uploadedCount} uploaded file${uploadedCount === 1 ? "" : "s"} on record. ${missingCount} requested item${missingCount === 1 ? "" : "s"} still need attention.`;
   }
   return "Start by uploading the requested documents. Qualified Commercial and the AI summary will update as files are received and reviewed.";
+}
+
+function hasAnalysisSummary(summary: Record<string, unknown> | null | undefined): boolean {
+  if (!summary) return false;
+  if (typeof summary.summary === "string" && summary.summary.trim()) return true;
+  return [
+    "available_documents",
+    "missing_or_incomplete_items",
+    "underwriter_questions",
+    "discrepancies",
+    "proof_of_funds_financial_collateral_gaps",
+    "per_file_summaries",
+    "blocked_files",
+  ].some((key) => summaryItems(summary, key).length > 0);
 }
 
 function describeAIItem(item: unknown): string {
@@ -711,6 +796,15 @@ const goodMetric: CSSProperties = { ...insightMetricBase, border: "1px solid #bb
 const needsMetric: CSSProperties = { ...insightMetricBase, border: "1px solid #fecaca", background: "#fef2f2", color: "#991b1b" };
 const summaryMetric: CSSProperties = { ...insightMetricBase, border: "1px solid #dbeafe", background: "#eff6ff", color: "#1e3a8a" };
 const dangerSummary: CSSProperties = { gridColumn: "1 / -1", display: "grid", gap: 3, border: "1px solid #fecaca", borderRadius: 12, padding: 12, background: "#fef2f2", color: "#991b1b", lineHeight: 1.4 };
+const analysisGrid: CSSProperties = { gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))", gap: 10 };
+const analysisBlock: CSSProperties = { display: "grid", gap: 8, border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#fff", color: "#334155", lineHeight: 1.4 };
+const analysisBlockDanger: CSSProperties = { ...analysisBlock, borderColor: "#fecaca", background: "#fff7f7", color: "#991b1b" };
+const analysisList: CSSProperties = { display: "grid", gap: 7 };
+const analysisItem: CSSProperties = { borderTop: "1px solid #e5e7eb", paddingTop: 7, fontSize: 13, lineHeight: 1.4 };
+const analysisText: CSSProperties = { margin: 0, color: "#64748b", fontSize: 13, lineHeight: 1.45 };
+const analysisEmpty: CSSProperties = { gridColumn: "1 / -1", border: "1px dashed #cbd5e1", borderRadius: 12, padding: 12, color: "#64748b", background: "#f8fafc", lineHeight: 1.45 };
+const contextPills: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 6 };
+const contextPill: CSSProperties = { border: "1px solid #ccfbf1", borderRadius: 999, padding: "4px 8px", background: "#f0fdfa", color: "#0f766e", fontSize: 12, fontWeight: 900 };
 const contentGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 20 };
 const mainPanel: CSSProperties = { minWidth: 0 };
 const identityGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: 12, marginBottom: 16 };
@@ -742,6 +836,7 @@ const checkBadge: CSSProperties = { border: "1px solid #86efac", borderRadius: 9
 const openBadge: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 999, padding: "3px 8px", color: "#64748b", background: "#f8fafc", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
 const dangerBadge: CSSProperties = { border: "1px solid #fca5a5", borderRadius: 999, padding: "3px 8px", color: "#991b1b", background: "#fee2e2", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
 const notesField: CSSProperties = { width: "100%", minHeight: 160, border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, font: "inherit", resize: "vertical", boxSizing: "border-box", marginTop: 12 };
+const chatBaseline: CSSProperties = { display: "grid", gap: 4, border: "1px solid #ccfbf1", borderRadius: 10, padding: 10, background: "#f0fdfa", color: "#0f766e", fontSize: 13, lineHeight: 1.4, marginTop: 10 };
 const aiBubble: CSSProperties = { border: "1px solid #dbeafe", background: "#eff6ff", color: "#1e3a8a", borderRadius: 10, padding: 10, fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap" };
 const aiBubbleUser: CSSProperties = { border: "1px solid #e2e8f0", background: "#fff", color: "#334155", borderRadius: 10, padding: 10, fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap" };
 
