@@ -309,12 +309,18 @@ export default function BucketSharePage() {
                   {access.share.can_view_ai_summary && access.ai_summary ? (
                     <div style={{ ...emptyState, color: "#334155", marginTop: 10 }}>
                       {shareSummaryText(access.ai_summary)}
+                      {shareSummaryItems(access.ai_summary, "missing_or_incomplete_items").length ? (
+                        <div style={shareAttentionBox}>
+                          <strong>Needs attention</strong>
+                          <span>{shareSummaryItems(access.ai_summary, "missing_or_incomplete_items").slice(0, 2).map(describeShareAIItem).join(" ")}</span>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   {access.share.can_view_ai_tasks ? (
                     <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                       {(access.ai_tasks ?? []).length === 0 ? <div style={emptyState}>No approved to-dos for this share.</div> : (access.ai_tasks ?? []).map((task) => (
-                        <div key={task.id} style={noteCard}>
+                        <div key={task.id} style={task.status === "completed" ? noteCard : shareTaskCard}>
                           <div style={noteAuthor}>{task.title}</div>
                           <div style={noteDate}>{task.status}</div>
                           <p style={noteText}>{task.instructions}</p>
@@ -427,6 +433,25 @@ function shareSummaryText(summary: Record<string, unknown>): string {
   return "AI summary is available for the files shared with you.";
 }
 
+function shareSummaryItems(summary: Record<string, unknown>, key: string): unknown[] {
+  const value = summary[key];
+  return Array.isArray(value) ? value : [];
+}
+
+function describeShareAIItem(item: unknown): string {
+  if (typeof item === "string") return item;
+  if (!item || typeof item !== "object") return String(item ?? "");
+  const row = item as Record<string, unknown>;
+  const parts = [
+    typeof row.title === "string" ? row.title : "",
+    typeof row.file_name === "string" ? row.file_name : "",
+    typeof row.detail === "string" ? row.detail : "",
+    typeof row.summary === "string" ? row.summary : "",
+    typeof row.explanation === "string" ? row.explanation : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(" - ") : JSON.stringify(row);
+}
+
 const page: CSSProperties = { minHeight: "100vh", background: "#f3f5f8", color: "#111827", padding: 24, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" };
 const gateShell: CSSProperties = { maxWidth: 760, margin: "6vh auto 0", display: "grid", gap: 18 };
 const gateCard: CSSProperties = { background: "#fff", border: "1px solid #d8dee8", borderRadius: 12, padding: 28, boxShadow: "0 18px 45px rgba(15,23,42,.08)" };
@@ -467,6 +492,8 @@ const noteComposer: CSSProperties = { display: "grid", gap: 8, marginBottom: 12 
 const noteField: CSSProperties = { minHeight: 96, border: "1px solid #cbd5e1", borderRadius: 9, padding: 10, font: "inherit", resize: "vertical", boxSizing: "border-box" };
 const noteList: CSSProperties = { display: "grid", gap: 8 };
 const noteCard: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, background: "#fbfdff" };
+const shareTaskCard: CSSProperties = { border: "1px solid #fca5a5", borderRadius: 10, padding: 10, background: "#fff1f2" };
+const shareAttentionBox: CSSProperties = { display: "grid", gap: 4, borderTop: "1px solid #fecaca", marginTop: 10, paddingTop: 10, color: "#991b1b", lineHeight: 1.4 };
 const noteAuthor: CSSProperties = { color: "#111827", fontWeight: 900, fontSize: 13 };
 const noteDate: CSSProperties = { color: "#64748b", fontSize: 12, marginTop: 2 };
 const noteText: CSSProperties = { margin: "8px 0 0", color: "#334155", lineHeight: 1.45, whiteSpace: "pre-wrap" };

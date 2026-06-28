@@ -494,11 +494,7 @@ export default function BucketsAdminPage() {
       rationale: "Created manually by admin.",
     };
     if (manualActionDraft.route === "uploader") {
-      if (!manualActionDraft.upload_link_id) {
-        setNotice("Select an uploader before creating this task.");
-        return;
-      }
-      payload.upload_link_id = manualActionDraft.upload_link_id;
+      if (manualActionDraft.upload_link_id) payload.upload_link_id = manualActionDraft.upload_link_id;
     }
     if (manualActionDraft.route === "share") {
       if (!manualActionDraft.share_id) {
@@ -1810,7 +1806,7 @@ export default function BucketsAdminPage() {
                             </select>
                             {manualActionDraft.route === "uploader" ? (
                               <select style={field} value={manualActionDraft.upload_link_id} onChange={(event) => setManualActionDraft({ ...manualActionDraft, upload_link_id: event.target.value })}>
-                                <option value="">Select uploader</option>
+                                <option value="">All upload clients</option>
                                 {(detail.upload_links ?? []).map((link) => (
                                   <option key={link.id} value={link.id}>{link.recipient_name}</option>
                                 ))}
@@ -1855,7 +1851,7 @@ export default function BucketsAdminPage() {
                           <div style={{ minWidth: 0 }}>
                             <strong style={{ color: t.ink }}>{item.title}</strong>
                             <div style={{ color: t.ink3, fontSize: 12 }}>
-                              {statusLabel(item.route)} | {statusLabel(item.status)} | {item.created_by === "admin" ? "Manual" : "AI proposed"}
+                              {statusLabel(item.route)} | {statusLabel(item.status)} | {item.created_by === "admin" ? "Manual" : "AI"}
                             </div>
                             <div style={{ color: t.ink2, fontSize: 13, marginTop: 4 }}>{item.instructions}</div>
                             {item.rationale ? <div style={{ color: t.ink3, fontSize: 12, marginTop: 4 }}>{item.rationale}</div> : null}

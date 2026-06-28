@@ -16,6 +16,17 @@ type RequestedDoc = {
   status: string;
 };
 type BucketSummary = { name: string; client_name?: string | null; purpose?: string | null };
+type UploadedFile = {
+  id: string;
+  requested_document_id?: string | null;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+  uploaded_by_name?: string | null;
+  uploaded_by_email?: string | null;
+  status: string;
+  created_at: string;
+};
 type RequestInfo = {
   bucket: BucketSummary;
   recipient_name: string;
@@ -31,9 +42,12 @@ type UploadSession = {
   can_use_ai_chat?: boolean;
   can_view_ai_tasks?: boolean;
   requested_documents: RequestedDoc[];
+  files?: UploadedFile[];
+  ai_summary?: Record<string, unknown> | null;
 };
 type AITask = { id: string; status: string; title: string; instructions: string; rationale?: string | null };
 type AIMessage = { id: string; role: "user" | "assistant"; content: string; created_at: string };
+type RoomTab = "todo" | "uploaded" | "chat";
 type QueuedFile = {
   id: string;
   file: File;
@@ -63,6 +77,7 @@ export default function BucketRequestPage() {
   const [aiMessages, setAiMessages] = useState<AIMessage[]>([]);
   const [aiText, setAiText] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
+  const [activeTab, setActiveTab] = useState<RoomTab>("todo");
 
   useEffect(() => {
     fetch(`${apiBase}/api/v1/buckets/request/${token}`)
@@ -85,23 +100,36 @@ export default function BucketRequestPage() {
     );
   }, [files, name, session]);
 
+  async function fetchAccessSession(): Promise<UploadSession> {
+    const res = await fetch(`${apiBase}/api/v1/buckets/request/${token}/access`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ passcode: passcode.trim() }),
+    });
+    if (!res.ok) throw new Error(await responseMessage(res, "The access code did not work."));
+    return res.json();
+  }
+
+  async function refreshRoom() {
+    const data = await fetchAccessSession();
+    setSession(data);
+    if (data.can_view_ai_tasks) await loadAITasks();
+    else setAiTasks([]);
+  }
+
   async function openInvite() {
     if (!passcode.trim()) return;
     setIsAccessing(true);
     setStatus("");
     try {
-      const res = await fetch(`${apiBase}/api/v1/buckets/request/${token}/access`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ passcode: passcode.trim() }),
-      });
-      if (!res.ok) throw new Error(await responseMessage(res, "The access code did not work."));
-      const data = (await res.json()) as UploadSession;
+      const data = await fetchAccessSession();
       setSession(data);
       setName(data.recipient_name || "");
       setEmail(data.recipient_email || "");
+      setActiveTab("todo");
       setStatus("");
       if (data.can_view_ai_tasks) loadAITasks().catch(() => undefined);
+      else setAiTasks([]);
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "The access code did not work.");
     } finally {
@@ -233,9 +261,11 @@ export default function BucketRequestPage() {
         setStatus("Documents submitted. Qualified Commercial has received this upload.");
         setNote("");
         setNoteSubmitted(false);
+        await refreshRoom().catch(() => undefined);
       } else if (uploadedCount > 0) {
         setStatus(`${uploadedCount} document${uploadedCount === 1 ? "" : "s"} submitted. ${failedCount} file${failedCount === 1 ? "" : "s"} need retry.`);
         if (noteSaved) setNote("");
+        await refreshRoom().catch(() => undefined);
       } else {
         setStatus("No documents uploaded. Review the failed file messages and try again.");
       }
@@ -248,6 +278,22 @@ export default function BucketRequestPage() {
       setIsUploading(false);
     }
   }
+
+  const uploadedFiles = session?.files ?? [];
+  const uploadedDocIds = useMemo(
+    () => new Set(uploadedFiles.map((file) => file.requested_document_id).filter(Boolean) as string[]),
+    [uploadedFiles],
+  );
+  const missingDocs = useMemo(
+    () => (session?.requested_documents ?? []).filter((doc) => !isRequestedDocComplete(doc, uploadedDocIds)),
+    [session?.requested_documents, uploadedDocIds],
+  );
+  const completedDocs = useMemo(
+    () => (session?.requested_documents ?? []).filter((doc) => isRequestedDocComplete(doc, uploadedDocIds)),
+    [session?.requested_documents, uploadedDocIds],
+  );
+  const visibleTasks = aiTasks.filter((task) => task.status === "approved" || task.status === "completed");
+  const needsAttentionCount = missingDocs.length + visibleTasks.filter((task) => task.status !== "completed").length + summaryItems(session?.ai_summary, "blocked_files").length;
 
   return (
     <main style={page}>
@@ -295,11 +341,39 @@ export default function BucketRequestPage() {
               <h1 style={title}>{session.bucket.name}</h1>
               <p style={muted}>Upload invite for <strong>{session.recipient_name}</strong>{session.bucket.purpose ? ` - ${session.bucket.purpose}` : ""}</p>
             </div>
-            <div style={summaryPill}>{files.filter((item) => item.status === "uploaded").length} of {files.length} submitted</div>
+            <div style={needsAttentionCount ? attentionPill : summaryPill}>
+              {needsAttentionCount ? `${needsAttentionCount} to-do${needsAttentionCount === 1 ? "" : "s"}` : `${uploadedFiles.length} uploaded`}
+            </div>
           </header>
           <div style={securityNotice}>
             <strong>Encrypted upload room.</strong> Uploaded documents are encrypted. Access to view these documents is gated and regulated through authorized user controls.
           </div>
+          <section style={insightPanel}>
+            <div>
+              <h2 style={sectionTitle}>Current file summary</h2>
+              <p style={insightCopy}>{summaryText(session.ai_summary, uploadedFiles.length, missingDocs.length)}</p>
+            </div>
+            <div style={insightGrid}>
+              <div style={goodMetric}>
+                <strong>{completedDocs.length}</strong>
+                <span>complete</span>
+              </div>
+              <div style={needsMetric}>
+                <strong>{missingDocs.length}</strong>
+                <span>missing</span>
+              </div>
+              <div style={summaryMetric}>
+                <strong>{uploadedFiles.length}</strong>
+                <span>uploaded</span>
+              </div>
+            </div>
+            {summaryItems(session.ai_summary, "blocked_files").length ? (
+              <div style={dangerSummary}>
+                <strong>Password required before AI can read some files.</strong>
+                <span>{summaryItems(session.ai_summary, "blocked_files").slice(0, 2).map(describeAIItem).join(" ")}</span>
+              </div>
+            ) : null}
+          </section>
 
           <div style={contentGrid}>
             <div style={mainPanel}>
@@ -377,53 +451,89 @@ export default function BucketRequestPage() {
             </div>
 
             <aside style={sidePanel}>
-              <section style={sideSection}>
-                <h2 style={sectionTitle}>Requested documents</h2>
-                <div style={docList}>
-                  {session.requested_documents.length === 0 ? (
-                    <div style={emptyState}>No requested documents were added to this bucket.</div>
-                  ) : session.requested_documents.map((doc) => {
-                    const count = linkedCount(doc.id);
-                    const linked = count > 0 || doc.status === "uploaded";
-                    return (
-                    <div key={doc.id} style={{ ...docItem, ...(linked ? docItemLinked : {}) }}>
-                      <div style={docTitleRow}>
-                        <span>{doc.name}</span>
-                        <span style={linked ? checkBadge : openBadge}>{linked ? "Checked" : "Open"}</span>
-                      </div>
-                      <small style={muted}>
-                        {doc.required ? "Required" : "Optional"} - {allowsMultipleFiles(doc) ? "multiple files allowed" : "one file"}{count ? ` - ${count} linked` : ""}
-                      </small>
-                      {doc.description ? <small style={docDescription}>{doc.description}</small> : null}
-                    </div>
-                    );
-                  })}
-                </div>
-              </section>
-              {session.allow_notes ? (
+              <div style={tabs}>
+                {([
+                  ["todo", `To-dos${needsAttentionCount ? ` (${needsAttentionCount})` : ""}`],
+                  ["uploaded", `Uploaded (${uploadedFiles.length})`],
+                  ["chat", "Ask AI"],
+                ] as const).map(([tab, label]) => (
+                  <button key={tab} style={tabButton(activeTab === tab, tab === "todo" && needsAttentionCount > 0)} onClick={() => setActiveTab(tab)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {activeTab === "todo" ? (
                 <section style={sideSection}>
-                  <h2 style={sectionTitle}>Notes</h2>
-                  <textarea style={notesField} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add one note for this upload batch." />
-                </section>
-              ) : null}
-              {(session.can_use_ai_chat || session.can_view_ai_tasks) ? (
-                <section style={sideSection}>
-                  <h2 style={sectionTitle}>AI instructions</h2>
-                  <p style={{ ...muted, marginTop: 6, lineHeight: 1.4 }}>This assistant only sees your upload request, approved to-dos, and document status.</p>
-                  {session.can_view_ai_tasks ? (
+                  <h2 style={sectionTitle}>What needs attention</h2>
+                  {visibleTasks.filter((task) => task.status !== "completed").length ? (
                     <div style={docList}>
-                      {aiTasks.length === 0 ? <div style={emptyState}>No approved to-dos yet.</div> : aiTasks.map((task) => (
-                        <div key={task.id} style={docItem}>
-                          <div style={docTitleRow}><span>{task.title}</span><span style={checkBadge}>{task.status}</span></div>
+                      {visibleTasks.filter((task) => task.status !== "completed").map((task) => (
+                        <div key={task.id} style={urgentTask}>
+                          <div style={docTitleRow}><span>{task.title}</span><span style={dangerBadge}>To do</span></div>
                           <small style={docDescription}>{task.instructions}</small>
+                          {task.rationale ? <small style={muted}>{task.rationale}</small> : null}
                         </div>
                       ))}
                     </div>
                   ) : null}
+                  <div style={docList}>
+                    {session.requested_documents.length === 0 ? (
+                      <div style={emptyState}>No requested documents were added to this bucket.</div>
+                    ) : session.requested_documents.map((doc) => {
+                      const count = linkedCount(doc.id);
+                      const complete = isRequestedDocComplete(doc, uploadedDocIds);
+                      return (
+                        <div key={doc.id} style={{ ...docItem, ...(complete ? docItemLinked : requiredDocItem) }}>
+                          <div style={docTitleRow}>
+                            <span>{doc.name}</span>
+                            <span style={complete ? checkBadge : dangerBadge}>{complete ? "Received" : "Needed"}</span>
+                          </div>
+                          <small style={muted}>
+                            {doc.required ? "Required" : "Optional"} - {allowsMultipleFiles(doc) ? "multiple files allowed" : "one file"}{count ? ` - ${count} selected` : ""}
+                          </small>
+                          {doc.description ? <small style={docDescription}>{doc.description}</small> : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              ) : null}
+
+              {activeTab === "uploaded" ? (
+                <section style={sideSection}>
+                  <h2 style={sectionTitle}>Uploaded files</h2>
+                  <p style={{ ...muted, marginTop: 6, lineHeight: 1.4 }}>These are files already received for this secure room.</p>
+                  <div style={docList}>
+                    {uploadedFiles.length === 0 ? (
+                      <div style={emptyState}>No files have been uploaded yet.</div>
+                    ) : uploadedFiles.map((file) => (
+                      <div key={file.id} style={uploadedFileItem}>
+                        <div style={docTitleRow}>
+                          <span>{file.file_name}</span>
+                          <span style={checkBadge}>Received</span>
+                        </div>
+                        <small style={muted}>
+                          {fileKindLabel(file)} - {formatSize(file.size_bytes)} - {formatDate(file.created_at)}
+                        </small>
+                        <small style={docDescription}>
+                          Uploaded by {file.uploaded_by_name || file.uploaded_by_email || "Qualified Commercial"}
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              {activeTab === "chat" ? (
+                <section style={sideSection}>
+                  <h2 style={sectionTitle}>Ask AI</h2>
+                  <p style={{ ...muted, marginTop: 6, lineHeight: 1.4 }}>Ask questions about what is uploaded, what is still needed, and how to complete the request. This chat cannot change Qualified Commercial instructions.</p>
+                  {!session.can_use_ai_chat ? <div style={emptyState}>AI chat is disabled for this upload room.</div> : null}
                   {session.can_use_ai_chat ? (
                     <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-                      <div style={{ display: "grid", gap: 8, maxHeight: 180, overflowY: "auto" }}>
-                        {aiMessages.length === 0 ? <div style={emptyState}>Ask what is still needed or how to upload a document.</div> : aiMessages.slice(-6).map((message) => (
+                      <div style={{ display: "grid", gap: 8, maxHeight: 260, overflowY: "auto" }}>
+                        {aiMessages.length === 0 ? <div style={emptyState}>Ask what is still needed or how to upload a document.</div> : aiMessages.slice(-8).map((message) => (
                           <div key={message.id} style={message.role === "assistant" ? aiBubble : aiBubbleUser}>
                             {message.content}
                           </div>
@@ -434,7 +544,7 @@ export default function BucketRequestPage() {
                           style={field}
                           value={aiText}
                           onChange={(e) => setAiText(e.target.value)}
-                          placeholder="Ask for help..."
+                          placeholder="Ask a question..."
                           onKeyDown={(e) => {
                             if (e.key === "Enter") sendAIMessage().catch(() => undefined);
                           }}
@@ -443,6 +553,13 @@ export default function BucketRequestPage() {
                       </div>
                     </div>
                   ) : null}
+                </section>
+              ) : null}
+
+              {session.allow_notes ? (
+                <section style={sideSection}>
+                  <h2 style={sectionTitle}>Upload note</h2>
+                  <textarea style={notesField} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add one note for this upload batch." />
                 </section>
               ) : null}
             </aside>
@@ -512,6 +629,58 @@ function hasDuplicateSingleUseDocs(files: QueuedFile[], docs: RequestedDoc[]): b
   return Array.from(counts.values()).some((count) => count > 1);
 }
 
+function isRequestedDocComplete(doc: RequestedDoc, uploadedDocIds: Set<string>): boolean {
+  return doc.status === "uploaded" || uploadedDocIds.has(doc.id);
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) return "recently";
+  return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function fileKindLabel(file: UploadedFile): string {
+  const lower = `${file.content_type} ${file.file_name}`.toLowerCase();
+  if (lower.includes("pdf") || lower.endsWith(".pdf")) return "PDF";
+  if (lower.includes("image/") || /\.(png|jpe?g|gif|webp)$/i.test(file.file_name)) return "Image";
+  if (lower.includes("spreadsheet") || /\.(xls|xlsx)$/i.test(file.file_name)) return "Spreadsheet";
+  if (lower.includes("csv") || file.file_name.toLowerCase().endsWith(".csv")) return "CSV";
+  if (lower.includes("text/") || /\.(txt|md|log)$/i.test(file.file_name)) return "Text";
+  return "Document";
+}
+
+function summaryItems(summary: Record<string, unknown> | null | undefined, key: string): unknown[] {
+  const value = summary?.[key];
+  return Array.isArray(value) ? value : [];
+}
+
+function summaryText(summary: Record<string, unknown> | null | undefined, uploadedCount: number, missingCount: number): string {
+  if (typeof summary?.summary === "string" && summary.summary.trim()) return summary.summary;
+  if (uploadedCount || missingCount) {
+    return `${uploadedCount} uploaded file${uploadedCount === 1 ? "" : "s"} on record. ${missingCount} requested item${missingCount === 1 ? "" : "s"} still need attention.`;
+  }
+  return "Start by uploading the requested documents. Qualified Commercial and the AI summary will update as files are received and reviewed.";
+}
+
+function describeAIItem(item: unknown): string {
+  if (typeof item === "string") return item;
+  if (!item || typeof item !== "object") return String(item ?? "");
+  const row = item as Record<string, unknown>;
+  const parts = [
+    stringValue(row.title),
+    stringValue(row.file_name),
+    stringValue(row.document_type),
+    stringValue(row.detail),
+    stringValue(row.summary),
+    stringValue(row.instructions),
+    stringValue(row.explanation),
+  ].filter(Boolean);
+  return parts.length ? parts.join(" - ") : JSON.stringify(row);
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
 const page: CSSProperties = { minHeight: "100vh", background: "#f4f6f8", color: "#111827", padding: 24, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" };
 const gateCard: CSSProperties = { maxWidth: 560, margin: "8vh auto 0", background: "#fff", border: "1px solid #d8dee8", borderRadius: 14, padding: 28, boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)" };
 const brandHeader: CSSProperties = { display: "flex", alignItems: "center", gap: 10 };
@@ -532,7 +701,16 @@ const header: CSSProperties = { display: "flex", justifyContent: "space-between"
 const title: CSSProperties = { margin: "8px 0 4px", fontSize: 30, lineHeight: 1.15, letterSpacing: 0 };
 const muted: CSSProperties = { color: "#64748b" };
 const summaryPill: CSSProperties = { border: "1px solid #d8dee8", borderRadius: 999, padding: "8px 12px", color: "#334155", fontWeight: 800, whiteSpace: "nowrap" };
+const attentionPill: CSSProperties = { ...summaryPill, borderColor: "#fecaca", color: "#991b1b", background: "#fef2f2" };
 const securityNotice: CSSProperties = { border: "1px solid #bfdbfe", borderRadius: 12, padding: "11px 13px", color: "#1e3a8a", background: "#eff6ff", fontSize: 13.5, lineHeight: 1.45, marginBottom: 18 };
+const insightPanel: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 14, border: "1px solid #d8dee8", borderRadius: 14, padding: 16, background: "#fbfdff", marginBottom: 18 };
+const insightCopy: CSSProperties = { margin: "7px 0 0", color: "#475569", lineHeight: 1.45 };
+const insightGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, minmax(76px, 1fr))", gap: 8, alignSelf: "start" };
+const insightMetricBase: CSSProperties = { borderRadius: 12, padding: "10px 12px", display: "grid", gap: 2, textAlign: "center", fontWeight: 900 };
+const goodMetric: CSSProperties = { ...insightMetricBase, border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#166534" };
+const needsMetric: CSSProperties = { ...insightMetricBase, border: "1px solid #fecaca", background: "#fef2f2", color: "#991b1b" };
+const summaryMetric: CSSProperties = { ...insightMetricBase, border: "1px solid #dbeafe", background: "#eff6ff", color: "#1e3a8a" };
+const dangerSummary: CSSProperties = { gridColumn: "1 / -1", display: "grid", gap: 3, border: "1px solid #fecaca", borderRadius: 12, padding: 12, background: "#fef2f2", color: "#991b1b", lineHeight: 1.4 };
 const contentGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 20 };
 const mainPanel: CSSProperties = { minWidth: 0 };
 const identityGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: 12, marginBottom: 16 };
@@ -551,13 +729,33 @@ const removeButton: CSSProperties = { height: 38, border: "1px solid #d8dee8", b
 const submittedBadge: CSSProperties = { height: 38, border: "1px solid #bbf7d0", borderRadius: 10, background: "#f0fdf4", color: "#166534", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13 };
 const sidePanel: CSSProperties = { display: "grid", gap: 14, alignContent: "start" };
 const sideSection: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 14, padding: 16, background: "#fbfdff" };
+const tabs: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, border: "1px solid #e5e7eb", borderRadius: 14, padding: 6, background: "#f8fafc" };
 const docList: CSSProperties = { display: "grid", gap: 10, marginTop: 12 };
 const docItem: CSSProperties = { display: "grid", gap: 4, borderBottom: "1px solid #e5e7eb", paddingBottom: 10, fontWeight: 800 };
 const docItemLinked: CSSProperties = { border: "1px solid #bbf7d0", borderRadius: 10, padding: 10, background: "#f0fdf4" };
+const requiredDocItem: CSSProperties = { border: "1px solid #fecaca", borderRadius: 10, padding: 10, background: "#fef2f2" };
+const urgentTask: CSSProperties = { display: "grid", gap: 5, border: "1px solid #fca5a5", borderRadius: 10, padding: 10, background: "#fff1f2", fontWeight: 800 };
+const uploadedFileItem: CSSProperties = { display: "grid", gap: 5, border: "1px solid #dbeafe", borderRadius: 10, padding: 10, background: "#eff6ff", fontWeight: 800 };
 const docTitleRow: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 };
 const docDescription: CSSProperties = { color: "#475569", fontWeight: 600, lineHeight: 1.4 };
 const checkBadge: CSSProperties = { border: "1px solid #86efac", borderRadius: 999, padding: "3px 8px", color: "#166534", background: "#dcfce7", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
 const openBadge: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 999, padding: "3px 8px", color: "#64748b", background: "#f8fafc", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
+const dangerBadge: CSSProperties = { border: "1px solid #fca5a5", borderRadius: 999, padding: "3px 8px", color: "#991b1b", background: "#fee2e2", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
 const notesField: CSSProperties = { width: "100%", minHeight: 160, border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, font: "inherit", resize: "vertical", boxSizing: "border-box", marginTop: 12 };
 const aiBubble: CSSProperties = { border: "1px solid #dbeafe", background: "#eff6ff", color: "#1e3a8a", borderRadius: 10, padding: 10, fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap" };
 const aiBubbleUser: CSSProperties = { border: "1px solid #e2e8f0", background: "#fff", color: "#334155", borderRadius: 10, padding: 10, fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap" };
+
+function tabButton(active: boolean, danger = false): CSSProperties {
+  return {
+    height: 38,
+    border: "1px solid transparent",
+    borderColor: active ? (danger ? "#fca5a5" : "#99f6e4") : "transparent",
+    borderRadius: 10,
+    background: active ? (danger ? "#fee2e2" : "#ccfbf1") : "transparent",
+    color: active ? (danger ? "#991b1b" : "#0f766e") : "#475569",
+    font: "inherit",
+    fontSize: 13,
+    fontWeight: 900,
+    cursor: "pointer",
+  };
+}
