@@ -106,14 +106,23 @@ type Template = {
 };
 type PackageKey = "standard" | "urchoice";
 type UploadInvite = { id: string; recipient_name: string; recipient_email: string; passcode: string };
-type UploadInviteLink = { name: string; email?: string; url: string; passcode: string };
+type UploadInviteLink = { id: string; name: string; email?: string; url: string; passcode: string };
 type UploadInitResponse = { file_id: string; upload_url: string; required_headers: Record<string, string> };
 type UploadLink = {
   id: string;
+  token?: string;
   recipient_name: string;
   recipient_email?: string | null;
+  allow_notes?: boolean;
+  allow_multiple_sessions?: boolean;
+  can_use_ai_chat?: boolean;
+  can_view_ai_tasks?: boolean;
   status: string;
+  completed_at?: string | null;
   expires_at?: string | null;
+  created_at?: string | null;
+  upload_url?: string | null;
+  passcode?: string | null;
 };
 type ShareViewerDraft = {
   id: string;
@@ -185,6 +194,7 @@ const ACTIVITY_ACTION_OPTIONS = [
   "bucket_deleted",
   "requested_document_added",
   "upload_link_created",
+  "upload_link_passcode_regenerated",
   "upload_link_accessed",
   "upload_passcode_failed",
   "file_upload_started",
@@ -310,6 +320,9 @@ export default function BucketsAdminPage() {
   const [sharePopupOpen, setSharePopupOpen] = useState(false);
   const [shareViewers, setShareViewers] = useState<ShareViewerDraft[]>(() => [emptyShareViewerDraft()]);
   const [sharePasscodes, setSharePasscodes] = useState<Record<string, string>>({});
+  const [uploadLinkPasscodes, setUploadLinkPasscodes] = useState<Record<string, string>>({});
+  const [expandedUploadLinkId, setExpandedUploadLinkId] = useState<string | null>(null);
+  const [uploadLinkDraft, setUploadLinkDraft] = useState({ recipient_name: "", recipient_email: "", passcode: "" });
   const [editingShareId, setEditingShareId] = useState<string | null>(null);
   const [editingShareFileIds, setEditingShareFileIds] = useState<string[]>([]);
   const [editingShareSearch, setEditingShareSearch] = useState("");
@@ -364,6 +377,12 @@ export default function BucketsAdminPage() {
     setSharePopupOpen(false);
     setShareViewers([newShareViewerDraft()]);
     setExpandedShareId(null);
+    setExpandedUploadLinkId(null);
+    setUploadLinkPasscodes((codes) => {
+      const keep = new Set((row.upload_links ?? []).map((link) => link.id));
+      return Object.fromEntries(Object.entries(codes).filter(([id]) => keep.has(id)));
+    });
+    setUploadLinkDraft({ recipient_name: row.client_name || "", recipient_email: "", passcode: generateAccessCode() });
     setExpandedActivityId(null);
     setAdminUploadFiles([]);
     setAdminUploadStatus(null);
@@ -621,7 +640,7 @@ export default function BucketsAdminPage() {
       const uploadLinks: UploadInviteLink[] = [];
       for (const [index, invite] of invites.entries()) {
         setCreateStatus({ kind: "working", message: `Creating upload invite ${index + 1} of ${invites.length}...` });
-        const uploadLink = await call<{ upload_url: string }>(`/buckets/admin/${row.id}/upload-links`, {
+        const uploadLink = await call<UploadLink>(`/buckets/admin/${row.id}/upload-links`, {
           method: "POST",
           body: JSON.stringify({
             recipient_name: invite.recipient_name,
@@ -629,7 +648,9 @@ export default function BucketsAdminPage() {
             passcode: invite.passcode,
           }),
         });
-        uploadLinks.push({ name: invite.recipient_name, email: invite.recipient_email || undefined, url: uploadLink.upload_url, passcode: invite.passcode });
+        const uploadPasscode = uploadLink.passcode || invite.passcode;
+        setUploadLinkPasscodes((codes) => ({ ...codes, [uploadLink.id]: uploadPasscode }));
+        uploadLinks.push({ id: uploadLink.id, name: invite.recipient_name, email: invite.recipient_email || undefined, url: uploadLink.upload_url || "", passcode: uploadPasscode });
       }
       setCreateStatus({ kind: "working", message: "Refreshing bucket list..." });
       await loadBuckets();
@@ -784,6 +805,54 @@ export default function BucketsAdminPage() {
       return;
     }
     void copyText(`Secure file room: ${share.share_url}\nAccess code: ${passcode}`);
+  }
+
+  function copyUploadLink(link: UploadLink) {
+    if (!link.upload_url) {
+      setNotice("Upload link is not available yet. Refresh the bucket and try again.");
+      return;
+    }
+    void copyText(link.upload_url);
+  }
+
+  function copyUploadInvite(link: UploadLink) {
+    const passcode = uploadLinkPasscodes[link.id] || link.passcode;
+    if (!link.upload_url || !passcode) {
+      setNotice("Regenerate the upload access code before copying the full invite.");
+      return;
+    }
+    void copyText(`Upload link: ${link.upload_url}\nAccess code: ${passcode}`);
+  }
+
+  async function regenerateUploadLinkPasscode(link: UploadLink) {
+    if (!detail) return;
+    const result = await call<{ upload_link: UploadLink; passcode: string }>(`/buckets/admin/${detail.id}/upload-links/${link.id}/regenerate-passcode`, {
+      method: "POST",
+    });
+    setUploadLinkPasscodes((codes) => ({ ...codes, [link.id]: result.passcode }));
+    setDetail((current) => current ? {
+      ...current,
+      upload_links: (current.upload_links ?? []).map((item) => (item.id === result.upload_link.id ? result.upload_link : item)),
+    } : current);
+    setNotice("Upload access code regenerated. Copy the invite from the Upload Links panel.");
+  }
+
+  async function createBucketUploadLink() {
+    if (!detail || !uploadLinkDraft.recipient_name.trim()) return;
+    const passcode = uploadLinkDraft.passcode.trim() || generateAccessCode();
+    const created = await call<UploadLink>(`/buckets/admin/${detail.id}/upload-links`, {
+      method: "POST",
+      body: JSON.stringify({
+        recipient_name: uploadLinkDraft.recipient_name.trim(),
+        recipient_email: uploadLinkDraft.recipient_email.trim() || null,
+        passcode,
+      }),
+    });
+    setUploadLinkPasscodes((codes) => ({ ...codes, [created.id]: created.passcode ?? passcode }));
+    setDetail((current) => current ? { ...current, upload_links: [created, ...(current.upload_links ?? [])] } : current);
+    setUploadLinkDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
+    setExpandedUploadLinkId(created.id);
+    setNotice("Upload link created. Copy the invite from the Upload Links panel.");
   }
 
   async function setShareStatus(share: Share, statusValue: "active" | "revoked") {
@@ -1113,7 +1182,7 @@ export default function BucketsAdminPage() {
                 <SectionLabel action={`${createResult.links.length} link${createResult.links.length === 1 ? "" : "s"}`}>Upload invites created</SectionLabel>
                 <div style={{ display: "grid", gap: 8 }}>
                   {createResult.links.map((link) => (
-                    <div key={`${link.name}-${link.url}`} style={smallRowStyle(t)}>
+                    <div key={link.id} style={smallRowStyle(t)}>
                       <div style={{ minWidth: 0 }}>
                         <strong style={{ color: t.ink }}>{link.name}</strong>
                         <div style={{ color: t.ink3, fontSize: 12 }}>{link.email || "No email entered"}</div>
@@ -1822,6 +1891,83 @@ export default function BucketsAdminPage() {
                       <div style={{ marginTop: 3 }}>{note.content}</div>
                     </div>
                   ))}
+                </div>
+              </PanelBox>
+
+              <PanelBox>
+                <SectionLabel action={`${detail.upload_links?.length ?? 0} links`}>Upload Links</SectionLabel>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
+                    <input
+                      style={field}
+                      placeholder="Client/uploader name"
+                      value={uploadLinkDraft.recipient_name}
+                      onChange={(event) => setUploadLinkDraft({ ...uploadLinkDraft, recipient_name: event.target.value })}
+                    />
+                    <input
+                      style={field}
+                      placeholder="Email optional"
+                      value={uploadLinkDraft.recipient_email}
+                      onChange={(event) => setUploadLinkDraft({ ...uploadLinkDraft, recipient_email: event.target.value })}
+                    />
+                    <input
+                      style={field}
+                      placeholder="Upload access code"
+                      value={uploadLinkDraft.passcode}
+                      onChange={(event) => setUploadLinkDraft({ ...uploadLinkDraft, passcode: event.target.value })}
+                    />
+                    <div style={{ display: "grid", gridTemplateColumns: "auto auto", gap: 8 }}>
+                      <button style={secondary} onClick={() => setUploadLinkDraft({ ...uploadLinkDraft, passcode: generateAccessCode() })}>Generate</button>
+                      <button style={primary} onClick={() => createBucketUploadLink().catch((e) => setNotice(String(e)))} disabled={!uploadLinkDraft.recipient_name.trim()}>
+                        Create
+                      </button>
+                    </div>
+                  </div>
+                  {(detail.upload_links ?? []).length === 0 ? (
+                    <div style={emptyInlineStyle(t)}>No upload links yet. Create one here to invite a client after bucket creation.</div>
+                  ) : (detail.upload_links ?? []).map((link) => {
+                    const isOpen = expandedUploadLinkId === link.id;
+                    const passcodeAvailable = Boolean(uploadLinkPasscodes[link.id] || link.passcode);
+                    const isExpired = Boolean(link.expires_at && new Date(link.expires_at).getTime() <= Date.now());
+                    const effectiveStatus = isExpired ? "Expired" : statusLabel(link.status);
+                    return (
+                      <div key={link.id} style={{ ...compactExpandableStyle(t, isOpen), display: "grid", gap: isOpen ? 10 : 0 }}>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedUploadLinkId(isOpen ? null : link.id)}
+                          style={compactHeaderButtonStyle(t)}
+                          aria-expanded={isOpen}
+                        >
+                          <div style={{ minWidth: 0, textAlign: "left" }}>
+                            <strong style={{ color: t.ink }}>{link.recipient_name}</strong>
+                            <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {link.recipient_email || "No email"} | {link.completed_at ? "submitted" : "open"}
+                            </div>
+                          </div>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                            <Pill color={isExpired ? t.danger : undefined} bg={isExpired ? t.dangerBg : undefined}>{effectiveStatus}</Pill>
+                            <Icon name={isOpen ? "chevU" : "chevD"} size={14} />
+                          </div>
+                        </button>
+                        {isOpen ? (
+                          <div style={{ display: "grid", gap: 8, paddingTop: 8, borderTop: `1px solid ${t.line}` }}>
+                            <div style={{ color: t.ink3, fontSize: 12 }}>
+                              Created {formatDate(link.created_at)} | Expires {formatDate(link.expires_at)} | Completed {formatDateTime(link.completed_at)}
+                            </div>
+                            {link.upload_url ? <code style={{ color: t.ink2, fontSize: 12, overflowWrap: "anywhere" }}>{link.upload_url}</code> : null}
+                            {!passcodeAvailable ? (
+                              <div style={emptyInlineStyle(t)}>Access code is secured. Regenerate to copy a new invite.</div>
+                            ) : null}
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                              <button style={secondary} onClick={() => copyUploadLink(link)}>Copy link</button>
+                              <button style={secondary} onClick={() => regenerateUploadLinkPasscode(link).catch((e) => setNotice(String(e)))}>Regenerate code</button>
+                              <button style={secondary} onClick={() => copyUploadInvite(link)} disabled={!passcodeAvailable}>Copy invite</button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               </PanelBox>
 
@@ -2686,6 +2832,7 @@ function activityLabel(action: string) {
     bucket_deleted: "Bucket deleted",
     requested_document_added: "Requested document added",
     upload_link_created: "Upload link created",
+    upload_link_passcode_regenerated: "Upload access code regenerated",
     upload_link_accessed: "Upload link accessed",
     upload_passcode_failed: "Upload passcode failed",
     file_upload_started: "Upload started",
