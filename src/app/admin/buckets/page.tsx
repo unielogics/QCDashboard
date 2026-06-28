@@ -405,6 +405,7 @@ export default function BucketsAdminPage() {
     setAiReviews(reviews);
     setAiMessages(messages);
     setAiActions(actions);
+    setAiMode(reviews.length ? "chat" : "review");
   }
 
   async function queueAIReview() {
@@ -566,6 +567,8 @@ export default function BucketsAdminPage() {
   const selectedCreateDocs = createDocs.filter((doc) => createChecked[doc.id]);
   const selectedShareFileIds = Object.entries(shareFiles).filter(([, selected]) => selected).map(([id]) => id);
   const visibleFiles = useMemo(() => uniqueBucketFiles(detail?.files ?? []), [detail?.files]);
+  const latestAIResult = aiReviews[0]?.result ?? null;
+  const blockedReviewFiles = useMemo(() => blockedAIFileMap(latestAIResult), [latestAIResult]);
   const activityPage = Math.floor(activityOffset / ACTIVITY_PAGE_SIZE) + 1;
   const activityPageCount = Math.max(1, Math.ceil(activityTotal / ACTIVITY_PAGE_SIZE));
   const canPageActivityBack = Boolean(detail && activityOffset > 0 && !activityLoading);
@@ -1545,15 +1548,18 @@ export default function BucketsAdminPage() {
                   <EmptyInline icon="file" title="No files uploaded yet" body="Files uploaded through request links will appear here." />
                 ) : (
                   <div style={{ display: "grid", gap: 8 }}>
-                    {visibleFiles.map((file) => (
-                      <div key={file.id} style={fileRowStyle(t)}>
+                    {visibleFiles.map((file) => {
+                      const blocked = blockedReviewFiles.get(file.id);
+                      return (
+                      <div key={file.id} style={{ ...fileRowStyle(t), borderColor: blocked ? t.danger : t.line, background: blocked ? t.dangerBg : t.surface2 }}>
                         <label style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                           <input type="checkbox" checked={!!shareFiles[file.id]} onChange={(e) => setShareFiles({ ...shareFiles, [file.id]: e.target.checked })} />
                           <span style={{ minWidth: 0 }}>
-                            <span style={{ display: "block", color: t.ink, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.file_name}</span>
-                            <span style={{ color: t.ink3, fontSize: 12 }}>
+                            <span style={{ display: "block", color: blocked ? t.danger : t.ink, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.file_name}</span>
+                            <span style={{ color: blocked ? t.danger : t.ink3, fontSize: 12 }}>
                               {file.uploaded_by_name || "Unknown"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}
                             </span>
+                            {blocked ? <span style={{ display: "block", color: t.danger, fontSize: 12, marginTop: 3 }}>{blocked.explanation || "Password-protected PDF. Upload an unlocked copy for AI review."}</span> : null}
                           </span>
                         </label>
                         <div style={{ display: "flex", gap: 6 }}>
@@ -1575,7 +1581,8 @@ export default function BucketsAdminPage() {
                           </button>
                         </div>
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                 )}
               </PanelBox>
@@ -1649,7 +1656,7 @@ export default function BucketsAdminPage() {
                           onChange={(event) => setAiContextDraft({ ...aiContextDraft, custom_instructions: event.target.value })}
                         />
                         <button style={{ ...primary, opacity: aiBusy || !visibleFiles.length ? 0.68 : 1 }} disabled={aiBusy || !visibleFiles.length} onClick={() => queueAIReview().catch((e) => setNotice(String(e)))}>
-                          {aiBusy ? "Working..." : "Run AI review"}
+                          {aiBusy ? "Working..." : aiReviews.length ? "Reanalyze files" : "Run AI review"}
                         </button>
                       </div>
                       {aiReviews[0] ? (
@@ -1665,6 +1672,18 @@ export default function BucketsAdminPage() {
 
                   {aiMode === "chat" ? (
                     <>
+                      {blockedReviewFiles.size ? (
+                        <div style={blockedFilesPanelStyle(t)}>
+                          <strong>Password required before AI can read {blockedReviewFiles.size} file{blockedReviewFiles.size === 1 ? "" : "s"}.</strong>
+                          <span>Upload unlocked copies or replace those files, then reanalyze.</span>
+                        </div>
+                      ) : null}
+                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+                        <button style={secondary} disabled={aiBusy || !visibleFiles.length} onClick={() => queueAIReview().catch((e) => setNotice(String(e)))}>
+                          <Icon name="refresh" size={14} />
+                          Reanalyze files
+                        </button>
+                      </div>
                       <div style={{ display: "grid", gap: 8, maxHeight: 360, overflowY: "auto", marginTop: 10 }}>
                         {aiMessages.length === 0 ? (
                           <div style={emptyInlineStyle(t)}>Ask about this bucket or tell the AI how to adjust its underwriting instructions.</div>
@@ -2218,6 +2237,7 @@ function CreateStatusBanner({ status }: { status: { kind: "working" | "success" 
 
 function AIReviewResult({ t, result }: { t: ReturnType<typeof useTheme>["t"]; result: Record<string, unknown> }) {
   const summary = stringValue(result.executive_summary) || stringValue(result.summary);
+  const blocked = arrayValue(result.blocked_files);
   const missing = arrayValue(result.missing_or_incomplete_items);
   const discrepancies = arrayValue(result.discrepancies);
   const questions = arrayValue(result.underwriter_questions);
@@ -2225,6 +2245,7 @@ function AIReviewResult({ t, result }: { t: ReturnType<typeof useTheme>["t"]; re
   return (
     <div style={{ display: "grid", gap: 8 }}>
       {summary ? <div style={{ color: t.ink2, fontSize: 13, lineHeight: 1.45 }}>{summary}</div> : null}
+      {blocked.length ? <AIResultList t={t} title="Password required" items={blocked} danger /> : null}
       <AIResultList t={t} title="Missing / incomplete" items={missing} />
       <AIResultList t={t} title="Discrepancies" items={discrepancies} />
       <AIResultList t={t} title="Underwriter questions" items={questions} />
@@ -2233,13 +2254,13 @@ function AIReviewResult({ t, result }: { t: ReturnType<typeof useTheme>["t"]; re
   );
 }
 
-function AIResultList({ t, title, items }: { t: ReturnType<typeof useTheme>["t"]; title: string; items: unknown[] }) {
+function AIResultList({ t, title, items, danger = false }: { t: ReturnType<typeof useTheme>["t"]; title: string; items: unknown[]; danger?: boolean }) {
   if (!items.length) return null;
   return (
     <div style={{ display: "grid", gap: 5 }}>
-      <strong style={{ color: t.ink, fontSize: 12.5 }}>{title}</strong>
+      <strong style={{ color: danger ? t.danger : t.ink, fontSize: 12.5 }}>{title}</strong>
       {items.slice(0, 4).map((item, index) => (
-        <div key={`${title}-${index}`} style={{ borderTop: `1px solid ${t.line}`, paddingTop: 6, color: t.ink2, fontSize: 12.5, lineHeight: 1.4 }}>
+        <div key={`${title}-${index}`} style={{ borderTop: `1px solid ${danger ? t.danger : t.line}`, paddingTop: 6, color: danger ? t.danger : t.ink2, fontSize: 12.5, lineHeight: 1.4 }}>
           {describeAIItem(item)}
         </div>
       ))}
@@ -2496,6 +2517,20 @@ function manualActionFormStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperti
   };
 }
 
+function blockedFilesPanelStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+  return {
+    display: "grid",
+    gap: 4,
+    padding: 10,
+    border: `1px solid ${t.danger}`,
+    borderRadius: 8,
+    background: t.dangerBg,
+    color: t.danger,
+    fontSize: 12.5,
+    lineHeight: 1.35,
+  };
+}
+
 function sharePopupStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
   return {
     position: "absolute",
@@ -2611,6 +2646,22 @@ function arrayValue(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+function blockedAIFileMap(result: Record<string, unknown> | null | undefined): Map<string, { file_name: string; explanation: string }> {
+  const rows = arrayValue(result?.blocked_files);
+  const blocked = new Map<string, { file_name: string; explanation: string }>();
+  rows.forEach((item) => {
+    if (!item || typeof item !== "object") return;
+    const row = item as Record<string, unknown>;
+    const fileId = stringValue(row.file_id);
+    if (!fileId) return;
+    blocked.set(fileId, {
+      file_name: stringValue(row.file_name),
+      explanation: stringValue(row.explanation) || "Password-protected PDF. Upload an unlocked copy for AI review.",
+    });
+  });
+  return blocked;
+}
+
 function describeAIItem(item: unknown): string {
   if (typeof item === "string") return item;
   if (!item || typeof item !== "object") return String(item ?? "");
@@ -2624,6 +2675,7 @@ function describeAIItem(item: unknown): string {
     stringValue(obj.instructions),
     stringValue(obj.reason),
     stringValue(obj.rationale),
+    stringValue(obj.explanation),
   ].filter(Boolean);
   return parts.length ? parts.join(" - ") : JSON.stringify(obj);
 }
