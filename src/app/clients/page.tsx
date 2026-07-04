@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SortableTableHead, TableRow, useSort } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useBrokers, useClients, useCurrentUser, useLoans, useUpdateClient } from "@/hooks/useApi";
+import { useBrokers, useClientPaymentAuthorizationSummaries, useClients, useCurrentUser, useLoans, useUpdateClient } from "@/hooks/useApi";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
 import { Role } from "@/lib/enums.generated";
-import type { Broker, Client, ClientStage } from "@/lib/types";
+import type { Broker, Client, ClientStage, PaymentAuthorizationClientSummaryRead } from "@/lib/types";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { AgentLeadModal } from "@/app/pipeline/components/AgentLeadModal";
 
@@ -42,6 +42,7 @@ const STAGE_LABEL: Record<ClientStage, string> = {
 const INTERNAL_COLS = [
   { label: "Client",   w: "minmax(0, 2fr)", key: "name" },
   { label: "Stage",    w: "130px",          key: "_stage" },
+  { label: "Billing auth", w: "140px",      key: "_billing_auth" },
   { label: "Type",     w: "90px",           key: "_type" },
   { label: "Agent",    w: "160px",          key: "broker_name" },
   { label: "FICO",     w: "70px",  align: "right" as const, key: "fico" },
@@ -84,7 +85,14 @@ export default function ClientsPage() {
   // Only super_admin / loan_exec see the Agent column + assign picker.
   // Brokers operate within their own scope; clients are read-only.
   const isInternal = user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC;
+  const { data: authRows = [] } = useClientPaymentAuthorizationSummaries({ enabled: isInternal });
   const COLS = isInternal ? INTERNAL_COLS : BROKER_COLS;
+
+  const authByClient = useMemo(() => {
+    const map = new Map<string, PaymentAuthorizationClientSummaryRead>();
+    for (const row of authRows) map.set(row.client_id, row);
+    return map;
+  }, [authRows]);
 
   // Compute exposure + active loans per client from the loans list, plus an
   // effective-stage value used for filtering and rendering.
@@ -258,7 +266,10 @@ export default function ClientsPage() {
           ];
           const values = isInternal
             ? [
-                ...baseValues,
+                baseValues[0],
+                baseValues[1],
+                <BillingAuthPill key="ba" t={t} row={authByClient.get(c.id) ?? null} />,
+                baseValues[2],
                 <AssignBrokerCell key="br" client={c} />,
                 ...tailValues,
               ]
@@ -489,6 +500,45 @@ function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | 
         />
       ) : null}
     </div>
+  );
+}
+
+
+function BillingAuthPill({
+  t,
+  row,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  row: PaymentAuthorizationClientSummaryRead | null;
+}) {
+  const signed = !!row?.signed_at || row?.authorization_status === "active";
+  const card = row?.card_status === "active" && !!row.card_last4;
+  const ready = !!row?.authorized;
+  const label = ready ? "Ready" : signed && !card ? "Card missing" : !signed && card ? "Signature missing" : "Not started";
+  const bg = ready ? t.profitBg : signed || card ? t.warnBg : t.surface2;
+  const fg = ready ? t.profit : signed || card ? t.warn : t.ink3;
+  const title = ready && row
+    ? `${row.card_brand ?? "Card"} ending ${row.card_last4}; signed ${row.completed_at ? new Date(row.completed_at).toLocaleDateString() : "complete"}`
+    : "Client must complete payment pre-authorization before credit actions are unlocked.";
+  return (
+    <span
+      title={title}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "4px 9px",
+        borderRadius: 999,
+        background: bg,
+        color: fg,
+        fontSize: 11,
+        fontWeight: 800,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: 999, background: fg }} />
+      {label}
+    </span>
   );
 }
 

@@ -567,6 +567,116 @@ export interface CreditSummary {
   note?: string;
 }
 
+export interface BillingAddress {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  line1: string;
+  line2?: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
+}
+
+export interface ClientPaymentMethodRead {
+  id: string;
+  stripe_customer_id: string;
+  stripe_payment_method_id: string;
+  setup_intent_id: string | null;
+  status: string;
+  brand: string | null;
+  last4: string | null;
+  exp_month: number | null;
+  exp_year: number | null;
+  billing_name: string | null;
+  billing_email: string | null;
+  billing_line1: string | null;
+  billing_line2: string | null;
+  billing_city: string | null;
+  billing_state: string | null;
+  billing_postal_code: string | null;
+  billing_country: string | null;
+  verification_status: string | null;
+  created_at: string;
+}
+
+export interface PaymentAuthorizationRead {
+  id: string;
+  status: string;
+  document_version: string;
+  document_hash: string;
+  typed_name: string | null;
+  stripe_customer_id: string | null;
+  stripe_payment_method_id: string | null;
+  setup_intent_id: string | null;
+  setup_intent_status: string | null;
+  certificate_s3_key: string | null;
+  signed_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface PaymentAuthorizationDocumentRead {
+  version: string;
+  sha256: string;
+  text: string;
+}
+
+export interface PaymentAuthorizationStatusRead {
+  role: string;
+  requires_authorization: boolean;
+  authorized: boolean;
+  client_id: string | null;
+  latest_authorization: PaymentAuthorizationRead | null;
+  payment_method: ClientPaymentMethodRead | null;
+  certificate_url?: string | null;
+  stripe_publishable_key?: string | null;
+}
+
+export interface PaymentAuthorizationClientSummaryRead {
+  client_id: string;
+  client_name: string;
+  client_email: string | null;
+  authorized: boolean;
+  authorization_status: string | null;
+  signed_at: string | null;
+  completed_at: string | null;
+  card_status: string | null;
+  card_brand: string | null;
+  card_last4: string | null;
+  card_exp_month: number | null;
+  card_exp_year: number | null;
+}
+
+export interface PaymentAuthorizationStartResponse {
+  authorization: PaymentAuthorizationRead;
+  document: PaymentAuthorizationDocumentRead;
+}
+
+export interface SetupIntentResponse {
+  authorization_id: string;
+  setup_intent_id: string;
+  client_secret: string;
+  stripe_customer_id: string;
+  stripe_publishable_key: string;
+}
+
+export interface PaymentAuthorizationCompleteResponse {
+  authorization: PaymentAuthorizationRead;
+  payment_method: ClientPaymentMethodRead;
+  certificate_url?: string | null;
+}
+
+export interface CreditPullAccessRead {
+  role: string;
+  requires_payment_authorization: boolean;
+  payment_authorized: boolean;
+  can_run_credit: boolean;
+  reason_code?: string | null;
+  message?: string | null;
+}
+
 // ── Parsed report (operator-facing — full structured ScrapedReport) ────────
 export interface ParsedCreditScore {
   model: string;

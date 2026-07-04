@@ -70,6 +70,31 @@ type Share = {
   share_url?: string | null;
   passcode?: string | null;
 };
+type VendorUser = { id: string; name: string; email: string; role: string; created_at?: string | null };
+type VendorAccess = {
+  id: string;
+  bucket_id: string;
+  vendor_user_id: string;
+  vendor_name?: string | null;
+  vendor_email?: string | null;
+  status: string;
+  expires_at?: string | null;
+  file_scope: "all_active" | "selected";
+  can_preview: boolean;
+  can_download: boolean;
+  can_add_notes: boolean;
+  can_see_internal_notes: boolean;
+  can_use_ai_chat: boolean;
+  can_view_ai_summary: boolean;
+  can_view_ai_tasks: boolean;
+  can_propose_tasks: boolean;
+  last_accessed_at?: string | null;
+  view_count: number;
+  download_count: number;
+  files?: BucketFile[];
+  created_at?: string | null;
+  updated_at?: string | null;
+};
 type Note = { id: string; author_name: string; visibility: string; content: string; created_at: string };
 type Activity = {
   id: string;
@@ -91,6 +116,7 @@ type BucketDetail = Bucket & {
   files: BucketFile[];
   upload_links?: UploadLink[];
   shares: Share[];
+  vendor_access?: VendorAccess[];
   notes: Note[];
   activity: Activity[];
 };
@@ -164,9 +190,10 @@ type BucketAIMessage = {
 type BucketAIActionItem = {
   id: string;
   status: "proposed" | "approved" | "rejected" | "completed";
-  route: "admin" | "uploader" | "share";
+  route: "admin" | "uploader" | "share" | "vendor";
   upload_link_id?: string | null;
   share_id?: string | null;
+  vendor_access_id?: string | null;
   file_id?: string | null;
   requested_document_id?: string | null;
   title: string;
@@ -176,14 +203,33 @@ type BucketAIActionItem = {
   created_at: string;
 };
 type AIMode = "review" | "chat" | "actions";
+type DetailFocus = "vendors" | null;
 type ManualActionDraft = {
   title: string;
   instructions: string;
-  route: "admin" | "uploader" | "share";
+  route: "admin" | "uploader" | "share" | "vendor";
   upload_link_id: string;
   share_id: string;
+  vendor_access_id: string;
   file_id: string;
   requested_document_id: string;
+};
+type VendorAccessDraft = {
+  vendor_user_id: string;
+  vendor_name: string;
+  vendor_email: string;
+  file_scope: "all_active" | "selected";
+  file_ids: string[];
+  file_search: string;
+  can_preview: boolean;
+  can_download: boolean;
+  can_add_notes: boolean;
+  can_see_internal_notes: boolean;
+  can_use_ai_chat: boolean;
+  can_view_ai_summary: boolean;
+  can_view_ai_tasks: boolean;
+  can_propose_tasks: boolean;
+  expires_days: number;
 };
 
 const BUCKET_TYPES = ["Loan File", "UrChoice Dealer Funding", "Partner Package", "Borrower", "Funding Opportunity"];
@@ -217,6 +263,21 @@ const ACTIVITY_ACTION_OPTIONS = [
   "shared_note_denied",
   "shared_file_annotation_created",
   "shared_file_annotation_denied",
+  "vendor_access_created",
+  "vendor_access_updated",
+  "vendor_access_revoked",
+  "vendor_access_reactivated",
+  "vendor_bucket_accessed",
+  "vendor_file_previewed",
+  "vendor_file_review_denied",
+  "vendor_file_download_requested",
+  "vendor_file_download_denied",
+  "vendor_file_annotation_created",
+  "vendor_file_annotation_denied",
+  "vendor_note_created",
+  "vendor_note_denied",
+  "vendor_ai_chat",
+  "vendor_task_proposed",
   "note_created",
   "file_review_opened",
   "file_preview_url_created",
@@ -228,8 +289,8 @@ const ACTIVITY_ACTION_OPTIONS = [
   "ai_action_rejected",
   "ai_action_completed",
 ];
-const ACTIVITY_ROLE_OPTIONS = ["super_admin", "uploader", "shared_user", "system"];
-const ACTIVITY_TARGET_OPTIONS = ["bucket", "requested_document", "upload_link", "share", "file", "note", "annotation", "ai_action_item"];
+const ACTIVITY_ROLE_OPTIONS = ["super_admin", "uploader", "shared_user", "vendor", "system"];
+const ACTIVITY_TARGET_OPTIONS = ["bucket", "requested_document", "upload_link", "share", "vendor_access", "file", "note", "annotation", "ai_action_item"];
 const URCHOICE_DEALER_DOCS: Template[] = [
   { id: "urchoice-formation", name: "Formation", category: "UrChoice Dealer Funding", required: true },
   { id: "urchoice-ein", name: "EIN", category: "UrChoice Dealer Funding", required: true },
@@ -272,8 +333,29 @@ function emptyManualActionDraft(): ManualActionDraft {
     route: "admin",
     upload_link_id: "",
     share_id: "",
+    vendor_access_id: "",
     file_id: "",
     requested_document_id: "",
+  };
+}
+
+function emptyVendorAccessDraft(): VendorAccessDraft {
+  return {
+    vendor_user_id: "",
+    vendor_name: "",
+    vendor_email: "",
+    file_scope: "all_active",
+    file_ids: [],
+    file_search: "",
+    can_preview: true,
+    can_download: false,
+    can_add_notes: true,
+    can_see_internal_notes: false,
+    can_use_ai_chat: true,
+    can_view_ai_summary: true,
+    can_view_ai_tasks: true,
+    can_propose_tasks: true,
+    expires_days: 30,
   };
 }
 
@@ -287,6 +369,7 @@ export default function BucketsAdminPage() {
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [detail, setDetail] = useState<BucketDetail | null>(null);
+  const [detailFocus, setDetailFocus] = useState<DetailFocus>(null);
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -326,6 +409,12 @@ export default function BucketsAdminPage() {
   const [editingShareId, setEditingShareId] = useState<string | null>(null);
   const [editingShareFileIds, setEditingShareFileIds] = useState<string[]>([]);
   const [editingShareSearch, setEditingShareSearch] = useState("");
+  const [vendors, setVendors] = useState<VendorUser[]>([]);
+  const [vendorDraft, setVendorDraft] = useState<VendorAccessDraft>(() => emptyVendorAccessDraft());
+  const [expandedVendorAccessId, setExpandedVendorAccessId] = useState<string | null>(null);
+  const [editingVendorAccessId, setEditingVendorAccessId] = useState<string | null>(null);
+  const [editingVendorFileIds, setEditingVendorFileIds] = useState<string[]>([]);
+  const [editingVendorFileSearch, setEditingVendorFileSearch] = useState("");
   const [adminUploadFiles, setAdminUploadFiles] = useState<AdminQueuedFile[]>([]);
   const [adminUploadForm, setAdminUploadForm] = useState({ uploader_name: "", uploader_email: "", note: "" });
   const [adminUploadStatus, setAdminUploadStatus] = useState<{ kind: "working" | "success" | "error"; message: string } | null>(null);
@@ -357,12 +446,14 @@ export default function BucketsAdminPage() {
   }
 
   async function loadBuckets() {
-    const [bucketRows, templateRows] = await Promise.all([
+    const [bucketRows, templateRows, vendorRows] = await Promise.all([
       call<Bucket[]>("/buckets"),
       call<Template[]>("/buckets/templates"),
+      call<VendorUser[]>("/buckets/admin/vendors"),
     ]);
     setBuckets(bucketRows);
     setTemplates(templateRows);
+    setVendors(vendorRows);
   }
 
   async function loadBucket(bucketId: string) {
@@ -377,6 +468,11 @@ export default function BucketsAdminPage() {
     setSharePopupOpen(false);
     setShareViewers([newShareViewerDraft()]);
     setExpandedShareId(null);
+    setExpandedVendorAccessId(null);
+    setEditingVendorAccessId(null);
+    setEditingVendorFileIds([]);
+    setEditingVendorFileSearch("");
+    setVendorDraft(emptyVendorAccessDraft());
     setExpandedUploadLinkId(null);
     setUploadLinkPasscodes((codes) => {
       const keep = new Set((row.upload_links ?? []).map((link) => link.id));
@@ -393,6 +489,19 @@ export default function BucketsAdminPage() {
     setManualActionOpen(false);
     setManualActionDraft(emptyManualActionDraft());
     await Promise.all([loadBucketActivity(bucketId, 0, filters), loadBucketAI(bucketId)]);
+  }
+
+  async function openBucket(bucketId: string, focus: DetailFocus = null) {
+    setDetailFocus(focus);
+    await loadBucket(bucketId);
+  }
+
+  function showVendorSettings() {
+    setDetailFocus("vendors");
+    setSharePopupOpen(false);
+    window.setTimeout(() => {
+      document.getElementById("bucket-vendors-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   }
 
   async function loadBucketActivity(bucketId: string, offset = activityOffset, filters = activityFilters) {
@@ -503,6 +612,13 @@ export default function BucketsAdminPage() {
       }
       payload.share_id = manualActionDraft.share_id;
     }
+    if (manualActionDraft.route === "vendor") {
+      if (!manualActionDraft.vendor_access_id) {
+        setNotice("Select a vendor before creating this task.");
+        return;
+      }
+      payload.vendor_access_id = manualActionDraft.vendor_access_id;
+    }
     if (manualActionDraft.file_id) payload.file_id = manualActionDraft.file_id;
     if (manualActionDraft.requested_document_id) payload.requested_document_id = manualActionDraft.requested_document_id;
 
@@ -561,6 +677,14 @@ export default function BucketsAdminPage() {
       window.removeEventListener("mousedown", onMouseDown);
     };
   }, [sharePopupOpen]);
+
+  useEffect(() => {
+    if (!detail || detailFocus !== "vendors") return;
+    const timer = window.setTimeout(() => {
+      document.getElementById("bucket-vendors-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [detail?.id, detailFocus]);
 
   const reusableOtherDocs = templates.filter((doc) => (doc.category || "").toLowerCase() === "other");
   const standardDocs = templates.filter((doc) => (doc.category || "").toLowerCase() !== "other");
@@ -751,6 +875,11 @@ export default function BucketsAdminPage() {
     return share.files ?? [];
   }
 
+  function vendorFilesFor(access: VendorAccess) {
+    if (access.file_scope === "all_active") return visibleFiles;
+    return access.files ?? [];
+  }
+
   function openEditShareFiles(share: Share) {
     setEditingShareId(share.id);
     setEditingShareFileIds(shareFilesFor(share).map((file) => file.id));
@@ -855,6 +984,95 @@ export default function BucketsAdminPage() {
     if (statusValue === "revoked" && !window.confirm(`Revoke access for ${share.recipient_name}?`)) return;
     await patchShare(share, { status: statusValue });
     setNotice(statusValue === "revoked" ? "Share access revoked." : "Share access reactivated.");
+  }
+
+  async function createVendorAccess() {
+    if (!detail) return;
+    const selectedVendor = vendors.find((vendor) => vendor.id === vendorDraft.vendor_user_id);
+    if (!selectedVendor && (!vendorDraft.vendor_name.trim() || !vendorDraft.vendor_email.trim())) {
+      setNotice("Select an existing vendor or enter a vendor name and email.");
+      return;
+    }
+    if (vendorDraft.file_scope === "selected" && vendorDraft.file_ids.length === 0) {
+      setNotice("Select at least one file or use all active files.");
+      return;
+    }
+    const body = {
+      vendor_user_id: vendorDraft.vendor_user_id || null,
+      vendor_name: selectedVendor ? selectedVendor.name : vendorDraft.vendor_name.trim(),
+      vendor_email: selectedVendor ? selectedVendor.email : vendorDraft.vendor_email.trim(),
+      file_scope: vendorDraft.file_scope,
+      file_ids: vendorDraft.file_scope === "selected" ? vendorDraft.file_ids : [],
+      can_preview: vendorDraft.can_preview,
+      can_download: vendorDraft.can_download,
+      can_add_notes: vendorDraft.can_add_notes,
+      can_see_internal_notes: vendorDraft.can_see_internal_notes,
+      can_use_ai_chat: vendorDraft.can_use_ai_chat,
+      can_view_ai_summary: vendorDraft.can_view_ai_summary,
+      can_view_ai_tasks: vendorDraft.can_view_ai_tasks,
+      can_propose_tasks: vendorDraft.can_propose_tasks,
+      expires_at: vendorDraft.expires_days ? shareExpiryDate(vendorDraft.expires_days) : null,
+    };
+    const created = await call<VendorAccess>(`/buckets/admin/${detail.id}/vendor-access`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    setDetail((current) => current ? {
+      ...current,
+      vendor_access: [created, ...(current.vendor_access ?? []).filter((row) => row.id !== created.id)],
+    } : current);
+    setVendorDraft(emptyVendorAccessDraft());
+    setExpandedVendorAccessId(created.id);
+    await loadBuckets();
+    setNotice("Vendor access is active. The vendor can log in to view assigned buckets.");
+  }
+
+  async function patchVendorAccess(access: VendorAccess, body: Record<string, unknown>) {
+    if (!detail) return;
+    const updated = await call<VendorAccess>(`/buckets/admin/${detail.id}/vendor-access/${access.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    setDetail((current) => current ? {
+      ...current,
+      vendor_access: (current.vendor_access ?? []).map((row) => (row.id === updated.id ? updated : row)),
+    } : current);
+  }
+
+  function openEditVendorFiles(access: VendorAccess) {
+    setEditingVendorAccessId(access.id);
+    setEditingVendorFileIds(vendorFilesFor(access).map((file) => file.id));
+    setEditingVendorFileSearch("");
+  }
+
+  async function saveEditedVendorFiles(access: VendorAccess) {
+    if (!editingVendorFileIds.length) {
+      setNotice("Select at least one file for selected-file vendor access.");
+      return;
+    }
+    await patchVendorAccess(access, { file_scope: "selected", file_ids: editingVendorFileIds });
+    setEditingVendorAccessId(null);
+    setNotice("Vendor file access updated.");
+  }
+
+  async function setVendorStatus(access: VendorAccess, statusValue: "active" | "revoked") {
+    if (statusValue === "revoked" && !window.confirm(`Revoke access for ${access.vendor_name || access.vendor_email || "this vendor"}?`)) return;
+    await patchVendorAccess(access, { status: statusValue });
+    setNotice(statusValue === "revoked" ? "Vendor access revoked." : "Vendor access reactivated.");
+  }
+
+  async function resendVendorInvite(access: VendorAccess) {
+    const name = access.vendor_name || access.vendor_email || "Vendor";
+    const email = access.vendor_email;
+    if (!email) {
+      setNotice("This vendor does not have an email address.");
+      return;
+    }
+    await call<VendorUser>("/buckets/admin/vendors", {
+      method: "POST",
+      body: JSON.stringify({ vendor_user_id: access.vendor_user_id, vendor_name: name, vendor_email: email }),
+    });
+    setNotice("Vendor login invite sent.");
   }
 
   const canCreateShareLinks =
@@ -1166,7 +1384,7 @@ export default function BucketsAdminPage() {
             <input style={{ ...field, width: "100%", paddingLeft: 32 }} placeholder="Search buckets" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
         </div>
-        <BucketTable buckets={filteredBuckets} deletingId={deletingId} onSelect={loadBucket} onDelete={deleteBucket} />
+        <BucketTable buckets={filteredBuckets} deletingId={deletingId} onSelect={(id) => openBucket(id)} onOpenVendors={(id) => openBucket(id, "vendors")} onDelete={deleteBucket} />
       </PanelBox>
 
       {createOpen ? (
@@ -1407,6 +1625,19 @@ export default function BucketsAdminPage() {
           onClose={() => setDetail(null)}
           action={
             <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <button
+                style={{
+                  ...iconButtonStyle(t),
+                  borderColor: detailFocus === "vendors" ? t.petrol : t.line,
+                  background: detailFocus === "vendors" ? t.petrolSoft : t.surface,
+                  color: detailFocus === "vendors" ? t.petrol : t.ink2,
+                }}
+                onClick={showVendorSettings}
+                aria-label="Open vendor access settings"
+                title="Vendor access settings"
+              >
+                <Icon name="user" size={16} />
+              </button>
               <button
                 style={{
                   ...iconButtonStyle(t),
@@ -1798,11 +2029,12 @@ export default function BucketsAdminPage() {
                             <select
                               style={field}
                               value={manualActionDraft.route}
-                              onChange={(event) => setManualActionDraft({ ...manualActionDraft, route: event.target.value as ManualActionDraft["route"], upload_link_id: "", share_id: "" })}
+                              onChange={(event) => setManualActionDraft({ ...manualActionDraft, route: event.target.value as ManualActionDraft["route"], upload_link_id: "", share_id: "", vendor_access_id: "" })}
                             >
                               <option value="admin">Route to admin</option>
                               <option value="uploader">Route to uploader/client</option>
                               <option value="share">Route to shared viewer</option>
+                              <option value="vendor">Route to vendor</option>
                             </select>
                             {manualActionDraft.route === "uploader" ? (
                               <select style={field} value={manualActionDraft.upload_link_id} onChange={(event) => setManualActionDraft({ ...manualActionDraft, upload_link_id: event.target.value })}>
@@ -1816,6 +2048,13 @@ export default function BucketsAdminPage() {
                                 <option value="">Select share recipient</option>
                                 {detail.shares.map((share) => (
                                   <option key={share.id} value={share.id}>{share.recipient_name}</option>
+                                ))}
+                              </select>
+                            ) : manualActionDraft.route === "vendor" ? (
+                              <select style={field} value={manualActionDraft.vendor_access_id} onChange={(event) => setManualActionDraft({ ...manualActionDraft, vendor_access_id: event.target.value })}>
+                                <option value="">Select vendor</option>
+                                {(detail.vendor_access ?? []).filter((access) => access.status === "active").map((access) => (
+                                  <option key={access.id} value={access.id}>{access.vendor_name || access.vendor_email || "Vendor"}</option>
                                 ))}
                               </select>
                             ) : (
@@ -1966,6 +2205,227 @@ export default function BucketsAdminPage() {
                   })}
                 </div>
               </PanelBox>
+
+              <div id="bucket-vendors-panel" style={{ scrollMarginTop: 18 }}>
+              <PanelBox style={{ borderColor: detailFocus === "vendors" ? t.petrol : t.line }}>
+                <SectionLabel action={`${detail.vendor_access?.length ?? 0} vendors`}>Vendors</SectionLabel>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ display: "grid", gap: 8, padding: 10, border: `1px solid ${t.line}`, borderRadius: 8, background: t.surface2 }}>
+                    <select
+                      style={field}
+                      value={vendorDraft.vendor_user_id}
+                      onChange={(event) => {
+                        const vendor = vendors.find((row) => row.id === event.target.value);
+                        setVendorDraft({
+                          ...vendorDraft,
+                          vendor_user_id: event.target.value,
+                          vendor_name: vendor?.name ?? "",
+                          vendor_email: vendor?.email ?? "",
+                        });
+                      }}
+                    >
+                      <option value="">New vendor or choose existing</option>
+                      {vendors.map((vendor) => (
+                        <option key={vendor.id} value={vendor.id}>{vendor.name} | {vendor.email}</option>
+                      ))}
+                    </select>
+                    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
+                      <input
+                        style={field}
+                        placeholder="Vendor name"
+                        value={vendorDraft.vendor_name}
+                        onChange={(event) => setVendorDraft({ ...vendorDraft, vendor_user_id: "", vendor_name: event.target.value })}
+                      />
+                      <input
+                        style={field}
+                        placeholder="Vendor email"
+                        value={vendorDraft.vendor_email}
+                        onChange={(event) => setVendorDraft({ ...vendorDraft, vendor_user_id: "", vendor_email: event.target.value })}
+                      />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <select style={field} value={vendorDraft.file_scope} onChange={(event) => setVendorDraft({ ...vendorDraft, file_scope: event.target.value as VendorAccessDraft["file_scope"] })}>
+                        <option value="all_active">All active files</option>
+                        <option value="selected">Selected files</option>
+                      </select>
+                      <select style={field} value={vendorDraft.expires_days} onChange={(event) => setVendorDraft({ ...vendorDraft, expires_days: Number(event.target.value) })}>
+                        <option value={1}>Expires 1 day</option>
+                        <option value={7}>Expires 7 days</option>
+                        <option value={14}>Expires 14 days</option>
+                        <option value={30}>Expires 30 days</option>
+                        <option value={0}>No expiration</option>
+                      </select>
+                    </div>
+                    {vendorDraft.file_scope === "selected" ? renderShareFilePicker({
+                      selectedIds: vendorDraft.file_ids,
+                      search: vendorDraft.file_search,
+                      onSearch: (value) => setVendorDraft({ ...vendorDraft, file_search: value }),
+                      onToggle: (fileId) => setVendorDraft({
+                        ...vendorDraft,
+                        file_ids: vendorDraft.file_ids.includes(fileId)
+                          ? vendorDraft.file_ids.filter((id) => id !== fileId)
+                          : [...vendorDraft.file_ids, fileId],
+                      }),
+                      onSetSelected: (fileIds) => setVendorDraft({ ...vendorDraft, file_ids: fileIds }),
+                    }) : (
+                      <div style={emptyInlineStyle(t)}>Vendor will see all current and future active files in this bucket.</div>
+                    )}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <label style={permissionRowStyle(t)}>
+                        <span>
+                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Preview</strong>
+                          <span style={{ color: t.ink3, fontSize: 12 }}>Allow file previews.</span>
+                        </span>
+                        <input type="checkbox" checked={vendorDraft.can_preview} onChange={(event) => setVendorDraft({ ...vendorDraft, can_preview: event.target.checked })} />
+                      </label>
+                      <label style={permissionRowStyle(t)}>
+                        <span>
+                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Download</strong>
+                          <span style={{ color: t.ink3, fontSize: 12 }}>Allow file downloads.</span>
+                        </span>
+                        <input type="checkbox" checked={vendorDraft.can_download} onChange={(event) => setVendorDraft({ ...vendorDraft, can_download: event.target.checked })} />
+                      </label>
+                      <label style={permissionRowStyle(t)}>
+                        <span>
+                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Notes</strong>
+                          <span style={{ color: t.ink3, fontSize: 12 }}>Allow comments.</span>
+                        </span>
+                        <input type="checkbox" checked={vendorDraft.can_add_notes} onChange={(event) => setVendorDraft({ ...vendorDraft, can_add_notes: event.target.checked })} />
+                      </label>
+                      <label style={permissionRowStyle(t)}>
+                        <span>
+                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Internal notes</strong>
+                          <span style={{ color: t.ink3, fontSize: 12 }}>Show admin/internal notes.</span>
+                        </span>
+                        <input type="checkbox" checked={vendorDraft.can_see_internal_notes} onChange={(event) => setVendorDraft({ ...vendorDraft, can_see_internal_notes: event.target.checked })} />
+                      </label>
+                      <label style={permissionRowStyle(t)}>
+                        <span>
+                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>AI chat</strong>
+                          <span style={{ color: t.ink3, fontSize: 12 }}>Scoped assistant access.</span>
+                        </span>
+                        <input type="checkbox" checked={vendorDraft.can_use_ai_chat} onChange={(event) => setVendorDraft({ ...vendorDraft, can_use_ai_chat: event.target.checked })} />
+                      </label>
+                      <label style={permissionRowStyle(t)}>
+                        <span>
+                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>AI summary</strong>
+                          <span style={{ color: t.ink3, fontSize: 12 }}>Show scoped review summary.</span>
+                        </span>
+                        <input type="checkbox" checked={vendorDraft.can_view_ai_summary} onChange={(event) => setVendorDraft({ ...vendorDraft, can_view_ai_summary: event.target.checked })} />
+                      </label>
+                      <label style={permissionRowStyle(t)}>
+                        <span>
+                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>AI tasks</strong>
+                          <span style={{ color: t.ink3, fontSize: 12 }}>Show approved vendor tasks.</span>
+                        </span>
+                        <input type="checkbox" checked={vendorDraft.can_view_ai_tasks} onChange={(event) => setVendorDraft({ ...vendorDraft, can_view_ai_tasks: event.target.checked })} />
+                      </label>
+                      <label style={permissionRowStyle(t)}>
+                        <span>
+                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Propose tasks</strong>
+                          <span style={{ color: t.ink3, fontSize: 12 }}>Requires admin approval.</span>
+                        </span>
+                        <input type="checkbox" checked={vendorDraft.can_propose_tasks} onChange={(event) => setVendorDraft({ ...vendorDraft, can_propose_tasks: event.target.checked })} />
+                      </label>
+                    </div>
+                    <button style={primary} onClick={() => createVendorAccess().catch((e) => setNotice(readableError(e)))}>
+                      <Icon name="plus" size={14} />
+                      Invite / assign vendor
+                    </button>
+                  </div>
+
+                  {(detail.vendor_access ?? []).length === 0 ? (
+                    <div style={emptyInlineStyle(t)}>No vendors assigned. Vendors log in and see assigned buckets without passcodes.</div>
+                  ) : (detail.vendor_access ?? []).map((access) => {
+                    const files = vendorFilesFor(access);
+                    const isOpen = expandedVendorAccessId === access.id;
+                    const isExpired = Boolean(access.expires_at && new Date(access.expires_at).getTime() <= Date.now());
+                    const isRevoked = access.status === "revoked";
+                    const effectiveStatus = isRevoked ? "Revoked" : isExpired ? "Expired" : statusLabel(access.status);
+                    return (
+                      <div key={access.id} style={{ ...compactExpandableStyle(t, isOpen), display: "grid", gap: isOpen ? 10 : 0 }}>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedVendorAccessId(isOpen ? null : access.id)}
+                          style={compactHeaderButtonStyle(t)}
+                          aria-expanded={isOpen}
+                        >
+                          <div style={{ minWidth: 0, textAlign: "left" }}>
+                            <strong style={{ color: t.ink }}>{access.vendor_name || access.vendor_email || "Vendor"}</strong>
+                            <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {access.file_scope === "all_active" ? "All active files" : `${files.length} selected files`} | {access.can_download ? "downloads on" : "view only"} | {access.view_count} views
+                            </div>
+                          </div>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                            <Pill color={isRevoked || isExpired ? t.danger : undefined} bg={isRevoked || isExpired ? t.dangerBg : undefined}>{effectiveStatus}</Pill>
+                            <Icon name={isOpen ? "chevU" : "chevD"} size={14} />
+                          </div>
+                        </button>
+                        {isOpen ? (
+                          <div style={{ display: "grid", gap: 8, paddingTop: 8, borderTop: `1px solid ${t.line}` }}>
+                            <div style={{ color: t.ink3, fontSize: 12 }}>
+                              {access.vendor_email || "No email"} | Downloads {access.download_count} | Expires {formatDate(access.expires_at)} | Last access {formatDateTime(access.last_accessed_at)}
+                            </div>
+                            {files.length ? (
+                              <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {files.slice(0, 3).map((file) => file.file_name).join(", ")}{files.length > 3 ? ` +${files.length - 3} more` : ""}
+                              </div>
+                            ) : null}
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                              <button style={secondary} onClick={() => resendVendorInvite(access).catch((e) => setNotice(readableError(e)))}>Resend invite</button>
+                              <button style={secondary} onClick={() => openEditVendorFiles(access)}>Edit files</button>
+                              <button style={secondary} onClick={() => patchVendorAccess(access, { file_scope: "all_active", file_ids: [] }).then(() => setNotice("Vendor now sees all active files.")).catch((e) => setNotice(readableError(e)))}>Use all files</button>
+                              {isRevoked ? (
+                                <button style={secondary} onClick={() => setVendorStatus(access, "active").catch((e) => setNotice(readableError(e)))} disabled={isExpired}>Reactivate</button>
+                              ) : (
+                                <button style={{ ...secondary, color: t.danger }} onClick={() => setVendorStatus(access, "revoked").catch((e) => setNotice(readableError(e)))}>Revoke</button>
+                              )}
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                              {([
+                                ["can_preview", "Preview"],
+                                ["can_download", "Download"],
+                                ["can_add_notes", "Notes"],
+                                ["can_see_internal_notes", "Internal notes"],
+                                ["can_use_ai_chat", "AI chat"],
+                                ["can_view_ai_summary", "AI summary"],
+                                ["can_view_ai_tasks", "AI tasks"],
+                                ["can_propose_tasks", "Propose tasks"],
+                              ] as const).map(([key, label]) => (
+                                <label key={key} style={permissionRowStyle(t)}>
+                                  <span style={{ color: t.ink, fontSize: 13, fontWeight: 850 }}>{label}</span>
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(access[key])}
+                                    onChange={(event) => patchVendorAccess(access, { [key]: event.target.checked }).catch((e) => setNotice(readableError(e)))}
+                                  />
+                                </label>
+                              ))}
+                            </div>
+                            {editingVendorAccessId === access.id ? (
+                              <div style={{ display: "grid", gap: 8, paddingTop: 8, borderTop: `1px solid ${t.line}` }}>
+                                <strong style={{ color: t.ink, fontSize: 13 }}>Edit vendor visible files</strong>
+                                {renderShareFilePicker({
+                                  selectedIds: editingVendorFileIds,
+                                  search: editingVendorFileSearch,
+                                  onSearch: setEditingVendorFileSearch,
+                                  onToggle: (fileId) => setEditingVendorFileIds((ids) => ids.includes(fileId) ? ids.filter((id) => id !== fileId) : [...ids, fileId]),
+                                  onSetSelected: setEditingVendorFileIds,
+                                })}
+                                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                                  <button style={secondary} onClick={() => setEditingVendorAccessId(null)}>Cancel</button>
+                                  <button style={primary} onClick={() => saveEditedVendorFiles(access).catch((e) => setNotice(readableError(e)))} disabled={!editingVendorFileIds.length}>Save selected files</button>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </PanelBox>
+              </div>
 
               <PanelBox>
                 <SectionLabel action={`${detail.shares.length} links`}>Shares</SectionLabel>
@@ -2204,18 +2664,20 @@ function BucketTable({
   buckets,
   deletingId,
   onSelect,
+  onOpenVendors,
   onDelete,
 }: {
   buckets: Bucket[];
   deletingId: string | null;
   onSelect: (id: string) => void;
+  onOpenVendors: (id: string) => void;
   onDelete: (bucket: Bucket) => void;
 }) {
   const { t } = useTheme();
   if (buckets.length === 0) {
     return <div style={{ padding: 18, color: t.ink3, fontSize: 13 }}>No buckets yet. Use Create bucket to start.</div>;
   }
-  const columns = "minmax(220px, 1.4fr) minmax(130px, .8fr) minmax(150px, .75fr) 78px minmax(160px, .7fr) 84px 44px";
+  const columns = "minmax(220px, 1.35fr) minmax(130px, .75fr) minmax(150px, .72fr) 70px minmax(150px, .65fr) 112px 84px 44px";
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: columns, gap: 12, padding: "10px 14px", color: t.ink3, background: t.surface2, borderBottom: `1px solid ${t.line}`, fontSize: 11, fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase" }}>
@@ -2224,6 +2686,7 @@ function BucketTable({
         <div>Type</div>
         <div>Files</div>
         <div>Status</div>
+        <div>Access</div>
         <div>Updated</div>
         <div></div>
       </div>
@@ -2261,6 +2724,17 @@ function BucketTable({
           <div style={{ color: t.ink2, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bucket.bucket_type || "Bucket"}</div>
           <div style={{ color: t.ink2, fontSize: 13, fontWeight: 800 }}>{bucket.uploaded_file_count ?? 0}</div>
           <div style={{ minWidth: 0 }}><Pill>{statusLabel(bucket.status)}</Pill></div>
+          <button
+            style={{ ...miniButtonStyle(t), minHeight: 32, justifySelf: "start", display: "inline-flex", alignItems: "center", gap: 6 }}
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenVendors(bucket.id);
+            }}
+            title="Open vendor access settings for this bucket"
+          >
+            <Icon name="user" size={13} />
+            Vendors
+          </button>
           <div style={{ color: t.ink3, fontSize: 13 }}>{formatDate(bucket.updated_at)}</div>
           <button
             style={{ ...iconButtonStyle(t), color: t.danger }}
@@ -2862,6 +3336,21 @@ function activityLabel(action: string) {
     ai_action_approved: "Action task approved",
     ai_action_rejected: "Action task rejected",
     ai_action_completed: "Action task completed",
+    vendor_access_created: "Vendor access created",
+    vendor_access_updated: "Vendor access updated",
+    vendor_access_revoked: "Vendor access revoked",
+    vendor_access_reactivated: "Vendor access reactivated",
+    vendor_bucket_accessed: "Vendor bucket opened",
+    vendor_file_previewed: "Vendor preview opened",
+    vendor_file_review_denied: "Vendor preview denied",
+    vendor_file_download_requested: "Vendor download requested",
+    vendor_file_download_denied: "Vendor download denied",
+    vendor_file_annotation_created: "Vendor annotation created",
+    vendor_file_annotation_denied: "Vendor annotation denied",
+    vendor_note_created: "Vendor note created",
+    vendor_note_denied: "Vendor note denied",
+    vendor_ai_chat: "Vendor AI chat",
+    vendor_task_proposed: "Vendor task proposed",
   };
   return labels[action] ?? statusLabel(action);
 }

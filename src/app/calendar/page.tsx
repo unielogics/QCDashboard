@@ -215,29 +215,57 @@ export default function CalendarPage() {
 
 function CalendarShareCard({ booking }: { booking: UserBookingSettings | null }) {
   const { t } = useTheme();
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"url" | "message" | null>(null);
   const bookingPath = booking?.enabled && booking.slug ? `/book/${booking.slug}` : null;
   const bookingUrl = bookingPath && typeof window !== "undefined" ? `${window.location.origin}${bookingPath}` : bookingPath;
+  const inviteText = bookingUrl
+    ? `Book a meeting with me here:\n${bookingUrl}`
+    : "";
 
-  const copy = async () => {
-    if (!bookingUrl) return;
-    await navigator.clipboard.writeText(bookingUrl);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
+  const copyText = async (value: string, kind: "url" | "message") => {
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    setCopied(kind);
+    window.setTimeout(() => setCopied(null), 1600);
   };
 
   return (
     <Card pad={14}>
-      <SectionLabel>Booking link</SectionLabel>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <SectionLabel>Booking link</SectionLabel>
+        {bookingUrl ? (
+          <button
+            onClick={() => copyText(bookingUrl, "url")}
+            title="Copy booking link"
+            aria-label="Copy booking link"
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 10,
+              border: `1px solid ${t.lineStrong}`,
+              background: t.surface2,
+              color: copied === "url" ? t.profit : t.ink2,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+            }}
+          >
+            <Icon name={copied === "url" ? "check" : "link"} size={13} />
+          </button>
+        ) : null}
+      </div>
       {bookingUrl ? (
         <>
           <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, margin: "8px 0 10px" }}>
-            Share this public page when someone needs to book time with you. Booked calls land on this calendar.
+            Copy this page into email, SMS, or chat. Booked calls land on this calendar.
           </div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
             <input
               readOnly
               value={bookingUrl}
+              onFocus={(event) => event.currentTarget.select()}
+              onClick={(event) => event.currentTarget.select()}
               style={{
                 minWidth: 0,
                 flex: 1,
@@ -249,12 +277,36 @@ function CalendarShareCard({ booking }: { booking: UserBookingSettings | null })
                 fontSize: 12,
               }}
             />
-            <button onClick={copy} style={{ ...qcBtn(t), padding: "8px 10px" }}>
-              <Icon name={copied ? "check" : "link"} size={12} />
-              {copied ? "Copied" : "Copy"}
+            <button onClick={() => copyText(bookingUrl, "url")} style={{ ...qcBtn(t), padding: "8px 10px" }}>
+              <Icon name={copied === "url" ? "check" : "link"} size={12} />
+              {copied === "url" ? "Copied" : "Copy URL"}
             </button>
           </div>
+          <textarea
+            readOnly
+            value={inviteText}
+            onFocus={(event) => event.currentTarget.select()}
+            onClick={(event) => event.currentTarget.select()}
+            rows={3}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              border: `1px solid ${t.line}`,
+              background: t.bg,
+              color: t.ink2,
+              borderRadius: 10,
+              padding: "9px 10px",
+              fontSize: 12,
+              lineHeight: 1.45,
+              resize: "none",
+              outline: "none",
+            }}
+          />
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <button onClick={() => copyText(inviteText, "message")} style={{ ...qcBtn(t), display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12 }}>
+              <Icon name={copied === "message" ? "check" : "send"} size={12} />
+              {copied === "message" ? "Copied message" : "Copy message"}
+            </button>
             <Link href={bookingPath ?? "/calendar"} target="_blank" style={{ textDecoration: "none" }}>
               <span style={{ ...qcBtn(t), display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12 }}>
                 <Icon name="external" size={12} /> Open
@@ -278,7 +330,6 @@ function CalendarShareCard({ booking }: { booking: UserBookingSettings | null })
             </span>
           </Link>
         </>
-
       )}
     </Card>
   );

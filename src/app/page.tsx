@@ -11,6 +11,7 @@
 //   8. Elara + Top brokers (renamed from Top exposures, source swapped)
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, Pill, SectionLabel, StageBadge } from "@/components/design-system/primitives";
@@ -48,6 +49,7 @@ const STAGE_LABELS = ["Prequalified", "Collecting Docs", "Lender Connected", "Pr
 
 export default function DashboardPage() {
   const { t } = useTheme();
+  const router = useRouter();
   const { data: user } = useCurrentUser();
   const { data: loans = [] } = useLoans();
   const { data: tasks = [] } = useAITasks();
@@ -79,8 +81,13 @@ export default function DashboardPage() {
 
   const isClient = user?.role === Role.CLIENT;
   const isBroker = user?.role === Role.BROKER;
+  const isVendor = user?.role === Role.VENDOR;
   const isRegionalManager = user?.role === Role.REGIONAL_MANAGER;
   const showOperatorPipeline = !isClient && !isBroker;
+
+  useEffect(() => {
+    if (isVendor) router.replace("/vendor/buckets");
+  }, [isVendor, router]);
 
   const datelineDate = today.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
   const datelineTime = today.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
@@ -90,6 +97,9 @@ export default function DashboardPage() {
   // Underwriter. The existing operator dashboard below stays as-is for them.
   if (isBroker) {
     return <AgentHomeView />;
+  }
+  if (isVendor) {
+    return null;
   }
 
   return (

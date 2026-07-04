@@ -8,7 +8,7 @@ import { Card, KPI, Pill, SectionLabel, VerifiedBadge } from "@/components/desig
 import { Icon } from "@/components/design-system/Icon";
 import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useBrokers, useClient, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useSendIntakeLink, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
+import { useBrokers, useClient, useClientPaymentAuthorizationStatus, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useSendIntakeLink, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { RealtorReadinessCard } from "@/components/RealtorReadinessCard";
@@ -78,6 +78,7 @@ export default function ClientDetailPage() {
   };
 
   const canEdit = profile.role !== "client";
+  const isInternal = profile.role === "super_admin" || profile.role === "loan_exec";
   // CLIENT-role users can't add a file from inside their own page;
   // every other operator role gets the "+ New file" affordance.
   // Agents (BROKER) see "Ready for Prequalification" instead — that's
@@ -351,6 +352,7 @@ export default function ClientDetailPage() {
 
       <AssignedAgentCard t={t} client={client} />
       <ExperienceModeCard t={t} client={client} />
+      {isInternal ? <PaymentAuthorizationCard t={t} clientId={client.id} /> : null}
 
       {editing && canEdit && (
         <Card pad={20}>
@@ -605,6 +607,152 @@ function LoanChatPicker({
             </button>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PaymentAuthorizationCard({
+  t,
+  clientId,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  clientId: string;
+}) {
+  const { data, isLoading, error } = useClientPaymentAuthorizationStatus(clientId);
+  const auth = data?.latest_authorization ?? null;
+  const method = data?.payment_method ?? null;
+  const signed = !!auth?.signed_at || auth?.status === "active";
+  const cardReady = method?.status === "active" && !!method.last4;
+  const ready = !!data?.authorized;
+  const statusLabel = ready ? "Authorized + card on file" : signed && !cardReady ? "Signed, card missing" : !signed && cardReady ? "Card on file, signature missing" : "Not completed";
+  const statusColor = ready ? t.profit : signed || cardReady ? t.warn : t.danger;
+  const statusBg = ready ? t.profitBg : signed || cardReady ? t.warnBg : t.dangerBg;
+  const signedAt = auth?.completed_at || auth?.signed_at || null;
+  const cardLabel = method?.last4
+    ? `${method.brand ? method.brand.toUpperCase() : "CARD"} •••• ${method.last4}${method.exp_month && method.exp_year ? ` · exp ${String(method.exp_month).padStart(2, "0")}/${String(method.exp_year).slice(-2)}` : ""}`
+    : "No active card";
+  const billingAddress = method
+    ? [
+        method.billing_line1,
+        method.billing_line2,
+        [method.billing_city, method.billing_state, method.billing_postal_code].filter(Boolean).join(", "),
+        method.billing_country,
+      ].filter(Boolean)
+    : [];
+
+  return (
+    <Card pad={18}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ flex: "1 1 300px", minWidth: 0 }}>
+          <SectionLabel>Payment pre-authorization</SectionLabel>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 7,
+                padding: "6px 12px",
+                borderRadius: 999,
+                background: statusBg,
+                color: statusColor,
+                fontSize: 12,
+                fontWeight: 800,
+              }}
+            >
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: statusColor }} />
+              {isLoading ? "Checking status" : statusLabel}
+            </span>
+            <span style={{ fontSize: 12, color: t.ink3 }}>
+              {ready
+                ? "Credit actions are unlocked for this client."
+                : "Credit actions stay locked until signature and card setup are both complete."}
+            </span>
+          </div>
+          {error ? (
+            <div style={{ marginTop: 10, fontSize: 12, color: t.danger, fontWeight: 700 }}>
+              Could not load authorization status.
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ flex: "1 1 520px", display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+          <AuthInfoTile t={t} label="Signature" value={signedAt ? `Signed ${new Date(signedAt).toLocaleDateString()}` : "Missing"} tone={signedAt ? "ok" : "bad"} />
+          <AuthInfoTile t={t} label="Card" value={cardLabel} tone={cardReady ? "ok" : "bad"} />
+          <AuthInfoTile t={t} label="Document" value={auth?.document_version ?? "Not started"} tone={auth ? "ok" : "muted"} />
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, marginTop: 14 }}>
+        <div style={{ padding: 12, borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface2 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: t.ink3, marginBottom: 6 }}>
+            Billing details
+          </div>
+          {method ? (
+            <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.55 }}>
+              <div style={{ fontWeight: 800, color: t.ink }}>{method.billing_name ?? "Name not returned"}</div>
+              <div>{method.billing_email ?? "No billing email"}</div>
+              {billingAddress.length > 0 ? (
+                <div style={{ marginTop: 6 }}>{billingAddress.map((line) => <div key={line}>{line}</div>)}</div>
+              ) : (
+                <div style={{ marginTop: 6, color: t.ink3 }}>No billing address on file.</div>
+              )}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12.5, color: t.ink3 }}>No Stripe payment method has been saved for this client.</div>
+          )}
+        </div>
+
+        <div style={{ padding: 12, borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface2 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: t.ink3, marginBottom: 6 }}>
+            Audit record
+          </div>
+          <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.55 }}>
+            <div>Status: <strong style={{ color: t.ink }}>{auth?.status ?? "none"}</strong></div>
+            <div>SetupIntent: <strong style={{ color: t.ink }}>{auth?.setup_intent_status ?? "none"}</strong></div>
+            <div>Authorization ID: <span style={{ color: t.ink3 }}>{auth?.id ?? "not created"}</span></div>
+          </div>
+          {data?.certificate_url ? (
+            <a
+              href={data.certificate_url}
+              target="_blank"
+              rel="noreferrer"
+              style={{ ...qcBtn(t), marginTop: 10, textDecoration: "none", width: "fit-content" }}
+            >
+              <Icon name="file" size={12} />
+              View signed certificate
+            </a>
+          ) : (
+            <div style={{ marginTop: 10, fontSize: 12, color: t.ink3 }}>
+              Certificate appears after the client completes e-sign and card setup.
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function AuthInfoTile({
+  t,
+  label,
+  value,
+  tone,
+}: {
+  t: ReturnType<typeof useTheme>["t"];
+  label: string;
+  value: string;
+  tone: "ok" | "bad" | "muted";
+}) {
+  const color = tone === "ok" ? t.profit : tone === "bad" ? t.danger : t.ink3;
+  const bg = tone === "ok" ? t.profitBg : tone === "bad" ? t.dangerBg : t.surface2;
+  return (
+    <div style={{ minWidth: 0, padding: 12, borderRadius: 10, background: bg, border: `1px solid ${t.line}` }}>
+      <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: t.ink3 }}>
+        {label}
+      </div>
+      <div style={{ marginTop: 5, fontSize: 12.5, fontWeight: 800, color, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {value}
       </div>
     </div>
   );

@@ -66,6 +66,11 @@ const REGIONAL_MANAGER_NAV: NavItem[] = [
   { href: "/profile", label: "Profile", icon: "user" },
 ];
 
+const VENDOR_NAV: NavItem[] = [
+  { href: "/vendor/buckets", label: "Buckets", icon: "lock" },
+  { href: "/profile", label: "Profile", icon: "user" },
+];
+
 const OPERATOR_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: "home" },
   { href: "/pipeline", label: "Pipeline", icon: "layers" },
@@ -94,6 +99,7 @@ const ROLE_LABEL: Record<string, string> = {
   broker: "Agent",
   loan_exec: "Underwriter",
   client: "Client",
+  vendor: "Vendor",
 };
 
 export default function Sidebar() {
@@ -113,6 +119,7 @@ export default function Sidebar() {
   const NAV =
     user?.role === Role.BROKER ? AGENT_NAV
     : user?.role === Role.REGIONAL_MANAGER ? REGIONAL_MANAGER_NAV
+    : user?.role === Role.VENDOR ? VENDOR_NAV
     : OPERATOR_NAV;
   const items = NAV.filter((n) => !n.roles || (user && n.roles.includes(user.role as Role)));
 

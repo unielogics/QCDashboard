@@ -781,7 +781,8 @@ export const Role = {
   BROKER: "broker",
   LOAN_EXEC: "loan_exec",
   CLIENT: "client",
-  LENDER: "lender"
+  LENDER: "lender",
+  VENDOR: "vendor"
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];
 export const RoleOptions = [
@@ -790,7 +791,8 @@ export const RoleOptions = [
   { value: "broker", label: "Broker" },
   { value: "loan_exec", label: "Loan Exec" },
   { value: "client", label: "Client" },
-  { value: "lender", label: "Lender" }
+  { value: "lender", label: "Lender" },
+  { value: "vendor", label: "Vendor" }
 ] as const;
 
 export const StrEnum = {

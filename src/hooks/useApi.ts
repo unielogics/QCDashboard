@@ -62,6 +62,13 @@ import type {
   Client,
   CreditPull,
   CreditSummary,
+  BillingAddress,
+  PaymentAuthorizationClientSummaryRead,
+  PaymentAuthorizationStatusRead,
+  PaymentAuthorizationStartResponse,
+  PaymentAuthorizationCompleteResponse,
+  SetupIntentResponse,
+  CreditPullAccessRead,
   ParsedReport,
   DashboardReport,
   Document,
@@ -719,10 +726,11 @@ export function useGlobalSearch(query: string) {
 export function useCurrentCredit(clientId: string | null | undefined) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
+  const access = useCreditPullAccess();
   return useQuery({
     queryKey: ["credit", clientId, devUser],
     queryFn: () => apiCall<CreditPull | null>(`/credit/current?client_id=${clientId}`),
-    enabled: !!clientId,
+    enabled: !!clientId && (access.data ? access.data.can_run_credit : false),
   });
 }
 
@@ -731,10 +739,11 @@ export function useCurrentCredit(clientId: string | null | undefined) {
 export function useCreditSummary(pullId: string | null | undefined) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
+  const access = useCreditPullAccess();
   return useQuery({
     queryKey: ["credit-summary", pullId, devUser],
     queryFn: () => apiCall<CreditSummary>(`/credit/pulls/${pullId}/summary`),
-    enabled: !!pullId,
+    enabled: !!pullId && (access.data ? access.data.can_run_credit : false),
   });
 }
 
@@ -1012,12 +1021,118 @@ export function useDeleteUser() {
 // Borrower-self credit pull (mirrors mobile useCurrentCredit / useStartCreditPull).
 // The backend derives client_id from the authenticated user's `user.client.id`,
 // so no client_id is required in the request body.
-export function useMyCredit() {
+export function useCreditPullAccess() {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
   return useQuery({
+    queryKey: ["credit-pull-access", devUser],
+    queryFn: () => apiCall<CreditPullAccessRead>("/credit/pull-access"),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function usePaymentAuthorizationStatus() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["payment-authorization-status", devUser],
+    queryFn: () => apiCall<PaymentAuthorizationStatusRead>("/billing/payment-authorization/status"),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useClientPaymentAuthorizationStatus(clientId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["client-payment-authorization-status", clientId, devUser],
+    queryFn: () =>
+      apiCall<PaymentAuthorizationStatusRead>(
+        `/billing/clients/${clientId}/payment-authorization/status`,
+      ),
+    enabled: !!clientId,
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useClientPaymentAuthorizationSummaries(options?: { enabled?: boolean }) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["client-payment-authorization-summaries", devUser],
+    queryFn: () =>
+      apiCall<PaymentAuthorizationClientSummaryRead[]>(
+        "/billing/clients/payment-authorizations",
+      ),
+    enabled: options?.enabled ?? true,
+    staleTime: 30 * 1000,
+    retry: (failureCount, err) => {
+      if (err instanceof ApiError && (err.status === 403 || err.status === 404)) return false;
+      return failureCount < 1;
+    },
+  });
+}
+
+export function useStartPaymentAuthorization() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiCall<PaymentAuthorizationStartResponse>("/billing/payment-authorization/start", {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["payment-authorization-status"] }),
+  });
+}
+
+export function useCreateSetupIntent() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (payload: { authorization_id?: string; billing?: BillingAddress }) =>
+      apiCall<SetupIntentResponse>("/billing/setup-intents", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+  });
+}
+
+export function useCompletePaymentAuthorization() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      authorization_id: string;
+      setup_intent_id: string;
+      typed_name: string;
+      esign_consent: boolean;
+      payment_terms_consent: boolean;
+      signature_data_url: string;
+      billing: BillingAddress;
+      device_metadata?: Record<string, unknown>;
+    }) =>
+      apiCall<PaymentAuthorizationCompleteResponse>("/billing/payment-authorization/complete", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["payment-authorization-status"] });
+      qc.invalidateQueries({ queryKey: ["client-payment-authorization-status"] });
+      qc.invalidateQueries({ queryKey: ["client-payment-authorization-summaries"] });
+      qc.invalidateQueries({ queryKey: ["credit-pull-access"] });
+      qc.invalidateQueries({ queryKey: ["my-credit"] });
+    },
+  });
+}
+
+export function useMyCredit() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const access = useCreditPullAccess();
+  return useQuery({
     queryKey: ["my-credit", devUser],
     queryFn: () => apiCall<CreditPull | null>("/credit/current?client_id=self"),
+    enabled: access.data ? access.data.can_run_credit : false,
   });
 }
 

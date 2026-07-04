@@ -10,7 +10,8 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useCreditSummary, useStartMyCreditPull } from "@/hooks/useApi";
+import { PaymentAuthorizationPanel } from "@/components/PaymentAuthorizationPanel";
+import { useCreditSummary, usePaymentAuthorizationStatus, useStartMyCreditPull } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api";
 import { US_STATES } from "@/lib/usStates";
 
@@ -31,6 +32,7 @@ interface Props {
 export function CreditPullModal({ open, onClose, initialEmail, initialName, mode = "first" }: Props) {
   const { t } = useTheme();
   const start = useStartMyCreditPull();
+  const paymentAuthorization = usePaymentAuthorizationStatus();
   const [stage, setStage] = useState<Stage>("form");
   // Form fields = exactly what iSoftPull's API requires (per their docs).
   // No phone/email — those live on the user/client record. SSN starts
@@ -80,6 +82,9 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
   }, [open, onClose]);
 
   if (!open) return null;
+  const needsPaymentAuthorization = Boolean(
+    paymentAuthorization.data?.requires_authorization && !paymentAuthorization.data.authorized,
+  );
 
   const submit = async () => {
     setStage("pulling");
@@ -225,9 +230,18 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
             gap: 16,
           }}
         >
-          <div style={{ fontSize: 13.5, color: t.ink2, lineHeight: 1.55 }}>
-            We capture only what the bureaus require. No score impact. Valid for 90 days.
-          </div>
+          {needsPaymentAuthorization ? (
+            <>
+              <div style={{ fontSize: 13.5, color: t.ink2, lineHeight: 1.55 }}>
+                Complete the payment pre-authorization before activating credit pulls or credit-derived terms.
+              </div>
+              <PaymentAuthorizationPanel />
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 13.5, color: t.ink2, lineHeight: 1.55 }}>
+                We capture only what the bureaus require. No score impact. Valid for 90 days.
+              </div>
 
           {stage === "form" && (
             <Card pad={20}>
@@ -374,6 +388,8 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
                 </div>
               )}
             </Card>
+          )}
+            </>
           )}
         </div>
       </div>
