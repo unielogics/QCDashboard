@@ -131,6 +131,13 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
         setStage("form");
         return;
       }
+      if (code === "payment_authorization_required") {
+        setSubmitError(
+          detailMsg ||
+            "Finish the payment pre-authorization step first, then we can run the soft pull.",
+        );
+        return;
+      }
       setSubmitError(detailMsg || "Pull failed — please retry.");
       setStage("consent");
     }
@@ -233,8 +240,9 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
           {needsPaymentAuthorization ? (
             <>
               <div style={{ fontSize: 13.5, color: t.ink2, lineHeight: 1.55 }}>
-                Complete the payment pre-authorization before activating credit pulls or credit-derived terms.
+                Unlock Pro Terms in one flow: first sign the payment pre-authorization and save a card securely through Stripe, then confirm FCRA consent and run the soft pull.
               </div>
+              {submitError ? <div style={{ color: t.danger, fontSize: 13, fontWeight: 700 }}>{submitError}</div> : null}
               <PaymentAuthorizationPanel />
             </>
           ) : (

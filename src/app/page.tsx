@@ -876,7 +876,7 @@ function ProTermsCard({ userName, userEmail }: { userName: string; userEmail: st
             </div>
             {unlocked ? (
               <div style={{ fontSize: 12, color: t.ink2, marginTop: 1 }}>
-                FICO {credit.fico} · valid through{" "}
+                {creditTierLabel(credit.fico)} · valid through{" "}
                 {credit.expires_at ? new Date(credit.expires_at).toLocaleDateString() : "—"}
               </div>
             ) : (
@@ -919,6 +919,13 @@ function ProTermsCard({ userName, userEmail }: { userName: string; userEmail: st
       />
     </>
   );
+}
+
+function creditTierLabel(fico: number | null | undefined): string {
+  if (fico == null) return "Credit Not Verified";
+  if (fico < 620) return "Below Threshold";
+  if (fico < 720) return "Mid Credit";
+  return "Strong Credit";
 }
 
 // ── Borrower / broker pipeline cards (mobile-style) ──────────────────────
