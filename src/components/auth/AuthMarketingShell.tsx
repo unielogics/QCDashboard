@@ -218,6 +218,14 @@ function Footer() {
           <span style={chipStyle}>Encrypted document vault</span>
           <span style={chipStyle}>Institutional capital routing</span>
         </div>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center", fontSize: 13 }}>
+          <a href="/programs/car-dealers" style={{ color: "#CBD5E1", fontWeight: 700 }}>
+            Programs: Car Dealers
+          </a>
+          <a href="/dealer-ai-underwriter" style={{ color: "#CBD5E1", fontWeight: 700 }}>
+            Use our AI Underwriter
+          </a>
+        </div>
       </div>
     </footer>
   );

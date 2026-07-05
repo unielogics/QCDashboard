@@ -74,6 +74,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
     pathname.startsWith("/terms") ||
     pathname.startsWith("/privacy") ||
     pathname.startsWith("/book") ||
+    pathname.startsWith("/programs") ||
+    pathname.startsWith("/dealer-ai-underwriter") ||
     pathname.startsWith("/buckets/request") ||
     pathname.startsWith("/buckets/share") ||
     // Token-resolved HUD shares — opened by title / escrow / insurance
