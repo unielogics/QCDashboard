@@ -424,115 +424,141 @@ export default function DealerAIUnderwriterPage() {
   return (
     <main style={page}>
       <section style={shell}>
-        <header style={header}>
-          <div style={brandGroup}>
-            <QCMark size={42} />
-            <div>
-              <div style={eyebrow}>Qualified Commercial AI Funding Review</div>
-              <h1 style={title}>Dealer capital underwriter room</h1>
-            </div>
-          </div>
-          <div style={securePill}>{response ? "Encrypted uploads | Chat-first review | Preliminary screen" : "Step 1 | Start secure intake"}</div>
-        </header>
-
         {!response ? (
-          <section style={intakeStart}>
-            <div style={intakeCopy}>
-              <div style={eyebrow}>Start here</div>
-              <h2 style={intakeTitle}>Complete the secure intake first.</h2>
-              <p style={intakeLead}>
-                Enter the basic contact information so Qualified Commercial can create your encrypted funding room.
-                After that, you can upload documents immediately and the AI underwriter will guide the next questions.
-              </p>
-              <div style={introSteps}>
-                {[
-                  ["1", "Basic information", "Name, email, phone, and dealership name."],
-                  ["2", "Encrypted upload room", "Upload bank statements, P&L, taxes, floorplan, MCA, inventory, and real estate files."],
-                  ["3", "AI funding review", "The system infers the likely lending path and lists missing evidence."],
-                ].map(([step, label, copy]) => (
-                  <div key={step} style={introStep}>
-                    <span style={introStepBadge}>{step}</span>
-                    <div>
-                      <strong style={introStepLabel}>{label}</strong>
-                      <p style={introStepCopy}>{copy}</p>
+          <>
+            <nav style={stepOneNav}>
+              <div style={stepOneBrand}>
+                <QCMark size={30} />
+                <strong>Qualified Commercial</strong>
+              </div>
+              <div style={stepOneNavActions}>
+                <span style={navPill}>AI Underwriter</span>
+                <a style={loginPill} href="/login">Login</a>
+              </div>
+            </nav>
+
+            <div style={stepOneHeading}>
+              <div>
+                <div style={tealEyebrow}>Qualified Commercial - Dealer Funding Review</div>
+                <h1 style={stepOneTitle}>AI Underwriter</h1>
+              </div>
+              <div style={stepOneSecurePill}><span style={greenDot} />Encrypted uploads - Preliminary review</div>
+            </div>
+
+            <section style={stepOneHero}>
+              <div style={stepOneCopy}>
+                <div style={stepBadge}>Step 1 - Open your secure file</div>
+                <h2 style={stepOneHeroTitle}>Tell us who you are - then the review runs in chat.</h2>
+                <p style={stepOneLead}>
+                  We open an encrypted file room in your name first, so nothing you share is ever lost. Then the full-doc funding review happens in one conversation - no forms, no portals.
+                </p>
+                <div style={checkList}>
+                  {[
+                    "A full-doc review that runs entirely in chat - no forms, no portals",
+                    "Attach bank statements and financials straight into the conversation",
+                    "An encrypted file room - everything you share is kept",
+                    "A strict preliminary screen before any lender sees the file",
+                  ].map((item) => (
+                    <div key={item} style={checkItem}>
+                      <span style={checkIcon}>{"\u2713"}</span>
+                      <span>{item}</span>
                     </div>
+                  ))}
+                </div>
+              </div>
+              <div style={stepOneFormColumn}>
+                <ContactWidget contact={contact} setContact={setContact} busy={busy} onStart={() => startIntake().catch(() => undefined)} />
+                {status ? <div style={statusBoxNoMargin}>{status}</div> : null}
+              </div>
+            </section>
+
+            <section style={lockedPreview}>
+              <div style={lockedChatGhost}>
+                <div style={ghostLineWide} />
+                <div style={ghostLineShort} />
+                <div style={ghostGoldLine} />
+                <div style={ghostLineMid} />
+              </div>
+              <div style={lockedBadge}>Locked - The full review runs in chat and unlocks after you start your file</div>
+            </section>
+          </>
+        ) : (
+          <>
+            <header style={header}>
+              <div style={brandGroup}>
+                <QCMark size={42} />
+                <div>
+                  <div style={eyebrow}>Qualified Commercial AI Funding Review</div>
+                  <h1 style={title}>Dealer capital underwriter room</h1>
+                </div>
+              </div>
+              <div style={securePill}>Encrypted uploads | Chat-first review | Preliminary screen</div>
+            </header>
+
+            <div style={grid}>
+              <section style={chatPanel}>
+                <div style={chatHeader}>
+                <div>
+                  <h2 style={sectionTitle}>AI Funding Review</h2>
+                  <p style={muted}>Upload the baseline package, clarify related LLCs/accounts, and let the AI infer strict program fit.</p>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  {response?.resume_url ? <button style={ghostButton} onClick={() => navigator.clipboard.writeText(response.resume_url || "")}>Copy resume link</button> : null}
+                  {response ? <a style={ghostLink} href="/client/dealer-intakes">Client continuation</a> : null}
+                </div>
+              </div>
+              <div style={messages}>
+                {chat.map((line) => (
+                  <div key={line.id} style={line.role === "assistant" ? assistantBubble : userBubble}>
+                    {line.content}
                   </div>
                 ))}
               </div>
-              <div style={securityNote}>
-                <strong>Secure intake required first.</strong>
-                <span style={securityNoteText}>Uploads are attached to your encrypted bucket after the form is submitted.</span>
-              </div>
-            </div>
-            <div style={intakeFormWrap}>
-              <ContactWidget contact={contact} setContact={setContact} busy={busy} onStart={() => startIntake().catch(() => undefined)} />
-              {status ? <div style={statusBoxNoMargin}>{status}</div> : null}
-            </div>
-          </section>
-        ) : (
-          <div style={grid}>
-            <section style={chatPanel}>
-              <div style={chatHeader}>
-              <div>
-                <h2 style={sectionTitle}>AI Funding Review</h2>
-                <p style={muted}>Upload the baseline package, clarify related LLCs/accounts, and let the AI infer strict program fit.</p>
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                {response?.resume_url ? <button style={ghostButton} onClick={() => navigator.clipboard.writeText(response.resume_url || "")}>Copy resume link</button> : null}
-                {response ? <a style={ghostLink} href="/client/dealer-intakes">Client continuation</a> : null}
-              </div>
-            </div>
-            <div style={messages}>
-              {chat.map((line) => (
-                <div key={line.id} style={line.role === "assistant" ? assistantBubble : userBubble}>
-                  {line.content}
-                </div>
-              ))}
-            </div>
-            <div style={composer}>
-              <input
-                style={composerInput}
-                value={chatText}
-                onChange={(event) => setChatText(event.target.value)}
-                placeholder={token ? "Ask a question, add facts, or tell the AI what you uploaded..." : "Start by entering contact info on the right"}
-                disabled={!token || busy}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && chatText.trim()) sendChat().catch(() => undefined);
-                }}
-              />
-              <button style={primaryButton} disabled={!token || !chatText.trim() || busy} onClick={() => sendChat().catch(() => undefined)}>
-                Send
-              </button>
-            </div>
-              {status ? <div style={statusBox}>{status}</div> : null}
-            </section>
-
-            <aside style={widgetPanel}>
-              <>
-                <IntakeSnapshot response={response} missingDocs={missingDocs} />
-                <UploadWidget
-                  requestedDocs={response.requested_documents}
-                  missingDocs={missingDocs}
-                  queuedFiles={queuedFiles}
-                  setQueuedFiles={setQueuedFiles}
-                  fileInputRef={fileInputRef}
-                  dragging={dragging}
-                  setDragging={setDragging}
-                  onDrop={onDrop}
-                  addFiles={addFiles}
-                  busy={busy}
-                  onUpload={() => uploadQueuedFiles().catch(() => undefined)}
+              <div style={composer}>
+                <input
+                  style={composerInput}
+                  value={chatText}
+                  onChange={(event) => setChatText(event.target.value)}
+                  placeholder={token ? "Ask a question, add facts, or tell the AI what you uploaded..." : "Start by entering contact info on the right"}
+                  disabled={!token || busy}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && chatText.trim()) sendChat().catch(() => undefined);
+                  }}
                 />
-                {showEntityWidget ? <EntityWidget entity={entity} setEntity={setEntity} busy={busy} onSubmit={() => submitEntityStructure().catch(() => undefined)} /> : null}
-                {showDealWidget ? <DealWidget deal={deal} setDeal={setDeal} busy={busy} onSubmit={() => submitDealProfile().catch(() => undefined)} /> : null}
-                {showAssetWidget ? <AssetWidget assets={assets} setAssets={setAssets} busy={busy} onSubmit={() => submitAssets().catch(() => undefined)} /> : null}
-                {showReferralWidget ? <ReferralWidget referral={referral} setReferral={setReferral} busy={busy} onSubmit={() => submitReferral().catch(() => undefined)} /> : null}
-                {showReviewWidget ? <RunReviewWidget busy={busy} hasResult={Boolean(currentResult)} onRun={() => runReview().catch(() => undefined)} /> : null}
-                {showResultWidget ? <ResultWidget result={currentResult} bankability={bankability} /> : null}
-                {showBookCallWidget ? <BookCallWidget widget={widget} busy={busy} onBook={(startsAt) => bookCall(startsAt).catch(() => undefined)} /> : null}
-              </>
-            </aside>
-          </div>
+                <button style={primaryButton} disabled={!token || !chatText.trim() || busy} onClick={() => sendChat().catch(() => undefined)}>
+                  Send
+                </button>
+              </div>
+                {status ? <div style={statusBox}>{status}</div> : null}
+              </section>
+
+              <aside style={widgetPanel}>
+                <>
+                  <IntakeSnapshot response={response} missingDocs={missingDocs} />
+                  <UploadWidget
+                    requestedDocs={response.requested_documents}
+                    missingDocs={missingDocs}
+                    queuedFiles={queuedFiles}
+                    setQueuedFiles={setQueuedFiles}
+                    fileInputRef={fileInputRef}
+                    dragging={dragging}
+                    setDragging={setDragging}
+                    onDrop={onDrop}
+                    addFiles={addFiles}
+                    busy={busy}
+                    onUpload={() => uploadQueuedFiles().catch(() => undefined)}
+                  />
+                  {showEntityWidget ? <EntityWidget entity={entity} setEntity={setEntity} busy={busy} onSubmit={() => submitEntityStructure().catch(() => undefined)} /> : null}
+                  {showDealWidget ? <DealWidget deal={deal} setDeal={setDeal} busy={busy} onSubmit={() => submitDealProfile().catch(() => undefined)} /> : null}
+                  {showAssetWidget ? <AssetWidget assets={assets} setAssets={setAssets} busy={busy} onSubmit={() => submitAssets().catch(() => undefined)} /> : null}
+                  {showReferralWidget ? <ReferralWidget referral={referral} setReferral={setReferral} busy={busy} onSubmit={() => submitReferral().catch(() => undefined)} /> : null}
+                  {showReviewWidget ? <RunReviewWidget busy={busy} hasResult={Boolean(currentResult)} onRun={() => runReview().catch(() => undefined)} /> : null}
+                  {showResultWidget ? <ResultWidget result={currentResult} bankability={bankability} /> : null}
+                  {showBookCallWidget ? <BookCallWidget widget={widget} busy={busy} onBook={(startsAt) => bookCall(startsAt).catch(() => undefined)} /> : null}
+                </>
+              </aside>
+            </div>
+          </>
         )}
       </section>
     </main>
@@ -541,13 +567,26 @@ export default function DealerAIUnderwriterPage() {
 
 function ContactWidget({ contact, setContact, busy, onStart }: { contact: typeof initialContact; setContact: (value: typeof initialContact) => void; busy: boolean; onStart: () => void }) {
   return (
-    <WidgetBox title="Start secure intake" description="Complete the basic information to create your encrypted dealer funding room.">
+    <div style={stepOneFormCard}>
+      <div>
+        <h2 style={stepOneFormTitle}>Start secure intake</h2>
+        <p style={stepOneFormCopy}>Takes under a minute. No credit pull to begin.</p>
+      </div>
       <Field label="Full name" value={contact.full_name} onChange={(value) => setContact({ ...contact, full_name: value })} />
       <Field label="Email" value={contact.email} onChange={(value) => setContact({ ...contact, email: value })} />
-      <Field label="Phone" value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} />
-      <Field label="Dealership / business name" value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} />
-      <button style={primaryWide} disabled={busy} onClick={onStart}>{busy ? "Creating secure room..." : "Start secure intake"}</button>
-    </WidgetBox>
+      <div style={stepOneFormGrid}>
+        <Field label="Phone" value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} />
+        <Field label="Dealership" value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} />
+      </div>
+      <button style={stepOneCta} disabled={busy} onClick={onStart}>{busy ? "Creating secure room..." : "Start my funding review ->"}</button>
+      <div style={formTrustLine}>
+        <span>Bank-grade encryption</span>
+        <span>|</span>
+        <span>No credit pull to start</span>
+        <span>|</span>
+        <span>Preliminary review only</span>
+      </div>
+    </div>
   );
 }
 
@@ -596,7 +635,7 @@ function AssetWidget({ assets, setAssets, busy, onSubmit }: { assets: AssetRow[]
             <input style={tableInput} value={row.estimated_loan_amount ? String(row.estimated_loan_amount) : ""} onChange={(event) => update(index, { estimated_loan_amount: numericOrNull(event.target.value) })} placeholder="$ owed" inputMode="numeric" />
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
               <input style={tableInput} value={row.estimated_property_value ? String(row.estimated_property_value) : ""} onChange={(event) => update(index, { estimated_property_value: numericOrNull(event.target.value) })} placeholder="$ value" inputMode="numeric" />
-              <button style={iconButton} onClick={() => remove(index)} aria-label="Remove row">×</button>
+              <button style={iconButton} onClick={() => remove(index)} aria-label="Remove row">x</button>
             </div>
           </div>
         ))}
@@ -695,7 +734,7 @@ function BookCallWidget({ widget, busy, onBook }: { widget: Widget | null; busy:
           {slots.map((slot) => (
             <button key={slot.starts_at} style={slotButton} disabled={busy} onClick={() => onBook(slot.starts_at)}>
               <strong>{slot.date_label}</strong>
-              <span>{slot.label} · {widget?.duration_min ?? 30} min</span>
+              <span>{slot.label} | {widget?.duration_min ?? 30} min</span>
             </button>
           ))}
         </div>
@@ -837,9 +876,200 @@ const page: CSSProperties = {
   background:
     "radial-gradient(circle at 18% 8%, rgba(33,211,199,.18), transparent 28%), radial-gradient(circle at 86% 0%, rgba(212,175,55,.18), transparent 26%), #060B1A",
   color: "#E2E8F0",
-  padding: 24,
+  padding: "0 24px 28px",
 };
-const shell: CSSProperties = { maxWidth: 1480, margin: "0 auto", display: "grid", gap: 18 };
+const shell: CSSProperties = { maxWidth: 1180, margin: "0 auto", display: "grid", gap: 18 };
+const stepOneNav: CSSProperties = {
+  minHeight: 54,
+  borderBottom: "1px solid rgba(255,255,255,.08)",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 18,
+  padding: "0 2px",
+};
+const stepOneBrand: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 10,
+  color: "#F8FAFC",
+  fontSize: 13,
+};
+const stepOneNavActions: CSSProperties = { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" };
+const navPill: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.14)",
+  borderRadius: 999,
+  minHeight: 32,
+  padding: "0 14px",
+  display: "inline-flex",
+  alignItems: "center",
+  color: "#D9E5F5",
+  background: "rgba(255,255,255,.035)",
+  fontSize: 12,
+  fontWeight: 900,
+};
+const loginPill: CSSProperties = {
+  ...navPill,
+  background: "linear-gradient(135deg,#F3E28D,#D7B83E)",
+  borderColor: "transparent",
+  color: "#0B1326",
+  textDecoration: "none",
+  padding: "0 18px",
+};
+const stepOneHeading: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 18,
+  flexWrap: "wrap",
+  paddingTop: 10,
+};
+const tealEyebrow: CSSProperties = {
+  color: "#68E6DA",
+  fontSize: 11,
+  fontWeight: 900,
+  letterSpacing: 1.7,
+  textTransform: "uppercase",
+};
+const stepOneTitle: CSSProperties = {
+  margin: "6px 0 0",
+  fontFamily: "Georgia, 'Times New Roman', serif",
+  fontSize: "clamp(32px,4vw,44px)",
+  fontWeight: 600,
+  letterSpacing: 0,
+  color: "#F6F8FB",
+};
+const stepOneSecurePill: CSSProperties = {
+  border: "1px solid rgba(212,175,55,.45)",
+  borderRadius: 999,
+  background: "rgba(212,175,55,.08)",
+  color: "#F5E49A",
+  minHeight: 30,
+  padding: "0 14px",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  fontSize: 11,
+  fontWeight: 900,
+};
+const greenDot: CSSProperties = { width: 6, height: 6, borderRadius: 999, background: "#35E3B2", display: "inline-block" };
+const stepOneHero: CSSProperties = {
+  border: "1px solid rgba(77,135,183,.32)",
+  borderRadius: 24,
+  background:
+    "linear-gradient(135deg, rgba(10,28,55,.96), rgba(8,20,42,.95) 52%, rgba(8,18,36,.98)), radial-gradient(circle at 50% 20%, rgba(33,211,199,.13), transparent 30%)",
+  minHeight: 470,
+  padding: "42px clamp(22px,4vw,52px)",
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 330px), 1fr))",
+  gap: "clamp(24px,5vw,70px)",
+  alignItems: "center",
+  boxShadow: "0 30px 100px rgba(0,0,0,.36)",
+};
+const stepOneCopy: CSSProperties = { display: "grid", gap: 18, maxWidth: 620 };
+const stepBadge: CSSProperties = {
+  justifySelf: "start",
+  border: "1px solid rgba(212,175,55,.45)",
+  borderRadius: 999,
+  background: "rgba(212,175,55,.08)",
+  color: "#F5E49A",
+  padding: "7px 13px",
+  fontSize: 11,
+  fontWeight: 900,
+  letterSpacing: 1.4,
+  textTransform: "uppercase",
+};
+const stepOneHeroTitle: CSSProperties = {
+  margin: 0,
+  color: "#F8FAFC",
+  fontFamily: "Georgia, 'Times New Roman', serif",
+  fontSize: "clamp(34px,4.6vw,52px)",
+  fontWeight: 600,
+  lineHeight: 1.07,
+  letterSpacing: 0,
+};
+const stepOneLead: CSSProperties = { margin: 0, maxWidth: 560, color: "#B6C4D7", fontSize: 16, lineHeight: 1.65 };
+const checkList: CSSProperties = { display: "grid", gap: 12, marginTop: 2 };
+const checkItem: CSSProperties = { display: "grid", gridTemplateColumns: "22px 1fr", gap: 10, alignItems: "start", color: "#D7E2F1", fontSize: 14, lineHeight: 1.35 };
+const checkIcon: CSSProperties = {
+  width: 16,
+  height: 16,
+  border: "1px solid rgba(45,225,213,.65)",
+  borderRadius: 4,
+  color: "#64E3D7",
+  background: "rgba(45,225,213,.12)",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 11,
+  fontWeight: 900,
+};
+const stepOneFormColumn: CSSProperties = { display: "grid", gap: 12 };
+const stepOneFormCard: CSSProperties = {
+  border: "1px solid rgba(212,175,55,.38)",
+  borderRadius: 20,
+  background: "rgba(12,29,55,.94)",
+  padding: "28px 28px 24px",
+  display: "grid",
+  gap: 15,
+  boxShadow: "0 22px 70px rgba(0,0,0,.38)",
+};
+const stepOneFormTitle: CSSProperties = { margin: 0, color: "#F8FAFC", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 22, letterSpacing: 0 };
+const stepOneFormCopy: CSSProperties = { margin: "6px 0 0", color: "#9DABC0", fontSize: 13, lineHeight: 1.4 };
+const stepOneFormGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,150px),1fr))", gap: 10 };
+const stepOneCta: CSSProperties = {
+  border: 0,
+  borderRadius: 999,
+  minHeight: 48,
+  background: "linear-gradient(135deg,#F2E58F,#D8B533)",
+  color: "#081122",
+  fontWeight: 900,
+  cursor: "pointer",
+  fontSize: 15,
+};
+const formTrustLine: CSSProperties = {
+  display: "flex",
+  justifyContent: "center",
+  gap: 8,
+  flexWrap: "wrap",
+  color: "#8FA0B8",
+  fontSize: 11,
+  fontWeight: 700,
+};
+const lockedPreview: CSSProperties = {
+  minHeight: 220,
+  border: "1px solid rgba(255,255,255,.08)",
+  borderRadius: 20,
+  background: "rgba(8,14,32,.66)",
+  position: "relative",
+  overflow: "hidden",
+  display: "grid",
+  placeItems: "center",
+};
+const lockedChatGhost: CSSProperties = {
+  position: "absolute",
+  inset: 34,
+  borderRadius: 18,
+  background: "linear-gradient(135deg,rgba(33,211,199,.06),rgba(212,175,55,.06))",
+  filter: "blur(7px)",
+  opacity: .65,
+};
+const ghostLineWide: CSSProperties = { position: "absolute", left: "8%", top: "20%", width: "28%", height: 14, borderRadius: 999, background: "rgba(99,231,218,.18)" };
+const ghostLineShort: CSSProperties = { position: "absolute", left: "8%", top: "55%", width: "34%", height: 10, borderRadius: 999, background: "rgba(255,255,255,.13)" };
+const ghostGoldLine: CSSProperties = { position: "absolute", left: "52%", top: "36%", width: "40%", height: 26, borderRadius: 999, background: "rgba(212,175,55,.22)" };
+const ghostLineMid: CSSProperties = { position: "absolute", left: "58%", top: "76%", width: "26%", height: 10, borderRadius: 999, background: "rgba(255,255,255,.13)" };
+const lockedBadge: CSSProperties = {
+  position: "relative",
+  zIndex: 1,
+  border: "1px solid rgba(212,175,55,.45)",
+  borderRadius: 999,
+  background: "rgba(8,14,32,.82)",
+  color: "#F5E49A",
+  padding: "10px 18px",
+  fontSize: 12,
+  fontWeight: 900,
+  textAlign: "center",
+};
 const header: CSSProperties = {
   minHeight: 74,
   padding: "0 18px",
