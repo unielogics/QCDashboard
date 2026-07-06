@@ -101,6 +101,19 @@ type WidgetType = Widget["type"];
 type ChatLine = { id: string; role: "assistant" | "user"; content: string };
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
 
+function useCompactViewport() {
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 720px)");
+    const update = () => setCompact(media.matches);
+    update();
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
+  return compact;
+}
+
 const initialContact = { full_name: "", email: "", phone: "", business_name: "" };
 const initialEntity: EntityStructure = {
   primary_operating_entity: "",
@@ -110,6 +123,7 @@ const initialEntity: EntityStructure = {
 };
 
 export default function DealerAIUnderwriterPage() {
+  const compact = useCompactViewport();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const [token, setToken] = useState<string>("");
@@ -501,8 +515,8 @@ export default function DealerAIUnderwriterPage() {
   ) : null;
 
   return (
-    <main style={page}>
-      <section style={shell}>
+    <main style={compact ? pageMobile : page}>
+      <section style={compact ? shellMobile : shell}>
         {!response ? (
           <>
             <nav style={stepOneNav}>
@@ -563,24 +577,24 @@ export default function DealerAIUnderwriterPage() {
           </>
         ) : (
           <>
-            <header style={header}>
-              <div style={brandGroup}>
-                <QCMark size={42} />
+            <header style={compact ? headerMobile : header}>
+              <div style={compact ? brandGroupMobile : brandGroup}>
+                <QCMark size={compact ? 34 : 42} />
                 <div>
-                  <div style={eyebrow}>Qualified Commercial AI Funding Review</div>
-                  <h1 style={title}>Dealer capital underwriter room</h1>
+                  <div style={compact ? eyebrowMobile : eyebrow}>Qualified Commercial AI Funding Review</div>
+                  <h1 style={compact ? titleMobile : title}>Dealer capital underwriter room</h1>
                 </div>
               </div>
-              <div style={securePill}>Encrypted uploads | Chat-first review | Preliminary screen</div>
+              <div style={compact ? securePillMobile : securePill}>Encrypted uploads | AI review</div>
             </header>
 
-            <section style={chatPanelFull}>
-              <div style={chatHeader}>
+            <section style={compact ? chatPanelFullMobile : chatPanelFull}>
+              <div style={compact ? chatHeaderMobile : chatHeader}>
                 <div>
                   <h2 style={sectionTitle}>AI Funding Review</h2>
                   <p style={muted}>The AI will ask for the baseline files and facts inside this conversation.</p>
                 </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <div style={compact ? mobileActionRow : headerActionRow}>
                   {suggestedWidgetType && !activeWidgetType ? (
                     <button style={ghostButton} onClick={() => setOpenWidgetType(suggestedWidgetType)}>
                       Open current request
@@ -590,8 +604,8 @@ export default function DealerAIUnderwriterPage() {
                   {response ? <a style={ghostLink} href="/client/dealer-intakes">Client continuation</a> : null}
                 </div>
               </div>
-              <CompactRoomStatus response={response} missingDocs={missingDocs} />
-              <div style={messages}>
+              <CompactRoomStatus response={response} missingDocs={missingDocs} compact={compact} />
+              <div style={compact ? messagesMobile : messages}>
                 {chat.map((line) => (
                   <div key={line.id} style={line.role === "assistant" ? assistantBubble : userBubble}>
                     {line.content}
@@ -600,7 +614,7 @@ export default function DealerAIUnderwriterPage() {
                 {inlineWidget}
               </div>
               {queuedFiles.length ? (
-                <div style={attachmentTray}>
+                <div style={compact ? attachmentTrayMobile : attachmentTray}>
                   <div style={attachmentTrayHeader}>
                     <strong>{queuedFiles.length} attached file{queuedFiles.length === 1 ? "" : "s"}</strong>
                     <span>Files are encrypted when uploaded.</span>
@@ -624,7 +638,7 @@ export default function DealerAIUnderwriterPage() {
                   </div>
                 </div>
               ) : null}
-              <div style={composer}>
+              <div style={compact ? composerMobile : composer}>
                 <button
                   type="button"
                   style={attachButton}
@@ -881,15 +895,15 @@ function ResultWidget({ result, bankability }: { result: Record<string, unknown>
   );
 }
 
-function CompactRoomStatus({ response, missingDocs }: { response: IntakeResponse; missingDocs: RequestedDoc[] }) {
+function CompactRoomStatus({ response, missingDocs, compact = false }: { response: IntakeResponse; missingDocs: RequestedDoc[]; compact?: boolean }) {
   return (
-    <div style={roomStatusStrip}>
+    <div style={compact ? roomStatusStripMobile : roomStatusStrip}>
       <div>
-        <div style={eyebrow}>Secure bucket created</div>
-        <strong>{response.intake.business_name || response.intake.full_name}</strong>
+        <div style={compact ? eyebrowMobile : eyebrow}>Secure bucket created</div>
+        <strong style={compact ? roomNameMobile : undefined}>{response.intake.business_name || response.intake.full_name}</strong>
         <p style={smallMuted}>{response.files.length} uploaded | {missingDocs.length} missing | {response.intake.status}</p>
       </div>
-      <div style={compactMetrics}>
+      <div style={compact ? compactMetricsMobile : compactMetrics}>
         <Metric value={response.intake.estimated_credit_score ? String(response.intake.estimated_credit_score) : "TBD"} label="est. credit" />
         <Metric value={response.files.length.toString()} label="files" />
       </div>
@@ -1001,6 +1015,13 @@ const page: CSSProperties = {
   padding: "0 24px 28px",
 };
 const shell: CSSProperties = { maxWidth: 1180, margin: "0 auto", display: "grid", gap: 18 };
+const pageMobile: CSSProperties = {
+  ...page,
+  padding: "10px 12px 18px",
+  background:
+    "radial-gradient(circle at 0% 0%, rgba(33,211,199,.14), transparent 30%), radial-gradient(circle at 100% 0%, rgba(212,175,55,.12), transparent 28%), #060B1A",
+};
+const shellMobile: CSSProperties = { ...shell, maxWidth: "100%", gap: 12 };
 const stepOneNav: CSSProperties = {
   minHeight: 54,
   borderBottom: "1px solid rgba(255,255,255,.08)",
@@ -1216,6 +1237,30 @@ const securePill: CSSProperties = {
   fontWeight: 800,
   color: "#E9D58A",
 };
+const headerMobile: CSSProperties = {
+  ...header,
+  minHeight: "auto",
+  padding: 12,
+  borderRadius: 16,
+  gap: 10,
+  alignItems: "flex-start",
+};
+const brandGroupMobile: CSSProperties = { ...brandGroup, gap: 10, minWidth: 0, alignItems: "center" };
+const eyebrowMobile: CSSProperties = { ...eyebrow, fontSize: 10, lineHeight: 1.2 };
+const titleMobile: CSSProperties = {
+  ...title,
+  fontSize: 22,
+  lineHeight: 1.08,
+  maxWidth: 280,
+};
+const securePillMobile: CSSProperties = {
+  ...securePill,
+  width: "100%",
+  borderRadius: 12,
+  padding: "8px 10px",
+  fontSize: 12,
+  textAlign: "center",
+};
 const intakeStart: CSSProperties = {
   minHeight: "calc(100vh - 148px)",
   display: "grid",
@@ -1301,7 +1346,15 @@ const chatPanelFull: CSSProperties = {
   minHeight: "calc(100vh - 148px)",
   gridTemplateRows: "auto auto 1fr auto auto",
 };
+const chatPanelFullMobile: CSSProperties = {
+  ...chatPanelFull,
+  minHeight: "calc(100vh - 116px)",
+  borderRadius: 16,
+};
 const chatHeader: CSSProperties = { padding: 18, borderBottom: "1px solid rgba(255,255,255,.08)", display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" };
+const chatHeaderMobile: CSSProperties = { ...chatHeader, padding: 14, display: "grid", gap: 12 };
+const headerActionRow: CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" };
+const mobileActionRow: CSSProperties = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 };
 const sectionTitle: CSSProperties = { margin: 0, fontSize: 20, color: "#F6F8FB", letterSpacing: 0 };
 const muted: CSSProperties = { margin: "4px 0 0", color: "#95A3B6", lineHeight: 1.45 };
 const roomStatusStrip: CSSProperties = {
@@ -1317,8 +1370,20 @@ const roomStatusStrip: CSSProperties = {
   alignItems: "center",
   flexWrap: "wrap",
 };
+const roomStatusStripMobile: CSSProperties = {
+  ...roomStatusStrip,
+  margin: 12,
+  marginBottom: 0,
+  padding: 12,
+  display: "grid",
+  gap: 10,
+  borderRadius: 16,
+};
+const roomNameMobile: CSSProperties = { display: "block", fontSize: 18, color: "#F8FAFC", overflowWrap: "anywhere" };
 const compactMetrics: CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" };
+const compactMetricsMobile: CSSProperties = { ...compactMetrics, display: "grid", gridTemplateColumns: "1fr 1fr", justifyContent: "stretch" };
 const messages: CSSProperties = { padding: 18, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", minHeight: 520 };
+const messagesMobile: CSSProperties = { ...messages, padding: 12, minHeight: 360 };
 const assistantBubble: CSSProperties = {
   alignSelf: "flex-start",
   maxWidth: "82%",
@@ -1374,6 +1439,7 @@ const aiPromptCopy: CSSProperties = {
   lineHeight: 1.45,
 };
 const composer: CSSProperties = { display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, padding: 18, borderTop: "1px solid rgba(255,255,255,.08)", alignItems: "center" };
+const composerMobile: CSSProperties = { ...composer, gap: 8, padding: 12, gridTemplateColumns: "40px minmax(0, 1fr) auto" };
 const composerInput: CSSProperties = {
   border: "1px solid rgba(255,255,255,.14)",
   borderRadius: 999,
@@ -1405,6 +1471,7 @@ const attachmentTray: CSSProperties = {
   display: "grid",
   gap: 10,
 };
+const attachmentTrayMobile: CSSProperties = { ...attachmentTray, margin: "0 12px", padding: 10 };
 const attachmentTrayHeader: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
