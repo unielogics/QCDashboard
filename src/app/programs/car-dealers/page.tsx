@@ -150,7 +150,7 @@ export default function CarDealerProgramsPage() {
           <Link href="/dealer-ai-underwriter" className="nav-pill">
             AI Underwriter
           </Link>
-          <Link href="/sign-in" className="gold-button compact">
+          <Link href="/dealer-ai-underwriter?continue=1" className="gold-button compact">
             Login
           </Link>
         </div>

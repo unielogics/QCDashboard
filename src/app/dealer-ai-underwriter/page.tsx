@@ -177,7 +177,10 @@ export default function DealerAIUnderwriterPage() {
   }, []);
 
   useEffect(() => {
-    const urlToken = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("token") : null;
+    const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const urlToken = params?.get("token") ?? null;
+    const continueRequested = params?.get("continue") === "1";
+    if (continueRequested) setLoginCodeSent(true);
     if (urlToken) {
       setToken(urlToken);
       loadIntake(urlToken, true).catch((error) => setStatus(errorMessage(error)));
