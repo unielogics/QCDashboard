@@ -179,7 +179,12 @@ export default function DealerAIUnderwriterPage() {
     if (!nextWidget) return;
     setLastSuggestedWidget((previous) => {
       const changed = previous?.type !== nextWidget.type || previous?.source !== nextWidget.source;
-      if (nextWidget.source === "user_intent" || changed) {
+      const shouldOpen =
+        nextWidget.source === "user_intent" ||
+        nextWidget.type === "upload_files" ||
+        nextWidget.type === "bankability_result" ||
+        nextWidget.type === "book_call";
+      if (shouldOpen && changed) {
         setOpenWidgetType(nextWidget.type);
       }
       return nextWidget;
@@ -188,17 +193,7 @@ export default function DealerAIUnderwriterPage() {
 
   const widget = response?.widget ?? null;
   const suggestedWidget = widget ?? lastSuggestedWidget;
-  const entityState = asRecord(response?.intake.intake_state?.entity_structure);
   const callBooking = asRecord(response?.intake.intake_state?.call_booking);
-  const hasRequiredFacts = Boolean(response && response.intake.loan_purpose && response.intake.requested_loan_amount && response.intake.estimated_credit_score);
-  const hasEntityStructure = Boolean(
-    entityState?.primary_operating_entity &&
-    entityState?.main_operating_bank_account &&
-    entityState?.related_entities &&
-    entityState?.relationship_explanation,
-  );
-  const hasAssets = Boolean(response && response.intake.asset_rows?.some((row) => row.address && row.estimated_loan_amount != null && row.estimated_property_value != null));
-  const hasReferral = Boolean(response && response.intake.referral_source);
   const hasFiles = Boolean(response && response.files.length);
   const currentResult = response?.intake.result_snapshot ?? response?.latest_review?.result ?? null;
   const missingDocs = useMemo(() => {
@@ -222,17 +217,9 @@ export default function DealerAIUnderwriterPage() {
     response
       ? !hasFiles
         ? "upload_files"
-        : !hasEntityStructure
-          ? "entity_structure"
-          : !hasRequiredFacts
-            ? "deal_profile"
-            : !hasAssets
-              ? "real_estate_schedule"
-              : !hasReferral
-                ? "referral"
-                : currentResult
-                  ? "bankability_result"
-                  : "run_review"
+        : currentResult
+          ? "bankability_result"
+          : "run_review"
       : null
   );
   const activeWidgetType = openWidgetType ?? null;
@@ -433,7 +420,7 @@ export default function DealerAIUnderwriterPage() {
         .map((file) => ({
           id: `${file.name}-${file.size}-${file.lastModified}-${cryptoId()}`,
           file,
-          requestedDocumentId: missingDocs[0]?.id || response?.requested_documents[0]?.id || "",
+          requestedDocumentId: "",
           status: "ready" as const,
         }));
       return [...current, ...incoming];
@@ -996,7 +983,7 @@ function UploadWidget(props: {
               onChange={(event) => onChangeQueuedFileDocument(item.id, event.target.value)}
               disabled={item.status === "uploading"}
             >
-              <option value="">Unmatched file</option>
+              <option value="">Let AI classify</option>
               {requestedDocs.map((doc) => <option key={doc.id} value={doc.id}>{doc.name}</option>)}
             </select>
             {item.status !== "uploading" ? (
@@ -1253,7 +1240,7 @@ function BucketFilesPanel({
                     disabled={item.status === "uploading"}
                     onChange={(event) => onChangeQueuedFileDocument(item.id, event.target.value)}
                   >
-                    <option value="">Unmatched</option>
+                    <option value="">Let AI classify</option>
                     {response.requested_documents.map((doc) => <option key={doc.id} value={doc.id}>{doc.name}</option>)}
                   </select>
                   {item.status !== "uploading" ? (
