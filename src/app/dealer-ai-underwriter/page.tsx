@@ -170,6 +170,7 @@ export default function DealerAIUnderwriterPage() {
   const [resumeEmail, setResumeEmail] = useState("");
   const [loginCode, setLoginCode] = useState("");
   const [loginCodeSent, setLoginCodeSent] = useState(false);
+  const [showContinuationLogin, setShowContinuationLogin] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -183,7 +184,10 @@ export default function DealerAIUnderwriterPage() {
     const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
     const urlToken = params?.get("token") ?? null;
     const continueRequested = params?.get("continue") === "1";
-    if (continueRequested) setLoginCodeSent(true);
+    if (continueRequested) {
+      setLoginCodeSent(true);
+      setShowContinuationLogin(true);
+    }
     if (urlToken) {
       setToken(urlToken);
       loadIntake(urlToken, true).catch((error) => setStatus(errorMessage(error)));
@@ -345,6 +349,7 @@ export default function DealerAIUnderwriterPage() {
       if (message.toLowerCase().includes("already exists") || message.toLowerCase().includes("access code")) {
         setResumeEmail(contact.email.trim());
         setLoginCodeSent(true);
+        setShowContinuationLogin(true);
         setStatus(message);
       } else {
         setStatus(message);
@@ -388,6 +393,7 @@ export default function DealerAIUnderwriterPage() {
       if (payload.login_required) {
         setResumeEmail(email);
         setLoginCodeSent(true);
+        setShowContinuationLogin(true);
         setStatus(payload.message || "We found an existing secure dealer file for this email. Enter the code we sent to continue.");
       }
     } catch {
@@ -738,6 +744,7 @@ export default function DealerAIUnderwriterPage() {
     setFileDrawerOpen(false);
     setLoginCode("");
     setLoginCodeSent(false);
+    setShowContinuationLogin(false);
     setStatus("You are logged out of this secure room. Enter your email to receive a continuation code.");
     if (typeof window !== "undefined") {
       window.sessionStorage.removeItem(DEALER_AI_SESSION_KEY);
@@ -771,7 +778,7 @@ export default function DealerAIUnderwriterPage() {
               </div>
               <div style={stepOneNavActions}>
                 <span style={navPill}>AI Underwriter</span>
-                <button type="button" style={loginPill} onClick={() => setLoginCodeSent(true)}>Continue</button>
+                <button type="button" style={loginPill} onClick={() => setShowContinuationLogin(true)}>Continue</button>
               </div>
             </nav>
 
@@ -805,26 +812,41 @@ export default function DealerAIUnderwriterPage() {
                 </div>
               </div>
               <div style={stepOneFormColumn}>
-                <ContactWidget
-                  contact={contact}
-                  setContact={setContact}
-                  busy={busy || emailLookupBusy}
-                  emailLookupBusy={emailLookupBusy}
-                  legalAccepted={legalAccepted}
-                  setLegalAccepted={setLegalAccepted}
-                  onEmailBlur={() => checkDealerEmail(contact.email).catch(() => undefined)}
-                  onStart={() => startIntake().catch(() => undefined)}
-                />
-                <DealerContinuationWidget
-                  email={resumeEmail}
-                  setEmail={setResumeEmail}
-                  code={loginCode}
-                  setCode={setLoginCode}
-                  codeSent={loginCodeSent}
-                  busy={busy}
-                  onSendCode={() => requestDealerCode().catch(() => undefined)}
-                  onVerify={() => verifyDealerCode().catch(() => undefined)}
-                />
+                {showContinuationLogin ? (
+                  <DealerContinuationWidget
+                    email={resumeEmail || contact.email}
+                    setEmail={(value) => {
+                      setResumeEmail(value);
+                      setContact({ ...contact, email: value });
+                    }}
+                    code={loginCode}
+                    setCode={setLoginCode}
+                    codeSent={loginCodeSent}
+                    busy={busy}
+                    onSendCode={() => requestDealerCode().catch(() => undefined)}
+                    onVerify={() => verifyDealerCode().catch(() => undefined)}
+                    onBack={() => {
+                      setShowContinuationLogin(false);
+                      setLoginCodeSent(false);
+                      setLoginCode("");
+                    }}
+                  />
+                ) : (
+                  <ContactWidget
+                    contact={contact}
+                    setContact={setContact}
+                    busy={busy || emailLookupBusy}
+                    emailLookupBusy={emailLookupBusy}
+                    legalAccepted={legalAccepted}
+                    setLegalAccepted={setLegalAccepted}
+                    onEmailBlur={() => checkDealerEmail(contact.email).catch(() => undefined)}
+                    onStart={() => startIntake().catch(() => undefined)}
+                    onShowLogin={() => {
+                      setResumeEmail(contact.email);
+                      setShowContinuationLogin(true);
+                    }}
+                  />
+                )}
                 {status ? <div style={statusBoxNoMargin}>{status}</div> : null}
               </div>
             </section>
@@ -1003,6 +1025,7 @@ function ContactWidget({
   setLegalAccepted,
   onEmailBlur,
   onStart,
+  onShowLogin,
 }: {
   contact: typeof initialContact;
   setContact: (value: typeof initialContact) => void;
@@ -1012,6 +1035,7 @@ function ContactWidget({
   setLegalAccepted: (value: boolean) => void;
   onEmailBlur: () => void;
   onStart: () => void;
+  onShowLogin: () => void;
 }) {
   return (
     <div style={stepOneFormCard}>
@@ -1033,6 +1057,9 @@ function ContactWidget({
         </span>
       </label>
       <button style={stepOneCta} disabled={busy} onClick={onStart}>{busy ? "Creating secure room..." : "Start my funding review ->"}</button>
+      <button type="button" style={inlineLoginButton} onClick={onShowLogin}>
+        Already started? Login with email code
+      </button>
       <div style={formTrustLine}>
         <span>Bank-grade encryption</span>
         <span>|</span>
@@ -1053,6 +1080,7 @@ function DealerContinuationWidget({
   busy,
   onSendCode,
   onVerify,
+  onBack,
 }: {
   email: string;
   setEmail: (value: string) => void;
@@ -1062,6 +1090,7 @@ function DealerContinuationWidget({
   busy: boolean;
   onSendCode: () => void;
   onVerify: () => void;
+  onBack: () => void;
 }) {
   return (
     <div style={resumeCard}>
@@ -1079,6 +1108,9 @@ function DealerContinuationWidget({
           <button type="button" style={secondaryButton} disabled={busy} onClick={onVerify}>Continue</button>
         </div>
       ) : null}
+      <button type="button" style={inlineLoginButton} onClick={onBack}>
+        Start a new dealer review instead
+      </button>
     </div>
   );
 }
@@ -2081,6 +2113,17 @@ const legalCheckRow: CSSProperties = {
   lineHeight: 1.45,
 };
 const inlineLink: CSSProperties = { color: "#F5E49A", fontWeight: 900, textDecoration: "none" };
+const inlineLoginButton: CSSProperties = {
+  border: 0,
+  background: "transparent",
+  color: "#F5E49A",
+  fontWeight: 900,
+  cursor: "pointer",
+  textDecoration: "underline",
+  textUnderlineOffset: 3,
+  justifySelf: "center",
+  padding: "0 4px",
+};
 const resumeCard: CSSProperties = {
   border: "1px solid rgba(255,255,255,.10)",
   borderRadius: 16,
