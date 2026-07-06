@@ -179,11 +179,7 @@ export default function DealerAIUnderwriterPage() {
     if (!nextWidget) return;
     setLastSuggestedWidget((previous) => {
       const changed = previous?.type !== nextWidget.type || previous?.source !== nextWidget.source;
-      const shouldOpen =
-        nextWidget.source === "user_intent" ||
-        nextWidget.type === "upload_files" ||
-        nextWidget.type === "bankability_result" ||
-        nextWidget.type === "book_call";
+      const shouldOpen = nextWidget.source === "user_intent";
       if (shouldOpen && changed) {
         setOpenWidgetType(nextWidget.type);
       }
@@ -194,7 +190,6 @@ export default function DealerAIUnderwriterPage() {
   const widget = response?.widget ?? null;
   const suggestedWidget = widget ?? lastSuggestedWidget;
   const callBooking = asRecord(response?.intake.intake_state?.call_booking);
-  const hasFiles = Boolean(response && response.files.length);
   const currentResult = response?.intake.result_snapshot ?? response?.latest_review?.result ?? null;
   const missingDocs = useMemo(() => {
     const uploadedIds = new Set(response?.files.map((file) => file.requested_document_id).filter(Boolean) ?? []);
@@ -213,15 +208,6 @@ export default function DealerAIUnderwriterPage() {
           : missingDocs.length
             ? "Needs baseline"
             : "Ready to review";
-  const suggestedWidgetType = suggestedWidget?.type ?? (
-    response
-      ? !hasFiles
-        ? "upload_files"
-        : currentResult
-          ? "bankability_result"
-          : "run_review"
-      : null
-  );
   const activeWidgetType = openWidgetType ?? null;
   const bankability = asRecord(response?.latest_review?.result?.bankability_assessment ?? response?.intake.result_snapshot?.bankability_assessment);
   const fundability = fundabilityBanner(currentResult, bankability);
@@ -473,7 +459,7 @@ export default function DealerAIUnderwriterPage() {
         const payload = await call<IntakeResponse>(`/public/dealer-ai-intake/${encodeURIComponent(token)}/run-review`, { method: "POST" });
         applyResponse(payload, token);
         pushAssistant(payload.assistant_message);
-        setOpenWidgetType("bankability_result");
+        setOpenWidgetType(null);
       } else {
         pushAssistant("No files uploaded successfully. Correct the file errors and try again.");
       }
@@ -554,13 +540,18 @@ export default function DealerAIUnderwriterPage() {
     if (event.dataTransfer.files.length) addFiles(event.dataTransfer.files);
   }
 
+  const compactTool = response && suggestedWidget && !activeWidgetType ? (
+    <ToolSuggestionCard widget={suggestedWidget} onOpen={() => setOpenWidgetType(suggestedWidget.type)} />
+  ) : null;
+
   const inlineWidget = response && activeWidgetType ? (
     <div style={assistantWidgetBubble}>
       <div style={aiPromptHeader}>
-        <span style={aiPromptLabel}>AI prompt</span>
-        <h3 style={aiPromptTitle}>{suggestedWidget?.title || "Next underwriting step"}</h3>
-        <p style={aiPromptCopy}>{suggestedWidget?.description || "Complete this step so the AI can keep screening the file."}</p>
-        <button style={smallGhostButton} onClick={() => setOpenWidgetType(null)}>Collapse tool</button>
+        <div>
+          <h3 style={aiPromptTitle}>{suggestedWidget?.title || "Next underwriting step"}</h3>
+          <p style={aiPromptCopy}>{suggestedWidget?.description || "Complete this step so the AI can keep screening the file."}</p>
+        </div>
+        <button style={smallGhostButton} onClick={() => setOpenWidgetType(null)}>Collapse</button>
       </div>
       {activeWidgetType === "upload_files" ? (
         <UploadWidget
@@ -716,11 +707,7 @@ export default function DealerAIUnderwriterPage() {
                       <p style={muted}>Ask questions, attach files, and answer only the underwriting questions that matter.</p>
                     </div>
                     <div style={compact ? mobileActionRow : headerActionRow}>
-                      {suggestedWidgetType && !activeWidgetType ? (
-                        <button type="button" style={ghostButton} onClick={() => setOpenWidgetType(suggestedWidgetType)}>
-                          Open request
-                        </button>
-                      ) : null}
+                      <span style={statusPill}>{reviewStatus}</span>
                     </div>
                   </div>
                   <div style={compact ? messagesModernMobile : messagesModern}>
@@ -730,6 +717,7 @@ export default function DealerAIUnderwriterPage() {
                         {line.content}
                       </div>
                     ))}
+                    {compactTool}
                     {inlineWidget}
                   </div>
                   {pendingFiles.length ? (
@@ -792,6 +780,7 @@ export default function DealerAIUnderwriterPage() {
                     response={response}
                     missingDocs={missingDocs}
                     pendingFiles={pendingFiles}
+                    result={currentResult}
                     busy={busy}
                     fundability={fundability}
                     onOpenUpload={openUploadTool}
@@ -1189,10 +1178,26 @@ function AttachmentTray({ files, compact, onRemove }: { files: QueuedFile[]; com
   );
 }
 
+function ToolSuggestionCard({ widget, onOpen }: { widget: Widget; onOpen: () => void }) {
+  return (
+    <div style={toolSuggestionCard}>
+      <div style={toolSuggestionIcon}>{toolIcon(widget.type)}</div>
+      <div style={{ minWidth: 0 }}>
+        <div style={toolSuggestionTitle}>{widget.title}</div>
+        <p style={toolSuggestionCopy}>{widget.description || widget.reason || "Use this when you are ready."}</p>
+      </div>
+      <button type="button" style={toolSuggestionButton} onClick={onOpen}>
+        {toolCta(widget.type)}
+      </button>
+    </div>
+  );
+}
+
 function BucketFilesPanel({
   response,
   missingDocs,
   pendingFiles,
+  result,
   busy,
   fundability,
   onOpenUpload,
@@ -1203,6 +1208,7 @@ function BucketFilesPanel({
   response: IntakeResponse;
   missingDocs: RequestedDoc[];
   pendingFiles: QueuedFile[];
+  result: Record<string, unknown> | null;
   busy: boolean;
   fundability: FundabilityBannerData | null;
   onOpenUpload: () => void;
@@ -1212,6 +1218,7 @@ function BucketFilesPanel({
 }) {
   const docsById = new Map(response.requested_documents.map((doc) => [doc.id, doc]));
   const readyCount = pendingFiles.filter((file) => file.status === "ready" || file.status === "error").length;
+  const evidenceByFileId = evidenceMapByFileId(result);
   return (
     <section style={bucketTabPanel}>
       <div style={sideCardHeader}>
@@ -1283,12 +1290,14 @@ function BucketFilesPanel({
         <div style={sideList}>
           {response.files.length ? response.files.map((file) => {
             const doc = file.requested_document_id ? docsById.get(file.requested_document_id) : null;
+            const evidence = evidenceByFileId.get(file.id);
             return (
               <div key={file.id} style={uploadedFileCard}>
                 <div style={fileTypeBadge}>{fileLabel(file)}</div>
                 <div style={{ minWidth: 0 }}>
                   <strong style={truncate}>{file.file_name}</strong>
-                  <span style={smallMuted}>{doc?.name || "Unmatched file"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}</span>
+                  <span style={smallMuted}>{evidence?.classification || doc?.name || "Let AI classify"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}</span>
+                  {evidence?.supports ? <span style={evidenceLine}>{evidence.supports}</span> : null}
                 </div>
               </div>
             );
@@ -1309,6 +1318,29 @@ function BucketFilesPanel({
   );
 }
 
+type FileEvidence = { classification: string; supports: string };
+
+function evidenceMapByFileId(result: Record<string, unknown> | null): Map<string, FileEvidence> {
+  const output = new Map<string, FileEvidence>();
+  const evidenceMap = asRecord(result?.document_evidence_map);
+  for (const item of arrayOfRecords(evidenceMap?.files)) {
+    const id = String(item.file_id || "");
+    if (!id) continue;
+    const supports = Array.isArray(item.supports) ? item.supports.map((value) => String(value)).filter(Boolean).slice(0, 2).join(" | ") : "";
+    output.set(id, {
+      classification: humanizeClassification(String(item.ai_classification || item.document_type || "AI classified")),
+      supports,
+    });
+  }
+  return output;
+}
+
+function humanizeClassification(value: string): string {
+  const normalized = value.replace(/[_-]+/g, " ").trim();
+  if (!normalized) return "AI classified";
+  return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 type FundabilityBannerData = {
   tone: "green" | "red" | "amber";
   label: string;
@@ -1327,6 +1359,46 @@ function FundabilityBanner({ banner }: { banner: FundabilityBannerData }) {
       </div>
     </div>
   );
+}
+
+function toolCta(type: WidgetType): string {
+  switch (type) {
+    case "upload_files":
+      return "Add files";
+    case "real_estate_schedule":
+      return "Enter schedule";
+    case "entity_structure":
+      return "Clarify";
+    case "deal_profile":
+      return "Add facts";
+    case "referral":
+      return "Add referral";
+    case "run_review":
+      return "Run screen";
+    case "bankability_result":
+      return "View result";
+    case "book_call":
+      return "Pick time";
+    default:
+      return "Open";
+  }
+}
+
+function toolIcon(type: WidgetType): string {
+  switch (type) {
+    case "upload_files":
+      return "+";
+    case "real_estate_schedule":
+      return "$";
+    case "entity_structure":
+      return "LLC";
+    case "book_call":
+      return "Cal";
+    case "bankability_result":
+      return "AI";
+    default:
+      return ">";
+  }
 }
 
 function ReviewSidePanel({ result, bankability, reviewStatus, onOpenReview }: { result: Record<string, unknown> | null; bankability: Record<string, unknown> | null; reviewStatus: string; onOpenReview: () => void }) {
@@ -2157,37 +2229,71 @@ const userBubble: CSSProperties = {
 };
 const assistantWidgetBubble: CSSProperties = {
   alignSelf: "flex-start",
-  width: "min(860px, 100%)",
+  width: "min(760px, 100%)",
   maxWidth: "100%",
-  borderRadius: 18,
-  border: "1px solid rgba(255,255,255,.10)",
-  background: "#111",
-  padding: 14,
+  borderRadius: 16,
+  border: "1px solid rgba(255,255,255,.09)",
+  background: "rgba(255,255,255,.035)",
+  padding: 12,
   display: "grid",
-  gap: 12,
+  gap: 10,
 };
 const aiPromptHeader: CSSProperties = {
   display: "grid",
-  gap: 5,
-  padding: "2px 4px 0",
-};
-const aiPromptLabel: CSSProperties = {
-  color: "#6EE7DC",
-  fontSize: 11,
-  fontWeight: 900,
-  letterSpacing: 1.2,
-  textTransform: "uppercase",
+  gridTemplateColumns: "minmax(0,1fr) auto",
+  alignItems: "start",
+  gap: 10,
+  padding: "2px 2px 0",
 };
 const aiPromptTitle: CSSProperties = {
   margin: 0,
   color: "#F8FAFC",
-  fontSize: 20,
+  fontSize: 16,
   letterSpacing: 0,
 };
 const aiPromptCopy: CSSProperties = {
   margin: 0,
   color: "#B8C4D6",
   lineHeight: 1.45,
+  fontSize: 13,
+};
+const toolSuggestionCard: CSSProperties = {
+  alignSelf: "flex-start",
+  width: "min(680px,100%)",
+  border: "1px solid rgba(255,255,255,.10)",
+  borderRadius: 18,
+  background: "rgba(255,255,255,.045)",
+  padding: 12,
+  display: "grid",
+  gridTemplateColumns: "38px minmax(0,1fr) auto",
+  gap: 12,
+  alignItems: "center",
+  boxShadow: "0 18px 48px rgba(0,0,0,.22)",
+};
+const toolSuggestionIcon: CSSProperties = {
+  width: 38,
+  height: 38,
+  borderRadius: 12,
+  display: "grid",
+  placeItems: "center",
+  background: "rgba(233,213,138,.10)",
+  border: "1px solid rgba(233,213,138,.22)",
+  color: "#E9D58A",
+  fontWeight: 900,
+  fontSize: 12,
+};
+const toolSuggestionTitle: CSSProperties = { color: "#F8FAFC", fontWeight: 900, fontSize: 14, overflowWrap: "anywhere" };
+const toolSuggestionCopy: CSSProperties = { margin: "3px 0 0", color: "#AAB4C3", fontSize: 13, lineHeight: 1.35 };
+const toolSuggestionButton: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.14)",
+  borderRadius: 999,
+  background: "rgba(255,255,255,.065)",
+  color: "#F6F8FB",
+  minHeight: 34,
+  padding: "0 13px",
+  fontWeight: 900,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
 };
 const composer: CSSProperties = { display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, padding: "14px min(7vw,92px) 24px", alignItems: "center" };
 const composerMobile: CSSProperties = { ...composer, gap: 8, padding: 12, gridTemplateColumns: "40px minmax(0, 1fr) auto" };
@@ -2259,10 +2365,10 @@ const attachmentRemove: CSSProperties = {
 };
 const widgetPanel: CSSProperties = { display: "grid", gap: 14 };
 const widgetBox: CSSProperties = {
-  background: "rgba(8,14,32,.68)",
+  background: "rgba(0,0,0,.16)",
   border: "1px solid rgba(255,255,255,.1)",
-  borderRadius: 16,
-  padding: 18,
+  borderRadius: 14,
+  padding: 13,
   boxShadow: "none",
 };
 const sideCard: CSSProperties = {
@@ -2333,6 +2439,13 @@ const uploadedFileCard: CSSProperties = {
   gridTemplateColumns: "42px minmax(0,1fr)",
   gap: 10,
   alignItems: "center",
+};
+const evidenceLine: CSSProperties = {
+  display: "block",
+  marginTop: 3,
+  color: "#D6C36A",
+  fontSize: 12,
+  lineHeight: 1.3,
 };
 const fileTypeBadge: CSSProperties = {
   width: 38,
@@ -2506,9 +2619,9 @@ const completeChip: CSSProperties = {
   color: "#A7F3D0",
 };
 const dropZone: CSSProperties = {
-  border: "2px dashed rgba(255,255,255,.16)",
-  borderRadius: 16,
-  minHeight: 138,
+  border: "1px dashed rgba(255,255,255,.16)",
+  borderRadius: 14,
+  minHeight: 96,
   display: "grid",
   placeItems: "center",
   textAlign: "center",
