@@ -108,6 +108,26 @@ type WidgetType = Widget["type"];
 type ChatLine = { id: string; role: "assistant" | "user"; content: string };
 type QueuedFile = { id: string; file: File; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
 type ReviewProgressStage = "idle" | "attaching" | "uploading" | "reading" | "classifying" | "screening" | "preparing" | "complete" | "error";
+type WorkspaceTab = "chat" | "files" | "intelligence";
+type IntelligenceValue = { label: string; value: string; source: "verified" | "extracted" | "estimated" | "unavailable"; detail?: string; raw?: number | null };
+type IntelligenceModel = {
+  status: FundabilityBannerData | null;
+  requestedAmount: IntelligenceValue;
+  annualizedRevenue: IntelligenceValue;
+  debtBurden: IntelligenceValue;
+  dscr: IntelligenceValue;
+  ltv: IntelligenceValue;
+  equity: IntelligenceValue;
+  confidence: IntelligenceValue;
+  coverage: Array<{ category: string; status: string; evidence: string; gap: string }>;
+  strengths: string[];
+  risks: string[];
+  missing: Array<{ title: string; detail: string; priority: string }>;
+  cashFlowBars: Array<{ label: string; value: number | null; source: IntelligenceValue["source"] }>;
+  monthlySeries: Array<{ label: string; value: number | null }>;
+  yearlySeries: Array<{ label: string; value: number | null }>;
+  oneNextStep: string;
+};
 const DEALER_AI_UPLOAD_ACCEPT = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.zip,.csv,.xlsx,.txt,text/plain,application/pdf,image/*,application/zip,application/x-zip-compressed,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const DEALER_AI_SESSION_KEY = "qc_dealer_ai_session";
 const DEALER_AI_TOKEN_KEY = "qc_dealer_ai_token";
@@ -145,6 +165,7 @@ export default function DealerAIUnderwriterPage() {
   const compact = useCompactViewport();
   const [mounted, setMounted] = useState(false);
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
+  const roomFileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const progressTimersRef = useRef<number[]>([]);
   const completionTimerRef = useRef<number | null>(null);
@@ -163,7 +184,7 @@ export default function DealerAIUnderwriterPage() {
   const [status, setStatus] = useState("");
   const [emailLookupBusy, setEmailLookupBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceTab>("chat");
   const [reviewProgress, setReviewProgress] = useState<ReviewProgressStage>("idle");
   const [reviewCompletedAt, setReviewCompletedAt] = useState<string | null>(null);
   const [legalAccepted, setLegalAccepted] = useState(false);
@@ -251,6 +272,10 @@ export default function DealerAIUnderwriterPage() {
             : "Ready to review";
   const bankability = asRecord(response?.latest_review?.result?.bankability_assessment ?? response?.intake.result_snapshot?.bankability_assessment);
   const fundability = fundabilityBanner(currentResult, bankability);
+  const intelligence = useMemo(
+    () => (response ? buildIntelligenceModel(response, currentResult, missingDocs, fundability) : null),
+    [response, currentResult, missingDocs, fundability],
+  );
   const showReviewProgress = reviewProgress !== "idle" && reviewProgress !== "attaching";
 
   useEffect(() => {
@@ -537,6 +562,24 @@ export default function DealerAIUnderwriterPage() {
     }
   }
 
+  async function exportIntelligencePdf() {
+    const params = new URLSearchParams();
+    if (token) params.set("token", token);
+    const res = await fetch(`${apiBase}/api/v1/public/dealer-ai-intake/intelligence.pdf?${params.toString()}`, {
+      headers: dealerSessionToken ? { "X-Dealer-Session": dealerSessionToken } : undefined,
+    });
+    if (!res.ok) throw new Error(await responseMessage(res));
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `dealer-intelligence-${response?.intake.business_name || response?.intake.full_name || "review"}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
   async function bookCall(startsAt: string) {
     if (!token) return;
     setBusy(true);
@@ -575,7 +618,6 @@ export default function DealerAIUnderwriterPage() {
         }));
       return [...current, ...incoming];
     });
-    setFileDrawerOpen(true);
     setProgress("attaching");
     setStatus(`${files.length} file${files.length === 1 ? "" : "s"} attached. Send or upload when ready.`);
   }
@@ -704,7 +746,7 @@ export default function DealerAIUnderwriterPage() {
   }
 
   function openFilePicker() {
-    composerFileInputRef.current?.click();
+    (composerFileInputRef.current ?? roomFileInputRef.current)?.click();
   }
 
   function handleRoomDragOver(event: DragEvent<HTMLElement>) {
@@ -741,7 +783,6 @@ export default function DealerAIUnderwriterPage() {
     setChat([]);
     setChatText("");
     setQueuedFiles([]);
-    setFileDrawerOpen(false);
     setLoginCode("");
     setLoginCodeSent(false);
     setShowContinuationLogin(false);
@@ -868,6 +909,8 @@ export default function DealerAIUnderwriterPage() {
                 response={response}
                 missingDocs={missingDocs}
                 reviewStatus={reviewStatus}
+                activeTab={activeWorkspace}
+                onTabChange={setActiveWorkspace}
                 onCopyResume={() => navigator.clipboard.writeText(response.resume_url || "")}
                 onLogout={logoutRoom}
               />
@@ -890,10 +933,37 @@ export default function DealerAIUnderwriterPage() {
                     </div>
                   </div>
                   <button type="button" style={ghostButton} onClick={logoutRoom}>Logout</button>
+                  <div style={mobileTabs} aria-label="Dealer AI room sections">
+                    {(["chat", "files", "intelligence"] as WorkspaceTab[]).map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        style={activeWorkspace === tab ? mobileTabActive : mobileTab}
+                        onClick={() => setActiveWorkspace(tab)}
+                      >
+                        {tab === "chat" ? "Chat" : tab === "files" ? "Files" : "Intel"}
+                      </button>
+                    ))}
+                  </div>
                 </header>
               ) : null}
+              <input
+                ref={roomFileInputRef}
+                type="file"
+                multiple
+                accept={DEALER_AI_UPLOAD_ACCEPT}
+                disabled={!token}
+                style={{ display: "none" }}
+                onChange={(event) => {
+                  if (event.target.files) {
+                    addFiles(event.target.files);
+                  }
+                  event.currentTarget.value = "";
+                }}
+              />
 
-              <div style={compact ? workspaceGridMobile : workspaceGrid}>
+              <div style={compact ? workspaceGridMobile : activeWorkspace === "chat" ? workspaceGrid : workspaceGridSingle}>
+                {activeWorkspace === "chat" ? (
                 <section style={compact ? chatPanelModernMobile : chatPanelModern}>
                   {dragging ? (
                     <div style={dropHint}>
@@ -908,30 +978,8 @@ export default function DealerAIUnderwriterPage() {
                     </div>
                     <div style={compact ? mobileActionRow : headerActionRow}>
                       <span style={statusPill}>{reviewStatus}</span>
-                      {compact ? (
-                        <button type="button" style={ghostButton} onClick={() => setFileDrawerOpen((open) => !open)}>
-                          {fileDrawerOpen ? "Hide files" : `Files (${response.files.length})`}
-                        </button>
-                      ) : null}
                     </div>
                   </div>
-                  {compact && fileDrawerOpen ? (
-                    <FileDrawerPanel
-                      response={response}
-                      missingDocs={missingDocs}
-                      pendingFiles={pendingFiles}
-                      result={currentResult}
-                      busy={busy}
-                      fundability={fundability}
-                      onAttachFiles={openFilePicker}
-                      onRemoveQueuedFile={removeQueuedFile}
-                      onUpload={() => uploadQueuedFiles().catch(() => undefined)}
-                      reviewProgress={reviewProgress}
-                      reviewCompletedAt={reviewCompletedAt}
-                      showReviewProgress={showReviewProgress}
-                      compact
-                    />
-                  ) : null}
                   {showReviewProgress ? <ReviewProgress stage={reviewProgress} completedAt={reviewCompletedAt} compact={compact} /> : null}
                   <div style={compact ? messagesModernMobile : messagesModern}>
                     {fundability ? <FundabilityBanner banner={fundability} /> : null}
@@ -993,8 +1041,9 @@ export default function DealerAIUnderwriterPage() {
                   </div>
                   {status ? <div style={statusBox}>{status}</div> : null}
                 </section>
+                ) : null}
 
-                {!compact ? (
+                {activeWorkspace === "chat" && !compact ? (
                   <FileDrawerPanel
                     response={response}
                     missingDocs={missingDocs}
@@ -1008,6 +1057,32 @@ export default function DealerAIUnderwriterPage() {
                     reviewProgress={reviewProgress}
                     reviewCompletedAt={reviewCompletedAt}
                     showReviewProgress={showReviewProgress}
+                  />
+                ) : null}
+                {activeWorkspace === "files" ? (
+                  <FileDrawerPanel
+                    response={response}
+                    missingDocs={missingDocs}
+                    pendingFiles={pendingFiles}
+                    result={currentResult}
+                    busy={busy}
+                    fundability={fundability}
+                    onAttachFiles={openFilePicker}
+                    onRemoveQueuedFile={removeQueuedFile}
+                    onUpload={() => uploadQueuedFiles().catch(() => undefined)}
+                    reviewProgress={reviewProgress}
+                    reviewCompletedAt={reviewCompletedAt}
+                    showReviewProgress={showReviewProgress}
+                    full
+                    compact={compact}
+                  />
+                ) : null}
+                {activeWorkspace === "intelligence" && intelligence ? (
+                  <IntelligencePanel
+                    model={intelligence}
+                    response={response}
+                    result={currentResult}
+                    onExport={() => exportIntelligencePdf().catch((error) => setStatus(errorMessage(error)))}
                   />
                 ) : null}
               </div>
@@ -1335,15 +1410,24 @@ function DealerSidebar({
   response,
   missingDocs,
   reviewStatus,
+  activeTab,
+  onTabChange,
   onCopyResume,
   onLogout,
 }: {
   response: IntakeResponse;
   missingDocs: RequestedDoc[];
   reviewStatus: string;
+  activeTab: WorkspaceTab;
+  onTabChange: (tab: WorkspaceTab) => void;
   onCopyResume: () => void;
   onLogout: () => void;
 }) {
+  const tabs: Array<{ key: WorkspaceTab; label: string; detail: string }> = [
+    { key: "chat", label: "Underwriter chat", detail: reviewStatus },
+    { key: "files", label: "Files drawer", detail: `${response.files.length} uploaded` },
+    { key: "intelligence", label: "Intelligence", detail: missingDocs.length ? `${missingDocs.length} open metrics` : "Cockpit ready" },
+  ];
   return (
     <aside style={dealerSidebar}>
       <div style={sidebarBrand}>
@@ -1355,14 +1439,17 @@ function DealerSidebar({
       </div>
 
       <nav style={sidebarNav} aria-label="Dealer AI room">
-        <div style={sidebarNavItemActive}>
-          <span>Underwriter chat</span>
-          <small>{reviewStatus}</small>
-        </div>
-        <div style={sidebarNavItem}>
-          <span>Files drawer</span>
-          <small>{response.files.length} uploaded</small>
-        </div>
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            style={activeTab === tab.key ? sidebarNavItemActive : sidebarNavItem}
+            onClick={() => onTabChange(tab.key)}
+          >
+            <span>{tab.label}</span>
+            <small>{tab.detail}</small>
+          </button>
+        ))}
       </nav>
 
       <div style={sidebarSection}>
@@ -1473,6 +1560,7 @@ function FileDrawerPanel({
   reviewProgress,
   reviewCompletedAt,
   showReviewProgress,
+  full = false,
   compact = false,
 }: {
   response: IntakeResponse;
@@ -1487,6 +1575,7 @@ function FileDrawerPanel({
   reviewProgress: ReviewProgressStage;
   reviewCompletedAt: string | null;
   showReviewProgress: boolean;
+  full?: boolean;
   compact?: boolean;
 }) {
   const docsById = new Map(response.requested_documents.map((doc) => [doc.id, doc]));
@@ -1501,7 +1590,7 @@ function FileDrawerPanel({
   }
   const topLevelFiles = response.files.filter((file) => !file.parent_zip_file_id);
   return (
-    <section style={compact ? fileDrawerPanelMobile : fileDrawerPanel}>
+    <section style={compact ? fileDrawerPanelMobile : full ? fileDrawerPanelFull : fileDrawerPanel}>
       <div style={sideCardHeader}>
         <div>
           <div style={sideEyebrow}>Files</div>
@@ -1757,6 +1846,263 @@ function ReviewSidePanel({ result, bankability, reviewStatus, onOpenReview }: { 
   );
 }
 
+function IntelligencePanel({
+  model,
+  response,
+  result,
+  onExport,
+}: {
+  model: IntelligenceModel;
+  response: IntakeResponse;
+  result: Record<string, unknown> | null;
+  onExport: () => void;
+}) {
+  const probability = String(result?.probability_status || model.status?.title || "Awaiting review");
+  return (
+    <section style={intelligencePanel}>
+      <div style={intelligenceHeader}>
+        <div>
+          <div style={sideEyebrow}>Underwriting intelligence</div>
+          <h2 style={intelligenceTitle}>{response.intake.business_name || response.intake.full_name}</h2>
+          <p style={muted}>Visual cockpit derived from uploaded evidence, chat answers, and the latest AI screen.</p>
+        </div>
+        <button type="button" style={primaryButton} onClick={onExport}>Export PDF</button>
+      </div>
+
+      {model.status ? <FundabilityBanner banner={model.status} /> : (
+        <div style={intelligenceEmptyBanner}>
+          <strong>No preliminary screen yet</strong>
+          <span>Upload files or ask the underwriter to screen the package. Metrics will populate as evidence is extracted.</span>
+        </div>
+      )}
+
+      <div style={kpiGrid}>
+        <IntelligenceKpi metric={model.requestedAmount} />
+        <IntelligenceKpi metric={model.annualizedRevenue} />
+        <IntelligenceKpi metric={model.debtBurden} />
+        <IntelligenceKpi metric={model.dscr} emphasis />
+        <IntelligenceKpi metric={model.ltv} />
+        <IntelligenceKpi metric={model.equity} />
+        <IntelligenceKpi metric={model.confidence} />
+      </div>
+
+      <div style={chartGrid}>
+        <div style={chartCard}>
+          <div style={chartHeader}>
+            <strong>Debt service coverage</strong>
+            <span style={metricSourcePill(model.dscr.source)}>{model.dscr.source}</span>
+          </div>
+          <GaugeChart value={model.dscr.raw} />
+          <p style={smallMuted}>{model.dscr.detail || "Coverage will populate when cash flow and debt service evidence is available."}</p>
+        </div>
+
+        <div style={chartCard}>
+          <div style={chartHeader}>
+            <strong>Real estate equity / LTV</strong>
+            <span style={metricSourcePill(model.ltv.source)}>{model.ltv.source}</span>
+          </div>
+          <EquityChart equity={model.equity.raw} ltv={model.ltv.raw} />
+          <p style={smallMuted}>{model.equity.detail || "Collateral values and payoff balances are needed for equity and LTV."}</p>
+        </div>
+
+        <div style={chartCardWide}>
+          <div style={chartHeader}>
+            <strong>Cash flow stack</strong>
+            <span style={smallMuted}>Revenue / cash flow / debt service</span>
+          </div>
+          <CashFlowBars bars={model.cashFlowBars} />
+        </div>
+
+        <div style={chartCard}>
+          <div style={chartHeader}>
+            <strong>Month-to-month cash flow</strong>
+            <span style={smallMuted}>Bank statement trend</span>
+          </div>
+          <MiniBarChart series={model.monthlySeries} emptyLabel="Awaiting three months of main operating bank statements." />
+        </div>
+
+        <div style={chartCard}>
+          <div style={chartHeader}>
+            <strong>Year-to-year performance</strong>
+            <span style={smallMuted}>Tax / P&L trend</span>
+          </div>
+          <MiniBarChart series={model.yearlySeries} emptyLabel="Awaiting tax returns and YTD P&L figures." />
+        </div>
+      </div>
+
+      <div style={intelligenceTables}>
+        <div style={chartCard}>
+          <div style={chartHeader}>
+            <strong>Evidence coverage</strong>
+            <span style={smallMuted}>{response.files.length} files</span>
+          </div>
+          <EvidenceCoverageTable rows={model.coverage} />
+        </div>
+        <div style={chartCard}>
+          <div style={chartHeader}>
+            <strong>Still needed</strong>
+            <span style={smallMuted}>{model.missing.length} items</span>
+          </div>
+          <MissingTable rows={model.missing} />
+        </div>
+      </div>
+
+      <div style={intelligenceTables}>
+        <RiskStrengthTable title="Strengths" rows={model.strengths} tone="green" />
+        <RiskStrengthTable title="Risks" rows={model.risks} tone="amber" />
+      </div>
+
+      <div style={intelligenceNextStep}>
+        <span>Next underwriting move</span>
+        <strong>{model.oneNextStep || probability}</strong>
+      </div>
+    </section>
+  );
+}
+
+function IntelligenceKpi({ metric, emphasis }: { metric: IntelligenceValue; emphasis?: boolean }) {
+  return (
+    <div style={emphasis ? kpiCardEmphasis : kpiCard}>
+      <span>{metric.label}</span>
+      <strong>{metric.value}</strong>
+      <div style={kpiFooter}>
+        <span style={metricSourcePill(metric.source)}>{metric.source}</span>
+        {metric.detail ? <small>{metric.detail}</small> : null}
+      </div>
+    </div>
+  );
+}
+
+function GaugeChart({ value }: { value: number | null | undefined }) {
+  const numeric = typeof value === "number" && Number.isFinite(value) ? value : null;
+  const clamped = numeric === null ? 0 : Math.max(0, Math.min(numeric, 3));
+  const angle = -90 + (clamped / 3) * 180;
+  const x = 100 + 70 * Math.cos((angle * Math.PI) / 180);
+  const y = 92 + 70 * Math.sin((angle * Math.PI) / 180);
+  return (
+    <div style={gaugeWrap}>
+      <svg viewBox="0 0 200 120" style={gaugeSvg} aria-label="DSCR gauge">
+        <path d="M30 92 A70 70 0 0 1 170 92" fill="none" stroke="rgba(255,255,255,.10)" strokeWidth="16" strokeLinecap="round" />
+        <path d="M30 92 A70 70 0 0 1 73 28" fill="none" stroke="#EF4444" strokeWidth="16" strokeLinecap="round" />
+        <path d="M73 28 A70 70 0 0 1 116 28" fill="none" stroke="#F59E0B" strokeWidth="16" strokeLinecap="round" />
+        <path d="M116 28 A70 70 0 0 1 170 92" fill="none" stroke="#34D399" strokeWidth="16" strokeLinecap="round" />
+        <line x1="100" y1="92" x2={x} y2={y} stroke="#F8FAFC" strokeWidth="4" strokeLinecap="round" />
+        <circle cx="100" cy="92" r="8" fill="#F8FAFC" />
+      </svg>
+      <strong>{numeric === null ? "Awaiting evidence" : `${numeric.toFixed(2)}x`}</strong>
+      <span>0.00x - 3.00x</span>
+    </div>
+  );
+}
+
+function EquityChart({ equity, ltv }: { equity: number | null | undefined; ltv: number | null | undefined }) {
+  const ltvPct = typeof ltv === "number" && Number.isFinite(ltv) ? Math.max(0, Math.min(ltv, 100)) : null;
+  const equityPct = ltvPct === null ? null : Math.max(0, 100 - ltvPct);
+  return (
+    <div style={equityChartWrap}>
+      <div style={equityTrack}>
+        <div style={{ ...equityDebtFill, width: `${ltvPct ?? 0}%` }} />
+        <div style={{ ...equityValueFill, width: `${equityPct ?? 0}%` }} />
+      </div>
+      <div style={equityLegend}>
+        <span><b style={legendDebtDot} /> Debt / proposed LTV {ltvPct === null ? "—" : `${ltvPct.toFixed(1)}%`}</span>
+        <span><b style={legendEquityDot} /> Equity {typeof equity === "number" ? formatMoneyCompact(equity) : "Awaiting evidence"}</span>
+      </div>
+    </div>
+  );
+}
+
+function CashFlowBars({ bars }: { bars: IntelligenceModel["cashFlowBars"] }) {
+  const max = Math.max(...bars.map((bar) => Math.abs(bar.value || 0)), 1);
+  return (
+    <div style={cashFlowBarList}>
+      {bars.map((bar) => {
+        const value = typeof bar.value === "number" && Number.isFinite(bar.value) ? bar.value : null;
+        const width = value === null ? 0 : Math.max(4, Math.min(100, (Math.abs(value) / max) * 100));
+        return (
+          <div key={bar.label} style={cashFlowBarRow}>
+            <div style={cashFlowBarLabel}>
+              <span>{bar.label}</span>
+              <strong>{value === null ? "Awaiting evidence" : formatMoneyCompact(value)}</strong>
+            </div>
+            <div style={cashFlowTrack}>
+              <div style={{ ...cashFlowFill, width: `${width}%`, background: value !== null && value < 0 ? "#EF4444" : "#21D3C7" }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MiniBarChart({ series, emptyLabel }: { series: Array<{ label: string; value: number | null }>; emptyLabel: string }) {
+  const valid = series.filter((item) => typeof item.value === "number" && Number.isFinite(item.value));
+  if (!valid.length) return <div style={chartEmptyState}>{emptyLabel}</div>;
+  const max = Math.max(...valid.map((item) => Math.abs(item.value || 0)), 1);
+  return (
+    <div style={miniChart}>
+      {series.map((item) => {
+        const value = typeof item.value === "number" && Number.isFinite(item.value) ? item.value : null;
+        const height = value === null ? 8 : Math.max(12, Math.min(100, (Math.abs(value) / max) * 100));
+        return (
+          <div key={item.label} style={miniChartColumn}>
+            <div style={miniChartBarWrap}>
+              <div style={{ ...miniChartBar, height: `${height}%`, opacity: value === null ? 0.22 : 1 }} />
+            </div>
+            <span>{item.label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function EvidenceCoverageTable({ rows }: { rows: IntelligenceModel["coverage"] }) {
+  if (!rows.length) return <div style={chartEmptyState}>Awaiting AI evidence map.</div>;
+  return (
+    <div style={intelligenceTable}>
+      {rows.slice(0, 8).map((row) => (
+        <div key={row.category} style={intelligenceTableRow}>
+          <strong>{row.category}</strong>
+          <span style={coverageStatusStyle(row.status)}>{row.status}</span>
+          <small>{row.evidence || row.gap || "No evidence listed yet."}</small>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MissingTable({ rows }: { rows: IntelligenceModel["missing"] }) {
+  if (!rows.length) return <div style={chartEmptyState}>No blocking Stage 1 items listed in the latest screen.</div>;
+  return (
+    <div style={intelligenceTable}>
+      {rows.slice(0, 8).map((row) => (
+        <div key={`${row.title}-${row.priority}`} style={intelligenceTableRow}>
+          <strong>{row.title}</strong>
+          <span style={priorityPill(row.priority)}>{row.priority || "open"}</span>
+          <small>{row.detail}</small>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RiskStrengthTable({ title, rows, tone }: { title: string; rows: string[]; tone: "green" | "amber" }) {
+  return (
+    <div style={chartCard}>
+      <div style={chartHeader}>
+        <strong>{title}</strong>
+        <span style={tone === "green" ? completeChip : missingChip}>{rows.length || 0}</span>
+      </div>
+      <div style={riskList}>
+        {rows.length ? rows.slice(0, 7).map((row, index) => (
+          <div key={`${title}-${index}`} style={tone === "green" ? strengthRow : riskRow}>{row}</div>
+        )) : <div style={chartEmptyState}>Awaiting review extraction.</div>}
+      </div>
+    </div>
+  );
+}
+
 function WidgetBox({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return (
     <section style={widgetBox}>
@@ -1953,6 +2299,165 @@ function fundabilityBanner(result: Record<string, unknown> | null, bankability: 
     title: rawStatus || "Review ready",
     detail: reason,
   };
+}
+
+function buildIntelligenceModel(
+  response: IntakeResponse,
+  result: Record<string, unknown> | null,
+  missingDocs: RequestedDoc[],
+  status: FundabilityBannerData | null,
+): IntelligenceModel {
+  const keyMetrics = asRecord(result?.key_metrics);
+  const evidence = asRecord(result?.document_evidence_map);
+  const bankability = asRecord(result?.bankability_assessment);
+  const requestedAmount = numberFromUnknown(response.intake.requested_loan_amount ?? keyMetrics?.requested_amount);
+  const annualizedRevenue = numberFromUnknown(keyMetrics?.ytd_annualized_revenue ?? keyMetrics?.annualized_adjusted_deposits);
+  const debtBurden = numberFromUnknown(keyMetrics?.estimated_debt_burden);
+  const dscr = numberFromUnknown(keyMetrics?.estimated_dscr);
+  const collateral = collateralPosition(response);
+  const ltv = collateral.value && (collateral.debt || requestedAmount)
+    ? ((collateral.debt || 0) + (requestedAmount || 0)) / collateral.value * 100
+    : numberFromUnknown(keyMetrics?.estimated_ltv ?? keyMetrics?.ltv);
+  const equity = collateral.value ? collateral.value - (collateral.debt || 0) : numberFromUnknown(keyMetrics?.equity_position ?? keyMetrics?.available_equity);
+  const missingRows = arrayOfRecords(result?.missing_or_incomplete_items).map((item) => ({
+    title: String(item.title || "Missing item"),
+    detail: String(item.detail || ""),
+    priority: String(item.priority || "open"),
+  }));
+  const coverageRows = arrayOfRecords(evidence?.baseline_coverage).map((item) => ({
+    category: String(item.category || "Evidence"),
+    status: String(item.status || "unclear"),
+    evidence: Array.isArray(item.evidence) ? item.evidence.map(String).join(" | ") : String(item.evidence || ""),
+    gap: String(item.gap || ""),
+  }));
+  const fallbackCoverage = missingDocs.map((doc) => ({
+    category: doc.name,
+    status: "missing",
+    evidence: "",
+    gap: doc.description || "No supporting file has been matched yet.",
+  }));
+  return {
+    status,
+    requestedAmount: metricValue("Requested capital", requestedAmount, "estimated", response.intake.requested_loan_amount ? "Entered during intake" : "Awaiting requested amount", "money"),
+    annualizedRevenue: metricValue("Annualized revenue", annualizedRevenue, "extracted", "From YTD P&L, tax returns, or bank deposits when available", "money"),
+    debtBurden: metricValue("Debt burden", debtBurden, "extracted", "Current monthly or annualized debt service", "money"),
+    dscr: metricValue("DSCR estimate", dscr, "extracted", "Coverage based on available cash-flow evidence", "ratio"),
+    ltv: metricValue("Proposed LTV", ltv, collateral.value ? "estimated" : "unavailable", "Value less debt plus requested capital where available", "percent"),
+    equity: metricValue("Collateral equity", equity, collateral.value ? "estimated" : "unavailable", "Estimated property value less stated debt", "money"),
+    confidence: {
+      label: "AI confidence",
+      value: String(result?.confidence || "Awaiting review"),
+      source: result?.confidence ? "extracted" : "unavailable",
+      detail: String(result?.probability_status || bankability?.status || ""),
+      raw: null,
+    },
+    coverage: coverageRows.length ? coverageRows : fallbackCoverage,
+    strengths: arrayOfStrings(result?.strengths),
+    risks: arrayOfStrings(result?.risks),
+    missing: missingRows.length ? missingRows : missingDocs.map((doc) => ({ title: doc.name, detail: doc.description || "Required for Stage 1 bankability.", priority: "high" })),
+    cashFlowBars: [
+      { label: "Annualized revenue", value: annualizedRevenue, source: annualizedRevenue === null ? "unavailable" : "extracted" },
+      { label: "Estimated cash flow", value: numberFromUnknown(keyMetrics?.estimated_ebitda_or_cash_flow), source: keyMetrics?.estimated_ebitda_or_cash_flow ? "extracted" : "unavailable" },
+      { label: "Debt burden", value: debtBurden, source: debtBurden === null ? "unavailable" : "extracted" },
+      { label: "Net after debt", value: annualizedRevenue !== null && debtBurden !== null ? annualizedRevenue - debtBurden : null, source: annualizedRevenue !== null && debtBurden !== null ? "estimated" : "unavailable" },
+    ],
+    monthlySeries: seriesFromResult(result, ["monthly_cash_flow", "month_to_month_cash_flow", "monthly_deposits", "bank_statement_months"]),
+    yearlySeries: seriesFromResult(result, ["year_to_year_revenue", "annual_revenue", "tax_return_years", "yearly_profit"]),
+    oneNextStep: String(result?.one_next_step || asRecord(result?.next_best_action)?.detail || bankability?.reason || "Run the preliminary screen after uploading evidence."),
+  };
+}
+
+function metricValue(
+  label: string,
+  raw: number | null,
+  source: IntelligenceValue["source"],
+  detail: string,
+  format: "money" | "ratio" | "percent" | "plain",
+): IntelligenceValue {
+  if (raw === null || !Number.isFinite(raw)) {
+    return { label, value: "Awaiting evidence", source: "unavailable", detail, raw: null };
+  }
+  let value = `${raw}`;
+  if (format === "money") value = formatMoneyCompact(raw);
+  if (format === "ratio") value = `${raw.toFixed(2)}x`;
+  if (format === "percent") value = `${raw.toFixed(1)}%`;
+  return { label, value, source, detail, raw };
+}
+
+function collateralPosition(response: IntakeResponse): { value: number | null; debt: number | null } {
+  const rows = response.intake.asset_rows ?? [];
+  let value = 0;
+  let debt = 0;
+  for (const row of rows) {
+    value += Number(row.estimated_property_value || 0);
+    debt += Number(row.estimated_loan_amount || 0);
+  }
+  return { value: value > 0 ? value : null, debt: debt > 0 ? debt : null };
+}
+
+function seriesFromResult(result: Record<string, unknown> | null, keys: string[]): Array<{ label: string; value: number | null }> {
+  for (const key of keys) {
+    const raw = result?.[key];
+    if (!Array.isArray(raw)) continue;
+    const rows = raw
+      .map((item, index) => {
+        if (typeof item === "number") return { label: `${index + 1}`, value: item };
+        const record = asRecord(item);
+        if (!record) return null;
+        const label = String(record.month || record.year || record.label || `${index + 1}`);
+        const value = numberFromUnknown(record.value ?? record.revenue ?? record.deposits ?? record.cash_flow ?? record.net_income);
+        return { label, value };
+      })
+      .filter((item): item is { label: string; value: number | null } => Boolean(item));
+    if (rows.length) return rows.slice(0, 12);
+  }
+  return [];
+}
+
+function numberFromUnknown(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+  const lower = value.toLowerCase();
+  const multiplier = lower.includes("b") ? 1_000_000_000 : lower.includes("m") ? 1_000_000 : lower.includes("k") ? 1_000 : 1;
+  const negative = /\([^)]*\)/.test(value) || lower.trim().startsWith("-");
+  const cleaned = lower.replace(/[$,%x,\s,kmb()]/g, "").replace(/[^0-9.-]/g, "");
+  const parsed = Number(cleaned);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.abs(parsed) * multiplier * (negative ? -1 : 1);
+}
+
+function arrayOfStrings(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
+}
+
+function formatMoneyCompact(value: number): string {
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 1 : 2)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(abs >= 100_000 ? 0 : 1)}k`;
+  return `${sign}$${abs.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+function metricSourcePill(source: IntelligenceValue["source"]): CSSProperties {
+  if (source === "verified") return verifiedSourcePill;
+  if (source === "extracted") return extractedSourcePill;
+  if (source === "estimated") return estimatedSourcePill;
+  return unavailableSourcePill;
+}
+
+function coverageStatusStyle(status: string): CSSProperties {
+  const normalized = status.toLowerCase();
+  if (normalized.includes("satisfied")) return completeChip;
+  if (normalized.includes("partial")) return estimatedSourcePill;
+  if (normalized.includes("missing")) return missingChip;
+  return unavailableSourcePill;
+}
+
+function priorityPill(priority: string): CSSProperties {
+  const normalized = priority.toLowerCase();
+  if (normalized.includes("high")) return missingChip;
+  if (normalized.includes("low")) return completeChip;
+  return estimatedSourcePill;
 }
 
 async function responseMessage(res: Response): Promise<string> {
@@ -2366,6 +2871,10 @@ const workspaceGrid: CSSProperties = {
   gap: 16,
   alignItems: "start",
   overflow: "hidden",
+};
+const workspaceGridSingle: CSSProperties = {
+  ...workspaceGrid,
+  gridTemplateColumns: "minmax(0,1fr)",
 };
 const workspaceGridMobile: CSSProperties = { minHeight: 0, display: "grid", gap: 8, overflow: "hidden" };
 const appMain: CSSProperties = {
@@ -2845,6 +3354,11 @@ const fileDrawerPanel: CSSProperties = {
   gap: 14,
   overflowY: "auto",
 };
+const fileDrawerPanelFull: CSSProperties = {
+  ...fileDrawerPanel,
+  maxWidth: 1100,
+  justifySelf: "center",
+};
 const fileDrawerPanelMobile: CSSProperties = {
   ...fileDrawerPanel,
   height: "auto",
@@ -3043,6 +3557,123 @@ const metric: CSSProperties = {
   textAlign: "center",
   color: "#D9E5F5",
 };
+const intelligencePanel: CSSProperties = {
+  height: "100%",
+  minHeight: 0,
+  overflowY: "auto",
+  padding: "22px min(5vw,70px)",
+  display: "grid",
+  alignContent: "start",
+  gap: 16,
+};
+const intelligenceHeader: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 16,
+  flexWrap: "wrap",
+};
+const intelligenceTitle: CSSProperties = { margin: "4px 0 0", color: "#F8FAFC", fontSize: 26, letterSpacing: 0 };
+const intelligenceEmptyBanner: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.10)",
+  borderRadius: 18,
+  background: "rgba(255,255,255,.035)",
+  padding: 16,
+  display: "grid",
+  gap: 4,
+  color: "#D9E5F5",
+};
+const kpiGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10 };
+const kpiCard: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.10)",
+  borderRadius: 16,
+  background: "linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.018))",
+  padding: 14,
+  display: "grid",
+  gap: 8,
+  minHeight: 124,
+};
+const kpiCardEmphasis: CSSProperties = {
+  ...kpiCard,
+  borderColor: "rgba(33,211,199,.32)",
+  background: "linear-gradient(145deg,rgba(33,211,199,.12),rgba(255,255,255,.02))",
+};
+const kpiFooter: CSSProperties = { display: "grid", gap: 5, alignContent: "end" };
+const chartGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,320px),1fr))",
+  gap: 12,
+};
+const chartCard: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.10)",
+  borderRadius: 18,
+  background: "rgba(255,255,255,.035)",
+  padding: 16,
+  display: "grid",
+  gap: 12,
+  minWidth: 0,
+};
+const chartCardWide: CSSProperties = { ...chartCard, gridColumn: "1 / -1" };
+const chartHeader: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" };
+const gaugeWrap: CSSProperties = { display: "grid", justifyItems: "center", gap: 3, color: "#D9E5F5" };
+const gaugeSvg: CSSProperties = { width: "min(260px, 100%)", height: 145, display: "block" };
+const equityChartWrap: CSSProperties = { display: "grid", gap: 12 };
+const equityTrack: CSSProperties = {
+  height: 22,
+  borderRadius: 999,
+  overflow: "hidden",
+  background: "rgba(255,255,255,.08)",
+  display: "flex",
+};
+const equityDebtFill: CSSProperties = { height: "100%", background: "linear-gradient(90deg,#EF4444,#F59E0B)", transition: "width .3s ease" };
+const equityValueFill: CSSProperties = { height: "100%", background: "linear-gradient(90deg,#21D3C7,#34D399)", transition: "width .3s ease" };
+const equityLegend: CSSProperties = { display: "grid", gap: 6, color: "#AEBBD0", fontSize: 12 };
+const legendDebtDot: CSSProperties = { display: "inline-block", width: 8, height: 8, borderRadius: 99, background: "#F59E0B", marginRight: 6 };
+const legendEquityDot: CSSProperties = { ...legendDebtDot, background: "#21D3C7" };
+const cashFlowBarList: CSSProperties = { display: "grid", gap: 12 };
+const cashFlowBarRow: CSSProperties = { display: "grid", gap: 6 };
+const cashFlowBarLabel: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 12, color: "#D9E5F5", fontSize: 13 };
+const cashFlowTrack: CSSProperties = { height: 9, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" };
+const cashFlowFill: CSSProperties = { height: "100%", borderRadius: 999, transition: "width .3s ease" };
+const miniChart: CSSProperties = { height: 180, display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(32px,1fr)", gap: 8, alignItems: "end" };
+const miniChartColumn: CSSProperties = { height: "100%", display: "grid", gridTemplateRows: "1fr auto", gap: 8, justifyItems: "center", minWidth: 0, color: "#8FA0B8", fontSize: 11 };
+const miniChartBarWrap: CSSProperties = { height: "100%", width: "100%", display: "flex", alignItems: "end", justifyContent: "center" };
+const miniChartBar: CSSProperties = { width: "72%", borderRadius: "10px 10px 2px 2px", background: "linear-gradient(180deg,#21D3C7,#D4AF37)" };
+const chartEmptyState: CSSProperties = {
+  border: "1px dashed rgba(255,255,255,.13)",
+  borderRadius: 14,
+  minHeight: 110,
+  display: "grid",
+  placeItems: "center",
+  textAlign: "center",
+  padding: 14,
+  color: "#9DABC0",
+  lineHeight: 1.45,
+};
+const intelligenceTables: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,360px),1fr))", gap: 12 };
+const intelligenceTable: CSSProperties = { display: "grid", gap: 8 };
+const intelligenceTableRow: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.08)",
+  borderRadius: 12,
+  background: "rgba(0,0,0,.14)",
+  padding: 10,
+  display: "grid",
+  gridTemplateColumns: "minmax(0,1fr) auto",
+  gap: 6,
+  alignItems: "start",
+};
+const riskList: CSSProperties = { display: "grid", gap: 8 };
+const riskRow: CSSProperties = { borderRadius: 12, padding: 10, background: "rgba(212,175,55,.08)", color: "#F6E7A6", border: "1px solid rgba(212,175,55,.18)", lineHeight: 1.35 };
+const strengthRow: CSSProperties = { ...riskRow, background: "rgba(33,211,199,.08)", color: "#BFFCF7", border: "1px solid rgba(33,211,199,.18)" };
+const intelligenceNextStep: CSSProperties = {
+  border: "1px solid rgba(33,211,199,.22)",
+  borderRadius: 18,
+  background: "rgba(33,211,199,.08)",
+  padding: 16,
+  display: "grid",
+  gap: 5,
+  color: "#D9FFFB",
+};
 const fieldWrap: CSSProperties = { display: "grid", gap: 6 };
 const labelStyle: CSSProperties = { color: "#B8C4D6", fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0 };
 const fieldHint: CSSProperties = { color: "#9FB0C8", fontSize: 12, marginTop: -4 };
@@ -3158,6 +3789,10 @@ const completeChip: CSSProperties = {
   background: "rgba(33,211,199,.08)",
   color: "#A7F3D0",
 };
+const verifiedSourcePill: CSSProperties = { ...completeChip, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" };
+const extractedSourcePill: CSSProperties = { ...statusPill, minHeight: 0, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" };
+const estimatedSourcePill: CSSProperties = { ...missingChip, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" };
+const unavailableSourcePill: CSSProperties = { ...metricPill, minHeight: 0, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" };
 const dropZone: CSSProperties = {
   border: "1px dashed rgba(255,255,255,.16)",
   borderRadius: 14,
