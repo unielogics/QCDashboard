@@ -276,6 +276,7 @@ export default function DealerAIUnderwriterPage() {
     () => (response ? buildIntelligenceModel(response, currentResult, missingDocs, fundability) : null),
     [response, currentResult, missingDocs, fundability],
   );
+  const intelligenceReady = Boolean(response?.files.length && currentResult);
   const showReviewProgress = reviewProgress !== "idle" && reviewProgress !== "attaching";
 
   useEffect(() => {
@@ -1077,13 +1078,22 @@ export default function DealerAIUnderwriterPage() {
                     compact={compact}
                   />
                 ) : null}
-                {activeWorkspace === "intelligence" && intelligence ? (
-                  <IntelligencePanel
-                    model={intelligence}
-                    response={response}
-                    result={currentResult}
-                    onExport={() => exportIntelligencePdf().catch((error) => setStatus(errorMessage(error)))}
-                  />
+                {activeWorkspace === "intelligence" ? (
+                  intelligenceReady && intelligence ? (
+                    <IntelligencePanel
+                      model={intelligence}
+                      response={response}
+                      result={currentResult}
+                      onExport={() => exportIntelligencePdf().catch((error) => setStatus(errorMessage(error)))}
+                    />
+                  ) : (
+                    <IntelligenceUnavailableCover
+                      missingDocs={missingDocs}
+                      uploadedCount={response.files.length}
+                      onGoChat={() => setActiveWorkspace("chat")}
+                      onAttachFiles={openFilePicker}
+                    />
+                  )
                 ) : null}
               </div>
             </section>
@@ -1426,7 +1436,7 @@ function DealerSidebar({
   const tabs: Array<{ key: WorkspaceTab; label: string; detail: string }> = [
     { key: "chat", label: "Underwriter chat", detail: reviewStatus },
     { key: "files", label: "Files drawer", detail: `${response.files.length} uploaded` },
-    { key: "intelligence", label: "Intelligence", detail: missingDocs.length ? `${missingDocs.length} open metrics` : "Cockpit ready" },
+    { key: "intelligence", label: "Intelligence", detail: !response.files.length ? "Upload first" : missingDocs.length ? `${missingDocs.length} open metrics` : "Cockpit ready" },
   ];
   return (
     <aside style={dealerSidebar}>
@@ -1439,17 +1449,25 @@ function DealerSidebar({
       </div>
 
       <nav style={sidebarNav} aria-label="Dealer AI room">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            style={activeTab === tab.key ? sidebarNavItemActive : sidebarNavItem}
-            onClick={() => onTabChange(tab.key)}
-          >
-            <span>{tab.label}</span>
-            <small>{tab.detail}</small>
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          const isIntelligence = tab.key === "intelligence";
+          const activeStyle = isIntelligence ? sidebarNavItemIntelActive : sidebarNavItemActive;
+          const idleStyle = isIntelligence ? sidebarNavItemIntel : sidebarNavItem;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              style={activeTab === tab.key ? activeStyle : idleStyle}
+              onClick={() => onTabChange(tab.key)}
+            >
+              <span style={sidebarNavLabelRow}>
+                {isIntelligence ? <span style={intelligenceNavIcon}>◆</span> : null}
+                <span>{tab.label}</span>
+              </span>
+              <small>{tab.detail}</small>
+            </button>
+          );
+        })}
       </nav>
 
       <div style={sidebarSection}>
@@ -1842,6 +1860,56 @@ function ReviewSidePanel({ result, bankability, reviewStatus, onOpenReview }: { 
       ) : (
         <div style={emptyBox}>The review will update automatically after files upload, and you can also ask the AI for the next step in chat.</div>
       )}
+    </section>
+  );
+}
+
+function IntelligenceUnavailableCover({
+  missingDocs,
+  uploadedCount,
+  onGoChat,
+  onAttachFiles,
+}: {
+  missingDocs: RequestedDoc[];
+  uploadedCount: number;
+  onGoChat: () => void;
+  onAttachFiles: () => void;
+}) {
+  return (
+    <section style={intelligenceCover}>
+      <div style={intelligenceCoverGlow} />
+      <div style={intelligenceCoverCard}>
+        <div style={intelligenceCoverIcon}>
+          <span style={{ ...intelligenceCoverIconBar, height: "48%" }} />
+          <span style={{ ...intelligenceCoverIconBar, height: "78%" }} />
+          <span style={{ ...intelligenceCoverIconBar, height: "62%" }} />
+        </div>
+        <div style={sideEyebrow}>Intelligence cockpit</div>
+        <h2 style={intelligenceCoverTitle}>Not enough evidence yet</h2>
+        <p style={intelligenceCoverCopy}>
+          Go back to the chat to upload documents and clarify your lending needs before accessing this page.
+          Once the underwriter has a preliminary screen, this area will unlock with DSCR, cash-flow, LTV,
+          collateral, evidence coverage, risks, and exportable charts.
+        </p>
+        <div style={intelligenceCoverStats}>
+          <div style={intelligenceCoverStat}>
+            <strong>{uploadedCount}</strong>
+            <span>files uploaded</span>
+          </div>
+          <div style={intelligenceCoverStat}>
+            <strong>{missingDocs.length}</strong>
+            <span>baseline items open</span>
+          </div>
+        </div>
+        <div style={intelligenceCoverActions}>
+          <button type="button" style={primaryButton} onClick={onGoChat}>Return to chat</button>
+          <button type="button" style={coverSecondaryButton} onClick={onAttachFiles}>Attach evidence</button>
+        </div>
+        <div style={intelligenceCoverNeeds}>
+          <strong>Start with Stage 1 evidence</strong>
+          <span>Business tax returns, YTD P&L, and the last 3 months of the main operating bank statements.</span>
+        </div>
+      </div>
     </section>
   );
 }
@@ -2967,6 +3035,30 @@ const sidebarNavItemActive: CSSProperties = {
   ...sidebarNavItem,
   background: "rgba(255,255,255,.10)",
 };
+const sidebarNavLabelRow: CSSProperties = { display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 };
+const intelligenceNavIcon: CSSProperties = {
+  width: 18,
+  height: 18,
+  borderRadius: 7,
+  display: "inline-grid",
+  placeItems: "center",
+  flexShrink: 0,
+  fontSize: 9,
+  color: "#04111F",
+  background: "linear-gradient(135deg,#21D3C7,#F2D36B)",
+  boxShadow: "0 0 18px rgba(33,211,199,.36)",
+};
+const sidebarNavItemIntel: CSSProperties = {
+  ...sidebarNavItem,
+  border: "1px solid rgba(33,211,199,.18)",
+  background: "linear-gradient(135deg,rgba(33,211,199,.09),rgba(212,175,55,.07),rgba(255,255,255,.02))",
+};
+const sidebarNavItemIntelActive: CSSProperties = {
+  ...sidebarNavItemIntel,
+  borderColor: "rgba(33,211,199,.42)",
+  background: "linear-gradient(135deg,rgba(33,211,199,.18),rgba(212,175,55,.12),rgba(255,255,255,.05))",
+  boxShadow: "inset 0 0 0 1px rgba(255,255,255,.03), 0 10px 28px rgba(33,211,199,.10)",
+};
 const sidebarSection: CSSProperties = { minHeight: 0, display: "grid", alignContent: "start", gap: 8, overflowY: "auto" };
 const sidebarSectionTitle: CSSProperties = {
   color: "#8FA0B8",
@@ -3574,6 +3666,90 @@ const intelligenceHeader: CSSProperties = {
   flexWrap: "wrap",
 };
 const intelligenceTitle: CSSProperties = { margin: "4px 0 0", color: "#F8FAFC", fontSize: 26, letterSpacing: 0 };
+const intelligenceCover: CSSProperties = {
+  height: "100%",
+  minHeight: 0,
+  position: "relative",
+  display: "grid",
+  placeItems: "center",
+  padding: "24px min(6vw,80px)",
+  overflow: "hidden",
+};
+const intelligenceCoverGlow: CSSProperties = {
+  position: "absolute",
+  inset: "14% 10%",
+  borderRadius: 999,
+  background: "radial-gradient(circle at 30% 35%,rgba(33,211,199,.20),transparent 38%), radial-gradient(circle at 72% 58%,rgba(212,175,55,.18),transparent 42%)",
+  filter: "blur(18px)",
+  opacity: 0.95,
+};
+const intelligenceCoverCard: CSSProperties = {
+  position: "relative",
+  width: "min(720px, 100%)",
+  border: "1px solid rgba(33,211,199,.28)",
+  borderRadius: 28,
+  background: "linear-gradient(145deg,rgba(8,18,32,.92),rgba(14,10,3,.84))",
+  boxShadow: "0 28px 90px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06)",
+  padding: "clamp(22px,4vw,38px)",
+  display: "grid",
+  gap: 16,
+  color: "#E7F6FF",
+  overflow: "hidden",
+};
+const intelligenceCoverIcon: CSSProperties = {
+  width: 72,
+  height: 72,
+  borderRadius: 24,
+  border: "1px solid rgba(33,211,199,.32)",
+  background: "linear-gradient(135deg,rgba(33,211,199,.18),rgba(212,175,55,.10))",
+  display: "grid",
+  gridTemplateColumns: "repeat(3,1fr)",
+  gap: 6,
+  padding: 14,
+  boxShadow: "0 0 38px rgba(33,211,199,.18)",
+};
+const intelligenceCoverIconBar: CSSProperties = {
+  alignSelf: "end",
+  borderRadius: 999,
+  background: "linear-gradient(180deg,#F2D36B,#21D3C7)",
+  boxShadow: "0 0 14px rgba(33,211,199,.24)",
+};
+const intelligenceCoverTitle: CSSProperties = { margin: 0, color: "#F8FAFC", fontSize: "clamp(30px,5vw,52px)", lineHeight: 1, letterSpacing: -1.2 };
+const intelligenceCoverCopy: CSSProperties = { margin: 0, color: "#B9C8DA", fontSize: 16, lineHeight: 1.55, maxWidth: 650 };
+const intelligenceCoverStats: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2,minmax(0,1fr))",
+  gap: 10,
+};
+const intelligenceCoverStat: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.10)",
+  borderRadius: 16,
+  background: "rgba(255,255,255,.045)",
+  padding: 14,
+  display: "grid",
+  gap: 3,
+  color: "#D9E5F5",
+};
+const intelligenceCoverActions: CSSProperties = { display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" };
+const coverSecondaryButton: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.16)",
+  borderRadius: 999,
+  background: "rgba(255,255,255,.06)",
+  color: "#F8FAFC",
+  minHeight: 46,
+  padding: "0 18px",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+const intelligenceCoverNeeds: CSSProperties = {
+  border: "1px solid rgba(212,175,55,.26)",
+  borderRadius: 16,
+  background: "rgba(212,175,55,.08)",
+  padding: 14,
+  display: "grid",
+  gap: 4,
+  color: "#F6E7A6",
+};
 const intelligenceEmptyBanner: CSSProperties = {
   border: "1px solid rgba(255,255,255,.10)",
   borderRadius: 18,
