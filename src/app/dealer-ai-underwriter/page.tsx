@@ -209,6 +209,7 @@ export default function DealerAIUnderwriterPage() {
             : "Ready to review";
   const bankability = asRecord(response?.latest_review?.result?.bankability_assessment ?? response?.intake.result_snapshot?.bankability_assessment);
   const fundability = fundabilityBanner(currentResult, bankability);
+  const showReviewProgress = reviewProgress !== "idle" && reviewProgress !== "attaching";
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const res = await fetch(`${apiBase}/api/v1${path}`, {
@@ -730,10 +731,11 @@ export default function DealerAIUnderwriterPage() {
                       onUpload={() => uploadQueuedFiles().catch(() => undefined)}
                       reviewProgress={reviewProgress}
                       reviewCompletedAt={reviewCompletedAt}
+                      showReviewProgress={showReviewProgress}
                       compact
                     />
                   ) : null}
-                  {reviewProgress !== "idle" ? <ReviewProgress stage={reviewProgress} completedAt={reviewCompletedAt} compact={compact} /> : null}
+                  {showReviewProgress ? <ReviewProgress stage={reviewProgress} completedAt={reviewCompletedAt} compact={compact} /> : null}
                   <div style={compact ? messagesModernMobile : messagesModern}>
                     {fundability ? <FundabilityBanner banner={fundability} /> : null}
                     {chat.map((line) => (
@@ -804,6 +806,7 @@ export default function DealerAIUnderwriterPage() {
                     onUpload={() => uploadQueuedFiles().catch(() => undefined)}
                     reviewProgress={reviewProgress}
                     reviewCompletedAt={reviewCompletedAt}
+                    showReviewProgress={showReviewProgress}
                   />
                 ) : null}
               </div>
@@ -1146,8 +1149,8 @@ function AttachmentTray({ files, compact, onRemove }: { files: QueuedFile[]; com
   return (
     <div style={compact ? attachmentTrayMobile : attachmentTray}>
       <div style={attachmentTrayHeader}>
-        <strong>{files.length} pending attachment{files.length === 1 ? "" : "s"}</strong>
-        <span>Files are encrypted when uploaded.</span>
+        <strong>{files.length} pending</strong>
+        <span>Encrypted on upload</span>
       </div>
       <div style={attachmentList}>
         {files.map((item) => (
@@ -1202,6 +1205,7 @@ function FileDrawerPanel({
   onUpload,
   reviewProgress,
   reviewCompletedAt,
+  showReviewProgress,
   compact = false,
 }: {
   response: IntakeResponse;
@@ -1215,6 +1219,7 @@ function FileDrawerPanel({
   onUpload: () => void;
   reviewProgress: ReviewProgressStage;
   reviewCompletedAt: string | null;
+  showReviewProgress: boolean;
   compact?: boolean;
 }) {
   const docsById = new Map(response.requested_documents.map((doc) => [doc.id, doc]));
@@ -1231,7 +1236,7 @@ function FileDrawerPanel({
       </div>
 
       {fundability ? <FundabilityBanner banner={fundability} /> : null}
-      {reviewProgress !== "idle" ? <ReviewProgress stage={reviewProgress} completedAt={reviewCompletedAt} compact /> : null}
+      {showReviewProgress ? <ReviewProgress stage={reviewProgress} completedAt={reviewCompletedAt} compact /> : null}
 
       <div style={bucketMetrics}>
         <Metric value={response.files.length.toString()} label="uploaded" />
@@ -1361,22 +1366,19 @@ function ReviewProgress({ stage, completedAt, compact }: { stage: ReviewProgress
   const isComplete = stage === "complete";
   const percent = reviewProgressPercent(stage);
   const label = reviewProgressLabel(stage);
+  const nextStage = REVIEW_PROGRESS_STAGES.find((item) => reviewProgressPercent(item.key) > percent)?.label;
   return (
     <div style={{ ...reviewProgressShell, ...(compact ? reviewProgressShellCompact : null), ...(isError ? reviewProgressShellError : null), ...(isComplete ? reviewProgressShellComplete : null) }}>
       <div style={reviewProgressTop}>
-        <strong>{label}</strong>
-        <span>{isComplete && completedAt ? `Completed ${formatDate(completedAt)}` : isError ? "Retry upload or send a message" : `${percent}%`}</span>
+        <div style={reviewProgressLabelWrap}>
+          <span style={isError ? reviewProgressDotError : isComplete ? reviewProgressDotComplete : reviewProgressDot} />
+          <strong>{label}</strong>
+        </div>
+        <span>{isComplete && completedAt ? `Done ${formatDate(completedAt)}` : isError ? "Needs retry" : nextStage ? `Next: ${nextStage}` : `${percent}%`}</span>
       </div>
       <div style={reviewProgressTrack}>
         <div style={{ ...reviewProgressFill, width: `${percent}%`, ...(isError ? reviewProgressFillError : null), ...(isComplete ? reviewProgressFillComplete : null) }} />
       </div>
-      {!isComplete && !isError ? (
-        <div style={reviewProgressSteps}>
-          {REVIEW_PROGRESS_STAGES.map((item) => (
-            <span key={item.key} style={item.key === stage ? reviewProgressStepActive : reviewProgressStep}>{item.label}</span>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -2382,35 +2384,37 @@ const dropHint: CSSProperties = {
   boxShadow: "inset 0 0 0 1px rgba(255,255,255,.06), 0 28px 90px rgba(0,0,0,.36)",
 };
 const attachmentTray: CSSProperties = {
-  margin: "0 18px",
-  border: "1px solid rgba(255,255,255,.1)",
-  background: "rgba(255,255,255,.03)",
-  borderRadius: 14,
-  padding: 12,
-  display: "grid",
+  margin: "0 min(7vw,92px)",
+  border: "1px solid rgba(255,255,255,.08)",
+  background: "rgba(255,255,255,.025)",
+  borderRadius: 999,
+  padding: "8px 10px",
+  display: "flex",
   gap: 10,
+  alignItems: "center",
+  justifyContent: "space-between",
 };
-const attachmentTrayMobile: CSSProperties = { ...attachmentTray, margin: "0 12px", padding: 10 };
+const attachmentTrayMobile: CSSProperties = { ...attachmentTray, margin: "0 12px", borderRadius: 16, alignItems: "stretch", flexDirection: "column" };
 const attachmentTrayHeader: CSSProperties = {
   display: "flex",
-  justifyContent: "space-between",
-  gap: 10,
-  flexWrap: "wrap",
+  alignItems: "center",
+  gap: 8,
   color: "#E2E8F0",
-  fontSize: 13,
+  fontSize: 12,
+  whiteSpace: "nowrap",
 };
-const attachmentList: CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap" };
+const attachmentList: CSSProperties = { display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" };
 const attachmentPill: CSSProperties = {
-  maxWidth: 260,
-  border: "1px solid rgba(33,211,199,.2)",
-  background: "rgba(33,211,199,.08)",
-  color: "#D9FFFB",
+  maxWidth: 220,
+  border: "1px solid rgba(255,255,255,.10)",
+  background: "rgba(255,255,255,.045)",
+  color: "#EAF2FF",
   borderRadius: 999,
-  padding: "7px 8px 7px 12px",
+  padding: "5px 6px 5px 10px",
   display: "grid",
   gridTemplateColumns: "minmax(0, 1fr) auto auto",
   alignItems: "center",
-  gap: 8,
+  gap: 6,
   fontSize: 12,
 };
 const attachmentRemove: CSSProperties = {
@@ -2529,22 +2533,22 @@ const fileTypeBadge: CSSProperties = {
 };
 const warningText: CSSProperties = { display: "block", color: "#F6E7A6", fontSize: 13, lineHeight: 1.35 };
 const reviewProgressShell: CSSProperties = {
-  margin: "0 min(7vw,92px) 8px",
-  border: "1px solid rgba(255,255,255,.10)",
-  borderRadius: 16,
-  background: "rgba(255,255,255,.045)",
-  padding: "12px 14px",
+  margin: "0 min(7vw,92px) 4px",
+  border: "1px solid rgba(255,255,255,.07)",
+  borderRadius: 999,
+  background: "rgba(255,255,255,.025)",
+  padding: "9px 12px",
   display: "grid",
-  gap: 10,
+  gap: 8,
 };
-const reviewProgressShellCompact: CSSProperties = { margin: "0 12px 8px", padding: 10, borderRadius: 14 };
+const reviewProgressShellCompact: CSSProperties = { margin: "0 12px 4px", padding: "9px 10px", borderRadius: 14 };
 const reviewProgressShellComplete: CSSProperties = {
-  borderColor: "rgba(74,222,128,.26)",
-  background: "rgba(22,101,52,.18)",
+  borderColor: "rgba(74,222,128,.20)",
+  background: "rgba(22,101,52,.10)",
 };
 const reviewProgressShellError: CSSProperties = {
-  borderColor: "rgba(248,113,113,.36)",
-  background: "rgba(127,29,29,.24)",
+  borderColor: "rgba(248,113,113,.24)",
+  background: "rgba(127,29,29,.14)",
 };
 const reviewProgressTop: CSSProperties = {
   display: "flex",
@@ -2552,13 +2556,17 @@ const reviewProgressTop: CSSProperties = {
   alignItems: "center",
   gap: 12,
   color: "#F8FAFC",
-  fontSize: 13,
+  fontSize: 12,
 };
+const reviewProgressLabelWrap: CSSProperties = { display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 };
+const reviewProgressDot: CSSProperties = { width: 7, height: 7, borderRadius: 999, background: "#21D3C7", boxShadow: "0 0 0 4px rgba(33,211,199,.10)" };
+const reviewProgressDotComplete: CSSProperties = { ...reviewProgressDot, background: "#22C55E", boxShadow: "0 0 0 4px rgba(34,197,94,.10)" };
+const reviewProgressDotError: CSSProperties = { ...reviewProgressDot, background: "#EF4444", boxShadow: "0 0 0 4px rgba(239,68,68,.12)" };
 const reviewProgressTrack: CSSProperties = {
-  height: 7,
+  height: 3,
   borderRadius: 999,
   overflow: "hidden",
-  background: "rgba(255,255,255,.10)",
+  background: "rgba(255,255,255,.08)",
 };
 const reviewProgressFill: CSSProperties = {
   height: "100%",
