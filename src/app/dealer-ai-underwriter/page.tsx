@@ -111,6 +111,7 @@ const initialEntity: EntityStructure = {
 
 export default function DealerAIUnderwriterPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const [token, setToken] = useState<string>("");
   const [contact, setContact] = useState(initialContact);
   const [deal, setDeal] = useState({ loan_purpose: "", requested_loan_amount: "", estimated_credit_score: "" });
@@ -421,6 +422,19 @@ export default function DealerAIUnderwriterPage() {
     }
   }
 
+  async function submitComposer() {
+    if (!token || busy) return;
+    const text = chatText.trim();
+    const hasFilesToUpload = queuedFiles.some((item) => item.status === "ready" || item.status === "error");
+    if (!text && !hasFilesToUpload) return;
+    if (hasFilesToUpload) {
+      await uploadQueuedFiles();
+    }
+    if (text) {
+      await sendChat(text);
+    }
+  }
+
   function applyResponse(payload: IntakeResponse, activeToken: string) {
     setResponse(payload);
     if (activeToken) setToken(activeToken);
@@ -585,7 +599,58 @@ export default function DealerAIUnderwriterPage() {
                 ))}
                 {inlineWidget}
               </div>
+              {queuedFiles.length ? (
+                <div style={attachmentTray}>
+                  <div style={attachmentTrayHeader}>
+                    <strong>{queuedFiles.length} attached file{queuedFiles.length === 1 ? "" : "s"}</strong>
+                    <span>Files are encrypted when uploaded.</span>
+                  </div>
+                  <div style={attachmentList}>
+                    {queuedFiles.map((item) => (
+                      <div key={item.id} style={attachmentPill}>
+                        <span style={truncate}>{item.file.name}</span>
+                        <span style={smallMuted}>{item.status}</span>
+                        {item.status !== "uploading" ? (
+                          <button
+                            style={attachmentRemove}
+                            aria-label={`Remove ${item.file.name}`}
+                            onClick={() => setQueuedFiles(queuedFiles.filter((file) => file.id !== item.id))}
+                          >
+                            x
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div style={composer}>
+                <button
+                  type="button"
+                  style={attachButton}
+                  disabled={!token || busy}
+                  aria-label="Attach files"
+                  title="Attach files"
+                  onClick={() => {
+                    setOpenWidgetType("upload_files");
+                    composerFileInputRef.current?.click();
+                  }}
+                >
+                  +
+                </button>
+                <input
+                  ref={composerFileInputRef}
+                  type="file"
+                  multiple
+                  hidden
+                  onChange={(event) => {
+                    if (event.target.files) {
+                      addFiles(event.target.files);
+                      setOpenWidgetType("upload_files");
+                    }
+                    event.currentTarget.value = "";
+                  }}
+                />
                 <input
                   style={composerInput}
                   value={chatText}
@@ -593,11 +658,17 @@ export default function DealerAIUnderwriterPage() {
                   placeholder={token ? "Ask a question, add facts, or tell the AI what you uploaded..." : "Start by entering contact info on the right"}
                   disabled={!token || busy}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" && chatText.trim()) sendChat().catch(() => undefined);
+                    if (event.key === "Enter" && (chatText.trim() || queuedFiles.some((file) => file.status === "ready" || file.status === "error"))) {
+                      submitComposer().catch(() => undefined);
+                    }
                   }}
                 />
-                <button style={primaryButton} disabled={!token || !chatText.trim() || busy} onClick={() => sendChat().catch(() => undefined)}>
-                  Send
+                <button
+                  style={primaryButton}
+                  disabled={!token || (!chatText.trim() && !queuedFiles.some((file) => file.status === "ready" || file.status === "error")) || busy}
+                  onClick={() => submitComposer().catch(() => undefined)}
+                >
+                  {queuedFiles.some((file) => file.status === "ready" || file.status === "error") ? (chatText.trim() ? "Upload & send" : "Upload") : "Send"}
                 </button>
               </div>
                 {status ? <div style={statusBox}>{status}</div> : null}
@@ -1302,7 +1373,7 @@ const aiPromptCopy: CSSProperties = {
   color: "#B8C4D6",
   lineHeight: 1.45,
 };
-const composer: CSSProperties = { display: "grid", gridTemplateColumns: "1fr auto", gap: 10, padding: 18, borderTop: "1px solid rgba(255,255,255,.08)" };
+const composer: CSSProperties = { display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, padding: 18, borderTop: "1px solid rgba(255,255,255,.08)", alignItems: "center" };
 const composerInput: CSSProperties = {
   border: "1px solid rgba(255,255,255,.14)",
   borderRadius: 999,
@@ -1312,6 +1383,61 @@ const composerInput: CSSProperties = {
   outline: "none",
   background: "rgba(255,255,255,.045)",
   color: "#F8FAFC",
+};
+const attachButton: CSSProperties = {
+  width: 46,
+  height: 46,
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,.16)",
+  background: "rgba(255,255,255,.045)",
+  color: "#E9D58A",
+  fontSize: 24,
+  fontWeight: 900,
+  lineHeight: 1,
+  cursor: "pointer",
+};
+const attachmentTray: CSSProperties = {
+  margin: "0 18px",
+  border: "1px solid rgba(255,255,255,.1)",
+  background: "rgba(255,255,255,.03)",
+  borderRadius: 14,
+  padding: 12,
+  display: "grid",
+  gap: 10,
+};
+const attachmentTrayHeader: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 10,
+  flexWrap: "wrap",
+  color: "#E2E8F0",
+  fontSize: 13,
+};
+const attachmentList: CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap" };
+const attachmentPill: CSSProperties = {
+  maxWidth: 260,
+  border: "1px solid rgba(33,211,199,.2)",
+  background: "rgba(33,211,199,.08)",
+  color: "#D9FFFB",
+  borderRadius: 999,
+  padding: "7px 8px 7px 12px",
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto auto",
+  alignItems: "center",
+  gap: 8,
+  fontSize: 12,
+};
+const attachmentRemove: CSSProperties = {
+  width: 22,
+  height: 22,
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,.16)",
+  background: "rgba(255,255,255,.06)",
+  color: "#E2E8F0",
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 900,
+  lineHeight: "18px",
 };
 const widgetPanel: CSSProperties = { display: "grid", gap: 14 };
 const widgetBox: CSSProperties = {
