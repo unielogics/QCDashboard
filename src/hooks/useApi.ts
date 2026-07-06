@@ -6011,6 +6011,68 @@ export interface TokenUsagePoint {
   cost_usd: number;
 }
 
+export interface TokenUsageAttributionSource {
+  key: string;
+  kind: string;
+  id?: string | null;
+  label: string;
+  href?: string | null;
+}
+
+export interface TokenUsageAttributionRow extends TokenUsageAttributionSource {
+  calls: number;
+  tokens: number;
+  cost_usd: number;
+  top_feature?: string | null;
+  top_provider?: string | null;
+}
+
+export interface TokenUsageEventRow {
+  id: string;
+  created_at?: string | null;
+  provider: string;
+  model: string;
+  feature: string;
+  category: string;
+  tokens: number;
+  cost_usd: number;
+  source: TokenUsageAttributionSource;
+  ledger: "bedrock" | "legacy" | string;
+  cost_basis: "actual_estimated" | "actual_legacy" | string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface TokenUsageAttribution {
+  from: string;
+  to: string;
+  actual: {
+    calls: number;
+    input_tokens: number;
+    output_tokens: number;
+    cost_usd: number;
+  };
+  previous_actual: {
+    calls: number;
+    input_tokens: number;
+    output_tokens: number;
+    cost_usd: number;
+  };
+  trend: {
+    delta_usd: number;
+    pct?: number | null;
+    direction: "up" | "down" | "flat" | string;
+  };
+  projection: {
+    projected_30_day_usd: number;
+    daily_run_rate_usd: number;
+    basis_days: number;
+    basis: string;
+  };
+  source_rows: TokenUsageAttributionRow[];
+  feature_rows: TokenUsageAttributionRow[];
+  recent_events: TokenUsageEventRow[];
+}
+
 export type TokenUsageDimension =
   | "activity"
   | "model"
@@ -6061,6 +6123,17 @@ export function useTokenUsageTimeseries(from?: string, to?: string) {
     queryFn: () =>
       apiCall<TokenUsagePoint[]>(
         `/lending-admin/token-usage/timeseries${_usageQs(from, to)}`,
+      ),
+  });
+}
+
+export function useTokenUsageAttribution(from?: string, to?: string) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["token-usage", "attribution", from ?? "", to ?? ""],
+    queryFn: () =>
+      apiCall<TokenUsageAttribution>(
+        `/lending-admin/token-usage/attribution${_usageQs(from, to)}`,
       ),
   });
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill, SectionLabel } from "@/components/design-system/primitives";
@@ -362,6 +362,8 @@ function emptyVendorAccessDraft(): VendorAccessDraft {
 export default function BucketsAdminPage() {
   const { t } = useTheme();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const bucketParam = searchParams.get("bucket");
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const { getToken } = useAuth();
   const adminFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -655,6 +657,13 @@ export default function BucketsAdminPage() {
     if (me?.role === Role.SUPER_ADMIN) loadBuckets().catch((e) => setNotice(String(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.role]);
+
+  useEffect(() => {
+    if (me?.role === Role.SUPER_ADMIN && bucketParam && detail?.id !== bucketParam) {
+      openBucket(bucketParam).catch((e) => setNotice(String(e)));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.role, bucketParam, detail?.id]);
 
   useEffect(() => {
     setCreateDocPage(0);

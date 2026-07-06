@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
@@ -96,8 +96,10 @@ const LIMIT = 25;
 export default function AdminDealerAILeadsPage() {
   const { t } = useTheme();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { getToken } = useAuth();
   const { data: me, isLoading: meLoading } = useCurrentUser();
+  const leadParam = searchParams.get("lead");
   const [rows, setRows] = useState<LeadRow[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -181,6 +183,13 @@ export default function AdminDealerAILeadsPage() {
     if (me?.role === Role.SUPER_ADMIN) loadLeads(0).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.role, statusFilter, probabilityFilter, submittedQuery]);
+
+  useEffect(() => {
+    if (me?.role === Role.SUPER_ADMIN && leadParam && leadParam !== selectedId) {
+      openLead(leadParam).catch(() => undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.role, leadParam]);
 
   const counts = useMemo(() => ({
     total,

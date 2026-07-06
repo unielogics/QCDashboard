@@ -3,6 +3,7 @@
 // /admin/token-usage — canonical Elara AI usage and controls surface.
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, KPI, SectionLabel } from "@/components/design-system/primitives";
@@ -13,9 +14,12 @@ import {
   useTokenUsageBreakdown,
   useTokenUsageSummary,
   useTokenUsageTimeseries,
+  useTokenUsageAttribution,
   useUpdateSettings,
   type AIUsageBucket,
+  type TokenUsageAttributionRow,
   type TokenUsageDimension,
+  type TokenUsageEventRow,
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 
@@ -73,6 +77,18 @@ export default function TokenUsagePage() {
   const summary = useTokenUsageSummary(from);
   const breakdown = useTokenUsageBreakdown(dimension, from);
   const series = useTokenUsageTimeseries(from);
+  const attribution = useTokenUsageAttribution(from);
+
+  const sourceRows = attribution.data?.source_rows ?? [];
+  const featureRows = attribution.data?.feature_rows ?? [];
+  const recentEvents = attribution.data?.recent_events ?? [];
+  const documentSpend = useMemo(
+    () =>
+      featureRows
+        .filter((row) => /document|scan|pdf|bucket|dealer/i.test(`${row.key} ${row.label} ${row.top_feature ?? ""}`))
+        .reduce((sum, row) => sum + row.cost_usd, 0),
+    [featureRows],
+  );
 
   useEffect(() => {
     if (!meLoading && me && me.role !== Role.SUPER_ADMIN && me.role !== Role.LOAN_EXEC) {
@@ -198,17 +214,30 @@ export default function TokenUsagePage() {
         </>
       )}
 
-      {/* KPI tiles */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-        <KPI label={`${rangeDays}-day est. cost`} value={s ? fmtUsd(s.cost_usd) : "—"} />
-        <KPI label={`${rangeDays}-day tokens`} value={s ? fmtInt(s.total_tokens) : "—"} />
-        <KPI label="Cache-hit %" value={s ? `${s.cache_hit_pct}%` : "—"} />
-        <KPI label={`${rangeDays}-day calls`} value={s ? fmtInt(s.calls) : "—"} />
+      <ActualSpendPanel
+        rangeDays={rangeDays}
+        actualCost={attribution.data?.actual.cost_usd ?? s?.cost_usd ?? 0}
+        calls={attribution.data?.actual.calls ?? s?.calls ?? 0}
+        tokens={(attribution.data?.actual.input_tokens ?? s?.input_tokens ?? 0) + (attribution.data?.actual.output_tokens ?? s?.output_tokens ?? 0)}
+        previousCost={attribution.data?.previous_actual.cost_usd ?? 0}
+        trendDirection={attribution.data?.trend.direction ?? "flat"}
+        trendPct={attribution.data?.trend.pct ?? null}
+        projected30Day={attribution.data?.projection.projected_30_day_usd ?? 0}
+        dailyRunRate={attribution.data?.projection.daily_run_rate_usd ?? 0}
+        documentSpend={documentSpend}
+        isLoading={attribution.isLoading}
+      />
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, alignItems: "start" }}>
+        <SourceAttributionTable rows={sourceRows} loading={attribution.isLoading} />
+        <FeatureCostBars rows={featureRows} loading={attribution.isLoading} />
       </div>
+
+      <RecentUsageEvents rows={recentEvents} loading={attribution.isLoading} />
 
       {/* Daily spend bar */}
       <Card pad={18}>
-        <SectionLabel>Historical daily spend</SectionLabel>
+        <SectionLabel>Actual daily spend</SectionLabel>
         {points.length === 0 ? (
           <div style={{ fontSize: 13, color: t.ink3, marginTop: 10 }}>
             No usage logged in this window yet.
@@ -238,6 +267,7 @@ export default function TokenUsagePage() {
 
       {/* Breakdown */}
       <Card pad={18}>
+        <SectionLabel>Supplemental dimensions</SectionLabel>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
           {DIMENSIONS.map((d) => (
             <button
@@ -288,6 +318,315 @@ export default function TokenUsagePage() {
       </Card>
     </div>
   );
+}
+
+function ActualSpendPanel({
+  rangeDays,
+  actualCost,
+  calls,
+  tokens,
+  previousCost,
+  trendDirection,
+  trendPct,
+  projected30Day,
+  dailyRunRate,
+  documentSpend,
+  isLoading,
+}: {
+  rangeDays: number;
+  actualCost: number;
+  calls: number;
+  tokens: number;
+  previousCost: number;
+  trendDirection: string;
+  trendPct: number | null;
+  projected30Day: number;
+  dailyRunRate: number;
+  documentSpend: number;
+  isLoading: boolean;
+}) {
+  const { t } = useTheme();
+  const trendColor = trendDirection === "up" ? t.danger : trendDirection === "down" ? t.profit : t.ink3;
+  const trendArrow = trendDirection === "up" ? "▲" : trendDirection === "down" ? "▼" : "■";
+  const trendText = trendPct == null ? "No previous baseline" : `${trendArrow} ${Math.abs(trendPct).toFixed(1)}% vs previous ${rangeDays} days`;
+  return (
+    <Card
+      pad={18}
+      style={{
+        borderRadius: 14,
+        background: `linear-gradient(135deg, ${t.surface}, ${t.chip})`,
+        borderColor: t.lineStrong,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 14, flexWrap: "wrap" }}>
+        <div>
+          <SectionLabel style={{ padding: 0, marginBottom: 4 }}>Actual ledger focus</SectionLabel>
+          <div style={{ color: t.ink3, fontSize: 12.5 }}>
+            Real recorded usage is emphasized. Run-rate projections are isolated in amber so they are not confused with posted cost.
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <BasisPill label="Actual" tone="actual" />
+          <BasisPill label="Projection" tone="projected" />
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
+        <SpendMetric
+          label={`${rangeDays}-day actual spend`}
+          value={isLoading ? "Loading..." : fmtUsd(actualCost)}
+          detail={`${fmtInt(calls)} calls · ${fmtInt(tokens)} tokens`}
+          tone="actual"
+          large
+        />
+        <SpendMetric
+          label="Trend"
+          value={isLoading ? "Loading..." : trendText}
+          detail={`Previous period: ${fmtUsd(previousCost)}`}
+          tone={trendDirection === "up" ? "danger" : trendDirection === "down" ? "profit" : "neutral"}
+          color={trendColor}
+        />
+        <SpendMetric
+          label="Document / PDF analysis"
+          value={isLoading ? "Loading..." : fmtUsd(documentSpend)}
+          detail="Bucket reviews, PDF scans, dealer AI document work"
+          tone="actual"
+        />
+        <SpendMetric
+          label="Projected 30-day run rate"
+          value={isLoading ? "Loading..." : fmtUsd(projected30Day)}
+          detail={`${fmtUsd(dailyRunRate)} daily average from this window`}
+          tone="projected"
+        />
+      </div>
+    </Card>
+  );
+}
+
+function BasisPill({ label, tone }: { label: string; tone: "actual" | "projected" }) {
+  const { t } = useTheme();
+  const actual = tone === "actual";
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "5px 9px",
+        borderRadius: 999,
+        color: actual ? t.profit : t.warn,
+        background: actual ? t.profitBg : t.warnBg,
+        border: `1px solid ${actual ? t.profit : t.warn}`,
+        fontSize: 11,
+        fontWeight: 900,
+        textTransform: "uppercase",
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: 99, background: actual ? t.profit : t.warn }} />
+      {label}
+    </span>
+  );
+}
+
+function SpendMetric({
+  label,
+  value,
+  detail,
+  tone,
+  large = false,
+  color,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone: "actual" | "projected" | "danger" | "profit" | "neutral";
+  large?: boolean;
+  color?: string;
+}) {
+  const { t } = useTheme();
+  const toneMap = {
+    actual: { bg: t.petrolSoft, border: t.petrol, color: t.ink },
+    projected: { bg: t.warnBg, border: t.warn, color: t.warn },
+    danger: { bg: t.dangerBg, border: t.danger, color: t.danger },
+    profit: { bg: t.profitBg, border: t.profit, color: t.profit },
+    neutral: { bg: t.chip, border: t.lineStrong, color: t.ink2 },
+  }[tone];
+  return (
+    <div
+      style={{
+        minHeight: large ? 124 : 110,
+        border: `1px solid ${toneMap.border}`,
+        background: toneMap.bg,
+        borderRadius: 12,
+        padding: 14,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        gap: 12,
+      }}
+    >
+      <div style={{ fontSize: 10.5, fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>{label}</div>
+      <div style={{ fontSize: large ? 30 : 17, fontWeight: 950, color: color ?? toneMap.color, lineHeight: 1.05 }}>{value}</div>
+      <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.35 }}>{detail}</div>
+    </div>
+  );
+}
+
+function SourceAttributionTable({ rows, loading }: { rows: TokenUsageAttributionRow[]; loading: boolean }) {
+  const { t } = useTheme();
+  const top = rows.slice(0, 12);
+  return (
+    <Card pad={18} style={{ borderRadius: 14 }}>
+      <SectionLabel>Top spend by who / what</SectionLabel>
+      <div style={{ fontSize: 12.5, color: t.ink3, margin: "-4px 4px 12px" }}>
+        Links take you to the client, loan, bucket, dealer AI lead, or file area that caused the usage.
+      </div>
+      {loading ? (
+        <div style={{ color: t.ink3, fontSize: 13 }}>Resolving source attribution...</div>
+      ) : top.length === 0 ? (
+        <div style={{ color: t.ink3, fontSize: 13 }}>No attributed usage in this window.</div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720, fontSize: 13 }}>
+            <thead>
+              <tr style={{ textAlign: "left", color: t.ink3, fontSize: 10.5, textTransform: "uppercase", letterSpacing: 1 }}>
+                <th style={{ padding: "8px 8px" }}>Source</th>
+                <th style={{ padding: "8px 8px" }}>Area</th>
+                <th style={{ padding: "8px 8px" }}>Main feature</th>
+                <th style={{ padding: "8px 8px", textAlign: "right" }}>Calls</th>
+                <th style={{ padding: "8px 8px", textAlign: "right" }}>Tokens</th>
+                <th style={{ padding: "8px 8px", textAlign: "right" }}>Actual cost</th>
+                <th style={{ padding: "8px 8px", textAlign: "right" }}>Open</th>
+              </tr>
+            </thead>
+            <tbody>
+              {top.map((row) => (
+                <tr key={row.key} style={{ borderTop: `1px solid ${t.line}` }}>
+                  <td style={{ padding: "10px 8px", color: t.ink, fontWeight: 850, maxWidth: 280 }}>
+                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.label}</div>
+                    <div style={{ color: t.ink3, fontSize: 11, marginTop: 3 }}>{row.id || "No object id"}</div>
+                  </td>
+                  <td style={{ padding: "10px 8px" }}><KindBadge kind={row.kind} /></td>
+                  <td style={{ padding: "10px 8px", color: t.ink2 }}>{(row.top_feature || "unknown").replace(/_/g, " ")}</td>
+                  <td style={{ padding: "10px 8px", textAlign: "right", color: t.ink3 }}>{fmtInt(row.calls)}</td>
+                  <td style={{ padding: "10px 8px", textAlign: "right", color: t.ink3 }}>{fmtInt(row.tokens)}</td>
+                  <td style={{ padding: "10px 8px", textAlign: "right", color: t.ink, fontWeight: 950 }}>{fmtUsd(row.cost_usd)}</td>
+                  <td style={{ padding: "10px 8px", textAlign: "right" }}>
+                    {row.href ? (
+                      <Link href={row.href} style={{ color: t.petrol, fontWeight: 900, textDecoration: "none" }}>Open</Link>
+                    ) : (
+                      <span style={{ color: t.ink3 }}>—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function KindBadge({ kind }: { kind: string }) {
+  const { t } = useTheme();
+  const tone = kind === "dealer_ai_lead" || kind === "bucket" ? t.petrol : kind === "legacy" ? t.warn : t.ink2;
+  const bg = kind === "dealer_ai_lead" || kind === "bucket" ? t.petrolSoft : kind === "legacy" ? t.warnBg : t.chip;
+  return (
+    <span style={{ display: "inline-flex", padding: "4px 8px", borderRadius: 999, background: bg, color: tone, fontSize: 11, fontWeight: 900 }}>
+      {kind.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+function FeatureCostBars({ rows, loading }: { rows: TokenUsageAttributionRow[]; loading: boolean }) {
+  const { t } = useTheme();
+  const top = rows.slice(0, 9);
+  const max = Math.max(0.01, ...top.map((row) => row.cost_usd));
+  return (
+    <Card pad={18} style={{ borderRadius: 14 }}>
+      <SectionLabel>Premium feature cost</SectionLabel>
+      {loading ? (
+        <div style={{ color: t.ink3, fontSize: 13 }}>Loading feature costs...</div>
+      ) : top.length === 0 ? (
+        <div style={{ color: t.ink3, fontSize: 13 }}>No feature spend in this window.</div>
+      ) : (
+        <div style={{ display: "grid", gap: 12 }}>
+          {top.map((row) => {
+            const pct = Math.max(4, (row.cost_usd / max) * 100);
+            return (
+              <div key={row.key}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, marginBottom: 5 }}>
+                  <span style={{ color: t.ink, fontWeight: 850 }}>{row.label.replace(/_/g, " ")}</span>
+                  <span style={{ color: t.ink, fontWeight: 950 }}>{fmtUsd(row.cost_usd)}</span>
+                </div>
+                <div style={{ height: 8, borderRadius: 999, background: t.line, overflow: "hidden" }}>
+                  <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: row.kind === "feature" && /document|scan/i.test(row.key) ? t.warn : t.petrol }} />
+                </div>
+                <div style={{ color: t.ink3, fontSize: 11, marginTop: 4 }}>
+                  {fmtInt(row.calls)} calls · {fmtInt(row.tokens)} tokens · {row.top_provider || "provider unknown"}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function RecentUsageEvents({ rows, loading }: { rows: TokenUsageEventRow[]; loading: boolean }) {
+  const { t } = useTheme();
+  const top = rows.slice(0, 20);
+  return (
+    <Card pad={18} style={{ borderRadius: 14 }}>
+      <SectionLabel>Recent expensive events</SectionLabel>
+      {loading ? (
+        <div style={{ color: t.ink3, fontSize: 13 }}>Loading ledger events...</div>
+      ) : top.length === 0 ? (
+        <div style={{ color: t.ink3, fontSize: 13 }}>No event-level usage in this window.</div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760, fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ textAlign: "left", color: t.ink3, fontSize: 10.5, textTransform: "uppercase", letterSpacing: 1 }}>
+                <th style={{ padding: "8px" }}>When</th>
+                <th style={{ padding: "8px" }}>Source</th>
+                <th style={{ padding: "8px" }}>Feature</th>
+                <th style={{ padding: "8px" }}>Model</th>
+                <th style={{ padding: "8px" }}>Ledger</th>
+                <th style={{ padding: "8px", textAlign: "right" }}>Tokens</th>
+                <th style={{ padding: "8px", textAlign: "right" }}>Actual cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {top.map((row) => (
+                <tr key={row.id} style={{ borderTop: `1px solid ${t.line}` }}>
+                  <td style={{ padding: "9px 8px", color: t.ink3 }}>{formatDateTime(row.created_at)}</td>
+                  <td style={{ padding: "9px 8px", color: t.ink, fontWeight: 800 }}>
+                    {row.source.href ? (
+                      <Link href={row.source.href} style={{ color: t.ink, textDecoration: "none" }}>{row.source.label}</Link>
+                    ) : row.source.label}
+                  </td>
+                  <td style={{ padding: "9px 8px", color: t.ink2 }}>{row.feature.replace(/_/g, " ")}</td>
+                  <td style={{ padding: "9px 8px", color: t.ink3, maxWidth: 210, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.model}</td>
+                  <td style={{ padding: "9px 8px" }}><BasisPill label={row.ledger === "legacy" ? "Legacy actual" : "Actual"} tone={row.ledger === "legacy" ? "projected" : "actual"} /></td>
+                  <td style={{ padding: "9px 8px", textAlign: "right", color: t.ink3 }}>{fmtInt(row.tokens)}</td>
+                  <td style={{ padding: "9px 8px", textAlign: "right", color: t.ink, fontWeight: 950 }}>{fmtUsd(row.cost_usd)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function NumberControl({ label, value, disabled = false, onChange }: { label: string; value: number; disabled?: boolean; onChange: (value: number) => void }) {
