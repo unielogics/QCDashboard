@@ -630,9 +630,13 @@ blockquote{margin:20px 0 0;padding:16px 18px;border-left:3px solid #D4AF37;backg
   .hero{padding-top:44px}
 }
 @media (max-width: 640px){
-  .dealer-nav{height:auto;padding:14px 20px;align-items:flex-start}
-  .dealer-nav-actions{justify-content:flex-start}
+  .dealer-nav{height:58px;padding:0 14px;align-items:center;gap:10px}
+  .dealer-nav-actions{justify-content:flex-end;gap:8px;flex-wrap:nowrap}
   .dealer-brand span{display:none}
+  .dealer-brand{gap:0;flex:0 0 auto}
+  .dealer-brand svg{width:34px;height:34px}
+  .dealer-nav .nav-pill,.dealer-nav .gold-button{width:auto;min-height:38px;padding:0 14px;font-size:13px;white-space:nowrap}
+  .dealer-nav .gold-button.compact{min-height:38px;padding:0 16px}
   .mini-grid,.review-grid,.doc-list,.metric-grid,.program-grid,.process-grid,.two-col{grid-template-columns:1fr}
   .hero,.split-section,.solution-panel,.content-section,.final-cta,.faq-section,.dealer-footer{width:calc(100% - 28px)}
   .gold-button,.outline-button{width:100%}

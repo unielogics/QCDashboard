@@ -65,6 +65,8 @@ type Widget = {
   host_name?: string;
   duration_min?: number;
   disabled_reason?: string;
+  source?: "system_next_step" | "user_intent" | string;
+  reason?: string;
 };
 
 type IntakeResponse = {
@@ -95,6 +97,7 @@ type EntityStructure = {
   relationship_explanation: string;
 };
 
+type WidgetType = Widget["type"];
 type ChatLine = { id: string; role: "assistant" | "user"; content: string };
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
 
@@ -121,6 +124,8 @@ export default function DealerAIUnderwriterPage() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [openWidgetType, setOpenWidgetType] = useState<WidgetType | null>(null);
+  const [lastSuggestedWidget, setLastSuggestedWidget] = useState<Widget | null>(null);
 
   useEffect(() => {
     const urlToken = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("token") : null;
@@ -149,7 +154,20 @@ export default function DealerAIUnderwriterPage() {
     }
   }, [response]);
 
+  useEffect(() => {
+    const nextWidget = response?.widget;
+    if (!nextWidget) return;
+    setLastSuggestedWidget((previous) => {
+      const changed = previous?.type !== nextWidget.type || previous?.source !== nextWidget.source;
+      if (nextWidget.source === "user_intent" || changed) {
+        setOpenWidgetType(nextWidget.type);
+      }
+      return nextWidget;
+    });
+  }, [response?.widget]);
+
   const widget = response?.widget ?? null;
+  const suggestedWidget = widget ?? lastSuggestedWidget;
   const entityState = asRecord(response?.intake.intake_state?.entity_structure);
   const callBooking = asRecord(response?.intake.intake_state?.call_booking);
   const hasRequiredFacts = Boolean(response && response.intake.loan_purpose && response.intake.requested_loan_amount && response.intake.estimated_credit_score);
@@ -163,7 +181,7 @@ export default function DealerAIUnderwriterPage() {
   const hasReferral = Boolean(response && response.intake.referral_source);
   const hasFiles = Boolean(response && response.files.length);
   const currentResult = response?.intake.result_snapshot ?? response?.latest_review?.result ?? null;
-  const activeWidgetType = widget?.type ?? (
+  const suggestedWidgetType = suggestedWidget?.type ?? (
     response
       ? !hasFiles
         ? "upload_files"
@@ -180,6 +198,7 @@ export default function DealerAIUnderwriterPage() {
                   : "run_review"
       : null
   );
+  const activeWidgetType = openWidgetType ?? null;
   const missingDocs = useMemo(() => {
     const uploadedIds = new Set(response?.files.map((file) => file.requested_document_id).filter(Boolean) ?? []);
     return (response?.requested_documents ?? []).filter((doc) => doc.required && !uploadedIds.has(doc.id));
@@ -238,6 +257,7 @@ export default function DealerAIUnderwriterPage() {
     if (!token) return;
     const text = message ?? chatText.trim();
     if (text) pushUser(text);
+    if (text && !updates) setOpenWidgetType(null);
     setChatText("");
     setBusy(true);
     setStatus("");
@@ -431,12 +451,13 @@ export default function DealerAIUnderwriterPage() {
     if (event.dataTransfer.files.length) addFiles(event.dataTransfer.files);
   }
 
-  const inlineWidget = response ? (
+  const inlineWidget = response && activeWidgetType ? (
     <div style={assistantWidgetBubble}>
       <div style={aiPromptHeader}>
         <span style={aiPromptLabel}>AI prompt</span>
-        <h3 style={aiPromptTitle}>{widget?.title || "Next underwriting step"}</h3>
-        <p style={aiPromptCopy}>{widget?.description || "Complete this step so the AI can keep screening the file."}</p>
+        <h3 style={aiPromptTitle}>{suggestedWidget?.title || "Next underwriting step"}</h3>
+        <p style={aiPromptCopy}>{suggestedWidget?.description || "Complete this step so the AI can keep screening the file."}</p>
+        <button style={smallGhostButton} onClick={() => setOpenWidgetType(null)}>Collapse tool</button>
       </div>
       {activeWidgetType === "upload_files" ? (
         <UploadWidget
@@ -460,7 +481,7 @@ export default function DealerAIUnderwriterPage() {
       {activeWidgetType === "run_review" ? <RunReviewWidget busy={busy} hasResult={Boolean(currentResult)} onRun={() => runReview().catch(() => undefined)} /> : null}
       {activeWidgetType === "bankability_result" ? <ResultWidget result={currentResult} bankability={bankability} /> : null}
       {activeWidgetType === "book_call" && currentResult ? <ResultWidget result={currentResult} bankability={bankability} /> : null}
-      {activeWidgetType === "book_call" && !callBooking?.event_id ? <BookCallWidget widget={widget} busy={busy} onBook={(startsAt) => bookCall(startsAt).catch(() => undefined)} /> : null}
+      {activeWidgetType === "book_call" && !callBooking?.event_id ? <BookCallWidget widget={suggestedWidget} busy={busy} onBook={(startsAt) => bookCall(startsAt).catch(() => undefined)} /> : null}
       {activeWidgetType === "book_call" && callBooking?.event_id ? <div style={emptyBox}>Your call is booked. Keep uploading any missing baseline files before the meeting.</div> : null}
     </div>
   ) : null;
@@ -546,6 +567,11 @@ export default function DealerAIUnderwriterPage() {
                   <p style={muted}>The AI will ask for the baseline files and facts inside this conversation.</p>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  {suggestedWidgetType && !activeWidgetType ? (
+                    <button style={ghostButton} onClick={() => setOpenWidgetType(suggestedWidgetType)}>
+                      Open current request
+                    </button>
+                  ) : null}
                   {response?.resume_url ? <button style={ghostButton} onClick={() => navigator.clipboard.writeText(response.resume_url || "")}>Copy resume link</button> : null}
                   {response ? <a style={ghostLink} href="/client/dealer-intakes">Client continuation</a> : null}
                 </div>
@@ -640,7 +666,7 @@ function AssetWidget({ assets, setAssets, busy, onSubmit }: { assets: AssetRow[]
     setAssets(next.length ? next : [{ id: cryptoId(), address: "", estimated_loan_amount: null, estimated_property_value: null, notes: "" }]);
   }
   return (
-    <WidgetBox title="Real estate collateral schedule" description="Add each property address, estimated amount owed, and estimated property value. Mortgage notes can be uploaded, but estimated values are still required.">
+    <WidgetBox title="Add real estate collateral" description="Type each property line by line. You can also upload mortgage notes, but estimated value is still needed for the preliminary screen.">
       <div style={tableHeader}>
         <span>Full property address</span>
         <span>Amount owed</span>
@@ -659,8 +685,8 @@ function AssetWidget({ assets, setAssets, busy, onSubmit }: { assets: AssetRow[]
         ))}
       </div>
       <div style={buttonRow}>
-        <button style={secondaryButton} onClick={() => setAssets([...assets, { id: cryptoId(), address: "", estimated_loan_amount: null, estimated_property_value: null, notes: "" }])}>+ Add row</button>
-        <button style={primaryButton} disabled={busy} onClick={onSubmit}>Save schedule</button>
+        <button style={secondaryButton} onClick={() => setAssets([...assets, { id: cryptoId(), address: "", estimated_loan_amount: null, estimated_property_value: null, notes: "" }])}>+ Add property</button>
+        <button style={primaryButton} disabled={busy} onClick={onSubmit}>Save properties</button>
       </div>
     </WidgetBox>
   );
@@ -680,11 +706,18 @@ function UploadWidget(props: {
   onUpload: () => void;
 }) {
   const { requestedDocs, missingDocs, queuedFiles, setQueuedFiles, fileInputRef, dragging, setDragging, onDrop, addFiles, busy, onUpload } = props;
+  const uploadedCount = requestedDocs.filter((doc) => !missingDocs.some((missing) => missing.id === doc.id)).length;
   return (
-    <WidgetBox title="Upload baseline documents" description="Use only the baseline package: tax returns, current P&L, bank statements, real estate schedule or mortgage notes, and floorplan/MCA/inventory statements if applicable.">
-      <div style={missingBox}>
-        <strong>{missingDocs.length} required item{missingDocs.length === 1 ? "" : "s"} still need files</strong>
-        <span>{missingDocs.map((doc) => doc.name).join(", ") || "All required items have uploaded files."}</span>
+    <WidgetBox title="Upload baseline documents" description="Attach what you have now. You can keep chatting before every baseline item is uploaded.">
+      <div style={baselineSummary}>
+        <strong>{uploadedCount} uploaded | {missingDocs.length} missing</strong>
+        <span>Baseline package only: taxes, current P&L, bank statements, real estate collateral, and applicable MCA/floorplan/inventory statements.</span>
+      </div>
+      <div style={chipWrap}>
+        {requestedDocs.map((doc) => {
+          const missing = missingDocs.some((item) => item.id === doc.id);
+          return <span key={doc.id} style={missing ? missingChip : completeChip}>{missing ? "Needed" : "Uploaded"}: {doc.name}</span>;
+        })}
       </div>
       <div
         style={{ ...dropZone, borderColor: dragging ? "#21d3c7" : "rgba(255,255,255,.16)", background: dragging ? "rgba(33,211,199,.12)" : "rgba(255,255,255,.035)" }}
@@ -1343,6 +1376,7 @@ const secondaryButton: CSSProperties = {
   cursor: "pointer",
 };
 const ghostButton: CSSProperties = { ...secondaryButton, minHeight: 34, fontSize: 13 };
+const smallGhostButton: CSSProperties = { ...ghostButton, justifySelf: "start", padding: "0 12px", minHeight: 32 };
 const ghostLink: CSSProperties = { ...ghostButton, display: "inline-flex", alignItems: "center", textDecoration: "none" };
 const buttonRow: CSSProperties = { display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" };
 const tableHeader: CSSProperties = {
@@ -1387,6 +1421,32 @@ const missingBox: CSSProperties = {
   display: "grid",
   gap: 4,
   lineHeight: 1.35,
+};
+const baselineSummary: CSSProperties = {
+  border: "1px solid rgba(212,175,55,.24)",
+  background: "rgba(212,175,55,.07)",
+  color: "#F6E7A6",
+  borderRadius: 12,
+  padding: 12,
+  display: "grid",
+  gap: 4,
+  lineHeight: 1.35,
+};
+const chipWrap: CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap" };
+const missingChip: CSSProperties = {
+  border: "1px solid rgba(212,175,55,.25)",
+  background: "rgba(212,175,55,.08)",
+  color: "#F6E7A6",
+  borderRadius: 999,
+  padding: "7px 10px",
+  fontSize: 12,
+  fontWeight: 800,
+};
+const completeChip: CSSProperties = {
+  ...missingChip,
+  border: "1px solid rgba(33,211,199,.28)",
+  background: "rgba(33,211,199,.08)",
+  color: "#A7F3D0",
 };
 const dropZone: CSSProperties = {
   border: "2px dashed rgba(255,255,255,.16)",
