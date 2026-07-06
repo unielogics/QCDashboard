@@ -81,7 +81,7 @@ type IntakeResponse = {
   resume_url?: string | null;
   upload_url?: string | null;
   assistant_message: string;
-  widget?: null;
+  widget?: Widget | null;
   requested_documents: RequestedDoc[];
   files: UploadedFile[];
   ai_summary?: Record<string, unknown> | null;
@@ -232,7 +232,7 @@ export default function DealerAIUnderwriterPage() {
   const currentResult = response?.intake.result_snapshot ?? response?.latest_review?.result ?? null;
   const missingDocs = useMemo(() => {
     const uploadedIds = new Set(response?.files.map((file) => file.requested_document_id).filter(Boolean) ?? []);
-    return (response?.requested_documents ?? []).filter((doc) => doc.required && !uploadedIds.has(doc.id));
+    return (response?.requested_documents ?? []).filter((doc) => doc.required && isStageOneRequestedDoc(doc) && !uploadedIds.has(doc.id));
   }, [response]);
   const pendingFiles = queuedFiles.filter((item) => item.status !== "uploaded");
   const hasQueuedUpload = queuedFiles.some((item) => item.status === "ready" || item.status === "error");
@@ -940,6 +940,9 @@ export default function DealerAIUnderwriterPage() {
                         {line.content}
                       </div>
                     ))}
+                    {response.widget?.type === "book_call" ? (
+                      <BookCallWidget widget={response.widget} busy={busy} onBook={(startsAt) => bookCall(startsAt).catch(() => undefined)} />
+                    ) : null}
                     <div ref={messagesEndRef} />
                   </div>
                   {pendingFiles.length ? (
@@ -1370,7 +1373,7 @@ function DealerSidebar({
         </div>
         <div style={sidebarMiniCard}>
           <strong>Baseline package</strong>
-          <span>Taxes, P&L, bank statements, real estate schedule</span>
+          <span>Business taxes, YTD P&L, main bank statements</span>
         </div>
       </div>
 
@@ -1702,7 +1705,8 @@ function toolIcon(type: WidgetType): string {
 }
 
 function ReviewSidePanel({ result, bankability, reviewStatus, onOpenReview }: { result: Record<string, unknown> | null; bankability: Record<string, unknown> | null; reviewStatus: string; onOpenReview: () => void }) {
-  const summary = String(bankability?.reason || result?.executive_summary || "Upload files and run the preliminary screen to generate an underwriting summary.");
+  const probability = String(result?.probability_status || "").trim();
+  const summary = String(result?.one_next_step || bankability?.reason || result?.executive_summary || "Upload files and run the preliminary screen to generate an underwriting summary.");
   return (
     <section style={sideCard}>
       <div style={sideCardHeader}>
@@ -1714,7 +1718,7 @@ function ReviewSidePanel({ result, bankability, reviewStatus, onOpenReview }: { 
       </div>
       <div style={resultCard}>
         <div style={eyebrow}>Preliminary status</div>
-        <strong style={resultStatus}>{String(bankability?.status || (result ? "Review ready" : "No review yet"))}</strong>
+        <strong style={resultStatus}>{probability || String(bankability?.status || (result ? "Review ready" : "No review yet"))}</strong>
         <p style={muted}>{summary}</p>
       </div>
       {result ? (
@@ -1831,10 +1835,45 @@ function fileLabel(file: UploadedFile): string {
   return "FILE";
 }
 
+function isStageOneRequestedDoc(doc: RequestedDoc): boolean {
+  const text = `${doc.name} ${doc.category ?? ""} ${doc.description ?? ""}`.toLowerCase();
+  return (
+    text.includes("tax") ||
+    text.includes("p&l") ||
+    text.includes("profit and loss") ||
+    text.includes("bank statement")
+  );
+}
+
 function fundabilityBanner(result: Record<string, unknown> | null, bankability: Record<string, unknown> | null): FundabilityBannerData | null {
   if (!result && !bankability) return null;
-  const rawStatus = String(bankability?.status || result?.status || "Preliminary review").trim();
-  const reason = String(bankability?.reason || result?.executive_summary || "Review the AI screen in chat for the current underwriting position.");
+  const probability = String(result?.probability_status || "").trim();
+  const rawStatus = String(probability || bankability?.status || result?.status || "Preliminary review").trim();
+  const reason = String(result?.one_next_step || bankability?.reason || result?.executive_summary || "Review the AI screen in chat for the current underwriting position.");
+  if (probability === "Good probability - book call") {
+    return {
+      tone: "green",
+      label: "Stage 1 bankability",
+      title: probability,
+      detail: reason,
+    };
+  }
+  if (probability === "Poor probability based on current file") {
+    return {
+      tone: "red",
+      label: "Stage 1 bankability",
+      title: probability,
+      detail: reason,
+    };
+  }
+  if (probability === "Promising but needs one clarification" || probability === "Not enough evidence yet") {
+    return {
+      tone: "amber",
+      label: "Stage 1 bankability",
+      title: probability,
+      detail: reason,
+    };
+  }
   const statusOnly = rawStatus.toLowerCase();
   const normalized = `${rawStatus} ${reason}`.toLowerCase();
   const isNegative =
