@@ -4,6 +4,7 @@ import type { CSSProperties, DragEvent, MutableRefObject, ReactNode } from "reac
 import { useEffect, useMemo, useRef, useState } from "react";
 import { QCMark } from "@/components/QCMark";
 import { apiBase } from "@/lib/api";
+import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal";
 
 type RequestedDoc = {
   id: string;
@@ -100,6 +101,7 @@ type EntityStructure = {
 type WidgetType = Widget["type"];
 type ChatLine = { id: string; role: "assistant" | "user"; content: string };
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
+type RoomPanel = "chat" | "bucket";
 
 function useCompactViewport() {
   const [compact, setCompact] = useState(false);
@@ -141,7 +143,9 @@ export default function DealerAIUnderwriterPage() {
   const [dragging, setDragging] = useState(false);
   const [openWidgetType, setOpenWidgetType] = useState<WidgetType | null>(null);
   const [lastSuggestedWidget, setLastSuggestedWidget] = useState<Widget | null>(null);
-  const [mobilePanel, setMobilePanel] = useState<"chat" | "bucket" | "review">("chat");
+  const [activePanel, setActivePanel] = useState<RoomPanel>("chat");
+  const [legalAccepted, setLegalAccepted] = useState(false);
+  const [resumeEmail, setResumeEmail] = useState("");
 
   useEffect(() => {
     const urlToken = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("token") : null;
@@ -233,6 +237,7 @@ export default function DealerAIUnderwriterPage() {
   );
   const activeWidgetType = openWidgetType ?? null;
   const bankability = asRecord(response?.latest_review?.result?.bankability_assessment ?? response?.intake.result_snapshot?.bankability_assessment);
+  const fundability = fundabilityBanner(currentResult, bankability);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const res = await fetch(`${apiBase}/api/v1${path}`, {
@@ -252,6 +257,10 @@ export default function DealerAIUnderwriterPage() {
       setStatus("Full name and email are required before uploading documents.");
       return;
     }
+    if (!legalAccepted) {
+      setStatus("Accept the Terms and Privacy Policy before opening the secure intake.");
+      return;
+    }
     setBusy(true);
     setStatus("");
     try {
@@ -262,6 +271,10 @@ export default function DealerAIUnderwriterPage() {
           email: contact.email.trim(),
           phone: contact.phone.trim() || null,
           business_name: contact.business_name.trim() || null,
+          terms_accepted: true,
+          privacy_accepted: true,
+          terms_version: TERMS_VERSION,
+          privacy_version: PRIVACY_VERSION,
         }),
       });
       applyResponse(payload, payload.token ?? "");
@@ -269,6 +282,27 @@ export default function DealerAIUnderwriterPage() {
       if (payload.token && typeof window !== "undefined") {
         window.history.replaceState(null, "", `/dealer-ai-underwriter?token=${encodeURIComponent(payload.token)}`);
       }
+    } catch (error) {
+      setStatus(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function requestResumeLink() {
+    const email = (resumeEmail || contact.email).trim();
+    if (!email) {
+      setStatus("Enter your email and we will send the secure resume link if a file exists.");
+      return;
+    }
+    setBusy(true);
+    setStatus("");
+    try {
+      const payload = await call<{ ok: boolean; message: string }>("/public/dealer-ai-intake/resume-link", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      });
+      setStatus(payload.message || "If a matching secure intake exists, a resume link has been sent.");
     } catch (error) {
       setStatus(errorMessage(error));
     } finally {
@@ -500,7 +534,22 @@ export default function DealerAIUnderwriterPage() {
 
   function openUploadTool() {
     setOpenWidgetType("upload_files");
-    setMobilePanel("chat");
+    setActivePanel("chat");
+  }
+
+  function logoutRoom() {
+    setToken("");
+    setResponse(null);
+    setChat([]);
+    setChatText("");
+    setQueuedFiles([]);
+    setOpenWidgetType(null);
+    setLastSuggestedWidget(null);
+    setActivePanel("chat");
+    setStatus("You are logged out of this secure room. Use your emailed resume link to return.");
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", "/dealer-ai-underwriter");
+    }
   }
 
   function pushAssistant(content: string) {
@@ -600,7 +649,20 @@ export default function DealerAIUnderwriterPage() {
                 </div>
               </div>
               <div style={stepOneFormColumn}>
-                <ContactWidget contact={contact} setContact={setContact} busy={busy} onStart={() => startIntake().catch(() => undefined)} />
+                <ContactWidget
+                  contact={contact}
+                  setContact={setContact}
+                  busy={busy}
+                  legalAccepted={legalAccepted}
+                  setLegalAccepted={setLegalAccepted}
+                  onStart={() => startIntake().catch(() => undefined)}
+                />
+                <ResumeLinkWidget
+                  email={resumeEmail}
+                  setEmail={setResumeEmail}
+                  busy={busy}
+                  onSend={() => requestResumeLink().catch(() => undefined)}
+                />
                 {status ? <div style={statusBoxNoMargin}>{status}</div> : null}
               </div>
             </section>
@@ -622,50 +684,48 @@ export default function DealerAIUnderwriterPage() {
                 response={response}
                 missingDocs={missingDocs}
                 reviewStatus={reviewStatus}
-                activePanel={mobilePanel}
-                setActivePanel={setMobilePanel}
-                onOpenUpload={openUploadTool}
+                activePanel={activePanel}
+                setActivePanel={setActivePanel}
                 onCopyResume={() => navigator.clipboard.writeText(response.resume_url || "")}
+                onLogout={logoutRoom}
               />
             ) : null}
 
             <section style={compact ? appMainMobile : appMain}>
-              <header style={compact ? workspaceHeaderMobile : workspaceHeader}>
-                <div style={compact ? brandGroupMobile : brandGroup}>
-                  <QCMark size={compact ? 30 : 34} />
-                  <div style={{ minWidth: 0 }}>
-                    <div style={compact ? eyebrowMobile : eyebrow}>Qualified Commercial AI Funding Review</div>
-                    <h1 style={compact ? workspaceTitleMobile : workspaceTitle}>Dealer AI Underwriter</h1>
+              {compact ? (
+                <header style={workspaceHeaderMobile}>
+                  <div style={brandGroupMobile}>
+                    <QCMark size={30} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={eyebrowMobile}>Qualified Commercial AI Funding Review</div>
+                      <h1 style={workspaceTitleMobile}>Dealer AI Underwriter</h1>
+                    </div>
                   </div>
-                </div>
-                <div style={compact ? workspaceMetaMobile : workspaceMeta}>
-                  <span style={statusPill}>{reviewStatus}</span>
-                  <span style={metricPill}>{response.files.length} uploaded</span>
-                  <span style={missingDocs.length ? warningPill : metricPill}>{missingDocs.length} missing</span>
-                </div>
-              </header>
+                  <button type="button" style={ghostButton} onClick={logoutRoom}>Logout</button>
+                </header>
+              ) : null}
 
               {compact ? (
                 <div style={mobileTabs}>
-                  {(["chat", "bucket", "review"] as const).map((panel) => (
+                  {(["chat", "bucket"] as const).map((panel) => (
                     <button
                       key={panel}
                       type="button"
-                      style={mobilePanel === panel ? mobileTabActive : mobileTab}
-                      onClick={() => setMobilePanel(panel)}
+                      style={activePanel === panel ? mobileTabActive : mobileTab}
+                      onClick={() => setActivePanel(panel)}
                     >
-                      {titleize(panel)}
+                      {panel === "bucket" ? "Buckets" : "Chat"}
                     </button>
                   ))}
                 </div>
               ) : null}
 
               <div style={compact ? workspaceGridMobile : workspaceGrid}>
-                {(!compact || mobilePanel === "chat") ? (
+                {activePanel === "chat" ? (
                 <section style={compact ? chatPanelModernMobile : chatPanelModern}>
                   <div style={compact ? chatTopBarMobile : chatTopBar}>
                     <div>
-                      <h2 style={sectionTitle}>AI Funding Review</h2>
+                      <h2 style={sectionTitle}>Dealer AI Underwriter</h2>
                       <p style={muted}>Ask questions, attach files, and answer only the underwriting questions that matter.</p>
                     </div>
                     <div style={compact ? mobileActionRow : headerActionRow}>
@@ -674,10 +734,10 @@ export default function DealerAIUnderwriterPage() {
                           Open request
                         </button>
                       ) : null}
-                      {response?.resume_url ? <button type="button" style={ghostButton} onClick={() => navigator.clipboard.writeText(response.resume_url || "")}>Copy resume</button> : null}
                     </div>
                   </div>
                   <div style={compact ? messagesModernMobile : messagesModern}>
+                    {fundability ? <FundabilityBanner banner={fundability} /> : null}
                     {chat.map((line) => (
                       <div key={line.id} style={line.role === "assistant" ? assistantBubble : userBubble}>
                         {line.content}
@@ -740,37 +800,18 @@ export default function DealerAIUnderwriterPage() {
                 </section>
                 ) : null}
 
-                {!compact ? (
-                <aside style={sideRail}>
+                {activePanel === "bucket" ? (
                   <BucketFilesPanel
                     response={response}
                     missingDocs={missingDocs}
                     pendingFiles={pendingFiles}
                     busy={busy}
+                    fundability={fundability}
                     onOpenUpload={openUploadTool}
                     onRemoveQueuedFile={removeQueuedFile}
                     onChangeQueuedFileDocument={updateQueuedFileDocument}
                     onUpload={() => uploadQueuedFiles().catch(() => undefined)}
                   />
-                  <ReviewSidePanel result={currentResult} bankability={bankability} reviewStatus={reviewStatus} onOpenReview={() => setOpenWidgetType("bankability_result")} />
-                </aside>
-                ) : null}
-
-                {compact && mobilePanel === "bucket" ? (
-                <BucketFilesPanel
-                  response={response}
-                  missingDocs={missingDocs}
-                  pendingFiles={pendingFiles}
-                  busy={busy}
-                  onOpenUpload={openUploadTool}
-                  onRemoveQueuedFile={removeQueuedFile}
-                  onChangeQueuedFileDocument={updateQueuedFileDocument}
-                  onUpload={() => uploadQueuedFiles().catch(() => undefined)}
-                />
-                ) : null}
-
-                {compact && mobilePanel === "review" ? (
-                <ReviewSidePanel result={currentResult} bankability={bankability} reviewStatus={reviewStatus} onOpenReview={() => setOpenWidgetType("bankability_result")} />
                 ) : null}
               </div>
             </section>
@@ -781,7 +822,21 @@ export default function DealerAIUnderwriterPage() {
   );
 }
 
-function ContactWidget({ contact, setContact, busy, onStart }: { contact: typeof initialContact; setContact: (value: typeof initialContact) => void; busy: boolean; onStart: () => void }) {
+function ContactWidget({
+  contact,
+  setContact,
+  busy,
+  legalAccepted,
+  setLegalAccepted,
+  onStart,
+}: {
+  contact: typeof initialContact;
+  setContact: (value: typeof initialContact) => void;
+  busy: boolean;
+  legalAccepted: boolean;
+  setLegalAccepted: (value: boolean) => void;
+  onStart: () => void;
+}) {
   return (
     <div style={stepOneFormCard}>
       <div>
@@ -794,6 +849,12 @@ function ContactWidget({ contact, setContact, busy, onStart }: { contact: typeof
         <Field label="Phone" value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} />
         <Field label="Dealership" value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} />
       </div>
+      <label style={legalCheckRow}>
+        <input type="checkbox" checked={legalAccepted} onChange={(event) => setLegalAccepted(event.target.checked)} />
+        <span>
+          I agree to the <a style={inlineLink} href="/terms" target="_blank" rel="noreferrer">Terms and Conditions</a> and <a style={inlineLink} href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.
+        </span>
+      </label>
       <button style={stepOneCta} disabled={busy} onClick={onStart}>{busy ? "Creating secure room..." : "Start my funding review ->"}</button>
       <div style={formTrustLine}>
         <span>Bank-grade encryption</span>
@@ -801,6 +862,21 @@ function ContactWidget({ contact, setContact, busy, onStart }: { contact: typeof
         <span>No credit pull to start</span>
         <span>|</span>
         <span>Preliminary review only</span>
+      </div>
+    </div>
+  );
+}
+
+function ResumeLinkWidget({ email, setEmail, busy, onSend }: { email: string; setEmail: (value: string) => void; busy: boolean; onSend: () => void }) {
+  return (
+    <div style={resumeCard}>
+      <div>
+        <strong>Already started?</strong>
+        <p style={stepOneFormCopy}>Enter your email and we will send your secure resume link if a file exists.</p>
+      </div>
+      <div style={resumeGrid}>
+        <input style={input} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@dealership.com" />
+        <button type="button" style={secondaryButton} disabled={busy} onClick={onSend}>Send link</button>
       </div>
     </div>
   );
@@ -1023,21 +1099,20 @@ function DealerSidebar({
   reviewStatus,
   activePanel,
   setActivePanel,
-  onOpenUpload,
   onCopyResume,
+  onLogout,
 }: {
   response: IntakeResponse;
   missingDocs: RequestedDoc[];
   reviewStatus: string;
-  activePanel: "chat" | "bucket" | "review";
-  setActivePanel: (panel: "chat" | "bucket" | "review") => void;
-  onOpenUpload: () => void;
+  activePanel: RoomPanel;
+  setActivePanel: (panel: RoomPanel) => void;
   onCopyResume: () => void;
+  onLogout: () => void;
 }) {
-  const navItems: Array<{ key: "chat" | "bucket" | "review"; label: string; meta: string }> = [
+  const navItems: Array<{ key: RoomPanel; label: string; meta: string }> = [
     { key: "chat", label: "Underwriter chat", meta: reviewStatus },
-    { key: "bucket", label: "Bucket files", meta: `${response.files.length} uploaded` },
-    { key: "review", label: "AI review", meta: missingDocs.length ? `${missingDocs.length} missing` : "Baseline ready" },
+    { key: "bucket", label: "Buckets", meta: `${response.files.length} uploaded` },
   ];
   return (
     <aside style={dealerSidebar}>
@@ -1048,8 +1123,6 @@ function DealerSidebar({
           <span>Dealer funding room</span>
         </div>
       </div>
-
-      <button type="button" style={sidebarNewButton} onClick={onOpenUpload}>+ Attach files</button>
 
       <nav style={sidebarNav} aria-label="Dealer AI room">
         {navItems.map((item) => (
@@ -1079,7 +1152,7 @@ function DealerSidebar({
 
       <div style={sidebarFooter}>
         {response.resume_url ? <button type="button" style={sidebarFooterButton} onClick={onCopyResume}>Copy resume link</button> : null}
-        <a style={sidebarFooterButton} href="/client/dealer-intakes">Client continuation</a>
+        <button type="button" style={sidebarFooterButton} onClick={onLogout}>Logout</button>
       </div>
     </aside>
   );
@@ -1123,6 +1196,7 @@ function BucketFilesPanel({
   missingDocs,
   pendingFiles,
   busy,
+  fundability,
   onOpenUpload,
   onRemoveQueuedFile,
   onChangeQueuedFileDocument,
@@ -1132,6 +1206,7 @@ function BucketFilesPanel({
   missingDocs: RequestedDoc[];
   pendingFiles: QueuedFile[];
   busy: boolean;
+  fundability: FundabilityBannerData | null;
   onOpenUpload: () => void;
   onRemoveQueuedFile: (id: string) => void;
   onChangeQueuedFileDocument: (id: string, requestedDocumentId: string) => void;
@@ -1140,14 +1215,16 @@ function BucketFilesPanel({
   const docsById = new Map(response.requested_documents.map((doc) => [doc.id, doc]));
   const readyCount = pendingFiles.filter((file) => file.status === "ready" || file.status === "error").length;
   return (
-    <section style={sideCard}>
+    <section style={bucketTabPanel}>
       <div style={sideCardHeader}>
         <div>
-          <div style={sideEyebrow}>Bucket</div>
-          <h2 style={sideTitle}>Uploaded files</h2>
+          <div style={sideEyebrow}>Buckets</div>
+          <h2 style={sideTitle}>Dealer file room</h2>
         </div>
-        <button type="button" style={miniButton} onClick={onOpenUpload}>Attach</button>
+        <button type="button" style={miniButton} onClick={onOpenUpload}>Attach files in chat</button>
       </div>
+
+      {fundability ? <FundabilityBanner banner={fundability} /> : null}
 
       <div style={bucketMetrics}>
         <Metric value={response.files.length.toString()} label="uploaded" />
@@ -1231,6 +1308,26 @@ function BucketFilesPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+type FundabilityBannerData = {
+  tone: "green" | "red" | "amber";
+  label: string;
+  title: string;
+  detail: string;
+};
+
+function FundabilityBanner({ banner }: { banner: FundabilityBannerData }) {
+  const style = banner.tone === "green" ? fundableGreen : banner.tone === "red" ? fundableRed : fundableAmber;
+  return (
+    <div style={{ ...fundabilityBannerBase, ...style }}>
+      <div>
+        <div style={fundabilityLabel}>{banner.label}</div>
+        <strong>{banner.title}</strong>
+        <p>{banner.detail}</p>
+      </div>
+    </div>
   );
 }
 
@@ -1363,6 +1460,43 @@ function fileLabel(file: UploadedFile): string {
   return "FILE";
 }
 
+function fundabilityBanner(result: Record<string, unknown> | null, bankability: Record<string, unknown> | null): FundabilityBannerData | null {
+  if (!result && !bankability) return null;
+  const rawStatus = String(bankability?.status || result?.status || "Preliminary review").trim();
+  const reason = String(bankability?.reason || result?.executive_summary || "Review the AI screen in chat for the current underwriting position.");
+  const normalized = `${rawStatus} ${reason}`.toLowerCase();
+  if (normalized.includes("not fundable") || normalized.includes("not bankable") || normalized.includes("decline") || normalized.includes("unfundable")) {
+    return {
+      tone: "red",
+      label: "Preliminary screen",
+      title: rawStatus || "Not fundable",
+      detail: reason,
+    };
+  }
+  if (normalized.includes("cannot") || normalized.includes("incomplete") || normalized.includes("missing") || normalized.includes("determine")) {
+    return {
+      tone: "amber",
+      label: "Preliminary screen",
+      title: rawStatus || "Cannot determine yet",
+      detail: reason,
+    };
+  }
+  if (normalized.includes("fundable") || normalized.includes("bankable") || normalized.includes("likely") || normalized.includes("qualified")) {
+    return {
+      tone: "green",
+      label: "Preliminary screen",
+      title: rawStatus || "Likely fundable",
+      detail: reason,
+    };
+  }
+  return {
+    tone: "amber",
+    label: "Preliminary screen",
+    title: rawStatus || "Review ready",
+    detail: reason,
+  };
+}
+
 async function responseMessage(res: Response): Promise<string> {
   try {
     const body = await res.json();
@@ -1394,7 +1528,7 @@ const shellMobile: CSSProperties = { ...shell, maxWidth: "100%", gap: 12 };
 const appViewport: CSSProperties = {
   height: "100dvh",
   overflow: "hidden",
-  background: "#05060A",
+  background: "#070707",
   color: "#F8FAFC",
 };
 const appViewportMobile: CSSProperties = {
@@ -1407,7 +1541,7 @@ const appShell: CSSProperties = {
   minHeight: 0,
   display: "grid",
   gridTemplateColumns: "236px minmax(0, 1fr)",
-  background: "#05060A",
+  background: "#070707",
 };
 const appShellMobile: CSSProperties = {
   height: "100%",
@@ -1573,6 +1707,25 @@ const formTrustLine: CSSProperties = {
   fontSize: 11,
   fontWeight: 700,
 };
+const legalCheckRow: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "18px minmax(0,1fr)",
+  gap: 10,
+  alignItems: "start",
+  color: "#B8C4D6",
+  fontSize: 12,
+  lineHeight: 1.45,
+};
+const inlineLink: CSSProperties = { color: "#F5E49A", fontWeight: 900, textDecoration: "none" };
+const resumeCard: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.10)",
+  borderRadius: 16,
+  background: "rgba(255,255,255,.045)",
+  padding: 16,
+  display: "grid",
+  gap: 12,
+};
+const resumeGrid: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" };
 const lockedPreview: CSSProperties = {
   minHeight: 220,
   border: "1px solid rgba(255,255,255,.08)",
@@ -1735,18 +1888,17 @@ const workspaceGrid: CSSProperties = {
   minHeight: 0,
   height: "100%",
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) minmax(330px, 390px)",
+  gridTemplateColumns: "minmax(0, 1fr)",
   gap: 16,
   alignItems: "start",
   overflow: "hidden",
-  padding: 16,
 };
 const workspaceGridMobile: CSSProperties = { minHeight: 0, display: "grid", gap: 12, overflowY: "auto" };
 const appMain: CSSProperties = {
   height: "100%",
   minHeight: 0,
   display: "grid",
-  gridTemplateRows: "auto minmax(0,1fr)",
+  gridTemplateRows: "minmax(0,1fr)",
   overflow: "hidden",
 };
 const appMainMobile: CSSProperties = {
@@ -1761,21 +1913,20 @@ const sideRail: CSSProperties = { minHeight: 0, height: "100%", display: "grid",
 const chatPanelModern: CSSProperties = {
   minHeight: 0,
   height: "100%",
-  background: "rgba(8,14,32,.9)",
-  border: "1px solid rgba(255,255,255,.10)",
-  borderRadius: 18,
+  background: "transparent",
+  border: 0,
+  borderRadius: 0,
   display: "grid",
   gridTemplateRows: "auto 1fr auto auto",
   overflow: "hidden",
-  boxShadow: "0 28px 90px rgba(0,0,0,.34)",
+  boxShadow: "none",
 };
 const chatPanelModernMobile: CSSProperties = {
   ...chatPanelModern,
   borderRadius: 16,
 };
 const chatTopBar: CSSProperties = {
-  padding: 16,
-  borderBottom: "1px solid rgba(255,255,255,.08)",
+  padding: "16px min(7vw,92px) 10px",
   display: "flex",
   justifyContent: "space-between",
   gap: 12,
@@ -1792,7 +1943,7 @@ const dealerSidebar: CSSProperties = {
   background: "#000",
   padding: 14,
   display: "grid",
-  gridTemplateRows: "auto auto auto 1fr auto",
+  gridTemplateRows: "auto auto 1fr auto",
   gap: 16,
   overflow: "hidden",
 };
@@ -1988,22 +2139,22 @@ const messages: CSSProperties = { padding: 18, display: "flex", flexDirection: "
 const messagesMobile: CSSProperties = { ...messages, padding: 12, minHeight: 360 };
 const assistantBubble: CSSProperties = {
   alignSelf: "flex-start",
-  maxWidth: "82%",
-  padding: "13px 15px",
-  borderRadius: 16,
-  background: "rgba(33,211,199,.09)",
-  border: "1px solid rgba(33,211,199,.2)",
-  color: "#D9FFFB",
-  lineHeight: 1.45,
+  maxWidth: 780,
+  padding: "4px 0",
+  borderRadius: 0,
+  background: "transparent",
+  border: 0,
+  color: "#F3F4F6",
+  lineHeight: 1.62,
 };
 const userBubble: CSSProperties = {
   alignSelf: "flex-end",
-  maxWidth: "82%",
-  padding: "13px 15px",
-  borderRadius: 16,
-  background: "linear-gradient(135deg,#E9D58A,#D4AF37)",
-  color: "#0B1326",
-  fontWeight: 800,
+  maxWidth: 720,
+  padding: "12px 15px",
+  borderRadius: 18,
+  background: "#2B2B2B",
+  color: "#F8FAFC",
+  fontWeight: 700,
   lineHeight: 1.45,
 };
 const assistantWidgetBubble: CSSProperties = {
@@ -2011,8 +2162,8 @@ const assistantWidgetBubble: CSSProperties = {
   width: "min(860px, 100%)",
   maxWidth: "100%",
   borderRadius: 18,
-  border: "1px solid rgba(33,211,199,.22)",
-  background: "linear-gradient(180deg,rgba(33,211,199,.08),rgba(255,255,255,.035))",
+  border: "1px solid rgba(255,255,255,.10)",
+  background: "#111",
   padding: 14,
   display: "grid",
   gap: 12,
@@ -2040,16 +2191,16 @@ const aiPromptCopy: CSSProperties = {
   color: "#B8C4D6",
   lineHeight: 1.45,
 };
-const composer: CSSProperties = { display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, padding: 18, borderTop: "1px solid rgba(255,255,255,.08)", alignItems: "center" };
+const composer: CSSProperties = { display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, padding: "14px min(7vw,92px) 24px", alignItems: "center" };
 const composerMobile: CSSProperties = { ...composer, gap: 8, padding: 12, gridTemplateColumns: "40px minmax(0, 1fr) auto" };
 const composerInput: CSSProperties = {
   border: "1px solid rgba(255,255,255,.14)",
   borderRadius: 999,
   padding: "0 16px",
-  minHeight: 46,
+  minHeight: 52,
   fontSize: 15,
   outline: "none",
-  background: "rgba(255,255,255,.045)",
+  background: "#232323",
   color: "#F8FAFC",
 };
 const attachButton: CSSProperties = {
@@ -2125,6 +2276,21 @@ const sideCard: CSSProperties = {
   gap: 14,
   boxShadow: "0 22px 70px rgba(0,0,0,.26)",
 };
+const bucketTabPanel: CSSProperties = {
+  height: "100%",
+  minHeight: 0,
+  maxWidth: 1180,
+  width: "100%",
+  justifySelf: "center",
+  background: "transparent",
+  border: 0,
+  borderRadius: 0,
+  padding: "22px min(5vw,54px)",
+  display: "grid",
+  alignContent: "start",
+  gap: 16,
+  overflowY: "auto",
+};
 const sideCardHeader: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" };
 const sideEyebrow: CSSProperties = { color: "#E9D58A", fontSize: 11, fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase" };
 const sideTitle: CSSProperties = { margin: "3px 0 0", color: "#F8FAFC", fontSize: 19, letterSpacing: 0 };
@@ -2184,6 +2350,36 @@ const fileTypeBadge: CSSProperties = {
   fontWeight: 900,
 };
 const warningText: CSSProperties = { display: "block", color: "#F6E7A6", fontSize: 13, lineHeight: 1.35 };
+const fundabilityBannerBase: CSSProperties = {
+  borderRadius: 18,
+  padding: "16px 18px",
+  display: "grid",
+  gap: 4,
+  border: "1px solid transparent",
+  boxShadow: "0 16px 50px rgba(0,0,0,.18)",
+};
+const fundabilityLabel: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: 1.4,
+  marginBottom: 5,
+};
+const fundableGreen: CSSProperties = {
+  borderColor: "rgba(74,222,128,.38)",
+  background: "linear-gradient(135deg,rgba(22,101,52,.62),rgba(20,83,45,.38))",
+  color: "#DCFCE7",
+};
+const fundableRed: CSSProperties = {
+  borderColor: "rgba(248,113,113,.42)",
+  background: "linear-gradient(135deg,rgba(127,29,29,.62),rgba(69,10,10,.40))",
+  color: "#FEE2E2",
+};
+const fundableAmber: CSSProperties = {
+  borderColor: "rgba(251,191,36,.42)",
+  background: "linear-gradient(135deg,rgba(113,63,18,.62),rgba(69,26,3,.40))",
+  color: "#FEF3C7",
+};
 const snapshot: CSSProperties = { ...widgetBox, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" };
 const miniMetrics: CSSProperties = { display: "flex", gap: 8 };
 const metric: CSSProperties = {
