@@ -306,7 +306,7 @@ export default function DealerAIUnderwriterPage() {
     completionTimerRef.current = window.setTimeout(() => {
       setReviewProgress("idle");
       completionTimerRef.current = null;
-    }, 4200);
+    }, 1500);
   }
 
   function failReviewProgress() {
@@ -1631,14 +1631,15 @@ function ReviewProgress({ stage, completedAt, compact }: { stage: ReviewProgress
   const percent = reviewProgressPercent(stage);
   const label = reviewProgressLabel(stage);
   const nextStage = REVIEW_PROGRESS_STAGES.find((item) => reviewProgressPercent(item.key) > percent)?.label;
+  const detail = isComplete && completedAt ? `Done ${formatDate(completedAt)}` : isError ? "Needs retry" : nextStage ? `Next: ${nextStage}` : `${percent}%`;
   return (
     <div style={{ ...reviewProgressShell, ...(compact ? reviewProgressShellCompact : null), ...(isError ? reviewProgressShellError : null), ...(isComplete ? reviewProgressShellComplete : null) }}>
       <div style={reviewProgressTop}>
         <div style={reviewProgressLabelWrap}>
-          <span style={isError ? reviewProgressDotError : isComplete ? reviewProgressDotComplete : reviewProgressDot} />
+          <span style={isError ? reviewProgressBarDotError : isComplete ? reviewProgressBarDotComplete : reviewProgressBarDot} />
           <strong>{label}</strong>
         </div>
-        <span>{isComplete && completedAt ? `Done ${formatDate(completedAt)}` : isError ? "Needs retry" : nextStage ? `Next: ${nextStage}` : `${percent}%`}</span>
+        <span style={reviewProgressDetail}>{detail}</span>
       </div>
       <div style={reviewProgressTrack}>
         <div style={{ ...reviewProgressFill, width: `${percent}%`, ...(isError ? reviewProgressFillError : null), ...(isComplete ? reviewProgressFillComplete : null) }} />
@@ -2324,8 +2325,8 @@ const chatPanelModern: CSSProperties = {
   background: "transparent",
   border: 0,
   borderRadius: 0,
-  display: "grid",
-  gridTemplateRows: "auto 1fr auto auto",
+  display: "flex",
+  flexDirection: "column",
   overflow: "hidden",
   boxShadow: "none",
 };
@@ -2342,7 +2343,7 @@ const chatTopBar: CSSProperties = {
   flexWrap: "wrap",
 };
 const chatTopBarMobile: CSSProperties = { ...chatTopBar, padding: 12, display: "grid", alignItems: "stretch" };
-const messagesModern: CSSProperties = { minHeight: 0, padding: "22px min(7vw,92px)", display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" };
+const messagesModern: CSSProperties = { flex: "1 1 auto", minHeight: 0, padding: "22px min(7vw,92px)", display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" };
 const messagesModernMobile: CSSProperties = { ...messagesModern, padding: 12 };
 const dealerSidebar: CSSProperties = {
   height: "100%",
@@ -2853,15 +2854,19 @@ const zipChildRow: CSSProperties = {
 };
 const warningText: CSSProperties = { display: "block", color: "#F6E7A6", fontSize: 13, lineHeight: 1.35 };
 const reviewProgressShell: CSSProperties = {
-  margin: "0 min(7vw,92px) 4px",
+  flex: "0 0 auto",
+  alignSelf: "center",
+  width: "min(720px, calc(100% - 64px))",
+  margin: "0 0 10px",
   border: "1px solid rgba(255,255,255,.07)",
-  borderRadius: 999,
-  background: "rgba(255,255,255,.025)",
-  padding: "9px 12px",
+  borderRadius: 16,
+  background: "rgba(12,12,12,.88)",
+  boxShadow: "0 14px 35px rgba(0,0,0,.22)",
+  padding: "10px 12px",
   display: "grid",
-  gap: 8,
+  gap: 7,
 };
-const reviewProgressShellCompact: CSSProperties = { margin: "0 12px 4px", padding: "9px 10px", borderRadius: 14 };
+const reviewProgressShellCompact: CSSProperties = { alignSelf: "stretch", width: "auto", margin: "0 12px 10px", padding: "9px 10px", borderRadius: 14 };
 const reviewProgressShellComplete: CSSProperties = {
   borderColor: "rgba(74,222,128,.20)",
   background: "rgba(22,101,52,.10)",
@@ -2879,11 +2884,12 @@ const reviewProgressTop: CSSProperties = {
   fontSize: 12,
 };
 const reviewProgressLabelWrap: CSSProperties = { display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 };
-const reviewProgressDot: CSSProperties = { width: 7, height: 7, borderRadius: 999, background: "#21D3C7", boxShadow: "0 0 0 4px rgba(33,211,199,.10)" };
-const reviewProgressDotComplete: CSSProperties = { ...reviewProgressDot, background: "#22C55E", boxShadow: "0 0 0 4px rgba(34,197,94,.10)" };
-const reviewProgressDotError: CSSProperties = { ...reviewProgressDot, background: "#EF4444", boxShadow: "0 0 0 4px rgba(239,68,68,.12)" };
+const reviewProgressDetail: CSSProperties = { minWidth: 0, color: "#AEBBD0", fontSize: 11, fontWeight: 800, textAlign: "right" };
+const reviewProgressBarDot: CSSProperties = { width: 7, height: 7, borderRadius: 999, background: "#21D3C7", boxShadow: "0 0 0 4px rgba(33,211,199,.10)", flex: "0 0 auto" };
+const reviewProgressBarDotComplete: CSSProperties = { ...reviewProgressBarDot, background: "#22C55E", boxShadow: "0 0 0 4px rgba(34,197,94,.10)" };
+const reviewProgressBarDotError: CSSProperties = { ...reviewProgressBarDot, background: "#EF4444", boxShadow: "0 0 0 4px rgba(239,68,68,.12)" };
 const reviewProgressTrack: CSSProperties = {
-  height: 3,
+  height: 4,
   borderRadius: 999,
   overflow: "hidden",
   background: "rgba(255,255,255,.08)",
