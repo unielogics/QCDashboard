@@ -38,14 +38,33 @@ type Intake = {
   estimated_credit_score?: number | null;
   referral_source?: string | null;
   asset_rows?: AssetRow[] | null;
+  intake_state?: Record<string, unknown> | null;
   result_snapshot?: Record<string, unknown> | null;
 };
 
+type BookingSlot = {
+  starts_at: string;
+  label: string;
+  date_label: string;
+};
+
 type Widget = {
-  type: "deal_profile" | "asset_table" | "upload_files" | "referral" | "run_review" | "bankability_result";
+  type:
+    | "deal_profile"
+    | "entity_structure"
+    | "real_estate_schedule"
+    | "upload_files"
+    | "referral"
+    | "run_review"
+    | "bankability_result"
+    | "book_call";
   title: string;
   description: string;
   missing_document_ids?: string[];
+  slots?: BookingSlot[];
+  host_name?: string;
+  duration_min?: number;
+  disabled_reason?: string;
 };
 
 type IntakeResponse = {
@@ -69,10 +88,23 @@ type AssetRow = {
   notes?: string | null;
 };
 
+type EntityStructure = {
+  primary_operating_entity: string;
+  main_operating_bank_account: string;
+  related_entities: string;
+  relationship_explanation: string;
+};
+
 type ChatLine = { id: string; role: "assistant" | "user"; content: string };
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
 
 const initialContact = { full_name: "", email: "", phone: "", business_name: "" };
+const initialEntity: EntityStructure = {
+  primary_operating_entity: "",
+  main_operating_bank_account: "",
+  related_entities: "",
+  relationship_explanation: "",
+};
 
 export default function DealerAIUnderwriterPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -80,6 +112,7 @@ export default function DealerAIUnderwriterPage() {
   const [contact, setContact] = useState(initialContact);
   const [deal, setDeal] = useState({ loan_purpose: "", requested_loan_amount: "", estimated_credit_score: "" });
   const [assets, setAssets] = useState<AssetRow[]>([{ id: cryptoId(), address: "", estimated_loan_amount: null, estimated_property_value: null, notes: "" }]);
+  const [entity, setEntity] = useState<EntityStructure>(initialEntity);
   const [referral, setReferral] = useState("");
   const [response, setResponse] = useState<IntakeResponse | null>(null);
   const [chat, setChat] = useState<ChatLine[]>([]);
@@ -105,19 +138,38 @@ export default function DealerAIUnderwriterPage() {
     });
     setReferral(response.intake.referral_source ?? "");
     if (response.intake.asset_rows?.length) setAssets(response.intake.asset_rows.map((row) => ({ ...row, id: row.id || cryptoId() })));
+    const savedEntity = asRecord(response.intake.intake_state?.entity_structure);
+    if (savedEntity) {
+      setEntity({
+        primary_operating_entity: String(savedEntity.primary_operating_entity ?? ""),
+        main_operating_bank_account: String(savedEntity.main_operating_bank_account ?? ""),
+        related_entities: String(savedEntity.related_entities ?? ""),
+        relationship_explanation: String(savedEntity.relationship_explanation ?? ""),
+      });
+    }
   }, [response]);
 
   const widget = response?.widget ?? null;
+  const entityState = asRecord(response?.intake.intake_state?.entity_structure);
+  const callBooking = asRecord(response?.intake.intake_state?.call_booking);
   const hasRequiredFacts = Boolean(response && response.intake.loan_purpose && response.intake.requested_loan_amount && response.intake.estimated_credit_score);
-  const hasAssets = Boolean(response && response.intake.asset_rows?.length);
+  const hasEntityStructure = Boolean(
+    entityState?.primary_operating_entity &&
+    entityState?.main_operating_bank_account &&
+    entityState?.related_entities &&
+    entityState?.relationship_explanation,
+  );
+  const hasAssets = Boolean(response && response.intake.asset_rows?.some((row) => row.address && row.estimated_loan_amount != null && row.estimated_property_value != null));
   const hasReferral = Boolean(response && response.intake.referral_source);
   const hasFiles = Boolean(response && response.files.length);
   const currentResult = response?.intake.result_snapshot ?? response?.latest_review?.result ?? null;
+  const showEntityWidget = Boolean(response && (!hasEntityStructure || widget?.type === "entity_structure"));
   const showDealWidget = Boolean(response && (!hasRequiredFacts || widget?.type === "deal_profile"));
-  const showAssetWidget = Boolean(response && (!hasAssets || widget?.type === "asset_table"));
+  const showAssetWidget = Boolean(response && (!hasAssets || widget?.type === "real_estate_schedule"));
   const showReferralWidget = Boolean(response && (!hasReferral || widget?.type === "referral"));
   const showReviewWidget = Boolean(response && hasFiles);
   const showResultWidget = Boolean(response && (widget?.type === "bankability_result" || currentResult));
+  const showBookCallWidget = Boolean(response && widget?.type === "book_call" && !callBooking?.event_id);
   const missingDocs = useMemo(() => {
     const uploadedIds = new Set(response?.files.map((file) => file.requested_document_id).filter(Boolean) ?? []);
     return (response?.requested_documents ?? []).filter((doc) => doc.required && !uploadedIds.has(doc.id));
@@ -201,6 +253,20 @@ export default function DealerAIUnderwriterPage() {
     });
   }
 
+  async function submitEntityStructure() {
+    const cleaned = {
+      primary_operating_entity: entity.primary_operating_entity.trim(),
+      main_operating_bank_account: entity.main_operating_bank_account.trim(),
+      related_entities: entity.related_entities.trim(),
+      relationship_explanation: entity.relationship_explanation.trim(),
+    };
+    if (!Object.values(cleaned).some(Boolean)) {
+      setStatus("Add the primary operating entity, bank account, or related-entity explanation.");
+      return;
+    }
+    await sendChat("I clarified the dealer LLC and operating account structure.", { entity_structure: cleaned });
+  }
+
   async function submitAssets() {
     const cleanRows = assets
       .map((row) => ({
@@ -232,6 +298,25 @@ export default function DealerAIUnderwriterPage() {
     setStatus("Running AI review. This can take a moment for large PDFs or spreadsheets.");
     try {
       const payload = await call<IntakeResponse>(`/public/dealer-ai-intake/${encodeURIComponent(token)}/run-review`, { method: "POST" });
+      applyResponse(payload, token);
+      pushAssistant(payload.assistant_message);
+      setStatus("");
+    } catch (error) {
+      setStatus(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function bookCall(startsAt: string) {
+    if (!token) return;
+    setBusy(true);
+    setStatus("Booking call...");
+    try {
+      const payload = await call<IntakeResponse>(`/public/dealer-ai-intake/${encodeURIComponent(token)}/book-call`, {
+        method: "POST",
+        body: JSON.stringify({ starts_at: startsAt }),
+      });
       applyResponse(payload, token);
       pushAssistant(payload.assistant_message);
       setStatus("");
@@ -390,7 +475,7 @@ export default function DealerAIUnderwriterPage() {
               <div style={chatHeader}>
               <div>
                 <h2 style={sectionTitle}>AI Funding Review</h2>
-                <p style={muted}>Upload first, answer only essential questions, and let the AI infer the likely program fit.</p>
+                <p style={muted}>Upload the baseline package, clarify related LLCs/accounts, and let the AI infer strict program fit.</p>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                 {response?.resume_url ? <button style={ghostButton} onClick={() => navigator.clipboard.writeText(response.resume_url || "")}>Copy resume link</button> : null}
@@ -438,11 +523,13 @@ export default function DealerAIUnderwriterPage() {
                   busy={busy}
                   onUpload={() => uploadQueuedFiles().catch(() => undefined)}
                 />
-                {showReviewWidget ? <RunReviewWidget busy={busy} hasResult={Boolean(currentResult)} onRun={() => runReview().catch(() => undefined)} /> : null}
+                {showEntityWidget ? <EntityWidget entity={entity} setEntity={setEntity} busy={busy} onSubmit={() => submitEntityStructure().catch(() => undefined)} /> : null}
                 {showDealWidget ? <DealWidget deal={deal} setDeal={setDeal} busy={busy} onSubmit={() => submitDealProfile().catch(() => undefined)} /> : null}
                 {showAssetWidget ? <AssetWidget assets={assets} setAssets={setAssets} busy={busy} onSubmit={() => submitAssets().catch(() => undefined)} /> : null}
                 {showReferralWidget ? <ReferralWidget referral={referral} setReferral={setReferral} busy={busy} onSubmit={() => submitReferral().catch(() => undefined)} /> : null}
+                {showReviewWidget ? <RunReviewWidget busy={busy} hasResult={Boolean(currentResult)} onRun={() => runReview().catch(() => undefined)} /> : null}
                 {showResultWidget ? <ResultWidget result={currentResult} bankability={bankability} /> : null}
+                {showBookCallWidget ? <BookCallWidget widget={widget} busy={busy} onBook={(startsAt) => bookCall(startsAt).catch(() => undefined)} /> : null}
               </>
             </aside>
           </div>
@@ -464,6 +551,18 @@ function ContactWidget({ contact, setContact, busy, onStart }: { contact: typeof
   );
 }
 
+function EntityWidget({ entity, setEntity, busy, onSubmit }: { entity: EntityStructure; setEntity: (value: EntityStructure) => void; busy: boolean; onSubmit: () => void }) {
+  return (
+    <WidgetBox title="Dealer LLC and account structure" description="Dealers often operate through multiple LLCs. Clarify the main operating entity and how related accounts connect before underwriting.">
+      <Field label="Primary operating LLC / entity" value={entity.primary_operating_entity} onChange={(value) => setEntity({ ...entity, primary_operating_entity: value })} placeholder="ABC Auto Sales LLC" />
+      <Field label="Main operating bank account" value={entity.main_operating_bank_account} onChange={(value) => setEntity({ ...entity, main_operating_bank_account: value })} placeholder="Bank name and account purpose" />
+      <TextAreaField label="Related LLCs / entities" value={entity.related_entities} onChange={(value) => setEntity({ ...entity, related_entities: value })} placeholder="List related dealership, real estate, holding, or floorplan entities" />
+      <TextAreaField label="How accounts work together" value={entity.relationship_explanation} onChange={(value) => setEntity({ ...entity, relationship_explanation: value })} placeholder="Explain which entity receives sales deposits, pays expenses, owns real estate, or carries debt" />
+      <button style={primaryWide} disabled={busy} onClick={onSubmit}>Save entity structure</button>
+    </WidgetBox>
+  );
+}
+
 function DealWidget({ deal, setDeal, busy, onSubmit }: { deal: { loan_purpose: string; requested_loan_amount: string; estimated_credit_score: string }; setDeal: (value: { loan_purpose: string; requested_loan_amount: string; estimated_credit_score: string }) => void; busy: boolean; onSubmit: () => void }) {
   return (
     <WidgetBox title="Essential funding facts" description="No product selection required. The AI uses these answers and your files to infer the likely path.">
@@ -479,23 +578,32 @@ function AssetWidget({ assets, setAssets, busy, onSubmit }: { assets: AssetRow[]
   function update(index: number, patch: Partial<AssetRow>) {
     setAssets(assets.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
   }
+  function remove(index: number) {
+    const next = assets.filter((_, rowIndex) => rowIndex !== index);
+    setAssets(next.length ? next : [{ id: cryptoId(), address: "", estimated_loan_amount: null, estimated_property_value: null, notes: "" }]);
+  }
   return (
-    <WidgetBox title="Real estate and assets" description="Add each collateral property or major asset. Upload mortgage notes in the document step if available.">
-      <div style={{ display: "grid", gap: 10 }}>
+    <WidgetBox title="Real estate collateral schedule" description="Add each property address, estimated amount owed, and estimated property value. Mortgage notes can be uploaded, but estimated values are still required.">
+      <div style={tableHeader}>
+        <span>Full property address</span>
+        <span>Amount owed</span>
+        <span>Estimated value</span>
+      </div>
+      <div style={{ display: "grid", gap: 8 }}>
         {assets.map((row, index) => (
-          <div key={row.id || index} style={assetCard}>
-            <Field label="Address / asset" value={row.address} onChange={(value) => update(index, { address: value })} />
-            <div style={twoCol}>
-              <Field label="Loan balance" value={row.estimated_loan_amount ? String(row.estimated_loan_amount) : ""} onChange={(value) => update(index, { estimated_loan_amount: numericOrNull(value) })} />
-              <Field label="Est. value" value={row.estimated_property_value ? String(row.estimated_property_value) : ""} onChange={(value) => update(index, { estimated_property_value: numericOrNull(value) })} />
+          <div key={row.id || index} style={assetTableRow}>
+            <input style={tableInput} value={row.address} onChange={(event) => update(index, { address: event.target.value })} placeholder="Full address" />
+            <input style={tableInput} value={row.estimated_loan_amount ? String(row.estimated_loan_amount) : ""} onChange={(event) => update(index, { estimated_loan_amount: numericOrNull(event.target.value) })} placeholder="$ owed" inputMode="numeric" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+              <input style={tableInput} value={row.estimated_property_value ? String(row.estimated_property_value) : ""} onChange={(event) => update(index, { estimated_property_value: numericOrNull(event.target.value) })} placeholder="$ value" inputMode="numeric" />
+              <button style={iconButton} onClick={() => remove(index)} aria-label="Remove row">×</button>
             </div>
-            <Field label="Notes optional" value={row.notes || ""} onChange={(value) => update(index, { notes: value })} />
           </div>
         ))}
       </div>
       <div style={buttonRow}>
-        <button style={secondaryButton} onClick={() => setAssets([...assets, { id: cryptoId(), address: "", estimated_loan_amount: null, estimated_property_value: null, notes: "" }])}>Add row</button>
-        <button style={primaryButton} disabled={busy} onClick={onSubmit}>Save assets</button>
+        <button style={secondaryButton} onClick={() => setAssets([...assets, { id: cryptoId(), address: "", estimated_loan_amount: null, estimated_property_value: null, notes: "" }])}>+ Add row</button>
+        <button style={primaryButton} disabled={busy} onClick={onSubmit}>Save schedule</button>
       </div>
     </WidgetBox>
   );
@@ -516,7 +624,7 @@ function UploadWidget(props: {
 }) {
   const { requestedDocs, missingDocs, queuedFiles, setQueuedFiles, fileInputRef, dragging, setDragging, onDrop, addFiles, busy, onUpload } = props;
   return (
-    <WidgetBox title="Upload documents now" description="Start with any bank statements, P&L, tax returns, MCA/floorplan statements, inventory, or real estate documents. Missing files become AI-discovered gaps.">
+    <WidgetBox title="Upload baseline documents" description="Use only the baseline package: tax returns, current P&L, bank statements, real estate schedule or mortgage notes, and floorplan/MCA/inventory statements if applicable.">
       <div style={missingBox}>
         <strong>{missingDocs.length} required item{missingDocs.length === 1 ? "" : "s"} still need files</strong>
         <span>{missingDocs.map((doc) => doc.name).join(", ") || "All required items have uploaded files."}</span>
@@ -571,8 +679,27 @@ function ReferralWidget({ referral, setReferral, busy, onSubmit }: { referral: s
 
 function RunReviewWidget({ busy, hasResult, onRun }: { busy: boolean; hasResult: boolean; onRun: () => void }) {
   return (
-    <WidgetBox title={hasResult ? "Refresh AI review" : "Run preliminary AI review"} description="The AI reads the current bucket files, classifies likely lending paths, and lists missing evidence without waiting for a perfect package.">
+    <WidgetBox title={hasResult ? "Refresh AI review" : "Run preliminary AI review"} description="The AI reads the baseline file only, classifies fundable, not fundable, or cannot determine, and does not ask for unlimited extra documents.">
       <button style={primaryWide} disabled={busy} onClick={onRun}>{busy ? "Reviewing..." : hasResult ? "Re-run with current files" : "Run preliminary screen"}</button>
+    </WidgetBox>
+  );
+}
+
+function BookCallWidget({ widget, busy, onBook }: { widget: Widget | null; busy: boolean; onBook: (startsAt: string) => void }) {
+  const slots = widget?.slots ?? [];
+  return (
+    <WidgetBox title="Book underwriting call" description={widget?.description || "Choose a time to validate the preliminary screen with Qualified Commercial."}>
+      {widget?.disabled_reason ? <div style={emptyBox}>{widget.disabled_reason}</div> : null}
+      {slots.length ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          {slots.map((slot) => (
+            <button key={slot.starts_at} style={slotButton} disabled={busy} onClick={() => onBook(slot.starts_at)}>
+              <strong>{slot.date_label}</strong>
+              <span>{slot.label} · {widget?.duration_min ?? 30} min</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </WidgetBox>
   );
 }
@@ -624,6 +751,15 @@ function Field({ label, value, onChange, placeholder }: { label: string; value: 
     <label style={fieldWrap}>
       <span style={labelStyle}>{label}</span>
       <input style={input} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
+    </label>
+  );
+}
+
+function TextAreaField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
+  return (
+    <label style={fieldWrap}>
+      <span style={labelStyle}>{label}</span>
+      <textarea style={textarea} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
     </label>
   );
 }
@@ -876,6 +1012,14 @@ const input: CSSProperties = {
   outline: "none",
   background: "rgba(255,255,255,.045)",
 };
+const textarea: CSSProperties = {
+  ...input,
+  minHeight: 86,
+  padding: "12px",
+  resize: "vertical",
+  lineHeight: 1.45,
+  fontFamily: "inherit",
+};
 const primaryButton: CSSProperties = {
   border: 0,
   borderRadius: 999,
@@ -900,8 +1044,39 @@ const secondaryButton: CSSProperties = {
 const ghostButton: CSSProperties = { ...secondaryButton, minHeight: 34, fontSize: 13 };
 const ghostLink: CSSProperties = { ...ghostButton, display: "inline-flex", alignItems: "center", textDecoration: "none" };
 const buttonRow: CSSProperties = { display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" };
-const twoCol: CSSProperties = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 };
-const assetCard: CSSProperties = { border: "1px solid rgba(255,255,255,.1)", borderRadius: 14, background: "rgba(255,255,255,.035)", padding: 12, display: "grid", gap: 10 };
+const tableHeader: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1.4fr .8fr .8fr",
+  gap: 8,
+  color: "#B8C4D6",
+  fontSize: 11,
+  fontWeight: 900,
+  textTransform: "uppercase",
+};
+const assetTableRow: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1.4fr .8fr .8fr",
+  gap: 8,
+  alignItems: "center",
+};
+const tableInput: CSSProperties = {
+  ...input,
+  minHeight: 40,
+  borderRadius: 10,
+  width: "100%",
+  minWidth: 0,
+};
+const iconButton: CSSProperties = {
+  width: 40,
+  height: 40,
+  borderRadius: 10,
+  border: "1px solid rgba(248,113,113,.35)",
+  background: "rgba(248,113,113,.08)",
+  color: "#FCA5A5",
+  fontSize: 20,
+  fontWeight: 900,
+  cursor: "pointer",
+};
 const missingBox: CSSProperties = {
   border: "1px solid rgba(212,175,55,.28)",
   background: "rgba(212,175,55,.08)",
@@ -964,3 +1139,17 @@ const statusBox: CSSProperties = {
   fontWeight: 700,
 };
 const statusBoxNoMargin: CSSProperties = { ...statusBox, margin: 0 };
+const slotButton: CSSProperties = {
+  border: "1px solid rgba(33,211,199,.24)",
+  borderRadius: 14,
+  background: "rgba(33,211,199,.08)",
+  color: "#D9FFFB",
+  minHeight: 58,
+  padding: "10px 14px",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  cursor: "pointer",
+  textAlign: "left",
+};
