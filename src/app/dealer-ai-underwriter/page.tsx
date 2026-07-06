@@ -2555,6 +2555,7 @@ const assistantBubble: CSSProperties = {
   border: 0,
   color: "#F3F4F6",
   lineHeight: 1.62,
+  whiteSpace: "pre-wrap",
 };
 const userBubble: CSSProperties = {
   alignSelf: "flex-end",
