@@ -87,7 +87,7 @@ export default function DealerAIUnderwriterPage() {
       id: cryptoId(),
       role: "assistant",
       content:
-        "I can screen a dealer financing file for DSCR or full-doc bankability. Start with your contact details, then I will collect the documents and collateral facts.",
+        "I can screen a dealer financing file quickly. Start with basic contact details, then upload whatever documents you have. I will infer the likely lending path instead of making you choose a product.",
     },
   ]);
   const [chatText, setChatText] = useState("");
@@ -115,6 +115,16 @@ export default function DealerAIUnderwriterPage() {
   }, [response]);
 
   const widget = response?.widget ?? null;
+  const hasRequiredFacts = Boolean(response && response.intake.loan_purpose && response.intake.requested_loan_amount && response.intake.estimated_credit_score);
+  const hasAssets = Boolean(response && response.intake.asset_rows?.length);
+  const hasReferral = Boolean(response && response.intake.referral_source);
+  const hasFiles = Boolean(response && response.files.length);
+  const currentResult = response?.intake.result_snapshot ?? response?.latest_review?.result ?? null;
+  const showDealWidget = Boolean(response && (!hasRequiredFacts || widget?.type === "deal_profile"));
+  const showAssetWidget = Boolean(response && (!hasAssets || widget?.type === "asset_table"));
+  const showReferralWidget = Boolean(response && (!hasReferral || widget?.type === "referral"));
+  const showReviewWidget = Boolean(response && hasFiles);
+  const showResultWidget = Boolean(response && (widget?.type === "bankability_result" || currentResult));
   const missingDocs = useMemo(() => {
     const uploadedIds = new Set(response?.files.map((file) => file.requested_document_id).filter(Boolean) ?? []);
     return (response?.requested_documents ?? []).filter((doc) => doc.required && !uploadedIds.has(doc.id));
@@ -340,19 +350,19 @@ export default function DealerAIUnderwriterPage() {
           <div style={brandGroup}>
             <QCMark size={42} />
             <div>
-              <div style={eyebrow}>Qualified Commercial AI Gatekeeper</div>
-              <h1 style={title}>Dealer financing bankability screen</h1>
+              <div style={eyebrow}>Qualified Commercial AI Funding Review</div>
+              <h1 style={title}>Dealer capital underwriter room</h1>
             </div>
           </div>
-          <div style={securePill}>Encrypted uploads | Preliminary screen</div>
+          <div style={securePill}>Encrypted uploads | Chat-first intake | Preliminary screen</div>
         </header>
 
         <div style={grid}>
           <section style={chatPanel}>
             <div style={chatHeader}>
               <div>
-                <h2 style={sectionTitle}>AI intake</h2>
-                <p style={muted}>Answer naturally or complete the widgets when they appear.</p>
+                <h2 style={sectionTitle}>AI Funding Review</h2>
+                <p style={muted}>Upload first, answer only essential questions, and let the AI infer the likely program fit.</p>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                 {response?.resume_url ? <button style={ghostButton} onClick={() => navigator.clipboard.writeText(response.resume_url || "")}>Copy resume link</button> : null}
@@ -371,7 +381,7 @@ export default function DealerAIUnderwriterPage() {
                 style={composerInput}
                 value={chatText}
                 onChange={(event) => setChatText(event.target.value)}
-                placeholder={token ? "Ask a question or add details..." : "Start by entering contact info on the right"}
+                placeholder={token ? "Ask a question, add facts, or tell the AI what you uploaded..." : "Start by entering contact info on the right"}
                 disabled={!token || busy}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && chatText.trim()) sendChat().catch(() => undefined);
@@ -390,34 +400,24 @@ export default function DealerAIUnderwriterPage() {
             ) : (
               <>
                 <IntakeSnapshot response={response} missingDocs={missingDocs} />
-                {widget?.type === "deal_profile" ? (
-                  <DealWidget deal={deal} setDeal={setDeal} busy={busy} onSubmit={() => submitDealProfile().catch(() => undefined)} />
-                ) : null}
-                {widget?.type === "asset_table" ? (
-                  <AssetWidget assets={assets} setAssets={setAssets} busy={busy} onSubmit={() => submitAssets().catch(() => undefined)} />
-                ) : null}
-                {widget?.type === "upload_files" ? (
-                  <UploadWidget
-                    requestedDocs={response.requested_documents}
-                    missingDocs={missingDocs}
-                    queuedFiles={queuedFiles}
-                    setQueuedFiles={setQueuedFiles}
-                    fileInputRef={fileInputRef}
-                    dragging={dragging}
-                    setDragging={setDragging}
-                    onDrop={onDrop}
-                    addFiles={addFiles}
-                    busy={busy}
-                    onUpload={() => uploadQueuedFiles().catch(() => undefined)}
-                  />
-                ) : null}
-                {widget?.type === "referral" ? (
-                  <ReferralWidget referral={referral} setReferral={setReferral} busy={busy} onSubmit={() => submitReferral().catch(() => undefined)} />
-                ) : null}
-                {widget?.type === "run_review" ? (
-                  <RunReviewWidget busy={busy} onRun={() => runReview().catch(() => undefined)} />
-                ) : null}
-                {widget?.type === "bankability_result" ? <ResultWidget result={response.intake.result_snapshot ?? response.latest_review?.result ?? null} bankability={bankability} /> : null}
+                <UploadWidget
+                  requestedDocs={response.requested_documents}
+                  missingDocs={missingDocs}
+                  queuedFiles={queuedFiles}
+                  setQueuedFiles={setQueuedFiles}
+                  fileInputRef={fileInputRef}
+                  dragging={dragging}
+                  setDragging={setDragging}
+                  onDrop={onDrop}
+                  addFiles={addFiles}
+                  busy={busy}
+                  onUpload={() => uploadQueuedFiles().catch(() => undefined)}
+                />
+                {showReviewWidget ? <RunReviewWidget busy={busy} hasResult={Boolean(currentResult)} onRun={() => runReview().catch(() => undefined)} /> : null}
+                {showDealWidget ? <DealWidget deal={deal} setDeal={setDeal} busy={busy} onSubmit={() => submitDealProfile().catch(() => undefined)} /> : null}
+                {showAssetWidget ? <AssetWidget assets={assets} setAssets={setAssets} busy={busy} onSubmit={() => submitAssets().catch(() => undefined)} /> : null}
+                {showReferralWidget ? <ReferralWidget referral={referral} setReferral={setReferral} busy={busy} onSubmit={() => submitReferral().catch(() => undefined)} /> : null}
+                {showResultWidget ? <ResultWidget result={currentResult} bankability={bankability} /> : null}
               </>
             )}
           </aside>
@@ -429,20 +429,20 @@ export default function DealerAIUnderwriterPage() {
 
 function ContactWidget({ contact, setContact, busy, onStart }: { contact: typeof initialContact; setContact: (value: typeof initialContact) => void; busy: boolean; onStart: () => void }) {
   return (
-    <WidgetBox title="Start secure intake" description="Create the secure file room first so uploads are never lost.">
+    <WidgetBox title="Start secure intake" description="Enter the basics. The next screen opens the upload room immediately.">
       <Field label="Full name" value={contact.full_name} onChange={(value) => setContact({ ...contact, full_name: value })} />
       <Field label="Email" value={contact.email} onChange={(value) => setContact({ ...contact, email: value })} />
       <Field label="Phone" value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} />
       <Field label="Dealership / business name" value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} />
-      <button style={primaryWide} disabled={busy} onClick={onStart}>{busy ? "Starting..." : "Start dealer AI intake"}</button>
+      <button style={primaryWide} disabled={busy} onClick={onStart}>{busy ? "Starting..." : "Open AI funding room"}</button>
     </WidgetBox>
   );
 }
 
 function DealWidget({ deal, setDeal, busy, onSubmit }: { deal: { loan_purpose: string; requested_loan_amount: string; estimated_credit_score: string }; setDeal: (value: { loan_purpose: string; requested_loan_amount: string; estimated_credit_score: string }) => void; busy: boolean; onSubmit: () => void }) {
   return (
-    <WidgetBox title="Dealer financing profile" description="We will validate the estimated credit score during the intro call.">
-      <Field label="Loan purpose" value={deal.loan_purpose} onChange={(value) => setDeal({ ...deal, loan_purpose: value })} placeholder="Cash out, working capital, acquisition..." />
+    <WidgetBox title="Essential funding facts" description="No product selection required. The AI uses these answers and your files to infer the likely path.">
+      <Field label="Use of funds" value={deal.loan_purpose} onChange={(value) => setDeal({ ...deal, loan_purpose: value })} placeholder="Cash out, working capital, acquisition..." />
       <Field label="Requested loan amount" value={deal.requested_loan_amount} onChange={(value) => setDeal({ ...deal, requested_loan_amount: onlyDigits(value) })} placeholder="6000000" />
       <Field label="Estimated credit score" value={deal.estimated_credit_score} onChange={(value) => setDeal({ ...deal, estimated_credit_score: onlyDigits(value).slice(0, 3) })} placeholder="720" />
       <button style={primaryWide} disabled={busy} onClick={onSubmit}>Save profile</button>
@@ -491,13 +491,13 @@ function UploadWidget(props: {
 }) {
   const { requestedDocs, missingDocs, queuedFiles, setQueuedFiles, fileInputRef, dragging, setDragging, onDrop, addFiles, busy, onUpload } = props;
   return (
-    <WidgetBox title="Upload required documents" description="Multiple files are supported. Match each file to the closest request type.">
+    <WidgetBox title="Upload documents now" description="Start with any bank statements, P&L, tax returns, MCA/floorplan statements, inventory, or real estate documents. Missing files become AI-discovered gaps.">
       <div style={missingBox}>
         <strong>{missingDocs.length} required item{missingDocs.length === 1 ? "" : "s"} still need files</strong>
         <span>{missingDocs.map((doc) => doc.name).join(", ") || "All required items have uploaded files."}</span>
       </div>
       <div
-        style={{ ...dropZone, borderColor: dragging ? "#18A89F" : "#b9c8dc", background: dragging ? "#ecfffb" : "#f8fbff" }}
+        style={{ ...dropZone, borderColor: dragging ? "#21d3c7" : "rgba(255,255,255,.16)", background: dragging ? "rgba(33,211,199,.12)" : "rgba(255,255,255,.035)" }}
         onDragOver={(event) => {
           event.preventDefault();
           setDragging(true);
@@ -544,10 +544,10 @@ function ReferralWidget({ referral, setReferral, busy, onSubmit }: { referral: s
   );
 }
 
-function RunReviewWidget({ busy, onRun }: { busy: boolean; onRun: () => void }) {
+function RunReviewWidget({ busy, hasResult, onRun }: { busy: boolean; hasResult: boolean; onRun: () => void }) {
   return (
-    <WidgetBox title="Run preliminary AI review" description="The AI will read the current bucket files and return a strict preliminary screen.">
-      <button style={primaryWide} disabled={busy} onClick={onRun}>{busy ? "Reviewing..." : "Run AI bankability screen"}</button>
+    <WidgetBox title={hasResult ? "Refresh AI review" : "Run preliminary AI review"} description="The AI reads the current bucket files, classifies likely lending paths, and lists missing evidence without waiting for a perfect package.">
+      <button style={primaryWide} disabled={busy} onClick={onRun}>{busy ? "Reviewing..." : hasResult ? "Re-run with current files" : "Run preliminary screen"}</button>
     </WidgetBox>
   );
 }
@@ -671,46 +671,201 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
 
-const page: CSSProperties = { minHeight: "100vh", background: "#f3f6fb", color: "#0f172a", padding: 24 };
+const page: CSSProperties = {
+  minHeight: "100vh",
+  background:
+    "radial-gradient(circle at 18% 8%, rgba(33,211,199,.18), transparent 28%), radial-gradient(circle at 86% 0%, rgba(212,175,55,.18), transparent 26%), #060B1A",
+  color: "#E2E8F0",
+  padding: 24,
+};
 const shell: CSSProperties = { maxWidth: 1480, margin: "0 auto", display: "grid", gap: 18 };
-const header: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" };
+const header: CSSProperties = {
+  minHeight: 74,
+  padding: "0 18px",
+  border: "1px solid rgba(255,255,255,.09)",
+  borderRadius: 18,
+  background: "rgba(6,11,26,.78)",
+  backdropFilter: "blur(18px)",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 16,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
 const brandGroup: CSSProperties = { display: "flex", alignItems: "center", gap: 14 };
-const eyebrow: CSSProperties = { color: "#64748b", fontSize: 12, fontWeight: 900, letterSpacing: 0, textTransform: "uppercase" };
-const title: CSSProperties = { margin: 0, fontSize: 34, letterSpacing: 0, color: "#0f172a" };
-const securePill: CSSProperties = { border: "1px solid #cbd5e1", background: "#fff", borderRadius: 999, padding: "10px 14px", fontWeight: 800, color: "#334155" };
-const grid: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) minmax(420px, .8fr)", gap: 18, alignItems: "start" };
-const chatPanel: CSSProperties = { minHeight: "calc(100vh - 145px)", background: "#ffffff", border: "1px solid #dbe3ef", borderRadius: 18, display: "grid", gridTemplateRows: "auto 1fr auto auto", overflow: "hidden" };
-const chatHeader: CSSProperties = { padding: 18, borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", gap: 12 };
-const sectionTitle: CSSProperties = { margin: 0, fontSize: 20, color: "#0f172a", letterSpacing: 0 };
-const muted: CSSProperties = { margin: "4px 0 0", color: "#64748b", lineHeight: 1.45 };
-const messages: CSSProperties = { padding: 18, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", minHeight: 360 };
-const assistantBubble: CSSProperties = { alignSelf: "flex-start", maxWidth: "78%", padding: "13px 15px", borderRadius: 16, background: "#eef6ff", border: "1px solid #cfe3ff", color: "#17324d", lineHeight: 1.45 };
-const userBubble: CSSProperties = { alignSelf: "flex-end", maxWidth: "78%", padding: "13px 15px", borderRadius: 16, background: "#101827", color: "#fff", lineHeight: 1.45 };
-const composer: CSSProperties = { display: "grid", gridTemplateColumns: "1fr auto", gap: 10, padding: 18, borderTop: "1px solid #e2e8f0" };
-const composerInput: CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 999, padding: "0 16px", minHeight: 46, fontSize: 15, outline: "none" };
+const eyebrow: CSSProperties = { color: "#E9D58A", fontSize: 12, fontWeight: 900, letterSpacing: 0, textTransform: "uppercase" };
+const title: CSSProperties = { margin: 0, fontSize: 34, letterSpacing: 0, color: "#F6F8FB", fontFamily: "Georgia, 'Times New Roman', serif", fontWeight: 600 };
+const securePill: CSSProperties = {
+  border: "1px solid rgba(212,175,55,.28)",
+  background: "rgba(212,175,55,.08)",
+  borderRadius: 999,
+  padding: "10px 14px",
+  fontWeight: 800,
+  color: "#E9D58A",
+};
+const grid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 430px), 1fr))", gap: 18, alignItems: "start" };
+const chatPanel: CSSProperties = {
+  minHeight: "calc(100vh - 148px)",
+  background: "rgba(8,14,32,.88)",
+  border: "1px solid rgba(255,255,255,.09)",
+  borderRadius: 18,
+  display: "grid",
+  gridTemplateRows: "auto 1fr auto auto",
+  overflow: "hidden",
+  boxShadow: "0 30px 90px rgba(0,0,0,.38)",
+};
+const chatHeader: CSSProperties = { padding: 18, borderBottom: "1px solid rgba(255,255,255,.08)", display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" };
+const sectionTitle: CSSProperties = { margin: 0, fontSize: 20, color: "#F6F8FB", letterSpacing: 0 };
+const muted: CSSProperties = { margin: "4px 0 0", color: "#95A3B6", lineHeight: 1.45 };
+const messages: CSSProperties = { padding: 18, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", minHeight: 420 };
+const assistantBubble: CSSProperties = {
+  alignSelf: "flex-start",
+  maxWidth: "82%",
+  padding: "13px 15px",
+  borderRadius: 16,
+  background: "rgba(33,211,199,.09)",
+  border: "1px solid rgba(33,211,199,.2)",
+  color: "#D9FFFB",
+  lineHeight: 1.45,
+};
+const userBubble: CSSProperties = {
+  alignSelf: "flex-end",
+  maxWidth: "82%",
+  padding: "13px 15px",
+  borderRadius: 16,
+  background: "linear-gradient(135deg,#E9D58A,#D4AF37)",
+  color: "#0B1326",
+  fontWeight: 800,
+  lineHeight: 1.45,
+};
+const composer: CSSProperties = { display: "grid", gridTemplateColumns: "1fr auto", gap: 10, padding: 18, borderTop: "1px solid rgba(255,255,255,.08)" };
+const composerInput: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.14)",
+  borderRadius: 999,
+  padding: "0 16px",
+  minHeight: 46,
+  fontSize: 15,
+  outline: "none",
+  background: "rgba(255,255,255,.045)",
+  color: "#F8FAFC",
+};
 const widgetPanel: CSSProperties = { display: "grid", gap: 14 };
-const widgetBox: CSSProperties = { background: "#fff", border: "1px solid #dbe3ef", borderRadius: 18, padding: 18, boxShadow: "0 18px 50px rgba(15,23,42,.06)" };
+const widgetBox: CSSProperties = {
+  background: "linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.025))",
+  border: "1px solid rgba(255,255,255,.1)",
+  borderRadius: 18,
+  padding: 18,
+  boxShadow: "0 18px 60px rgba(0,0,0,.25)",
+};
 const snapshot: CSSProperties = { ...widgetBox, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" };
 const miniMetrics: CSSProperties = { display: "flex", gap: 8 };
-const metric: CSSProperties = { minWidth: 88, border: "1px solid #dbe3ef", background: "#f8fafc", borderRadius: 12, padding: 10, display: "grid", gap: 2, textAlign: "center", color: "#334155" };
+const metric: CSSProperties = {
+  minWidth: 88,
+  border: "1px solid rgba(255,255,255,.1)",
+  background: "rgba(255,255,255,.04)",
+  borderRadius: 12,
+  padding: 10,
+  display: "grid",
+  gap: 2,
+  textAlign: "center",
+  color: "#D9E5F5",
+};
 const fieldWrap: CSSProperties = { display: "grid", gap: 6 };
-const labelStyle: CSSProperties = { color: "#475569", fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0 };
-const input: CSSProperties = { minHeight: 44, border: "1px solid #cbd5e1", borderRadius: 12, padding: "0 12px", fontSize: 15, color: "#0f172a", outline: "none", background: "#fff" };
-const primaryButton: CSSProperties = { border: 0, borderRadius: 999, padding: "0 18px", minHeight: 44, background: "#0f172a", color: "#fff", fontWeight: 900, cursor: "pointer" };
+const labelStyle: CSSProperties = { color: "#B8C4D6", fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0 };
+const input: CSSProperties = {
+  minHeight: 44,
+  border: "1px solid rgba(255,255,255,.16)",
+  borderRadius: 12,
+  padding: "0 12px",
+  fontSize: 15,
+  color: "#F8FAFC",
+  outline: "none",
+  background: "rgba(255,255,255,.045)",
+};
+const primaryButton: CSSProperties = {
+  border: 0,
+  borderRadius: 999,
+  padding: "0 18px",
+  minHeight: 44,
+  background: "linear-gradient(135deg,#E9D58A,#D4AF37)",
+  color: "#0B1326",
+  fontWeight: 900,
+  cursor: "pointer",
+};
 const primaryWide: CSSProperties = { ...primaryButton, width: "100%" };
-const secondaryButton: CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 999, padding: "0 14px", minHeight: 40, background: "#fff", color: "#0f172a", fontWeight: 800, cursor: "pointer" };
+const secondaryButton: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.16)",
+  borderRadius: 999,
+  padding: "0 14px",
+  minHeight: 40,
+  background: "rgba(255,255,255,.035)",
+  color: "#E2E8F0",
+  fontWeight: 800,
+  cursor: "pointer",
+};
 const ghostButton: CSSProperties = { ...secondaryButton, minHeight: 34, fontSize: 13 };
 const ghostLink: CSSProperties = { ...ghostButton, display: "inline-flex", alignItems: "center", textDecoration: "none" };
 const buttonRow: CSSProperties = { display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" };
 const twoCol: CSSProperties = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 };
-const assetCard: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 14, background: "#f8fafc", padding: 12, display: "grid", gap: 10 };
-const missingBox: CSSProperties = { border: "1px solid #fecaca", background: "#fff1f2", color: "#991b1b", borderRadius: 12, padding: 12, display: "grid", gap: 4, lineHeight: 1.35 };
-const dropZone: CSSProperties = { border: "2px dashed #b9c8dc", borderRadius: 16, minHeight: 130, display: "grid", placeItems: "center", textAlign: "center", gap: 4, cursor: "pointer", color: "#334155" };
-const queueRow: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 12, padding: 10, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(180px, 240px)", gap: 10, alignItems: "center" };
-const select: CSSProperties = { minHeight: 38, border: "1px solid #cbd5e1", borderRadius: 10, padding: "0 8px", color: "#0f172a", background: "#fff" };
-const emptyBox: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#f8fafc", color: "#475569", display: "grid", gap: 4 };
-const resultCard: CSSProperties = { border: "1px solid #bbf7d0", background: "#f0fdf4", borderRadius: 14, padding: 14 };
-const resultStatus: CSSProperties = { display: "block", fontSize: 20, color: "#14532d", marginTop: 4 };
-const smallMuted: CSSProperties = { display: "block", color: "#64748b", fontSize: 13, lineHeight: 1.35 };
-const truncate: CSSProperties = { display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#0f172a" };
-const statusBox: CSSProperties = { margin: "0 18px 18px", padding: 12, borderRadius: 12, border: "1px solid #fde68a", background: "#fffbeb", color: "#92400e", fontWeight: 700 };
+const assetCard: CSSProperties = { border: "1px solid rgba(255,255,255,.1)", borderRadius: 14, background: "rgba(255,255,255,.035)", padding: 12, display: "grid", gap: 10 };
+const missingBox: CSSProperties = {
+  border: "1px solid rgba(212,175,55,.28)",
+  background: "rgba(212,175,55,.08)",
+  color: "#F6E7A6",
+  borderRadius: 12,
+  padding: 12,
+  display: "grid",
+  gap: 4,
+  lineHeight: 1.35,
+};
+const dropZone: CSSProperties = {
+  border: "2px dashed rgba(255,255,255,.16)",
+  borderRadius: 16,
+  minHeight: 138,
+  display: "grid",
+  placeItems: "center",
+  textAlign: "center",
+  gap: 4,
+  cursor: "pointer",
+  color: "#D9E5F5",
+};
+const queueRow: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.1)",
+  borderRadius: 12,
+  padding: 10,
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(170px, 230px)",
+  gap: 10,
+  alignItems: "center",
+  background: "rgba(255,255,255,.025)",
+};
+const select: CSSProperties = {
+  minHeight: 38,
+  border: "1px solid rgba(255,255,255,.16)",
+  borderRadius: 10,
+  padding: "0 8px",
+  color: "#F8FAFC",
+  background: "#111827",
+};
+const emptyBox: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.1)",
+  borderRadius: 12,
+  padding: 12,
+  background: "rgba(255,255,255,.035)",
+  color: "#B8C4D6",
+  display: "grid",
+  gap: 4,
+};
+const resultCard: CSSProperties = { border: "1px solid rgba(33,211,199,.3)", background: "rgba(33,211,199,.09)", borderRadius: 14, padding: 14 };
+const resultStatus: CSSProperties = { display: "block", fontSize: 20, color: "#70ded5", marginTop: 4 };
+const smallMuted: CSSProperties = { display: "block", color: "#8FA0B8", fontSize: 13, lineHeight: 1.35 };
+const truncate: CSSProperties = { display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#F8FAFC" };
+const statusBox: CSSProperties = {
+  margin: "0 18px 18px",
+  padding: 12,
+  borderRadius: 12,
+  border: "1px solid rgba(212,175,55,.3)",
+  background: "rgba(212,175,55,.09)",
+  color: "#F6E7A6",
+  fontWeight: 700,
+};
