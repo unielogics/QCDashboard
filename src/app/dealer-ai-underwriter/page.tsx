@@ -76,7 +76,7 @@ type IntakeResponse = {
   resume_url?: string | null;
   upload_url?: string | null;
   assistant_message: string;
-  widget?: Widget | null;
+  widget?: null;
   requested_documents: RequestedDoc[];
   files: UploadedFile[];
   ai_summary?: Record<string, unknown> | null;
@@ -100,8 +100,7 @@ type EntityStructure = {
 
 type WidgetType = Widget["type"];
 type ChatLine = { id: string; role: "assistant" | "user"; content: string };
-type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
-type RoomPanel = "chat" | "bucket";
+type QueuedFile = { id: string; file: File; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
 
 function useCompactViewport() {
   const [compact, setCompact] = useState(false);
@@ -126,7 +125,6 @@ const initialEntity: EntityStructure = {
 
 export default function DealerAIUnderwriterPage() {
   const compact = useCompactViewport();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const [token, setToken] = useState<string>("");
   const [contact, setContact] = useState(initialContact);
@@ -141,9 +139,7 @@ export default function DealerAIUnderwriterPage() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [dragging, setDragging] = useState(false);
-  const [openWidgetType, setOpenWidgetType] = useState<WidgetType | null>(null);
-  const [lastSuggestedWidget, setLastSuggestedWidget] = useState<Widget | null>(null);
-  const [activePanel, setActivePanel] = useState<RoomPanel>("chat");
+  const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [resumeEmail, setResumeEmail] = useState("");
 
@@ -174,22 +170,6 @@ export default function DealerAIUnderwriterPage() {
     }
   }, [response]);
 
-  useEffect(() => {
-    const nextWidget = response?.widget;
-    if (!nextWidget) return;
-    setLastSuggestedWidget((previous) => {
-      const changed = previous?.type !== nextWidget.type || previous?.source !== nextWidget.source;
-      const shouldOpen = nextWidget.source === "user_intent";
-      if (shouldOpen && changed) {
-        setOpenWidgetType(nextWidget.type);
-      }
-      return nextWidget;
-    });
-  }, [response?.widget]);
-
-  const widget = response?.widget ?? null;
-  const suggestedWidget = widget ?? lastSuggestedWidget;
-  const callBooking = asRecord(response?.intake.intake_state?.call_booking);
   const currentResult = response?.intake.result_snapshot ?? response?.latest_review?.result ?? null;
   const missingDocs = useMemo(() => {
     const uploadedIds = new Set(response?.files.map((file) => file.requested_document_id).filter(Boolean) ?? []);
@@ -208,7 +188,6 @@ export default function DealerAIUnderwriterPage() {
           : missingDocs.length
             ? "Needs baseline"
             : "Ready to review";
-  const activeWidgetType = openWidgetType ?? null;
   const bankability = asRecord(response?.latest_review?.result?.bankability_assessment ?? response?.intake.result_snapshot?.bankability_assessment);
   const fundability = fundabilityBanner(currentResult, bankability);
 
@@ -293,7 +272,6 @@ export default function DealerAIUnderwriterPage() {
     if (!token) return;
     const text = message ?? chatText.trim();
     if (text) pushUser(text);
-    if (text && !updates) setOpenWidgetType(null);
     setChatText("");
     setBusy(true);
     setStatus("");
@@ -406,12 +384,10 @@ export default function DealerAIUnderwriterPage() {
         .map((file) => ({
           id: `${file.name}-${file.size}-${file.lastModified}-${cryptoId()}`,
           file,
-          requestedDocumentId: "",
           status: "ready" as const,
         }));
       return [...current, ...incoming];
     });
-    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function uploadQueuedFiles() {
@@ -429,7 +405,7 @@ export default function DealerAIUnderwriterPage() {
             {
               method: "POST",
               body: JSON.stringify({
-                requested_document_id: item.requestedDocumentId || null,
+                requested_document_id: null,
                 file_name: item.file.name,
                 content_type: item.file.type || "application/octet-stream",
                 size_bytes: item.file.size,
@@ -459,7 +435,6 @@ export default function DealerAIUnderwriterPage() {
         const payload = await call<IntakeResponse>(`/public/dealer-ai-intake/${encodeURIComponent(token)}/run-review`, { method: "POST" });
         applyResponse(payload, token);
         pushAssistant(payload.assistant_message);
-        setOpenWidgetType(null);
       } else {
         pushAssistant("No files uploaded successfully. Correct the file errors and try again.");
       }
@@ -501,13 +476,8 @@ export default function DealerAIUnderwriterPage() {
     setQueuedFiles((current) => current.filter((item) => item.id !== id));
   }
 
-  function updateQueuedFileDocument(id: string, requestedDocumentId: string) {
-    setQueuedFiles((current) => current.map((item) => (item.id === id ? { ...item, requestedDocumentId } : item)));
-  }
-
-  function openUploadTool() {
-    setOpenWidgetType("upload_files");
-    setActivePanel("chat");
+  function openFilePicker() {
+    composerFileInputRef.current?.click();
   }
 
   function logoutRoom() {
@@ -516,9 +486,7 @@ export default function DealerAIUnderwriterPage() {
     setChat([]);
     setChatText("");
     setQueuedFiles([]);
-    setOpenWidgetType(null);
-    setLastSuggestedWidget(null);
-    setActivePanel("chat");
+    setFileDrawerOpen(false);
     setStatus("You are logged out of this secure room. Use your emailed resume link to return.");
     if (typeof window !== "undefined") {
       window.history.replaceState(null, "", "/dealer-ai-underwriter");
@@ -534,52 +502,6 @@ export default function DealerAIUnderwriterPage() {
     setChat((current) => [...current, { id: cryptoId(), role: "user", content }]);
   }
 
-  function onDrop(event: DragEvent<HTMLDivElement>) {
-    event.preventDefault();
-    setDragging(false);
-    if (event.dataTransfer.files.length) addFiles(event.dataTransfer.files);
-  }
-
-  const compactTool = response && suggestedWidget && !activeWidgetType ? (
-    <ToolSuggestionCard widget={suggestedWidget} onOpen={() => setOpenWidgetType(suggestedWidget.type)} />
-  ) : null;
-
-  const inlineWidget = response && activeWidgetType ? (
-    <div style={assistantWidgetBubble}>
-      <div style={aiPromptHeader}>
-        <div>
-          <h3 style={aiPromptTitle}>{suggestedWidget?.title || "Next underwriting step"}</h3>
-          <p style={aiPromptCopy}>{suggestedWidget?.description || "Complete this step so the AI can keep screening the file."}</p>
-        </div>
-        <button style={smallGhostButton} onClick={() => setOpenWidgetType(null)}>Collapse</button>
-      </div>
-      {activeWidgetType === "upload_files" ? (
-        <UploadWidget
-          requestedDocs={response.requested_documents}
-          missingDocs={missingDocs}
-          queuedFiles={queuedFiles}
-          onRemoveQueuedFile={removeQueuedFile}
-          onChangeQueuedFileDocument={updateQueuedFileDocument}
-          fileInputRef={fileInputRef}
-          dragging={dragging}
-          setDragging={setDragging}
-          onDrop={onDrop}
-          addFiles={addFiles}
-          busy={busy}
-          onUpload={() => uploadQueuedFiles().catch(() => undefined)}
-        />
-      ) : null}
-      {activeWidgetType === "entity_structure" ? <EntityWidget entity={entity} setEntity={setEntity} busy={busy} onSubmit={() => submitEntityStructure().catch(() => undefined)} /> : null}
-      {activeWidgetType === "deal_profile" ? <DealWidget deal={deal} setDeal={setDeal} busy={busy} onSubmit={() => submitDealProfile().catch(() => undefined)} /> : null}
-      {activeWidgetType === "real_estate_schedule" ? <AssetWidget assets={assets} setAssets={setAssets} busy={busy} onSubmit={() => submitAssets().catch(() => undefined)} /> : null}
-      {activeWidgetType === "referral" ? <ReferralWidget referral={referral} setReferral={setReferral} busy={busy} onSubmit={() => submitReferral().catch(() => undefined)} /> : null}
-      {activeWidgetType === "run_review" ? <RunReviewWidget busy={busy} hasResult={Boolean(currentResult)} onRun={() => runReview().catch(() => undefined)} /> : null}
-      {activeWidgetType === "bankability_result" ? <ResultWidget result={currentResult} bankability={bankability} busy={busy} onRun={() => runReview().catch(() => undefined)} /> : null}
-      {activeWidgetType === "book_call" && currentResult ? <ResultWidget result={currentResult} bankability={bankability} busy={busy} onRun={() => runReview().catch(() => undefined)} /> : null}
-      {activeWidgetType === "book_call" && !callBooking?.event_id ? <BookCallWidget widget={suggestedWidget} busy={busy} onBook={(startsAt) => bookCall(startsAt).catch(() => undefined)} /> : null}
-      {activeWidgetType === "book_call" && callBooking?.event_id ? <div style={emptyBox}>Your call is booked. Keep uploading any missing baseline files before the meeting.</div> : null}
-    </div>
-  ) : null;
 
   return (
     <main style={response ? (compact ? appViewportMobile : appViewport) : (compact ? pageMobile : page)}>
@@ -662,8 +584,6 @@ export default function DealerAIUnderwriterPage() {
                 response={response}
                 missingDocs={missingDocs}
                 reviewStatus={reviewStatus}
-                activePanel={activePanel}
-                setActivePanel={setActivePanel}
                 onCopyResume={() => navigator.clipboard.writeText(response.resume_url || "")}
                 onLogout={logoutRoom}
               />
@@ -683,33 +603,36 @@ export default function DealerAIUnderwriterPage() {
                 </header>
               ) : null}
 
-              {compact ? (
-                <div style={mobileTabs}>
-                  {(["chat", "bucket"] as const).map((panel) => (
-                    <button
-                      key={panel}
-                      type="button"
-                      style={activePanel === panel ? mobileTabActive : mobileTab}
-                      onClick={() => setActivePanel(panel)}
-                    >
-                      {panel === "bucket" ? "Buckets" : "Chat"}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
               <div style={compact ? workspaceGridMobile : workspaceGrid}>
-                {activePanel === "chat" ? (
                 <section style={compact ? chatPanelModernMobile : chatPanelModern}>
                   <div style={compact ? chatTopBarMobile : chatTopBar}>
                     <div>
                       <h2 style={sectionTitle}>Dealer AI Underwriter</h2>
-                      <p style={muted}>Ask questions, attach files, and answer only the underwriting questions that matter.</p>
+                      <p style={muted}>Ask questions and attach PDFs, images, ZIPs, spreadsheets, or statements directly in chat.</p>
                     </div>
                     <div style={compact ? mobileActionRow : headerActionRow}>
                       <span style={statusPill}>{reviewStatus}</span>
+                      {compact ? (
+                        <button type="button" style={ghostButton} onClick={() => setFileDrawerOpen((open) => !open)}>
+                          {fileDrawerOpen ? "Hide files" : `Files (${response.files.length})`}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
+                  {compact && fileDrawerOpen ? (
+                    <FileDrawerPanel
+                      response={response}
+                      missingDocs={missingDocs}
+                      pendingFiles={pendingFiles}
+                      result={currentResult}
+                      busy={busy}
+                      fundability={fundability}
+                      onAttachFiles={openFilePicker}
+                      onRemoveQueuedFile={removeQueuedFile}
+                      onUpload={() => uploadQueuedFiles().catch(() => undefined)}
+                      compact
+                    />
+                  ) : null}
                   <div style={compact ? messagesModernMobile : messagesModern}>
                     {fundability ? <FundabilityBanner banner={fundability} /> : null}
                     {chat.map((line) => (
@@ -717,8 +640,6 @@ export default function DealerAIUnderwriterPage() {
                         {line.content}
                       </div>
                     ))}
-                    {compactTool}
-                    {inlineWidget}
                   </div>
                   {pendingFiles.length ? (
                     <AttachmentTray files={pendingFiles} compact={compact} onRemove={removeQueuedFile} />
@@ -731,7 +652,6 @@ export default function DealerAIUnderwriterPage() {
                       aria-label="Attach files"
                       title="Attach files"
                       onClick={() => {
-                        setOpenWidgetType("upload_files");
                         composerFileInputRef.current?.click();
                       }}
                     >
@@ -745,7 +665,6 @@ export default function DealerAIUnderwriterPage() {
                       onChange={(event) => {
                         if (event.target.files) {
                           addFiles(event.target.files);
-                          setOpenWidgetType("upload_files");
                         }
                         event.currentTarget.value = "";
                       }}
@@ -773,19 +692,17 @@ export default function DealerAIUnderwriterPage() {
                   </div>
                   {status ? <div style={statusBox}>{status}</div> : null}
                 </section>
-                ) : null}
 
-                {activePanel === "bucket" ? (
-                  <BucketFilesPanel
+                {!compact ? (
+                  <FileDrawerPanel
                     response={response}
                     missingDocs={missingDocs}
                     pendingFiles={pendingFiles}
                     result={currentResult}
                     busy={busy}
                     fundability={fundability}
-                    onOpenUpload={openUploadTool}
+                    onAttachFiles={openFilePicker}
                     onRemoveQueuedFile={removeQueuedFile}
-                    onChangeQueuedFileDocument={updateQueuedFileDocument}
                     onUpload={() => uploadQueuedFiles().catch(() => undefined)}
                   />
                 ) : null}
@@ -921,7 +838,6 @@ function UploadWidget(props: {
   missingDocs: RequestedDoc[];
   queuedFiles: QueuedFile[];
   onRemoveQueuedFile: (id: string) => void;
-  onChangeQueuedFileDocument: (id: string, requestedDocumentId: string) => void;
   fileInputRef: MutableRefObject<HTMLInputElement | null>;
   dragging: boolean;
   setDragging: (value: boolean) => void;
@@ -930,7 +846,7 @@ function UploadWidget(props: {
   busy: boolean;
   onUpload: () => void;
 }) {
-  const { requestedDocs, missingDocs, queuedFiles, onRemoveQueuedFile, onChangeQueuedFileDocument, fileInputRef, dragging, setDragging, onDrop, addFiles, busy, onUpload } = props;
+  const { requestedDocs, missingDocs, queuedFiles, onRemoveQueuedFile, fileInputRef, dragging, setDragging, onDrop, addFiles, busy, onUpload } = props;
   const uploadedCount = requestedDocs.filter((doc) => !missingDocs.some((missing) => missing.id === doc.id)).length;
   const visibleQueue = queuedFiles.filter((item) => item.status !== "uploaded");
   return (
@@ -966,15 +882,7 @@ function UploadWidget(props: {
               <strong style={truncate}>{item.file.name}</strong>
               <span style={smallMuted}>{formatSize(item.file.size)} | {item.status}{item.message ? ` | ${item.message}` : ""}</span>
             </div>
-            <select
-              style={select}
-              value={item.requestedDocumentId}
-              onChange={(event) => onChangeQueuedFileDocument(item.id, event.target.value)}
-              disabled={item.status === "uploading"}
-            >
-              <option value="">Let AI classify</option>
-              {requestedDocs.map((doc) => <option key={doc.id} value={doc.id}>{doc.name}</option>)}
-            </select>
+            <span style={smallMuted}>AI will classify after upload</span>
             {item.status !== "uploading" ? (
               <button
                 type="button"
@@ -1084,23 +992,15 @@ function DealerSidebar({
   response,
   missingDocs,
   reviewStatus,
-  activePanel,
-  setActivePanel,
   onCopyResume,
   onLogout,
 }: {
   response: IntakeResponse;
   missingDocs: RequestedDoc[];
   reviewStatus: string;
-  activePanel: RoomPanel;
-  setActivePanel: (panel: RoomPanel) => void;
   onCopyResume: () => void;
   onLogout: () => void;
 }) {
-  const navItems: Array<{ key: RoomPanel; label: string; meta: string }> = [
-    { key: "chat", label: "Underwriter chat", meta: reviewStatus },
-    { key: "bucket", label: "Buckets", meta: `${response.files.length} uploaded` },
-  ];
   return (
     <aside style={dealerSidebar}>
       <div style={sidebarBrand}>
@@ -1112,17 +1012,14 @@ function DealerSidebar({
       </div>
 
       <nav style={sidebarNav} aria-label="Dealer AI room">
-        {navItems.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            style={activePanel === item.key ? sidebarNavItemActive : sidebarNavItem}
-            onClick={() => setActivePanel(item.key)}
-          >
-            <span>{item.label}</span>
-            <small>{item.meta}</small>
-          </button>
-        ))}
+        <div style={sidebarNavItemActive}>
+          <span>Underwriter chat</span>
+          <small>{reviewStatus}</small>
+        </div>
+        <div style={sidebarNavItem}>
+          <span>Files drawer</span>
+          <small>{response.files.length} uploaded</small>
+        </div>
       </nav>
 
       <div style={sidebarSection}>
@@ -1193,17 +1090,17 @@ function ToolSuggestionCard({ widget, onOpen }: { widget: Widget; onOpen: () => 
   );
 }
 
-function BucketFilesPanel({
+function FileDrawerPanel({
   response,
   missingDocs,
   pendingFiles,
   result,
   busy,
   fundability,
-  onOpenUpload,
+  onAttachFiles,
   onRemoveQueuedFile,
-  onChangeQueuedFileDocument,
   onUpload,
+  compact = false,
 }: {
   response: IntakeResponse;
   missingDocs: RequestedDoc[];
@@ -1211,22 +1108,22 @@ function BucketFilesPanel({
   result: Record<string, unknown> | null;
   busy: boolean;
   fundability: FundabilityBannerData | null;
-  onOpenUpload: () => void;
+  onAttachFiles: () => void;
   onRemoveQueuedFile: (id: string) => void;
-  onChangeQueuedFileDocument: (id: string, requestedDocumentId: string) => void;
   onUpload: () => void;
+  compact?: boolean;
 }) {
   const docsById = new Map(response.requested_documents.map((doc) => [doc.id, doc]));
   const readyCount = pendingFiles.filter((file) => file.status === "ready" || file.status === "error").length;
   const evidenceByFileId = evidenceMapByFileId(result);
   return (
-    <section style={bucketTabPanel}>
+    <section style={compact ? fileDrawerPanelMobile : fileDrawerPanel}>
       <div style={sideCardHeader}>
         <div>
-          <div style={sideEyebrow}>Buckets</div>
-          <h2 style={sideTitle}>Dealer file room</h2>
+          <div style={sideEyebrow}>Files</div>
+          <h2 style={sideTitle}>Uploaded evidence</h2>
         </div>
-        <button type="button" style={miniButton} onClick={onOpenUpload}>Attach files in chat</button>
+        <button type="button" style={miniButton} onClick={onAttachFiles}>Attach</button>
       </div>
 
       {fundability ? <FundabilityBanner banner={fundability} /> : null}
@@ -1252,15 +1149,7 @@ function BucketFilesPanel({
                   <span style={smallMuted}>{formatSize(item.file.size)} | {item.status}{item.message ? ` | ${item.message}` : ""}</span>
                 </div>
                 <div style={pendingControls}>
-                  <select
-                    style={compactSelect}
-                    value={item.requestedDocumentId}
-                    disabled={item.status === "uploading"}
-                    onChange={(event) => onChangeQueuedFileDocument(item.id, event.target.value)}
-                  >
-                    <option value="">Let AI classify</option>
-                    {response.requested_documents.map((doc) => <option key={doc.id} value={doc.id}>{doc.name}</option>)}
-                  </select>
+                  <span style={smallMuted}>AI will classify after upload</span>
                   {item.status !== "uploading" ? (
                     <button
                       type="button"
@@ -1958,12 +1847,12 @@ const workspaceGrid: CSSProperties = {
   minHeight: 0,
   height: "100%",
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr)",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(300px, 380px)",
   gap: 16,
   alignItems: "start",
   overflow: "hidden",
 };
-const workspaceGridMobile: CSSProperties = { minHeight: 0, display: "grid", gap: 12, overflowY: "auto" };
+const workspaceGridMobile: CSSProperties = { minHeight: 0, display: "grid", gap: 8, overflow: "hidden" };
 const appMain: CSSProperties = {
   height: "100%",
   minHeight: 0,
@@ -1975,7 +1864,7 @@ const appMainMobile: CSSProperties = {
   height: "100%",
   minHeight: 0,
   display: "grid",
-  gridTemplateRows: "auto auto minmax(0,1fr)",
+  gridTemplateRows: "auto minmax(0,1fr)",
   gap: 8,
   overflow: "hidden",
 };
@@ -2380,20 +2269,25 @@ const sideCard: CSSProperties = {
   gap: 14,
   boxShadow: "0 22px 70px rgba(0,0,0,.26)",
 };
-const bucketTabPanel: CSSProperties = {
+const fileDrawerPanel: CSSProperties = {
   height: "100%",
   minHeight: 0,
-  maxWidth: 1180,
   width: "100%",
-  justifySelf: "center",
-  background: "transparent",
-  border: 0,
-  borderRadius: 0,
-  padding: "22px min(5vw,54px)",
+  background: "rgba(255,255,255,.035)",
+  border: "1px solid rgba(255,255,255,.10)",
+  borderRadius: 18,
+  padding: 14,
   display: "grid",
   alignContent: "start",
-  gap: 16,
+  gap: 14,
   overflowY: "auto",
+};
+const fileDrawerPanelMobile: CSSProperties = {
+  ...fileDrawerPanel,
+  height: "auto",
+  maxHeight: "38dvh",
+  margin: "0 12px",
+  borderRadius: 16,
 };
 const sideCardHeader: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" };
 const sideEyebrow: CSSProperties = { color: "#E9D58A", fontSize: 11, fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase" };
