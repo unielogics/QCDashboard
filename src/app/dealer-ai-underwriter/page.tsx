@@ -19,6 +19,10 @@ type RequestedDoc = {
 type UploadedFile = {
   id: string;
   requested_document_id?: string | null;
+  parent_zip_file_id?: string | null;
+  zip_entry_path?: string | null;
+  extraction_status?: string | null;
+  extraction_reason?: string | null;
   file_name: string;
   content_type: string;
   size_bytes: number;
@@ -73,6 +77,7 @@ type Widget = {
 type IntakeResponse = {
   intake: Intake;
   token?: string | null;
+  session_token?: string | null;
   resume_url?: string | null;
   upload_url?: string | null;
   assistant_message: string;
@@ -81,6 +86,7 @@ type IntakeResponse = {
   files: UploadedFile[];
   ai_summary?: Record<string, unknown> | null;
   latest_review?: { status: string; result?: Record<string, unknown> | null; error?: string | null } | null;
+  messages?: Array<{ id: string; role: "assistant" | "user" | string; content: string; created_at: string }>;
 };
 
 type AssetRow = {
@@ -103,6 +109,8 @@ type ChatLine = { id: string; role: "assistant" | "user"; content: string };
 type QueuedFile = { id: string; file: File; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
 type ReviewProgressStage = "idle" | "attaching" | "uploading" | "reading" | "classifying" | "screening" | "preparing" | "complete" | "error";
 const DEALER_AI_UPLOAD_ACCEPT = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.zip,.csv,.xlsx,.txt,text/plain,application/pdf,image/*,application/zip,application/x-zip-compressed,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const DEALER_AI_SESSION_KEY = "qc_dealer_ai_session";
+const DEALER_AI_TOKEN_KEY = "qc_dealer_ai_token";
 const REVIEW_PROGRESS_STAGES: Array<{ key: ReviewProgressStage; label: string }> = [
   { key: "attaching", label: "Attaching files" },
   { key: "uploading", label: "Uploading securely" },
@@ -136,8 +144,11 @@ const initialEntity: EntityStructure = {
 export default function DealerAIUnderwriterPage() {
   const compact = useCompactViewport();
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const progressTimersRef = useRef<number[]>([]);
+  const completionTimerRef = useRef<number | null>(null);
   const [token, setToken] = useState<string>("");
+  const [dealerSessionToken, setDealerSessionToken] = useState<string>("");
   const [contact, setContact] = useState(initialContact);
   const [deal, setDeal] = useState({ loan_purpose: "", requested_loan_amount: "", estimated_credit_score: "" });
   const [assets, setAssets] = useState<AssetRow[]>([{ id: cryptoId(), address: "", estimated_loan_amount: null, estimated_property_value: null, notes: "" }]);
@@ -155,16 +166,37 @@ export default function DealerAIUnderwriterPage() {
   const [reviewCompletedAt, setReviewCompletedAt] = useState<string | null>(null);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [resumeEmail, setResumeEmail] = useState("");
+  const [loginCode, setLoginCode] = useState("");
+  const [loginCodeSent, setLoginCodeSent] = useState(false);
 
   useEffect(() => {
-    return () => clearProgressTimers();
+    return () => {
+      clearProgressTimers();
+      if (completionTimerRef.current) window.clearTimeout(completionTimerRef.current);
+    };
   }, []);
 
   useEffect(() => {
     const urlToken = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("token") : null;
-    if (!urlToken) return;
-    setToken(urlToken);
-    loadIntake(urlToken, true).catch((error) => setStatus(errorMessage(error)));
+    if (urlToken) {
+      setToken(urlToken);
+      loadIntake(urlToken, true).catch((error) => setStatus(errorMessage(error)));
+      return;
+    }
+    const savedSession = typeof window !== "undefined" ? window.sessionStorage.getItem(DEALER_AI_SESSION_KEY) : null;
+    if (savedSession) {
+      setDealerSessionToken(savedSession);
+      loadDealerSession(savedSession).catch(() => {
+        window.sessionStorage.removeItem(DEALER_AI_SESSION_KEY);
+        window.sessionStorage.removeItem(DEALER_AI_TOKEN_KEY);
+      });
+      return;
+    }
+    const savedToken = typeof window !== "undefined" ? window.sessionStorage.getItem(DEALER_AI_TOKEN_KEY) : null;
+    if (savedToken) {
+      setToken(savedToken);
+      loadIntake(savedToken, true).catch(() => window.sessionStorage.removeItem(DEALER_AI_TOKEN_KEY));
+    }
   }, []);
 
   useEffect(() => {
@@ -211,6 +243,14 @@ export default function DealerAIUnderwriterPage() {
   const fundability = fundabilityBanner(currentResult, bankability);
   const showReviewProgress = reviewProgress !== "idle" && reviewProgress !== "attaching";
 
+  useEffect(() => {
+    if (!response) return;
+    const frame = window.requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [response, chat.length, pendingFiles.length, reviewProgress, status]);
+
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const res = await fetch(`${apiBase}/api/v1${path}`, {
       ...init,
@@ -227,6 +267,10 @@ export default function DealerAIUnderwriterPage() {
   function clearProgressTimers() {
     progressTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     progressTimersRef.current = [];
+    if (completionTimerRef.current) {
+      window.clearTimeout(completionTimerRef.current);
+      completionTimerRef.current = null;
+    }
   }
 
   function setProgress(stage: ReviewProgressStage) {
@@ -249,6 +293,10 @@ export default function DealerAIUnderwriterPage() {
     clearProgressTimers();
     setReviewProgress("complete");
     setReviewCompletedAt(new Date().toISOString());
+    completionTimerRef.current = window.setTimeout(() => {
+      setReviewProgress("idle");
+      completionTimerRef.current = null;
+    }, 4200);
   }
 
   function failReviewProgress() {
@@ -281,11 +329,40 @@ export default function DealerAIUnderwriterPage() {
           privacy_version: PRIVACY_VERSION,
         }),
       });
-      applyResponse(payload, payload.token ?? "");
+      applyResponse(payload, payload.token ?? "", true);
       pushAssistant(payload.assistant_message);
-      if (payload.token && typeof window !== "undefined") {
-        window.history.replaceState(null, "", `/dealer-ai-underwriter?token=${encodeURIComponent(payload.token)}`);
+      if (typeof window !== "undefined") {
+        window.history.replaceState(null, "", "/dealer-ai-underwriter");
       }
+    } catch (error) {
+      const message = errorMessage(error);
+      if (message.toLowerCase().includes("already exists") || message.toLowerCase().includes("access code")) {
+        setResumeEmail(contact.email.trim());
+        setLoginCodeSent(true);
+        setStatus(message);
+      } else {
+        setStatus(message);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function requestDealerCode() {
+    const email = (resumeEmail || contact.email).trim();
+    if (!email) {
+      setStatus("Enter your email and we will send a secure access code if a file exists.");
+      return;
+    }
+    setBusy(true);
+    setStatus("");
+    try {
+      const payload = await call<{ ok: boolean; message: string }>("/public/dealer-ai-intake/login/start", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      });
+      setLoginCodeSent(true);
+      setStatus(payload.message || "If a secure dealer file exists for this email, a code has been sent.");
     } catch (error) {
       setStatus(errorMessage(error));
     } finally {
@@ -293,20 +370,28 @@ export default function DealerAIUnderwriterPage() {
     }
   }
 
-  async function requestResumeLink() {
+  async function verifyDealerCode() {
     const email = (resumeEmail || contact.email).trim();
-    if (!email) {
-      setStatus("Enter your email and we will send the secure resume link if a file exists.");
+    if (!email || !loginCode.trim()) {
+      setStatus("Enter your email and access code.");
       return;
     }
     setBusy(true);
     setStatus("");
     try {
-      const payload = await call<{ ok: boolean; message: string }>("/public/dealer-ai-intake/resume-link", {
+      const payload = await call<IntakeResponse>("/public/dealer-ai-intake/login/verify", {
         method: "POST",
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, code: loginCode.trim() }),
       });
-      setStatus(payload.message || "If a matching secure intake exists, a resume link has been sent.");
+      persistDealerSession(payload);
+      applyResponse(payload, payload.token ?? "", true);
+      syncMessagesFromResponse(payload, true);
+      pushAssistant(payload.assistant_message);
+      setLoginCode("");
+      setStatus("");
+      if (typeof window !== "undefined") {
+        window.history.replaceState(null, "", "/dealer-ai-underwriter");
+      }
     } catch (error) {
       setStatus(errorMessage(error));
     } finally {
@@ -316,8 +401,23 @@ export default function DealerAIUnderwriterPage() {
 
   async function loadIntake(activeToken = token, fromResume = false) {
     const payload = await call<IntakeResponse>(`/public/dealer-ai-intake/${encodeURIComponent(activeToken)}`);
-    applyResponse(payload, activeToken);
-    if (fromResume) pushAssistant(payload.assistant_message);
+    applyResponse(payload, activeToken, true);
+    syncMessagesFromResponse(payload, true);
+    persistDealerSession({ ...payload, token: activeToken });
+    if (fromResume && !payload.messages?.length) pushAssistant(payload.assistant_message);
+    if (typeof window !== "undefined" && fromResume) {
+      window.history.replaceState(null, "", "/dealer-ai-underwriter");
+    }
+  }
+
+  async function loadDealerSession(sessionToken: string) {
+    const payload = await call<IntakeResponse>("/public/dealer-ai-intake/session", {
+      headers: { "X-Dealer-Session": sessionToken },
+    });
+    persistDealerSession(payload);
+    applyResponse(payload, payload.token ?? "", true);
+    syncMessagesFromResponse(payload, true);
+    if (!payload.messages?.length) pushAssistant(payload.assistant_message);
   }
 
   async function sendChat(message?: string, updates?: Record<string, unknown>) {
@@ -524,9 +624,36 @@ export default function DealerAIUnderwriterPage() {
     }
   }
 
-  function applyResponse(payload: IntakeResponse, activeToken: string) {
+  function persistDealerSession(payload: Pick<IntakeResponse, "token" | "session_token">) {
+    if (payload.session_token) {
+      setDealerSessionToken(payload.session_token);
+      if (typeof window !== "undefined") window.sessionStorage.setItem(DEALER_AI_SESSION_KEY, payload.session_token);
+    }
+    if (payload.token) {
+      if (typeof window !== "undefined") window.sessionStorage.setItem(DEALER_AI_TOKEN_KEY, payload.token);
+    }
+  }
+
+  function syncMessagesFromResponse(payload: IntakeResponse, force = false) {
+    const serverMessages = payload.messages ?? [];
+    if (!serverMessages.length) {
+      if (force) setChat([]);
+      return;
+    }
+    if (!force && chat.length) return;
+    setChat(
+      serverMessages.map((message) => ({
+        id: message.id,
+        role: message.role === "assistant" ? "assistant" : "user",
+        content: message.content,
+      })),
+    );
+  }
+
+  function applyResponse(payload: IntakeResponse, activeToken: string, persist = false) {
     setResponse(payload);
     if (activeToken) setToken(activeToken);
+    if (persist) persistDealerSession({ token: activeToken || payload.token, session_token: payload.session_token });
     setContact((current) => ({
       full_name: payload.intake.full_name || current.full_name,
       email: payload.intake.email || current.email,
@@ -568,14 +695,26 @@ export default function DealerAIUnderwriterPage() {
   }
 
   function logoutRoom() {
+    const currentSession = dealerSessionToken || (typeof window !== "undefined" ? window.sessionStorage.getItem(DEALER_AI_SESSION_KEY) || "" : "");
+    if (currentSession) {
+      call("/public/dealer-ai-intake/logout", {
+        method: "POST",
+        body: JSON.stringify({ session_token: currentSession }),
+      }).catch(() => undefined);
+    }
     setToken("");
+    setDealerSessionToken("");
     setResponse(null);
     setChat([]);
     setChatText("");
     setQueuedFiles([]);
     setFileDrawerOpen(false);
-    setStatus("You are logged out of this secure room. Use your emailed resume link to return.");
+    setLoginCode("");
+    setLoginCodeSent(false);
+    setStatus("You are logged out of this secure room. Enter your email to receive a continuation code.");
     if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(DEALER_AI_SESSION_KEY);
+      window.sessionStorage.removeItem(DEALER_AI_TOKEN_KEY);
       window.history.replaceState(null, "", "/dealer-ai-underwriter");
     }
   }
@@ -602,7 +741,7 @@ export default function DealerAIUnderwriterPage() {
               </div>
               <div style={stepOneNavActions}>
                 <span style={navPill}>AI Underwriter</span>
-                <a style={loginPill} href="/login">Login</a>
+                <button type="button" style={loginPill} onClick={() => setLoginCodeSent(true)}>Continue</button>
               </div>
             </nav>
 
@@ -644,11 +783,15 @@ export default function DealerAIUnderwriterPage() {
                   setLegalAccepted={setLegalAccepted}
                   onStart={() => startIntake().catch(() => undefined)}
                 />
-                <ResumeLinkWidget
+                <DealerContinuationWidget
                   email={resumeEmail}
                   setEmail={setResumeEmail}
+                  code={loginCode}
+                  setCode={setLoginCode}
+                  codeSent={loginCodeSent}
                   busy={busy}
-                  onSend={() => requestResumeLink().catch(() => undefined)}
+                  onSendCode={() => requestDealerCode().catch(() => undefined)}
+                  onVerify={() => verifyDealerCode().catch(() => undefined)}
                 />
                 {status ? <div style={statusBoxNoMargin}>{status}</div> : null}
               </div>
@@ -743,6 +886,7 @@ export default function DealerAIUnderwriterPage() {
                         {line.content}
                       </div>
                     ))}
+                    <div ref={messagesEndRef} />
                   </div>
                   {pendingFiles.length ? (
                     <AttachmentTray files={pendingFiles} compact={compact} onRemove={removeQueuedFile} />
@@ -863,17 +1007,41 @@ function ContactWidget({
   );
 }
 
-function ResumeLinkWidget({ email, setEmail, busy, onSend }: { email: string; setEmail: (value: string) => void; busy: boolean; onSend: () => void }) {
+function DealerContinuationWidget({
+  email,
+  setEmail,
+  code,
+  setCode,
+  codeSent,
+  busy,
+  onSendCode,
+  onVerify,
+}: {
+  email: string;
+  setEmail: (value: string) => void;
+  code: string;
+  setCode: (value: string) => void;
+  codeSent: boolean;
+  busy: boolean;
+  onSendCode: () => void;
+  onVerify: () => void;
+}) {
   return (
     <div style={resumeCard}>
       <div>
         <strong>Already started?</strong>
-        <p style={stepOneFormCopy}>Enter your email and we will send your secure resume link if a file exists.</p>
+        <p style={stepOneFormCopy}>Enter your email and we will send a short access code for your existing dealer file.</p>
       </div>
       <div style={resumeGrid}>
         <input style={input} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@dealership.com" />
-        <button type="button" style={secondaryButton} disabled={busy} onClick={onSend}>Send link</button>
+        <button type="button" style={secondaryButton} disabled={busy} onClick={onSendCode}>{codeSent ? "Resend code" : "Send code"}</button>
       </div>
+      {codeSent ? (
+        <div style={resumeGrid}>
+          <input style={input} value={code} onChange={(event) => setCode(event.target.value)} placeholder="6-digit code" inputMode="numeric" />
+          <button type="button" style={secondaryButton} disabled={busy} onClick={onVerify}>Continue</button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1225,12 +1393,21 @@ function FileDrawerPanel({
   const docsById = new Map(response.requested_documents.map((doc) => [doc.id, doc]));
   const readyCount = pendingFiles.filter((file) => file.status === "ready" || file.status === "error").length;
   const evidenceByFileId = evidenceMapByFileId(result);
+  const childFilesByParent = new Map<string, UploadedFile[]>();
+  for (const file of response.files) {
+    if (!file.parent_zip_file_id) continue;
+    const children = childFilesByParent.get(file.parent_zip_file_id) ?? [];
+    children.push(file);
+    childFilesByParent.set(file.parent_zip_file_id, children);
+  }
+  const topLevelFiles = response.files.filter((file) => !file.parent_zip_file_id);
   return (
     <section style={compact ? fileDrawerPanelMobile : fileDrawerPanel}>
       <div style={sideCardHeader}>
         <div>
           <div style={sideEyebrow}>Files</div>
           <h2 style={sideTitle}>Uploaded evidence</h2>
+          {!showReviewProgress && reviewCompletedAt ? <span style={smallMuted}>Last review {formatDate(reviewCompletedAt)}</span> : null}
         </div>
         <button type="button" style={miniButton} onClick={onAttachFiles}>Attach</button>
       </div>
@@ -1287,16 +1464,34 @@ function FileDrawerPanel({
           <span style={smallMuted}>{response.files.length} submitted</span>
         </div>
         <div style={sideList}>
-          {response.files.length ? response.files.map((file) => {
+          {topLevelFiles.length ? topLevelFiles.map((file) => {
             const doc = file.requested_document_id ? docsById.get(file.requested_document_id) : null;
             const evidence = evidenceByFileId.get(file.id);
+            const extractedChildren = childFilesByParent.get(file.id) ?? [];
             return (
               <div key={file.id} style={uploadedFileCard}>
                 <div style={fileTypeBadge}>{fileLabel(file)}</div>
                 <div style={{ minWidth: 0 }}>
                   <strong style={truncate}>{file.file_name}</strong>
                   <span style={smallMuted}>{evidence?.classification || doc?.name || "Let AI classify"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}</span>
+                  {file.extraction_status ? <span style={evidenceLine}>Archive extraction: {file.extraction_status}{extractedChildren.length ? ` | ${extractedChildren.length} file${extractedChildren.length === 1 ? "" : "s"} organized` : ""}</span> : null}
                   {evidence?.supports ? <span style={evidenceLine}>{evidence.supports}</span> : null}
+                  {extractedChildren.length ? (
+                    <div style={zipChildList}>
+                      {extractedChildren.map((child) => {
+                        const childEvidence = evidenceByFileId.get(child.id);
+                        return (
+                          <div key={child.id} style={zipChildRow}>
+                            <span style={fileTypeBadgeSmall}>{fileLabel(child)}</span>
+                            <div style={{ minWidth: 0 }}>
+                              <strong style={truncate}>{child.zip_entry_path || child.file_name}</strong>
+                              <span style={smallMuted}>{childEvidence?.classification || "AI will classify"} | {formatSize(child.size_bytes)}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );
@@ -1561,6 +1756,7 @@ function fileLabel(file: UploadedFile): string {
   if (name.endsWith(".pdf")) return "PDF";
   if (name.endsWith(".xlsx") || name.endsWith(".xls")) return "XLS";
   if (name.endsWith(".csv")) return "CSV";
+  if (name.endsWith(".zip")) return "ZIP";
   if (file.content_type.startsWith("image/")) return "IMG";
   return "FILE";
 }
@@ -1569,8 +1765,16 @@ function fundabilityBanner(result: Record<string, unknown> | null, bankability: 
   if (!result && !bankability) return null;
   const rawStatus = String(bankability?.status || result?.status || "Preliminary review").trim();
   const reason = String(bankability?.reason || result?.executive_summary || "Review the AI screen in chat for the current underwriting position.");
+  const statusOnly = rawStatus.toLowerCase();
   const normalized = `${rawStatus} ${reason}`.toLowerCase();
-  if (normalized.includes("not fundable") || normalized.includes("not bankable") || normalized.includes("decline") || normalized.includes("unfundable")) {
+  const isNegative =
+    statusOnly.includes("not fundable") ||
+    statusOnly.includes("not bankable") ||
+    statusOnly.includes("unfundable") ||
+    statusOnly.includes("decline") ||
+    normalized.includes("file is not fundable") ||
+    normalized.includes("file is not bankable");
+  if (isNegative) {
     return {
       tone: "red",
       label: "Preliminary screen",
@@ -1578,7 +1782,20 @@ function fundabilityBanner(result: Record<string, unknown> | null, bankability: 
       detail: reason,
     };
   }
-  if (normalized.includes("cannot") || normalized.includes("incomplete") || normalized.includes("missing") || normalized.includes("determine")) {
+  const isConditional =
+    normalized.includes("cannot") ||
+    normalized.includes("incomplete") ||
+    normalized.includes("missing") ||
+    normalized.includes("determine") ||
+    normalized.includes("preliminary") ||
+    normalized.includes("subject to") ||
+    normalized.includes("confirmation") ||
+    normalized.includes("conditional");
+  const isExplicitPositive =
+    ["bankable", "fundable", "yes", "approved"].includes(statusOnly) ||
+    statusOnly.startsWith("bankable -") ||
+    statusOnly.startsWith("fundable -");
+  if (isConditional || !isExplicitPositive) {
     return {
       tone: "amber",
       label: "Preliminary screen",
@@ -1586,7 +1803,7 @@ function fundabilityBanner(result: Record<string, unknown> | null, bankability: 
       detail: reason,
     };
   }
-  if (normalized.includes("fundable") || normalized.includes("bankable") || normalized.includes("likely") || normalized.includes("qualified")) {
+  if (isExplicitPositive) {
     return {
       tone: "green",
       label: "Preliminary screen",
@@ -1691,6 +1908,7 @@ const loginPill: CSSProperties = {
   color: "#0B1326",
   textDecoration: "none",
   padding: "0 18px",
+  cursor: "pointer",
 };
 const stepOneHeading: CSSProperties = {
   display: "flex",
@@ -2530,6 +2748,24 @@ const fileTypeBadge: CSSProperties = {
   justifyContent: "center",
   fontSize: 11,
   fontWeight: 900,
+};
+const fileTypeBadgeSmall: CSSProperties = {
+  ...fileTypeBadge,
+  width: 30,
+  height: 30,
+  borderRadius: 9,
+  fontSize: 9,
+};
+const zipChildList: CSSProperties = { display: "grid", gap: 6, marginTop: 8 };
+const zipChildRow: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "30px minmax(0,1fr)",
+  gap: 8,
+  alignItems: "center",
+  padding: 7,
+  borderRadius: 10,
+  background: "rgba(255,255,255,.035)",
+  border: "1px solid rgba(255,255,255,.08)",
 };
 const warningText: CSSProperties = { display: "block", color: "#F6E7A6", fontSize: 13, lineHeight: 1.35 };
 const reviewProgressShell: CSSProperties = {
