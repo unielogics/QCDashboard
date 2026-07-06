@@ -163,13 +163,23 @@ export default function DealerAIUnderwriterPage() {
   const hasReferral = Boolean(response && response.intake.referral_source);
   const hasFiles = Boolean(response && response.files.length);
   const currentResult = response?.intake.result_snapshot ?? response?.latest_review?.result ?? null;
-  const showEntityWidget = Boolean(response && (!hasEntityStructure || widget?.type === "entity_structure"));
-  const showDealWidget = Boolean(response && (!hasRequiredFacts || widget?.type === "deal_profile"));
-  const showAssetWidget = Boolean(response && (!hasAssets || widget?.type === "real_estate_schedule"));
-  const showReferralWidget = Boolean(response && (!hasReferral || widget?.type === "referral"));
-  const showReviewWidget = Boolean(response && hasFiles);
-  const showResultWidget = Boolean(response && (widget?.type === "bankability_result" || currentResult));
-  const showBookCallWidget = Boolean(response && widget?.type === "book_call" && !callBooking?.event_id);
+  const activeWidgetType = widget?.type ?? (
+    response
+      ? !hasFiles
+        ? "upload_files"
+        : !hasEntityStructure
+          ? "entity_structure"
+          : !hasRequiredFacts
+            ? "deal_profile"
+            : !hasAssets
+              ? "real_estate_schedule"
+              : !hasReferral
+                ? "referral"
+                : currentResult
+                  ? "bankability_result"
+                  : "run_review"
+      : null
+  );
   const missingDocs = useMemo(() => {
     const uploadedIds = new Set(response?.files.map((file) => file.requested_document_id).filter(Boolean) ?? []);
     return (response?.requested_documents ?? []).filter((doc) => doc.required && !uploadedIds.has(doc.id));
@@ -421,6 +431,40 @@ export default function DealerAIUnderwriterPage() {
     if (event.dataTransfer.files.length) addFiles(event.dataTransfer.files);
   }
 
+  const inlineWidget = response ? (
+    <div style={assistantWidgetBubble}>
+      <div style={aiPromptHeader}>
+        <span style={aiPromptLabel}>AI prompt</span>
+        <h3 style={aiPromptTitle}>{widget?.title || "Next underwriting step"}</h3>
+        <p style={aiPromptCopy}>{widget?.description || "Complete this step so the AI can keep screening the file."}</p>
+      </div>
+      {activeWidgetType === "upload_files" ? (
+        <UploadWidget
+          requestedDocs={response.requested_documents}
+          missingDocs={missingDocs}
+          queuedFiles={queuedFiles}
+          setQueuedFiles={setQueuedFiles}
+          fileInputRef={fileInputRef}
+          dragging={dragging}
+          setDragging={setDragging}
+          onDrop={onDrop}
+          addFiles={addFiles}
+          busy={busy}
+          onUpload={() => uploadQueuedFiles().catch(() => undefined)}
+        />
+      ) : null}
+      {activeWidgetType === "entity_structure" ? <EntityWidget entity={entity} setEntity={setEntity} busy={busy} onSubmit={() => submitEntityStructure().catch(() => undefined)} /> : null}
+      {activeWidgetType === "deal_profile" ? <DealWidget deal={deal} setDeal={setDeal} busy={busy} onSubmit={() => submitDealProfile().catch(() => undefined)} /> : null}
+      {activeWidgetType === "real_estate_schedule" ? <AssetWidget assets={assets} setAssets={setAssets} busy={busy} onSubmit={() => submitAssets().catch(() => undefined)} /> : null}
+      {activeWidgetType === "referral" ? <ReferralWidget referral={referral} setReferral={setReferral} busy={busy} onSubmit={() => submitReferral().catch(() => undefined)} /> : null}
+      {activeWidgetType === "run_review" ? <RunReviewWidget busy={busy} hasResult={Boolean(currentResult)} onRun={() => runReview().catch(() => undefined)} /> : null}
+      {activeWidgetType === "bankability_result" ? <ResultWidget result={currentResult} bankability={bankability} /> : null}
+      {activeWidgetType === "book_call" && currentResult ? <ResultWidget result={currentResult} bankability={bankability} /> : null}
+      {activeWidgetType === "book_call" && !callBooking?.event_id ? <BookCallWidget widget={widget} busy={busy} onBook={(startsAt) => bookCall(startsAt).catch(() => undefined)} /> : null}
+      {activeWidgetType === "book_call" && callBooking?.event_id ? <div style={emptyBox}>Your call is booked. Keep uploading any missing baseline files before the meeting.</div> : null}
+    </div>
+  ) : null;
+
   return (
     <main style={page}>
       <section style={shell}>
@@ -495,24 +539,25 @@ export default function DealerAIUnderwriterPage() {
               <div style={securePill}>Encrypted uploads | Chat-first review | Preliminary screen</div>
             </header>
 
-            <div style={grid}>
-              <section style={chatPanel}>
-                <div style={chatHeader}>
+            <section style={chatPanelFull}>
+              <div style={chatHeader}>
                 <div>
                   <h2 style={sectionTitle}>AI Funding Review</h2>
-                  <p style={muted}>Upload the baseline package, clarify related LLCs/accounts, and let the AI infer strict program fit.</p>
+                  <p style={muted}>The AI will ask for the baseline files and facts inside this conversation.</p>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                   {response?.resume_url ? <button style={ghostButton} onClick={() => navigator.clipboard.writeText(response.resume_url || "")}>Copy resume link</button> : null}
                   {response ? <a style={ghostLink} href="/client/dealer-intakes">Client continuation</a> : null}
                 </div>
               </div>
+              <CompactRoomStatus response={response} missingDocs={missingDocs} />
               <div style={messages}>
                 {chat.map((line) => (
                   <div key={line.id} style={line.role === "assistant" ? assistantBubble : userBubble}>
                     {line.content}
                   </div>
                 ))}
+                {inlineWidget}
               </div>
               <div style={composer}>
                 <input
@@ -530,34 +575,7 @@ export default function DealerAIUnderwriterPage() {
                 </button>
               </div>
                 {status ? <div style={statusBox}>{status}</div> : null}
-              </section>
-
-              <aside style={widgetPanel}>
-                <>
-                  <IntakeSnapshot response={response} missingDocs={missingDocs} />
-                  <UploadWidget
-                    requestedDocs={response.requested_documents}
-                    missingDocs={missingDocs}
-                    queuedFiles={queuedFiles}
-                    setQueuedFiles={setQueuedFiles}
-                    fileInputRef={fileInputRef}
-                    dragging={dragging}
-                    setDragging={setDragging}
-                    onDrop={onDrop}
-                    addFiles={addFiles}
-                    busy={busy}
-                    onUpload={() => uploadQueuedFiles().catch(() => undefined)}
-                  />
-                  {showEntityWidget ? <EntityWidget entity={entity} setEntity={setEntity} busy={busy} onSubmit={() => submitEntityStructure().catch(() => undefined)} /> : null}
-                  {showDealWidget ? <DealWidget deal={deal} setDeal={setDeal} busy={busy} onSubmit={() => submitDealProfile().catch(() => undefined)} /> : null}
-                  {showAssetWidget ? <AssetWidget assets={assets} setAssets={setAssets} busy={busy} onSubmit={() => submitAssets().catch(() => undefined)} /> : null}
-                  {showReferralWidget ? <ReferralWidget referral={referral} setReferral={setReferral} busy={busy} onSubmit={() => submitReferral().catch(() => undefined)} /> : null}
-                  {showReviewWidget ? <RunReviewWidget busy={busy} hasResult={Boolean(currentResult)} onRun={() => runReview().catch(() => undefined)} /> : null}
-                  {showResultWidget ? <ResultWidget result={currentResult} bankability={bankability} /> : null}
-                  {showBookCallWidget ? <BookCallWidget widget={widget} busy={busy} onBook={(startsAt) => bookCall(startsAt).catch(() => undefined)} /> : null}
-                </>
-              </aside>
-            </div>
+            </section>
           </>
         )}
       </section>
@@ -759,15 +777,15 @@ function ResultWidget({ result, bankability }: { result: Record<string, unknown>
   );
 }
 
-function IntakeSnapshot({ response, missingDocs }: { response: IntakeResponse; missingDocs: RequestedDoc[] }) {
+function CompactRoomStatus({ response, missingDocs }: { response: IntakeResponse; missingDocs: RequestedDoc[] }) {
   return (
-    <div style={snapshot}>
+    <div style={roomStatusStrip}>
       <div>
         <div style={eyebrow}>Secure bucket created</div>
         <strong>{response.intake.business_name || response.intake.full_name}</strong>
         <p style={smallMuted}>{response.files.length} uploaded | {missingDocs.length} missing | {response.intake.status}</p>
       </div>
-      <div style={miniMetrics}>
+      <div style={compactMetrics}>
         <Metric value={response.intake.estimated_credit_score ? String(response.intake.estimated_credit_score) : "TBD"} label="est. credit" />
         <Metric value={response.files.length.toString()} label="files" />
       </div>
@@ -1174,10 +1192,29 @@ const chatPanel: CSSProperties = {
   overflow: "hidden",
   boxShadow: "0 30px 90px rgba(0,0,0,.38)",
 };
+const chatPanelFull: CSSProperties = {
+  ...chatPanel,
+  minHeight: "calc(100vh - 148px)",
+  gridTemplateRows: "auto auto 1fr auto auto",
+};
 const chatHeader: CSSProperties = { padding: 18, borderBottom: "1px solid rgba(255,255,255,.08)", display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" };
 const sectionTitle: CSSProperties = { margin: 0, fontSize: 20, color: "#F6F8FB", letterSpacing: 0 };
 const muted: CSSProperties = { margin: "4px 0 0", color: "#95A3B6", lineHeight: 1.45 };
-const messages: CSSProperties = { padding: 18, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", minHeight: 420 };
+const roomStatusStrip: CSSProperties = {
+  margin: 18,
+  marginBottom: 0,
+  border: "1px solid rgba(255,255,255,.10)",
+  borderRadius: 16,
+  background: "linear-gradient(135deg,rgba(255,255,255,.06),rgba(212,175,55,.055))",
+  padding: 14,
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+const compactMetrics: CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" };
+const messages: CSSProperties = { padding: 18, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", minHeight: 520 };
 const assistantBubble: CSSProperties = {
   alignSelf: "flex-start",
   maxWidth: "82%",
@@ -1198,6 +1235,40 @@ const userBubble: CSSProperties = {
   fontWeight: 800,
   lineHeight: 1.45,
 };
+const assistantWidgetBubble: CSSProperties = {
+  alignSelf: "flex-start",
+  width: "min(860px, 100%)",
+  maxWidth: "100%",
+  borderRadius: 18,
+  border: "1px solid rgba(33,211,199,.22)",
+  background: "linear-gradient(180deg,rgba(33,211,199,.08),rgba(255,255,255,.035))",
+  padding: 14,
+  display: "grid",
+  gap: 12,
+};
+const aiPromptHeader: CSSProperties = {
+  display: "grid",
+  gap: 5,
+  padding: "2px 4px 0",
+};
+const aiPromptLabel: CSSProperties = {
+  color: "#6EE7DC",
+  fontSize: 11,
+  fontWeight: 900,
+  letterSpacing: 1.2,
+  textTransform: "uppercase",
+};
+const aiPromptTitle: CSSProperties = {
+  margin: 0,
+  color: "#F8FAFC",
+  fontSize: 20,
+  letterSpacing: 0,
+};
+const aiPromptCopy: CSSProperties = {
+  margin: 0,
+  color: "#B8C4D6",
+  lineHeight: 1.45,
+};
 const composer: CSSProperties = { display: "grid", gridTemplateColumns: "1fr auto", gap: 10, padding: 18, borderTop: "1px solid rgba(255,255,255,.08)" };
 const composerInput: CSSProperties = {
   border: "1px solid rgba(255,255,255,.14)",
@@ -1211,11 +1282,11 @@ const composerInput: CSSProperties = {
 };
 const widgetPanel: CSSProperties = { display: "grid", gap: 14 };
 const widgetBox: CSSProperties = {
-  background: "linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.025))",
+  background: "rgba(8,14,32,.68)",
   border: "1px solid rgba(255,255,255,.1)",
-  borderRadius: 18,
+  borderRadius: 16,
   padding: 18,
-  boxShadow: "0 18px 60px rgba(0,0,0,.25)",
+  boxShadow: "none",
 };
 const snapshot: CSSProperties = { ...widgetBox, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" };
 const miniMetrics: CSSProperties = { display: "flex", gap: 8 };
