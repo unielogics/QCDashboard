@@ -540,7 +540,7 @@ function num(value: string, fallback: number): number {
 }
 
 function money(value: number): string {
-  return `$${Math.round(Number.isFinite(value) ? value : 0).toLocaleString()}`;
+  return `$${Math.round(Number.isFinite(value) ? value : 0).toLocaleString("en-US")}`;
 }
 
 const styles = `

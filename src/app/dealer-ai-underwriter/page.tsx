@@ -143,6 +143,7 @@ const initialEntity: EntityStructure = {
 
 export default function DealerAIUnderwriterPage() {
   const compact = useCompactViewport();
+  const [mounted, setMounted] = useState(false);
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const progressTimersRef = useRef<number[]>([]);
@@ -171,6 +172,7 @@ export default function DealerAIUnderwriterPage() {
   const [loginCodeSent, setLoginCodeSent] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     return () => {
       clearProgressTimers();
       if (completionTimerRef.current) window.clearTimeout(completionTimerRef.current);
@@ -753,6 +755,9 @@ export default function DealerAIUnderwriterPage() {
     setChat((current) => [...current, { id: cryptoId(), role: "user", content }]);
   }
 
+  if (!mounted) {
+    return <main style={page} />;
+  }
 
   return (
     <main style={response ? (compact ? appViewportMobile : appViewport) : (compact ? pageMobile : page)}>
