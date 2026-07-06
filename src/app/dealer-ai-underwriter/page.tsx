@@ -141,6 +141,7 @@ export default function DealerAIUnderwriterPage() {
   const [dragging, setDragging] = useState(false);
   const [openWidgetType, setOpenWidgetType] = useState<WidgetType | null>(null);
   const [lastSuggestedWidget, setLastSuggestedWidget] = useState<Widget | null>(null);
+  const [mobilePanel, setMobilePanel] = useState<"chat" | "bucket" | "review">("chat");
 
   useEffect(() => {
     const urlToken = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("token") : null;
@@ -196,6 +197,23 @@ export default function DealerAIUnderwriterPage() {
   const hasReferral = Boolean(response && response.intake.referral_source);
   const hasFiles = Boolean(response && response.files.length);
   const currentResult = response?.intake.result_snapshot ?? response?.latest_review?.result ?? null;
+  const missingDocs = useMemo(() => {
+    const uploadedIds = new Set(response?.files.map((file) => file.requested_document_id).filter(Boolean) ?? []);
+    return (response?.requested_documents ?? []).filter((doc) => doc.required && !uploadedIds.has(doc.id));
+  }, [response]);
+  const pendingFiles = queuedFiles.filter((item) => item.status !== "uploaded");
+  const hasQueuedUpload = queuedFiles.some((item) => item.status === "ready" || item.status === "error");
+  const hasUploading = queuedFiles.some((item) => item.status === "uploading");
+  const reviewStatus =
+    hasUploading
+      ? "Uploading"
+      : status.toLowerCase().includes("analyzing")
+        ? "Analyzing"
+        : response?.latest_review?.status
+          ? titleize(response.latest_review.status)
+          : missingDocs.length
+            ? "Needs baseline"
+            : "Ready to review";
   const suggestedWidgetType = suggestedWidget?.type ?? (
     response
       ? !hasFiles
@@ -214,10 +232,6 @@ export default function DealerAIUnderwriterPage() {
       : null
   );
   const activeWidgetType = openWidgetType ?? null;
-  const missingDocs = useMemo(() => {
-    const uploadedIds = new Set(response?.files.map((file) => file.requested_document_id).filter(Boolean) ?? []);
-    return (response?.requested_documents ?? []).filter((doc) => doc.required && !uploadedIds.has(doc.id));
-  }, [response]);
   const bankability = asRecord(response?.latest_review?.result?.bankability_assessment ?? response?.intake.result_snapshot?.bankability_assessment);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -398,6 +412,7 @@ export default function DealerAIUnderwriterPage() {
     setBusy(true);
     setStatus("Uploading files to secure storage...");
     let uploaded = 0;
+    const uploadedIds = new Set<string>();
     try {
       for (const item of queuedFiles.filter((file) => file.status === "ready" || file.status === "error")) {
         updateQueuedFile(item.id, { status: "uploading", message: "Preparing upload" });
@@ -423,12 +438,14 @@ export default function DealerAIUnderwriterPage() {
             body: JSON.stringify({ file_id: init.file_id }),
           });
           uploaded += 1;
+          uploadedIds.add(item.id);
           updateQueuedFile(item.id, { status: "uploaded", message: "Uploaded" });
         } catch (error) {
           updateQueuedFile(item.id, { status: "error", message: errorMessage(error) });
         }
       }
       await loadIntake();
+      setQueuedFiles((current) => current.filter((item) => !uploadedIds.has(item.id)));
       if (uploaded > 0) {
         pushAssistant(`${uploaded} file${uploaded === 1 ? "" : "s"} uploaded. I am analyzing the file set now.`);
         setStatus("Analyzing uploaded files...");
@@ -473,6 +490,19 @@ export default function DealerAIUnderwriterPage() {
     setQueuedFiles((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   }
 
+  function removeQueuedFile(id: string) {
+    setQueuedFiles((current) => current.filter((item) => item.id !== id));
+  }
+
+  function updateQueuedFileDocument(id: string, requestedDocumentId: string) {
+    setQueuedFiles((current) => current.map((item) => (item.id === id ? { ...item, requestedDocumentId } : item)));
+  }
+
+  function openUploadTool() {
+    setOpenWidgetType("upload_files");
+    setMobilePanel("chat");
+  }
+
   function pushAssistant(content: string) {
     if (!content) return;
     setChat((current) => [...current, { id: cryptoId(), role: "assistant", content }]);
@@ -501,7 +531,8 @@ export default function DealerAIUnderwriterPage() {
           requestedDocs={response.requested_documents}
           missingDocs={missingDocs}
           queuedFiles={queuedFiles}
-          setQueuedFiles={setQueuedFiles}
+          onRemoveQueuedFile={removeQueuedFile}
+          onChangeQueuedFileDocument={updateQueuedFileDocument}
           fileInputRef={fileInputRef}
           dragging={dragging}
           setDragging={setDragging}
@@ -586,116 +617,149 @@ export default function DealerAIUnderwriterPage() {
           </>
         ) : (
           <>
-            <header style={compact ? headerMobile : header}>
+            <header style={compact ? workspaceHeaderMobile : workspaceHeader}>
               <div style={compact ? brandGroupMobile : brandGroup}>
-                <QCMark size={compact ? 34 : 42} />
-                <div>
+                <QCMark size={compact ? 30 : 36} />
+                <div style={{ minWidth: 0 }}>
                   <div style={compact ? eyebrowMobile : eyebrow}>Qualified Commercial AI Funding Review</div>
-                  <h1 style={compact ? titleMobile : title}>Dealer capital underwriter room</h1>
+                  <h1 style={compact ? workspaceTitleMobile : workspaceTitle}>Dealer AI Underwriter</h1>
                 </div>
               </div>
-              <div style={compact ? securePillMobile : securePill}>Encrypted uploads | AI review</div>
+              <div style={compact ? workspaceMetaMobile : workspaceMeta}>
+                <span style={statusPill}>{reviewStatus}</span>
+                <span style={metricPill}>{response.files.length} uploaded</span>
+                <span style={missingDocs.length ? warningPill : metricPill}>{missingDocs.length} missing</span>
+              </div>
             </header>
 
-            <section style={compact ? chatPanelFullMobile : chatPanelFull}>
-              <div style={compact ? chatHeaderMobile : chatHeader}>
-                <div>
-                  <h2 style={sectionTitle}>AI Funding Review</h2>
-                  <p style={muted}>The AI will ask for the baseline files and facts inside this conversation.</p>
-                </div>
-                <div style={compact ? mobileActionRow : headerActionRow}>
-                  {suggestedWidgetType && !activeWidgetType ? (
-                    <button style={ghostButton} onClick={() => setOpenWidgetType(suggestedWidgetType)}>
-                      Open current request
-                    </button>
-                  ) : null}
-                  {response?.resume_url ? <button style={ghostButton} onClick={() => navigator.clipboard.writeText(response.resume_url || "")}>Copy resume link</button> : null}
-                  {response ? <a style={ghostLink} href="/client/dealer-intakes">Client continuation</a> : null}
-                </div>
-              </div>
-              <CompactRoomStatus response={response} missingDocs={missingDocs} compact={compact} />
-              <div style={compact ? messagesMobile : messages}>
-                {chat.map((line) => (
-                  <div key={line.id} style={line.role === "assistant" ? assistantBubble : userBubble}>
-                    {line.content}
-                  </div>
+            {compact ? (
+              <div style={mobileTabs}>
+                {(["chat", "bucket", "review"] as const).map((panel) => (
+                  <button
+                    key={panel}
+                    type="button"
+                    style={mobilePanel === panel ? mobileTabActive : mobileTab}
+                    onClick={() => setMobilePanel(panel)}
+                  >
+                    {titleize(panel)}
+                  </button>
                 ))}
-                {inlineWidget}
               </div>
-              {queuedFiles.length ? (
-                <div style={compact ? attachmentTrayMobile : attachmentTray}>
-                  <div style={attachmentTrayHeader}>
-                    <strong>{queuedFiles.length} attached file{queuedFiles.length === 1 ? "" : "s"}</strong>
-                    <span>Files are encrypted when uploaded.</span>
+            ) : null}
+
+            <div style={compact ? workspaceGridMobile : workspaceGrid}>
+              {(!compact || mobilePanel === "chat") ? (
+                <section style={compact ? chatPanelModernMobile : chatPanelModern}>
+                  <div style={compact ? chatTopBarMobile : chatTopBar}>
+                    <div>
+                      <h2 style={sectionTitle}>AI Funding Review</h2>
+                      <p style={muted}>Ask questions, attach files, and answer only the underwriting questions that matter.</p>
+                    </div>
+                    <div style={compact ? mobileActionRow : headerActionRow}>
+                      {suggestedWidgetType && !activeWidgetType ? (
+                        <button type="button" style={ghostButton} onClick={() => setOpenWidgetType(suggestedWidgetType)}>
+                          Open request
+                        </button>
+                      ) : null}
+                      {response?.resume_url ? <button type="button" style={ghostButton} onClick={() => navigator.clipboard.writeText(response.resume_url || "")}>Copy resume</button> : null}
+                    </div>
                   </div>
-                  <div style={attachmentList}>
-                    {queuedFiles.map((item) => (
-                      <div key={item.id} style={attachmentPill}>
-                        <span style={truncate}>{item.file.name}</span>
-                        <span style={smallMuted}>{item.status}</span>
-                        {item.status !== "uploading" ? (
-                          <button
-                            style={attachmentRemove}
-                            aria-label={`Remove ${item.file.name}`}
-                            onClick={() => setQueuedFiles(queuedFiles.filter((file) => file.id !== item.id))}
-                          >
-                            x
-                          </button>
-                        ) : null}
+                  <div style={compact ? messagesModernMobile : messagesModern}>
+                    {chat.map((line) => (
+                      <div key={line.id} style={line.role === "assistant" ? assistantBubble : userBubble}>
+                        {line.content}
                       </div>
                     ))}
+                    {inlineWidget}
                   </div>
-                </div>
+                  {pendingFiles.length ? (
+                    <AttachmentTray files={pendingFiles} compact={compact} onRemove={removeQueuedFile} />
+                  ) : null}
+                  <div style={compact ? composerMobile : composer}>
+                    <button
+                      type="button"
+                      style={attachButton}
+                      disabled={!token || busy}
+                      aria-label="Attach files"
+                      title="Attach files"
+                      onClick={() => {
+                        setOpenWidgetType("upload_files");
+                        composerFileInputRef.current?.click();
+                      }}
+                    >
+                      +
+                    </button>
+                    <input
+                      ref={composerFileInputRef}
+                      type="file"
+                      multiple
+                      hidden
+                      onChange={(event) => {
+                        if (event.target.files) {
+                          addFiles(event.target.files);
+                          setOpenWidgetType("upload_files");
+                        }
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                    <input
+                      style={composerInput}
+                      value={chatText}
+                      onChange={(event) => setChatText(event.target.value)}
+                      placeholder="Message the underwriter or attach files..."
+                      disabled={!token || busy}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && (chatText.trim() || hasQueuedUpload)) {
+                          submitComposer().catch(() => undefined);
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      style={primaryButton}
+                      disabled={!token || (!chatText.trim() && !hasQueuedUpload) || busy}
+                      onClick={() => submitComposer().catch(() => undefined)}
+                    >
+                      {hasQueuedUpload ? (chatText.trim() ? "Upload & send" : "Upload") : "Send"}
+                    </button>
+                  </div>
+                  {status ? <div style={statusBox}>{status}</div> : null}
+                </section>
               ) : null}
-              <div style={compact ? composerMobile : composer}>
-                <button
-                  type="button"
-                  style={attachButton}
-                  disabled={!token || busy}
-                  aria-label="Attach files"
-                  title="Attach files"
-                  onClick={() => {
-                    setOpenWidgetType("upload_files");
-                    composerFileInputRef.current?.click();
-                  }}
-                >
-                  +
-                </button>
-                <input
-                  ref={composerFileInputRef}
-                  type="file"
-                  multiple
-                  hidden
-                  onChange={(event) => {
-                    if (event.target.files) {
-                      addFiles(event.target.files);
-                      setOpenWidgetType("upload_files");
-                    }
-                    event.currentTarget.value = "";
-                  }}
+
+              {!compact ? (
+                <aside style={sideRail}>
+                  <BucketFilesPanel
+                    response={response}
+                    missingDocs={missingDocs}
+                    pendingFiles={pendingFiles}
+                    busy={busy}
+                    onOpenUpload={openUploadTool}
+                    onRemoveQueuedFile={removeQueuedFile}
+                    onChangeQueuedFileDocument={updateQueuedFileDocument}
+                    onUpload={() => uploadQueuedFiles().catch(() => undefined)}
+                  />
+                  <ReviewSidePanel result={currentResult} bankability={bankability} reviewStatus={reviewStatus} onOpenReview={() => setOpenWidgetType("bankability_result")} />
+                </aside>
+              ) : null}
+
+              {compact && mobilePanel === "bucket" ? (
+                <BucketFilesPanel
+                  response={response}
+                  missingDocs={missingDocs}
+                  pendingFiles={pendingFiles}
+                  busy={busy}
+                  onOpenUpload={openUploadTool}
+                  onRemoveQueuedFile={removeQueuedFile}
+                  onChangeQueuedFileDocument={updateQueuedFileDocument}
+                  onUpload={() => uploadQueuedFiles().catch(() => undefined)}
                 />
-                <input
-                  style={composerInput}
-                  value={chatText}
-                  onChange={(event) => setChatText(event.target.value)}
-                  placeholder={token ? "Ask a question, add facts, or tell the AI what you uploaded..." : "Start by entering contact info on the right"}
-                  disabled={!token || busy}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && (chatText.trim() || queuedFiles.some((file) => file.status === "ready" || file.status === "error"))) {
-                      submitComposer().catch(() => undefined);
-                    }
-                  }}
-                />
-                <button
-                  style={primaryButton}
-                  disabled={!token || (!chatText.trim() && !queuedFiles.some((file) => file.status === "ready" || file.status === "error")) || busy}
-                  onClick={() => submitComposer().catch(() => undefined)}
-                >
-                  {queuedFiles.some((file) => file.status === "ready" || file.status === "error") ? (chatText.trim() ? "Upload & send" : "Upload") : "Send"}
-                </button>
-              </div>
-                {status ? <div style={statusBox}>{status}</div> : null}
-            </section>
+              ) : null}
+
+              {compact && mobilePanel === "review" ? (
+                <ReviewSidePanel result={currentResult} bankability={bankability} reviewStatus={reviewStatus} onOpenReview={() => setOpenWidgetType("bankability_result")} />
+              ) : null}
+            </div>
           </>
         )}
       </section>
@@ -790,7 +854,8 @@ function UploadWidget(props: {
   requestedDocs: RequestedDoc[];
   missingDocs: RequestedDoc[];
   queuedFiles: QueuedFile[];
-  setQueuedFiles: (files: QueuedFile[]) => void;
+  onRemoveQueuedFile: (id: string) => void;
+  onChangeQueuedFileDocument: (id: string, requestedDocumentId: string) => void;
   fileInputRef: MutableRefObject<HTMLInputElement | null>;
   dragging: boolean;
   setDragging: (value: boolean) => void;
@@ -799,8 +864,9 @@ function UploadWidget(props: {
   busy: boolean;
   onUpload: () => void;
 }) {
-  const { requestedDocs, missingDocs, queuedFiles, setQueuedFiles, fileInputRef, dragging, setDragging, onDrop, addFiles, busy, onUpload } = props;
+  const { requestedDocs, missingDocs, queuedFiles, onRemoveQueuedFile, onChangeQueuedFileDocument, fileInputRef, dragging, setDragging, onDrop, addFiles, busy, onUpload } = props;
   const uploadedCount = requestedDocs.filter((doc) => !missingDocs.some((missing) => missing.id === doc.id)).length;
+  const visibleQueue = queuedFiles.filter((item) => item.status !== "uploaded");
   return (
     <WidgetBox title="Upload baseline documents" description="Attach what you have now. You can keep chatting before every baseline item is uploaded.">
       <div style={baselineSummary}>
@@ -828,7 +894,7 @@ function UploadWidget(props: {
         <input ref={fileInputRef} type="file" multiple hidden onChange={(event) => event.target.files && addFiles(event.target.files)} />
       </div>
       <div style={{ display: "grid", gap: 8 }}>
-        {queuedFiles.length ? queuedFiles.map((item) => (
+        {visibleQueue.length ? visibleQueue.map((item) => (
           <div key={item.id} style={queueRow}>
             <div style={{ minWidth: 0 }}>
               <strong style={truncate}>{item.file.name}</strong>
@@ -837,11 +903,28 @@ function UploadWidget(props: {
             <select
               style={select}
               value={item.requestedDocumentId}
-              onChange={(event) => setQueuedFiles(queuedFiles.map((file) => (file.id === item.id ? { ...file, requestedDocumentId: event.target.value } : file)))}
+              onChange={(event) => onChangeQueuedFileDocument(item.id, event.target.value)}
+              disabled={item.status === "uploading"}
             >
               <option value="">Unmatched file</option>
               {requestedDocs.map((doc) => <option key={doc.id} value={doc.id}>{doc.name}</option>)}
             </select>
+            {item.status !== "uploading" ? (
+              <button
+                type="button"
+                style={queueRemoveButton}
+                aria-label={`Remove ${item.file.name}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onRemoveQueuedFile(item.id);
+                }}
+              >
+                x
+              </button>
+            ) : (
+              <span style={queueRemovePlaceholder} />
+            )}
           </div>
         )) : <div style={emptyBox}>No local files selected yet.</div>}
       </div>
@@ -917,6 +1000,180 @@ function CompactRoomStatus({ response, missingDocs, compact = false }: { respons
         <Metric value={response.files.length.toString()} label="files" />
       </div>
     </div>
+  );
+}
+
+function AttachmentTray({ files, compact, onRemove }: { files: QueuedFile[]; compact: boolean; onRemove: (id: string) => void }) {
+  return (
+    <div style={compact ? attachmentTrayMobile : attachmentTray}>
+      <div style={attachmentTrayHeader}>
+        <strong>{files.length} pending attachment{files.length === 1 ? "" : "s"}</strong>
+        <span>Files are encrypted when uploaded.</span>
+      </div>
+      <div style={attachmentList}>
+        {files.map((item) => (
+          <div key={item.id} style={attachmentPill}>
+            <span style={truncate}>{item.file.name}</span>
+            <span style={smallMuted}>{item.status}</span>
+            {item.status !== "uploading" ? (
+              <button
+                type="button"
+                style={attachmentRemove}
+                aria-label={`Remove ${item.file.name}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onRemove(item.id);
+                }}
+              >
+                x
+              </button>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BucketFilesPanel({
+  response,
+  missingDocs,
+  pendingFiles,
+  busy,
+  onOpenUpload,
+  onRemoveQueuedFile,
+  onChangeQueuedFileDocument,
+  onUpload,
+}: {
+  response: IntakeResponse;
+  missingDocs: RequestedDoc[];
+  pendingFiles: QueuedFile[];
+  busy: boolean;
+  onOpenUpload: () => void;
+  onRemoveQueuedFile: (id: string) => void;
+  onChangeQueuedFileDocument: (id: string, requestedDocumentId: string) => void;
+  onUpload: () => void;
+}) {
+  const docsById = new Map(response.requested_documents.map((doc) => [doc.id, doc]));
+  const readyCount = pendingFiles.filter((file) => file.status === "ready" || file.status === "error").length;
+  return (
+    <section style={sideCard}>
+      <div style={sideCardHeader}>
+        <div>
+          <div style={sideEyebrow}>Bucket</div>
+          <h2 style={sideTitle}>Uploaded files</h2>
+        </div>
+        <button type="button" style={miniButton} onClick={onOpenUpload}>Attach</button>
+      </div>
+
+      <div style={bucketMetrics}>
+        <Metric value={response.files.length.toString()} label="uploaded" />
+        <Metric value={missingDocs.length.toString()} label="missing" />
+      </div>
+
+      {pendingFiles.length ? (
+        <div style={sideSection}>
+          <div style={sideSectionHeader}>
+            <strong>Pending upload</strong>
+            <button type="button" style={miniButton} disabled={busy || readyCount === 0} onClick={onUpload}>
+              Upload {readyCount || ""}
+            </button>
+          </div>
+          <div style={sideList}>
+            {pendingFiles.map((item) => (
+              <div key={item.id} style={pendingFileCard}>
+                <div style={{ minWidth: 0 }}>
+                  <strong style={truncate}>{item.file.name}</strong>
+                  <span style={smallMuted}>{formatSize(item.file.size)} | {item.status}{item.message ? ` | ${item.message}` : ""}</span>
+                </div>
+                <div style={pendingControls}>
+                  <select
+                    style={compactSelect}
+                    value={item.requestedDocumentId}
+                    disabled={item.status === "uploading"}
+                    onChange={(event) => onChangeQueuedFileDocument(item.id, event.target.value)}
+                  >
+                    <option value="">Unmatched</option>
+                    {response.requested_documents.map((doc) => <option key={doc.id} value={doc.id}>{doc.name}</option>)}
+                  </select>
+                  {item.status !== "uploading" ? (
+                    <button
+                      type="button"
+                      style={queueRemoveButton}
+                      aria-label={`Remove ${item.file.name}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onRemoveQueuedFile(item.id);
+                      }}
+                    >
+                      x
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div style={sideSection}>
+        <div style={sideSectionHeader}>
+          <strong>All bucket files</strong>
+          <span style={smallMuted}>{response.files.length} submitted</span>
+        </div>
+        <div style={sideList}>
+          {response.files.length ? response.files.map((file) => {
+            const doc = file.requested_document_id ? docsById.get(file.requested_document_id) : null;
+            return (
+              <div key={file.id} style={uploadedFileCard}>
+                <div style={fileTypeBadge}>{fileLabel(file)}</div>
+                <div style={{ minWidth: 0 }}>
+                  <strong style={truncate}>{file.file_name}</strong>
+                  <span style={smallMuted}>{doc?.name || "Unmatched file"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}</span>
+                </div>
+              </div>
+            );
+          }) : <div style={emptyBox}>No uploaded files yet. Attach files in chat and they will appear here after submission.</div>}
+        </div>
+      </div>
+
+      <div style={sideSection}>
+        <div style={sideSectionHeader}>
+          <strong>Needs baseline</strong>
+          <span style={missingDocs.length ? warningText : smallMuted}>{missingDocs.length} open</span>
+        </div>
+        <div style={chipWrap}>
+          {missingDocs.length ? missingDocs.map((doc) => <span key={doc.id} style={missingChip}>{doc.name}</span>) : <span style={completeChip}>Baseline package uploaded</span>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ReviewSidePanel({ result, bankability, reviewStatus, onOpenReview }: { result: Record<string, unknown> | null; bankability: Record<string, unknown> | null; reviewStatus: string; onOpenReview: () => void }) {
+  const summary = String(bankability?.reason || result?.executive_summary || "Upload files and run the preliminary screen to generate an underwriting summary.");
+  return (
+    <section style={sideCard}>
+      <div style={sideCardHeader}>
+        <div>
+          <div style={sideEyebrow}>Review</div>
+          <h2 style={sideTitle}>AI analysis</h2>
+        </div>
+        <span style={statusPill}>{reviewStatus}</span>
+      </div>
+      <div style={resultCard}>
+        <div style={eyebrow}>Preliminary status</div>
+        <strong style={resultStatus}>{String(bankability?.status || (result ? "Review ready" : "No review yet"))}</strong>
+        <p style={muted}>{summary}</p>
+      </div>
+      {result ? (
+        <button type="button" style={primaryWide} onClick={onOpenReview}>Open review in chat</button>
+      ) : (
+        <div style={emptyBox}>The review will update automatically after files upload, and you can also ask the AI for the next step in chat.</div>
+      )}
+    </section>
   );
 }
 
@@ -1001,6 +1258,27 @@ function formatSize(bytes: number): string {
   const units = ["B", "KB", "MB", "GB"];
   const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Uploaded";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function titleize(value: string): string {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+}
+
+function fileLabel(file: UploadedFile): string {
+  const name = file.file_name.toLowerCase();
+  if (name.endsWith(".pdf")) return "PDF";
+  if (name.endsWith(".xlsx") || name.endsWith(".xls")) return "XLS";
+  if (name.endsWith(".csv")) return "CSV";
+  if (file.content_type.startsWith("image/")) return "IMG";
+  return "FILE";
 }
 
 async function responseMessage(res: Response): Promise<string> {
@@ -1270,6 +1548,124 @@ const securePillMobile: CSSProperties = {
   fontSize: 12,
   textAlign: "center",
 };
+const workspaceHeader: CSSProperties = {
+  position: "sticky",
+  top: 12,
+  zIndex: 20,
+  minHeight: 68,
+  padding: "10px 14px",
+  border: "1px solid rgba(255,255,255,.10)",
+  borderRadius: 18,
+  background: "rgba(6,11,26,.86)",
+  backdropFilter: "blur(18px)",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 16,
+  alignItems: "center",
+  boxShadow: "0 18px 60px rgba(0,0,0,.28)",
+};
+const workspaceHeaderMobile: CSSProperties = {
+  ...workspaceHeader,
+  top: 8,
+  minHeight: "auto",
+  padding: 10,
+  borderRadius: 16,
+  display: "grid",
+  gap: 10,
+};
+const workspaceTitle: CSSProperties = { margin: 0, fontSize: 24, letterSpacing: 0, color: "#F6F8FB", fontWeight: 900 };
+const workspaceTitleMobile: CSSProperties = { ...workspaceTitle, fontSize: 18, lineHeight: 1.1, overflowWrap: "anywhere" };
+const workspaceMeta: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" };
+const workspaceMetaMobile: CSSProperties = { ...workspaceMeta, justifyContent: "stretch", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))" };
+const statusPill: CSSProperties = {
+  border: "1px solid rgba(33,211,199,.25)",
+  background: "rgba(33,211,199,.10)",
+  color: "#BFFCF7",
+  borderRadius: 999,
+  minHeight: 30,
+  padding: "0 10px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 12,
+  fontWeight: 900,
+  whiteSpace: "nowrap",
+};
+const metricPill: CSSProperties = {
+  ...statusPill,
+  borderColor: "rgba(255,255,255,.12)",
+  background: "rgba(255,255,255,.05)",
+  color: "#D9E5F5",
+};
+const warningPill: CSSProperties = {
+  ...statusPill,
+  borderColor: "rgba(212,175,55,.35)",
+  background: "rgba(212,175,55,.10)",
+  color: "#F6E7A6",
+};
+const mobileTabs: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3,minmax(0,1fr))",
+  gap: 8,
+  position: "sticky",
+  top: 98,
+  zIndex: 15,
+  padding: 6,
+  border: "1px solid rgba(255,255,255,.10)",
+  borderRadius: 999,
+  background: "rgba(6,11,26,.88)",
+  backdropFilter: "blur(16px)",
+};
+const mobileTab: CSSProperties = {
+  border: 0,
+  borderRadius: 999,
+  minHeight: 36,
+  background: "transparent",
+  color: "#9DABC0",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+const mobileTabActive: CSSProperties = {
+  ...mobileTab,
+  background: "rgba(33,211,199,.14)",
+  color: "#D9FFFB",
+  boxShadow: "inset 0 0 0 1px rgba(33,211,199,.32)",
+};
+const workspaceGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(330px, 390px)",
+  gap: 16,
+  alignItems: "start",
+};
+const workspaceGridMobile: CSSProperties = { display: "grid", gap: 12 };
+const sideRail: CSSProperties = { display: "grid", gap: 14, position: "sticky", top: 98, alignSelf: "start" };
+const chatPanelModern: CSSProperties = {
+  minHeight: "calc(100vh - 110px)",
+  background: "rgba(8,14,32,.9)",
+  border: "1px solid rgba(255,255,255,.10)",
+  borderRadius: 18,
+  display: "grid",
+  gridTemplateRows: "auto 1fr auto auto",
+  overflow: "hidden",
+  boxShadow: "0 28px 90px rgba(0,0,0,.34)",
+};
+const chatPanelModernMobile: CSSProperties = {
+  ...chatPanelModern,
+  minHeight: "calc(100vh - 176px)",
+  borderRadius: 16,
+};
+const chatTopBar: CSSProperties = {
+  padding: 16,
+  borderBottom: "1px solid rgba(255,255,255,.08)",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+const chatTopBarMobile: CSSProperties = { ...chatTopBar, padding: 12, display: "grid", alignItems: "stretch" };
+const messagesModern: CSSProperties = { padding: 18, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", minHeight: 420 };
+const messagesModernMobile: CSSProperties = { ...messagesModern, padding: 12, minHeight: 350 };
 const intakeStart: CSSProperties = {
   minHeight: "calc(100vh - 148px)",
   display: "grid",
@@ -1523,6 +1919,74 @@ const widgetBox: CSSProperties = {
   padding: 18,
   boxShadow: "none",
 };
+const sideCard: CSSProperties = {
+  background: "rgba(8,14,32,.82)",
+  border: "1px solid rgba(255,255,255,.10)",
+  borderRadius: 18,
+  padding: 16,
+  display: "grid",
+  gap: 14,
+  boxShadow: "0 22px 70px rgba(0,0,0,.26)",
+};
+const sideCardHeader: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" };
+const sideEyebrow: CSSProperties = { color: "#E9D58A", fontSize: 11, fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase" };
+const sideTitle: CSSProperties = { margin: "3px 0 0", color: "#F8FAFC", fontSize: 19, letterSpacing: 0 };
+const miniButton: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.14)",
+  borderRadius: 999,
+  minHeight: 32,
+  padding: "0 12px",
+  background: "rgba(255,255,255,.045)",
+  color: "#D9E5F5",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+const bucketMetrics: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 };
+const sideSection: CSSProperties = { display: "grid", gap: 10 };
+const sideSectionHeader: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 };
+const sideList: CSSProperties = { display: "grid", gap: 8, maxHeight: 310, overflowY: "auto", paddingRight: 2 };
+const pendingFileCard: CSSProperties = {
+  border: "1px solid rgba(33,211,199,.20)",
+  background: "rgba(33,211,199,.065)",
+  borderRadius: 13,
+  padding: 10,
+  display: "grid",
+  gap: 8,
+};
+const pendingControls: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "center" };
+const compactSelect: CSSProperties = {
+  minHeight: 34,
+  minWidth: 0,
+  border: "1px solid rgba(255,255,255,.14)",
+  borderRadius: 9,
+  padding: "0 8px",
+  color: "#F8FAFC",
+  background: "#111827",
+};
+const uploadedFileCard: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.10)",
+  background: "rgba(255,255,255,.035)",
+  borderRadius: 13,
+  padding: 10,
+  display: "grid",
+  gridTemplateColumns: "42px minmax(0,1fr)",
+  gap: 10,
+  alignItems: "center",
+};
+const fileTypeBadge: CSSProperties = {
+  width: 38,
+  height: 38,
+  borderRadius: 12,
+  background: "rgba(33,211,199,.10)",
+  color: "#BFFCF7",
+  border: "1px solid rgba(33,211,199,.22)",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 11,
+  fontWeight: 900,
+};
+const warningText: CSSProperties = { display: "block", color: "#F6E7A6", fontSize: 13, lineHeight: 1.35 };
 const snapshot: CSSProperties = { ...widgetBox, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" };
 const miniMetrics: CSSProperties = { display: "flex", gap: 8 };
 const metric: CSSProperties = {
@@ -1666,11 +2130,22 @@ const queueRow: CSSProperties = {
   borderRadius: 12,
   padding: 10,
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) minmax(170px, 230px)",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(170px, 230px) auto",
   gap: 10,
   alignItems: "center",
   background: "rgba(255,255,255,.025)",
 };
+const queueRemoveButton: CSSProperties = {
+  width: 34,
+  height: 34,
+  borderRadius: 10,
+  border: "1px solid rgba(248,113,113,.30)",
+  background: "rgba(248,113,113,.08)",
+  color: "#FCA5A5",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+const queueRemovePlaceholder: CSSProperties = { width: 34, height: 34, display: "block" };
 const select: CSSProperties = {
   minHeight: 38,
   border: "1px solid rgba(255,255,255,.16)",
