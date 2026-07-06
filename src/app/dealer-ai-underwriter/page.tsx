@@ -429,7 +429,16 @@ export default function DealerAIUnderwriterPage() {
         }
       }
       await loadIntake();
-      pushAssistant(`${uploaded} file${uploaded === 1 ? "" : "s"} uploaded. I updated the document checklist.`);
+      if (uploaded > 0) {
+        pushAssistant(`${uploaded} file${uploaded === 1 ? "" : "s"} uploaded. I am analyzing the file set now.`);
+        setStatus("Analyzing uploaded files...");
+        const payload = await call<IntakeResponse>(`/public/dealer-ai-intake/${encodeURIComponent(token)}/run-review`, { method: "POST" });
+        applyResponse(payload, token);
+        pushAssistant(payload.assistant_message);
+        setOpenWidgetType("bankability_result");
+      } else {
+        pushAssistant("No files uploaded successfully. Correct the file errors and try again.");
+      }
       setStatus("");
     } finally {
       setBusy(false);
