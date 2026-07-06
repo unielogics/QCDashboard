@@ -160,6 +160,7 @@ export default function DealerAIUnderwriterPage() {
   const [queuedFiles, setQueuedFiles] = useState<QueuedFile[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const [emailLookupBusy, setEmailLookupBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
   const [reviewProgress, setReviewProgress] = useState<ReviewProgressStage>("idle");
@@ -360,16 +361,37 @@ export default function DealerAIUnderwriterPage() {
     setBusy(true);
     setStatus("");
     try {
-      const payload = await call<{ ok: boolean; message: string }>("/public/dealer-ai-intake/login/start", {
+      const payload = await call<{ ok: boolean; login_required?: boolean; message: string }>("/public/dealer-ai-intake/login/start", {
         method: "POST",
         body: JSON.stringify({ email }),
       });
-      setLoginCodeSent(true);
+      setLoginCodeSent(Boolean(payload.login_required ?? true));
       setStatus(payload.message || "If a secure dealer file exists for this email, a code has been sent.");
     } catch (error) {
       setStatus(errorMessage(error));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function checkDealerEmail(value: string) {
+    const email = value.trim();
+    if (!looksLikeEmail(email) || emailLookupBusy || response) return;
+    setEmailLookupBusy(true);
+    try {
+      const payload = await call<{ ok: boolean; login_required?: boolean; message: string }>("/public/dealer-ai-intake/login/start", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      });
+      if (payload.login_required) {
+        setResumeEmail(email);
+        setLoginCodeSent(true);
+        setStatus(payload.message || "We found an existing secure dealer file for this email. Enter the code we sent to continue.");
+      }
+    } catch {
+      // Do not block new intake if the pre-check cannot run.
+    } finally {
+      setEmailLookupBusy(false);
     }
   }
 
@@ -781,9 +803,11 @@ export default function DealerAIUnderwriterPage() {
                 <ContactWidget
                   contact={contact}
                   setContact={setContact}
-                  busy={busy}
+                  busy={busy || emailLookupBusy}
+                  emailLookupBusy={emailLookupBusy}
                   legalAccepted={legalAccepted}
                   setLegalAccepted={setLegalAccepted}
+                  onEmailBlur={() => checkDealerEmail(contact.email).catch(() => undefined)}
                   onStart={() => startIntake().catch(() => undefined)}
                 />
                 <DealerContinuationWidget
@@ -969,15 +993,19 @@ function ContactWidget({
   contact,
   setContact,
   busy,
+  emailLookupBusy,
   legalAccepted,
   setLegalAccepted,
+  onEmailBlur,
   onStart,
 }: {
   contact: typeof initialContact;
   setContact: (value: typeof initialContact) => void;
   busy: boolean;
+  emailLookupBusy: boolean;
   legalAccepted: boolean;
   setLegalAccepted: (value: boolean) => void;
+  onEmailBlur: () => void;
   onStart: () => void;
 }) {
   return (
@@ -987,7 +1015,8 @@ function ContactWidget({
         <p style={stepOneFormCopy}>Takes under a minute. No credit pull to begin.</p>
       </div>
       <Field label="Full name" value={contact.full_name} onChange={(value) => setContact({ ...contact, full_name: value })} />
-      <Field label="Email" value={contact.email} onChange={(value) => setContact({ ...contact, email: value })} />
+      <Field label="Email" value={contact.email} onChange={(value) => setContact({ ...contact, email: value })} onBlur={onEmailBlur} />
+      {emailLookupBusy ? <div style={fieldHint}>Checking for an existing secure file...</div> : null}
       <div style={stepOneFormGrid}>
         <Field label="Phone" value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} />
         <Field label="Dealership" value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} />
@@ -1669,11 +1698,11 @@ function WidgetBox({ title, description, children }: { title: string; descriptio
   );
 }
 
-function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
+function Field({ label, value, onChange, placeholder, onBlur }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; onBlur?: () => void }) {
   return (
     <label style={fieldWrap}>
       <span style={labelStyle}>{label}</span>
-      <input style={input} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
+      <input style={input} value={value} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} placeholder={placeholder} />
     </label>
   );
 }
@@ -1833,6 +1862,10 @@ async function responseMessage(res: Response): Promise<string> {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
+}
+
+function looksLikeEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 const page: CSSProperties = {
@@ -2875,6 +2908,7 @@ const metric: CSSProperties = {
 };
 const fieldWrap: CSSProperties = { display: "grid", gap: 6 };
 const labelStyle: CSSProperties = { color: "#B8C4D6", fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0 };
+const fieldHint: CSSProperties = { color: "#9FB0C8", fontSize: 12, marginTop: -4 };
 const input: CSSProperties = {
   minHeight: 44,
   border: "1px solid rgba(255,255,255,.16)",
