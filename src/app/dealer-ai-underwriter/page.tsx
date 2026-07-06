@@ -1378,10 +1378,37 @@ function DealerSidebar({
       </div>
 
       <div style={sidebarFooter}>
-        {response.resume_url ? <button type="button" style={sidebarFooterButton} onClick={onCopyResume}>Copy resume link</button> : null}
-        <button type="button" style={sidebarFooterButton} onClick={onLogout}>Logout</button>
+        <div style={sidebarFooterIconGroup}>
+          {response.resume_url ? (
+            <button type="button" style={sidebarIconButton} onClick={onCopyResume} aria-label="Copy resume link" title="Copy resume link">
+              <LinkIcon />
+            </button>
+          ) : null}
+          <button type="button" style={sidebarLogoutIconButton} onClick={onLogout} aria-label="Logout" title="Logout">
+            <LogoutIcon />
+          </button>
+        </div>
       </div>
     </aside>
+  );
+}
+
+function LinkIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 4.93" />
+      <path d="M14 11a5 5 0 0 0-7.07 0L4.81 13.12a5 5 0 0 0 7.07 7.07L13 19.07" />
+    </svg>
+  );
+}
+
+function LogoutIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="M16 17l5-5-5-5" />
+      <path d="M21 12H9" />
+    </svg>
   );
 }
 
@@ -2448,19 +2475,35 @@ const sidebarMiniCard: CSSProperties = {
   gap: 3,
   background: "transparent",
 };
-const sidebarFooter: CSSProperties = { display: "grid", gap: 8 };
-const sidebarFooterButton: CSSProperties = {
+const sidebarFooter: CSSProperties = {
+  borderTop: "1px solid rgba(255,255,255,.08)",
+  paddingTop: 10,
+  display: "flex",
+  justifyContent: "flex-start",
+};
+const sidebarFooterIconGroup: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+};
+const sidebarIconButton: CSSProperties = {
   border: "1px solid rgba(255,255,255,.10)",
-  borderRadius: 10,
-  minHeight: 34,
-  padding: "0 10px",
+  borderRadius: 12,
+  width: 40,
+  height: 40,
+  padding: 0,
   background: "rgba(255,255,255,.045)",
   color: "#E2E8F0",
   display: "inline-flex",
   alignItems: "center",
-  textDecoration: "none",
-  fontWeight: 800,
+  justifyContent: "center",
   cursor: "pointer",
+};
+const sidebarLogoutIconButton: CSSProperties = {
+  ...sidebarIconButton,
+  color: "#FCA5A5",
+  borderColor: "rgba(248,113,113,.18)",
+  background: "rgba(127,29,29,.10)",
 };
 const intakeStart: CSSProperties = {
   minHeight: "calc(100vh - 148px)",
