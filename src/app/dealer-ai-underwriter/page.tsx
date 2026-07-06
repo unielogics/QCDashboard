@@ -101,6 +101,7 @@ type EntityStructure = {
 type WidgetType = Widget["type"];
 type ChatLine = { id: string; role: "assistant" | "user"; content: string };
 type QueuedFile = { id: string; file: File; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
+const DEALER_AI_UPLOAD_ACCEPT = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.zip,.csv,.xlsx,.txt,text/plain,application/pdf,image/*,application/zip,application/x-zip-compressed,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 function useCompactViewport() {
   const [compact, setCompact] = useState(false);
@@ -372,9 +373,11 @@ export default function DealerAIUnderwriterPage() {
   }
 
   function addFiles(nextFiles: FileList | File[]) {
+    const files = Array.from(nextFiles);
+    if (!files.length) return;
     setQueuedFiles((current) => {
       const seen = new Set(current.map((item) => localFileKey(item.file)));
-      const incoming = Array.from(nextFiles)
+      const incoming = files
         .filter((file) => {
           const key = localFileKey(file);
           if (seen.has(key)) return false;
@@ -388,6 +391,8 @@ export default function DealerAIUnderwriterPage() {
         }));
       return [...current, ...incoming];
     });
+    setFileDrawerOpen(true);
+    setStatus(`${files.length} file${files.length === 1 ? "" : "s"} attached. Send or upload when ready.`);
   }
 
   async function uploadQueuedFiles() {
@@ -478,6 +483,26 @@ export default function DealerAIUnderwriterPage() {
 
   function openFilePicker() {
     composerFileInputRef.current?.click();
+  }
+
+  function handleRoomDragOver(event: DragEvent<HTMLElement>) {
+    if (!token || !event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setDragging(true);
+  }
+
+  function handleRoomDragLeave(event: DragEvent<HTMLElement>) {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    setDragging(false);
+  }
+
+  function handleRoomDrop(event: DragEvent<HTMLElement>) {
+    if (!token) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDragging(false);
+    if (event.dataTransfer.files.length) addFiles(event.dataTransfer.files);
   }
 
   function logoutRoom() {
@@ -589,7 +614,13 @@ export default function DealerAIUnderwriterPage() {
               />
             ) : null}
 
-            <section style={compact ? appMainMobile : appMain}>
+            <section
+              style={compact ? appMainMobile : appMain}
+              onDragOver={handleRoomDragOver}
+              onDragEnter={handleRoomDragOver}
+              onDragLeave={handleRoomDragLeave}
+              onDrop={handleRoomDrop}
+            >
               {compact ? (
                 <header style={workspaceHeaderMobile}>
                   <div style={brandGroupMobile}>
@@ -605,6 +636,12 @@ export default function DealerAIUnderwriterPage() {
 
               <div style={compact ? workspaceGridMobile : workspaceGrid}>
                 <section style={compact ? chatPanelModernMobile : chatPanelModern}>
+                  {dragging ? (
+                    <div style={dropHint}>
+                      <strong>Drop files to attach</strong>
+                      <span>PDF, images, ZIP, CSV, XLSX, and text files are supported.</span>
+                    </div>
+                  ) : null}
                   <div style={compact ? chatTopBarMobile : chatTopBar}>
                     <div>
                       <h2 style={sectionTitle}>Dealer AI Underwriter</h2>
@@ -645,30 +682,27 @@ export default function DealerAIUnderwriterPage() {
                     <AttachmentTray files={pendingFiles} compact={compact} onRemove={removeQueuedFile} />
                   ) : null}
                   <div style={compact ? composerMobile : composer}>
-                    <button
-                      type="button"
-                      style={attachButton}
-                      disabled={!token || busy}
+                    <label
+                      style={!token ? disabledAttachButton : attachButton}
                       aria-label="Attach files"
                       title="Attach files"
-                      onClick={() => {
-                        composerFileInputRef.current?.click();
-                      }}
                     >
                       +
-                    </button>
-                    <input
-                      ref={composerFileInputRef}
-                      type="file"
-                      multiple
-                      hidden
-                      onChange={(event) => {
-                        if (event.target.files) {
-                          addFiles(event.target.files);
-                        }
-                        event.currentTarget.value = "";
-                      }}
-                    />
+                      <input
+                        ref={composerFileInputRef}
+                        type="file"
+                        multiple
+                        accept={DEALER_AI_UPLOAD_ACCEPT}
+                        disabled={!token}
+                        style={fileInputOverlay}
+                        onChange={(event) => {
+                          if (event.target.files) {
+                            addFiles(event.target.files);
+                          }
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
                     <input
                       style={composerInput}
                       value={chatText}
@@ -1872,6 +1906,7 @@ const sideRail: CSSProperties = { minHeight: 0, height: "100%", display: "grid",
 const chatPanelModern: CSSProperties = {
   minHeight: 0,
   height: "100%",
+  position: "relative",
   background: "transparent",
   border: 0,
   borderRadius: 0,
@@ -2207,6 +2242,34 @@ const attachButton: CSSProperties = {
   fontWeight: 900,
   lineHeight: 1,
   cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  position: "relative",
+  overflow: "hidden",
+};
+const disabledAttachButton: CSSProperties = { ...attachButton, opacity: 0.45, cursor: "not-allowed" };
+const fileInputOverlay: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  opacity: 0,
+  cursor: "pointer",
+};
+const dropHint: CSSProperties = {
+  position: "absolute",
+  inset: 12,
+  zIndex: 30,
+  border: "1px dashed rgba(33,211,199,.70)",
+  borderRadius: 22,
+  background: "rgba(3,7,18,.84)",
+  color: "#D9FFFB",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
+  pointerEvents: "none",
+  boxShadow: "inset 0 0 0 1px rgba(255,255,255,.06), 0 28px 90px rgba(0,0,0,.36)",
 };
 const attachmentTray: CSSProperties = {
   margin: "0 18px",
