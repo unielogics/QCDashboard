@@ -198,25 +198,25 @@ export default function AdminDealerAILeadsPage() {
   if (me && me.role !== Role.SUPER_ADMIN) return null;
 
   return (
-    <div style={{ maxWidth: 1480, margin: "0 auto", display: "grid", gap: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+    <div style={{ height: "calc(100dvh - 105px)", maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: 0, overflow: "hidden" }}>
+      <div style={{ flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
         <div>
-          <h1 style={{ margin: 0, color: t.ink, fontSize: 28, letterSpacing: -0.6 }}>Car dealer AI leads</h1>
-          <p style={{ margin: "6px 0 0", color: t.ink3, lineHeight: 1.5 }}>
+          <h1 style={{ margin: 0, color: t.ink, fontSize: 24, letterSpacing: -0.5 }}>Car dealer AI leads</h1>
+          <p style={{ margin: "4px 0 0", color: t.ink3, lineHeight: 1.35, fontSize: 13 }}>
             Public dealer funding review submissions, uploaded evidence, AI probability, booking status, and bucket access.
           </p>
         </div>
         <Link href="/programs/car-dealers" style={{ ...qcBtn(t), textDecoration: "none" }}>Dealer landing page</Link>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 12 }}>
+      <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
         <Stat title="Total leads" value={String(counts.total)} sub="all matching filters" t={t} />
         <Stat title="Good probability" value={String(counts.good)} sub="visible page" t={t} good />
         <Stat title="Booked calls" value={String(counts.booked)} sub="visible page" t={t} />
         <Stat title="Missing items" value={String(counts.missing)} sub="visible page" t={t} warn />
       </div>
 
-      <Card pad={14}>
+      <Card pad={12} style={{ flexShrink: 0 }}>
         <form onSubmit={submitSearch} style={{ display: "grid", gridTemplateColumns: "minmax(260px,1fr) 230px 260px auto", gap: 10, alignItems: "center" }}>
           <input
             value={query}
@@ -236,8 +236,8 @@ export default function AdminDealerAILeadsPage() {
 
       {notice ? <div style={{ color: t.warn, fontSize: 13, fontWeight: 700 }}>{notice}</div> : null}
 
-      <div style={{ display: "grid", gridTemplateColumns: detail || selectedId ? "minmax(0,1fr) minmax(390px,480px)" : "1fr", gap: 16, alignItems: "start" }}>
-        <Card pad={0}>
+      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: detail || selectedId ? "minmax(0,1fr) minmax(390px,480px)" : "1fr", gap: 14, alignItems: "stretch", overflow: "hidden" }}>
+        <Card pad={0} style={{ minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <div style={gridHeader(t)}>
             <span>Lead</span>
             <span>AI probability</span>
@@ -245,37 +245,39 @@ export default function AdminDealerAILeadsPage() {
             <span>Next step</span>
             <span>Updated</span>
           </div>
-          {loading ? (
-            <div style={{ padding: 24, color: t.ink3 }}>Loading dealer leads...</div>
-          ) : rows.map((row) => (
-            <button key={row.id} type="button" onClick={() => openLead(row.id)} style={rowStyle(t, selectedId === row.id)}>
-              <div style={{ minWidth: 0 }}>
-                <strong style={{ color: t.ink, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {row.business_name || row.full_name}
-                </strong>
-                <span style={{ color: t.ink3, fontSize: 12 }}>{row.full_name} · {row.email}</span>
-              </div>
-              <div>
-                <Pill bg={probabilityTone(t, row.probability_status).bg} color={probabilityTone(t, row.probability_status).fg}>
-                  {row.probability_status || "No screen yet"}
-                </Pill>
-                <span style={{ color: t.ink3, fontSize: 12, display: "block", marginTop: 5 }}>
-                  {row.confidence ? `${row.confidence} confidence` : row.latest_review_status || "awaiting review"}
-                </span>
-              </div>
-              <div style={{ color: t.ink2, fontSize: 13 }}>
-                <strong>{row.file_count}</strong> files · <strong>{row.missing_required_count}</strong> missing
-                <span style={{ display: "block", color: row.call_booked ? t.profit : t.ink3, marginTop: 5 }}>
-                  {row.call_booked ? "Call booked" : row.booking_recommended ? "Booking recommended" : "No booking yet"}
-                </span>
-              </div>
-              <div style={{ color: t.ink2, fontSize: 13, lineHeight: 1.35, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-                {row.one_next_step || "Awaiting AI next step."}
-              </div>
-              <div style={{ color: t.ink3, fontSize: 12 }}>{formatDate(row.updated_at)}</div>
-            </button>
-          ))}
-          <div style={{ padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${t.line}` }}>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+            {loading ? (
+              <div style={{ padding: 24, color: t.ink3 }}>Loading dealer leads...</div>
+            ) : rows.map((row) => (
+              <button key={row.id} type="button" onClick={() => openLead(row.id)} style={rowStyle(t, selectedId === row.id)}>
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ color: t.ink, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {row.business_name || row.full_name}
+                  </strong>
+                  <span style={{ color: t.ink3, fontSize: 12 }}>{row.full_name} · {row.email}</span>
+                </div>
+                <div>
+                  <Pill bg={probabilityTone(t, row.probability_status).bg} color={probabilityTone(t, row.probability_status).fg}>
+                    {row.probability_status || "No screen yet"}
+                  </Pill>
+                  <span style={{ color: t.ink3, fontSize: 12, display: "block", marginTop: 5 }}>
+                    {row.confidence ? `${row.confidence} confidence` : row.latest_review_status || "awaiting review"}
+                  </span>
+                </div>
+                <div style={{ color: t.ink2, fontSize: 13 }}>
+                  <strong>{row.file_count}</strong> files · <strong>{row.missing_required_count}</strong> missing
+                  <span style={{ display: "block", color: row.call_booked ? t.profit : t.ink3, marginTop: 5 }}>
+                    {row.call_booked ? "Call booked" : row.booking_recommended ? "Booking recommended" : "No booking yet"}
+                  </span>
+                </div>
+                <div style={{ color: t.ink2, fontSize: 13, lineHeight: 1.35, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                  {row.one_next_step || "Awaiting AI next step."}
+                </div>
+                <div style={{ color: t.ink3, fontSize: 12 }}>{formatDate(row.updated_at)}</div>
+              </button>
+            ))}
+          </div>
+          <div style={{ flexShrink: 0, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${t.line}` }}>
             <span style={{ color: t.ink3, fontSize: 12 }}>{total ? `${offset + 1}-${Math.min(offset + LIMIT, total)} of ${total}` : "0 leads"}</span>
             <div style={{ display: "flex", gap: 8 }}>
               <button style={qcBtn(t)} disabled={offset === 0 || loading} onClick={() => loadLeads(Math.max(0, offset - LIMIT))}>Previous</button>
@@ -306,8 +308,8 @@ function LeadDetailPanel({ detail, loading, onClose, onExport }: { detail: LeadD
   const risks = arrayOfStrings(result?.risks);
 
   return (
-    <Card pad={0}>
-      <div style={{ padding: 16, borderBottom: `1px solid ${t.line}`, display: "flex", justifyContent: "space-between", gap: 12 }}>
+    <Card pad={0} style={{ minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div style={{ flexShrink: 0, padding: 16, borderBottom: `1px solid ${t.line}`, display: "flex", justifyContent: "space-between", gap: 12 }}>
         <div>
           <h2 style={{ margin: 0, color: t.ink, fontSize: 18 }}>{detail?.intake.business_name || detail?.intake.full_name || "Dealer lead"}</h2>
           <p style={{ margin: "4px 0 0", color: t.ink3, fontSize: 12 }}>{detail?.intake.email}</p>
@@ -317,7 +319,7 @@ function LeadDetailPanel({ detail, loading, onClose, onExport }: { detail: LeadD
       {loading || !detail ? (
         <div style={{ padding: 20, color: t.ink3 }}>Loading lead detail...</div>
       ) : (
-        <div style={{ padding: 16, display: "grid", gap: 14, maxHeight: "calc(100vh - 220px)", overflowY: "auto" }}>
+        <div style={{ flex: 1, minHeight: 0, padding: 16, display: "grid", gap: 14, overflowY: "auto" }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Pill bg={probabilityTone(t, String(result?.probability_status || "")).bg} color={probabilityTone(t, String(result?.probability_status || "")).fg}>
               {String(result?.probability_status || "No screen yet")}
@@ -381,9 +383,9 @@ function LeadDetailPanel({ detail, loading, onClose, onExport }: { detail: LeadD
 
 function Stat({ title, value, sub, t, good, warn }: { title: string; value: string; sub: string; t: ReturnType<typeof useTheme>["t"]; good?: boolean; warn?: boolean }) {
   return (
-    <Card pad={16}>
+    <Card pad={12}>
       <div style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>{title}</div>
-      <div style={{ marginTop: 8, color: good ? t.profit : warn ? t.warn : t.ink, fontSize: 28, fontWeight: 900 }}>{value}</div>
+      <div style={{ marginTop: 6, color: good ? t.profit : warn ? t.warn : t.ink, fontSize: 24, fontWeight: 900 }}>{value}</div>
       <div style={{ color: t.ink3, fontSize: 12 }}>{sub}</div>
     </Card>
   );
