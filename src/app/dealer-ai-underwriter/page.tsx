@@ -583,8 +583,8 @@ export default function DealerAIUnderwriterPage() {
       {activeWidgetType === "real_estate_schedule" ? <AssetWidget assets={assets} setAssets={setAssets} busy={busy} onSubmit={() => submitAssets().catch(() => undefined)} /> : null}
       {activeWidgetType === "referral" ? <ReferralWidget referral={referral} setReferral={setReferral} busy={busy} onSubmit={() => submitReferral().catch(() => undefined)} /> : null}
       {activeWidgetType === "run_review" ? <RunReviewWidget busy={busy} hasResult={Boolean(currentResult)} onRun={() => runReview().catch(() => undefined)} /> : null}
-      {activeWidgetType === "bankability_result" ? <ResultWidget result={currentResult} bankability={bankability} /> : null}
-      {activeWidgetType === "book_call" && currentResult ? <ResultWidget result={currentResult} bankability={bankability} /> : null}
+      {activeWidgetType === "bankability_result" ? <ResultWidget result={currentResult} bankability={bankability} busy={busy} onRun={() => runReview().catch(() => undefined)} /> : null}
+      {activeWidgetType === "book_call" && currentResult ? <ResultWidget result={currentResult} bankability={bankability} busy={busy} onRun={() => runReview().catch(() => undefined)} /> : null}
       {activeWidgetType === "book_call" && !callBooking?.event_id ? <BookCallWidget widget={suggestedWidget} busy={busy} onBook={(startsAt) => bookCall(startsAt).catch(() => undefined)} /> : null}
       {activeWidgetType === "book_call" && callBooking?.event_id ? <div style={emptyBox}>Your call is booked. Keep uploading any missing baseline files before the meeting.</div> : null}
     </div>
@@ -1048,7 +1048,17 @@ function BookCallWidget({ widget, busy, onBook }: { widget: Widget | null; busy:
   );
 }
 
-function ResultWidget({ result, bankability }: { result: Record<string, unknown> | null; bankability: Record<string, unknown> | null }) {
+function ResultWidget({
+  result,
+  bankability,
+  busy,
+  onRun,
+}: {
+  result: Record<string, unknown> | null;
+  bankability: Record<string, unknown> | null;
+  busy: boolean;
+  onRun: () => void;
+}) {
   const missing = arrayOfRecords(result?.missing_or_incomplete_items);
   const gaps = arrayOfRecords(result?.proof_of_funds_financial_collateral_gaps);
   return (
@@ -1060,6 +1070,7 @@ function ResultWidget({ result, bankability }: { result: Record<string, unknown>
       </div>
       <ListBlock title="Missing or incomplete" items={missing} />
       <ListBlock title="Financial / collateral gaps" items={gaps} />
+      <button style={secondaryButton} disabled={busy} onClick={onRun}>{busy ? "Reviewing..." : "Re-run with current files"}</button>
     </WidgetBox>
   );
 }
