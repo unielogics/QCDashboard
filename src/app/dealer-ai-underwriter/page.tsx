@@ -82,14 +82,7 @@ export default function DealerAIUnderwriterPage() {
   const [assets, setAssets] = useState<AssetRow[]>([{ id: cryptoId(), address: "", estimated_loan_amount: null, estimated_property_value: null, notes: "" }]);
   const [referral, setReferral] = useState("");
   const [response, setResponse] = useState<IntakeResponse | null>(null);
-  const [chat, setChat] = useState<ChatLine[]>([
-    {
-      id: cryptoId(),
-      role: "assistant",
-      content:
-        "I can screen a dealer financing file quickly. Start with basic contact details, then upload whatever documents you have. I will infer the likely lending path instead of making you choose a product.",
-    },
-  ]);
+  const [chat, setChat] = useState<ChatLine[]>([]);
   const [chatText, setChatText] = useState("");
   const [queuedFiles, setQueuedFiles] = useState<QueuedFile[]>([]);
   const [busy, setBusy] = useState(false);
@@ -354,12 +347,47 @@ export default function DealerAIUnderwriterPage() {
               <h1 style={title}>Dealer capital underwriter room</h1>
             </div>
           </div>
-          <div style={securePill}>Encrypted uploads | Chat-first intake | Preliminary screen</div>
+          <div style={securePill}>{response ? "Encrypted uploads | Chat-first review | Preliminary screen" : "Step 1 | Start secure intake"}</div>
         </header>
 
-        <div style={grid}>
-          <section style={chatPanel}>
-            <div style={chatHeader}>
+        {!response ? (
+          <section style={intakeStart}>
+            <div style={intakeCopy}>
+              <div style={eyebrow}>Start here</div>
+              <h2 style={intakeTitle}>Complete the secure intake first.</h2>
+              <p style={intakeLead}>
+                Enter the basic contact information so Qualified Commercial can create your encrypted funding room.
+                After that, you can upload documents immediately and the AI underwriter will guide the next questions.
+              </p>
+              <div style={introSteps}>
+                {[
+                  ["1", "Basic information", "Name, email, phone, and dealership name."],
+                  ["2", "Encrypted upload room", "Upload bank statements, P&L, taxes, floorplan, MCA, inventory, and real estate files."],
+                  ["3", "AI funding review", "The system infers the likely lending path and lists missing evidence."],
+                ].map(([step, label, copy]) => (
+                  <div key={step} style={introStep}>
+                    <span style={introStepBadge}>{step}</span>
+                    <div>
+                      <strong style={introStepLabel}>{label}</strong>
+                      <p style={introStepCopy}>{copy}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={securityNote}>
+                <strong>Secure intake required first.</strong>
+                <span style={securityNoteText}>Uploads are attached to your encrypted bucket after the form is submitted.</span>
+              </div>
+            </div>
+            <div style={intakeFormWrap}>
+              <ContactWidget contact={contact} setContact={setContact} busy={busy} onStart={() => startIntake().catch(() => undefined)} />
+              {status ? <div style={statusBoxNoMargin}>{status}</div> : null}
+            </div>
+          </section>
+        ) : (
+          <div style={grid}>
+            <section style={chatPanel}>
+              <div style={chatHeader}>
               <div>
                 <h2 style={sectionTitle}>AI Funding Review</h2>
                 <p style={muted}>Upload first, answer only essential questions, and let the AI infer the likely program fit.</p>
@@ -391,13 +419,10 @@ export default function DealerAIUnderwriterPage() {
                 Send
               </button>
             </div>
-            {status ? <div style={statusBox}>{status}</div> : null}
-          </section>
+              {status ? <div style={statusBox}>{status}</div> : null}
+            </section>
 
-          <aside style={widgetPanel}>
-            {!response ? (
-              <ContactWidget contact={contact} setContact={setContact} busy={busy} onStart={() => startIntake().catch(() => undefined)} />
-            ) : (
+            <aside style={widgetPanel}>
               <>
                 <IntakeSnapshot response={response} missingDocs={missingDocs} />
                 <UploadWidget
@@ -419,9 +444,9 @@ export default function DealerAIUnderwriterPage() {
                 {showReferralWidget ? <ReferralWidget referral={referral} setReferral={setReferral} busy={busy} onSubmit={() => submitReferral().catch(() => undefined)} /> : null}
                 {showResultWidget ? <ResultWidget result={currentResult} bankability={bankability} /> : null}
               </>
-            )}
-          </aside>
-        </div>
+            </aside>
+          </div>
+        )}
       </section>
     </main>
   );
@@ -429,12 +454,12 @@ export default function DealerAIUnderwriterPage() {
 
 function ContactWidget({ contact, setContact, busy, onStart }: { contact: typeof initialContact; setContact: (value: typeof initialContact) => void; busy: boolean; onStart: () => void }) {
   return (
-    <WidgetBox title="Start secure intake" description="Enter the basics. The next screen opens the upload room immediately.">
+    <WidgetBox title="Start secure intake" description="Complete the basic information to create your encrypted dealer funding room.">
       <Field label="Full name" value={contact.full_name} onChange={(value) => setContact({ ...contact, full_name: value })} />
       <Field label="Email" value={contact.email} onChange={(value) => setContact({ ...contact, email: value })} />
       <Field label="Phone" value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} />
       <Field label="Dealership / business name" value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} />
-      <button style={primaryWide} disabled={busy} onClick={onStart}>{busy ? "Starting..." : "Open AI funding room"}</button>
+      <button style={primaryWide} disabled={busy} onClick={onStart}>{busy ? "Creating secure room..." : "Start secure intake"}</button>
     </WidgetBox>
   );
 }
@@ -703,6 +728,75 @@ const securePill: CSSProperties = {
   fontWeight: 800,
   color: "#E9D58A",
 };
+const intakeStart: CSSProperties = {
+  minHeight: "calc(100vh - 148px)",
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 430px), 1fr))",
+  gap: 20,
+  alignItems: "stretch",
+};
+const intakeCopy: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.09)",
+  borderRadius: 18,
+  background:
+    "linear-gradient(135deg,rgba(33,211,199,.10),rgba(255,255,255,.025) 44%,rgba(212,175,55,.08))",
+  padding: 34,
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+  gap: 22,
+  boxShadow: "0 30px 90px rgba(0,0,0,.32)",
+};
+const intakeTitle: CSSProperties = {
+  margin: 0,
+  maxWidth: 760,
+  color: "#F6F8FB",
+  fontFamily: "Georgia, 'Times New Roman', serif",
+  fontSize: "clamp(38px,5vw,64px)",
+  fontWeight: 600,
+  lineHeight: 1.02,
+  letterSpacing: 0,
+};
+const intakeLead: CSSProperties = { margin: 0, maxWidth: 760, color: "#B8C4D6", fontSize: 18, lineHeight: 1.62 };
+const introSteps: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,190px),1fr))", gap: 12, marginTop: 4 };
+const introStep: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.10)",
+  borderRadius: 14,
+  background: "rgba(255,255,255,.035)",
+  padding: 14,
+  display: "grid",
+  gridTemplateColumns: "36px 1fr",
+  gap: 12,
+  alignItems: "start",
+};
+const introStepBadge: CSSProperties = {
+  width: 34,
+  height: 34,
+  borderRadius: 999,
+  background: "linear-gradient(135deg,#E9D58A,#D4AF37)",
+  color: "#0B1326",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: 900,
+};
+const introStepLabel: CSSProperties = { display: "block", color: "#F8FAFC", fontSize: 14 };
+const introStepCopy: CSSProperties = { margin: "5px 0 0", color: "#95A3B6", fontSize: 13, lineHeight: 1.45 };
+const securityNote: CSSProperties = {
+  border: "1px solid rgba(33,211,199,.26)",
+  borderRadius: 14,
+  background: "rgba(33,211,199,.08)",
+  padding: "14px 16px",
+  color: "#D9FFFB",
+  display: "grid",
+  gap: 4,
+};
+const securityNoteText: CSSProperties = { color: "#A7D8D4", lineHeight: 1.45 };
+const intakeFormWrap: CSSProperties = {
+  alignSelf: "center",
+  display: "grid",
+  gap: 12,
+};
 const grid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 430px), 1fr))", gap: 18, alignItems: "start" };
 const chatPanel: CSSProperties = {
   minHeight: "calc(100vh - 148px)",
@@ -869,3 +963,4 @@ const statusBox: CSSProperties = {
   color: "#F6E7A6",
   fontWeight: 700,
 };
+const statusBoxNoMargin: CSSProperties = { ...statusBox, margin: 0 };
