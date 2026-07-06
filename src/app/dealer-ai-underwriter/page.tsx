@@ -555,8 +555,8 @@ export default function DealerAIUnderwriterPage() {
   ) : null;
 
   return (
-    <main style={compact ? pageMobile : page}>
-      <section style={compact ? shellMobile : shell}>
+    <main style={response ? (compact ? appViewportMobile : appViewport) : (compact ? pageMobile : page)}>
+      <section style={response ? (compact ? appShellMobile : appShell) : (compact ? shellMobile : shell)}>
         {!response ? (
           <>
             <nav style={stepOneNav}>
@@ -617,38 +617,51 @@ export default function DealerAIUnderwriterPage() {
           </>
         ) : (
           <>
-            <header style={compact ? workspaceHeaderMobile : workspaceHeader}>
-              <div style={compact ? brandGroupMobile : brandGroup}>
-                <QCMark size={compact ? 30 : 36} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={compact ? eyebrowMobile : eyebrow}>Qualified Commercial AI Funding Review</div>
-                  <h1 style={compact ? workspaceTitleMobile : workspaceTitle}>Dealer AI Underwriter</h1>
-                </div>
-              </div>
-              <div style={compact ? workspaceMetaMobile : workspaceMeta}>
-                <span style={statusPill}>{reviewStatus}</span>
-                <span style={metricPill}>{response.files.length} uploaded</span>
-                <span style={missingDocs.length ? warningPill : metricPill}>{missingDocs.length} missing</span>
-              </div>
-            </header>
-
-            {compact ? (
-              <div style={mobileTabs}>
-                {(["chat", "bucket", "review"] as const).map((panel) => (
-                  <button
-                    key={panel}
-                    type="button"
-                    style={mobilePanel === panel ? mobileTabActive : mobileTab}
-                    onClick={() => setMobilePanel(panel)}
-                  >
-                    {titleize(panel)}
-                  </button>
-                ))}
-              </div>
+            {!compact ? (
+              <DealerSidebar
+                response={response}
+                missingDocs={missingDocs}
+                reviewStatus={reviewStatus}
+                activePanel={mobilePanel}
+                setActivePanel={setMobilePanel}
+                onOpenUpload={openUploadTool}
+                onCopyResume={() => navigator.clipboard.writeText(response.resume_url || "")}
+              />
             ) : null}
 
-            <div style={compact ? workspaceGridMobile : workspaceGrid}>
-              {(!compact || mobilePanel === "chat") ? (
+            <section style={compact ? appMainMobile : appMain}>
+              <header style={compact ? workspaceHeaderMobile : workspaceHeader}>
+                <div style={compact ? brandGroupMobile : brandGroup}>
+                  <QCMark size={compact ? 30 : 34} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={compact ? eyebrowMobile : eyebrow}>Qualified Commercial AI Funding Review</div>
+                    <h1 style={compact ? workspaceTitleMobile : workspaceTitle}>Dealer AI Underwriter</h1>
+                  </div>
+                </div>
+                <div style={compact ? workspaceMetaMobile : workspaceMeta}>
+                  <span style={statusPill}>{reviewStatus}</span>
+                  <span style={metricPill}>{response.files.length} uploaded</span>
+                  <span style={missingDocs.length ? warningPill : metricPill}>{missingDocs.length} missing</span>
+                </div>
+              </header>
+
+              {compact ? (
+                <div style={mobileTabs}>
+                  {(["chat", "bucket", "review"] as const).map((panel) => (
+                    <button
+                      key={panel}
+                      type="button"
+                      style={mobilePanel === panel ? mobileTabActive : mobileTab}
+                      onClick={() => setMobilePanel(panel)}
+                    >
+                      {titleize(panel)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              <div style={compact ? workspaceGridMobile : workspaceGrid}>
+                {(!compact || mobilePanel === "chat") ? (
                 <section style={compact ? chatPanelModernMobile : chatPanelModern}>
                   <div style={compact ? chatTopBarMobile : chatTopBar}>
                     <div>
@@ -725,9 +738,9 @@ export default function DealerAIUnderwriterPage() {
                   </div>
                   {status ? <div style={statusBox}>{status}</div> : null}
                 </section>
-              ) : null}
+                ) : null}
 
-              {!compact ? (
+                {!compact ? (
                 <aside style={sideRail}>
                   <BucketFilesPanel
                     response={response}
@@ -741,9 +754,9 @@ export default function DealerAIUnderwriterPage() {
                   />
                   <ReviewSidePanel result={currentResult} bankability={bankability} reviewStatus={reviewStatus} onOpenReview={() => setOpenWidgetType("bankability_result")} />
                 </aside>
-              ) : null}
+                ) : null}
 
-              {compact && mobilePanel === "bucket" ? (
+                {compact && mobilePanel === "bucket" ? (
                 <BucketFilesPanel
                   response={response}
                   missingDocs={missingDocs}
@@ -754,12 +767,13 @@ export default function DealerAIUnderwriterPage() {
                   onChangeQueuedFileDocument={updateQueuedFileDocument}
                   onUpload={() => uploadQueuedFiles().catch(() => undefined)}
                 />
-              ) : null}
+                ) : null}
 
-              {compact && mobilePanel === "review" ? (
+                {compact && mobilePanel === "review" ? (
                 <ReviewSidePanel result={currentResult} bankability={bankability} reviewStatus={reviewStatus} onOpenReview={() => setOpenWidgetType("bankability_result")} />
-              ) : null}
-            </div>
+                ) : null}
+              </div>
+            </section>
           </>
         )}
       </section>
@@ -1000,6 +1014,74 @@ function CompactRoomStatus({ response, missingDocs, compact = false }: { respons
         <Metric value={response.files.length.toString()} label="files" />
       </div>
     </div>
+  );
+}
+
+function DealerSidebar({
+  response,
+  missingDocs,
+  reviewStatus,
+  activePanel,
+  setActivePanel,
+  onOpenUpload,
+  onCopyResume,
+}: {
+  response: IntakeResponse;
+  missingDocs: RequestedDoc[];
+  reviewStatus: string;
+  activePanel: "chat" | "bucket" | "review";
+  setActivePanel: (panel: "chat" | "bucket" | "review") => void;
+  onOpenUpload: () => void;
+  onCopyResume: () => void;
+}) {
+  const navItems: Array<{ key: "chat" | "bucket" | "review"; label: string; meta: string }> = [
+    { key: "chat", label: "Underwriter chat", meta: reviewStatus },
+    { key: "bucket", label: "Bucket files", meta: `${response.files.length} uploaded` },
+    { key: "review", label: "AI review", meta: missingDocs.length ? `${missingDocs.length} missing` : "Baseline ready" },
+  ];
+  return (
+    <aside style={dealerSidebar}>
+      <div style={sidebarBrand}>
+        <QCMark size={30} />
+        <div>
+          <strong>Qualified Commercial</strong>
+          <span>Dealer funding room</span>
+        </div>
+      </div>
+
+      <button type="button" style={sidebarNewButton} onClick={onOpenUpload}>+ Attach files</button>
+
+      <nav style={sidebarNav} aria-label="Dealer AI room">
+        {navItems.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            style={activePanel === item.key ? sidebarNavItemActive : sidebarNavItem}
+            onClick={() => setActivePanel(item.key)}
+          >
+            <span>{item.label}</span>
+            <small>{item.meta}</small>
+          </button>
+        ))}
+      </nav>
+
+      <div style={sidebarSection}>
+        <div style={sidebarSectionTitle}>Pinned</div>
+        <div style={sidebarMiniCard}>
+          <strong>{response.intake.business_name || response.intake.full_name}</strong>
+          <span>{response.files.length} files | {missingDocs.length} missing</span>
+        </div>
+        <div style={sidebarMiniCard}>
+          <strong>Baseline package</strong>
+          <span>Taxes, P&L, bank statements, real estate schedule</span>
+        </div>
+      </div>
+
+      <div style={sidebarFooter}>
+        {response.resume_url ? <button type="button" style={sidebarFooterButton} onClick={onCopyResume}>Copy resume link</button> : null}
+        <a style={sidebarFooterButton} href="/client/dealer-intakes">Client continuation</a>
+      </div>
+    </aside>
   );
 }
 
@@ -1309,6 +1391,31 @@ const pageMobile: CSSProperties = {
     "radial-gradient(circle at 0% 0%, rgba(33,211,199,.14), transparent 30%), radial-gradient(circle at 100% 0%, rgba(212,175,55,.12), transparent 28%), #060B1A",
 };
 const shellMobile: CSSProperties = { ...shell, maxWidth: "100%", gap: 12 };
+const appViewport: CSSProperties = {
+  height: "100dvh",
+  overflow: "hidden",
+  background: "#05060A",
+  color: "#F8FAFC",
+};
+const appViewportMobile: CSSProperties = {
+  ...appViewport,
+  background:
+    "radial-gradient(circle at 0% 0%, rgba(33,211,199,.12), transparent 34%), #05060A",
+};
+const appShell: CSSProperties = {
+  height: "100%",
+  minHeight: 0,
+  display: "grid",
+  gridTemplateColumns: "236px minmax(0, 1fr)",
+  background: "#05060A",
+};
+const appShellMobile: CSSProperties = {
+  height: "100%",
+  minHeight: 0,
+  display: "grid",
+  gridTemplateRows: "minmax(0,1fr)",
+  padding: 8,
+};
 const stepOneNav: CSSProperties = {
   minHeight: 54,
   borderBottom: "1px solid rgba(255,255,255,.08)",
@@ -1549,27 +1656,22 @@ const securePillMobile: CSSProperties = {
   textAlign: "center",
 };
 const workspaceHeader: CSSProperties = {
-  position: "sticky",
-  top: 12,
   zIndex: 20,
-  minHeight: 68,
-  padding: "10px 14px",
-  border: "1px solid rgba(255,255,255,.10)",
-  borderRadius: 18,
-  background: "rgba(6,11,26,.86)",
-  backdropFilter: "blur(18px)",
+  minHeight: 58,
+  padding: "8px 18px",
+  borderBottom: "1px solid rgba(255,255,255,.08)",
+  background: "rgba(5,6,10,.94)",
   display: "flex",
   justifyContent: "space-between",
   gap: 16,
   alignItems: "center",
-  boxShadow: "0 18px 60px rgba(0,0,0,.28)",
 };
 const workspaceHeaderMobile: CSSProperties = {
   ...workspaceHeader,
-  top: 8,
   minHeight: "auto",
   padding: 10,
   borderRadius: 16,
+  border: "1px solid rgba(255,255,255,.10)",
   display: "grid",
   gap: 10,
 };
@@ -1607,8 +1709,6 @@ const mobileTabs: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(3,minmax(0,1fr))",
   gap: 8,
-  position: "sticky",
-  top: 98,
   zIndex: 15,
   padding: 6,
   border: "1px solid rgba(255,255,255,.10)",
@@ -1632,15 +1732,35 @@ const mobileTabActive: CSSProperties = {
   boxShadow: "inset 0 0 0 1px rgba(33,211,199,.32)",
 };
 const workspaceGrid: CSSProperties = {
+  minHeight: 0,
+  height: "100%",
   display: "grid",
   gridTemplateColumns: "minmax(0, 1fr) minmax(330px, 390px)",
   gap: 16,
   alignItems: "start",
+  overflow: "hidden",
+  padding: 16,
 };
-const workspaceGridMobile: CSSProperties = { display: "grid", gap: 12 };
-const sideRail: CSSProperties = { display: "grid", gap: 14, position: "sticky", top: 98, alignSelf: "start" };
+const workspaceGridMobile: CSSProperties = { minHeight: 0, display: "grid", gap: 12, overflowY: "auto" };
+const appMain: CSSProperties = {
+  height: "100%",
+  minHeight: 0,
+  display: "grid",
+  gridTemplateRows: "auto minmax(0,1fr)",
+  overflow: "hidden",
+};
+const appMainMobile: CSSProperties = {
+  height: "100%",
+  minHeight: 0,
+  display: "grid",
+  gridTemplateRows: "auto auto minmax(0,1fr)",
+  gap: 8,
+  overflow: "hidden",
+};
+const sideRail: CSSProperties = { minHeight: 0, height: "100%", display: "grid", gap: 14, alignSelf: "stretch", overflowY: "auto", paddingRight: 2 };
 const chatPanelModern: CSSProperties = {
-  minHeight: "calc(100vh - 110px)",
+  minHeight: 0,
+  height: "100%",
   background: "rgba(8,14,32,.9)",
   border: "1px solid rgba(255,255,255,.10)",
   borderRadius: 18,
@@ -1651,7 +1771,6 @@ const chatPanelModern: CSSProperties = {
 };
 const chatPanelModernMobile: CSSProperties = {
   ...chatPanelModern,
-  minHeight: "calc(100vh - 176px)",
   borderRadius: 16,
 };
 const chatTopBar: CSSProperties = {
@@ -1664,8 +1783,86 @@ const chatTopBar: CSSProperties = {
   flexWrap: "wrap",
 };
 const chatTopBarMobile: CSSProperties = { ...chatTopBar, padding: 12, display: "grid", alignItems: "stretch" };
-const messagesModern: CSSProperties = { padding: 18, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", minHeight: 420 };
-const messagesModernMobile: CSSProperties = { ...messagesModern, padding: 12, minHeight: 350 };
+const messagesModern: CSSProperties = { minHeight: 0, padding: "22px min(7vw,92px)", display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" };
+const messagesModernMobile: CSSProperties = { ...messagesModern, padding: 12 };
+const dealerSidebar: CSSProperties = {
+  height: "100%",
+  minHeight: 0,
+  borderRight: "1px solid rgba(255,255,255,.08)",
+  background: "#000",
+  padding: 14,
+  display: "grid",
+  gridTemplateRows: "auto auto auto 1fr auto",
+  gap: 16,
+  overflow: "hidden",
+};
+const sidebarBrand: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "34px minmax(0,1fr)",
+  gap: 10,
+  alignItems: "center",
+  color: "#F8FAFC",
+  fontSize: 13,
+};
+const sidebarNewButton: CSSProperties = {
+  minHeight: 38,
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,.10)",
+  background: "rgba(255,255,255,.06)",
+  color: "#F8FAFC",
+  fontWeight: 900,
+  cursor: "pointer",
+  textAlign: "left",
+  padding: "0 12px",
+};
+const sidebarNav: CSSProperties = { display: "grid", gap: 4 };
+const sidebarNavItem: CSSProperties = {
+  border: 0,
+  borderRadius: 10,
+  background: "transparent",
+  color: "#F8FAFC",
+  minHeight: 46,
+  padding: "7px 10px",
+  display: "grid",
+  gap: 2,
+  textAlign: "left",
+  cursor: "pointer",
+};
+const sidebarNavItemActive: CSSProperties = {
+  ...sidebarNavItem,
+  background: "rgba(255,255,255,.10)",
+};
+const sidebarSection: CSSProperties = { minHeight: 0, display: "grid", alignContent: "start", gap: 8, overflowY: "auto" };
+const sidebarSectionTitle: CSSProperties = {
+  color: "#8FA0B8",
+  fontSize: 11,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: 1.2,
+  marginTop: 4,
+};
+const sidebarMiniCard: CSSProperties = {
+  borderRadius: 10,
+  padding: "8px 10px",
+  color: "#E2E8F0",
+  display: "grid",
+  gap: 3,
+  background: "transparent",
+};
+const sidebarFooter: CSSProperties = { display: "grid", gap: 8 };
+const sidebarFooterButton: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.10)",
+  borderRadius: 10,
+  minHeight: 34,
+  padding: "0 10px",
+  background: "rgba(255,255,255,.045)",
+  color: "#E2E8F0",
+  display: "inline-flex",
+  alignItems: "center",
+  textDecoration: "none",
+  fontWeight: 800,
+  cursor: "pointer",
+};
 const intakeStart: CSSProperties = {
   minHeight: "calc(100vh - 148px)",
   display: "grid",
