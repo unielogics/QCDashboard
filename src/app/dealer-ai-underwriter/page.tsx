@@ -101,7 +101,16 @@ type EntityStructure = {
 type WidgetType = Widget["type"];
 type ChatLine = { id: string; role: "assistant" | "user"; content: string };
 type QueuedFile = { id: string; file: File; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
+type ReviewProgressStage = "idle" | "attaching" | "uploading" | "reading" | "classifying" | "screening" | "preparing" | "complete" | "error";
 const DEALER_AI_UPLOAD_ACCEPT = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.zip,.csv,.xlsx,.txt,text/plain,application/pdf,image/*,application/zip,application/x-zip-compressed,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const REVIEW_PROGRESS_STAGES: Array<{ key: ReviewProgressStage; label: string }> = [
+  { key: "attaching", label: "Attaching files" },
+  { key: "uploading", label: "Uploading securely" },
+  { key: "reading", label: "Reading documents" },
+  { key: "classifying", label: "Classifying evidence" },
+  { key: "screening", label: "Screening fundability" },
+  { key: "preparing", label: "Preparing next question" },
+];
 
 function useCompactViewport() {
   const [compact, setCompact] = useState(false);
@@ -127,6 +136,7 @@ const initialEntity: EntityStructure = {
 export default function DealerAIUnderwriterPage() {
   const compact = useCompactViewport();
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
+  const progressTimersRef = useRef<number[]>([]);
   const [token, setToken] = useState<string>("");
   const [contact, setContact] = useState(initialContact);
   const [deal, setDeal] = useState({ loan_purpose: "", requested_loan_amount: "", estimated_credit_score: "" });
@@ -141,8 +151,14 @@ export default function DealerAIUnderwriterPage() {
   const [status, setStatus] = useState("");
   const [dragging, setDragging] = useState(false);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
+  const [reviewProgress, setReviewProgress] = useState<ReviewProgressStage>("idle");
+  const [reviewCompletedAt, setReviewCompletedAt] = useState<string | null>(null);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [resumeEmail, setResumeEmail] = useState("");
+
+  useEffect(() => {
+    return () => clearProgressTimers();
+  }, []);
 
   useEffect(() => {
     const urlToken = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("token") : null;
@@ -180,9 +196,11 @@ export default function DealerAIUnderwriterPage() {
   const hasQueuedUpload = queuedFiles.some((item) => item.status === "ready" || item.status === "error");
   const hasUploading = queuedFiles.some((item) => item.status === "uploading");
   const reviewStatus =
-    hasUploading
-      ? "Uploading"
-      : status.toLowerCase().includes("analyzing")
+    reviewProgress !== "idle" && reviewProgress !== "complete"
+      ? reviewProgressLabel(reviewProgress)
+      : hasUploading
+        ? "Uploading"
+        : status.toLowerCase().includes("analyzing")
         ? "Analyzing"
         : response?.latest_review?.status
           ? titleize(response.latest_review.status)
@@ -203,6 +221,38 @@ export default function DealerAIUnderwriterPage() {
     if (!res.ok) throw new Error(await responseMessage(res));
     if (res.status === 204) return undefined as T;
     return res.json();
+  }
+
+  function clearProgressTimers() {
+    progressTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    progressTimersRef.current = [];
+  }
+
+  function setProgress(stage: ReviewProgressStage) {
+    setReviewProgress(stage);
+    if (stage !== "complete") setReviewCompletedAt(null);
+  }
+
+  function beginReviewTimeline() {
+    clearProgressTimers();
+    setProgress("reading");
+    const schedule: Array<[number, ReviewProgressStage]> = [
+      [1400, "classifying"],
+      [3200, "screening"],
+      [5200, "preparing"],
+    ];
+    progressTimersRef.current = schedule.map(([delay, stage]) => window.setTimeout(() => setReviewProgress(stage), delay));
+  }
+
+  function completeReviewProgress() {
+    clearProgressTimers();
+    setReviewProgress("complete");
+    setReviewCompletedAt(new Date().toISOString());
+  }
+
+  function failReviewProgress() {
+    clearProgressTimers();
+    setReviewProgress("error");
   }
 
   async function startIntake() {
@@ -392,12 +442,14 @@ export default function DealerAIUnderwriterPage() {
       return [...current, ...incoming];
     });
     setFileDrawerOpen(true);
+    setProgress("attaching");
     setStatus(`${files.length} file${files.length === 1 ? "" : "s"} attached. Send or upload when ready.`);
   }
 
   async function uploadQueuedFiles() {
     if (!token || !queuedFiles.some((item) => item.status === "ready" || item.status === "error")) return;
     setBusy(true);
+    setProgress("uploading");
     setStatus("Uploading files to secure storage...");
     let uploaded = 0;
     const uploadedIds = new Set<string>();
@@ -437,13 +489,22 @@ export default function DealerAIUnderwriterPage() {
       if (uploaded > 0) {
         pushAssistant(`${uploaded} file${uploaded === 1 ? "" : "s"} uploaded. I am analyzing the file set now.`);
         setStatus("Analyzing uploaded files...");
+        beginReviewTimeline();
         const payload = await call<IntakeResponse>(`/public/dealer-ai-intake/${encodeURIComponent(token)}/run-review`, { method: "POST" });
         applyResponse(payload, token);
+        completeReviewProgress();
         pushAssistant(payload.assistant_message);
+        setStatus("");
       } else {
+        failReviewProgress();
+        setStatus("No files uploaded successfully. Correct the file errors and try again.");
         pushAssistant("No files uploaded successfully. Correct the file errors and try again.");
       }
-      setStatus("");
+    } catch (error) {
+      failReviewProgress();
+      const message = errorMessage(error);
+      setStatus(`Review failed: ${message}`);
+      pushAssistant(`I could not finish the file review. ${message}`);
     } finally {
       setBusy(false);
     }
@@ -667,9 +728,12 @@ export default function DealerAIUnderwriterPage() {
                       onAttachFiles={openFilePicker}
                       onRemoveQueuedFile={removeQueuedFile}
                       onUpload={() => uploadQueuedFiles().catch(() => undefined)}
+                      reviewProgress={reviewProgress}
+                      reviewCompletedAt={reviewCompletedAt}
                       compact
                     />
                   ) : null}
+                  {reviewProgress !== "idle" ? <ReviewProgress stage={reviewProgress} completedAt={reviewCompletedAt} compact={compact} /> : null}
                   <div style={compact ? messagesModernMobile : messagesModern}>
                     {fundability ? <FundabilityBanner banner={fundability} /> : null}
                     {chat.map((line) => (
@@ -738,6 +802,8 @@ export default function DealerAIUnderwriterPage() {
                     onAttachFiles={openFilePicker}
                     onRemoveQueuedFile={removeQueuedFile}
                     onUpload={() => uploadQueuedFiles().catch(() => undefined)}
+                    reviewProgress={reviewProgress}
+                    reviewCompletedAt={reviewCompletedAt}
                   />
                 ) : null}
               </div>
@@ -1134,6 +1200,8 @@ function FileDrawerPanel({
   onAttachFiles,
   onRemoveQueuedFile,
   onUpload,
+  reviewProgress,
+  reviewCompletedAt,
   compact = false,
 }: {
   response: IntakeResponse;
@@ -1145,6 +1213,8 @@ function FileDrawerPanel({
   onAttachFiles: () => void;
   onRemoveQueuedFile: (id: string) => void;
   onUpload: () => void;
+  reviewProgress: ReviewProgressStage;
+  reviewCompletedAt: string | null;
   compact?: boolean;
 }) {
   const docsById = new Map(response.requested_documents.map((doc) => [doc.id, doc]));
@@ -1161,6 +1231,7 @@ function FileDrawerPanel({
       </div>
 
       {fundability ? <FundabilityBanner banner={fundability} /> : null}
+      {reviewProgress !== "idle" ? <ReviewProgress stage={reviewProgress} completedAt={reviewCompletedAt} compact /> : null}
 
       <div style={bucketMetrics}>
         <Metric value={response.files.length.toString()} label="uploaded" />
@@ -1270,6 +1341,45 @@ type FundabilityBannerData = {
   title: string;
   detail: string;
 };
+
+function reviewProgressLabel(stage: ReviewProgressStage): string {
+  if (stage === "complete") return "Review complete";
+  if (stage === "error") return "Review needs attention";
+  return REVIEW_PROGRESS_STAGES.find((item) => item.key === stage)?.label || "Reviewing files";
+}
+
+function reviewProgressPercent(stage: ReviewProgressStage): number {
+  if (stage === "idle") return 0;
+  if (stage === "complete") return 100;
+  if (stage === "error") return 100;
+  const index = REVIEW_PROGRESS_STAGES.findIndex((item) => item.key === stage);
+  return index >= 0 ? Math.round(((index + 1) / REVIEW_PROGRESS_STAGES.length) * 100) : 0;
+}
+
+function ReviewProgress({ stage, completedAt, compact }: { stage: ReviewProgressStage; completedAt: string | null; compact?: boolean }) {
+  const isError = stage === "error";
+  const isComplete = stage === "complete";
+  const percent = reviewProgressPercent(stage);
+  const label = reviewProgressLabel(stage);
+  return (
+    <div style={{ ...reviewProgressShell, ...(compact ? reviewProgressShellCompact : null), ...(isError ? reviewProgressShellError : null), ...(isComplete ? reviewProgressShellComplete : null) }}>
+      <div style={reviewProgressTop}>
+        <strong>{label}</strong>
+        <span>{isComplete && completedAt ? `Completed ${formatDate(completedAt)}` : isError ? "Retry upload or send a message" : `${percent}%`}</span>
+      </div>
+      <div style={reviewProgressTrack}>
+        <div style={{ ...reviewProgressFill, width: `${percent}%`, ...(isError ? reviewProgressFillError : null), ...(isComplete ? reviewProgressFillComplete : null) }} />
+      </div>
+      {!isComplete && !isError ? (
+        <div style={reviewProgressSteps}>
+          {REVIEW_PROGRESS_STAGES.map((item) => (
+            <span key={item.key} style={item.key === stage ? reviewProgressStepActive : reviewProgressStep}>{item.label}</span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function FundabilityBanner({ banner }: { banner: FundabilityBannerData }) {
   const style = banner.tone === "green" ? fundableGreen : banner.tone === "red" ? fundableRed : fundableAmber;
@@ -2418,6 +2528,61 @@ const fileTypeBadge: CSSProperties = {
   fontWeight: 900,
 };
 const warningText: CSSProperties = { display: "block", color: "#F6E7A6", fontSize: 13, lineHeight: 1.35 };
+const reviewProgressShell: CSSProperties = {
+  margin: "0 min(7vw,92px) 8px",
+  border: "1px solid rgba(255,255,255,.10)",
+  borderRadius: 16,
+  background: "rgba(255,255,255,.045)",
+  padding: "12px 14px",
+  display: "grid",
+  gap: 10,
+};
+const reviewProgressShellCompact: CSSProperties = { margin: "0 12px 8px", padding: 10, borderRadius: 14 };
+const reviewProgressShellComplete: CSSProperties = {
+  borderColor: "rgba(74,222,128,.26)",
+  background: "rgba(22,101,52,.18)",
+};
+const reviewProgressShellError: CSSProperties = {
+  borderColor: "rgba(248,113,113,.36)",
+  background: "rgba(127,29,29,.24)",
+};
+const reviewProgressTop: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  color: "#F8FAFC",
+  fontSize: 13,
+};
+const reviewProgressTrack: CSSProperties = {
+  height: 7,
+  borderRadius: 999,
+  overflow: "hidden",
+  background: "rgba(255,255,255,.10)",
+};
+const reviewProgressFill: CSSProperties = {
+  height: "100%",
+  borderRadius: 999,
+  background: "linear-gradient(90deg,#21D3C7,#E9D58A)",
+  transition: "width .35s ease",
+};
+const reviewProgressFillComplete: CSSProperties = { background: "linear-gradient(90deg,#22C55E,#86EFAC)" };
+const reviewProgressFillError: CSSProperties = { background: "linear-gradient(90deg,#EF4444,#FCA5A5)" };
+const reviewProgressSteps: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 6 };
+const reviewProgressStep: CSSProperties = {
+  border: "1px solid rgba(255,255,255,.09)",
+  borderRadius: 999,
+  padding: "4px 8px",
+  color: "#8FA0B8",
+  fontSize: 11,
+  fontWeight: 800,
+};
+const reviewProgressStepActive: CSSProperties = {
+  ...reviewProgressStep,
+  borderColor: "rgba(33,211,199,.38)",
+  background: "rgba(33,211,199,.12)",
+  color: "#D9FFFB",
+};
 const fundabilityBannerBase: CSSProperties = {
   borderRadius: 18,
   padding: "16px 18px",
