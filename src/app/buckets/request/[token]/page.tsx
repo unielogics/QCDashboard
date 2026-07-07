@@ -138,7 +138,13 @@ export default function BucketRequestPage() {
   }
 
   async function loadAITasks() {
-    const res = await fetch(`${apiBase}/api/v1/buckets/request/${token}/ai-tasks?passcode=${encodeURIComponent(passcode.trim())}`);
+    // Passcode in the POST body, never the query string (query strings leak
+    // into access logs, Referer headers, and browser history).
+    const res = await fetch(`${apiBase}/api/v1/buckets/request/${token}/ai-tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ passcode: passcode.trim() }),
+    });
     if (res.ok) setAiTasks(await res.json());
   }
 
@@ -766,88 +772,90 @@ function stringValue(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-const page: CSSProperties = { minHeight: "100vh", background: "#f4f6f8", color: "#111827", padding: 24, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" };
-const gateCard: CSSProperties = { maxWidth: 560, margin: "8vh auto 0", background: "#fff", border: "1px solid #d8dee8", borderRadius: 14, padding: 28, boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)" };
+// Dealer-AI dark theme — matches /dealer-ai-underwriter (navy #060B1A, teal
+// #21D3C7, gold gradient #E9D58A→#D4AF37, Inter + translucent-white surfaces).
+const page: CSSProperties = { minHeight: "100vh", background: "radial-gradient(1200px 620px at 50% -12%, #0C1428 0%, #060B1A 62%)", color: "#F1F5F9", padding: 24, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" };
+const gateCard: CSSProperties = { maxWidth: 560, margin: "8vh auto 0", background: "rgba(255,255,255,.035)", border: "1px solid rgba(255,255,255,.10)", borderRadius: 18, padding: 28, boxShadow: "0 30px 80px rgba(0,0,0,.45)" };
 const brandHeader: CSSProperties = { display: "flex", alignItems: "center", gap: 10 };
-const brand: CSSProperties = { color: "#64748b", fontSize: 12, fontWeight: 800, letterSpacing: 0, textTransform: "uppercase" };
-const brandName: CSSProperties = { color: "#111827", fontSize: 15, fontWeight: 900, lineHeight: 1.2 };
-const gateTitle: CSSProperties = { margin: "14px 0 8px", fontSize: 32, lineHeight: 1.1, letterSpacing: 0 };
-const gateCopy: CSSProperties = { margin: "0 0 20px", color: "#475569", fontSize: 16, lineHeight: 1.5 };
+const brand: CSSProperties = { color: "#21D3C7", fontSize: 12, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase" };
+const brandName: CSSProperties = { color: "#F8FAFC", fontSize: 15, fontWeight: 900, lineHeight: 1.2 };
+const gateTitle: CSSProperties = { margin: "14px 0 8px", fontSize: 32, lineHeight: 1.1, letterSpacing: 0, color: "#F8FAFC" };
+const gateCopy: CSSProperties = { margin: "0 0 20px", color: "#95A3B6", fontSize: 16, lineHeight: 1.5 };
 const gateForm: CSSProperties = { display: "grid", gap: 12 };
-const label: CSSProperties = { display: "block", color: "#334155", fontSize: 13, fontWeight: 800, marginBottom: 6 };
-const accessInput: CSSProperties = { height: 52, border: "1px solid #cbd5e1", borderRadius: 10, padding: "0 14px", font: "inherit", fontSize: 18, background: "#fff" };
-const field: CSSProperties = { width: "100%", height: 44, border: "1px solid #cbd5e1", borderRadius: 10, padding: "0 12px", font: "inherit", background: "#fff", boxSizing: "border-box" };
-const primaryButton: CSSProperties = { height: 48, border: "none", borderRadius: 10, padding: "0 16px", font: "inherit", fontWeight: 900, background: "#111827", color: "#fff", cursor: "pointer" };
-const statusText: CSSProperties = { margin: "14px 0 0", color: "#0f766e", fontWeight: 800 };
-const errorText: CSSProperties = { margin: "14px 0 0", color: "#b91c1c", fontWeight: 800 };
-const errorBox: CSSProperties = { border: "1px solid #fecaca", background: "#fef2f2", color: "#991b1b", borderRadius: 10, padding: 12, marginBottom: 14, fontWeight: 700 };
-const workspace: CSSProperties = { maxWidth: 1180, margin: "0 auto", background: "#fff", border: "1px solid #d8dee8", borderRadius: 16, padding: 24, boxShadow: "0 18px 40px rgba(15, 23, 42, 0.08)" };
-const header: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", borderBottom: "1px solid #e5e7eb", paddingBottom: 18, marginBottom: 20 };
-const title: CSSProperties = { margin: "8px 0 4px", fontSize: 30, lineHeight: 1.15, letterSpacing: 0 };
-const muted: CSSProperties = { color: "#64748b" };
-const summaryPill: CSSProperties = { border: "1px solid #d8dee8", borderRadius: 999, padding: "8px 12px", color: "#334155", fontWeight: 800, whiteSpace: "nowrap" };
-const attentionPill: CSSProperties = { ...summaryPill, borderColor: "#fecaca", color: "#991b1b", background: "#fef2f2" };
-const securityNotice: CSSProperties = { border: "1px solid #bfdbfe", borderRadius: 12, padding: "11px 13px", color: "#1e3a8a", background: "#eff6ff", fontSize: 13.5, lineHeight: 1.45, marginBottom: 18 };
-const insightPanel: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 14, border: "1px solid #d8dee8", borderRadius: 14, padding: 16, background: "#fbfdff", marginBottom: 18 };
-const insightCopy: CSSProperties = { margin: "7px 0 0", color: "#475569", lineHeight: 1.45 };
+const label: CSSProperties = { display: "block", color: "#B8C4D6", fontSize: 13, fontWeight: 800, marginBottom: 6 };
+const accessInput: CSSProperties = { height: 52, border: "1px solid rgba(255,255,255,.14)", borderRadius: 12, padding: "0 14px", font: "inherit", fontSize: 18, background: "#232323", color: "#F8FAFC" };
+const field: CSSProperties = { width: "100%", height: 44, border: "1px solid rgba(255,255,255,.14)", borderRadius: 12, padding: "0 12px", font: "inherit", background: "#232323", color: "#F8FAFC", boxSizing: "border-box" };
+const primaryButton: CSSProperties = { height: 48, border: "none", borderRadius: 999, padding: "0 18px", font: "inherit", fontWeight: 900, background: "linear-gradient(135deg,#E9D58A,#D4AF37)", color: "#0B1326", cursor: "pointer" };
+const statusText: CSSProperties = { margin: "14px 0 0", color: "#5EE6DB", fontWeight: 800 };
+const errorText: CSSProperties = { margin: "14px 0 0", color: "#FCA5A5", fontWeight: 800 };
+const errorBox: CSSProperties = { border: "1px solid rgba(239,68,68,.35)", background: "rgba(239,68,68,.12)", color: "#FCA5A5", borderRadius: 12, padding: 12, marginBottom: 14, fontWeight: 700 };
+const workspace: CSSProperties = { maxWidth: 1180, margin: "0 auto", background: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.09)", borderRadius: 20, padding: 24, boxShadow: "0 30px 80px rgba(0,0,0,.45)" };
+const header: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", borderBottom: "1px solid rgba(255,255,255,.08)", paddingBottom: 18, marginBottom: 20 };
+const title: CSSProperties = { margin: "8px 0 4px", fontSize: 30, lineHeight: 1.15, letterSpacing: 0, color: "#F8FAFC" };
+const muted: CSSProperties = { color: "#95A3B6" };
+const summaryPill: CSSProperties = { border: "1px solid rgba(33,211,199,.25)", borderRadius: 999, padding: "8px 12px", color: "#BFFCF7", background: "rgba(33,211,199,.10)", fontWeight: 800, whiteSpace: "nowrap" };
+const attentionPill: CSSProperties = { ...summaryPill, borderColor: "rgba(239,68,68,.35)", color: "#FCA5A5", background: "rgba(239,68,68,.12)" };
+const securityNotice: CSSProperties = { border: "1px solid rgba(33,211,199,.22)", borderRadius: 12, padding: "11px 13px", color: "#BFEFEA", background: "rgba(33,211,199,.06)", fontSize: 13.5, lineHeight: 1.45, marginBottom: 18 };
+const insightPanel: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 14, border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 16, background: "rgba(255,255,255,.02)", marginBottom: 18 };
+const insightCopy: CSSProperties = { margin: "7px 0 0", color: "#B8C4D6", lineHeight: 1.45 };
 const insightGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, minmax(76px, 1fr))", gap: 8, alignSelf: "start" };
 const insightMetricBase: CSSProperties = { borderRadius: 12, padding: "10px 12px", display: "grid", gap: 2, textAlign: "center", fontWeight: 900 };
-const goodMetric: CSSProperties = { ...insightMetricBase, border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#166534" };
-const needsMetric: CSSProperties = { ...insightMetricBase, border: "1px solid #fecaca", background: "#fef2f2", color: "#991b1b" };
-const summaryMetric: CSSProperties = { ...insightMetricBase, border: "1px solid #dbeafe", background: "#eff6ff", color: "#1e3a8a" };
-const dangerSummary: CSSProperties = { gridColumn: "1 / -1", display: "grid", gap: 3, border: "1px solid #fecaca", borderRadius: 12, padding: 12, background: "#fef2f2", color: "#991b1b", lineHeight: 1.4 };
+const goodMetric: CSSProperties = { ...insightMetricBase, border: "1px solid rgba(52,211,153,.30)", background: "rgba(52,211,153,.10)", color: "#6EE7B7" };
+const needsMetric: CSSProperties = { ...insightMetricBase, border: "1px solid rgba(239,68,68,.32)", background: "rgba(239,68,68,.10)", color: "#FCA5A5" };
+const summaryMetric: CSSProperties = { ...insightMetricBase, border: "1px solid rgba(33,211,199,.28)", background: "rgba(33,211,199,.10)", color: "#7FE7DE" };
+const dangerSummary: CSSProperties = { gridColumn: "1 / -1", display: "grid", gap: 3, border: "1px solid rgba(239,68,68,.32)", borderRadius: 12, padding: 12, background: "rgba(239,68,68,.10)", color: "#FCA5A5", lineHeight: 1.4 };
 const analysisGrid: CSSProperties = { gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))", gap: 10 };
-const analysisBlock: CSSProperties = { display: "grid", gap: 8, border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#fff", color: "#334155", lineHeight: 1.4 };
-const analysisBlockDanger: CSSProperties = { ...analysisBlock, borderColor: "#fecaca", background: "#fff7f7", color: "#991b1b" };
+const analysisBlock: CSSProperties = { display: "grid", gap: 8, border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: 12, background: "rgba(255,255,255,.02)", color: "#D6DEEA", lineHeight: 1.4 };
+const analysisBlockDanger: CSSProperties = { ...analysisBlock, borderColor: "rgba(239,68,68,.30)", background: "rgba(239,68,68,.08)", color: "#FCA5A5" };
 const analysisList: CSSProperties = { display: "grid", gap: 7 };
-const analysisItem: CSSProperties = { borderTop: "1px solid #e5e7eb", paddingTop: 7, fontSize: 13, lineHeight: 1.4 };
-const analysisText: CSSProperties = { margin: 0, color: "#64748b", fontSize: 13, lineHeight: 1.45 };
-const analysisEmpty: CSSProperties = { gridColumn: "1 / -1", border: "1px dashed #cbd5e1", borderRadius: 12, padding: 12, color: "#64748b", background: "#f8fafc", lineHeight: 1.45 };
+const analysisItem: CSSProperties = { borderTop: "1px solid rgba(255,255,255,.08)", paddingTop: 7, fontSize: 13, lineHeight: 1.4 };
+const analysisText: CSSProperties = { margin: 0, color: "#95A3B6", fontSize: 13, lineHeight: 1.45 };
+const analysisEmpty: CSSProperties = { gridColumn: "1 / -1", border: "1px dashed rgba(255,255,255,.16)", borderRadius: 12, padding: 12, color: "#95A3B6", background: "rgba(255,255,255,.015)", lineHeight: 1.45 };
 const contextPills: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 6 };
-const contextPill: CSSProperties = { border: "1px solid #ccfbf1", borderRadius: 999, padding: "4px 8px", background: "#f0fdfa", color: "#0f766e", fontSize: 12, fontWeight: 900 };
+const contextPill: CSSProperties = { border: "1px solid rgba(33,211,199,.28)", borderRadius: 999, padding: "4px 8px", background: "rgba(33,211,199,.08)", color: "#7FE7DE", fontSize: 12, fontWeight: 900 };
 const contentGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 20 };
 const mainPanel: CSSProperties = { minWidth: 0 };
 const identityGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: 12, marginBottom: 16 };
-const dropZone: CSSProperties = { border: "2px dashed #94a3b8", borderRadius: 14, padding: 28, textAlign: "center", background: "#f8fafc", cursor: "pointer", transition: "border-color .15s ease, background .15s ease" };
-const dropZoneActive: CSSProperties = { borderColor: "#2563eb", background: "#eff6ff" };
-const dropTitle: CSSProperties = { fontSize: 20, fontWeight: 900, marginBottom: 6 };
-const dropCopy: CSSProperties = { color: "#64748b" };
+const dropZone: CSSProperties = { border: "2px dashed rgba(255,255,255,.22)", borderRadius: 14, padding: 28, textAlign: "center", background: "rgba(255,255,255,.02)", color: "#F1F5F9", cursor: "pointer", transition: "border-color .15s ease, background .15s ease" };
+const dropZoneActive: CSSProperties = { borderColor: "rgba(33,211,199,.70)", background: "rgba(33,211,199,.08)" };
+const dropTitle: CSSProperties = { fontSize: 20, fontWeight: 900, marginBottom: 6, color: "#F8FAFC" };
+const dropCopy: CSSProperties = { color: "#95A3B6" };
 const queueHeader: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20, marginBottom: 10 };
-const sectionTitle: CSSProperties = { margin: 0, fontSize: 15, fontWeight: 900, letterSpacing: 0 };
+const sectionTitle: CSSProperties = { margin: 0, fontSize: 15, fontWeight: 900, letterSpacing: 0, color: "#F6F8FB" };
 const queue: CSSProperties = { display: "grid", gap: 10 };
-const emptyState: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, color: "#64748b", background: "#f8fafc" };
-const fileRow: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: 10, alignItems: "center", border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 };
+const emptyState: CSSProperties = { border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: 16, color: "#95A3B6", background: "rgba(255,255,255,.015)" };
+const fileRow: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: 10, alignItems: "center", border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: 12, background: "rgba(255,255,255,.02)" };
 const fileMeta: CSSProperties = { display: "grid", gap: 4, minWidth: 0 };
-const select: CSSProperties = { height: 42, border: "1px solid #cbd5e1", borderRadius: 10, padding: "0 10px", font: "inherit", background: "#fff", minWidth: 0 };
-const removeButton: CSSProperties = { height: 38, border: "1px solid #d8dee8", borderRadius: 10, background: "#fff", color: "#334155", font: "inherit", fontWeight: 800, cursor: "pointer" };
-const submittedBadge: CSSProperties = { height: 38, border: "1px solid #bbf7d0", borderRadius: 10, background: "#f0fdf4", color: "#166534", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13 };
+const select: CSSProperties = { height: 42, border: "1px solid rgba(255,255,255,.14)", borderRadius: 10, padding: "0 10px", font: "inherit", background: "#232323", color: "#F8FAFC", minWidth: 0 };
+const removeButton: CSSProperties = { height: 38, border: "1px solid rgba(255,255,255,.16)", borderRadius: 10, background: "rgba(255,255,255,.045)", color: "#E2E8F0", font: "inherit", fontWeight: 800, cursor: "pointer" };
+const submittedBadge: CSSProperties = { height: 38, border: "1px solid rgba(52,211,153,.30)", borderRadius: 10, background: "rgba(52,211,153,.10)", color: "#6EE7B7", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13, padding: "0 12px" };
 const sidePanel: CSSProperties = { display: "grid", gap: 14, alignContent: "start" };
-const sideSection: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 14, padding: 16, background: "#fbfdff" };
-const tabs: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, border: "1px solid #e5e7eb", borderRadius: 14, padding: 6, background: "#f8fafc" };
+const sideSection: CSSProperties = { border: "1px solid rgba(255,255,255,.08)", borderRadius: 14, padding: 16, background: "rgba(255,255,255,.02)" };
+const tabs: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, border: "1px solid rgba(255,255,255,.08)", borderRadius: 14, padding: 6, background: "rgba(255,255,255,.02)" };
 const docList: CSSProperties = { display: "grid", gap: 10, marginTop: 12 };
-const docItem: CSSProperties = { display: "grid", gap: 4, borderBottom: "1px solid #e5e7eb", paddingBottom: 10, fontWeight: 800 };
-const docItemLinked: CSSProperties = { border: "1px solid #bbf7d0", borderRadius: 10, padding: 10, background: "#f0fdf4" };
-const requiredDocItem: CSSProperties = { border: "1px solid #fecaca", borderRadius: 10, padding: 10, background: "#fef2f2" };
-const urgentTask: CSSProperties = { display: "grid", gap: 5, border: "1px solid #fca5a5", borderRadius: 10, padding: 10, background: "#fff1f2", fontWeight: 800 };
-const uploadedFileItem: CSSProperties = { display: "grid", gap: 5, border: "1px solid #dbeafe", borderRadius: 10, padding: 10, background: "#eff6ff", fontWeight: 800 };
+const docItem: CSSProperties = { display: "grid", gap: 4, borderBottom: "1px solid rgba(255,255,255,.08)", paddingBottom: 10, fontWeight: 800 };
+const docItemLinked: CSSProperties = { border: "1px solid rgba(52,211,153,.30)", borderRadius: 10, padding: 10, background: "rgba(52,211,153,.08)" };
+const requiredDocItem: CSSProperties = { border: "1px solid rgba(239,68,68,.30)", borderRadius: 10, padding: 10, background: "rgba(239,68,68,.08)" };
+const urgentTask: CSSProperties = { display: "grid", gap: 5, border: "1px solid rgba(239,68,68,.32)", borderRadius: 10, padding: 10, background: "rgba(239,68,68,.10)", fontWeight: 800 };
+const uploadedFileItem: CSSProperties = { display: "grid", gap: 5, border: "1px solid rgba(33,211,199,.22)", borderRadius: 10, padding: 10, background: "rgba(33,211,199,.06)", fontWeight: 800 };
 const docTitleRow: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 };
-const docDescription: CSSProperties = { color: "#475569", fontWeight: 600, lineHeight: 1.4 };
-const checkBadge: CSSProperties = { border: "1px solid #86efac", borderRadius: 999, padding: "3px 8px", color: "#166534", background: "#dcfce7", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
-const openBadge: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 999, padding: "3px 8px", color: "#64748b", background: "#f8fafc", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
-const dangerBadge: CSSProperties = { border: "1px solid #fca5a5", borderRadius: 999, padding: "3px 8px", color: "#991b1b", background: "#fee2e2", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
-const notesField: CSSProperties = { width: "100%", minHeight: 160, border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, font: "inherit", resize: "vertical", boxSizing: "border-box", marginTop: 12 };
-const chatBaseline: CSSProperties = { display: "grid", gap: 4, border: "1px solid #ccfbf1", borderRadius: 10, padding: 10, background: "#f0fdfa", color: "#0f766e", fontSize: 13, lineHeight: 1.4, marginTop: 10 };
-const aiBubble: CSSProperties = { border: "1px solid #dbeafe", background: "#eff6ff", color: "#1e3a8a", borderRadius: 10, padding: 10, fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap" };
-const aiBubbleUser: CSSProperties = { border: "1px solid #e2e8f0", background: "#fff", color: "#334155", borderRadius: 10, padding: 10, fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap" };
+const docDescription: CSSProperties = { color: "#B8C4D6", fontWeight: 600, lineHeight: 1.4 };
+const checkBadge: CSSProperties = { border: "1px solid rgba(52,211,153,.35)", borderRadius: 999, padding: "3px 8px", color: "#6EE7B7", background: "rgba(52,211,153,.12)", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
+const openBadge: CSSProperties = { border: "1px solid rgba(255,255,255,.12)", borderRadius: 999, padding: "3px 8px", color: "#95A3B6", background: "rgba(255,255,255,.03)", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
+const dangerBadge: CSSProperties = { border: "1px solid rgba(239,68,68,.35)", borderRadius: 999, padding: "3px 8px", color: "#FCA5A5", background: "rgba(239,68,68,.12)", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
+const notesField: CSSProperties = { width: "100%", minHeight: 160, border: "1px solid rgba(255,255,255,.14)", borderRadius: 10, padding: 12, font: "inherit", background: "#232323", color: "#F8FAFC", resize: "vertical", boxSizing: "border-box", marginTop: 12 };
+const chatBaseline: CSSProperties = { display: "grid", gap: 4, border: "1px solid rgba(33,211,199,.22)", borderRadius: 10, padding: 10, background: "rgba(33,211,199,.06)", color: "#7FE7DE", fontSize: 13, lineHeight: 1.4, marginTop: 10 };
+const aiBubble: CSSProperties = { border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", color: "#E7ECF3", borderRadius: 10, padding: 10, fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap" };
+const aiBubbleUser: CSSProperties = { border: "1px solid rgba(255,255,255,.10)", background: "#2B2B2B", color: "#F8FAFC", borderRadius: 10, padding: 10, fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap" };
 
 function tabButton(active: boolean, danger = false): CSSProperties {
   return {
     height: 38,
     border: "1px solid transparent",
-    borderColor: active ? (danger ? "#fca5a5" : "#99f6e4") : "transparent",
+    borderColor: active ? (danger ? "rgba(239,68,68,.35)" : "rgba(33,211,199,.30)") : "transparent",
     borderRadius: 10,
-    background: active ? (danger ? "#fee2e2" : "#ccfbf1") : "transparent",
-    color: active ? (danger ? "#991b1b" : "#0f766e") : "#475569",
+    background: active ? (danger ? "rgba(239,68,68,.12)" : "rgba(33,211,199,.10)") : "transparent",
+    color: active ? (danger ? "#FCA5A5" : "#7FE7DE") : "#95A3B6",
     font: "inherit",
     fontSize: 13,
     fontWeight: 900,
