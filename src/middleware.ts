@@ -17,6 +17,7 @@ const isPublicPage = createRouteMatcher([
   "/book(.*)",
   "/programs(.*)",
   "/dealer-ai-underwriter(.*)",
+  "/funding-review(.*)",
   // Token-resolved HUD share — title / escrow / insurance contacts open
   // these without an account. The backend validates the token; we just
   // need to not bounce them off the edge.
