@@ -42,6 +42,14 @@ const isSuperAdminOnlyPage = createRouteMatcher([
   "/settings(.*)",
 ]);
 
+// Default-deny for the whole /admin surface: every admin page is operator-only
+// (super_admin OR loan_exec), so clients / brokers are bounced at the edge even
+// for routes not individually enumerated above. This closes the gap where a new
+// or unlisted /admin/* page (e.g. /admin/lending-ai) was reachable by any
+// signed-in user. Backend routers enforce the same roles; this is the edge tier.
+const isOperatorOnlyPage = createRouteMatcher(["/admin(.*)"]);
+const OPERATOR_ROLES = new Set(["super_admin", "loan_exec"]);
+
 // Role lives in the backend `User` row (see /auth/me). For edge enforcement
 // the role must also be mirrored into Clerk publicMetadata so it shows up in
 // `sessionClaims`. Until that backend mirroring lands, this check degrades to
@@ -103,6 +111,14 @@ export default clerkMiddleware(async (auth, req) => {
   if (isSuperAdminOnlyPage(req)) {
     const role = getRoleFromClaims(sessionClaims as Record<string, unknown>);
     if (role && role !== "super_admin") {
+      return NextResponse.redirect(new URL("/", req.nextUrl.origin));
+    }
+  } else if (isOperatorOnlyPage(req)) {
+    // Any other /admin/* page: operators only. (Same soft-degrade as above —
+    // when the role claim isn't in the JWT yet, fall through to the backend +
+    // per-page guard. See the PRODUCTION BLOCKER note above.)
+    const role = getRoleFromClaims(sessionClaims as Record<string, unknown>);
+    if (role && !OPERATOR_ROLES.has(role)) {
       return NextResponse.redirect(new URL("/", req.nextUrl.origin));
     }
   }

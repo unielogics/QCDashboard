@@ -23,10 +23,12 @@ import { Icon } from "@/components/design-system/Icon";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 import {
   isAINotDeployed,
+  useCurrentUser,
   useFundingMetaRules,
   useLendingPlaybooks,
   usePatchFundingMetaRules,
 } from "@/hooks/useApi";
+import { Role } from "@/lib/enums.generated";
 import {
   AFTER_HOURS_LABEL,
   TIMEZONE_OPTIONS,
@@ -107,6 +109,14 @@ const SUGGESTED_RULES = [
 export default function LendingAISettingsPage() {
   const { t } = useTheme();
   const router = useRouter();
+  // Lending AI settings are operator-only (super-admin or loan-exec), matching
+  // the backend _require_admin gate. Bounce anyone else instead of rendering
+  // the console and firing its authenticated reads.
+  const { data: me, isLoading: meLoading } = useCurrentUser();
+  const isOperator = me?.role === Role.SUPER_ADMIN || me?.role === Role.LOAN_EXEC;
+  useEffect(() => {
+    if (!meLoading && me && !isOperator) router.replace("/");
+  }, [meLoading, me, isOperator, router]);
   const { data, isLoading, error } = useFundingMetaRules("communication");
   const patch = usePatchFundingMetaRules("communication");
   const playbooks = useLendingPlaybooks();
@@ -150,6 +160,8 @@ export default function LendingAISettingsPage() {
       </div>
     );
   }
+
+  if (me && !isOperator) return null;
 
   return (
     <div style={{ padding: 24, maxWidth: 1040, margin: "0 auto" }}>

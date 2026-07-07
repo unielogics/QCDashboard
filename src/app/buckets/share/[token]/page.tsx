@@ -6,6 +6,7 @@ import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview
 import { QCMark } from "@/components/QCMark";
 import { Icon } from "@/components/design-system/Icon";
 import { apiBase } from "@/lib/api";
+import { openSignedUrl } from "@/lib/safeOpen";
 
 type FileRow = { id: string; file_name: string; content_type: string; size_bytes?: number; created_at: string; preview_url?: string | null; download_url?: string | null };
 type Note = { id: string; author_name: string; content: string; created_at: string };
@@ -130,7 +131,7 @@ export default function BucketSharePage() {
         return;
       }
       const payload = (await res.json()) as { url: string };
-      window.open(payload.url, "_blank", "noopener,noreferrer");
+      if (!openSignedUrl(payload.url)) setStatus("Download is not available for this file.");
     } finally {
       setDownloadingId(null);
     }
