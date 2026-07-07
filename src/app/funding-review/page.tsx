@@ -131,6 +131,8 @@ type IntelligenceModel = {
 const DEALER_AI_UPLOAD_ACCEPT = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.zip,.csv,.xlsx,.txt,text/plain,application/pdf,image/*,application/zip,application/x-zip-compressed,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const DEALER_AI_SESSION_KEY = "qc_funding_review_session";
 const DEALER_AI_TOKEN_KEY = "qc_funding_review_token";
+const REAL_ESTATE_MIN_LTV = 0.6;
+const REAL_ESTATE_MAX_LTV = 0.75;
 const REVIEW_PROGRESS_STAGES: Array<{ key: ReviewProgressStage; label: string }> = [
   { key: "attaching", label: "Attaching files" },
   { key: "uploading", label: "Uploading securely" },
@@ -1143,6 +1145,34 @@ function ContactWidget({
   onStart: () => void;
   onShowLogin: () => void;
 }) {
+  const requestedAmount = numericOrNull(contact.requested_amount);
+  const propertyValue = numericOrNull(contact.estimated_value_or_purchase_price);
+  const currentLtv = requestedAmount && propertyValue ? requestedAmount / propertyValue : null;
+  const conservativeRequest = propertyValue ? Math.floor(propertyValue * REAL_ESTATE_MIN_LTV) : null;
+  const maxRequest = propertyValue ? Math.floor(propertyValue * REAL_ESTATE_MAX_LTV) : null;
+  const conservativeValue = requestedAmount ? Math.ceil(requestedAmount / REAL_ESTATE_MIN_LTV) : null;
+  const requiredValue = requestedAmount ? Math.ceil(requestedAmount / REAL_ESTATE_MAX_LTV) : null;
+
+  function updateRequestedAmount(value: string) {
+    const requested = onlyDigits(value);
+    const requestedNumber = numericOrNull(requested);
+    setContact({
+      ...contact,
+      requested_amount: requested,
+      estimated_value_or_purchase_price: requestedNumber ? String(Math.ceil(requestedNumber / REAL_ESTATE_MAX_LTV)) : contact.estimated_value_or_purchase_price,
+    });
+  }
+
+  function updatePropertyValue(value: string) {
+    const property = onlyDigits(value);
+    const propertyNumber = numericOrNull(property);
+    setContact({
+      ...contact,
+      requested_amount: propertyNumber ? String(Math.floor(propertyNumber * REAL_ESTATE_MAX_LTV)) : contact.requested_amount,
+      estimated_value_or_purchase_price: property,
+    });
+  }
+
   return (
     <div style={stepOneFormCard}>
       <div>
@@ -1172,8 +1202,18 @@ function ContactWidget({
         />
       </div>
       <div style={stepOneFormGrid}>
-        <Field label="Requested amount" value={contact.requested_amount} onChange={(value) => setContact({ ...contact, requested_amount: onlyDigits(value) })} placeholder="500000" />
-        <Field label="Value / purchase price" value={contact.estimated_value_or_purchase_price} onChange={(value) => setContact({ ...contact, estimated_value_or_purchase_price: onlyDigits(value) })} placeholder="750000" />
+        <Field label="Requested amount" value={contact.requested_amount} onChange={updateRequestedAmount} placeholder="500000" />
+        <Field label="Value / purchase price" value={contact.estimated_value_or_purchase_price} onChange={updatePropertyValue} placeholder="750000" />
+      </div>
+      <div style={ltvGuidanceBox}>
+        <div style={ltvGuidanceHeader}>
+          <span>Loan sizing guide</span>
+          <strong>{currentLtv ? `${(currentLtv * 100).toFixed(1)}% LTV` : "60%-75% LTV"}</strong>
+        </div>
+        <div style={ltvGuidanceGrid}>
+          <span>{propertyValue ? `Max request @ 75%: ${formatMoneyCompact(maxRequest || 0)}` : requestedAmount ? `Required value @ 75%: ${formatMoneyCompact(requiredValue || 0)}` : "Enter either number to calculate the other."}</span>
+          <span>{propertyValue ? `Conservative @ 60%: ${formatMoneyCompact(conservativeRequest || 0)}` : requestedAmount ? `Value @ 60%: ${formatMoneyCompact(conservativeValue || 0)}` : "Max leverage uses 75% LTV."}</span>
+        </div>
       </div>
       <Field label="Monthly rent" value={contact.monthly_rent} onChange={(value) => setContact({ ...contact, monthly_rent: onlyDigits(value) })} placeholder="4500" />
       <label style={legalCheckRow}>
@@ -2776,6 +2816,30 @@ const stepOneFormCard: CSSProperties = {
 const stepOneFormTitle: CSSProperties = { margin: 0, color: "#F8FAFC", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 22, letterSpacing: 0 };
 const stepOneFormCopy: CSSProperties = { margin: "6px 0 0", color: "#9DABC0", fontSize: 13, lineHeight: 1.4 };
 const stepOneFormGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,150px),1fr))", gap: 10 };
+const ltvGuidanceBox: CSSProperties = {
+  border: "1px solid rgba(33,211,199,.22)",
+  borderRadius: 14,
+  background: "linear-gradient(135deg,rgba(33,211,199,.10),rgba(212,175,55,.06))",
+  padding: "10px 12px",
+  display: "grid",
+  gap: 8,
+};
+const ltvGuidanceHeader: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  color: "#D9FFFB",
+  fontSize: 12,
+  fontWeight: 900,
+};
+const ltvGuidanceGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,190px),1fr))",
+  gap: 8,
+  color: "#9FB0C8",
+  fontSize: 12,
+  lineHeight: 1.35,
+};
 const stepOneCta: CSSProperties = {
   border: 0,
   borderRadius: 999,
