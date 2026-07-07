@@ -11,6 +11,7 @@ import { QCMark } from "@/components/QCMark";
 import { useCurrentUser } from "@/hooks/useApi";
 import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
+import { openSignedUrl } from "@/lib/safeOpen";
 
 type VendorBucket = {
   id: string;
@@ -142,7 +143,7 @@ export default function VendorBucketsPage() {
     setDownloadingId(file.id);
     try {
       const payload = await call<{ url: string }>(`/buckets/vendor/${room.bucket.id}/files/${file.id}/download`, { method: "POST" });
-      window.open(payload.url, "_blank", "noopener,noreferrer");
+      if (!openSignedUrl(payload.url)) setStatus("Download is not available for this file.");
     } catch (error) {
       setStatus(readableError(error));
     } finally {

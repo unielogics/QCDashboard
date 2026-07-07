@@ -11,6 +11,7 @@ import { useCurrentUser } from "@/hooks/useApi";
 import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
 import { APP_ORIGIN } from "@/lib/appUrl";
+import { openSignedUrl } from "@/lib/safeOpen";
 import { useUI } from "@/store/ui";
 
 type Bucket = {
@@ -1372,7 +1373,7 @@ export default function BucketsAdminPage() {
       return;
     }
     const res = await call<{ url: string }>(`/buckets/admin/${detail.id}/files/${file.id}/url?download=${download}`);
-    window.open(res.url, "_blank", "noopener,noreferrer");
+    openSignedUrl(res.url);
   }
 
   async function deleteFile(file: BucketFile) {
