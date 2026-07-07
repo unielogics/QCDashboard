@@ -984,11 +984,18 @@ export default function DealerAIUnderwriterPage() {
                   {showReviewProgress ? <ReviewProgress stage={reviewProgress} completedAt={reviewCompletedAt} compact={compact} /> : null}
                   <div style={compact ? messagesModernMobile : messagesModern}>
                     {fundability ? <FundabilityBanner banner={fundability} /> : null}
-                    {chat.map((line) => (
-                      <div key={line.id} style={line.role === "assistant" ? assistantBubble : userBubble}>
-                        {line.content}
-                      </div>
-                    ))}
+                    {chat.map((line) =>
+                      line.role === "assistant" ? (
+                        <div key={line.id} style={assistantRow}>
+                          <div style={assistantAvatar} aria-hidden>QC</div>
+                          <div style={assistantBubble}>{line.content}</div>
+                        </div>
+                      ) : (
+                        <div key={line.id} style={userBubble}>
+                          {line.content}
+                        </div>
+                      ),
+                    )}
                     {response.widget?.type === "book_call" ? (
                       <BookCallWidget widget={response.widget} busy={busy} onBook={(startsAt) => bookCall(startsAt).catch(() => undefined)} />
                     ) : null}
@@ -1033,11 +1040,11 @@ export default function DealerAIUnderwriterPage() {
                     />
                     <button
                       type="button"
-                      style={primaryButton}
+                      style={!token || (!chatText.trim() && !hasQueuedUpload) || busy ? disabledPrimaryButton : primaryButton}
                       disabled={!token || (!chatText.trim() && !hasQueuedUpload) || busy}
                       onClick={() => submitComposer().catch(() => undefined)}
                     >
-                      {hasQueuedUpload ? (chatText.trim() ? "Upload & send" : "Upload") : "Send"}
+                      {busy ? "Sending…" : hasQueuedUpload ? (chatText.trim() ? "Upload & send" : "Upload") : "Send"}
                     </button>
                   </div>
                   {status ? <div style={statusBox}>{status}</div> : null}
@@ -3234,10 +3241,32 @@ const compactMetrics: CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap
 const compactMetricsMobile: CSSProperties = { ...compactMetrics, display: "grid", gridTemplateColumns: "1fr 1fr", justifyContent: "stretch" };
 const messages: CSSProperties = { padding: 18, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", minHeight: 520 };
 const messagesMobile: CSSProperties = { ...messages, padding: 12, minHeight: 360 };
+const assistantRow: CSSProperties = {
+  alignSelf: "stretch",
+  display: "grid",
+  gridTemplateColumns: "34px minmax(0,1fr)",
+  gap: 12,
+  alignItems: "start",
+};
+const assistantAvatar: CSSProperties = {
+  width: 34,
+  height: 34,
+  borderRadius: 11,
+  display: "grid",
+  placeItems: "center",
+  background: "linear-gradient(135deg,#E9D58A,#D4AF37)",
+  color: "#0B1326",
+  fontWeight: 900,
+  fontSize: 12,
+  letterSpacing: 0.5,
+  marginTop: 2,
+  boxShadow: "0 6px 18px rgba(212,175,55,.22)",
+  userSelect: "none",
+};
 const assistantBubble: CSSProperties = {
-  alignSelf: "flex-start",
+  minWidth: 0,
   maxWidth: 780,
-  padding: "4px 0",
+  padding: "3px 0",
   borderRadius: 0,
   background: "transparent",
   border: 0,
@@ -3887,6 +3916,12 @@ const primaryButton: CSSProperties = {
   cursor: "pointer",
 };
 const primaryWide: CSSProperties = { ...primaryButton, width: "100%" };
+const disabledPrimaryButton: CSSProperties = {
+  ...primaryButton,
+  background: "rgba(255,255,255,.10)",
+  color: "rgba(248,250,252,.45)",
+  cursor: "not-allowed",
+};
 const secondaryButton: CSSProperties = {
   border: "1px solid rgba(255,255,255,.16)",
   borderRadius: 999,
