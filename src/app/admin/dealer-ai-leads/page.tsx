@@ -13,6 +13,7 @@ import { useCurrentUser } from "@/hooks/useApi";
 
 type LeadRow = {
   id: string;
+  variant: string;
   client_id?: string | null;
   bucket_id: string;
   bucket_name: string;
@@ -74,6 +75,49 @@ type LeadDetail = {
   files: UploadedFile[];
   latest_review?: { status: string; result?: Record<string, unknown> | null; error?: string | null } | null;
   messages?: Array<{ id: string; role: string; content: string; created_at: string }>;
+  artifacts?: Artifact[];
+  email_sends?: EmailSend[];
+};
+
+type Artifact = {
+  id: string;
+  intake_id: string;
+  artifact_type: string;
+  title: string;
+  body_text?: string | null;
+  body_json?: Record<string, unknown> | null;
+  s3_key?: string | null;
+  download_url?: string | null;
+  created_by_user_id?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type EmailSend = {
+  id: string;
+  intake_id: string;
+  executive_summary_artifact_id?: string | null;
+  lender_packet_artifact_id?: string | null;
+  to_emails: string[];
+  cc_emails?: string[] | null;
+  subject: string;
+  body: string;
+  vendor_access_ids?: string[] | null;
+  ses_status: string;
+  ses_message_ids?: string[] | null;
+  ses_error?: string | null;
+  sent_by_user_id?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type VendorEmailPreview = {
+  subject: string;
+  body: string;
+  to_emails: string[];
+  cc_emails: string[];
+  executive_summary?: Artifact | null;
+  lender_packet?: Artifact | null;
 };
 
 const PROBABILITY_FILTERS = [
@@ -91,6 +135,12 @@ const STATUS_FILTERS = [
   { value: "completed", label: "Completed" },
 ];
 
+const VARIANT_FILTERS = [
+  { value: "all", label: "All reviews" },
+  { value: "dealer", label: "Dealer" },
+  { value: "real_estate", label: "Real estate" },
+];
+
 const LIMIT = 25;
 
 export default function AdminDealerAILeadsPage() {
@@ -106,6 +156,7 @@ export default function AdminDealerAILeadsPage() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [variantFilter, setVariantFilter] = useState("all");
   const [probabilityFilter, setProbabilityFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<LeadDetail | null>(null);
@@ -127,6 +178,7 @@ export default function AdminDealerAILeadsPage() {
         offset: String(nextOffset),
         status_filter: statusFilter,
         probability_status: probabilityFilter,
+        variant_filter: variantFilter,
       });
       if (submittedQuery.trim()) params.set("q", submittedQuery.trim());
       const data = await call<LeadPage>(`/admin/dealer-ai-leads?${params.toString()}`);
@@ -175,6 +227,63 @@ export default function AdminDealerAILeadsPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function refreshSelectedLead() {
+    if (selectedId) await openLead(selectedId);
+  }
+
+  async function generateExecutiveSummary(id: string) {
+    setNotice("");
+    try {
+      await call<Artifact>(`/admin/dealer-ai-leads/${id}/executive-summary`, { method: "POST" });
+      await refreshSelectedLead();
+      setNotice("Executive summary generated.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Executive summary failed.");
+    }
+  }
+
+  async function generateLenderPacket(id: string) {
+    setNotice("");
+    try {
+      await call<Artifact>(`/admin/dealer-ai-leads/${id}/lender-packet`, { method: "POST" });
+      await refreshSelectedLead();
+      setNotice("Lender packet generated.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Lender packet failed.");
+    }
+  }
+
+  async function previewVendorEmail(id: string, payload: { to_emails: string[]; cc_emails: string[]; subject?: string; body?: string; include_lender_packet?: boolean }) {
+    setNotice("");
+    try {
+      const preview = await call<VendorEmailPreview>(`/admin/dealer-ai-leads/${id}/vendor-email/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      await refreshSelectedLead();
+      return preview;
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Vendor email preview failed.");
+      throw error;
+    }
+  }
+
+  async function sendVendorEmail(id: string, payload: { to_emails: string[]; cc_emails: string[]; subject: string; body: string; include_lender_packet?: boolean }) {
+    setNotice("");
+    try {
+      await call<{ email_sends: EmailSend[]; vendor_access_ids: string[] }>(`/admin/dealer-ai-leads/${id}/vendor-email/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      await refreshSelectedLead();
+      setNotice("Vendor email send recorded.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Vendor email send failed.");
+    }
+  }
+
   useEffect(() => {
     if (!meLoading && me && me.role !== Role.SUPER_ADMIN) router.replace("/");
   }, [meLoading, me, router]);
@@ -182,7 +291,7 @@ export default function AdminDealerAILeadsPage() {
   useEffect(() => {
     if (me?.role === Role.SUPER_ADMIN) loadLeads(0).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me?.role, statusFilter, probabilityFilter, submittedQuery]);
+  }, [me?.role, statusFilter, variantFilter, probabilityFilter, submittedQuery]);
 
   useEffect(() => {
     if (me?.role === Role.SUPER_ADMIN && leadParam && leadParam !== selectedId) {
@@ -210,12 +319,12 @@ export default function AdminDealerAILeadsPage() {
     <div style={{ height: "calc(100dvh - 105px)", maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: 0, overflow: "hidden" }}>
       <div style={{ flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
         <div>
-          <h1 style={{ margin: 0, color: t.ink, fontSize: 24, letterSpacing: -0.5 }}>Car dealer AI leads</h1>
+          <h1 style={{ margin: 0, color: t.ink, fontSize: 24, letterSpacing: -0.5 }}>AI Underwriting Leads</h1>
           <p style={{ margin: "4px 0 0", color: t.ink3, lineHeight: 1.35, fontSize: 13 }}>
-            Public dealer funding review submissions, uploaded evidence, AI probability, booking status, and bucket access.
+            Dealer and real-estate funding review submissions, conversations, evidence, management packages, and vendor sends.
           </p>
         </div>
-        <Link href="/programs/car-dealers" style={{ ...qcBtn(t), textDecoration: "none" }}>Dealer landing page</Link>
+        <Link href="/admin/buckets" style={{ ...qcBtn(t), textDecoration: "none" }}>Buckets</Link>
       </div>
 
       <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
@@ -226,13 +335,16 @@ export default function AdminDealerAILeadsPage() {
       </div>
 
       <Card pad={12} style={{ flexShrink: 0 }}>
-        <form onSubmit={submitSearch} style={{ display: "grid", gridTemplateColumns: "minmax(260px,1fr) 230px 260px auto", gap: 10, alignItems: "center" }}>
+        <form onSubmit={submitSearch} style={{ display: "grid", gridTemplateColumns: "minmax(240px,1fr) 190px 210px 250px auto", gap: 10, alignItems: "center" }}>
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search name, email, dealership"
             style={inputStyle(t)}
           />
+          <select value={variantFilter} onChange={(event) => { setOffset(0); setVariantFilter(event.target.value); }} style={inputStyle(t)}>
+            {VARIANT_FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </select>
           <select value={statusFilter} onChange={(event) => { setOffset(0); setStatusFilter(event.target.value); }} style={inputStyle(t)}>
             {STATUS_FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </select>
@@ -263,7 +375,7 @@ export default function AdminDealerAILeadsPage() {
                   <strong style={{ color: t.ink, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {row.business_name || row.full_name}
                   </strong>
-                  <span style={{ color: t.ink3, fontSize: 12 }}>{row.full_name} · {row.email}</span>
+                  <span style={{ color: t.ink3, fontSize: 12 }}>{variantLabel(row.variant)} · {row.full_name} · {row.email}</span>
                 </div>
                 <div>
                   <Pill bg={probabilityTone(t, row.probability_status).bg} color={probabilityTone(t, row.probability_status).fg}>
@@ -301,6 +413,10 @@ export default function AdminDealerAILeadsPage() {
             loading={detailLoading}
             onClose={() => { setSelectedId(null); setDetail(null); }}
             onExport={() => exportPdf(selectedId)}
+            onGenerateSummary={() => generateExecutiveSummary(selectedId)}
+            onGeneratePacket={() => generateLenderPacket(selectedId)}
+            onPreviewEmail={(payload) => previewVendorEmail(selectedId, payload)}
+            onSendEmail={(payload) => sendVendorEmail(selectedId, payload)}
           />
         ) : null}
       </div>
@@ -308,27 +424,108 @@ export default function AdminDealerAILeadsPage() {
   );
 }
 
-function LeadDetailPanel({ detail, loading, onClose, onExport }: { detail: LeadDetail | null; loading: boolean; onClose: () => void; onExport: () => void }) {
+function LeadDetailPanel({
+  detail,
+  loading,
+  onClose,
+  onExport,
+  onGenerateSummary,
+  onGeneratePacket,
+  onPreviewEmail,
+  onSendEmail,
+}: {
+  detail: LeadDetail | null;
+  loading: boolean;
+  onClose: () => void;
+  onExport: () => void;
+  onGenerateSummary: () => Promise<void> | void;
+  onGeneratePacket: () => Promise<void> | void;
+  onPreviewEmail: (payload: { to_emails: string[]; cc_emails: string[]; subject?: string; body?: string; include_lender_packet?: boolean }) => Promise<VendorEmailPreview>;
+  onSendEmail: (payload: { to_emails: string[]; cc_emails: string[]; subject: string; body: string; include_lender_packet?: boolean }) => Promise<void> | void;
+}) {
   const { t } = useTheme();
+  const [activeTab, setActiveTab] = useState<"conversation" | "evidence" | "package">("conversation");
+  const [toInput, setToInput] = useState("");
+  const [ccInput, setCcInput] = useState("");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState("");
   const result = detail?.latest_review?.result || detail?.intake.result_snapshot || null;
   const evidence = asRecord(result?.document_evidence_map);
   const missing = arrayOfRecords(result?.missing_or_incomplete_items);
   const strengths = arrayOfStrings(result?.strengths);
   const risks = arrayOfStrings(result?.risks);
+  const artifacts = detail?.artifacts || [];
+  const emailSends = detail?.email_sends || [];
+  const summary = artifacts.find((artifact) => artifact.artifact_type === "executive_summary");
+  const packet = artifacts.find((artifact) => artifact.artifact_type === "lender_packet");
+
+  async function previewEmail() {
+    setBusy("preview");
+    try {
+      const preview = await onPreviewEmail({
+        to_emails: parseEmailList(toInput),
+        cc_emails: parseEmailList(ccInput),
+        subject: subject || undefined,
+        body: body || undefined,
+        include_lender_packet: true,
+      });
+      setSubject(preview.subject);
+      setBody(preview.body);
+      if (!toInput && preview.to_emails.length) setToInput(preview.to_emails.join(", "));
+      if (!ccInput && preview.cc_emails.length) setCcInput(preview.cc_emails.join(", "));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function sendEmail() {
+    setBusy("send");
+    try {
+      await onSendEmail({
+        to_emails: parseEmailList(toInput),
+        cc_emails: parseEmailList(ccInput),
+        subject,
+        body,
+        include_lender_packet: true,
+      });
+    } finally {
+      setBusy("");
+    }
+  }
 
   return (
     <Card pad={0} style={{ minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <div style={{ flexShrink: 0, padding: 16, borderBottom: `1px solid ${t.line}`, display: "flex", justifyContent: "space-between", gap: 12 }}>
         <div>
-          <h2 style={{ margin: 0, color: t.ink, fontSize: 18 }}>{detail?.intake.business_name || detail?.intake.full_name || "Dealer lead"}</h2>
-          <p style={{ margin: "4px 0 0", color: t.ink3, fontSize: 12 }}>{detail?.intake.email}</p>
+          <h2 style={{ margin: 0, color: t.ink, fontSize: 18 }}>{detail?.intake.business_name || detail?.intake.full_name || "AI lead"}</h2>
+          <p style={{ margin: "4px 0 0", color: t.ink3, fontSize: 12 }}>
+            {detail ? `${variantLabel(detail.intake.variant)} · ${detail.intake.email}` : "Loading"}
+          </p>
         </div>
         <button style={qcBtn(t)} onClick={onClose}>Close</button>
       </div>
       {loading || !detail ? (
         <div style={{ padding: 20, color: t.ink3 }}>Loading lead detail...</div>
       ) : (
-        <div style={{ flex: 1, minHeight: 0, padding: 16, display: "grid", gap: 14, overflowY: "auto" }}>
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ flexShrink: 0, padding: "12px 16px", display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, borderBottom: `1px solid ${t.line}` }}>
+            {[
+              ["conversation", "Conversation"],
+              ["evidence", "Evidence"],
+              ["package", "Management Package"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setActiveTab(value as typeof activeTab)}
+                style={{ ...qcBtn(t), background: activeTab === value ? t.brandSoft : t.surface2, color: activeTab === value ? t.brand : t.ink2 }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div style={{ flex: 1, minHeight: 0, padding: 16, display: "grid", gap: 14, overflowY: "auto" }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Pill bg={probabilityTone(t, String(result?.probability_status || "")).bg} color={probabilityTone(t, String(result?.probability_status || "")).fg}>
               {String(result?.probability_status || "No screen yet")}
@@ -338,52 +535,129 @@ function LeadDetailPanel({ detail, loading, onClose, onExport }: { detail: LeadD
             </Pill>
           </div>
 
-          <InfoBlock title="Contact">
-            <Line label="Name" value={detail.intake.full_name} />
-            <Line label="Email" value={detail.intake.email} />
-            <Line label="Phone" value={detail.intake.phone || "—"} />
-            <Line label="Requested amount" value={formatMoney(detail.intake.requested_loan_amount)} />
-            <Line label="Use of funds" value={detail.intake.loan_purpose || "—"} />
-            <Line label="Referral" value={detail.intake.referral_source || "—"} />
-          </InfoBlock>
+          {activeTab === "conversation" ? (
+            <InfoBlock title="Client / AI conversation">
+              <div style={{ display: "grid", gap: 10 }}>
+                {detail.messages?.length ? detail.messages.map((message) => (
+                  <div key={message.id} style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: 10, background: message.role === "user" ? t.surface : t.surface2 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                      <strong style={{ color: t.ink, fontSize: 12 }}>{message.role === "user" ? "Client" : "AI underwriter"}</strong>
+                      <span style={{ color: t.ink3, fontSize: 11 }}>{formatDateTime(message.created_at)}</span>
+                    </div>
+                    <p style={{ margin: 0, color: t.ink2, whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{message.content}</p>
+                  </div>
+                )) : <span style={{ color: t.ink3 }}>No conversation yet.</span>}
+              </div>
+            </InfoBlock>
+          ) : null}
 
-          <InfoBlock title="Actions">
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Link href={`/admin/buckets`} style={{ ...qcBtnPrimary(t), textDecoration: "none" }}>Open Buckets</Link>
-              <button style={qcBtn(t)} onClick={() => navigator.clipboard.writeText(detail.intake.bucket_id)}>Copy bucket ID</button>
-              <button style={qcBtn(t)} onClick={onExport}>Export intelligence PDF</button>
-            </div>
-          </InfoBlock>
+          {activeTab === "evidence" ? (
+            <>
+              <InfoBlock title="Contact">
+                <Line label="Name" value={detail.intake.full_name} />
+                <Line label="Email" value={detail.intake.email} />
+                <Line label="Phone" value={detail.intake.phone || "-"} />
+                <Line label="Requested amount" value={formatMoney(detail.intake.requested_loan_amount)} />
+                <Line label="Use of funds" value={detail.intake.loan_purpose || "-"} />
+                <Line label="Referral" value={detail.intake.referral_source || "-"} />
+              </InfoBlock>
 
-          <InfoBlock title="AI next step">
-            <p style={{ margin: 0, color: t.ink2, lineHeight: 1.45 }}>{String(result?.one_next_step || result?.executive_summary || "Awaiting AI review.")}</p>
-          </InfoBlock>
-
-          <InfoBlock title="Uploaded files">
-            <div style={{ display: "grid", gap: 7 }}>
-              {detail.files.length ? detail.files.slice(0, 16).map((file) => (
-                <div key={file.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${t.line}`, paddingBottom: 7 }}>
-                  <span style={{ color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.zip_entry_path || file.file_name}</span>
-                  <span style={{ color: t.ink3, fontSize: 12 }}>{formatSize(file.size_bytes)}</span>
+              <InfoBlock title="Actions">
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Link href={`/admin/buckets`} style={{ ...qcBtnPrimary(t), textDecoration: "none" }}>Open Buckets</Link>
+                  <button style={qcBtn(t)} onClick={() => navigator.clipboard.writeText(detail.intake.bucket_id)}>Copy bucket ID</button>
+                  <button style={qcBtn(t)} onClick={onExport}>Export intelligence PDF</button>
                 </div>
-              )) : <span style={{ color: t.ink3 }}>No uploaded files yet.</span>}
-            </div>
-          </InfoBlock>
+              </InfoBlock>
 
-          <InfoBlock title="Evidence coverage">
-            <CompactList rows={arrayOfRecords(evidence?.baseline_coverage).map((row) => ({
-              title: String(row.category || "Evidence"),
-              body: `${String(row.status || "unclear")} · ${Array.isArray(row.evidence) ? row.evidence.join(" | ") : String(row.evidence || row.gap || "")}`,
-            }))} empty="No evidence map yet." />
-          </InfoBlock>
+              <InfoBlock title="AI next step">
+                <p style={{ margin: 0, color: t.ink2, lineHeight: 1.45 }}>{String(result?.one_next_step || result?.executive_summary || "Awaiting AI review.")}</p>
+              </InfoBlock>
 
-          <InfoBlock title="Missing / blockers">
-            <CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No missing items listed." />
-          </InfoBlock>
+              <InfoBlock title="Uploaded files">
+                <div style={{ display: "grid", gap: 7 }}>
+                  {detail.files.length ? detail.files.slice(0, 20).map((file) => (
+                    <div key={file.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${t.line}`, paddingBottom: 7 }}>
+                      <span style={{ color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.zip_entry_path || file.file_name}</span>
+                      <span style={{ color: t.ink3, fontSize: 12 }}>{formatSize(file.size_bytes)}</span>
+                    </div>
+                  )) : <span style={{ color: t.ink3 }}>No uploaded files yet.</span>}
+                </div>
+              </InfoBlock>
 
-          <InfoBlock title="Strengths / risks">
-            <CompactList rows={[...strengths.map((item) => ({ title: "Strength", body: item })), ...risks.map((item) => ({ title: "Risk", body: item }))]} empty="Awaiting strengths and risks." />
-          </InfoBlock>
+              <InfoBlock title="Evidence coverage">
+                <CompactList rows={arrayOfRecords(evidence?.baseline_coverage).map((row) => ({
+                  title: String(row.category || "Evidence"),
+                  body: `${String(row.status || "unclear")} · ${Array.isArray(row.evidence) ? row.evidence.join(" | ") : String(row.evidence || row.gap || "")}`,
+                }))} empty="No evidence map yet." />
+              </InfoBlock>
+
+              <InfoBlock title="Missing / blockers">
+                <CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No missing items listed." />
+              </InfoBlock>
+
+              <InfoBlock title="Strengths / risks">
+                <CompactList rows={[...strengths.map((item) => ({ title: "Strength", body: item })), ...risks.map((item) => ({ title: "Risk", body: item }))]} empty="Awaiting strengths and risks." />
+              </InfoBlock>
+            </>
+          ) : null}
+
+          {activeTab === "package" ? (
+            <>
+              <InfoBlock title="Executive summary">
+                <div style={{ display: "grid", gap: 10 }}>
+                  <button style={qcBtnPrimary(t)} onClick={onGenerateSummary} disabled={busy !== ""}>Create executive summary</button>
+                  {summary ? (
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <strong style={{ color: t.ink }}>{summary.title}</strong>
+                      <p style={{ margin: 0, color: t.ink2, whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{summary.body_text || String(summary.body_json?.executive_summary || "")}</p>
+                      <span style={{ color: t.ink3, fontSize: 12 }}>Generated {formatDateTime(summary.created_at)}</span>
+                    </div>
+                  ) : <span style={{ color: t.ink3 }}>No executive summary generated yet.</span>}
+                </div>
+              </InfoBlock>
+
+              <InfoBlock title="Lender packet PDF">
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <button style={qcBtnPrimary(t)} onClick={onGeneratePacket} disabled={busy !== ""}>Create lender packet PDF</button>
+                  {packet?.download_url ? <a href={packet.download_url} style={{ ...qcBtn(t), textDecoration: "none" }}>Download packet</a> : null}
+                  {packet ? <span style={{ color: t.ink3, fontSize: 12 }}>{packet.title} · {formatDateTime(packet.created_at)}</span> : <span style={{ color: t.ink3, fontSize: 12 }}>No packet generated yet.</span>}
+                </div>
+              </InfoBlock>
+
+              <InfoBlock title="Vendor email">
+                <div style={{ display: "grid", gap: 10 }}>
+                  <input value={toInput} onChange={(event) => setToInput(event.target.value)} placeholder="Vendor emails, comma separated" style={inputStyle(t)} />
+                  <input value={ccInput} onChange={(event) => setCcInput(event.target.value)} placeholder="CC emails, comma separated" style={inputStyle(t)} />
+                  <input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Subject" style={inputStyle(t)} />
+                  <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Preview or write the vendor email body" style={{ ...inputStyle(t), minHeight: 150, paddingTop: 10, resize: "vertical" }} />
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button style={qcBtn(t)} onClick={previewEmail} disabled={busy !== ""}>{busy === "preview" ? "Preparing..." : "Prepare vendor email"}</button>
+                    <button style={qcBtnPrimary(t)} onClick={sendEmail} disabled={busy !== "" || !subject.trim() || !body.trim() || !parseEmailList(toInput).length}>
+                      {busy === "send" ? "Sending..." : "Send to vendors"}
+                    </button>
+                  </div>
+                  <p style={{ margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.4 }}>
+                    Send creates or reuses authenticated vendor access for each primary recipient. Vendors receive separate emails and cannot see each other.
+                  </p>
+                </div>
+              </InfoBlock>
+
+              <InfoBlock title="Email delivery history">
+                <div style={{ display: "grid", gap: 8 }}>
+                  {emailSends.length ? emailSends.map((send) => (
+                    <div key={send.id} style={{ borderBottom: `1px solid ${t.line}`, paddingBottom: 8 }}>
+                      <strong style={{ color: send.ses_error ? t.danger : t.ink }}>{send.ses_status}</strong>
+                      <span style={{ color: t.ink3, fontSize: 12 }}> · {send.to_emails.join(", ")} · {formatDateTime(send.created_at)}</span>
+                      <div style={{ color: t.ink2, fontSize: 12, marginTop: 4 }}>{send.subject}</div>
+                      {send.ses_error ? <div style={{ color: t.danger, fontSize: 12, marginTop: 4 }}>{send.ses_error}</div> : null}
+                    </div>
+                  )) : <span style={{ color: t.ink3 }}>No vendor emails sent yet.</span>}
+                </div>
+              </InfoBlock>
+            </>
+          ) : null}
+          </div>
         </div>
       )}
     </Card>
@@ -485,6 +759,19 @@ function probabilityTone(t: ReturnType<typeof useTheme>["t"], value?: string | n
   return { bg: t.surface2, fg: t.ink2 };
 }
 
+function variantLabel(value?: string | null) {
+  if (value === "real_estate_dscr_v1") return "Real estate";
+  if (value === "dealer_financing_v1") return "Dealer";
+  return "AI review";
+}
+
+function parseEmailList(value: string) {
+  return value
+    .split(/[,\n;]/)
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item.includes("@"));
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -501,6 +788,12 @@ function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function formatMoney(value?: number | null) {
