@@ -406,6 +406,7 @@ export default function BucketsAdminPage() {
   const [sharePopupOpen, setSharePopupOpen] = useState(false);
   const [shareViewers, setShareViewers] = useState<ShareViewerDraft[]>(() => [emptyShareViewerDraft()]);
   const [sharePasscodes, setSharePasscodes] = useState<Record<string, string>>({});
+  const [createdShareLinks, setCreatedShareLinks] = useState<Share[]>([]);
   const [uploadLinkPasscodes, setUploadLinkPasscodes] = useState<Record<string, string>>({});
   const [expandedUploadLinkId, setExpandedUploadLinkId] = useState<string | null>(null);
   const [uploadLinkDraft, setUploadLinkDraft] = useState({ recipient_name: "", recipient_email: "", passcode: "" });
@@ -471,6 +472,7 @@ export default function BucketsAdminPage() {
     setShareFiles({});
     setSharePopupOpen(false);
     setShareViewers([newShareViewerDraft()]);
+    setCreatedShareLinks([]);
     setExpandedShareId(null);
     setExpandedVendorAccessId(null);
     setEditingVendorAccessId(null);
@@ -959,7 +961,7 @@ export default function BucketsAdminPage() {
       setNotice("Regenerate the access code before copying the full invite.");
       return;
     }
-    void copyText(`Secure file room: ${share.share_url}\nAccess code: ${passcode}`);
+    void copyText(`Secure file room: ${share.share_url}\nAccess code: ${passcode}\n\nNo account login is required. Send the link and access code separately when possible.`);
   }
 
   function copyUploadLink(link: UploadLink) {
@@ -1137,6 +1139,7 @@ export default function BucketsAdminPage() {
     setBusy(true);
     try {
       let createdCount = 0;
+      const createdShares: Share[] = [];
       for (const viewer of shareViewers) {
         const passcode = viewer.passcode.trim() || generateAccessCode();
         const res = await call<Share>(`/buckets/admin/${detail.id}/shares`, {
@@ -1151,13 +1154,14 @@ export default function BucketsAdminPage() {
           }),
         });
         createdCount += 1;
+        createdShares.push(res);
         setSharePasscodes((codes) => ({ ...codes, [res.id]: res.passcode ?? passcode }));
       }
       const row = await call<BucketDetail>(`/buckets/admin/${detail.id}`);
       setDetail(row);
       setShareViewers([newShareViewerDraft()]);
-      setSharePopupOpen(false);
-      setNotice(`${createdCount} share link${createdCount === 1 ? "" : "s"} created. Copy links and access codes from the Shares panel.`);
+      setCreatedShareLinks(createdShares);
+      setNotice(`${createdCount} no-login share link${createdCount === 1 ? "" : "s"} created. Copy the bank invite from this popup or the Shares panel.`);
     } finally {
       setBusy(false);
     }
@@ -1684,7 +1688,7 @@ export default function BucketsAdminPage() {
                 }}
                 onClick={showVendorSettings}
                 aria-label="Open vendor access settings"
-                title="Vendor access settings"
+                title="Vendor access - login required"
               >
                 <Icon name="user" size={16} />
               </button>
@@ -1708,24 +1712,28 @@ export default function BucketsAdminPage() {
                 <button
                   style={{
                     ...iconButtonStyle(t),
+                    width: "auto",
+                    padding: "0 12px",
                     borderColor: sharePopupOpen ? t.petrol : t.line,
                     background: sharePopupOpen ? t.petrolSoft : t.surface,
                     color: sharePopupOpen ? t.petrol : t.ink2,
+                    gap: 6,
                   }}
                   onClick={() => {
                     setSharePopupOpen((value) => !value);
                   }}
-                  aria-label="Share selected files"
-                  title="Share selected files"
+                  aria-label="Create no-login share link"
+                  title="Third-party share link - no login"
                 >
                   <Icon name="link" size={16} />
+                  <span style={{ fontSize: 12, fontWeight: 900 }}>Bank share</span>
                 </button>
                 {sharePopupOpen ? (
                   <div style={sharePopupStyle(t)}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", paddingBottom: 10, borderBottom: `1px solid ${t.line}` }}>
                     <div>
-                      <div style={{ color: t.ink, fontWeight: 900, fontSize: 14 }}>Create share links</div>
-                      <div style={{ color: t.ink3, fontSize: 12, marginTop: 2 }}>Choose files separately for each viewer.</div>
+                      <div style={{ color: t.ink, fontWeight: 900, fontSize: 14 }}>Bank / third-party share link</div>
+                      <div style={{ color: t.ink3, fontSize: 12, marginTop: 2 }}>No account login. Send a secure link plus access code.</div>
                     </div>
                     <button style={iconButtonStyle(t)} onClick={() => setSharePopupOpen(false)} aria-label="Close share popup">
                       <Icon name="x" size={14} />
@@ -1733,6 +1741,34 @@ export default function BucketsAdminPage() {
                   </div>
 
                   <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                    <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface2, padding: 10, display: "grid", gap: 7 }}>
+                      <strong style={{ color: t.ink, fontSize: 12 }}>This creates a share link, not a vendor account.</strong>
+                      <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.35 }}>
+                        Use this for banks, lenders, and one-time third parties. For account-based vendor access, use the Vendors section.
+                      </span>
+                    </div>
+                    {createdShareLinks.length ? (
+                      <div style={{ border: `1px solid ${t.profit}`, borderRadius: 12, background: t.profitBg, padding: 10, display: "grid", gap: 8 }}>
+                        <strong style={{ color: t.profit, fontSize: 12 }}>Share link ready</strong>
+                        {createdShareLinks.map((share) => (
+                          <div key={share.id} style={{ display: "grid", gap: 7, borderTop: `1px solid ${t.line}`, paddingTop: 8 }}>
+                            <div style={{ color: t.ink, fontWeight: 900, fontSize: 13 }}>
+                              {share.recipient_name}
+                            </div>
+                            <div style={{ color: t.ink3, fontSize: 12 }}>
+                              {share.files?.length ?? 0} files | {share.can_download ? "download allowed" : "view only"} | no login required
+                            </div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button style={secondary} onClick={() => copyShareLink(share)}>Copy link</button>
+                              <button style={secondary} onClick={() => copyShareInvite(share)}>Copy link + access code</button>
+                            </div>
+                          </div>
+                        ))}
+                        <button style={secondary} onClick={() => setCreatedShareLinks([])}>
+                          Create another share
+                        </button>
+                      </div>
+                    ) : null}
                     {visibleFiles.length === 0 ? (
                       <div style={emptyInlineStyle(t)}>Upload files before creating share links.</div>
                     ) : null}
@@ -1786,7 +1822,7 @@ export default function BucketsAdminPage() {
                       <Icon name="plus" size={14} />
                       Add another user
                     </button>
-                    <button style={{ ...primary, width: "100%", opacity: canCreateShareLinks ? 1 : 0.68 }} onClick={createShareLinks} disabled={!canCreateShareLinks}>
+                    <button style={{ ...primary, width: "100%", opacity: canCreateShareLinks ? 1 : 0.68 }} onClick={() => createShareLinks().catch((e) => setNotice(readableError(e)))} disabled={!canCreateShareLinks}>
                       {busy ? "Creating links..." : "Create share links"}
                     </button>
                   </div>
@@ -2183,7 +2219,10 @@ export default function BucketsAdminPage() {
               </PanelBox>
 
               <PanelBox>
-                <SectionLabel action={`${detail.upload_links?.length ?? 0} links`}>Upload Links</SectionLabel>
+                <SectionLabel action={`${detail.upload_links?.length ?? 0} invites`}>Client Upload Invites</SectionLabel>
+                <div style={{ color: t.ink3, fontSize: 12.5, marginBottom: 8 }}>
+                  For clients or upload parties to add documents. Uses an upload link and access code.
+                </div>
                 <div style={{ display: "grid", gap: 8 }}>
                   <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
                     <input
@@ -2229,7 +2268,7 @@ export default function BucketsAdminPage() {
                           <div style={{ minWidth: 0, textAlign: "left" }}>
                             <strong style={{ color: t.ink }}>{link.recipient_name}</strong>
                             <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {link.recipient_email || "No email"} | {link.completed_at ? "submitted" : "open"}
+                              Client upload invite | {link.recipient_email || "No email"} | {link.completed_at ? "submitted" : "open"}
                             </div>
                           </div>
                           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
@@ -2240,7 +2279,7 @@ export default function BucketsAdminPage() {
                         {isOpen ? (
                           <div style={{ display: "grid", gap: 8, paddingTop: 8, borderTop: `1px solid ${t.line}` }}>
                             <div style={{ color: t.ink3, fontSize: 12 }}>
-                              Created {formatDate(link.created_at)} | Expires {formatDate(link.expires_at)} | Completed {formatDateTime(link.completed_at)}
+                              Upload link with access code | Created {formatDate(link.created_at)} | Expires {formatDate(link.expires_at)} | Completed {formatDateTime(link.completed_at)}
                             </div>
                             {link.upload_url ? <code style={{ color: t.ink2, fontSize: 12, overflowWrap: "anywhere" }}>{link.upload_url}</code> : null}
                             {!passcodeAvailable ? (
@@ -2261,7 +2300,10 @@ export default function BucketsAdminPage() {
 
               <div id="bucket-vendors-panel" style={{ scrollMarginTop: 18 }}>
               <PanelBox style={{ borderColor: detailFocus === "vendors" ? t.petrol : t.line }}>
-                <SectionLabel action={`${detail.vendor_access?.length ?? 0} vendors`}>Vendors</SectionLabel>
+                <SectionLabel action={`${detail.vendor_access?.length ?? 0} vendors`}>Vendor Accounts</SectionLabel>
+                <div style={{ color: t.ink3, fontSize: 12.5, marginBottom: 8 }}>
+                  For recurring vendors who log in and see assigned buckets. This is not the bank share link workflow.
+                </div>
                 <div style={{ display: "grid", gap: 8 }}>
                   <div style={{ display: "grid", gap: 8, padding: 10, border: `1px solid ${t.line}`, borderRadius: 8, background: t.surface2 }}>
                     <select
@@ -2406,7 +2448,7 @@ export default function BucketsAdminPage() {
                           <div style={{ minWidth: 0, textAlign: "left" }}>
                             <strong style={{ color: t.ink }}>{access.vendor_name || access.vendor_email || "Vendor"}</strong>
                             <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {access.file_scope === "all_active" ? "All active files" : `${files.length} selected files`} | {access.can_download ? "downloads on" : "view only"} | {access.view_count} views
+                              Vendor login | {access.file_scope === "all_active" ? "All active files" : `${files.length} selected files`} | {access.can_download ? "downloads on" : "view only"}
                             </div>
                           </div>
                           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
@@ -2490,7 +2532,10 @@ export default function BucketsAdminPage() {
               </div>
 
               <PanelBox>
-                <SectionLabel action={`${detail.shares.length} links`}>Shares</SectionLabel>
+                <SectionLabel action={`${detail.shares.length} links`}>Share Links - No Login</SectionLabel>
+                <div style={{ color: t.ink3, fontSize: 12.5, marginBottom: 8 }}>
+                  For banks, lenders, and one-time third parties. Send the secure link plus access code.
+                </div>
                 <div style={{ display: "grid", gap: 8 }}>
                   {detail.shares.length === 0 ? (
                     <div style={{ color: t.ink3, fontSize: 13 }}>No share links yet.</div>
@@ -2512,7 +2557,7 @@ export default function BucketsAdminPage() {
                           <div style={{ minWidth: 0, textAlign: "left" }}>
                             <strong style={{ color: t.ink }}>{share.recipient_name}</strong>
                             <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {files.length} file{files.length === 1 ? "" : "s"} | {share.can_download ? "downloads on" : "view only"} | {share.view_count} views
+                              No login | access code required | {files.length} file{files.length === 1 ? "" : "s"} | {share.can_download ? "downloads on" : "view only"}
                             </div>
                           </div>
                           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
@@ -2524,7 +2569,7 @@ export default function BucketsAdminPage() {
                           <>
                         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, alignItems: "start", paddingTop: 8, borderTop: `1px solid ${t.line}` }}>
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ color: t.ink3, fontSize: 12 }}>{share.recipient_email || "No email"} | {files.length} file{files.length === 1 ? "" : "s"}</div>
+                            <div style={{ color: t.ink3, fontSize: 12 }}>No-login third-party share | {share.recipient_email || "No email"} | {files.length} file{files.length === 1 ? "" : "s"}</div>
                             <div style={{ color: t.ink3, fontSize: 12 }}>
                               {share.view_count} views | {share.download_count} downloads | {share.can_download ? "downloads on" : "view only"}
                             </div>
