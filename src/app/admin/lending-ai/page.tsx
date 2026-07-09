@@ -103,6 +103,7 @@ const SUGGESTED_RULES = [
   "Always escalate to a human if the borrower expresses anger or distress",
 ];
 
+const PAGE_MAX_WIDTH = 1440;
 
 export default function LendingAISettingsPage() {
   const { t } = useTheme();
@@ -144,7 +145,7 @@ export default function LendingAISettingsPage() {
 
   if (isAINotDeployed(error)) {
     return (
-      <div style={{ padding: 24, maxWidth: 1040, margin: "0 auto" }}>
+      <div style={{ padding: 24, maxWidth: PAGE_MAX_WIDTH, margin: "0 auto" }}>
         <PageHeader t={t} dirty={false} saving={false} onClose={() => router.push("/settings")} onSave={save} />
         <AINotDeployedBanner surface="Lending AI" />
       </div>
@@ -152,7 +153,7 @@ export default function LendingAISettingsPage() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 1040, margin: "0 auto" }}>
+    <div style={{ padding: 24, maxWidth: PAGE_MAX_WIDTH, margin: "0 auto" }}>
       <PageHeader
         t={t}
         dirty={dirty}
