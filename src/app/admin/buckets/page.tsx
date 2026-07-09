@@ -10,6 +10,7 @@ import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview
 import { useCurrentUser } from "@/hooks/useApi";
 import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
+import { APP_ORIGIN } from "@/lib/appUrl";
 import { useUI } from "@/store/ui";
 
 type Bucket = {
@@ -901,6 +902,14 @@ export default function BucketsAdminPage() {
     return access.files ?? [];
   }
 
+  function vendorBucketLink(access?: VendorAccess) {
+    const params = new URLSearchParams();
+    if (detail) params.set("bucket", detail.id);
+    if (access) params.set("access", access.id);
+    const query = params.toString();
+    return `${APP_ORIGIN}/vendor/buckets${query ? `?${query}` : ""}`;
+  }
+
   function openEditShareFiles(share: Share) {
     setEditingShareId(share.id);
     setEditingShareFileIds(shareFilesFor(share).map((file) => file.id));
@@ -1094,6 +1103,26 @@ export default function BucketsAdminPage() {
       body: JSON.stringify({ vendor_user_id: access.vendor_user_id, vendor_name: name, vendor_email: email }),
     });
     setNotice("Vendor login invite sent.");
+  }
+
+  function copyVendorLoginLink(access: VendorAccess) {
+    void copyText(vendorBucketLink(access));
+  }
+
+  function copyVendorInvite(access: VendorAccess) {
+    const link = vendorBucketLink(access);
+    const vendorName = access.vendor_name || "Vendor";
+    const bucketName = detail?.name || "Qualified Commercial file room";
+    void copyText(
+      [
+        `Hi ${vendorName},`,
+        "",
+        `Qualified Commercial assigned you secure vendor access to ${bucketName}.`,
+        `Login link: ${link}`,
+        "",
+        "Access is tied to your vendor email login. There is no bucket password to copy for vendor access; use the app invite or sign in with the invited email.",
+      ].join("\n"),
+    );
   }
 
   const canCreateShareLinks =
@@ -2389,6 +2418,15 @@ export default function BucketsAdminPage() {
                           <div style={{ display: "grid", gap: 8, paddingTop: 8, borderTop: `1px solid ${t.line}` }}>
                             <div style={{ color: t.ink3, fontSize: 12 }}>
                               {access.vendor_email || "No email"} | Downloads {access.download_count} | Expires {formatDate(access.expires_at)} | Last access {formatDateTime(access.last_accessed_at)}
+                            </div>
+                            <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface2, padding: 10, display: "grid", gap: 7 }}>
+                              <div style={{ color: t.ink3, fontSize: 12, lineHeight: 1.35 }}>
+                                Vendor login link is reusable. Vendor access uses their app email login; there is no bucket password to retrieve.
+                              </div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button style={secondary} onClick={() => copyVendorLoginLink(access)}>Copy login link</button>
+                                <button style={secondary} onClick={() => copyVendorInvite(access)}>Copy invite</button>
+                              </div>
                             </div>
                             {files.length ? (
                               <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
