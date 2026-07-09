@@ -419,6 +419,7 @@ export default function BucketsAdminPage() {
   const [editingVendorFileSearch, setEditingVendorFileSearch] = useState("");
   const [adminUploadFiles, setAdminUploadFiles] = useState<AdminQueuedFile[]>([]);
   const [adminUploadForm, setAdminUploadForm] = useState({ uploader_name: "", uploader_email: "", note: "" });
+  const [adminUploadDraftStatus, setAdminUploadDraftStatus] = useState<"saving" | "saved" | null>(null);
   const [adminUploadStatus, setAdminUploadStatus] = useState<{ kind: "working" | "success" | "error"; message: string } | null>(null);
   const [adminUploading, setAdminUploading] = useState(false);
   const [isAdminUploadDragging, setIsAdminUploadDragging] = useState(false);
@@ -484,7 +485,8 @@ export default function BucketsAdminPage() {
     setExpandedActivityId(null);
     setAdminUploadFiles([]);
     setAdminUploadStatus(null);
-    setAdminUploadForm((form) => ({ ...form, uploader_name: row.client_name || form.uploader_name || "", uploader_email: "" }));
+    setAdminUploadForm(loadAdminUploadDraft(row));
+    setAdminUploadDraftStatus(null);
     setAiContextDraft(row.ai_context ?? {});
     setAiMode("review");
     setAiPanelOpen(true);
@@ -664,6 +666,16 @@ export default function BucketsAdminPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.role, bucketParam, detail?.id]);
+
+  useEffect(() => {
+    if (!detail) return;
+    setAdminUploadDraftStatus("saving");
+    const handle = window.setTimeout(() => {
+      saveAdminUploadDraft(detail.id, adminUploadForm);
+      setAdminUploadDraftStatus("saved");
+    }, 350);
+    return () => window.clearTimeout(handle);
+  }, [detail?.id, adminUploadForm.uploader_name, adminUploadForm.uploader_email, adminUploadForm.note]);
 
   useEffect(() => {
     setCreateDocPage(0);
@@ -1758,7 +1770,7 @@ export default function BucketsAdminPage() {
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.35fr) minmax(320px, .65fr)", gap: 12, alignItems: "start" }}>
             <div style={{ display: "grid", gap: 12 }}>
               <PanelBox style={{ borderColor: isAdminUploadDragging ? t.petrol : t.line }}>
-                <SectionLabel action={`${adminUploadFiles.length} queued`}>Upload on behalf</SectionLabel>
+                <SectionLabel action={`${adminUploadFiles.length} queued${adminUploadDraftStatus ? ` | ${adminUploadDraftStatus === "saving" ? "saving" : "saved"}` : ""}`}>Upload on behalf</SectionLabel>
                 <input ref={adminFileInputRef} type="file" multiple hidden onChange={(event) => event.target.files && addAdminUploadFiles(event.target.files)} />
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto", gap: 8 }}>
                   <input
@@ -1783,6 +1795,9 @@ export default function BucketsAdminPage() {
                     value={adminUploadForm.note}
                     onChange={(event) => setAdminUploadForm({ ...adminUploadForm, note: event.target.value })}
                   />
+                </div>
+                <div style={{ color: t.ink3, fontSize: 12, marginTop: 7 }}>
+                  Upload-on-behalf details autosave for this bucket and are applied to every queued file when uploaded.
                 </div>
                 <div
                   style={adminUploadDropZoneStyle(t, isAdminUploadDragging)}
@@ -3403,6 +3418,43 @@ function formatSize(bytes: number) {
     unit += 1;
   }
   return `${size.toFixed(size >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
+function adminUploadDraftStorageKey(bucketId: string) {
+  return `qc.bucket.adminUploadDraft.${bucketId}`;
+}
+
+function loadAdminUploadDraft(bucket: Bucket) {
+  const fallback = { uploader_name: bucket.client_name || "", uploader_email: "", note: "" };
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(adminUploadDraftStorageKey(bucket.id));
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<typeof fallback>;
+    return {
+      uploader_name: typeof parsed.uploader_name === "string" ? parsed.uploader_name : fallback.uploader_name,
+      uploader_email: typeof parsed.uploader_email === "string" ? parsed.uploader_email : "",
+      note: typeof parsed.note === "string" ? parsed.note : "",
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function saveAdminUploadDraft(bucketId: string, draft: { uploader_name: string; uploader_email: string; note: string }) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      adminUploadDraftStorageKey(bucketId),
+      JSON.stringify({
+        uploader_name: draft.uploader_name,
+        uploader_email: draft.uploader_email,
+        note: draft.note,
+      }),
+    );
+  } catch {
+    // Local autosave is best-effort; uploads still use the current in-memory values.
+  }
 }
 
 function generateAccessCode() {
