@@ -415,6 +415,12 @@ export default function BucketsAdminPage() {
   const [editingShareSearch, setEditingShareSearch] = useState("");
   const [vendors, setVendors] = useState<VendorUser[]>([]);
   const [vendorDraft, setVendorDraft] = useState<VendorAccessDraft>(() => emptyVendorAccessDraft());
+  const [vendorDirectoryOpen, setVendorDirectoryOpen] = useState(false);
+  const [vendorDirectoryDraft, setVendorDirectoryDraft] = useState({ vendor_name: "", vendor_email: "" });
+  const [vendorAssignmentBucket, setVendorAssignmentBucket] = useState<Bucket | null>(null);
+  const [vendorAssignmentDetail, setVendorAssignmentDetail] = useState<BucketDetail | null>(null);
+  const [vendorAssignmentDraft, setVendorAssignmentDraft] = useState<VendorAccessDraft>(() => emptyVendorAccessDraft());
+  const [vendorAssignmentBusy, setVendorAssignmentBusy] = useState(false);
   const [expandedVendorAccessId, setExpandedVendorAccessId] = useState<string | null>(null);
   const [editingVendorAccessId, setEditingVendorAccessId] = useState<string | null>(null);
   const [editingVendorFileIds, setEditingVendorFileIds] = useState<string[]>([]);
@@ -501,6 +507,24 @@ export default function BucketsAdminPage() {
   async function openBucket(bucketId: string, focus: DetailFocus = null) {
     setDetailFocus(focus);
     await loadBucket(bucketId);
+  }
+
+  async function openVendorAssignment(bucketId: string) {
+    const bucket = buckets.find((row) => row.id === bucketId) ?? null;
+    setVendorAssignmentBucket(bucket);
+    setVendorAssignmentDraft(emptyVendorAccessDraft());
+    setVendorAssignmentBusy(true);
+    try {
+      const row = await call<BucketDetail>(`/buckets/admin/${bucketId}`);
+      setVendorAssignmentDetail(row);
+      setVendorAssignmentBucket(bucket ?? row);
+    } catch (error) {
+      setVendorAssignmentBucket(null);
+      setVendorAssignmentDetail(null);
+      setNotice(readableError(error));
+    } finally {
+      setVendorAssignmentBusy(false);
+    }
   }
 
   function showVendorSettings() {
@@ -1107,6 +1131,69 @@ export default function BucketsAdminPage() {
     setNotice("Vendor login invite sent.");
   }
 
+  async function createVendorFromDirectory() {
+    if (!vendorDirectoryDraft.vendor_name.trim() || !vendorDirectoryDraft.vendor_email.trim()) {
+      setNotice("Enter vendor name and email.");
+      return;
+    }
+    const created = await call<VendorUser>("/buckets/admin/vendors", {
+      method: "POST",
+      body: JSON.stringify({
+        vendor_name: vendorDirectoryDraft.vendor_name.trim(),
+        vendor_email: vendorDirectoryDraft.vendor_email.trim(),
+      }),
+    });
+    setVendors((current) => [created, ...current.filter((vendor) => vendor.id !== created.id)]);
+    setVendorDirectoryDraft({ vendor_name: "", vendor_email: "" });
+    setNotice("Vendor created and login invite sent.");
+  }
+
+  async function assignVendorFromBucketList() {
+    if (!vendorAssignmentDetail) return;
+    const selectedVendor = vendors.find((vendor) => vendor.id === vendorAssignmentDraft.vendor_user_id);
+    if (!selectedVendor && (!vendorAssignmentDraft.vendor_name.trim() || !vendorAssignmentDraft.vendor_email.trim())) {
+      setNotice("Select an existing vendor or enter a vendor name and email.");
+      return;
+    }
+    if (vendorAssignmentDraft.file_scope === "selected" && vendorAssignmentDraft.file_ids.length === 0) {
+      setNotice("Select at least one file or use all active files.");
+      return;
+    }
+    setVendorAssignmentBusy(true);
+    try {
+      const created = await call<VendorAccess>(`/buckets/admin/${vendorAssignmentDetail.id}/vendor-access`, {
+        method: "POST",
+        body: JSON.stringify({
+          vendor_user_id: vendorAssignmentDraft.vendor_user_id || null,
+          vendor_name: selectedVendor ? selectedVendor.name : vendorAssignmentDraft.vendor_name.trim(),
+          vendor_email: selectedVendor ? selectedVendor.email : vendorAssignmentDraft.vendor_email.trim(),
+          file_scope: vendorAssignmentDraft.file_scope,
+          file_ids: vendorAssignmentDraft.file_scope === "selected" ? vendorAssignmentDraft.file_ids : [],
+          can_preview: vendorAssignmentDraft.can_preview,
+          can_download: vendorAssignmentDraft.can_download,
+          can_add_notes: vendorAssignmentDraft.can_add_notes,
+          can_see_internal_notes: vendorAssignmentDraft.can_see_internal_notes,
+          can_use_ai_chat: vendorAssignmentDraft.can_use_ai_chat,
+          can_view_ai_summary: vendorAssignmentDraft.can_view_ai_summary,
+          can_view_ai_tasks: vendorAssignmentDraft.can_view_ai_tasks,
+          can_propose_tasks: vendorAssignmentDraft.can_propose_tasks,
+          expires_at: vendorAssignmentDraft.expires_days ? shareExpiryDate(vendorAssignmentDraft.expires_days) : null,
+        }),
+      });
+      setVendorAssignmentDetail((current) => current ? {
+        ...current,
+        vendor_access: [created, ...(current.vendor_access ?? []).filter((row) => row.id !== created.id)],
+      } : current);
+      setVendorAssignmentDraft(emptyVendorAccessDraft());
+      await loadBuckets();
+      setNotice("Vendor assigned to bucket.");
+    } catch (error) {
+      setNotice(readableError(error));
+    } finally {
+      setVendorAssignmentBusy(false);
+    }
+  }
+
   function copyVendorLoginLink(access: VendorAccess) {
     void copyText(vendorBucketLink(access));
   }
@@ -1397,6 +1484,71 @@ export default function BucketsAdminPage() {
     );
   }
 
+  function renderVendorAssignmentFilePicker() {
+    const files = (vendorAssignmentDetail?.files ?? []).filter((file) => file.status === "uploaded");
+    const docs = new Map((vendorAssignmentDetail?.requested_documents ?? []).map((doc) => [doc.id, doc.name]));
+    const query = vendorAssignmentDraft.file_search.trim().toLowerCase();
+    const filtered = files.filter((file) => {
+      if (!query) return true;
+      return [file.file_name, file.uploaded_by_name, file.uploaded_by_email, docs.get(file.requested_document_id || "")]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    });
+    const selectedFiles = files.filter((file) => vendorAssignmentDraft.file_ids.includes(file.id));
+    return (
+      <div style={shareFilePickerStyle(t)}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+          <strong style={{ color: t.ink, fontSize: 13 }}>{vendorAssignmentDraft.file_ids.length} file{vendorAssignmentDraft.file_ids.length === 1 ? "" : "s"} selected</strong>
+          <button style={miniButtonStyle(t)} onClick={() => setVendorAssignmentDraft({ ...vendorAssignmentDraft, file_ids: [] })}>Clear</button>
+        </div>
+        {selectedFiles.length ? (
+          <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {selectedFiles.slice(0, 3).map((file) => file.file_name).join(", ")}{selectedFiles.length > 3 ? ` +${selectedFiles.length - 3} more` : ""}
+          </div>
+        ) : (
+          <div style={{ color: t.warn, fontSize: 12, fontWeight: 800 }}>Select files for this vendor or switch to all active files.</div>
+        )}
+        <input
+          style={field}
+          value={vendorAssignmentDraft.file_search}
+          onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, file_search: event.target.value })}
+          placeholder="Search files"
+        />
+        <button
+          style={secondary}
+          onClick={() => setVendorAssignmentDraft({ ...vendorAssignmentDraft, file_ids: filtered.map((file) => file.id) })}
+          disabled={!filtered.length}
+        >
+          Select visible
+        </button>
+        <div style={{ display: "grid", gap: 6, maxHeight: 220, overflowY: "auto" }}>
+          {filtered.length ? filtered.map((file) => (
+            <label key={file.id} style={shareFileOptionStyle(t)}>
+              <input
+                type="checkbox"
+                checked={vendorAssignmentDraft.file_ids.includes(file.id)}
+                onChange={() => setVendorAssignmentDraft({
+                  ...vendorAssignmentDraft,
+                  file_ids: vendorAssignmentDraft.file_ids.includes(file.id)
+                    ? vendorAssignmentDraft.file_ids.filter((id) => id !== file.id)
+                    : [...vendorAssignmentDraft.file_ids, file.id],
+                })}
+              />
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", color: t.ink, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.file_name}</span>
+                <span style={{ color: t.ink3, fontSize: 11 }}>{docs.get(file.requested_document_id || "") || "General upload"} | {formatSize(file.size_bytes)}</span>
+              </span>
+            </label>
+          )) : (
+            <div style={emptyInlineStyle(t)}>No uploaded files match this search.</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
@@ -1406,21 +1558,27 @@ export default function BucketsAdminPage() {
             Secure document rooms for collecting and selectively sharing files.
           </p>
         </div>
-        <button
-          style={primary}
-          onClick={() => {
-            setCreateResult(null);
-            setCreateStatus(null);
-            setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
-            setCreateInvites([]);
-            setCustomDocs([]);
-            setCustomDocDraft({ name: "", description: "", required: true, allow_multiple_files: false });
-            setCreateOpen(true);
-          }}
-        >
-          <Icon name="plus" size={15} />
-          Create bucket
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <button style={secondary} onClick={() => setVendorDirectoryOpen(true)}>
+            <Icon name="user" size={15} />
+            Manage vendors
+          </button>
+          <button
+            style={primary}
+            onClick={() => {
+              setCreateResult(null);
+              setCreateStatus(null);
+              setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
+              setCreateInvites([]);
+              setCustomDocs([]);
+              setCustomDocDraft({ name: "", description: "", required: true, allow_multiple_files: false });
+              setCreateOpen(true);
+            }}
+          >
+            <Icon name="plus" size={15} />
+            Create bucket
+          </button>
+        </div>
       </div>
 
       {notice ? (
@@ -1428,6 +1586,187 @@ export default function BucketsAdminPage() {
           <Icon name="check" size={14} />
           {notice}
         </PanelBox>
+      ) : null}
+
+      {vendorDirectoryOpen ? (
+        <ModalFrame
+          title="Vendor directory"
+          subtitle="Create vendors once, then assign them to buckets from the bucket list."
+          onClose={() => setVendorDirectoryOpen(false)}
+        >
+          <div style={{ display: "grid", gap: 12 }}>
+            <PanelBox>
+              <SectionLabel>Create vendor login</SectionLabel>
+              <div style={{ color: t.ink3, fontSize: 12.5, marginBottom: 10 }}>
+                Vendors log in with their email and only see buckets you assign to them.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto", gap: 8 }}>
+                <input
+                  style={field}
+                  placeholder="Vendor name"
+                  value={vendorDirectoryDraft.vendor_name}
+                  onChange={(event) => setVendorDirectoryDraft({ ...vendorDirectoryDraft, vendor_name: event.target.value })}
+                />
+                <input
+                  style={field}
+                  placeholder="Vendor email"
+                  value={vendorDirectoryDraft.vendor_email}
+                  onChange={(event) => setVendorDirectoryDraft({ ...vendorDirectoryDraft, vendor_email: event.target.value })}
+                />
+                <button
+                  style={primary}
+                  onClick={() => createVendorFromDirectory().catch((error) => setNotice(readableError(error)))}
+                  disabled={!vendorDirectoryDraft.vendor_name.trim() || !vendorDirectoryDraft.vendor_email.trim()}
+                >
+                  <Icon name="plus" size={14} />
+                  Create
+                </button>
+              </div>
+            </PanelBox>
+            <PanelBox>
+              <SectionLabel action={`${vendors.length} vendors`}>Existing vendors</SectionLabel>
+              <div style={{ display: "grid", gap: 8, maxHeight: 360, overflowY: "auto" }}>
+                {vendors.length ? vendors.map((vendor) => (
+                  <div key={vendor.id} style={smallRowStyle(t)}>
+                    <div>
+                      <strong style={{ color: t.ink }}>{vendor.name}</strong>
+                      <div style={{ color: t.ink3, fontSize: 12 }}>{vendor.email}</div>
+                    </div>
+                  </div>
+                )) : (
+                  <div style={emptyInlineStyle(t)}>No vendors yet. Create the first vendor above.</div>
+                )}
+              </div>
+            </PanelBox>
+          </div>
+        </ModalFrame>
+      ) : null}
+
+      {vendorAssignmentBucket ? (
+        <ModalFrame
+          title={`Assign vendor`}
+          subtitle={`${vendorAssignmentBucket.name} | ${vendorAssignmentBucket.client_name || "No client"}`}
+          onClose={() => {
+            setVendorAssignmentBucket(null);
+            setVendorAssignmentDetail(null);
+            setVendorAssignmentDraft(emptyVendorAccessDraft());
+          }}
+        >
+          {vendorAssignmentBusy && !vendorAssignmentDetail ? (
+            <PanelBox>Loading vendor assignment...</PanelBox>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              <PanelBox>
+                <SectionLabel>Assign vendor to this bucket</SectionLabel>
+                <div style={{ color: t.ink3, fontSize: 12.5, marginBottom: 10 }}>
+                  Choose an existing vendor or create a new one, then decide whether they see all active files or selected files.
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <select
+                    style={field}
+                    value={vendorAssignmentDraft.vendor_user_id}
+                    onChange={(event) => {
+                      const vendor = vendors.find((row) => row.id === event.target.value);
+                      setVendorAssignmentDraft({
+                        ...vendorAssignmentDraft,
+                        vendor_user_id: event.target.value,
+                        vendor_name: vendor?.name ?? "",
+                        vendor_email: vendor?.email ?? "",
+                      });
+                    }}
+                  >
+                    <option value="">New vendor or choose existing</option>
+                    {vendors.map((vendor) => (
+                      <option key={vendor.id} value={vendor.id}>{vendor.name} | {vendor.email}</option>
+                    ))}
+                  </select>
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
+                    <input
+                      style={field}
+                      placeholder="Vendor name"
+                      value={vendorAssignmentDraft.vendor_name}
+                      onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, vendor_user_id: "", vendor_name: event.target.value })}
+                    />
+                    <input
+                      style={field}
+                      placeholder="Vendor email"
+                      value={vendorAssignmentDraft.vendor_email}
+                      onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, vendor_user_id: "", vendor_email: event.target.value })}
+                    />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <select
+                      style={field}
+                      value={vendorAssignmentDraft.file_scope}
+                      onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, file_scope: event.target.value as VendorAccessDraft["file_scope"] })}
+                    >
+                      <option value="all_active">All active files</option>
+                      <option value="selected">Selected files</option>
+                    </select>
+                    <select
+                      style={field}
+                      value={vendorAssignmentDraft.expires_days}
+                      onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, expires_days: Number(event.target.value) })}
+                    >
+                      <option value={1}>Expires 1 day</option>
+                      <option value={7}>Expires 7 days</option>
+                      <option value={14}>Expires 14 days</option>
+                      <option value={30}>Expires 30 days</option>
+                      <option value={0}>No expiration</option>
+                    </select>
+                  </div>
+                  {vendorAssignmentDraft.file_scope === "selected" ? renderVendorAssignmentFilePicker() : (
+                    <div style={emptyInlineStyle(t)}>Vendor will see all current and future active files in this bucket.</div>
+                  )}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {([
+                      ["can_preview", "Preview"],
+                      ["can_download", "Download"],
+                      ["can_add_notes", "Notes"],
+                      ["can_see_internal_notes", "Internal notes"],
+                      ["can_use_ai_chat", "AI chat"],
+                      ["can_view_ai_summary", "AI summary"],
+                    ] as const).map(([key, label]) => (
+                      <label key={key} style={permissionRowStyle(t)}>
+                        <span style={{ color: t.ink, fontSize: 13, fontWeight: 850 }}>{label}</span>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(vendorAssignmentDraft[key])}
+                          onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, [key]: event.target.checked })}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <button
+                    style={primary}
+                    onClick={assignVendorFromBucketList}
+                    disabled={vendorAssignmentBusy}
+                  >
+                    <Icon name="plus" size={14} />
+                    {vendorAssignmentBusy ? "Assigning..." : "Assign vendor"}
+                  </button>
+                </div>
+              </PanelBox>
+              <PanelBox>
+                <SectionLabel action={`${vendorAssignmentDetail?.vendor_access?.length ?? 0} vendors`}>Assigned vendors</SectionLabel>
+                <div style={{ display: "grid", gap: 8, maxHeight: 260, overflowY: "auto" }}>
+                  {(vendorAssignmentDetail?.vendor_access ?? []).length ? (vendorAssignmentDetail?.vendor_access ?? []).map((access) => (
+                    <div key={access.id} style={smallRowStyle(t)}>
+                      <div>
+                        <strong style={{ color: t.ink }}>{access.vendor_name || access.vendor_email || "Vendor"}</strong>
+                        <div style={{ color: t.ink3, fontSize: 12 }}>
+                          {access.vendor_email || "No email"} | {access.file_scope === "all_active" ? "All active files" : `${access.files?.length ?? 0} selected files`} | {statusLabel(access.status)}
+                        </div>
+                      </div>
+                    </div>
+                  )) : (
+                    <div style={emptyInlineStyle(t)}>No vendors assigned to this bucket yet.</div>
+                  )}
+                </div>
+              </PanelBox>
+            </div>
+          )}
+        </ModalFrame>
       ) : null}
 
       <PanelBox style={{ padding: 0, overflow: "hidden" }}>
@@ -1438,7 +1777,7 @@ export default function BucketsAdminPage() {
             <input style={{ ...field, width: "100%", paddingLeft: 32 }} placeholder="Search buckets" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
         </div>
-        <BucketTable buckets={filteredBuckets} deletingId={deletingId} onSelect={(id) => openBucket(id)} onOpenVendors={(id) => openBucket(id, "vendors")} onDelete={deleteBucket} />
+        <BucketTable buckets={filteredBuckets} deletingId={deletingId} onSelect={(id) => openBucket(id)} onOpenVendors={openVendorAssignment} onDelete={deleteBucket} />
       </PanelBox>
 
       {createOpen ? (
