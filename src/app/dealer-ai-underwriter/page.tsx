@@ -1218,7 +1218,12 @@ function EntityWidget({ entity, setEntity, busy, onSubmit }: { entity: EntityStr
 function DealWidget({ deal, setDeal, busy, onSubmit }: { deal: { loan_purpose: string; requested_loan_amount: string; estimated_credit_score: string }; setDeal: (value: { loan_purpose: string; requested_loan_amount: string; estimated_credit_score: string }) => void; busy: boolean; onSubmit: () => void }) {
   return (
     <WidgetBox title="Essential funding facts" description="No product selection required. The AI uses these answers and your files to infer the likely path.">
-      <Field label="Use of funds" value={deal.loan_purpose} onChange={(value) => setDeal({ ...deal, loan_purpose: value })} placeholder="Cash out, working capital, acquisition..." />
+      <TextAreaField
+        label="Detailed use of funds"
+        value={deal.loan_purpose}
+        onChange={(value) => setDeal({ ...deal, loan_purpose: value })}
+        placeholder="Break down payoff amounts, working capital, inventory, taxes, repairs, acquisition, cash-out reserves, or other planned uses."
+      />
       <Field label="Requested loan amount" value={deal.requested_loan_amount} onChange={(value) => setDeal({ ...deal, requested_loan_amount: onlyDigits(value) })} placeholder="6000000" />
       <Field label="Estimated credit score" value={deal.estimated_credit_score} onChange={(value) => setDeal({ ...deal, estimated_credit_score: onlyDigits(value).slice(0, 3) })} placeholder="720" />
       <button style={primaryWide} disabled={busy} onClick={onSubmit}>Save profile</button>
@@ -1907,7 +1912,7 @@ function IntelligenceUnavailableCover({
         </div>
         <div style={intelligenceCoverNeeds}>
           <strong>Start with Stage 1 evidence</strong>
-          <span>Business tax returns, YTD P&L, and the last 3 months of the main operating bank statements.</span>
+          <span>Business tax returns, YTD P&L, last 6 months of the main operating bank statements, and a detailed use-of-funds breakdown.</span>
         </div>
       </div>
     </section>
@@ -1986,7 +1991,7 @@ function IntelligencePanel({
             <strong>Month-to-month cash flow</strong>
             <span style={smallMuted}>Bank statement trend</span>
           </div>
-          <MiniBarChart series={model.monthlySeries} emptyLabel="Awaiting three months of main operating bank statements." />
+          <MiniBarChart series={model.monthlySeries} emptyLabel="Awaiting six months of main operating bank statements." />
         </div>
 
         <div style={chartCard}>

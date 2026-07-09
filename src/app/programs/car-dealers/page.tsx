@@ -89,7 +89,7 @@ const programs = [
 ];
 
 const requiredDocs = [
-  "Business bank statements for the last 3 months",
+  "Business bank statements for the last 6 months",
   "Dealer financial statements and current year P&L",
   "Last 2 years of tax returns, if available",
   "Dealer license and ownership information",
