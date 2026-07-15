@@ -144,7 +144,7 @@ const VARIANT_FILTERS = [
 
 const LIMIT = 25;
 
-export default function AdminDealerAILeadsPage() {
+export default function AdminAIUnderwriterLeadsPage() {
   const { t } = useTheme();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -183,7 +183,7 @@ export default function AdminDealerAILeadsPage() {
         variant_filter: variantFilter,
       });
       if (submittedQuery.trim()) params.set("q", submittedQuery.trim());
-      const data = await call<LeadPage>(`/admin/dealer-ai-leads?${params.toString()}`);
+      const data = await call<LeadPage>(`/admin/ai-underwriter-leads?${params.toString()}`);
       setRows(data.items);
       setTotal(data.total);
       setOffset(data.offset);
@@ -200,7 +200,7 @@ export default function AdminDealerAILeadsPage() {
     setDetailLoading(true);
     setNotice("");
     try {
-      const data = await call<LeadDetail>(`/admin/dealer-ai-leads/${id}`);
+      const data = await call<LeadDetail>(`/admin/ai-underwriter-leads/${id}`);
       setDetail(data);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Lead detail is unavailable.");
@@ -211,7 +211,7 @@ export default function AdminDealerAILeadsPage() {
 
   async function exportPdf(id: string) {
     const token = await getToken();
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/admin/dealer-ai-leads/${id}/intelligence.pdf`, {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/admin/ai-underwriter-leads/${id}/intelligence.pdf`, {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
     if (!res.ok) {
@@ -237,7 +237,7 @@ export default function AdminDealerAILeadsPage() {
     setSelectedId(null);
     setDetail(null);
     // Strip ?lead= so the modal does not auto-reopen from the deep-link effect.
-    if (leadParam) router.replace("/admin/dealer-ai-leads");
+    if (leadParam) router.replace("/admin/ai-underwriter-leads");
   }
 
   async function rerunReview(id: string) {
@@ -246,7 +246,7 @@ export default function AdminDealerAILeadsPage() {
     setRerunning(true);
     setNotice("");
     try {
-      await call<LeadDetail>(`/admin/dealer-ai-leads/${id}/run-review`, { method: "POST" });
+      await call<LeadDetail>(`/admin/ai-underwriter-leads/${id}/run-review`, { method: "POST" });
       await refreshSelectedLead();
       await loadLeads();
       setNotice("AI review re-run complete — showing the latest breakdown.");
@@ -260,7 +260,7 @@ export default function AdminDealerAILeadsPage() {
   async function generateExecutiveSummary(id: string) {
     setNotice("");
     try {
-      await call<Artifact>(`/admin/dealer-ai-leads/${id}/executive-summary`, { method: "POST" });
+      await call<Artifact>(`/admin/ai-underwriter-leads/${id}/executive-summary`, { method: "POST" });
       await refreshSelectedLead();
       setNotice("Executive summary generated.");
     } catch (error) {
@@ -271,7 +271,7 @@ export default function AdminDealerAILeadsPage() {
   async function generateLenderPacket(id: string) {
     setNotice("");
     try {
-      await call<Artifact>(`/admin/dealer-ai-leads/${id}/lender-packet`, { method: "POST" });
+      await call<Artifact>(`/admin/ai-underwriter-leads/${id}/lender-packet`, { method: "POST" });
       await refreshSelectedLead();
       setNotice("Lender packet generated.");
     } catch (error) {
@@ -282,7 +282,7 @@ export default function AdminDealerAILeadsPage() {
   async function previewVendorEmail(id: string, payload: { to_emails: string[]; cc_emails: string[]; subject?: string; body?: string; include_lender_packet?: boolean }) {
     setNotice("");
     try {
-      const preview = await call<VendorEmailPreview>(`/admin/dealer-ai-leads/${id}/vendor-email/preview`, {
+      const preview = await call<VendorEmailPreview>(`/admin/ai-underwriter-leads/${id}/vendor-email/preview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -298,7 +298,7 @@ export default function AdminDealerAILeadsPage() {
   async function sendVendorEmail(id: string, payload: { to_emails: string[]; cc_emails: string[]; subject: string; body: string; include_lender_packet?: boolean }) {
     setNotice("");
     try {
-      await call<{ email_sends: EmailSend[]; vendor_access_ids: string[] }>(`/admin/dealer-ai-leads/${id}/vendor-email/send`, {
+      await call<{ email_sends: EmailSend[]; vendor_access_ids: string[] }>(`/admin/ai-underwriter-leads/${id}/vendor-email/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -345,7 +345,7 @@ export default function AdminDealerAILeadsPage() {
     <div style={{ height: "calc(100dvh - 105px)", maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: 0, overflow: "hidden" }}>
       <div style={{ flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
         <div>
-          <h1 style={{ margin: 0, color: t.ink, fontSize: 24, letterSpacing: -0.5 }}>AI Underwriting Leads</h1>
+          <h1 style={{ margin: 0, color: t.ink, fontSize: 24, letterSpacing: -0.5 }}>AI Underwriter Leads</h1>
           <p style={{ margin: "4px 0 0", color: t.ink3, lineHeight: 1.35, fontSize: 13 }}>
             Dealer and real-estate funding review submissions, conversations, evidence, management packages, and vendor sends.
           </p>

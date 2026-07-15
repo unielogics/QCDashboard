@@ -78,7 +78,7 @@ const OPERATOR_NAV: NavItem[] = [
   { href: "/clients", label: "Clients", icon: "clients", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
   { href: "/vault", label: "Vault", icon: "vault" },
   { href: "/admin/buckets", label: "Buckets", icon: "lock", roles: [Role.SUPER_ADMIN] },
-  { href: "/admin/dealer-ai-leads", label: "Dealer AI Leads", icon: "spark", roles: [Role.SUPER_ADMIN] },
+  { href: "/admin/ai-underwriter-leads", label: "AI Underwriter Leads", icon: "spark", roles: [Role.SUPER_ADMIN] },
   { href: "/admin/prequal-requests", label: "Prequalifications", icon: "docCheck", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
   { href: "/admin/lenders", label: "Lenders", icon: "building", roles: [Role.SUPER_ADMIN] },
   // Closing-cost tiers moved into Settings → "Deal Analyzer" tab.
