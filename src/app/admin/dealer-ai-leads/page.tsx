@@ -6,6 +6,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill } from "@/components/design-system/primitives";
+import { Modal } from "@/components/design-system/Modal";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
@@ -162,6 +163,7 @@ export default function AdminDealerAILeadsPage() {
   const [detail, setDetail] = useState<LeadDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [rerunning, setRerunning] = useState(false);
   const [notice, setNotice] = useState("");
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -229,6 +231,30 @@ export default function AdminDealerAILeadsPage() {
 
   async function refreshSelectedLead() {
     if (selectedId) await openLead(selectedId);
+  }
+
+  function closeLead() {
+    setSelectedId(null);
+    setDetail(null);
+    // Strip ?lead= so the modal does not auto-reopen from the deep-link effect.
+    if (leadParam) router.replace("/admin/dealer-ai-leads");
+  }
+
+  async function rerunReview(id: string) {
+    if (rerunning) return;
+    if (!window.confirm("Re-run the AI review on this lead's latest uploads? This runs a fresh underwriting pass over the current files.")) return;
+    setRerunning(true);
+    setNotice("");
+    try {
+      await call<LeadDetail>(`/admin/dealer-ai-leads/${id}/run-review`, { method: "POST" });
+      await refreshSelectedLead();
+      await loadLeads();
+      setNotice("AI review re-run complete — showing the latest breakdown.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Re-run failed. Please try again in a moment.");
+    } finally {
+      setRerunning(false);
+    }
   }
 
   async function generateExecutiveSummary(id: string) {
@@ -357,7 +383,7 @@ export default function AdminDealerAILeadsPage() {
 
       {notice ? <div style={{ color: t.warn, fontSize: 13, fontWeight: 700 }}>{notice}</div> : null}
 
-      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: detail || selectedId ? "minmax(0,1fr) minmax(390px,480px)" : "1fr", gap: 14, alignItems: "stretch", overflow: "hidden" }}>
+      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr", gap: 14, alignItems: "stretch", overflow: "hidden" }}>
         <Card pad={0} style={{ minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <div style={gridHeader(t)}>
             <span>Lead</span>
@@ -407,19 +433,24 @@ export default function AdminDealerAILeadsPage() {
           </div>
         </Card>
 
+      </div>
+
+      <Modal open={!!selectedId} onClose={closeLead} size="xl" bodyStyle={{ display: "flex", flexDirection: "column" }}>
         {selectedId ? (
           <LeadDetailPanel
             detail={detail}
             loading={detailLoading}
-            onClose={() => { setSelectedId(null); setDetail(null); }}
+            onClose={closeLead}
             onExport={() => exportPdf(selectedId)}
             onGenerateSummary={() => generateExecutiveSummary(selectedId)}
             onGeneratePacket={() => generateLenderPacket(selectedId)}
             onPreviewEmail={(payload) => previewVendorEmail(selectedId, payload)}
             onSendEmail={(payload) => sendVendorEmail(selectedId, payload)}
+            onRerun={() => rerunReview(selectedId)}
+            rerunning={rerunning}
           />
         ) : null}
-      </div>
+      </Modal>
     </div>
   );
 }
@@ -433,6 +464,8 @@ function LeadDetailPanel({
   onGeneratePacket,
   onPreviewEmail,
   onSendEmail,
+  onRerun,
+  rerunning,
 }: {
   detail: LeadDetail | null;
   loading: boolean;
@@ -442,6 +475,8 @@ function LeadDetailPanel({
   onGeneratePacket: () => Promise<void> | void;
   onPreviewEmail: (payload: { to_emails: string[]; cc_emails: string[]; subject?: string; body?: string; include_lender_packet?: boolean }) => Promise<VendorEmailPreview>;
   onSendEmail: (payload: { to_emails: string[]; cc_emails: string[]; subject: string; body: string; include_lender_packet?: boolean }) => Promise<void> | void;
+  onRerun: () => void;
+  rerunning: boolean;
 }) {
   const { t } = useTheme();
   const [activeTab, setActiveTab] = useState<"conversation" | "evidence" | "package">("conversation");
@@ -563,11 +598,20 @@ function LeadDetailPanel({
               </InfoBlock>
 
               <InfoBlock title="Actions">
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Link href={`/admin/buckets`} style={{ ...qcBtnPrimary(t), textDecoration: "none" }}>Open Buckets</Link>
-                  <button style={qcBtn(t)} onClick={() => navigator.clipboard.writeText(detail.intake.bucket_id)}>Copy bucket ID</button>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <button style={{ ...qcBtnPrimary(t), opacity: rerunning ? 0.6 : 1, cursor: rerunning ? "wait" : "pointer" }} onClick={onRerun} disabled={rerunning}>
+                    {rerunning ? "Re-running AI review…" : "Re-run AI review on latest uploads"}
+                  </button>
                   <button style={qcBtn(t)} onClick={onExport}>Export intelligence PDF</button>
+                  <Link href={`/admin/buckets`} style={{ ...qcBtn(t), textDecoration: "none" }}>Open Buckets</Link>
+                  <button style={qcBtn(t)} onClick={() => navigator.clipboard.writeText(detail.intake.bucket_id)}>Copy bucket ID</button>
                 </div>
+                {detail.latest_review?.status ? (
+                  <span style={{ display: "block", marginTop: 8, fontSize: 12, color: detail.latest_review.status === "failed" ? t.danger : t.ink3 }}>
+                    Latest review: {detail.latest_review.status}
+                    {detail.latest_review.error ? ` — ${detail.latest_review.error}` : ""}
+                  </span>
+                ) : null}
               </InfoBlock>
 
               <InfoBlock title="AI next step">
