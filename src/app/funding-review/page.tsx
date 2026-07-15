@@ -2369,12 +2369,22 @@ function fileLabel(file: UploadedFile): string {
 }
 
 function isStageOneRequestedDoc(doc: RequestedDoc): boolean {
+  // Real-estate / DSCR Stage 1 baseline evidence — NOT the car-dealer
+  // tax-return / P&L / bank-statement package. Keys on rent support, property
+  // value, purchase/payoff evidence, and PITIA carrying costs.
   const text = `${doc.name} ${doc.category ?? ""} ${doc.description ?? ""}`.toLowerCase();
   return (
-    text.includes("tax") ||
-    text.includes("p&l") ||
-    text.includes("profit and loss") ||
-    text.includes("bank statement")
+    text.includes("lease") ||
+    text.includes("rent") ||
+    text.includes("pitia") ||
+    text.includes("dscr") ||
+    text.includes("appraisal") ||
+    text.includes("valuation") ||
+    text.includes("purchase contract") ||
+    text.includes("payoff") ||
+    text.includes("mortgage statement") ||
+    text.includes("insurance") ||
+    text.includes("hoa")
   );
 }
 

@@ -761,7 +761,9 @@ function probabilityTone(t: ReturnType<typeof useTheme>["t"], value?: string | n
 
 function variantLabel(value?: string | null) {
   if (value === "real_estate_dscr_v1") return "Real estate";
-  if (value === "dealer_financing_v1") return "Dealer";
+  // "dealer_gatekeeper_v1" is the canonical dealer marker; "dealer_financing_v1"
+  // is the legacy value kept as a fallback during the deploy window.
+  if (value === "dealer_gatekeeper_v1" || value === "dealer_financing_v1") return "Dealer";
   return "AI review";
 }
 
