@@ -5,13 +5,14 @@ import { Icon } from "./Icon";
 import { ModalCloseButton } from "./ModalCloseButton";
 import { useTheme } from "./ThemeProvider";
 
-export type ModalSize = "md" | "lg" | "xl" | "full";
+export type ModalSize = "md" | "lg" | "xl" | "full" | "stage";
 
 const WIDTHS: Record<ModalSize, string> = {
   md: "min(620px, 96vw)",
   lg: "min(920px, 96vw)",
   xl: "min(1180px, 96vw)",
   full: "min(1440px, 97vw)",
+  stage: "100%",
 };
 
 /**
@@ -31,6 +32,7 @@ export function Modal({
   children,
   bodyStyle,
   closeOnBackdrop = true,
+  insetLeft = 0,
 }: {
   open: boolean;
   onClose: () => void;
@@ -42,8 +44,15 @@ export function Modal({
   children: ReactNode;
   bodyStyle?: CSSProperties;
   closeOnBackdrop?: boolean;
+  /**
+   * Left offset (px) so the overlay clears a fixed sidebar/menu and the menu
+   * stays visible + clickable. Used with size="stage" for a full-screen modal
+   * that occupies only the content area beside the app sidebar.
+   */
+  insetLeft?: number;
 }) {
   const { t } = useTheme();
+  const isStage = size === "stage";
 
   useEffect(() => {
     if (!open) return;
@@ -62,13 +71,17 @@ export function Modal({
       aria-modal="true"
       style={{
         position: "fixed",
-        inset: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        // Leave the sidebar/menu uncovered and clickable.
+        left: insetLeft,
         zIndex: 300,
         background: "rgba(0,0,0,0.42)",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
+        alignItems: isStage ? "stretch" : "center",
+        justifyContent: isStage ? "stretch" : "center",
+        padding: isStage ? 16 : 24,
       }}
       onClick={(e) => {
         if (closeOnBackdrop && e.target === e.currentTarget) onClose();
@@ -77,7 +90,8 @@ export function Modal({
       <div
         style={{
           width: WIDTHS[size],
-          maxHeight: "90vh",
+          maxHeight: isStage ? "100%" : "90vh",
+          height: isStage ? "100%" : undefined,
           background: t.surface,
           borderRadius: 16,
           border: `1px solid ${t.line}`,

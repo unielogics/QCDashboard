@@ -13,6 +13,7 @@ import { Role } from "@/lib/enums.generated";
 import { useCurrentUser } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter } from "@/components/admin/LeadCockpit";
 import type { IntakeResponse } from "@/lib/intake";
+import { useUI } from "@/store/ui";
 
 type LeadRow = {
   id: string;
@@ -150,6 +151,10 @@ export default function AdminAIUnderwriterLeadsPage() {
   const { t } = useTheme();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
+  // Match Sidebar.tsx widths (68 collapsed / 232 expanded) so the full-screen
+  // lead modal clears the menu and leaves it clickable.
+  const sidebarWidth = sidebarCollapsed ? 68 : 232;
   const { getToken } = useAuth();
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const leadParam = searchParams.get("lead");
@@ -240,6 +245,8 @@ export default function AdminAIUnderwriterLeadsPage() {
     setDetail(null);
     // Strip ?lead= so the modal does not auto-reopen from the deep-link effect.
     if (leadParam) router.replace("/admin/ai-underwriter-leads");
+    // Reflect any in-modal re-run/uploads in the list.
+    loadLeads().catch(() => undefined);
   }
 
   async function rerunReview(id: string) {
@@ -488,7 +495,7 @@ export default function AdminAIUnderwriterLeadsPage() {
 
       </div>
 
-      <Modal open={!!selectedId} onClose={closeLead} size="xl" bodyStyle={{ display: "flex", flexDirection: "column" }}>
+      <Modal open={!!selectedId} onClose={closeLead} size="stage" insetLeft={sidebarWidth} bodyStyle={{ display: "flex", flexDirection: "column" }}>
         {selectedId ? (
           <LeadDetailPanel
             detail={detail}
@@ -503,7 +510,7 @@ export default function AdminAIUnderwriterLeadsPage() {
             rerunning={rerunning}
             cockpitResponse={cockpitResponse}
             cockpitAdapter={cockpitAdapter}
-            onCockpitResponse={(r) => { if (selectedId) refreshSelectedLead().catch(() => undefined); void r; }}
+            onCockpitResponse={() => { /* cockpit owns its live state; refresh the list lazily on close */ }}
           />
         ) : null}
       </Modal>
@@ -634,7 +641,7 @@ function LeadDetailPanel({
 
           {activeTab === "conversation" ? (
             cockpitResponse && cockpitAdapter ? (
-              <div style={{ height: "62vh", minHeight: 420 }}>
+              <div style={{ flex: 1, minHeight: 460, display: "flex" }}>
                 <LeadCockpit
                   response={cockpitResponse}
                   adapter={cockpitAdapter}
