@@ -12,6 +12,7 @@ import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
 import { useCurrentUser } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter } from "@/components/admin/LeadCockpit";
+import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
 import type { IntakeResponse } from "@/lib/intake";
 import { useUI } from "@/store/ui";
 
@@ -170,7 +171,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   const [detail, setDetail] = useState<LeadDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [rerunning, setRerunning] = useState(false);
+  const [rerunOpen, setRerunOpen] = useState(false);
   const [notice, setNotice] = useState("");
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -249,20 +250,27 @@ export default function AdminAIUnderwriterLeadsPage() {
     loadLeads().catch(() => undefined);
   }
 
-  async function rerunReview(id: string) {
-    if (rerunning) return;
-    if (!window.confirm("Re-run the AI review on this lead's latest uploads? This runs a fresh underwriting pass over the current files.")) return;
-    setRerunning(true);
-    setNotice("");
-    try {
-      await call<LeadDetail>(`/admin/ai-underwriter-leads/${id}/run-review`, { method: "POST" });
+  // Re-run is driven by the in-app RunReviewDialog (themed confirm + live
+  // progress), not a browser confirm. The button just opens the dialog.
+  function openRerun() {
+    if (selectedId) setRerunOpen(true);
+  }
+
+  async function startRerun(): Promise<{ review_id: string }> {
+    if (!selectedId) throw new Error("No lead selected.");
+    return call<{ review_id: string }>(`/admin/ai-underwriter-leads/${selectedId}/run-review`, { method: "POST" });
+  }
+
+  async function pollRerun(reviewId: string) {
+    if (!selectedId) throw new Error("No lead selected.");
+    return call<ReviewProgress>(`/admin/ai-underwriter-leads/${selectedId}/review-progress?review_id=${reviewId}`);
+  }
+
+  async function onRerunDone(completed: boolean) {
+    if (completed) {
       await refreshSelectedLead();
       await loadLeads();
       setNotice("AI review re-run complete — showing the latest breakdown.");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Re-run failed. Please try again in a moment.");
-    } finally {
-      setRerunning(false);
     }
   }
 
@@ -506,14 +514,22 @@ export default function AdminAIUnderwriterLeadsPage() {
             onGeneratePacket={() => generateLenderPacket(selectedId)}
             onPreviewEmail={(payload) => previewVendorEmail(selectedId, payload)}
             onSendEmail={(payload) => sendVendorEmail(selectedId, payload)}
-            onRerun={() => rerunReview(selectedId)}
-            rerunning={rerunning}
+            onRerun={openRerun}
+            rerunning={rerunOpen}
             cockpitResponse={cockpitResponse}
             cockpitAdapter={cockpitAdapter}
             onCockpitResponse={() => { /* cockpit owns its live state; refresh the list lazily on close */ }}
           />
         ) : null}
       </Modal>
+
+      <RunReviewDialog
+        open={rerunOpen}
+        onClose={() => setRerunOpen(false)}
+        onStart={startRerun}
+        poll={pollRerun}
+        onDone={onRerunDone}
+      />
     </div>
   );
 }
@@ -648,6 +664,7 @@ function LeadDetailPanel({
                   variant={detail.intake.variant}
                   initialMessages={detail.messages}
                   onResponse={onCockpitResponse}
+                  onRequestRerun={onRerun}
                 />
               </div>
             ) : (

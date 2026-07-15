@@ -59,12 +59,17 @@ export function LeadCockpit({
   variant,
   initialMessages,
   onResponse,
+  onRequestRerun,
 }: {
   response: IntakeResponse;
   adapter: LeadCockpitAdapter;
   variant?: string | null;
   initialMessages?: Array<{ id: string; role: string; content: string; created_at?: string }>;
   onResponse?: (r: IntakeResponse) => void;
+  /** When provided, the cockpit's "Re-run review" button delegates to the
+   *  parent's RunReviewDialog (themed confirm + live progress) instead of
+   *  running inline. */
+  onRequestRerun?: () => void;
 }) {
   const { t } = useTheme();
   const [current, setCurrent] = useState<IntakeResponse>(response);
@@ -290,7 +295,7 @@ export function LeadCockpit({
           <strong style={{ color: t.ink, fontSize: 13 }}>Live intelligence</strong>
           <button
             type="button"
-            onClick={handleRunReview}
+            onClick={onRequestRerun ?? handleRunReview}
             disabled={reviewing}
             style={{ ...qcBtn(t), marginLeft: "auto", opacity: reviewing ? 0.6 : 1 }}
           >
