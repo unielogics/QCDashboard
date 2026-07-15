@@ -11,6 +11,8 @@ import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
 import { useCurrentUser } from "@/hooks/useApi";
+import { LeadCockpit, type LeadCockpitAdapter } from "@/components/admin/LeadCockpit";
+import type { IntakeResponse } from "@/lib/intake";
 
 type LeadRow = {
   id: string;
@@ -257,6 +259,57 @@ export default function AdminAIUnderwriterLeadsPage() {
     }
   }
 
+  // Map the admin LeadDetail into the IntakeResponse shape the cockpit expects,
+  // and build a Clerk-authenticated transport adapter against the admin endpoints.
+  const cockpitResponse = useMemo<IntakeResponse | null>(() => {
+    if (!detail) return null;
+    return {
+      token: null,
+      session_token: null,
+      intake: {
+        id: detail.intake.id,
+        bucket_id: detail.intake.bucket_id,
+        full_name: detail.intake.full_name,
+        email: detail.intake.email,
+        phone: detail.intake.phone ?? null,
+        business_name: detail.intake.business_name ?? null,
+        loan_purpose: detail.intake.loan_purpose ?? null,
+        requested_loan_amount: detail.intake.requested_loan_amount ?? null,
+        estimated_credit_score: detail.intake.estimated_credit_score ?? null,
+        referral_source: detail.intake.referral_source ?? null,
+        status: detail.intake.status,
+        result_snapshot: detail.intake.result_snapshot ?? null,
+      },
+      requested_documents: detail.requested_documents,
+      files: detail.files,
+      latest_review: detail.latest_review ?? null,
+      messages: detail.messages,
+      assistant_message: "",
+      widget: null,
+    } as unknown as IntakeResponse;
+  }, [detail]);
+
+  const cockpitAdapter = useMemo<LeadCockpitAdapter | null>(() => {
+    if (!selectedId) return null;
+    const base = `/admin/ai-underwriter-leads/${selectedId}`;
+    const post = <T,>(path: string, body?: unknown) =>
+      call<T>(`${base}${path}`, {
+        method: "POST",
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    return {
+      sendChat: (message: string) => post<IntakeResponse>("/chat", { message }),
+      uploadInit: (payload) => post("/files/upload-init", payload),
+      uploadComplete: async (fileId: string) => {
+        await post("/files/complete", { file_id: fileId });
+      },
+      runReview: () => post<IntakeResponse>("/run-review"),
+      reload: () => call<IntakeResponse>(base),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
   async function generateExecutiveSummary(id: string) {
     setNotice("");
     try {
@@ -448,6 +501,9 @@ export default function AdminAIUnderwriterLeadsPage() {
             onSendEmail={(payload) => sendVendorEmail(selectedId, payload)}
             onRerun={() => rerunReview(selectedId)}
             rerunning={rerunning}
+            cockpitResponse={cockpitResponse}
+            cockpitAdapter={cockpitAdapter}
+            onCockpitResponse={(r) => { if (selectedId) refreshSelectedLead().catch(() => undefined); void r; }}
           />
         ) : null}
       </Modal>
@@ -466,6 +522,9 @@ function LeadDetailPanel({
   onSendEmail,
   onRerun,
   rerunning,
+  cockpitResponse,
+  cockpitAdapter,
+  onCockpitResponse,
 }: {
   detail: LeadDetail | null;
   loading: boolean;
@@ -477,6 +536,9 @@ function LeadDetailPanel({
   onSendEmail: (payload: { to_emails: string[]; cc_emails: string[]; subject: string; body: string; include_lender_packet?: boolean }) => Promise<void> | void;
   onRerun: () => void;
   rerunning: boolean;
+  cockpitResponse: IntakeResponse | null;
+  cockpitAdapter: LeadCockpitAdapter | null;
+  onCockpitResponse: (r: IntakeResponse) => void;
 }) {
   const { t } = useTheme();
   const [activeTab, setActiveTab] = useState<"conversation" | "evidence" | "package">("conversation");
@@ -571,19 +633,19 @@ function LeadDetailPanel({
           </div>
 
           {activeTab === "conversation" ? (
-            <InfoBlock title="Client / AI conversation">
-              <div style={{ display: "grid", gap: 10 }}>
-                {detail.messages?.length ? detail.messages.map((message) => (
-                  <div key={message.id} style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: 10, background: message.role === "user" ? t.surface : t.surface2 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-                      <strong style={{ color: t.ink, fontSize: 12 }}>{message.role === "user" ? "Client" : "AI underwriter"}</strong>
-                      <span style={{ color: t.ink3, fontSize: 11 }}>{formatDateTime(message.created_at)}</span>
-                    </div>
-                    <p style={{ margin: 0, color: t.ink2, whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{message.content}</p>
-                  </div>
-                )) : <span style={{ color: t.ink3 }}>No conversation yet.</span>}
+            cockpitResponse && cockpitAdapter ? (
+              <div style={{ height: "62vh", minHeight: 420 }}>
+                <LeadCockpit
+                  response={cockpitResponse}
+                  adapter={cockpitAdapter}
+                  variant={detail.intake.variant}
+                  initialMessages={detail.messages}
+                  onResponse={onCockpitResponse}
+                />
               </div>
-            </InfoBlock>
+            ) : (
+              <span style={{ color: t.ink3 }}>Loading conversation…</span>
+            )
           ) : null}
 
           {activeTab === "evidence" ? (
