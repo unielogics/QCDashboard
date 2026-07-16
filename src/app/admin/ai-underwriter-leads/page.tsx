@@ -9,7 +9,7 @@ import { Card, Pill, useToast, Toast } from "@/components/design-system/primitiv
 import { Modal } from "@/components/design-system/Modal";
 import { TypingDots } from "@/components/design-system/TypingDots";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
 import { useCurrentUser } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage } from "@/components/admin/LeadCockpit";
@@ -174,6 +174,8 @@ export default function AdminAIUnderwriterLeadsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [rerunOpen, setRerunOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
@@ -215,6 +217,35 @@ export default function AdminAIUnderwriterLeadsPage() {
       setNotice(error instanceof Error ? error.message : "Lead detail is unavailable.");
     } finally {
       setDetailLoading(false);
+    }
+  }
+
+  async function createLead(payload: CreateLeadPayload) {
+    setCreating(true);
+    setNotice("");
+    try {
+      const res = await call<LeadDetail>("/admin/ai-underwriter-leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setCreateOpen(false);
+      await loadLeads(0);
+      await openLead(res.intake.id);
+    } catch (error) {
+      // Duplicate email → backend returns 409 with the existing intake_id; open it.
+      if (error instanceof ApiError && error.status === 409) {
+        const detail = (error.body as { detail?: { intake_id?: string; message?: string } } | undefined)?.detail;
+        if (detail?.intake_id) {
+          setCreateOpen(false);
+          setNotice(detail.message || "A lead already exists for this email — opening it.");
+          await openLead(detail.intake_id);
+          return;
+        }
+      }
+      setNotice(error instanceof Error ? error.message : "Could not create the lead.");
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -423,7 +454,10 @@ export default function AdminAIUnderwriterLeadsPage() {
             Dealer and real-estate funding review submissions, conversations, evidence, management packages, and vendor sends.
           </p>
         </div>
-        <Link href="/admin/buckets" style={{ ...qcBtn(t), textDecoration: "none" }}>Buckets</Link>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button style={qcBtnPrimary(t)} onClick={() => setCreateOpen(true)}>Create lead</button>
+          <Link href="/admin/buckets" style={{ ...qcBtn(t), textDecoration: "none" }}>Buckets</Link>
+        </div>
       </div>
 
       <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
@@ -535,6 +569,14 @@ export default function AdminAIUnderwriterLeadsPage() {
         poll={pollRerun}
         onDone={onRerunDone}
       />
+
+      {createOpen ? (
+        <CreateLeadModal
+          onClose={() => setCreateOpen(false)}
+          onCreate={createLead}
+          creating={creating}
+        />
+      ) : null}
     </div>
   );
 }
@@ -967,6 +1009,160 @@ function ClientConversation({ adapter, clientName }: { adapter: LeadCockpitAdapt
         </div>
       </div>
     </div>
+  );
+}
+
+type CreateLeadPayload = {
+  variant: "dealer" | "real_estate";
+  full_name: string;
+  email: string;
+  phone?: string;
+  business_name?: string;
+  investor_name?: string;
+  target_property_address?: string;
+  transaction_type?: string;
+  requested_amount?: number;
+  estimated_value_or_purchase_price?: number;
+  monthly_rent?: number;
+  estimated_credit_tier?: string;
+  notify_client: boolean;
+};
+
+function CreateLeadModal({
+  onClose,
+  onCreate,
+  creating,
+}: {
+  onClose: () => void;
+  onCreate: (payload: CreateLeadPayload) => void | Promise<void>;
+  creating: boolean;
+}) {
+  const { t } = useTheme();
+  const [variant, setVariant] = useState<"dealer" | "real_estate">("dealer");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [investorName, setInvestorName] = useState("");
+  const [propertyAddress, setPropertyAddress] = useState("");
+  const [transactionType, setTransactionType] = useState("");
+  const [requestedAmount, setRequestedAmount] = useState("");
+  const [propertyValue, setPropertyValue] = useState("");
+  const [monthlyRent, setMonthlyRent] = useState("");
+  const [creditTier, setCreditTier] = useState("");
+  const [notifyClient, setNotifyClient] = useState(false);
+  const [error, setError] = useState("");
+
+  const isRE = variant === "real_estate";
+  const label = (text: string) => ({ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: 1, marginBottom: 4, display: "block" });
+  const num = (s: string) => (s.trim() === "" ? undefined : Number(s));
+
+  function submit() {
+    if (!fullName.trim()) { setError("Client name is required."); return; }
+    if (!email.trim() || !email.includes("@")) { setError("A valid client email is required."); return; }
+    setError("");
+    onCreate({
+      variant,
+      full_name: fullName.trim(),
+      email: email.trim(),
+      phone: phone.trim() || undefined,
+      business_name: isRE ? undefined : (businessName.trim() || undefined),
+      investor_name: isRE ? (investorName.trim() || undefined) : undefined,
+      target_property_address: isRE ? (propertyAddress.trim() || undefined) : undefined,
+      transaction_type: isRE ? (transactionType.trim() || undefined) : undefined,
+      requested_amount: isRE ? num(requestedAmount) : undefined,
+      estimated_value_or_purchase_price: isRE ? num(propertyValue) : undefined,
+      monthly_rent: isRE ? num(monthlyRent) : undefined,
+      estimated_credit_tier: isRE ? (creditTier.trim() || undefined) : undefined,
+      notify_client: notifyClient,
+    });
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Create AI underwriter lead" size="md">
+      <div style={{ display: "grid", gap: 12, padding: 4 }}>
+        <p style={{ margin: 0, color: t.ink3, fontSize: 13, lineHeight: 1.45 }}>
+          Create a lead on behalf of a client and start underwriting now. The client can log in later with this email (they receive a secure code by email).
+        </p>
+
+        <div>
+          <label style={label("Type")}>Lead type</label>
+          <select value={variant} onChange={(e) => setVariant(e.target.value as "dealer" | "real_estate")} style={{ ...inputStyle(t), width: "100%" }}>
+            <option value="dealer">Dealer</option>
+            <option value="real_estate">Real estate</option>
+          </select>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <label style={label("Name")}>Client full name *</label>
+            <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" style={{ ...inputStyle(t), width: "100%" }} />
+          </div>
+          <div>
+            <label style={label("Email")}>Client email *</label>
+            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" style={{ ...inputStyle(t), width: "100%" }} />
+          </div>
+          <div>
+            <label style={label("Phone")}>Phone</label>
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" style={{ ...inputStyle(t), width: "100%" }} />
+          </div>
+          {!isRE ? (
+            <div>
+              <label style={label("Business")}>Business name</label>
+              <input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Dealership / business" style={{ ...inputStyle(t), width: "100%" }} />
+            </div>
+          ) : (
+            <div>
+              <label style={label("Investor")}>Investor / entity name</label>
+              <input value={investorName} onChange={(e) => setInvestorName(e.target.value)} placeholder="Holdings LLC" style={{ ...inputStyle(t), width: "100%" }} />
+            </div>
+          )}
+        </div>
+
+        {isRE ? (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={label("Property")}>Target property address</label>
+              <input value={propertyAddress} onChange={(e) => setPropertyAddress(e.target.value)} placeholder="123 Main St, City ST" style={{ ...inputStyle(t), width: "100%" }} />
+            </div>
+            <div>
+              <label style={label("Transaction")}>Transaction type</label>
+              <input value={transactionType} onChange={(e) => setTransactionType(e.target.value)} placeholder="purchase / refinance / cash-out" style={{ ...inputStyle(t), width: "100%" }} />
+            </div>
+            <div>
+              <label style={label("Credit")}>Estimated credit tier</label>
+              <input value={creditTier} onChange={(e) => setCreditTier(e.target.value)} placeholder="e.g. 700+" style={{ ...inputStyle(t), width: "100%" }} />
+            </div>
+            <div>
+              <label style={label("Amount")}>Requested amount ($)</label>
+              <input value={requestedAmount} onChange={(e) => setRequestedAmount(e.target.value)} inputMode="numeric" placeholder="500000" style={{ ...inputStyle(t), width: "100%" }} />
+            </div>
+            <div>
+              <label style={label("Value")}>Property value / price ($)</label>
+              <input value={propertyValue} onChange={(e) => setPropertyValue(e.target.value)} inputMode="numeric" placeholder="800000" style={{ ...inputStyle(t), width: "100%" }} />
+            </div>
+            <div>
+              <label style={label("Rent")}>Monthly rent ($)</label>
+              <input value={monthlyRent} onChange={(e) => setMonthlyRent(e.target.value)} inputMode="numeric" placeholder="4500" style={{ ...inputStyle(t), width: "100%" }} />
+            </div>
+          </div>
+        ) : null}
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: t.ink2, cursor: "pointer" }}>
+          <input type="checkbox" checked={notifyClient} onChange={(e) => setNotifyClient(e.target.checked)} />
+          Email the client a secure login/resume link now
+        </label>
+
+        {error ? <div style={{ color: t.danger, fontSize: 12 }}>{error}</div> : null}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
+          <button style={qcBtn(t)} onClick={onClose} disabled={creating}>Cancel</button>
+          <button style={qcBtnPrimary(t)} onClick={submit} disabled={creating}>
+            {creating ? <><Spinner /> Creating…</> : "Create lead"}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
