@@ -313,10 +313,15 @@ export function LeadCockpit({
       </section>
 
       {/* INTELLIGENCE */}
-      <section style={{ display: "flex", flexDirection: "column", minHeight: 0, border: `1px solid ${t.line}`, borderRadius: 14, background: t.surface, overflow: "hidden" }}>
+      <section style={{ display: "flex", flexDirection: "column", minHeight: 0, border: `${intelligence?.lendingReady ? 2 : 1}px solid ${intelligence?.lendingReady ? t.profit : t.line}`, borderRadius: 14, background: t.surface, overflow: "hidden", boxShadow: intelligence?.lendingReady ? `0 0 0 3px ${t.profitBg}` : "none" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", borderBottom: `1px solid ${t.line}` }}>
           <Icon name="spark" size={14} />
           <strong style={{ color: t.ink, fontSize: 13 }}>Live intelligence</strong>
+          {intelligence?.lendingReady ? (
+            <span style={{ ...pill(t, "profit"), display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <Icon name="check" size={11} /> Ready for lending
+            </span>
+          ) : null}
           <button
             type="button"
             onClick={onRequestRerun ?? handleRunReview}
@@ -399,11 +404,13 @@ export function LeadCockpit({
 
 function MetricTile({ metric }: { metric: IntelligenceValue }) {
   const { t } = useTheme();
+  const unavailable = metric.source === "unavailable";
   return (
     <div style={{ border: `1px solid ${t.line}`, borderRadius: 10, padding: "9px 11px", background: t.surface2 }}>
       <div style={{ color: t.ink3, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4 }}>{metric.label}</div>
-      <div style={{ color: t.ink, fontSize: 16, fontWeight: 800, marginTop: 3 }}>{metric.value}</div>
-      <div style={{ color: t.ink4, fontSize: 10, marginTop: 2 }}>{SOURCE_LABEL[metric.source]}</div>
+      <div style={{ color: unavailable ? t.ink3 : t.ink, fontSize: unavailable && metric.hint ? 13 : 16, fontWeight: 800, marginTop: 3 }}>{metric.value}</div>
+      {/* When a number can't be computed, show what's needed instead of a bare source label. */}
+      <div style={{ color: t.ink4, fontSize: 10, marginTop: 2 }}>{unavailable && metric.hint ? metric.hint : SOURCE_LABEL[metric.source]}</div>
     </div>
   );
 }

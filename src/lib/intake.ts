@@ -112,7 +112,7 @@ export type ChatLine = { id: string; role: "assistant" | "user"; content: string
 export type QueuedFile = { id: string; file: File; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
 export type ReviewProgressStage = "idle" | "attaching" | "uploading" | "reading" | "classifying" | "screening" | "preparing" | "complete" | "error";
 export type WorkspaceTab = "chat" | "files" | "intelligence";
-export type IntelligenceValue = { label: string; value: string; source: "verified" | "extracted" | "estimated" | "unavailable"; detail?: string; raw?: number | null };
+export type IntelligenceValue = { label: string; value: string; source: "verified" | "extracted" | "estimated" | "unavailable"; detail?: string; raw?: number | null; hint?: string };
 
 export type FundabilityBannerData = {
   tone: "green" | "red" | "amber";
@@ -138,6 +138,9 @@ export type IntelligenceModel = {
   monthlySeries: Array<{ label: string; value: number | null }>;
   yearlySeries: Array<{ label: string; value: number | null }>;
   oneNextStep: string;
+  /** True when every baseline category is satisfied and no clarifications remain —
+   *  drives the green "ready for lending" border on the intelligence panel. */
+  lendingReady: boolean;
 };
 
 export type FileEvidence = { classification: string; supports: string };
@@ -342,14 +345,23 @@ export function buildIntelligenceModel(
     evidence: "",
     gap: doc.description || "No supporting file has been matched yet.",
   }));
+  // Lending readiness: trust the backend's computed flag when present, else
+  // derive it (every baseline category satisfied AND no open items).
+  const coverageStatuses = arrayOfRecords(evidence?.baseline_coverage).map((c) => String(c.status || "").toLowerCase());
+  const derivedReady =
+    coverageStatuses.length > 0 &&
+    coverageStatuses.every((s) => ["satisfied", "uploaded", "complete"].includes(s)) &&
+    arrayOfRecords(result?.missing_or_incomplete_items).length === 0;
+  const lendingReady = typeof result?.lending_ready === "boolean" ? Boolean(result.lending_ready) : derivedReady;
+
   return {
     status,
-    requestedAmount: metricValue("Requested capital", requestedAmount, "estimated", response.intake.requested_loan_amount ? "Entered during intake" : "Awaiting requested amount", "money"),
-    annualizedRevenue: metricValue("Annualized revenue", annualizedRevenue, "extracted", "From YTD P&L, tax returns, or bank deposits when available", "money"),
-    debtBurden: metricValue("Debt burden", debtBurden, "extracted", "Current monthly or annualized debt service", "money"),
-    dscr: metricValue("DSCR estimate", dscr, "extracted", "Coverage based on available cash-flow evidence", "ratio"),
-    ltv: metricValue("Proposed LTV", ltv, collateral.value ? "estimated" : "unavailable", "Value less debt plus requested capital where available", "percent"),
-    equity: metricValue("Collateral equity", equity, collateral.value ? "estimated" : "unavailable", "Estimated property value less stated debt", "money"),
+    requestedAmount: metricValue("Requested capital", requestedAmount, "estimated", response.intake.requested_loan_amount ? "Entered during intake" : "Awaiting requested amount", "money", "Enter the requested amount"),
+    annualizedRevenue: metricValue("Annualized revenue", annualizedRevenue, "extracted", "From YTD P&L, tax returns, or bank deposits when available", "money", "Needs tax returns or bank statements"),
+    debtBurden: metricValue("Debt burden", debtBurden, "extracted", "Current monthly or annualized debt service", "money", "Needs a debt schedule or stated monthly debt"),
+    dscr: metricValue("DSCR estimate", dscr, "extracted", "Coverage based on available cash-flow evidence", "ratio", "Needs a debt schedule to compute coverage"),
+    ltv: metricValue("Proposed LTV", ltv, collateral.value ? "estimated" : "unavailable", "Value less debt plus requested capital where available", "percent", "Needs collateral value & mortgage balance"),
+    equity: metricValue("Collateral equity", equity, collateral.value ? "estimated" : "unavailable", "Estimated property value less stated debt", "money", "Needs collateral value & mortgage balance"),
     confidence: {
       label: "AI confidence",
       value: String(result?.confidence || "Awaiting review"),
@@ -370,6 +382,7 @@ export function buildIntelligenceModel(
     monthlySeries: seriesFromResult(result, ["monthly_cash_flow", "month_to_month_cash_flow", "monthly_deposits", "bank_statement_months"]),
     yearlySeries: seriesFromResult(result, ["year_to_year_revenue", "annual_revenue", "tax_return_years", "yearly_profit"]),
     oneNextStep: String(result?.one_next_step || asRecord(result?.next_best_action)?.detail || bankability?.reason || "Run the preliminary screen after uploading evidence."),
+    lendingReady,
   };
 }
 
@@ -379,9 +392,12 @@ export function metricValue(
   source: IntelligenceValue["source"],
   detail: string,
   format: "money" | "ratio" | "percent" | "plain",
+  hint?: string,
 ): IntelligenceValue {
   if (raw === null || !Number.isFinite(raw)) {
-    return { label, value: "Awaiting evidence", source: "unavailable", detail, raw: null };
+    // When the number can't be computed, name the document that would supply it
+    // instead of a bare "Awaiting evidence".
+    return { label, value: hint ? "Needs evidence" : "Awaiting evidence", source: "unavailable", detail, raw: null, hint };
   }
   let value = `${raw}`;
   if (format === "money") value = formatMoneyCompact(raw);
