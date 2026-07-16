@@ -15,6 +15,8 @@ import {
   useGoogleConnection,
   useStartGoogleOAuth,
   useDisconnectGoogle,
+  useGoogleAutomationSettings,
+  useUpdateGoogleAutomationSettings,
   useProviderSettings,
   useBrokers,
   useInviteRegionalManager,
@@ -860,6 +862,8 @@ function ConnectionsSection() {
   const { data, isLoading, error, refetch } = useGoogleConnection();
   const startOAuth = useStartGoogleOAuth();
   const disconnect = useDisconnectGoogle();
+  const { data: automation } = useGoogleAutomationSettings();
+  const updateAutomation = useUpdateGoogleAutomationSettings();
   const [flash, setFlash] = useState<string | null>(null);
 
   // Returning from the Google consent screen (?connected=1 / ?error=...).
@@ -936,6 +940,42 @@ function ConnectionsSection() {
               </div>
             ))}
           </div>
+
+          {connected ? (
+            <div style={{ marginTop: 18, borderTop: `1px solid ${t.line}`, paddingTop: 14 }}>
+              <SectionLabel>Automated emails</SectionLabel>
+              <div style={{ fontSize: 12, color: t.ink3, marginTop: 4, marginBottom: 10 }}>
+                Sent from your connected Gmail. Each also requires the firm master switch (Settings → AI cadence).
+              </div>
+              {([
+                ["status_change_emails", "Notify realtor on file status changes", "Emails the realtor when a file moves to lender-connected, processing, closing, or funded."],
+                ["re_agent_auto_emails", "Automated task & collection nudges to realtors", "Lets cadence rules email the realtor about items to collect or clarify."],
+                ["merged_updates_auto", "Auto-send merged client + realtor updates", "Allows merged updates to send without manual approval."],
+              ] as const).map(([key, label, desc]) => {
+                const on = Boolean(automation?.[key]);
+                return (
+                  <div key={key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0" }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: t.ink }}>{label}</div>
+                      <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>{desc}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => automation && updateAutomation.mutate({ ...automation, [key]: !on })}
+                      disabled={updateAutomation.isPending}
+                      style={{
+                        width: 44, height: 24, borderRadius: 999, border: "none", cursor: "pointer", position: "relative",
+                        background: on ? t.brand : t.surface2, transition: "background .15s",
+                      }}
+                      aria-pressed={on}
+                    >
+                      <span style={{ position: "absolute", top: 3, left: on ? 23 : 3, width: 18, height: 18, borderRadius: 999, background: "#fff", transition: "left .15s" }} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
 
           {data?.last_error ? (
             <div style={{ marginTop: 12, fontSize: 12, color: t.warn }}>Last error: {data.last_error} — reconnect to resolve.</div>

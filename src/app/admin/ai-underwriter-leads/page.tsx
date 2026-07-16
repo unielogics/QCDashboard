@@ -11,7 +11,7 @@ import { TypingDots } from "@/components/design-system/TypingDots";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { api, ApiError } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
-import { useCurrentUser } from "@/hooks/useApi";
+import { useCurrentUser, useBookingLink } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage } from "@/components/admin/LeadCockpit";
 import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
 import type { IntakeResponse } from "@/lib/intake";
@@ -625,6 +625,7 @@ function LeadDetailPanel({
 }) {
   const { t } = useTheme();
   const toast = useToast();
+  const bookingLink = useBookingLink();
   const [activeTab, setActiveTab] = useState<"conversation" | "workspace">("conversation");
   const [workspaceSub, setWorkspaceSub] = useState<"overview" | "documents" | "client" | "package">("overview");
   const [subject, setSubject] = useState("");
@@ -910,6 +911,19 @@ function LeadDetailPanel({
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <button style={qcBtnPrimary(t)} onClick={async () => { setBusy("preview"); try { await previewEmail(); toast.show("Draft ready"); } finally { setBusy(""); } }} disabled={busy !== ""}>
                       {busy === "preview" ? <><Spinner /> Drafting…</> : (subject || body) ? "Regenerate draft" : "Draft email with AI"}
+                    </button>
+                    <button
+                      style={qcBtn(t)}
+                      disabled={!bookingLink.data?.url}
+                      title={bookingLink.data?.url ? "Append your booking link to the body" : "Enable your Booking Page first (Booking Page in the sidebar)"}
+                      onClick={() => {
+                        const url = bookingLink.data?.url;
+                        if (!url) return;
+                        setBody((b) => `${b}${b && !b.endsWith("\n") ? "\n\n" : ""}Book a time with me: ${url}`);
+                        toast.show("Booking link inserted");
+                      }}
+                    >
+                      Insert booking link
                     </button>
                   </div>
                 </div>

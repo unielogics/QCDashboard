@@ -6176,3 +6176,49 @@ export function useDisconnectGoogle() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["google-connection"] }),
   });
 }
+
+export type GoogleAutomationSettings = {
+  re_agent_auto_emails: boolean;
+  merged_updates_auto: boolean;
+  status_change_emails: boolean;
+};
+
+export function useGoogleAutomationSettings() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["google-automation", devUser],
+    queryFn: () => apiCall<GoogleAutomationSettings>("/google/connection/settings"),
+  });
+}
+
+export function useUpdateGoogleAutomationSettings() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: GoogleAutomationSettings) =>
+      apiCall<GoogleAutomationSettings>("/google/connection/settings", { method: "PUT", body: JSON.stringify(body) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["google-automation"] }),
+  });
+}
+
+export type DriveFile = { id: string; name: string; mime_type?: string | null; size?: string | null; modified_time?: string | null };
+
+export function useDriveFiles(query?: string, enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["drive-files", devUser, query ?? ""],
+    queryFn: () => apiCall<{ files: DriveFile[] }>(`/google/drive/files${query ? `?q=${encodeURIComponent(query)}` : ""}`),
+    enabled,
+  });
+}
+
+export function useBookingLink() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["booking-link", devUser],
+    queryFn: () => apiCall<{ enabled: boolean; slug: string | null; url: string | null }>("/me/booking-link"),
+  });
+}
