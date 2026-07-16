@@ -320,7 +320,12 @@ export function buildIntelligenceModel(
   const evidence = asRecord(result?.document_evidence_map);
   const bankability = asRecord(result?.bankability_assessment);
   const requestedAmount = numberFromUnknown(response.intake.requested_loan_amount ?? keyMetrics?.requested_amount);
-  const annualizedRevenue = numberFromUnknown(keyMetrics?.ytd_annualized_revenue ?? keyMetrics?.annualized_adjusted_deposits);
+  // Revenue is a tax-return figure ONLY — do not fall back to bank deposits (gross
+  // deposits include transfers, financing draws, and financed-sale proceeds, which
+  // overstate a dealer's true revenue). When there is no tax-verified revenue we
+  // surface the annualized gross-deposits figure under its own honest label.
+  const annualizedRevenue = numberFromUnknown(keyMetrics?.ytd_annualized_revenue);
+  const annualizedDeposits = numberFromUnknown(keyMetrics?.annualized_adjusted_deposits);
   const debtBurden = numberFromUnknown(keyMetrics?.estimated_debt_burden);
   const dscr = numberFromUnknown(keyMetrics?.estimated_dscr);
   const collateral = collateralPosition(response);
@@ -357,7 +362,11 @@ export function buildIntelligenceModel(
   return {
     status,
     requestedAmount: metricValue("Requested capital", requestedAmount, "estimated", response.intake.requested_loan_amount ? "Entered during intake" : "Awaiting requested amount", "money", "Enter the requested amount"),
-    annualizedRevenue: metricValue("Annualized revenue", annualizedRevenue, "extracted", "From YTD P&L, tax returns, or bank deposits when available", "money", "Needs tax returns or bank statements"),
+    // Prefer tax-verified revenue; otherwise show annualized gross deposits under
+    // an honest "gross deposits" label (never call raw deposits "revenue").
+    annualizedRevenue: annualizedRevenue !== null
+      ? metricValue("Annualized revenue", annualizedRevenue, "extracted", "Most recent tax-return gross receipts", "money")
+      : metricValue("Annualized gross deposits", annualizedDeposits, "extracted", "Bank inflow (not tax-verified revenue)", "money", "Needs tax returns for verified revenue"),
     debtBurden: metricValue("Debt burden", debtBurden, "extracted", "Current monthly or annualized debt service", "money", "Needs a debt schedule or stated monthly debt"),
     dscr: metricValue("DSCR estimate", dscr, "extracted", "Coverage based on available cash-flow evidence", "ratio", "Needs a debt schedule to compute coverage"),
     ltv: metricValue("Proposed LTV", ltv, collateral.value ? "estimated" : "unavailable", "Value less debt plus requested capital where available", "percent", "Needs collateral value & mortgage balance"),
