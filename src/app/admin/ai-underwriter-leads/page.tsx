@@ -258,11 +258,17 @@ export default function AdminAIUnderwriterLeadsPage() {
       setNotice(`PDF export failed: ${res.status} ${res.statusText}`);
       return;
     }
+    // Prefer the server's dealer-named Content-Disposition filename.
+    const dealer = detail?.intake.business_name || detail?.intake.full_name || "";
+    const safeDealer = dealer.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+    const filename = (match && decodeURIComponent(match[1].trim().replace(/"/g, ""))) || (safeDealer ? `${safeDealer}-intelligence.pdf` : "dealer-ai-intelligence.pdf");
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "dealer-ai-intelligence.pdf";
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -275,11 +281,18 @@ export default function AdminAIUnderwriterLeadsPage() {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
     if (!res.ok) throw new Error(`Package export failed: ${res.status} ${res.statusText}`);
+    // Prefer the server's Content-Disposition filename (already named after the
+    // dealer), falling back to the dealer name from the loaded lead detail.
+    const dealer = detail?.intake.business_name || detail?.intake.full_name || "";
+    const safeDealer = dealer.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+    const filename = (match && decodeURIComponent(match[1].trim().replace(/"/g, ""))) || (safeDealer ? `${safeDealer}-package.zip` : "underwriting-package.zip");
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "underwriting-package.zip";
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     link.remove();
