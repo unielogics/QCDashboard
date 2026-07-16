@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, useToast, Toast } from "@/components/design-system/primitives";
 import { Modal } from "@/components/design-system/Modal";
+import { TypingDots } from "@/components/design-system/TypingDots";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
@@ -931,6 +932,14 @@ function ClientConversation({ adapter, clientName }: { adapter: LeadCockpitAdapt
             );
           })
         )}
+        {sending ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+            <span style={{ color: t.ink3, fontSize: 10, marginBottom: 2 }}>AI</span>
+            <div style={{ background: t.surface2, borderRadius: 10, padding: "8px 11px", border: `1px solid ${t.line}` }}>
+              <TypingDots label="Client AI is responding" />
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {error ? <div style={{ color: t.danger, fontSize: 12 }}>{error}</div> : null}
@@ -940,7 +949,14 @@ function ClientConversation({ adapter, clientName }: { adapter: LeadCockpitAdapt
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Answer the client here — they will see this and the AI will respond in their thread."
+          onKeyDown={(e) => {
+            // Enter sends; Shift+Enter inserts a newline.
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+          placeholder="Answer the client here — Enter to send, Shift+Enter for a new line. They will see this and the AI will respond."
           style={{ ...inputStyle(t), minHeight: 90, paddingTop: 10, resize: "vertical", lineHeight: 1.5 }}
         />
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

@@ -996,6 +996,12 @@ export default function DealerAIUnderwriterPage() {
                         </div>
                       ),
                     )}
+                    {busy ? (
+                      <div style={assistantRow}>
+                        <div style={assistantAvatar} aria-hidden>QC</div>
+                        <div style={assistantBubble}><ChatTypingDots /></div>
+                      </div>
+                    ) : null}
                     {response.widget?.type === "book_call" ? (
                       <BookCallWidget widget={response.widget} busy={busy} onBook={(startsAt) => bookCall(startsAt).catch(() => undefined)} />
                     ) : null}
@@ -1026,15 +1032,20 @@ export default function DealerAIUnderwriterPage() {
                         }}
                       />
                     </label>
-                    <input
+                    <textarea
                       style={composerInput}
                       value={chatText}
                       onChange={(event) => setChatText(event.target.value)}
-                      placeholder="Message the underwriter or attach files..."
+                      placeholder="Message the underwriter or attach files…  (Enter to send, Shift+Enter for a new line)"
                       disabled={!token || busy}
+                      rows={1}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter" && (chatText.trim() || hasQueuedUpload)) {
-                          submitComposer().catch(() => undefined);
+                        // Enter sends; Shift+Enter inserts a newline.
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          if (!busy && (chatText.trim() || hasQueuedUpload)) {
+                            submitComposer().catch(() => undefined);
+                          }
                         }
                       }}
                     />
@@ -1363,6 +1374,28 @@ function RunReviewWidget({ busy, hasResult, onRun }: { busy: boolean; hasResult:
     <WidgetBox title={hasResult ? "Refresh AI review" : "Run preliminary AI review"} description="The AI reads the baseline file only, classifies fundable, not fundable, or cannot determine, and does not ask for unlimited extra documents.">
       <button style={primaryWide} disabled={busy} onClick={onRun}>{busy ? "Reviewing..." : hasResult ? "Re-run with current files" : "Run preliminary screen"}</button>
     </WidgetBox>
+  );
+}
+
+function ChatTypingDots() {
+  return (
+    <span style={{ display: "inline-flex", gap: 4, alignItems: "center", padding: "2px 2px" }} aria-label="AI is thinking">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: 999,
+            background: "rgba(248,250,252,.7)",
+            display: "inline-block",
+            animation: "qc-typing 1.2s ease-in-out infinite",
+            animationDelay: `${i * 0.18}s`,
+          }}
+        />
+      ))}
+      <style>{"@keyframes qc-typing{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-4px);opacity:1}}"}</style>
+    </span>
   );
 }
 
@@ -3356,13 +3389,17 @@ const composer: CSSProperties = { display: "grid", gridTemplateColumns: "auto 1f
 const composerMobile: CSSProperties = { ...composer, gap: 8, padding: 12, gridTemplateColumns: "40px minmax(0, 1fr) auto" };
 const composerInput: CSSProperties = {
   border: "1px solid rgba(255,255,255,.14)",
-  borderRadius: 999,
-  padding: "0 16px",
+  borderRadius: 24,
+  padding: "15px 16px",
   minHeight: 52,
+  maxHeight: 160,
   fontSize: 15,
   outline: "none",
   background: "#232323",
   color: "#F8FAFC",
+  resize: "vertical",
+  fontFamily: "inherit",
+  lineHeight: 1.45,
 };
 const attachButton: CSSProperties = {
   width: 46,

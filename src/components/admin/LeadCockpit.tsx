@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
+import { TypingDots } from "@/components/design-system/TypingDots";
 import { FileDropzone } from "@/components/design-system/FileDropzone";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import {
@@ -271,6 +272,12 @@ export function LeadCockpit({
               ),
             )
           )}
+          {busy && !uploading ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <div style={{ width: 26, height: 26, borderRadius: 8, background: t.brand, color: t.inverse, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900, flexShrink: 0 }}>QC</div>
+              <div style={{ ...bubble(t), background: t.surface }}><TypingDots label="Underwriter AI is thinking" /></div>
+            </div>
+          ) : null}
           {reviewing ? <div style={{ color: t.ink3, fontSize: 12, fontStyle: "italic" }}>Running AI review over the latest uploads…</div> : null}
           <div ref={endRef} />
         </div>
@@ -294,17 +301,19 @@ export function LeadCockpit({
         <div style={{ padding: "10px 14px", borderTop: `1px solid ${t.line}`, display: "flex", flexDirection: "column", gap: 8 }}>
           <FileDropzone onFiles={addFiles} disabled={uploading || busy} title="Drop files or click to attach" />
           <div style={{ display: "flex", gap: 8 }}>
-            <input
+            <textarea
               value={chatText}
               onChange={(e) => setChatText(e.target.value)}
               onKeyDown={(e) => {
+                // Enter sends; Shift+Enter inserts a newline.
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleSend();
                 }
               }}
-              placeholder="Ask the AI underwriter…"
-              style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, fontSize: 13, outline: "none" }}
+              rows={1}
+              placeholder="Ask the AI underwriter…  (Enter to send, Shift+Enter for a new line)"
+              style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, fontSize: 13, outline: "none", resize: "vertical", minHeight: 40, maxHeight: 160, fontFamily: "inherit", lineHeight: 1.45 }}
             />
             <button
               type="button"
