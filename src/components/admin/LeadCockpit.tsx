@@ -359,41 +359,12 @@ export function LeadCockpit({
                 </div>
               ) : null}
 
-              {intelligence.coverage.length > 0 ? (
-                <div>
-                  <div style={sectionLabel(t)}>Evidence coverage</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
-                    {intelligence.coverage.map((c, i) => (
-                      <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}>
-                        <span style={{ color: t.ink2 }}>{c.category}</span>
-                        <span style={{ ...pill(t, coverageTone(c.status)) }}>{c.status}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {intelligence.strengths.length > 0 ? (
-                <TwoColList title="Strengths" items={intelligence.strengths} tone="profit" />
-              ) : null}
-              {intelligence.risks.length > 0 ? <TwoColList title="Risks" items={intelligence.risks} tone="warn" /> : null}
-
-              {files.length > 0 ? (
-                <div>
-                  <div style={sectionLabel(t)}>Files ({files.length})</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 6 }}>
-                    {files.slice(0, 24).map((f) => {
-                      const ev = evidenceByFile.get(f.id);
-                      return (
-                        <div key={f.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}>
-                          <span style={{ color: t.ink2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.file_name}</span>
-                          {ev ? <span style={{ color: t.ink3, flexShrink: 0 }}>{humanizeClassification(ev.classification)}</span> : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
+              {/* Full coverage / strengths / risks / file tables live in the
+                  Workspace → Overview and Documents sub-tabs. This panel stays a
+                  compact glance (readiness + metric tiles + next step) while chatting. */}
+              <p style={{ margin: 0, color: t.ink3, fontSize: 11, lineHeight: 1.4 }}>
+                See the Workspace tab for full evidence coverage, missing items, and documents.
+              </p>
             </>
           )}
         </div>

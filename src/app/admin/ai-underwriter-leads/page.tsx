@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -567,7 +567,8 @@ function LeadDetailPanel({
 }) {
   const { t } = useTheme();
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<"conversation" | "evidence" | "package">("conversation");
+  const [activeTab, setActiveTab] = useState<"conversation" | "workspace">("conversation");
+  const [workspaceSub, setWorkspaceSub] = useState<"overview" | "documents" | "package">("overview");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState("");
@@ -638,11 +639,10 @@ function LeadDetailPanel({
         <div style={{ padding: 20, color: t.ink3 }}>Loading lead detail...</div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ flexShrink: 0, padding: "12px 16px", display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, borderBottom: `1px solid ${t.line}` }}>
+          <div style={{ flexShrink: 0, padding: "12px 16px 0", display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 8 }}>
             {[
               ["conversation", "Conversation"],
-              ["evidence", "Evidence"],
-              ["package", "Management Package"],
+              ["workspace", "Workspace"],
             ].map(([value, label]) => (
               <button
                 key={value}
@@ -654,6 +654,26 @@ function LeadDetailPanel({
               </button>
             ))}
           </div>
+          {activeTab === "workspace" ? (
+            <div style={{ flexShrink: 0, padding: "10px 16px 12px", display: "flex", gap: 6, borderBottom: `1px solid ${t.line}`, flexWrap: "wrap" }}>
+              {[
+                ["overview", "Overview"],
+                ["documents", "Documents"],
+                ["package", "Package"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setWorkspaceSub(value as typeof workspaceSub)}
+                  style={{ ...qcBtn(t), fontSize: 12, padding: "6px 12px", background: workspaceSub === value ? t.brand : t.surface2, color: workspaceSub === value ? t.inverse : t.ink2 }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div style={{ flexShrink: 0, borderBottom: `1px solid ${t.line}`, marginTop: 12 }} />
+          )}
           <div style={{ flex: 1, minHeight: 0, padding: 16, display: "grid", gap: 14, overflowY: "auto" }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Pill bg={probabilityTone(t, String(result?.probability_status || "")).bg} color={probabilityTone(t, String(result?.probability_status || "")).fg}>
@@ -681,7 +701,7 @@ function LeadDetailPanel({
             )
           ) : null}
 
-          {activeTab === "evidence" ? (
+          {activeTab === "workspace" && workspaceSub === "overview" ? (
             <>
               <InfoBlock title="Contact">
                 <Line label="Name" value={detail.intake.full_name} />
@@ -713,17 +733,6 @@ function LeadDetailPanel({
                 <p style={{ margin: 0, color: t.ink2, lineHeight: 1.45 }}>{String(result?.one_next_step || result?.executive_summary || "Awaiting AI review.")}</p>
               </InfoBlock>
 
-              <InfoBlock title="Uploaded files">
-                <div style={{ display: "grid", gap: 7 }}>
-                  {detail.files.length ? detail.files.slice(0, 20).map((file) => (
-                    <div key={file.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${t.line}`, paddingBottom: 7 }}>
-                      <span style={{ color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.zip_entry_path || file.file_name}</span>
-                      <span style={{ color: t.ink3, fontSize: 12 }}>{formatSize(file.size_bytes)}</span>
-                    </div>
-                  )) : <span style={{ color: t.ink3 }}>No uploaded files yet.</span>}
-                </div>
-              </InfoBlock>
-
               <InfoBlock title="Evidence coverage">
                 <CompactList rows={arrayOfRecords(evidence?.baseline_coverage).map((row) => ({
                   title: String(row.category || "Evidence"),
@@ -741,7 +750,20 @@ function LeadDetailPanel({
             </>
           ) : null}
 
-          {activeTab === "package" ? (
+          {activeTab === "workspace" && workspaceSub === "documents" ? (
+            <InfoBlock title={`Uploaded files (${detail.files.length})`}>
+              <div style={{ display: "grid", gap: 7 }}>
+                {detail.files.length ? detail.files.slice(0, 60).map((file) => (
+                  <div key={file.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${t.line}`, paddingBottom: 7 }}>
+                    <span style={{ color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.zip_entry_path || file.file_name}</span>
+                    <span style={{ color: t.ink3, fontSize: 12 }}>{formatSize(file.size_bytes)}</span>
+                  </div>
+                )) : <span style={{ color: t.ink3 }}>No uploaded files yet.</span>}
+              </div>
+            </InfoBlock>
+          ) : null}
+
+          {activeTab === "workspace" && workspaceSub === "package" ? (
             <>
               {/* Step 1 — Executive summary (short on-screen narrative) */}
               <InfoBlock title="1 · Executive summary">
@@ -808,23 +830,24 @@ function LeadDetailPanel({
 
                   <div style={{ display: "grid", gap: 6 }}>
                     <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Subject</label>
-                    <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
-                      <input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Email subject line" style={{ ...inputStyle(t), flex: 1 }} />
-                      <button style={qcBtn(t)} onClick={() => copyText("Subject", subject)} disabled={!subject.trim()}>Copy</button>
+                    <div style={{ position: "relative" }}>
+                      <input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Email subject line" style={{ ...inputStyle(t), width: "100%", paddingRight: 40 }} />
+                      <CopyIconButton t={t} disabled={!subject.trim()} onCopy={() => copyText("Subject", subject)} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }} />
                     </div>
                   </div>
 
                   <div style={{ display: "grid", gap: 6 }}>
                     <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Body</label>
-                    <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Prepare a draft, or write the email body here" style={{ ...inputStyle(t), minHeight: 200, paddingTop: 10, resize: "vertical", lineHeight: 1.5 }} />
+                    <div style={{ position: "relative" }}>
+                      <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Prepare a draft, or write the email body here" style={{ ...inputStyle(t), width: "100%", minHeight: 200, paddingTop: 10, paddingRight: 40, resize: "vertical", lineHeight: 1.5 }} />
+                      <CopyIconButton t={t} disabled={!body.trim()} onCopy={() => copyText("Body", body)} style={{ position: "absolute", right: 8, top: 8 }} />
+                    </div>
                   </div>
 
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <button style={qcBtnPrimary(t)} onClick={async () => { setBusy("preview"); try { await previewEmail(); toast.show("Draft ready"); } finally { setBusy(""); } }} disabled={busy !== ""}>
                       {busy === "preview" ? <><Spinner /> Drafting…</> : (subject || body) ? "Regenerate draft" : "Draft email with AI"}
                     </button>
-                    <button style={qcBtn(t)} onClick={() => copyText("Body", body)} disabled={!body.trim()}>Copy body</button>
-                    <button style={qcBtn(t)} onClick={() => copyText("Email", `Subject: ${subject}\n\n${body}`)} disabled={!subject.trim() && !body.trim()}>Copy subject + body</button>
                   </div>
                 </div>
               </InfoBlock>
@@ -845,6 +868,30 @@ function Stat({ title, value, sub, t, good, warn }: { title: string; value: stri
       <div style={{ marginTop: 6, color: good ? t.profit : warn ? t.warn : t.ink, fontSize: 24, fontWeight: 900 }}>{value}</div>
       <div style={{ color: t.ink3, fontSize: 12 }}>{sub}</div>
     </Card>
+  );
+}
+
+function CopyIconButton({ t, onCopy, disabled, style }: { t: ReturnType<typeof useTheme>["t"]; onCopy: () => void; disabled?: boolean; style?: CSSProperties }) {
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      disabled={disabled}
+      title="Copy"
+      aria-label="Copy"
+      style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        width: 28, height: 28, borderRadius: 7, border: `1px solid ${t.line}`,
+        background: t.surface2, color: disabled ? t.ink4 : t.ink2,
+        cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, padding: 0,
+        ...style,
+      }}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+      </svg>
+    </button>
   );
 }
 
