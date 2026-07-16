@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
+import { Card, Pill, useToast, Toast } from "@/components/design-system/primitives";
 import { Modal } from "@/components/design-system/Modal";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { api } from "@/lib/api";
@@ -231,6 +231,23 @@ export default function AdminAIUnderwriterLeadsPage() {
     const link = document.createElement("a");
     link.href = url;
     link.download = "dealer-ai-intelligence.pdf";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function downloadPackageZip(id: string) {
+    const token = await getToken();
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/admin/ai-underwriter-leads/${id}/package.zip`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (!res.ok) throw new Error(`Package export failed: ${res.status} ${res.statusText}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "underwriting-package.zip";
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -519,6 +536,7 @@ export default function AdminAIUnderwriterLeadsPage() {
             cockpitResponse={cockpitResponse}
             cockpitAdapter={cockpitAdapter}
             onCockpitResponse={() => { /* cockpit owns its live state; refresh the list lazily on close */ }}
+            onDownloadZip={() => downloadPackageZip(selectedId)}
           />
         ) : null}
       </Modal>
@@ -548,6 +566,7 @@ function LeadDetailPanel({
   cockpitResponse,
   cockpitAdapter,
   onCockpitResponse,
+  onDownloadZip,
 }: {
   detail: LeadDetail | null;
   loading: boolean;
@@ -562,14 +581,17 @@ function LeadDetailPanel({
   cockpitResponse: IntakeResponse | null;
   cockpitAdapter: LeadCockpitAdapter | null;
   onCockpitResponse: (r: IntakeResponse) => void;
+  onDownloadZip: () => Promise<void>;
 }) {
   const { t } = useTheme();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<"conversation" | "evidence" | "package">("conversation");
   const [toInput, setToInput] = useState("");
   const [ccInput, setCcInput] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState("");
+  const [zipBusy, setZipBusy] = useState(false);
   const result = detail?.latest_review?.result || detail?.intake.result_snapshot || null;
   const evidence = asRecord(result?.document_evidence_map);
   const missing = arrayOfRecords(result?.missing_or_incomplete_items);
@@ -600,17 +622,43 @@ function LeadDetailPanel({
   }
 
   async function sendEmail() {
+    const recipients = parseEmailList(toInput);
     setBusy("send");
     try {
       await onSendEmail({
-        to_emails: parseEmailList(toInput),
+        to_emails: recipients,
         cc_emails: parseEmailList(ccInput),
         subject,
         body,
         include_lender_packet: true,
       });
+      // Keep the composer open (subject/body retained) so the operator can copy
+      // or send again to more recipients.
+      toast.show(`Sent to ${recipients.length} recipient${recipients.length === 1 ? "" : "s"}`);
     } finally {
       setBusy("");
+    }
+  }
+
+  async function copyText(label: string, value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.show(`${label} copied`);
+    } catch {
+      toast.show("Copy failed");
+    }
+  }
+
+  async function downloadZip() {
+    if (!detail) return;
+    setZipBusy(true);
+    try {
+      await onDownloadZip();
+      toast.show("Package downloaded");
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : "Package download failed");
+    } finally {
+      setZipBusy(false);
     }
   }
 
@@ -734,41 +782,78 @@ function LeadDetailPanel({
 
           {activeTab === "package" ? (
             <>
-              <InfoBlock title="Executive summary">
+              {/* Step 1 — Executive summary */}
+              <InfoBlock title="1 · Executive summary">
                 <div style={{ display: "grid", gap: 10 }}>
-                  <button style={qcBtnPrimary(t)} onClick={onGenerateSummary} disabled={busy !== ""}>Create executive summary</button>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <button style={qcBtnPrimary(t)} onClick={async () => { setBusy("summary"); try { await onGenerateSummary(); toast.show("Executive summary ready"); } finally { setBusy(""); } }} disabled={busy !== ""}>
+                      {busy === "summary" ? <><Spinner /> Generating…</> : summary ? "Regenerate summary" : "Generate executive summary"}
+                    </button>
+                    <Pill bg={summary ? t.profitBg : t.surface2} color={summary ? t.profit : t.ink3}>{summary ? "Ready" : "Not started"}</Pill>
+                    {summary ? <button style={qcBtn(t)} onClick={() => copyText("Summary", summary.body_text || String(summary.body_json?.executive_summary || ""))}>Copy summary</button> : null}
+                    {summary?.title ? <button style={qcBtn(t)} onClick={() => copyText("Title", summary.title)}>Copy title</button> : null}
+                  </div>
                   {summary ? (
-                    <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ display: "grid", gap: 6, border: `1px solid ${t.line}`, borderRadius: 10, padding: 12, background: t.surface, maxHeight: 260, overflowY: "auto" }}>
                       <strong style={{ color: t.ink }}>{summary.title}</strong>
-                      <p style={{ margin: 0, color: t.ink2, whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{summary.body_text || String(summary.body_json?.executive_summary || "")}</p>
+                      <p style={{ margin: 0, color: t.ink2, whiteSpace: "pre-wrap", lineHeight: 1.5, fontSize: 13 }}>{summary.body_text || String(summary.body_json?.executive_summary || "")}</p>
                       <span style={{ color: t.ink3, fontSize: 12 }}>Generated {formatDateTime(summary.created_at)}</span>
                     </div>
-                  ) : <span style={{ color: t.ink3 }}>No executive summary generated yet.</span>}
+                  ) : <span style={{ color: t.ink3, fontSize: 13 }}>Generate a polished underwriter summary from the analyzed evidence.</span>}
                 </div>
               </InfoBlock>
 
-              <InfoBlock title="Lender packet PDF">
+              {/* Step 2 — Lender packet PDF */}
+              <InfoBlock title="2 · Lender packet PDF">
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <button style={qcBtnPrimary(t)} onClick={onGeneratePacket} disabled={busy !== ""}>Create lender packet PDF</button>
+                  <button style={qcBtnPrimary(t)} onClick={async () => { setBusy("packet"); try { await onGeneratePacket(); toast.show("Lender packet ready"); } finally { setBusy(""); } }} disabled={busy !== ""}>
+                    {busy === "packet" ? <><Spinner /> Generating…</> : packet ? "Regenerate packet" : "Generate lender packet PDF"}
+                  </button>
+                  <Pill bg={packet ? t.profitBg : t.surface2} color={packet ? t.profit : t.ink3}>{packet ? "Ready" : "Not started"}</Pill>
                   {packet?.download_url ? <a href={packet.download_url} style={{ ...qcBtn(t), textDecoration: "none" }}>Download packet</a> : null}
-                  {packet ? <span style={{ color: t.ink3, fontSize: 12 }}>{packet.title} · {formatDateTime(packet.created_at)}</span> : <span style={{ color: t.ink3, fontSize: 12 }}>No packet generated yet.</span>}
+                  {packet ? <span style={{ color: t.ink3, fontSize: 12 }}>{formatDateTime(packet.created_at)}</span> : null}
                 </div>
               </InfoBlock>
 
-              <InfoBlock title="Vendor email">
+              {/* Step 3 — Ship it: full package + copy affordances */}
+              <InfoBlock title="3 · Ship the package">
                 <div style={{ display: "grid", gap: 10 }}>
-                  <input value={toInput} onChange={(event) => setToInput(event.target.value)} placeholder="Vendor emails, comma separated" style={inputStyle(t)} />
-                  <input value={ccInput} onChange={(event) => setCcInput(event.target.value)} placeholder="CC emails, comma separated" style={inputStyle(t)} />
-                  <input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Subject" style={inputStyle(t)} />
-                  <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Preview or write the vendor email body" style={{ ...inputStyle(t), minHeight: 150, paddingTop: 10, resize: "vertical" }} />
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button style={qcBtn(t)} onClick={previewEmail} disabled={busy !== ""}>{busy === "preview" ? "Preparing..." : "Prepare vendor email"}</button>
-                    <button style={qcBtnPrimary(t)} onClick={sendEmail} disabled={busy !== "" || !subject.trim() || !body.trim() || !parseEmailList(toInput).length}>
-                      {busy === "send" ? "Sending..." : "Send to vendors"}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <button style={qcBtnPrimary(t)} onClick={downloadZip} disabled={zipBusy}>
+                      {zipBusy ? <><Spinner /> Building ZIP…</> : "Download full package (.zip)"}
                     </button>
+                    <button style={qcBtn(t)} onClick={() => copyText("Bucket ID", detail.intake.bucket_id)}>Copy bucket ID</button>
                   </div>
                   <p style={{ margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.4 }}>
-                    Send creates or reuses authenticated vendor access for each primary recipient. Vendors receive separate emails and cannot see each other.
+                    The ZIP bundles every uploaded document, the lender packet PDF, the executive summary, and an editable email template — ready to attach, upload, or archive anywhere.
+                  </p>
+                </div>
+              </InfoBlock>
+
+              {/* Step 4 — Email it directly */}
+              <InfoBlock title="4 · Email to vendors / lenders">
+                <div style={{ display: "grid", gap: 10 }}>
+                  <input value={toInput} onChange={(event) => setToInput(event.target.value)} placeholder="Recipient emails — comma separated for bulk send" style={inputStyle(t)} />
+                  {parseEmailList(toInput).length > 0 ? (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {parseEmailList(toInput).map((e) => <Pill key={e} bg={t.surface2} color={t.ink2}>{e}</Pill>)}
+                    </div>
+                  ) : null}
+                  <input value={ccInput} onChange={(event) => setCcInput(event.target.value)} placeholder="CC emails, comma separated" style={inputStyle(t)} />
+                  <input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Subject" style={inputStyle(t)} />
+                  <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Prepare a draft, or write the vendor email body" style={{ ...inputStyle(t), minHeight: 150, paddingTop: 10, resize: "vertical" }} />
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <button style={qcBtn(t)} onClick={async () => { setBusy("preview"); try { await previewEmail(); toast.show("Draft ready"); } finally { setBusy(""); } }} disabled={busy !== ""}>
+                      {busy === "preview" ? <><Spinner /> Preparing…</> : "Prepare draft"}
+                    </button>
+                    <button style={qcBtnPrimary(t)} onClick={sendEmail} disabled={busy !== "" || !subject.trim() || !body.trim() || !parseEmailList(toInput).length}>
+                      {busy === "send" ? <><Spinner /> Sending…</> : `Send${parseEmailList(toInput).length ? ` to ${parseEmailList(toInput).length}` : ""}`}
+                    </button>
+                    {subject ? <button style={qcBtn(t)} onClick={() => copyText("Subject", subject)}>Copy subject</button> : null}
+                    {body ? <button style={qcBtn(t)} onClick={() => copyText("Body", body)}>Copy body</button> : null}
+                  </div>
+                  <p style={{ margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.4 }}>
+                    Each recipient gets a separate email with their own secure link (vendors can't see each other). The composer stays open after sending — copy the subject/body or send to more recipients.
                   </p>
                 </div>
               </InfoBlock>
@@ -785,6 +870,7 @@ function LeadDetailPanel({
                   )) : <span style={{ color: t.ink3 }}>No vendor emails sent yet.</span>}
                 </div>
               </InfoBlock>
+              <Toast msg={toast.msg} />
             </>
           ) : null}
           </div>
@@ -801,6 +887,26 @@ function Stat({ title, value, sub, t, good, warn }: { title: string; value: stri
       <div style={{ marginTop: 6, color: good ? t.profit : warn ? t.warn : t.ink, fontSize: 24, fontWeight: 900 }}>{value}</div>
       <div style={{ color: t.ink3, fontSize: 12 }}>{sub}</div>
     </Card>
+  );
+}
+
+function Spinner() {
+  return (
+    <span
+      style={{
+        width: 13,
+        height: 13,
+        borderRadius: 999,
+        border: "2px solid currentColor",
+        borderTopColor: "transparent",
+        display: "inline-block",
+        verticalAlign: "-2px",
+        marginRight: 6,
+        animation: "qc-spin 0.7s linear infinite",
+      }}
+    >
+      <style>{"@keyframes qc-spin{to{transform:rotate(360deg)}}"}</style>
+    </span>
   );
 }
 
