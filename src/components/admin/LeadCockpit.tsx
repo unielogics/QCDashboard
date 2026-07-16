@@ -24,6 +24,9 @@ import {
  * against the /admin/ai-underwriter-leads/{intake_id} endpoints, so this
  * component never touches auth or URLs directly.
  */
+export type ClientThreadMessage = { id: string; role: string; author_name?: string | null; content: string; created_at: string };
+export type ClientThreadResponse = { messages: ClientThreadMessage[] };
+
 export type LeadCockpitAdapter = {
   sendChat: (message: string) => Promise<IntakeResponse>;
   uploadInit: (payload: {
@@ -35,6 +38,10 @@ export type LeadCockpitAdapter = {
   uploadComplete: (fileId: string) => Promise<void>;
   runReview: () => Promise<IntakeResponse>;
   reload: () => Promise<IntakeResponse>;
+  /** The CLIENT-visible (uploader) thread — separate from the private admin chat. */
+  loadClientThread: () => Promise<ClientThreadResponse>;
+  /** Post a message on behalf into the client thread (attributed as underwriter). */
+  replyClientThread: (message: string) => Promise<ClientThreadResponse>;
 };
 
 type ChatLine = { id: string; role: "assistant" | "user"; content: string; ts?: string };

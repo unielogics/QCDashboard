@@ -11,7 +11,7 @@ import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
 import { useCurrentUser } from "@/hooks/useApi";
-import { LeadCockpit, type LeadCockpitAdapter } from "@/components/admin/LeadCockpit";
+import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage } from "@/components/admin/LeadCockpit";
 import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
 import type { IntakeResponse } from "@/lib/intake";
 import { useUI } from "@/store/ui";
@@ -338,6 +338,8 @@ export default function AdminAIUnderwriterLeadsPage() {
       },
       runReview: () => post<IntakeResponse>("/run-review"),
       reload: () => call<IntakeResponse>(base),
+      loadClientThread: () => call<{ messages: Array<{ id: string; role: string; author_name?: string | null; content: string; created_at: string }> }>(`${base}/client-thread`),
+      replyClientThread: (message: string) => post<{ messages: Array<{ id: string; role: string; author_name?: string | null; content: string; created_at: string }> }>("/client-thread/reply", { message }),
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
@@ -568,7 +570,7 @@ function LeadDetailPanel({
   const { t } = useTheme();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<"conversation" | "workspace">("conversation");
-  const [workspaceSub, setWorkspaceSub] = useState<"overview" | "documents" | "package">("overview");
+  const [workspaceSub, setWorkspaceSub] = useState<"overview" | "documents" | "client" | "package">("overview");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState("");
@@ -659,6 +661,7 @@ function LeadDetailPanel({
               {[
                 ["overview", "Overview"],
                 ["documents", "Documents"],
+                ["client", "Client conversation"],
                 ["package", "Package"],
               ].map(([value, label]) => (
                 <button
@@ -763,6 +766,10 @@ function LeadDetailPanel({
             </InfoBlock>
           ) : null}
 
+          {activeTab === "workspace" && workspaceSub === "client" && cockpitAdapter ? (
+            <ClientConversation adapter={cockpitAdapter} clientName={detail.intake.full_name} />
+          ) : null}
+
           {activeTab === "workspace" && workspaceSub === "package" ? (
             <>
               {/* Step 1 — Executive summary (short on-screen narrative) */}
@@ -858,6 +865,92 @@ function LeadDetailPanel({
         </div>
       )}
     </Card>
+  );
+}
+
+function ClientConversation({ adapter, clientName }: { adapter: LeadCockpitAdapter; clientName?: string | null }) {
+  const { t } = useTheme();
+  const [messages, setMessages] = useState<ClientThreadMessage[]>([]);
+  const [draft, setDraft] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    adapter
+      .loadClientThread()
+      .then((r) => { if (alive) setMessages(r.messages || []); })
+      .catch((e) => { if (alive) setError(e instanceof Error ? e.message : "Could not load the client conversation."); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [adapter]);
+
+  async function send() {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setSending(true);
+    setError("");
+    try {
+      const r = await adapter.replyClientThread(text);
+      setMessages(r.messages || []);
+      setDraft("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Reply failed.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ border: `1px solid ${t.warn}`, background: t.warnBg, borderRadius: 10, padding: "9px 12px", color: t.warn, fontSize: 12, lineHeight: 1.45 }}>
+        This is the <strong>client-facing</strong> conversation{clientName ? ` with ${clientName}` : ""}. Anything you send here is visible to the client and is attributed to you as their underwriter. Your private notes stay in the Conversation tab.
+      </div>
+
+      <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface, maxHeight: 420, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+        {loading ? (
+          <span style={{ color: t.ink3, fontSize: 13 }}>Loading client conversation…</span>
+        ) : messages.length === 0 ? (
+          <span style={{ color: t.ink3, fontSize: 13 }}>No messages in the client conversation yet.</span>
+        ) : (
+          messages.map((m) => {
+            const isClient = m.role === "user" && !(m.author_name || "").toLowerCase().startsWith("underwriter");
+            const isAI = m.role === "assistant";
+            const align = isClient ? "flex-start" : "flex-end";
+            const bg = isAI ? t.surface2 : isClient ? t.surface2 : t.brandSoft;
+            const label = isAI ? "AI" : m.author_name || (isClient ? clientName || "Client" : "You");
+            return (
+              <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: align }}>
+                <span style={{ color: t.ink3, fontSize: 10, marginBottom: 2 }}>{label}</span>
+                <div style={{ maxWidth: "82%", background: bg, color: t.ink, borderRadius: 10, padding: "8px 11px", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap", border: `1px solid ${t.line}` }}>
+                  {m.content}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {error ? <div style={{ color: t.danger, fontSize: 12 }}>{error}</div> : null}
+
+      <div style={{ display: "grid", gap: 6 }}>
+        <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Reply on behalf (as underwriter)</label>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Answer the client here — they will see this and the AI will respond in their thread."
+          style={{ ...inputStyle(t), minHeight: 90, paddingTop: 10, resize: "vertical", lineHeight: 1.5 }}
+        />
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button style={qcBtnPrimary(t)} onClick={send} disabled={sending || !draft.trim()}>
+            {sending ? <><Spinner /> Sending…</> : "Send to client"}
+          </button>
+          <span style={{ color: t.ink3, fontSize: 12 }}>Visible to the client · attributed to you</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
