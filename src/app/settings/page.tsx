@@ -12,6 +12,9 @@ import {
   useCurrentUser,
   useDeleteUser,
   useAddRegionalManagerAgent,
+  useGoogleConnection,
+  useStartGoogleOAuth,
+  useDisconnectGoogle,
   useProviderSettings,
   useBrokers,
   useInviteRegionalManager,
@@ -54,6 +57,7 @@ const SECTIONS = [
   { id: "simulator", label: "Simulator", icon: "calc" as const, hidden: false },
   { id: "deal_analyzer", label: "Deal Analyzer", icon: "calc" as const, hidden: false },
   { id: "property_intelligence", label: "Property Intel", icon: "map" as const, hidden: false },
+  { id: "connections", label: "Connections", icon: "link" as const, hidden: false },
   { id: "letterhead", label: "Firm letterhead", icon: "docCheck" as const, hidden: false },
   { id: "security", label: "Security", icon: "shield" as const, hidden: false },
   { id: "regional_managers", label: "Regional Managers", icon: "clients" as const, hidden: false },
@@ -395,6 +399,7 @@ export default function SettingsPage() {
           )}
           {section === "deal_analyzer" && <DealAnalyzerSection />}
           {section === "property_intelligence" && <PropertyIntelligenceSection canEdit={canEdit} />}
+          {section === "connections" && <ConnectionsSection />}
           {section === "letterhead" && (
             <LetterheadSection
               draft={draft}
@@ -848,6 +853,98 @@ function SecuritySection({ draft, setDraft, canEdit, dirty, onSave, saving }: Se
 }
 
 // ── Section: Property Intelligence ──────────────────────────────────────
+
+function ConnectionsSection() {
+  const { t } = useTheme();
+  const searchParams = useSearchParams();
+  const { data, isLoading, error, refetch } = useGoogleConnection();
+  const startOAuth = useStartGoogleOAuth();
+  const disconnect = useDisconnectGoogle();
+  const [flash, setFlash] = useState<string | null>(null);
+
+  // Returning from the Google consent screen (?connected=1 / ?error=...).
+  useEffect(() => {
+    if (searchParams.get("connected") === "1") {
+      setFlash("Google connected.");
+      refetch();
+    } else if (searchParams.get("error")) {
+      setFlash(`Google connection failed: ${searchParams.get("error")}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const connect = async (services: string) => {
+    try {
+      const { auth_url } = await startOAuth.mutateAsync(services);
+      window.location.href = auth_url;
+    } catch (e) {
+      setFlash(e instanceof Error ? e.message : "Could not start Google connection.");
+    }
+  };
+
+  const connected = Boolean(data?.connected);
+  const services: Array<{ key: string; label: string; desc: string; on: boolean }> = [
+    { key: "gmail", label: "Gmail", desc: "Send loan & lender emails from your own address.", on: Boolean(data?.gmail_connected) },
+    { key: "calendar", label: "Google Calendar", desc: "Two-way sync with your calendar (coming soon).", on: Boolean(data?.calendar_connected) },
+    { key: "drive", label: "Google Drive", desc: "Attach Drive files to emails & share with the AI (coming soon).", on: Boolean(data?.drive_connected) },
+  ];
+
+  return (
+    <Card pad={20}>
+      <SectionLabel>Google connections</SectionLabel>
+      <div style={{ fontSize: 12.5, color: t.ink3, marginTop: 6, lineHeight: 1.5 }}>
+        Connect your own Google account so the platform can send email as you, sync your calendar, and use your Drive.
+        Your credentials are encrypted and never shared.
+      </div>
+
+      {flash ? (
+        <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: 8, background: t.brandSoft, color: t.ink, fontSize: 12.5 }}>{flash}</div>
+      ) : null}
+
+      {isLoading ? (
+        <div style={{ marginTop: 14, color: t.ink3, fontSize: 13 }}>Loading connection status…</div>
+      ) : error ? (
+        <div style={{ marginTop: 14, color: t.danger, fontSize: 13 }}>Connection status unavailable.</div>
+      ) : (
+        <>
+          <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
+            <Pill bg={connected ? t.profitBg : t.surface2} color={connected ? t.profit : t.ink3}>
+              {connected ? `Connected${data?.google_email ? ` · ${data.google_email}` : ""}` : "Not connected"}
+            </Pill>
+            {connected ? (
+              <button style={qcBtn(t)} onClick={() => disconnect.mutate(undefined, { onSuccess: () => { setFlash("Disconnected."); refetch(); } })} disabled={disconnect.isPending}>
+                {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
+              </button>
+            ) : (
+              <button style={qcBtnPrimary(t)} onClick={() => connect("gmail")} disabled={startOAuth.isPending}>
+                {startOAuth.isPending ? "Opening Google…" : "Connect Google"}
+              </button>
+            )}
+          </div>
+
+          <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
+            {services.map((s) => (
+              <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", border: `1px solid ${t.line}`, borderRadius: 10, background: t.surface2 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{s.label}</div>
+                  <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>{s.desc}</div>
+                </div>
+                <Pill bg={s.on ? t.profitBg : t.surface} color={s.on ? t.profit : t.ink3}>{s.on ? "On" : "Off"}</Pill>
+                {connected && !s.on ? (
+                  <button style={qcBtn(t)} onClick={() => connect(s.key)} disabled={startOAuth.isPending}>Enable</button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+
+          {data?.last_error ? (
+            <div style={{ marginTop: 12, fontSize: 12, color: t.warn }}>Last error: {data.last_error} — reconnect to resolve.</div>
+          ) : null}
+        </>
+      )}
+    </Card>
+  );
+}
 
 function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
   const { t } = useTheme();

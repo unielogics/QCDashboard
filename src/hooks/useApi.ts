@@ -6137,3 +6137,42 @@ export function useTokenUsageAttribution(from?: string, to?: string) {
       ),
   });
 }
+
+// ── Google connections (per-user Gmail/Calendar/Drive) ──────────────────────
+export type GoogleConnectionStatus = {
+  connected: boolean;
+  google_email?: string | null;
+  gmail_connected: boolean;
+  calendar_connected: boolean;
+  drive_connected: boolean;
+  scopes: string[];
+  status?: string | null;
+  last_error?: string | null;
+};
+
+export function useGoogleConnection() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["google-connection", devUser],
+    queryFn: () => apiCall<GoogleConnectionStatus>("/google/connection"),
+  });
+}
+
+export function useStartGoogleOAuth() {
+  const apiCall = useAuthedApi();
+  // services: comma-separated e.g. "gmail" | "gmail,calendar,drive"
+  return useMutation({
+    mutationFn: (services: string) =>
+      apiCall<{ auth_url: string }>(`/google/oauth/start?services=${encodeURIComponent(services)}`),
+  });
+}
+
+export function useDisconnectGoogle() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiCall<{ disconnected: boolean }>("/google/connection", { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["google-connection"] }),
+  });
+}
