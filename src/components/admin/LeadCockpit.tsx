@@ -73,14 +73,14 @@ export function LeadCockpit({
 }) {
   const { t } = useTheme();
   const [current, setCurrent] = useState<IntakeResponse>(response);
-  const [chat, setChat] = useState<ChatLine[]>(() =>
-    (initialMessages ?? []).map((m) => ({
+  const seedChat = (msgs?: Array<{ id: string; role: string; content: string; created_at?: string }>): ChatLine[] =>
+    (msgs ?? []).map((m) => ({
       id: m.id || cryptoId(),
       role: m.role === "user" ? "user" : "assistant",
       content: m.content,
       ts: m.created_at,
-    })),
-  );
+    }));
+  const [chat, setChat] = useState<ChatLine[]>(() => seedChat(initialMessages));
   const [chatText, setChatText] = useState("");
   const [queue, setQueue] = useState<QueuedFile[]>([]);
   const [busy, setBusy] = useState(false);
@@ -88,10 +88,30 @@ export function LeadCockpit({
   const [reviewing, setReviewing] = useState(false);
   const [status, setStatus] = useState("");
   const endRef = useRef<HTMLDivElement | null>(null);
+  // Signature of the last server thread we seeded, so we re-sync when the
+  // parent supplies a genuinely different/newer message set (e.g. after reopen
+  // or re-run) instead of keeping the stale first-mount snapshot.
+  const seededSig = useRef<string>((initialMessages ?? []).map((m) => m.id).join("|"));
 
   useEffect(() => {
     setCurrent(response);
   }, [response]);
+
+  // Re-seed chat from the server thread when it actually changes. Preserve any
+  // optimistic local messages the user just sent that the server hasn't
+  // returned yet (matched by content) so nothing the user typed disappears.
+  useEffect(() => {
+    const sig = (initialMessages ?? []).map((m) => m.id).join("|");
+    if (sig === seededSig.current) return;
+    seededSig.current = sig;
+    setChat((local) => {
+      const seeded = seedChat(initialMessages);
+      const seededContents = new Set(seeded.map((m) => `${m.role}:${m.content}`));
+      const pendingLocal = local.filter((m) => !seededContents.has(`${m.role}:${m.content}`));
+      return [...seeded, ...pendingLocal];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMessages]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -110,7 +130,11 @@ export function LeadCockpit({
   const missingDocs = useMemo(() => {
     const uploadedIds = new Set((current.files ?? []).map((f) => f.requested_document_id).filter(Boolean));
     const keywords = variant === "real_estate_dscr_v1" ? RE_STAGE_ONE_KEYWORDS : DEALER_STAGE_ONE_KEYWORDS;
-    return (current.requested_documents ?? []).filter((d) => d.required && isStageOneRequestedDoc(d, keywords) && !uploadedIds.has(d.id));
+    // A requested doc is satisfied if a file is linked to it OR the backend
+    // reconciled its status to uploaded from an analyzed file's classification.
+    return (current.requested_documents ?? []).filter(
+      (d) => d.required && isStageOneRequestedDoc(d, keywords) && d.status !== "uploaded" && !uploadedIds.has(d.id),
+    );
   }, [current, variant]);
   const intelligence = useMemo<IntelligenceModel | null>(
     () => (result ? buildIntelligenceModel(current, result, missingDocs, fundability) : null),
