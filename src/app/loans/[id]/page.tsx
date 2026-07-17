@@ -5,7 +5,8 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useClient, useCurrentUser, useDocuments, useLoan, useLoanActivity, useRecalc, useStageTransition, useUpdateLoan } from "@/hooks/useApi";
+import { useClient, useCurrentUser, useDocuments, useLoan, useLoanActivity, useRecalc, useSendClientEmail, useStageTransition, useUpdateLoan } from "@/hooks/useApi";
+import { EmailComposer } from "@/components/email/EmailComposer";
 import { FileBlockersPopup } from "@/components/FileBlockersPopup";
 import { getCriteriaItems } from "./fileReadiness";
 import { useDealChannel } from "@/hooks/useDealChannel";
@@ -106,6 +107,10 @@ export default function LoanDetailPage() {
   // Agent assignment picker — opens from the AGENT chip in the header.
   // Super_admin / loan_exec only.
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
+  // Email-the-client composer (operator/broker only).
+  const [emailClientOpen, setEmailClientOpen] = useState(false);
+  const sendClientEmail = useSendClientEmail();
+  const canEmailClient = !!client?.email && (profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC || profile.role === Role.BROKER);
 
   // Trigger recalc whenever loan numerics change so the warnings list
   // is fresh for the BlockersPopup, regardless of which tab the user
@@ -348,6 +353,22 @@ export default function LoanDetailPage() {
                     <span>{client.phone}</span>
                   </a>
                 ) : null}
+                {canEmailClient ? (
+                  <>
+                    <span style={{ color: t.ink4 }}>·</span>
+                    <button
+                      onClick={() => setEmailClientOpen(true)}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 5,
+                        border: `1px solid ${t.line}`, borderRadius: 999, background: t.surface,
+                        color: t.ink2, cursor: "pointer", fontSize: 11.5, padding: "2px 10px",
+                      }}
+                    >
+                      <Icon name="mail" size={11} stroke={2.2} />
+                      <span>Email client from my Gmail</span>
+                    </button>
+                  </>
+                ) : null}
               </div>
             ) : null}
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: t.ink2 }}>
@@ -530,6 +551,26 @@ export default function LoanDetailPage() {
           openDocs={openDocs}
           onOpenTab={(targetTab, _targetId) => openLoanArea(targetTab)}
           onCriteriaJump={() => openLoanArea("terms")}
+        />
+      ) : null}
+      {loan ? (
+        <EmailComposer
+          open={emailClientOpen}
+          onClose={() => setEmailClientOpen(false)}
+          title="Email the client"
+          defaultTo={client?.email || ""}
+          toReadonly
+          defaultSubject={loan.deal_id ? `Update on your file [QC-${loan.deal_id}]` : "Update on your file"}
+          helpText="Sends from your connected Gmail (firm email fallback). Replies thread back into this loan. Logged on the loan and client record."
+          onSend={async (payload) => {
+            const res = await sendClientEmail.mutateAsync({
+              loanId: loan.id,
+              subject: payload.subject,
+              body: payload.body,
+              cc_emails: payload.cc_emails,
+            });
+            return { ok: res.ok, detail: res.detail };
+          }}
         />
       ) : null}
     </div>

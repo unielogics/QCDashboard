@@ -6222,3 +6222,19 @@ export function useBookingLink() {
     queryFn: () => apiCall<{ enabled: boolean; slug: string | null; url: string | null }>("/me/booking-link"),
   });
 }
+
+export type ClientEmailPayload = { subject: string; body: string; cc_emails: string[] };
+export type ClientEmailResult = { ok: boolean; to_email: string; detail?: string | null };
+
+/** Email the loan's borrower from the acting user's connected Gmail (SES fallback). */
+export function useSendClientEmail() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ loanId, ...body }: { loanId: string } & ClientEmailPayload) =>
+      apiCall<ClientEmailResult>(`/loans/${loanId}/client-email`, { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["loanActivity", vars.loanId] });
+    },
+  });
+}

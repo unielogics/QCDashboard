@@ -7,6 +7,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill, SectionLabel } from "@/components/design-system/primitives";
 import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
+import { EmailComposer } from "@/components/email/EmailComposer";
 import { useCurrentUser } from "@/hooks/useApi";
 import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
@@ -408,6 +409,8 @@ export default function BucketsAdminPage() {
   const [shareViewers, setShareViewers] = useState<ShareViewerDraft[]>(() => [emptyShareViewerDraft()]);
   const [sharePasscodes, setSharePasscodes] = useState<Record<string, string>>({});
   const [createdShareLinks, setCreatedShareLinks] = useState<Share[]>([]);
+  // Email-share composer: which share is being emailed (null = closed).
+  const [emailShare, setEmailShare] = useState<Share | null>(null);
   const [uploadLinkPasscodes, setUploadLinkPasscodes] = useState<Record<string, string>>({});
   const [expandedUploadLinkId, setExpandedUploadLinkId] = useState<string | null>(null);
   const [uploadLinkDraft, setUploadLinkDraft] = useState({ recipient_name: "", recipient_email: "", passcode: "" });
@@ -987,6 +990,39 @@ export default function BucketsAdminPage() {
       return;
     }
     void copyText(`Secure file room: ${share.share_url}\nAccess code: ${passcode}\n\nNo account login is required. Send the link and access code separately when possible.`);
+  }
+
+  function shareEmailBody(share: Share): string {
+    const passcode = sharePasscodes[share.id] || share.passcode || "";
+    return [
+      `Hi${share.recipient_name ? ` ${share.recipient_name}` : ""},`,
+      "",
+      "You've been given secure access to a document room. No account login is required — open the link and enter the access code:",
+      "",
+      `Secure file room: ${share.share_url}`,
+      `Access code: ${passcode}`,
+      "",
+      "For your security, the link and access code are best kept private.",
+    ].join("\n");
+  }
+
+  function openEmailShare(share: Share) {
+    const passcode = sharePasscodes[share.id] || share.passcode;
+    if (!share.share_url || !passcode) {
+      setNotice("Regenerate the access code before emailing the invite (the code is only shown at create/regenerate time).");
+      return;
+    }
+    setEmailShare(share);
+  }
+
+  async function sendShareEmail(payload: { to_emails: string[]; cc_emails: string[]; subject: string; body: string }) {
+    if (!detail || !emailShare) return { ok: false };
+    const res = await call<{ ok: boolean; sent: number; detail?: string | null }>(
+      `/buckets/admin/${detail.id}/shares/${emailShare.id}/email`,
+      { method: "POST", body: JSON.stringify(payload) },
+    );
+    if (res.ok) setNotice(`Share access emailed to ${res.sent} recipient(s) from your Gmail.`);
+    return { ok: res.ok, detail: res.detail };
   }
 
   function copyUploadLink(link: UploadLink) {
@@ -2101,6 +2137,7 @@ export default function BucketsAdminPage() {
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                               <button style={secondary} onClick={() => copyShareLink(share)}>Copy link</button>
                               <button style={secondary} onClick={() => copyShareInvite(share)}>Copy link + access code</button>
+                              <button style={secondary} onClick={() => openEmailShare(share)}>Email from my Gmail</button>
                             </div>
                           </div>
                         ))}
@@ -2928,6 +2965,7 @@ export default function BucketsAdminPage() {
                           <button style={secondary} onClick={() => copyShareLink(share)}>Copy link</button>
                           <button style={secondary} onClick={() => regenerateSharePasscode(share)}>Regenerate code</button>
                           <button style={secondary} onClick={() => copyShareInvite(share)} disabled={!passcodeAvailable}>Copy invite</button>
+                          <button style={secondary} onClick={() => openEmailShare(share)} disabled={!passcodeAvailable}>Email from my Gmail</button>
                           <button style={secondary} onClick={() => openEditShareFiles(share)}>Edit files</button>
                           <select
                             style={{ ...field, width: 118, height: 34, paddingTop: 0, paddingBottom: 0 }}
@@ -3103,6 +3141,16 @@ export default function BucketsAdminPage() {
           onClose={() => setReviewFile(null)}
         />
       ) : null}
+      <EmailComposer
+        open={emailShare !== null}
+        onClose={() => setEmailShare(null)}
+        title="Email secure share access"
+        defaultTo={emailShare?.recipient_email || ""}
+        defaultSubject={detail ? `Secure documents — ${detail.name}` : "Secure documents"}
+        defaultBody={emailShare ? shareEmailBody(emailShare) : ""}
+        helpText="Sends from your connected Gmail (firm email fallback). The body already includes the secure link and one-time access code — edit anything before sending."
+        onSend={sendShareEmail}
+      />
     </div>
   );
 }
