@@ -9,7 +9,7 @@ import { Avatar } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useUI } from "@/store/ui";
 import { SIGN_IN_URL } from "@/lib/appUrl";
-import { useCurrentUser } from "@/hooks/useApi";
+import { useCurrentUser, useGoogleConnection } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { QCMark } from "@/components/QCMark";
 
@@ -111,6 +111,10 @@ export default function Sidebar() {
   const collapsed = useUI((s) => s.sidebarCollapsed);
   const toggleSidebar = useUI((s) => s.toggleSidebar);
   const { data: user } = useCurrentUser();
+  // Workspace inbox visibility is a RUNTIME gate (has a connected Gmail mailbox),
+  // which the static `roles` field can't express — inject the /inbox link only
+  // when the user's mailbox is connected. Clients never see it.
+  const { data: googleConn } = useGoogleConnection();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -123,6 +127,14 @@ export default function Sidebar() {
     : user?.role === Role.VENDOR ? VENDOR_NAV
     : OPERATOR_NAV;
   const items = NAV.filter((n) => !n.roles || (user && n.roles.includes(user.role as Role)));
+  // Insert "Inbox" after Elara Inbox (or at top) for mailbox owners, non-clients.
+  if (user && user.role !== Role.CLIENT && googleConn?.gmail_connected) {
+    const inboxItem: NavItem = { href: "/inbox", label: "Inbox", icon: "mail" };
+    if (!items.some((n) => n.href === "/inbox")) {
+      const anchor = items.findIndex((n) => n.href === "/ai-inbox");
+      items.splice(anchor >= 0 ? anchor + 1 : 1, 0, inboxItem);
+    }
+  }
 
   const initials = user?.name
     ? user.name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()

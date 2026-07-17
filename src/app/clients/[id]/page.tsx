@@ -8,7 +8,8 @@ import { Card, KPI, Pill, SectionLabel, VerifiedBadge } from "@/components/desig
 import { Icon } from "@/components/design-system/Icon";
 import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { useBrokers, useClient, useClientPaymentAuthorizationStatus, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useSendIntakeLink, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
+import { useBrokers, useClient, useClientActivity, useClientPaymentAuthorizationStatus, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useSendIntakeLink, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
+import { EmailsBreadcrumbTab } from "@/components/email/EmailsBreadcrumbTab";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { RealtorReadinessCard } from "@/components/RealtorReadinessCard";
@@ -40,6 +41,8 @@ export default function ClientDetailPage() {
   // live (graceful empty). Loans for this client are derived from useLoans
   // already loaded above (clientLoans below).
   const { data: engagement = [] } = useEngagement(id);
+  // Tracked-email breadcrumbs (email.tracked) for this client — metadata only.
+  const { data: clientActivity = [], isLoading: clientActivityLoading } = useClientActivity(id);
   const updateClient = useUpdateClient();
   const requestPrequal = useRequestPrequalification();
   const sendIntakeLink = useSendIntakeLink();
@@ -535,6 +538,15 @@ export default function ClientDetailPage() {
           </div>
         )}
       </Card>
+
+      {/* Tracked-email breadcrumbs — metadata only (sender/subject/time). The
+          message body lives solely in the mailbox owner's inbox (isolation). */}
+      {profile.role !== "client" && (
+        <EmailsBreadcrumbTab
+          rows={clientActivity.map((a) => ({ id: a.id, kind: a.kind, summary: a.summary, payload: a.payload, occurredAt: a.created_at }))}
+          isLoading={clientActivityLoading}
+        />
+      )}
 
       {/* Next Best Actions stub — populated by the shared Deal Intelligence
           Core in P0B. Today renders a placeholder so the surface is visible. */}

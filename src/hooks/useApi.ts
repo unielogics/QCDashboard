@@ -6238,3 +6238,170 @@ export function useSendClientEmail() {
     },
   });
 }
+
+// ── Workspace inbox (owner-scoped; backed by EmailMessage) ──────────────────
+// Every read is scoped to the current user's mailbox by the backend. The queryKey
+// ends with `devUser` so a profile switch never bleeds another user's threads out
+// of the cache. `retry: aiQueryRetry` keeps a dormant/gated backend (404/403) from
+// storming the console.
+export type InboxThreadSummary = {
+  thread_id: string;
+  subject: string | null;
+  last_from: string | null;
+  preview: string | null;
+  last_received_at: string | null;
+  message_count: number;
+  unread_count: number;
+  is_starred: boolean;
+  has_attachments: boolean;
+  participants: string[];
+  loan_id: string | null;
+  client_id: string | null;
+  matched_party_role: string | null;
+};
+export type InboxThreadListResponse = { threads: InboxThreadSummary[]; total: number; truncated: boolean };
+export type InboxMessage = {
+  id: string;
+  gmail_thread_id: string | null;
+  gmail_message_id: string | null;
+  direction: string;
+  from_email: string | null;
+  to_emails: string[] | null;
+  cc_emails: string[] | null;
+  subject: string | null;
+  body_text: string | null;
+  received_at: string | null;
+  is_read: boolean;
+  is_starred: boolean;
+  has_attachments: boolean;
+  loan_id: string | null;
+  client_id: string | null;
+  matched_party_role: string | null;
+};
+export type InboxThreadDetail = {
+  thread_id: string;
+  subject: string | null;
+  loan_id: string | null;
+  client_id: string | null;
+  matched_party_role: string | null;
+  messages: InboxMessage[];
+};
+export type InboxReplyPayload = { body: string; to_emails?: string[]; cc_emails?: string[]; subject?: string };
+export type InboxReplyResult = { ok: boolean; detail?: string | null; message_id?: string | null };
+
+export function useInboxThreads(opts?: { unreadOnly?: boolean; starredOnly?: boolean }) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const params = new URLSearchParams();
+  if (opts?.unreadOnly) params.set("unread_only", "true");
+  if (opts?.starredOnly) params.set("starred_only", "true");
+  const qs = params.toString();
+  return useQuery({
+    queryKey: ["inboxThreads", devUser, qs],
+    queryFn: () => apiCall<InboxThreadListResponse>(`/inbox/threads${qs ? `?${qs}` : ""}`),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useInboxThread(threadId: string | null) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["inboxThread", threadId, devUser],
+    queryFn: () => apiCall<InboxThreadDetail>(`/inbox/threads/${encodeURIComponent(threadId!)}`),
+    enabled: !!threadId,
+    staleTime: 0,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useInboxSearch(query: string) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["inboxSearch", query, devUser],
+    queryFn: () => apiCall<InboxThreadListResponse>(`/inbox/search?q=${encodeURIComponent(query)}`),
+    enabled: query.trim().length >= 2,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useInboxReply() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ threadId, ...payload }: { threadId: string } & InboxReplyPayload) =>
+      apiCall<InboxReplyResult>(`/inbox/threads/${encodeURIComponent(threadId)}/reply`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (_, vars) => {
+      // refetch (not just invalidate) so the sent reply appears in-thread at once
+      qc.refetchQueries({ queryKey: ["inboxThread", vars.threadId, devUser] });
+      qc.invalidateQueries({ queryKey: ["inboxThreads", devUser] });
+      qc.invalidateQueries({ queryKey: ["inboxSearch"] }); // prefix-match: refresh any active search list
+    },
+  });
+}
+
+// Client-scoped activity rows (backs the client "Emails" breadcrumb tab). Shape
+// matches the backend EngagementSignalRead; `.catch(() => [])` so a client with no
+// rows (or the dormant email.tracked writer) renders empty rather than erroring.
+export type ClientActivityRow = {
+  id: string;
+  kind: string;
+  summary: string;
+  actor_label: string | null;
+  created_at: string;
+  payload: Record<string, unknown> | null;
+};
+export function useClientActivity(clientId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["clientActivity", clientId, devUser],
+    queryFn: () =>
+      apiCall<ClientActivityRow[]>(`/clients/${clientId}/engagement`).catch(() => [] as ClientActivityRow[]),
+    enabled: !!clientId,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useMarkThreadRead() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ threadId, isRead = true }: { threadId: string; isRead?: boolean }) =>
+      apiCall<void>(`/inbox/threads/${encodeURIComponent(threadId)}/mark-read`, {
+        method: "POST",
+        body: JSON.stringify({ is_read: isRead }),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["inboxThreads", devUser] });
+      qc.invalidateQueries({ queryKey: ["inboxThread", vars.threadId, devUser] });
+      qc.invalidateQueries({ queryKey: ["inboxSearch"] });
+    },
+  });
+}
+
+export function useStarMessage() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ messageId, isStarred = true }: { messageId: string; isStarred?: boolean; threadId?: string }) =>
+      apiCall<void>(`/inbox/messages/${encodeURIComponent(messageId)}/star`, {
+        method: "POST",
+        body: JSON.stringify({ is_starred: isStarred }),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["inboxThreads", devUser] });
+      qc.invalidateQueries({ queryKey: ["inboxSearch"] });
+      if (vars.threadId) qc.invalidateQueries({ queryKey: ["inboxThread", vars.threadId, devUser] });
+    },
+  });
+}

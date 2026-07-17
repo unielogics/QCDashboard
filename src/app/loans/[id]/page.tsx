@@ -7,6 +7,7 @@ import { Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useClient, useCurrentUser, useDocuments, useLoan, useLoanActivity, useRecalc, useSendClientEmail, useStageTransition, useUpdateLoan } from "@/hooks/useApi";
 import { EmailComposer } from "@/components/email/EmailComposer";
+import { EmailsBreadcrumbTab } from "@/components/email/EmailsBreadcrumbTab";
 import { FileBlockersPopup } from "@/components/FileBlockersPopup";
 import { getCriteriaItems } from "./fileReadiness";
 import { useDealChannel } from "@/hooks/useDealChannel";
@@ -50,6 +51,7 @@ const INTERNAL_TABS = [
   { id: "hud", label: "HUD", icon: "file" as const },
   { id: "workspace", label: "Elara", icon: "ai" as const },
   { id: "thread", label: "Lender", icon: "chat" as const },
+  { id: "emails", label: "Emails", icon: "mail" as const },
   { id: "activity", label: "Activity", icon: "audit" as const },
 ] as const;
 
@@ -60,6 +62,7 @@ const AGENT_TABS = [
   // inline as a tab rather than via the slide-out.
   { id: "loan_chat", label: "Chat", icon: "chat" as const },
   { id: "docs", label: "Documents", icon: "doc" as const },
+  { id: "emails", label: "Emails", icon: "mail" as const },
   { id: "activity", label: "Updates", icon: "audit" as const },
 ] as const;
 
@@ -538,6 +541,12 @@ export default function LoanDetailPage() {
               whole lender file lives in a single section. */}
           <LenderConnectCard loan={loan} />
         </div>
+      )}
+      {activeTab === "emails" && (
+        <EmailsBreadcrumbTab
+          rows={activity.map((a) => ({ id: a.id, kind: a.kind, summary: a.summary, payload: a.payload, occurredAt: a.occurred_at }))}
+          isLoading={activityLoading}
+        />
       )}
       {activeTab === "activity" && <ActivityTab activity={activity} isLoading={activityLoading} />}
       {activeTab === "todo" && <ClientTodoTab loanId={loan.id} />}
