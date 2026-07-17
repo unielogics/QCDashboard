@@ -155,6 +155,12 @@ type VendorEmailSendResult = {
   vendor_access_ids: string[];
 };
 
+type DriveIngestResult = {
+  ingested: number;
+  skipped: number;
+  items: { drive_file_id: string; file_name?: string | null; status: string; reason?: string | null }[];
+};
+
 const PROBABILITY_FILTERS = [
   { value: "all", label: "All probability" },
   { value: "Good probability - book call", label: "Good probability" },
@@ -467,6 +473,17 @@ export default function AdminAIUnderwriterLeadsPage() {
     return res;
   }
 
+  async function ingestFromDrive(id: string, driveFileIds: string[]) {
+    setNotice("");
+    const res = await call<DriveIngestResult>(`/admin/ai-underwriter-leads/${id}/files/ingest-from-drive`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ drive_file_ids: driveFileIds }),
+    });
+    await refreshSelectedLead();
+    return res;
+  }
+
   useEffect(() => {
     if (!meLoading && me && me.role !== Role.SUPER_ADMIN) router.replace("/");
   }, [meLoading, me, router]);
@@ -606,6 +623,7 @@ export default function AdminAIUnderwriterLeadsPage() {
             onGeneratePacket={() => generateLenderPacket(selectedId)}
             onPreviewEmail={(payload) => previewVendorEmail(selectedId, payload)}
             onSendEmail={(payload) => sendVendorEmail(selectedId, payload)}
+            onIngestFromDrive={(ids) => ingestFromDrive(selectedId, ids)}
             onRerun={openRerun}
             rerunning={rerunOpen}
             cockpitResponse={cockpitResponse}
@@ -644,6 +662,7 @@ function LeadDetailPanel({
   onGeneratePacket,
   onPreviewEmail,
   onSendEmail,
+  onIngestFromDrive,
   onRerun,
   rerunning,
   cockpitResponse,
@@ -659,6 +678,7 @@ function LeadDetailPanel({
   onGeneratePacket: () => Promise<void> | void;
   onPreviewEmail: (payload: { to_emails: string[]; cc_emails: string[]; subject?: string; body?: string; include_lender_packet?: boolean }) => Promise<VendorEmailPreview>;
   onSendEmail: (payload: VendorEmailSendPayload) => Promise<VendorEmailSendResult>;
+  onIngestFromDrive: (driveFileIds: string[]) => Promise<DriveIngestResult>;
   onRerun: () => void;
   rerunning: boolean;
   cockpitResponse: IntakeResponse | null;
@@ -681,6 +701,10 @@ function LeadDetailPanel({
   const [ccEmails, setCcEmails] = useState("");
   const [driveFiles, setDriveFiles] = useState<DriveFile[]>([]);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  // Separate picker for ingesting Drive files INTO the bucket for AI analysis
+  // (distinct from the email-attach picker above).
+  const [ingestPickerOpen, setIngestPickerOpen] = useState(false);
+  const [ingestFiles, setIngestFiles] = useState<DriveFile[]>([]);
   const result = detail?.latest_review?.result || detail?.intake.result_snapshot || null;
   const evidence = asRecord(result?.document_evidence_map);
   const missing = arrayOfRecords(result?.missing_or_incomplete_items);
@@ -775,6 +799,27 @@ function LeadDetailPanel({
       toast.show(`${label} copied`);
     } catch {
       toast.show("Copy failed");
+    }
+  }
+
+  async function runIngest() {
+    if (!ingestFiles.length) {
+      toast.show("Pick at least one Drive file");
+      return;
+    }
+    setBusy("ingest");
+    try {
+      const res = await onIngestFromDrive(ingestFiles.map((f) => f.id));
+      const parts = [`${res.ingested} imported`];
+      if (res.skipped) parts.push(`${res.skipped} skipped`);
+      const suffix = res.ingested ? " — Re-run AI review to fold them in" : "";
+      toast.show(`${parts.join(", ")}${suffix}`);
+      setIngestFiles([]);
+      setIngestPickerOpen(false);
+    } catch (error) {
+      toast.show(apiErrorMessage(error, "Drive import failed"));
+    } finally {
+      setBusy("");
     }
   }
 
@@ -920,13 +965,28 @@ function LeadDetailPanel({
 
           {activeTab === "workspace" && workspaceSub === "documents" ? (
             <InfoBlock title={`Uploaded files (${detail.files.length})`}>
-              <div style={{ display: "grid", gap: 7 }}>
-                {detail.files.length ? detail.files.slice(0, 60).map((file) => (
-                  <div key={file.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${t.line}`, paddingBottom: 7 }}>
-                    <span style={{ color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.zip_entry_path || file.file_name}</span>
-                    <span style={{ color: t.ink3, fontSize: 12 }}>{formatSize(file.size_bytes)}</span>
-                  </div>
-                )) : <span style={{ color: t.ink3 }}>No uploaded files yet.</span>}
+              <div style={{ display: "grid", gap: 10 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.45, flex: 1, minWidth: 200 }}>
+                    Import files from your Google Drive so the AI reads and learns from them — imported files are analyzed and folded into the review, just like uploads.
+                  </span>
+                  <button
+                    style={qcBtn(t)}
+                    disabled={busy !== ""}
+                    title="Pick files from your connected Google Drive to analyze with the AI"
+                    onClick={() => setIngestPickerOpen(true)}
+                  >
+                    {busy === "ingest" ? <><Spinner /> Importing…</> : `Add from Google Drive${ingestFiles.length ? ` (${ingestFiles.length})` : ""}`}
+                  </button>
+                </div>
+                <div style={{ display: "grid", gap: 7 }}>
+                  {detail.files.length ? detail.files.slice(0, 60).map((file) => (
+                    <div key={file.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${t.line}`, paddingBottom: 7 }}>
+                      <span style={{ color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.zip_entry_path || file.file_name}</span>
+                      <span style={{ color: t.ink3, fontSize: 12 }}>{formatSize(file.size_bytes)}</span>
+                    </div>
+                  )) : <span style={{ color: t.ink3 }}>No uploaded files yet.</span>}
+                </div>
               </div>
             </InfoBlock>
           ) : null}
@@ -1082,12 +1142,14 @@ function LeadDetailPanel({
                   </div>
                 </div>
               </InfoBlock>
-              <Toast msg={toast.msg} />
             </>
           ) : null}
           </div>
         </div>
       )}
+      {/* Toast mounted at Card level so success/error messages show on every
+          tab (Documents ingest, Overview, etc.), not just the package composer. */}
+      <Toast msg={toast.msg} />
       <DriveFilePicker
         open={drivePickerOpen}
         onClose={() => setDrivePickerOpen(false)}
@@ -1096,6 +1158,23 @@ function LeadDetailPanel({
           setDriveFiles((prev) => (prev.some((f) => f.id === file.id) ? prev : [...prev, file]));
         }}
         onUnpick={(id) => setDriveFiles((prev) => prev.filter((f) => f.id !== id))}
+      />
+      <DriveFilePicker
+        open={ingestPickerOpen}
+        mode="ingest"
+        busy={busy === "ingest"}
+        maxSelect={50}
+        onClose={() => setIngestPickerOpen(false)}
+        selectedIds={ingestFiles.map((f) => f.id)}
+        onPick={(file) => {
+          setIngestFiles((prev) => {
+            if (prev.some((f) => f.id === file.id)) return prev;
+            if (prev.length >= 50) return prev;
+            return [...prev, file];
+          });
+        }}
+        onUnpick={(id) => setIngestFiles((prev) => prev.filter((f) => f.id !== id))}
+        onConfirm={runIngest}
       />
     </Card>
   );
@@ -1107,12 +1186,20 @@ function DriveFilePicker({
   selectedIds,
   onPick,
   onUnpick,
+  mode = "attach",
+  busy = false,
+  maxSelect,
+  onConfirm,
 }: {
   open: boolean;
   onClose: () => void;
   selectedIds: string[];
   onPick: (file: DriveFile) => void;
   onUnpick: (id: string) => void;
+  mode?: "attach" | "ingest";
+  busy?: boolean;
+  maxSelect?: number;
+  onConfirm?: () => void;
 }) {
   const { t } = useTheme();
   const [query, setQuery] = useState("");
@@ -1121,6 +1208,7 @@ function DriveFilePicker({
   // operator hasn't connected Drive returns [] (best-effort), so no error state.
   const { data, isLoading, isError, refetch, isFetching } = useDriveFiles(submitted || undefined, open);
   const files = data?.files ?? [];
+  const ingest = mode === "ingest";
 
   function fmtSize(size?: string | null): string {
     const n = size ? Number(size) : NaN;
@@ -1131,7 +1219,7 @@ function DriveFilePicker({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Attach from Google Drive" icon="paperclip" size="md">
+    <Modal open={open} onClose={onClose} title={ingest ? "Add from Google Drive" : "Attach from Google Drive"} icon="paperclip" size="md">
       <div style={{ display: "grid", gap: 12, padding: 16 }}>
         <div style={{ display: "flex", gap: 8 }}>
           <input
@@ -1144,7 +1232,9 @@ function DriveFilePicker({
           <button style={qcBtn(t)} onClick={() => setSubmitted(query.trim())}>Search</button>
         </div>
         <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.4 }}>
-          Only files you open or create with Qualified Commercial are visible here (Drive “file” scope). Files over 8&nbsp;MB, or a combined attachment set over ~18&nbsp;MB, are shared via the secure bucket instead of attached.
+          {ingest
+            ? "Only files you open or create with Qualified Commercial are visible here (Drive “file” scope). Selected files are imported into this file’s document set and analyzed by the AI. Files over 25 MB are skipped."
+            : "Only files you open or create with Qualified Commercial are visible here (Drive “file” scope). Files over 8 MB, or a combined attachment set over ~18 MB, are shared via the secure bucket instead of attached."}
         </span>
         {isLoading || isFetching ? (
           <div style={{ display: "flex", alignItems: "center", gap: 8, color: t.ink3, fontSize: 13, padding: "12px 0" }}>
@@ -1163,13 +1253,17 @@ function DriveFilePicker({
           <div style={{ display: "grid", gap: 4, maxHeight: 360, overflow: "auto" }}>
             {files.map((f) => {
               const picked = selectedIds.includes(f.id);
+              const atCap = maxSelect !== undefined && !picked && selectedIds.length >= maxSelect;
               return (
                 <button
                   key={f.id}
+                  disabled={atCap}
+                  title={atCap ? `Up to ${maxSelect} files per import` : undefined}
                   onClick={() => (picked ? onUnpick(f.id) : onPick(f))}
                   style={{
                     display: "flex", alignItems: "center", gap: 10, textAlign: "left",
-                    padding: "8px 10px", borderRadius: 8, cursor: "pointer",
+                    padding: "8px 10px", borderRadius: 8, cursor: atCap ? "not-allowed" : "pointer",
+                    opacity: atCap ? 0.5 : 1,
                     border: `1px solid ${picked ? t.brand : t.line}`,
                     background: picked ? t.brandSoft : "transparent",
                   }}
@@ -1183,7 +1277,16 @@ function DriveFilePicker({
           </div>
         )}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button style={qcBtnPrimary(t)} onClick={onClose}>Done{selectedIds.length ? ` (${selectedIds.length})` : ""}</button>
+          {ingest ? (
+            <>
+              <button style={qcBtn(t)} onClick={onClose} disabled={busy}>Cancel</button>
+              <button style={qcBtnPrimary(t)} onClick={() => onConfirm?.()} disabled={busy || selectedIds.length === 0}>
+                {busy ? <><Spinner /> Importing…</> : `Import & analyze${selectedIds.length ? ` (${selectedIds.length})` : ""}`}
+              </button>
+            </>
+          ) : (
+            <button style={qcBtnPrimary(t)} onClick={onClose}>Done{selectedIds.length ? ` (${selectedIds.length})` : ""}</button>
+          )}
         </div>
       </div>
     </Modal>
