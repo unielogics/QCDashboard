@@ -10,8 +10,23 @@ import { Modal } from "@/components/design-system/Modal";
 import { TypingDots } from "@/components/design-system/TypingDots";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { api, ApiError } from "@/lib/api";
+
+// Surface a FastAPI 422/400 `detail` (string or [{msg}]) instead of the bare
+// "422 Unprocessable Entity" so operators see WHY a send was rejected.
+function apiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const detail = (error.body as { detail?: unknown } | null)?.detail;
+    if (typeof detail === "string" && detail.trim()) return detail;
+    if (Array.isArray(detail)) {
+      const msgs = detail.map((d) => (d && typeof d === "object" && "msg" in d ? String((d as { msg: unknown }).msg) : "")).filter(Boolean);
+      if (msgs.length) return msgs.join("; ");
+    }
+    return error.message || fallback;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
 import { Role } from "@/lib/enums.generated";
-import { useCurrentUser, useBookingLink } from "@/hooks/useApi";
+import { useCurrentUser, useBookingLink, useDriveFiles, type DriveFile } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage } from "@/components/admin/LeadCockpit";
 import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
 import type { IntakeResponse } from "@/lib/intake";
@@ -124,6 +139,20 @@ type VendorEmailPreview = {
   cc_emails: string[];
   executive_summary?: Artifact | null;
   lender_packet?: Artifact | null;
+};
+
+type VendorEmailSendPayload = {
+  to_emails: string[];
+  cc_emails: string[];
+  subject: string;
+  body: string;
+  include_lender_packet: boolean;
+  drive_file_ids: string[];
+};
+
+type VendorEmailSendResult = {
+  email_sends: EmailSend[];
+  vendor_access_ids: string[];
 };
 
 const PROBABILITY_FILTERS = [
@@ -427,6 +456,17 @@ export default function AdminAIUnderwriterLeadsPage() {
     }
   }
 
+  async function sendVendorEmail(id: string, payload: VendorEmailSendPayload) {
+    setNotice("");
+    const res = await call<VendorEmailSendResult>(`/admin/ai-underwriter-leads/${id}/vendor-email/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    await refreshSelectedLead();
+    return res;
+  }
+
   useEffect(() => {
     if (!meLoading && me && me.role !== Role.SUPER_ADMIN) router.replace("/");
   }, [meLoading, me, router]);
@@ -565,6 +605,7 @@ export default function AdminAIUnderwriterLeadsPage() {
             onGenerateSummary={() => generateExecutiveSummary(selectedId)}
             onGeneratePacket={() => generateLenderPacket(selectedId)}
             onPreviewEmail={(payload) => previewVendorEmail(selectedId, payload)}
+            onSendEmail={(payload) => sendVendorEmail(selectedId, payload)}
             onRerun={openRerun}
             rerunning={rerunOpen}
             cockpitResponse={cockpitResponse}
@@ -602,6 +643,7 @@ function LeadDetailPanel({
   onGenerateSummary,
   onGeneratePacket,
   onPreviewEmail,
+  onSendEmail,
   onRerun,
   rerunning,
   cockpitResponse,
@@ -616,6 +658,7 @@ function LeadDetailPanel({
   onGenerateSummary: () => Promise<void> | void;
   onGeneratePacket: () => Promise<void> | void;
   onPreviewEmail: (payload: { to_emails: string[]; cc_emails: string[]; subject?: string; body?: string; include_lender_packet?: boolean }) => Promise<VendorEmailPreview>;
+  onSendEmail: (payload: VendorEmailSendPayload) => Promise<VendorEmailSendResult>;
   onRerun: () => void;
   rerunning: boolean;
   cockpitResponse: IntakeResponse | null;
@@ -632,6 +675,12 @@ function LeadDetailPanel({
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState("");
   const [zipBusy, setZipBusy] = useState(false);
+  // Real send (via the operator's connected Gmail) — recipients, Drive picker,
+  // and selected Drive files to attach.
+  const [toEmails, setToEmails] = useState("");
+  const [ccEmails, setCcEmails] = useState("");
+  const [driveFiles, setDriveFiles] = useState<DriveFile[]>([]);
+  const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   const result = detail?.latest_review?.result || detail?.intake.result_snapshot || null;
   const evidence = asRecord(result?.document_evidence_map);
   const missing = arrayOfRecords(result?.missing_or_incomplete_items);
@@ -656,6 +705,65 @@ function LeadDetailPanel({
       });
       setSubject(preview.subject);
       setBody(preview.body);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  // Parse a raw recipients string into { valid, invalid }. Unwraps display-name
+  // forms ("Jane <jane@x.com>") and requires a real dot-bearing TLD so the
+  // backend's strict EmailStr validation can't 422 the whole send on a token
+  // that merely contained "@".
+  function parseEmails(raw: string): { valid: string[]; invalid: string[] } {
+    const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+    const valid: string[] = [];
+    const invalid: string[] = [];
+    for (const token of raw.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean)) {
+      const m = token.match(EMAIL_RE);
+      if (m) valid.push(m[0]);
+      else invalid.push(token);
+    }
+    return { valid, invalid };
+  }
+
+  async function sendEmail() {
+    const to = parseEmails(toEmails);
+    const cc = parseEmails(ccEmails);
+    if (to.invalid.length || cc.invalid.length) {
+      toast.show(`Fix these email addresses: ${[...to.invalid, ...cc.invalid].join(", ")}`);
+      return;
+    }
+    if (!to.valid.length) {
+      toast.show("Add at least one recipient email");
+      return;
+    }
+    if (!subject.trim() || !body.trim()) {
+      toast.show("Draft a subject and body first");
+      return;
+    }
+    if (subject.trim().length > 512) {
+      toast.show("Subject is too long (max 512 characters)");
+      return;
+    }
+    if (body.trim().length > 12000) {
+      toast.show("Body is too long (max 12,000 characters)");
+      return;
+    }
+    setBusy("send");
+    try {
+      const res = await onSendEmail({
+        to_emails: to.valid,
+        cc_emails: cc.valid,
+        subject: subject.trim(),
+        body: body.trim(),
+        include_lender_packet: true,
+        drive_file_ids: driveFiles.map((f) => f.id),
+      });
+      const ok = (res.email_sends || []).filter((s) => !s.ses_error).length;
+      const failed = (res.email_sends || []).length - ok;
+      toast.show(failed ? `Sent ${ok}, ${failed} failed — check status` : `Sent to ${ok} recipient${ok === 1 ? "" : "s"}`);
+    } catch (error) {
+      toast.show(apiErrorMessage(error, "Send failed"));
     } finally {
       setBusy("");
     }
@@ -885,17 +993,17 @@ function LeadDetailPanel({
                 </div>
               </InfoBlock>
 
-              {/* Step 4 — Copy/paste email (subject + body for your own mail client) */}
-              <InfoBlock title="4 · Email header & body — copy to your inbox">
+              {/* Step 4 — Draft, then either copy to your inbox OR send from your connected Gmail */}
+              <InfoBlock title="4 · Email — draft, then copy or send">
                 <div style={{ display: "grid", gap: 10 }}>
                   <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
-                    Draft a lender/vendor email from the analyzed evidence, then copy the subject and body straight into Gmail, Outlook, or wherever you send from. Attach the packet PDF from step 2 or the ZIP from step 3. Nothing is sent from here.
+                    Draft a lender/vendor email from the analyzed evidence. Copy the subject and body into your own mail client, or add recipients below and send it straight from your connected Gmail with the lender packet plus any Google Drive files attached.
                   </span>
 
                   <div style={{ display: "grid", gap: 6 }}>
                     <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Subject</label>
                     <div style={{ position: "relative" }}>
-                      <input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Email subject line" style={{ ...inputStyle(t), width: "100%", paddingRight: 40 }} />
+                      <input value={subject} maxLength={512} onChange={(event) => setSubject(event.target.value)} placeholder="Email subject line" style={{ ...inputStyle(t), width: "100%", paddingRight: 40 }} />
                       <CopyIconButton t={t} disabled={!subject.trim()} onCopy={() => copyText("Subject", subject)} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }} />
                     </div>
                   </div>
@@ -903,14 +1011,60 @@ function LeadDetailPanel({
                   <div style={{ display: "grid", gap: 6 }}>
                     <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Body</label>
                     <div style={{ position: "relative" }}>
-                      <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Prepare a draft, or write the email body here" style={{ ...inputStyle(t), width: "100%", minHeight: 200, paddingTop: 10, paddingRight: 40, resize: "vertical", lineHeight: 1.5 }} />
+                      <textarea value={body} maxLength={12000} onChange={(event) => setBody(event.target.value)} placeholder="Prepare a draft, or write the email body here" style={{ ...inputStyle(t), width: "100%", minHeight: 200, paddingTop: 10, paddingRight: 40, resize: "vertical", lineHeight: 1.5 }} />
                       <CopyIconButton t={t} disabled={!body.trim()} onCopy={() => copyText("Body", body)} style={{ position: "absolute", right: 8, top: 8 }} />
                     </div>
                   </div>
 
+                  {/* Recipients — only used by the "Send via your Gmail" path. */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>To</label>
+                      <input value={toEmails} onChange={(e) => setToEmails(e.target.value)} placeholder="lender@bank.com" style={{ ...inputStyle(t), width: "100%" }} />
+                    </div>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Cc <span style={{ textTransform: "none", fontWeight: 500 }}>(optional)</span></label>
+                      <input value={ccEmails} onChange={(e) => setCcEmails(e.target.value)} placeholder="comma-separated" style={{ ...inputStyle(t), width: "100%" }} />
+                    </div>
+                  </div>
+
+                  {/* Selected Google Drive attachments */}
+                  {driveFiles.length > 0 ? (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {driveFiles.map((f) => (
+                        <span key={f.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: t.surface2, border: `1px solid ${t.line}`, borderRadius: 999, padding: "4px 8px 4px 10px", fontSize: 12, color: t.ink }}>
+                          <span style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                          <button
+                            aria-label={`Remove ${f.name}`}
+                            onClick={() => setDriveFiles((prev) => prev.filter((x) => x.id !== f.id))}
+                            style={{ border: "none", background: "transparent", color: t.ink3, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0 }}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <button style={qcBtnPrimary(t)} onClick={async () => { setBusy("preview"); try { await previewEmail(); toast.show("Draft ready"); } finally { setBusy(""); } }} disabled={busy !== ""}>
                       {busy === "preview" ? <><Spinner /> Drafting…</> : (subject || body) ? "Regenerate draft" : "Draft email with AI"}
+                    </button>
+                    <button
+                      style={qcBtn(t)}
+                      disabled={busy !== "" || !subject.trim() || !body.trim() || !toEmails.trim()}
+                      title={!subject.trim() || !body.trim() ? "Draft a subject and body first" : !toEmails.trim() ? "Add at least one recipient in the To field" : "Send from your connected Gmail (falls back to firm email)"}
+                      onClick={sendEmail}
+                    >
+                      {busy === "send" ? <><Spinner /> Sending…</> : "Send via your Gmail"}
+                    </button>
+                    <button
+                      style={qcBtn(t)}
+                      disabled={busy !== ""}
+                      title="Attach files from your connected Google Drive"
+                      onClick={() => setDrivePickerOpen(true)}
+                    >
+                      Attach from Drive{driveFiles.length ? ` (${driveFiles.length})` : ""}
                     </button>
                     <button
                       style={qcBtn(t)}
@@ -934,7 +1088,105 @@ function LeadDetailPanel({
           </div>
         </div>
       )}
+      <DriveFilePicker
+        open={drivePickerOpen}
+        onClose={() => setDrivePickerOpen(false)}
+        selectedIds={driveFiles.map((f) => f.id)}
+        onPick={(file) => {
+          setDriveFiles((prev) => (prev.some((f) => f.id === file.id) ? prev : [...prev, file]));
+        }}
+        onUnpick={(id) => setDriveFiles((prev) => prev.filter((f) => f.id !== id))}
+      />
     </Card>
+  );
+}
+
+function DriveFilePicker({
+  open,
+  onClose,
+  selectedIds,
+  onPick,
+  onUnpick,
+}: {
+  open: boolean;
+  onClose: () => void;
+  selectedIds: string[];
+  onPick: (file: DriveFile) => void;
+  onUnpick: (id: string) => void;
+}) {
+  const { t } = useTheme();
+  const [query, setQuery] = useState("");
+  const [submitted, setSubmitted] = useState("");
+  // Only fetch once the picker is open; hitting /google/drive/files when the
+  // operator hasn't connected Drive returns [] (best-effort), so no error state.
+  const { data, isLoading, isError, refetch, isFetching } = useDriveFiles(submitted || undefined, open);
+  const files = data?.files ?? [];
+
+  function fmtSize(size?: string | null): string {
+    const n = size ? Number(size) : NaN;
+    if (!Number.isFinite(n) || n <= 0) return "";
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Attach from Google Drive" icon="paperclip" size="md">
+      <div style={{ display: "grid", gap: 12, padding: 16 }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") setSubmitted(query.trim()); }}
+            placeholder="Search your Drive files by name…"
+            style={{ ...inputStyle(t), flex: 1 }}
+          />
+          <button style={qcBtn(t)} onClick={() => setSubmitted(query.trim())}>Search</button>
+        </div>
+        <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.4 }}>
+          Only files you open or create with Qualified Commercial are visible here (Drive “file” scope). Files over 8&nbsp;MB, or a combined attachment set over ~18&nbsp;MB, are shared via the secure bucket instead of attached.
+        </span>
+        {isLoading || isFetching ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: t.ink3, fontSize: 13, padding: "12px 0" }}>
+            <Spinner /> Loading Drive files…
+          </div>
+        ) : isError ? (
+          <div style={{ display: "grid", gap: 8 }}>
+            <span style={{ color: t.ink3, fontSize: 13 }}>Couldn’t reach Google Drive. Make sure your Google account is connected in Settings → Connections.</span>
+            <button style={qcBtn(t)} onClick={() => refetch()}>Retry</button>
+          </div>
+        ) : files.length === 0 ? (
+          <span style={{ color: t.ink3, fontSize: 13, padding: "12px 0" }}>
+            {submitted ? "No matching Drive files." : "No Drive files found. Connect Google Drive in Settings → Connections, or search by name."}
+          </span>
+        ) : (
+          <div style={{ display: "grid", gap: 4, maxHeight: 360, overflow: "auto" }}>
+            {files.map((f) => {
+              const picked = selectedIds.includes(f.id);
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => (picked ? onUnpick(f.id) : onPick(f))}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+                    padding: "8px 10px", borderRadius: 8, cursor: "pointer",
+                    border: `1px solid ${picked ? t.brand : t.line}`,
+                    background: picked ? t.brandSoft : "transparent",
+                  }}
+                >
+                  <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: t.ink, fontSize: 13 }}>{f.name}</span>
+                  <span style={{ color: t.ink3, fontSize: 11 }}>{fmtSize(f.size)}</span>
+                  <span style={{ color: picked ? t.brand : t.ink3, fontSize: 12, fontWeight: 800 }}>{picked ? "Added" : "Add"}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button style={qcBtnPrimary(t)} onClick={onClose}>Done{selectedIds.length ? ` (${selectedIds.length})` : ""}</button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
