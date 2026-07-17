@@ -141,12 +141,18 @@ type VendorEmailPreview = {
   lender_packet?: Artifact | null;
 };
 
+type BucketAccessMode = "none" | "login" | "passcode";
+
 type VendorEmailSendPayload = {
   to_emails: string[];
   cc_emails: string[];
   subject: string;
   body: string;
   include_lender_packet: boolean;
+  attach_lender_packet: boolean;
+  attach_executive_summary: boolean;
+  attach_package_zip: boolean;
+  bucket_access: BucketAccessMode;
   drive_file_ids: string[];
 };
 
@@ -701,6 +707,11 @@ function LeadDetailPanel({
   const [ccEmails, setCcEmails] = useState("");
   const [driveFiles, setDriveFiles] = useState<DriveFile[]>([]);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  // Attachment toggles + how the recipient reaches the secure bucket.
+  const [attachPacket, setAttachPacket] = useState(true);
+  const [attachSummary, setAttachSummary] = useState(false);
+  const [attachZip, setAttachZip] = useState(false);
+  const [bucketAccess, setBucketAccess] = useState<BucketAccessMode>("login");
   // Separate picker for ingesting Drive files INTO the bucket for AI analysis
   // (distinct from the email-attach picker above).
   const [ingestPickerOpen, setIngestPickerOpen] = useState(false);
@@ -780,7 +791,11 @@ function LeadDetailPanel({
         cc_emails: cc.valid,
         subject: subject.trim(),
         body: body.trim(),
-        include_lender_packet: true,
+        include_lender_packet: attachPacket,
+        attach_lender_packet: attachPacket,
+        attach_executive_summary: attachSummary,
+        attach_package_zip: attachZip,
+        bucket_access: bucketAccess,
         drive_file_ids: driveFiles.map((f) => f.id),
       });
       const ok = (res.email_sends || []).filter((s) => !s.ses_error).length;
@@ -1105,6 +1120,41 @@ function LeadDetailPanel({
                       ))}
                     </div>
                   ) : null}
+
+                  {/* Attachments + secure-bucket access — controls what actually
+                      goes out when "Send via your Gmail" is used. */}
+                  <div style={{ display: "grid", gap: 8, border: `1px solid ${t.line}`, borderRadius: 10, padding: "10px 12px" }}>
+                    <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Attach to the email</label>
+                    <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: t.ink, cursor: "pointer" }}>
+                        <input type="checkbox" checked={attachPacket} onChange={(e) => setAttachPacket(e.target.checked)} /> Lender packet PDF
+                      </label>
+                      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: t.ink, cursor: "pointer" }}>
+                        <input type="checkbox" checked={attachSummary} onChange={(e) => setAttachSummary(e.target.checked)} /> Executive summary (.txt)
+                      </label>
+                      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: t.ink, cursor: "pointer" }}>
+                        <input type="checkbox" checked={attachZip} onChange={(e) => setAttachZip(e.target.checked)} /> Full package (.zip)
+                      </label>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 2 }}>
+                      <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Bucket access</label>
+                      <select value={bucketAccess} onChange={(e) => setBucketAccess(e.target.value as BucketAccessMode)} style={{ ...inputStyle(t), padding: "4px 8px", minWidth: 210 }}>
+                        <option value="login">Vendor login link (invited email)</option>
+                        <option value="passcode">Link + access code (no login)</option>
+                        <option value="none">No bucket access</option>
+                      </select>
+                      <span style={{ color: t.ink3, fontSize: 12 }}>
+                        {bucketAccess === "passcode"
+                          ? "A one-time access code is generated and included in the email."
+                          : bucketAccess === "login"
+                            ? "Recipient logs in with their invited vendor email."
+                            : "The email carries only the attachments above."}
+                      </span>
+                    </div>
+                    <span style={{ color: t.ink3, fontSize: 11.5, lineHeight: 1.4 }}>
+                      Files over 8&nbsp;MB (or a combined set over ~18&nbsp;MB) fall back to the secure bucket link instead of attaching.
+                    </span>
+                  </div>
 
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <button style={qcBtnPrimary(t)} onClick={async () => { setBusy("preview"); try { await previewEmail(); toast.show("Draft ready"); } finally { setBusy(""); } }} disabled={busy !== ""}>
