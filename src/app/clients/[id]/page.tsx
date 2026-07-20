@@ -515,26 +515,34 @@ export default function ClientDetailPage() {
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {engagement.slice(0, 12).map((s) => (
-              <div
-                key={s.id}
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  padding: "8px 12px",
-                  borderRadius: 9,
-                  border: `1px solid ${t.line}`,
-                  alignItems: "center",
-                  fontSize: 12,
-                }}
-              >
-                <Icon name="bolt" size={12} style={{ color: t.petrol }} />
-                <div style={{ flex: 1, color: t.ink }}>{s.signal_type.replace(/_/g, " ")}</div>
-                <div style={{ color: t.ink3 }}>
-                  {new Date(s.occurred_at).toLocaleDateString()}
+            {engagement.slice(0, 12).map((s) => {
+              // The backend returns Activity rows shaped {id, kind, summary,
+              // actor_label, created_at, payload} (see EngagementSignalRead) — not
+              // the older signal_type/occurred_at shape. Read defensively so a shape
+              // drift can never crash the client page.
+              const label = (s.summary || s.kind || s.signal_type || "activity").replace(/_/g, " ");
+              const when = s.created_at || s.occurred_at;
+              return (
+                <div
+                  key={s.id}
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    padding: "8px 12px",
+                    borderRadius: 9,
+                    border: `1px solid ${t.line}`,
+                    alignItems: "center",
+                    fontSize: 12,
+                  }}
+                >
+                  <Icon name="bolt" size={12} style={{ color: t.petrol }} />
+                  <div style={{ flex: 1, color: t.ink }}>{label}</div>
+                  <div style={{ color: t.ink3 }}>
+                    {when ? new Date(when).toLocaleDateString() : ""}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>

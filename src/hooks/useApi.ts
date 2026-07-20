@@ -4136,7 +4136,25 @@ export function useInjectLenderEmail() {
 //                                              Funding Team
 // ────────────────────────────────────────────────────────────────────────────
 
-import type { EngagementSignal, ClientStage } from "@/lib/types";
+import type { ClientStage } from "@/lib/types";
+
+// The backend GET /clients/{id}/engagement returns Activity rows shaped
+// {id, kind, summary, actor_label, created_at, payload} (EngagementSignalRead) —
+// NOT the older signal_type/occurred_at shape. The legacy fields are kept optional
+// so any straggler consumer still compiles, but new code should read kind/summary/
+// created_at. (Previously mis-typed as EngagementSignal[], which crashed the client
+// page the moment the endpoint started returning real rows.)
+export type EngagementRow = {
+  id: string;
+  kind?: string;
+  summary?: string;
+  actor_label?: string | null;
+  created_at?: string;
+  payload?: Record<string, unknown> | null;
+  // legacy/optional — not returned by the current backend:
+  signal_type?: string;
+  occurred_at?: string;
+};
 
 export function useEngagement(clientId: string | null | undefined) {
   const devUser = useDevUser();
@@ -4144,7 +4162,7 @@ export function useEngagement(clientId: string | null | undefined) {
   return useQuery({
     queryKey: ["engagement", clientId, devUser],
     queryFn: () =>
-      apiCall<EngagementSignal[]>(`/clients/${clientId}/engagement`).catch(() => [] as EngagementSignal[]),
+      apiCall<EngagementRow[]>(`/clients/${clientId}/engagement`).catch(() => [] as EngagementRow[]),
     enabled: !!clientId,
     retry: false,
   });
