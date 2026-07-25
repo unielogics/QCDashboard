@@ -453,6 +453,17 @@ export default function AdminAIUnderwriterLeadsPage() {
     }
   }
 
+  async function generatePrequalification(id: string) {
+    setNotice("");
+    try {
+      await call<Artifact>(`/admin/ai-underwriter-leads/${id}/prequalification`, { method: "POST" });
+      await refreshSelectedLead();
+      setNotice("Prequalification drafted.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Prequalification failed.");
+    }
+  }
+
   async function previewVendorEmail(id: string, payload: { to_emails: string[]; cc_emails: string[]; subject?: string; body?: string; include_lender_packet?: boolean }) {
     setNotice("");
     try {
@@ -628,6 +639,7 @@ export default function AdminAIUnderwriterLeadsPage() {
             onExport={() => exportPdf(selectedId)}
             onGenerateSummary={() => generateExecutiveSummary(selectedId)}
             onGeneratePacket={() => generateLenderPacket(selectedId)}
+            onGeneratePrequalification={() => generatePrequalification(selectedId)}
             onPreviewEmail={(payload) => previewVendorEmail(selectedId, payload)}
             onSendEmail={(payload) => sendVendorEmail(selectedId, payload)}
             onIngestFromDrive={(ids) => ingestFromDrive(selectedId, ids)}
@@ -667,6 +679,7 @@ function LeadDetailPanel({
   onExport,
   onGenerateSummary,
   onGeneratePacket,
+  onGeneratePrequalification,
   onPreviewEmail,
   onSendEmail,
   onIngestFromDrive,
@@ -683,6 +696,7 @@ function LeadDetailPanel({
   onExport: () => void;
   onGenerateSummary: () => Promise<void> | void;
   onGeneratePacket: () => Promise<void> | void;
+  onGeneratePrequalification: () => Promise<void> | void;
   onPreviewEmail: (payload: { to_emails: string[]; cc_emails: string[]; subject?: string; body?: string; include_lender_packet?: boolean }) => Promise<VendorEmailPreview>;
   onSendEmail: (payload: VendorEmailSendPayload) => Promise<VendorEmailSendResult>;
   onIngestFromDrive: (driveFileIds: string[]) => Promise<DriveIngestResult>;
@@ -725,6 +739,8 @@ function LeadDetailPanel({
   const artifacts = detail?.artifacts || [];
   const summary = artifacts.find((artifact) => artifact.artifact_type === "executive_summary");
   const packet = artifacts.find((artifact) => artifact.artifact_type === "lender_packet");
+  const prequalification = artifacts.find((artifact) => artifact.artifact_type === "prequalification");
+  const isRealEstate = detail?.intake.variant === "real_estate_dscr_v1";
 
   async function previewEmail() {
     setBusy("preview");
@@ -1018,6 +1034,33 @@ function LeadDetailPanel({
 
           {activeTab === "workspace" && workspaceSub === "package" ? (
             <>
+              {/* Step 0 — Prequalification draft (real estate only — the AI also
+                  auto-drafts this in chat once baseline+credit+details are ready;
+                  this button lets an admin draft or redraft it manually). */}
+              {isRealEstate ? (
+                <InfoBlock title="0 · Prequalification draft">
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
+                      A borrower-facing preliminary prequalification — program fit, sizing, and next step. The AI also generates this automatically in chat once baseline documents, the credit pull, and the down payment/prior-ownership/property-type details are all on file.
+                    </span>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <button style={qcBtnPrimary(t)} onClick={async () => { setBusy("prequal"); try { await onGeneratePrequalification(); toast.show("Prequalification drafted"); } finally { setBusy(""); } }} disabled={busy !== ""}>
+                        {busy === "prequal" ? <><Spinner /> Drafting…</> : prequalification ? "Redraft prequalification" : "Draft prequalification"}
+                      </button>
+                      <Pill bg={prequalification ? t.profitBg : t.surface2} color={prequalification ? t.profit : t.ink3}>{prequalification ? "Ready" : "Not started"}</Pill>
+                      {prequalification ? <button style={qcBtn(t)} onClick={() => copyText("Prequalification", prequalification.body_text || String(prequalification.body_json?.prequalification_summary || ""))}>Copy text</button> : null}
+                    </div>
+                    {prequalification ? (
+                      <div style={{ display: "grid", gap: 6, border: `1px solid ${t.line}`, borderRadius: 10, padding: 12, background: t.surface, maxHeight: 260, overflowY: "auto" }}>
+                        <strong style={{ color: t.ink }}>{prequalification.title}</strong>
+                        <p style={{ margin: 0, color: t.ink2, whiteSpace: "pre-wrap", lineHeight: 1.5, fontSize: 13 }}>{prequalification.body_text || String(prequalification.body_json?.prequalification_summary || "")}</p>
+                        <span style={{ color: t.ink3, fontSize: 12 }}>Generated {formatDateTime(prequalification.created_at)}</span>
+                      </div>
+                    ) : <span style={{ color: t.ink3, fontSize: 13 }}>Draft a preliminary prequalification from the analyzed evidence.</span>}
+                  </div>
+                </InfoBlock>
+              ) : null}
+
               {/* Step 1 — Executive summary (short on-screen narrative) */}
               <InfoBlock title="1 · Executive summary">
                 <div style={{ display: "grid", gap: 10 }}>

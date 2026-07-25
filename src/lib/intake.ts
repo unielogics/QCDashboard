@@ -73,7 +73,8 @@ export type Widget = {
     | "referral"
     | "run_review"
     | "bankability_result"
-    | "book_call";
+    | "book_call"
+    | "prequalification_result";
   title: string;
   description: string;
   missing_document_ids?: string[];
@@ -83,6 +84,10 @@ export type Widget = {
   disabled_reason?: string;
   source?: "system_next_step" | "user_intent" | string;
   reason?: string;
+  suggested_program?: string | null;
+  sizing?: Record<string, unknown> | null;
+  next_step?: string | null;
+  disclaimer?: string | null;
 };
 
 export type IntakeResponse = {

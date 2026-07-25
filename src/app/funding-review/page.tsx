@@ -66,7 +66,8 @@ type Widget = {
     | "referral"
     | "run_review"
     | "bankability_result"
-    | "book_call";
+    | "book_call"
+    | "prequalification_result";
   title: string;
   description: string;
   missing_document_ids?: string[];
@@ -76,6 +77,10 @@ type Widget = {
   disabled_reason?: string;
   source?: "system_next_step" | "user_intent" | string;
   reason?: string;
+  suggested_program?: string | null;
+  sizing?: Record<string, unknown> | null;
+  next_step?: string | null;
+  disclaimer?: string | null;
 };
 
 type IntakeResponse = {
@@ -1041,6 +1046,9 @@ export default function DealerAIUnderwriterPage() {
                     {response.widget?.type === "book_call" ? (
                       <BookCallWidget widget={response.widget} busy={busy} onBook={(startsAt) => bookCall(startsAt).catch(() => undefined)} />
                     ) : null}
+                    {response.widget?.type === "prequalification_result" ? (
+                      <PrequalificationWidget widget={response.widget} />
+                    ) : null}
                     <div ref={messagesEndRef} />
                   </div>
                   {pendingFiles.length ? (
@@ -1513,6 +1521,32 @@ function BookCallWidget({ widget, busy, onBook }: { widget: Widget | null; busy:
           ))}
         </div>
       ) : null}
+    </WidgetBox>
+  );
+}
+
+function PrequalificationWidget({ widget }: { widget: Widget | null }) {
+  const sizing = widget?.sizing ?? null;
+  return (
+    <WidgetBox title={widget?.title || "You're prequalified"} description={widget?.description || "Your preliminary prequalification is ready."}>
+      {widget?.suggested_program ? (
+        <div style={resultCard}>
+          <div style={eyebrow}>Suggested program</div>
+          <strong style={resultStatus}>{widget.suggested_program}</strong>
+        </div>
+      ) : null}
+      {sizing ? (
+        <div style={{ display: "grid", gap: 6 }}>
+          {Object.entries(sizing).map(([key, value]) => (
+            <div key={key} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+              <span style={muted}>{key.replace(/_/g, " ")}</span>
+              <strong>{String(value ?? "—")}</strong>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {widget?.next_step ? <p style={muted}>{widget.next_step}</p> : null}
+      {widget?.disclaimer ? <p style={{ ...muted, fontSize: 11 }}>{widget.disclaimer}</p> : null}
     </WidgetBox>
   );
 }
