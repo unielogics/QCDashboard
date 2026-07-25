@@ -4,12 +4,14 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEven
 import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
+import { Modal } from "@/components/design-system/Modal";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill, SectionLabel } from "@/components/design-system/primitives";
+import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
 import { EmailComposer } from "@/components/email/EmailComposer";
 import { useCurrentUser } from "@/hooks/useApi";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
 import { APP_ORIGIN } from "@/lib/appUrl";
 import { openSignedUrl } from "@/lib/safeOpen";
@@ -421,6 +423,9 @@ export default function BucketsAdminPage() {
   const [vendorDraft, setVendorDraft] = useState<VendorAccessDraft>(() => emptyVendorAccessDraft());
   const [vendorDirectoryOpen, setVendorDirectoryOpen] = useState(false);
   const [vendorDirectoryDraft, setVendorDirectoryDraft] = useState({ vendor_name: "", vendor_email: "" });
+  const [convertLeadBucket, setConvertLeadBucket] = useState<Bucket | null>(null);
+  const [convertLeadBusy, setConvertLeadBusy] = useState(false);
+  const [convertLeadError, setConvertLeadError] = useState<string | null>(null);
   const [vendorAssignmentBucket, setVendorAssignmentBucket] = useState<Bucket | null>(null);
   const [vendorAssignmentDetail, setVendorAssignmentDetail] = useState<BucketDetail | null>(null);
   const [vendorAssignmentDraft, setVendorAssignmentDraft] = useState<VendorAccessDraft>(() => emptyVendorAccessDraft());
@@ -679,6 +684,34 @@ export default function BucketsAdminPage() {
       setNotice("Bucket deleted.");
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function convertBucketToLead(payload: ConvertLeadPayload) {
+    if (!convertLeadBucket) return;
+    setConvertLeadBusy(true);
+    setConvertLeadError(null);
+    try {
+      const res = await call<{ intake: { id: string } }>(`/admin/ai-underwriter-leads/from-bucket/${convertLeadBucket.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setConvertLeadBucket(null);
+      router.push(`/admin/ai-underwriter-leads?lead=${res.intake.id}`);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        const body = error.body as { detail?: { intake_id?: string; message?: string } } | undefined;
+        const intakeId = body?.detail?.intake_id;
+        if (intakeId) {
+          setConvertLeadBucket(null);
+          router.push(`/admin/ai-underwriter-leads?lead=${intakeId}`);
+          return;
+        }
+      }
+      setConvertLeadError(error instanceof Error ? error.message : "Failed to convert bucket.");
+    } finally {
+      setConvertLeadBusy(false);
     }
   }
 
@@ -1814,8 +1847,21 @@ export default function BucketsAdminPage() {
             <input style={{ ...field, width: "100%", paddingLeft: 32 }} placeholder="Search buckets" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
         </div>
-        <BucketTable buckets={filteredBuckets} deletingId={deletingId} onSelect={(id) => openBucket(id)} onOpenVendors={openVendorAssignment} onDelete={deleteBucket} />
+        <BucketTable buckets={filteredBuckets} deletingId={deletingId} onSelect={(id) => openBucket(id)} onOpenVendors={openVendorAssignment} onConvertToLead={setConvertLeadBucket} onDelete={deleteBucket} />
       </PanelBox>
+
+      {convertLeadBucket ? (
+        <ConvertToLeadModal
+          bucket={convertLeadBucket}
+          busy={convertLeadBusy}
+          error={convertLeadError}
+          onClose={() => {
+            setConvertLeadBucket(null);
+            setConvertLeadError(null);
+          }}
+          onConvert={convertBucketToLead}
+        />
+      ) : null}
 
       {createOpen ? (
         <ModalFrame title="Create bucket" subtitle="Set up the bucket, choose requested files, and invite uploaders." onClose={() => setCreateOpen(false)}>
@@ -2083,6 +2129,15 @@ export default function BucketsAdminPage() {
                 title="AI review, chat, and tasks"
               >
                 <Icon name="spark" size={16} />
+              </button>
+              <button
+                style={{ ...iconButtonStyle(t), width: "auto", padding: "0 12px", gap: 6 }}
+                onClick={() => detail && setConvertLeadBucket(detail)}
+                aria-label="Convert to AI Underwriter Lead"
+                title="Convert this bucket into an AI Underwriter Lead"
+              >
+                <Icon name="bolt" size={16} />
+                <span style={{ fontSize: 12, fontWeight: 900 }}>AI Lead</span>
               </button>
               <div ref={shareMenuRef} style={{ position: "relative" }}>
                 <button
@@ -3155,24 +3210,129 @@ export default function BucketsAdminPage() {
   );
 }
 
+type ConvertLeadPayload = {
+  variant: "dealer" | "real_estate";
+  full_name: string;
+  email: string;
+  phone?: string;
+  business_name?: string;
+  notify_client: boolean;
+};
+
+function ConvertToLeadModal({
+  bucket,
+  busy,
+  error,
+  onClose,
+  onConvert,
+}: {
+  bucket: Bucket;
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onConvert: (payload: ConvertLeadPayload) => void | Promise<void>;
+}) {
+  const { t } = useTheme();
+  const field = inputStyle(t);
+  const guessedVariant: "dealer" | "real_estate" = (bucket.bucket_type || "").toLowerCase().includes("real_estate") ? "real_estate" : "dealer";
+  const [variant, setVariant] = useState<"dealer" | "real_estate">(guessedVariant);
+  const [fullName, setFullName] = useState(bucket.client_name || "");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [businessName, setBusinessName] = useState(bucket.client_name || "");
+  const [notifyClient, setNotifyClient] = useState(false);
+  const [formError, setFormError] = useState("");
+
+  const label = (text: string) => ({ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: 1, marginBottom: 4, display: "block" });
+
+  function submit() {
+    if (!fullName.trim()) { setFormError("Client name is required."); return; }
+    if (!email.trim() || !email.includes("@")) { setFormError("A valid client email is required."); return; }
+    setFormError("");
+    onConvert({
+      variant,
+      full_name: fullName.trim(),
+      email: email.trim(),
+      phone: phone.trim() || undefined,
+      business_name: businessName.trim() || undefined,
+      notify_client: notifyClient,
+    });
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Convert to AI Underwriter Lead" size="md">
+      <div style={{ display: "grid", gap: 12, padding: 4 }}>
+        <p style={{ margin: 0, color: t.ink3, fontSize: 13, lineHeight: 1.45 }}>
+          Turns <strong style={{ color: t.ink }}>{bucket.name}</strong> into an AI-underwriter lead so you
+          can audit its existing files with the AI review and build a lender package. The bucket and its
+          files stay exactly as they are — nothing is copied or re-uploaded.
+        </p>
+
+        <div>
+          <label style={label("Type")}>Lead type</label>
+          <select value={variant} onChange={(e) => setVariant(e.target.value as "dealer" | "real_estate")} style={{ ...field, width: "100%" }}>
+            <option value="dealer">Dealer</option>
+            <option value="real_estate">Real estate</option>
+          </select>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <label style={label("Name")}>Client full name *</label>
+            <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" style={{ ...field, width: "100%" }} />
+          </div>
+          <div>
+            <label style={label("Email")}>Client email *</label>
+            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" style={{ ...field, width: "100%" }} />
+          </div>
+          <div>
+            <label style={label("Phone")}>Phone</label>
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" style={{ ...field, width: "100%" }} />
+          </div>
+          <div>
+            <label style={label("Business")}>{variant === "real_estate" ? "Investor / entity name" : "Business name"}</label>
+            <input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Optional" style={{ ...field, width: "100%" }} />
+          </div>
+        </div>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: t.ink2, cursor: "pointer" }}>
+          <input type="checkbox" checked={notifyClient} onChange={(e) => setNotifyClient(e.target.checked)} />
+          Email the client a secure login/resume link now
+        </label>
+
+        {(formError || error) ? <div style={{ color: t.danger, fontSize: 12 }}>{formError || error}</div> : null}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
+          <button style={qcBtn(t)} onClick={onClose} disabled={busy}>Cancel</button>
+          <button style={qcBtnPrimary(t)} onClick={submit} disabled={busy}>
+            {busy ? "Converting…" : "Convert to lead"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function BucketTable({
   buckets,
   deletingId,
   onSelect,
   onOpenVendors,
+  onConvertToLead,
   onDelete,
 }: {
   buckets: Bucket[];
   deletingId: string | null;
   onSelect: (id: string) => void;
   onOpenVendors: (id: string) => void;
+  onConvertToLead: (bucket: Bucket) => void;
   onDelete: (bucket: Bucket) => void;
 }) {
   const { t } = useTheme();
   if (buckets.length === 0) {
     return <div style={{ padding: 18, color: t.ink3, fontSize: 13 }}>No buckets yet. Use Create bucket to start.</div>;
   }
-  const columns = "minmax(220px, 1.35fr) minmax(130px, .75fr) minmax(150px, .72fr) 70px minmax(150px, .65fr) 112px 84px 44px";
+  const columns = "minmax(220px, 1.35fr) minmax(130px, .75fr) minmax(150px, .72fr) 70px minmax(150px, .65fr) 112px 130px 84px 44px";
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: columns, gap: 12, padding: "10px 14px", color: t.ink3, background: t.surface2, borderBottom: `1px solid ${t.line}`, fontSize: 11, fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase" }}>
@@ -3182,6 +3342,7 @@ function BucketTable({
         <div>Files</div>
         <div>Status</div>
         <div>Access</div>
+        <div></div>
         <div>Updated</div>
         <div></div>
       </div>
@@ -3229,6 +3390,17 @@ function BucketTable({
           >
             <Icon name="user" size={13} />
             Vendors
+          </button>
+          <button
+            style={{ ...miniButtonStyle(t), minHeight: 32, justifySelf: "start", display: "inline-flex", alignItems: "center", gap: 6 }}
+            onClick={(event) => {
+              event.stopPropagation();
+              onConvertToLead(bucket);
+            }}
+            title="Convert this bucket into an AI Underwriter Lead"
+          >
+            <Icon name="spark" size={13} />
+            AI Lead
           </button>
           <div style={{ color: t.ink3, fontSize: 13 }}>{formatDate(bucket.updated_at)}</div>
           <button
