@@ -677,6 +677,43 @@ export interface CreditPullAccessRead {
   message?: string | null;
 }
 
+// Admin-triggered credit authorization + soft pull on an AI Underwriter Lead.
+// Same shape for dealer and real-estate leads — only the requested-document's
+// template/text differs per vertical, which is admin-supplied data.
+export interface LeadCreditStatusResponse {
+  authorization_requested: boolean;
+  authorization_signed: boolean;
+  requested_document_id: string | null;
+  pull_id: string | null;
+  fico: number | null;
+  pulled_at: string | null;
+  expires_at: string | null;
+}
+
+export interface BucketRequestedDocumentRead {
+  id: string;
+  bucket_id: string;
+  template_id?: string | null;
+  name: string;
+  category?: string | null;
+  description?: string | null;
+  required: boolean;
+  allow_multiple_files: boolean;
+  status: string;
+  is_custom: boolean;
+  requires_signature: boolean;
+  signature_kind?: string | null;
+  template_file_id?: string | null;
+  signature_document_text?: string | null;
+}
+
+export interface BucketFileUploadInitResponse {
+  file_id: string;
+  upload_url: string;
+  s3_key: string;
+  required_headers: Record<string, string>;
+}
+
 // ── Parsed report (operator-facing — full structured ScrapedReport) ────────
 export interface ParsedCreditScore {
   model: string;

@@ -6,6 +6,7 @@ import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { SignaturePad, type SignaturePadHandle } from "@/components/design-system/SignaturePad";
 import {
   useCompletePaymentAuthorization,
   useCreateSetupIntent,
@@ -55,7 +56,7 @@ export function PaymentAuthorizationPanel() {
 }
 
 function PaymentAuthorizationInner() {
-  const { t, isDark } = useTheme();
+  const { t } = useTheme();
   const { data: user } = useCurrentUser();
   const status = usePaymentAuthorizationStatus();
   const start = useStartPaymentAuthorization();
@@ -69,8 +70,7 @@ function PaymentAuthorizationInner() {
   const [esignConsent, setEsignConsent] = useState(false);
   const [paymentConsent, setPaymentConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const drawing = useRef(false);
+  const sigPadRef = useRef<SignaturePadHandle | null>(null);
 
   useEffect(() => {
     setBilling((prev) => ({
@@ -99,7 +99,7 @@ function PaymentAuthorizationInner() {
       setError("Stripe is still loading. Try again.");
       return;
     }
-    if (!typedName.trim() || !esignConsent || !paymentConsent || !hasSignature(canvasRef.current)) {
+    if (!typedName.trim() || !esignConsent || !paymentConsent || !sigPadRef.current?.hasSignature()) {
       setError("Complete the consents, legal name, and signature.");
       return;
     }
@@ -137,7 +137,7 @@ function PaymentAuthorizationInner() {
         typed_name: typedName,
         esign_consent: esignConsent,
         payment_terms_consent: paymentConsent,
-        signature_data_url: canvasRef.current?.toDataURL("image/png") || "",
+        signature_data_url: sigPadRef.current?.getDataUrl() || "",
         billing,
         device_metadata: { platform: "web", flow: "desktop_credit_gate" },
       });
@@ -177,17 +177,8 @@ function PaymentAuthorizationInner() {
             <SectionLabel>Signer</SectionLabel>
             <Field label="Legal name" value={typedName} onChange={setTypedName} />
             <div style={{ marginTop: 10, fontSize: 11, color: t.ink3, fontWeight: 700 }}>Draw signature</div>
-            <canvas
-              ref={canvasRef}
-              width={560}
-              height={150}
-              onPointerDown={(e) => startDraw(e, canvasRef.current, drawing)}
-              onPointerMove={(e) => moveDraw(e, canvasRef.current, drawing)}
-              onPointerUp={() => { drawing.current = false; }}
-              onPointerLeave={() => { drawing.current = false; }}
-              style={{ width: "100%", height: 150, borderRadius: 12, border: `1px solid ${t.line}`, background: isDark ? "#080A10" : "#F8FAFC", touchAction: "none" }}
-            />
-            <button onClick={() => clearCanvas(canvasRef.current)} style={{ ...qcBtn(t), marginTop: 10 }}>Clear signature</button>
+            <SignaturePad ref={sigPadRef} />
+            <button onClick={() => sigPadRef.current?.clear()} style={{ ...qcBtn(t), marginTop: 10 }}>Clear signature</button>
           </Card>
 
           <Card pad={20}>
@@ -241,52 +232,6 @@ function CheckRow({ label, checked, onClick }: { label: string; checked: boolean
       <span style={{ color: t.ink2, fontSize: 13, lineHeight: 1.45 }}>{label}</span>
     </button>
   );
-}
-
-function startDraw(event: React.PointerEvent<HTMLCanvasElement>, canvas: HTMLCanvasElement | null, drawing: React.MutableRefObject<boolean>) {
-  if (!canvas) return;
-  drawing.current = true;
-  const ctx = canvas.getContext("2d");
-  const pos = canvasPoint(event, canvas);
-  if (!ctx || !pos) return;
-  ctx.lineWidth = 3;
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.strokeStyle = "#111827";
-  ctx.beginPath();
-  ctx.moveTo(pos.x, pos.y);
-}
-
-function moveDraw(event: React.PointerEvent<HTMLCanvasElement>, canvas: HTMLCanvasElement | null, drawing: React.MutableRefObject<boolean>) {
-  if (!drawing.current || !canvas) return;
-  const ctx = canvas.getContext("2d");
-  const pos = canvasPoint(event, canvas);
-  if (!ctx || !pos) return;
-  ctx.lineTo(pos.x, pos.y);
-  ctx.stroke();
-}
-
-function canvasPoint(event: React.PointerEvent<HTMLCanvasElement>, canvas: HTMLCanvasElement) {
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  return { x: (event.clientX - rect.left) * scaleX, y: (event.clientY - rect.top) * scaleY };
-}
-
-function hasSignature(canvas: HTMLCanvasElement | null): boolean {
-  if (!canvas) return false;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return false;
-  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-  for (let i = 3; i < data.length; i += 4) {
-    if (data[i] !== 0) return true;
-  }
-  return false;
-}
-
-function clearCanvas(canvas: HTMLCanvasElement | null) {
-  const ctx = canvas?.getContext("2d");
-  if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
 function readErrorMessage(err: unknown): string {

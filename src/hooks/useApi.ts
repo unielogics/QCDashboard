@@ -69,6 +69,9 @@ import type {
   PaymentAuthorizationCompleteResponse,
   SetupIntentResponse,
   CreditPullAccessRead,
+  LeadCreditStatusResponse,
+  BucketRequestedDocumentRead,
+  BucketFileUploadInitResponse,
   ParsedReport,
   DashboardReport,
   Document,
@@ -757,6 +760,71 @@ export function useParsedReport(pullId: string | null | undefined) {
     queryFn: () => apiCall<ParsedReport>(`/credit/pulls/${pullId}/parsed`),
     enabled: !!pullId,
     retry: false, // 403/404 should not retry
+  });
+}
+
+// Admin credit panel on an AI Underwriter Lead — request signature,
+// check status, run the pull. Identical for dealer and real-estate leads.
+export function useLeadCreditStatus(intakeId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lead-credit-status", intakeId, devUser],
+    queryFn: () => apiCall<LeadCreditStatusResponse>(`/admin/ai-underwriter-leads/${intakeId}/credit-status`),
+    enabled: !!intakeId,
+  });
+}
+
+export function useRequestLeadCreditAuthorization(intakeId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { template_file_id?: string | null; document_text?: string | null }) =>
+      apiCall<BucketRequestedDocumentRead>(`/admin/ai-underwriter-leads/${intakeId}/credit-authorization`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["lead-credit-status", intakeId] }),
+  });
+}
+
+export function useRunLeadCreditPull(intakeId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { ssn?: string }) =>
+      apiCall<LeadCreditStatusResponse>(`/admin/ai-underwriter-leads/${intakeId}/credit-pull`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["lead-credit-status", intakeId] }),
+  });
+}
+
+// Uploads an admin-supplied template file (e.g. the dealer-specific
+// authorization document) into this lead's bucket and returns its file_id,
+// for passing as `template_file_id` on useRequestLeadCreditAuthorization.
+export function useUploadLeadCreditTemplate(intakeId: string) {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: async (file: File): Promise<string> => {
+      const init = await apiCall<BucketFileUploadInitResponse>(`/admin/ai-underwriter-leads/${intakeId}/files/upload-init`, {
+        method: "POST",
+        body: JSON.stringify({
+          requested_document_id: null,
+          file_name: file.name,
+          content_type: file.type || "application/octet-stream",
+          size_bytes: file.size,
+        }),
+      });
+      const putRes = await fetch(init.upload_url, { method: "PUT", body: file, headers: init.required_headers });
+      if (!putRes.ok) throw new Error(`S3 upload failed (HTTP ${putRes.status})`);
+      await apiCall(`/admin/ai-underwriter-leads/${intakeId}/files/complete`, {
+        method: "POST",
+        body: JSON.stringify({ file_id: init.file_id }),
+      });
+      return init.file_id;
+    },
   });
 }
 

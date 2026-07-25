@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { QCMark } from "@/components/QCMark";
 import { apiBase } from "@/lib/api";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal";
+import { SignRequestedDocument, type SignRequestedDocumentPayload } from "@/components/intake/SignRequestedDocument";
 
 type RequestedDoc = {
   id: string;
@@ -14,6 +15,9 @@ type RequestedDoc = {
   required: boolean;
   allow_multiple_files?: boolean;
   status: string;
+  requires_signature?: boolean;
+  signature_kind?: string | null;
+  signature_document_text?: string | null;
 };
 
 type UploadedFile = {
@@ -197,6 +201,9 @@ export default function DealerAIUnderwriterPage() {
   const [status, setStatus] = useState("");
   const [emailLookupBusy, setEmailLookupBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [signingDocId, setSigningDocId] = useState<string | null>(null);
+  const [signBusy, setSignBusy] = useState(false);
+  const [signError, setSignError] = useState<string | null>(null);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceTab>("chat");
   const [reviewProgress, setReviewProgress] = useState<ReviewProgressStage>("idle");
   const [reviewCompletedAt, setReviewCompletedAt] = useState<string | null>(null);
@@ -706,6 +713,25 @@ export default function DealerAIUnderwriterPage() {
     }
   }
 
+  async function signRequestedDocument(payload: SignRequestedDocumentPayload) {
+    if (!token) return;
+    setSignBusy(true);
+    setSignError(null);
+    try {
+      await call(`/public/funding-review/${encodeURIComponent(token)}/requested-documents/sign`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      setSigningDocId(null);
+      await loadIntake();
+      pushAssistant("Thanks — the form is signed and on file.");
+    } catch (error) {
+      setSignError(errorMessage(error));
+    } finally {
+      setSignBusy(false);
+    }
+  }
+
   async function submitComposer() {
     if (!token || busy) return;
     const text = chatText.trim();
@@ -1086,6 +1112,11 @@ export default function DealerAIUnderwriterPage() {
                     reviewProgress={reviewProgress}
                     reviewCompletedAt={reviewCompletedAt}
                     showReviewProgress={showReviewProgress}
+                    signingDocId={signingDocId}
+                    setSigningDocId={setSigningDocId}
+                    signBusy={signBusy}
+                    signError={signError}
+                    onSign={signRequestedDocument}
                   />
                 ) : null}
                 {activeWorkspace === "files" ? (
@@ -1102,6 +1133,11 @@ export default function DealerAIUnderwriterPage() {
                     reviewProgress={reviewProgress}
                     reviewCompletedAt={reviewCompletedAt}
                     showReviewProgress={showReviewProgress}
+                    signingDocId={signingDocId}
+                    setSigningDocId={setSigningDocId}
+                    signBusy={signBusy}
+                    signError={signError}
+                    onSign={signRequestedDocument}
                     full
                     compact={compact}
                   />
@@ -1688,6 +1724,11 @@ function FileDrawerPanel({
   showReviewProgress,
   full = false,
   compact = false,
+  signingDocId,
+  setSigningDocId,
+  signBusy,
+  signError,
+  onSign,
 }: {
   response: IntakeResponse;
   missingDocs: RequestedDoc[];
@@ -1703,6 +1744,11 @@ function FileDrawerPanel({
   showReviewProgress: boolean;
   full?: boolean;
   compact?: boolean;
+  signingDocId?: string | null;
+  setSigningDocId?: (id: string | null) => void;
+  signBusy?: boolean;
+  signError?: string | null;
+  onSign?: (payload: SignRequestedDocumentPayload) => void;
 }) {
   const docsById = new Map(response.requested_documents.map((doc) => [doc.id, doc]));
   const readyCount = pendingFiles.filter((file) => file.status === "ready" || file.status === "error").length;
@@ -1819,8 +1865,38 @@ function FileDrawerPanel({
           <span style={missingDocs.length ? warningText : smallMuted}>{missingDocs.length} open</span>
         </div>
         <div style={chipWrap}>
-          {missingDocs.length ? missingDocs.map((doc) => <span key={doc.id} style={missingChip}>{doc.name}</span>) : <span style={completeChip}>Baseline package uploaded</span>}
+          {missingDocs.length ? missingDocs.map((doc) => (
+            doc.requires_signature && setSigningDocId ? (
+              <button
+                key={doc.id}
+                type="button"
+                onClick={() => setSigningDocId(doc.id)}
+                style={{ ...missingChip, cursor: "pointer", border: "none" }}
+              >
+                Sign: {doc.name}
+              </button>
+            ) : (
+              <span key={doc.id} style={missingChip}>{doc.name}</span>
+            )
+          )) : <span style={completeChip}>Baseline package uploaded</span>}
         </div>
+        {signingDocId && onSign ? (
+          (() => {
+            const signingDoc = response.requested_documents.find((doc) => doc.id === signingDocId);
+            if (!signingDoc) return null;
+            return (
+              <div style={{ marginTop: 10, border: "1px solid #d1d5db", borderRadius: 12, padding: 14, background: "#fff" }}>
+                <SignRequestedDocument
+                  doc={signingDoc}
+                  busy={Boolean(signBusy)}
+                  error={signError ?? null}
+                  onSign={onSign}
+                  onCancel={() => setSigningDocId?.(null)}
+                />
+              </div>
+            );
+          })()
+        ) : null}
       </div>
     </section>
   );
