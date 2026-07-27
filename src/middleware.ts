@@ -24,6 +24,7 @@ const isPublicPage = createRouteMatcher([
   "/hud/share(.*)",
   "/buckets/request(.*)",
   "/buckets/share(.*)",
+  "/buckets/public-share(.*)",
 ]);
 
 // Super-admin-only routes. Edge-level hard-deny so a non-super-admin who
