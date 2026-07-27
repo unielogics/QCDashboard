@@ -451,6 +451,7 @@ export default function BucketsAdminPage() {
   const [publicSharePopupOpen, setPublicSharePopupOpen] = useState(false);
   const [publicShareViewers, setPublicShareViewers] = useState<PublicShareViewerDraft[]>(() => [newPublicShareViewerDraft()]);
   const [createdPublicShareLinks, setCreatedPublicShareLinks] = useState<PublicShare[]>([]);
+  const [copiedPublicShareId, setCopiedPublicShareId] = useState<string | null>(null);
   const publicShareMenuRef = useRef<HTMLDivElement | null>(null);
   const [uploadLinkPasscodes, setUploadLinkPasscodes] = useState<Record<string, string>>({});
   const [expandedUploadLinkId, setExpandedUploadLinkId] = useState<string | null>(null);
@@ -526,8 +527,15 @@ export default function BucketsAdminPage() {
     setShareFiles({});
     setSharePopupOpen(false);
     setShareViewers([newShareViewerDraft()]);
+    setSharePasscodes({});
     setCreatedShareLinks([]);
     setExpandedShareId(null);
+    setEditingShareId(null);
+    setEditingShareFileIds([]);
+    setEditingShareSearch("");
+    setPublicSharePopupOpen(false);
+    setPublicShareViewers([newPublicShareViewerDraft()]);
+    setCreatedPublicShareLinks([]);
     setExpandedVendorAccessId(null);
     setEditingVendorAccessId(null);
     setEditingVendorFileIds([]);
@@ -1041,12 +1049,14 @@ export default function BucketsAdminPage() {
     );
   }
 
-  function copyPublicShareLink(share: PublicShare) {
+  async function copyPublicShareLink(share: PublicShare) {
     if (!share.share_url) {
       setNotice("Public link is not available yet. Refresh the bucket and try again.");
       return;
     }
-    void copyText(share.share_url);
+    await copyText(share.share_url);
+    setCopiedPublicShareId(share.id);
+    window.setTimeout(() => setCopiedPublicShareId((current) => (current === share.id ? null : current)), 2000);
   }
 
   function shareFilesFor(share: Share) {
@@ -2439,8 +2449,27 @@ export default function BucketsAdminPage() {
                             <div style={{ color: t.ink3, fontSize: 12 }}>
                               {share.files?.length ?? 0} files | {share.can_download ? "download allowed" : "view only"} | no login or code required
                             </div>
+                            {share.share_url ? (
+                              <a
+                                href={share.share_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: t.petrol, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: "underline" }}
+                              >
+                                {share.share_url}
+                              </a>
+                            ) : null}
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                              <button style={secondary} onClick={() => copyPublicShareLink(share)}>Copy link</button>
+                              <button style={secondary} onClick={() => copyPublicShareLink(share).catch(() => undefined)}>
+                                {copiedPublicShareId === share.id ? (
+                                  <>
+                                    <Icon name="check" size={13} />
+                                    Copied
+                                  </>
+                                ) : (
+                                  "Copy link"
+                                )}
+                              </button>
                             </div>
                           </div>
                         ))}
