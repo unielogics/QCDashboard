@@ -60,6 +60,7 @@ import type {
   CalendarEventUpdate,
   ChatSendResponse,
   Client,
+  PrequalHandoffResponse,
   CreditPull,
   CreditSummary,
   BillingAddress,
@@ -4237,12 +4238,13 @@ export function useEngagement(clientId: string | null | undefined) {
 }
 
 // ─── Agent reassignment (Super Admin only) ─────────────────────────────────
-// Future endpoint: PATCH /clients/{id}/agent
-// Body: { to_agent_id: string, reason?: string }
+// PATCH /clients/{id}/agent — Body: { to_agent_id: string, reason?: string }
 //
-// Backend writes an AgentReassignmentAudit row per Architecture Rule #3.
-// Open AITasks transfer; sent messages keep their original from_user_id;
-// LoanAttribution.current_agent_id updates while originating_agent_id stays.
+// Backend writes an AgentReassignmentAudit row, updates
+// Client.current_agent_id (originating_agent_id stays put), and reassigns
+// Loan.broker_id on the client's active loans so open AITasks follow the
+// new agent (AITask has no agent column of its own — ownership is
+// transitive via loan_id -> Loan.broker_id).
 
 export function useReassignAgent() {
   const apiCall = useAuthedApi();
@@ -4269,25 +4271,25 @@ export function useReassignAgent() {
 }
 
 // ─── Client stage transitions ──────────────────────────────────────────────
-// Two related mutations:
-//   - useUpdateClientStage   PATCH /clients/{id}/stage   — advance through the
-//                            Agent-controlled stages (lead → contacted → verified)
-//                            or to terminal "lost". Restricted server-side to
-//                            the assigned Agent + Super Admin.
-//   - useStartFunding        POST  /clients/{id}/start-funding  — promotes
-//                            verified → ready_for_lending. Backend marks the
-//                            prequal approved, creates the Loan, notifies the
-//                            Funding Team. Single-fire, idempotent on a given
-//                            stage.
-// Both are wired to future endpoints; they will 404 today and the UI handles
-// that with a toast / inline error rather than auto-retrying.
+// Two related mutations, both pointed at existing endpoints (there is no
+// dedicated /stage or /start-funding route — this repoints to the generic
+// client PATCH and the real handoff endpoint that already implement these
+// side effects):
+//   - useUpdateClientStage   PATCH /clients/{id}   { stage }  — advances
+//                            through lead → contacted → verified (or "lost").
+//                            Backend auto-stamps contacted_at on first
+//                            CONTACTED transition.
+//   - useStartFunding        POST  /clients/{id}/request-prequalification —
+//                            builds the PrequalRequest + AITask + handoff
+//                            packet + lending AI thread in one atomic,
+//                            idempotent call.
 
 export function useUpdateClientStage() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ clientId, stage }: { clientId: string; stage: ClientStage }) =>
-      apiCall<Client>(`/clients/${clientId}/stage`, {
+      apiCall<Client>(`/clients/${clientId}`, {
         method: "PATCH",
         body: JSON.stringify({ stage }),
       }),
@@ -4303,7 +4305,7 @@ export function useStartFunding() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (clientId: string) =>
-      apiCall<Client>(`/clients/${clientId}/start-funding`, { method: "POST" }),
+      apiCall<PrequalHandoffResponse>(`/clients/${clientId}/request-prequalification`, { method: "POST" }),
     onSuccess: (_, clientId) => {
       qc.invalidateQueries({ queryKey: ["clients"] });
       qc.invalidateQueries({ queryKey: ["client", clientId] });

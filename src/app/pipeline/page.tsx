@@ -89,6 +89,10 @@ function OperatorPipelinePage({ role }: { role: string }) {
   const [sortKey, setSortKey] = useState<SortKey>("amount");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  // Isolates loans promoted from a realtor's Deal (source_deal_id set) —
+  // lets admin/underwriter spot freshly-handed-off files within the
+  // existing pipeline list instead of a separate queue.
+  const [handoffOnly, setHandoffOnly] = useState(false);
   const [search, setSearch] = useState<string>("");
   const [intakeOpen, setIntakeOpen] = useState(false);
   // `/pipeline?new=1` (e.g. the dashboard "Add Lead" button) opens the
@@ -122,14 +126,15 @@ function OperatorPipelinePage({ role }: { role: string }) {
   }, [allDocs]);
 
   const sorted = useMemo(() => {
-    const filtered = typeFilter === "all" ? loans : loans.filter((l) => l.type === typeFilter);
+    let filtered = typeFilter === "all" ? loans : loans.filter((l) => l.type === typeFilter);
+    if (handoffOnly) filtered = filtered.filter((l) => l.source_deal_id != null);
     return [...filtered].sort((a, b) => {
       const av = a[sortKey] ?? "";
       const bv = b[sortKey] ?? "";
       if (typeof av === "number" && typeof bv === "number") return (av - bv) * (sortDir === "asc" ? 1 : -1);
       return String(av).localeCompare(String(bv)) * (sortDir === "asc" ? 1 : -1);
     });
-  }, [loans, sortKey, sortDir, typeFilter]);
+  }, [loans, sortKey, sortDir, typeFilter, handoffOnly]);
 
   const setSort = (k: SortKey) => {
     if (k === sortKey) setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -270,6 +275,30 @@ function OperatorPipelinePage({ role }: { role: string }) {
             </select>
           )}
 
+          {/* Isolate loans promoted from a realtor's Deal — admins/underwriters
+              only; brokers only ever see their own book anyway. */}
+          {activeMode === "funding" && isInternal && (
+            <button
+              type="button"
+              onClick={() => setHandoffOnly((v) => !v)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: handoffOnly ? t.brandSoft : t.surface,
+                color: handoffOnly ? t.brand : t.ink2,
+                border: `1px solid ${handoffOnly ? t.brand : t.line}`,
+                borderRadius: 10,
+                padding: "8px 10px",
+                fontSize: 12.5,
+                fontFamily: "inherit",
+                cursor: "pointer",
+              }}
+            >
+              <Icon name="spark" size={13} /> From realtor handoff
+            </button>
+          )}
+
           {activeMode === "funding" ? (
             <div
               style={{
@@ -402,6 +431,12 @@ function OperatorPipelinePage({ role }: { role: string }) {
                           <>
                             <span aria-hidden>/</span>
                             <span style={{ fontWeight: 700 }}>{loan.client_name}</span>
+                          </>
+                        ) : null}
+                        {isInternal && loan.source_deal_id ? (
+                          <>
+                            <span aria-hidden>/</span>
+                            <span style={{ color: t.brand, fontWeight: 700 }}>From realtor handoff</span>
                           </>
                         ) : null}
                         {loan.close_date ? (

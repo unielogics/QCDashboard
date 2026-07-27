@@ -180,6 +180,19 @@ export interface Client {
   last_seen_at?: string | null;
 }
 
+// Response from POST /clients/{id}/request-prequalification — the lead→
+// funding handoff. Not a Client — a summary of the packet/thread just built.
+export interface PrequalHandoffResponse {
+  prequal_request_id: string;
+  client_id: string;
+  lead_promotion_status: string;
+  handoff_packet_id?: string | null;
+  lending_thread_id?: string | null;
+  handoff_summary?: string | null;
+  first_lending_question?: string | null;
+  missing_lending_items: string[];
+}
+
 // Lead-routing enum values mirror app/schemas/client.py.
 export type LeadSource =
   | "manual_entry"

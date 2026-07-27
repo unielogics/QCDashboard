@@ -71,6 +71,23 @@ const VENDOR_NAV: NavItem[] = [
   { href: "/profile", label: "Profile", icon: "user" },
 ];
 
+// CLIENT_NAV — explicit allow-list for borrowers. Previously CLIENT fell
+// through to OPERATOR_NAV below and was excluded only from items that
+// declared a `roles` array — meaning a future operator-only nav item added
+// without that array would be client-visible by default. This flips the
+// default to deny, matching the scoping.py philosophy already used for
+// backend queries: a client sees only what's explicitly listed here.
+// /pipeline is safe to include as-is — it self-branches to
+// ClientFilePipeline for CLIENT role (see app/pipeline/page.tsx).
+const CLIENT_NAV: NavItem[] = [
+  { href: "/", label: "Dashboard", icon: "home" },
+  { href: "/pipeline", label: "My File", icon: "layers" },
+  { href: "/vault", label: "Vault", icon: "vault" },
+  { href: "/messages", label: "Messages", icon: "chat" },
+  { href: "/calendar", label: "Calendar", icon: "cal" },
+  { href: "/profile", label: "Profile", icon: "user" },
+];
+
 const OPERATOR_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: "home" },
   { href: "/pipeline", label: "Pipeline", icon: "layers" },
@@ -125,6 +142,7 @@ export default function Sidebar() {
     user?.role === Role.BROKER ? AGENT_NAV
     : user?.role === Role.REGIONAL_MANAGER ? REGIONAL_MANAGER_NAV
     : user?.role === Role.VENDOR ? VENDOR_NAV
+    : user?.role === Role.CLIENT ? CLIENT_NAV
     : OPERATOR_NAV;
   const items = NAV.filter((n) => !n.roles || (user && n.roles.includes(user.role as Role)));
   // Insert "Inbox" after Elara Inbox (or at top) for mailbox owners, non-clients.
