@@ -75,6 +75,21 @@ type Share = {
   share_url?: string | null;
   passcode?: string | null;
 };
+type PublicShare = {
+  id: string;
+  token?: string;
+  recipient_name?: string | null;
+  can_preview: boolean;
+  can_download: boolean;
+  status: string;
+  expires_at?: string | null;
+  last_accessed_at?: string | null;
+  created_at?: string | null;
+  view_count: number;
+  download_count: number;
+  files?: BucketFile[];
+  share_url?: string | null;
+};
 type VendorUser = { id: string; name: string; email: string; role: string; created_at?: string | null };
 type VendorAccess = {
   id: string;
@@ -122,6 +137,7 @@ type BucketDetail = Bucket & {
   upload_links?: UploadLink[];
   shares: Share[];
   vendor_access?: VendorAccess[];
+  public_shares?: PublicShare[];
   notes: Note[];
   activity: Activity[];
 };
@@ -160,6 +176,14 @@ type ShareViewerDraft = {
   recipient_name: string;
   recipient_email: string;
   passcode: string;
+  can_download: boolean;
+  expires_days: number;
+  file_ids: string[];
+  file_search: string;
+};
+type PublicShareViewerDraft = {
+  id: string;
+  recipient_name: string;
   can_download: boolean;
   expires_days: number;
   file_ids: string[];
@@ -331,6 +355,17 @@ function newShareViewerDraft(): ShareViewerDraft {
   };
 }
 
+function newPublicShareViewerDraft(): PublicShareViewerDraft {
+  return {
+    id: crypto.randomUUID(),
+    recipient_name: "",
+    can_download: true,
+    expires_days: 7,
+    file_ids: [],
+    file_search: "",
+  };
+}
+
 function emptyManualActionDraft(): ManualActionDraft {
   return {
     title: "",
@@ -413,6 +448,10 @@ export default function BucketsAdminPage() {
   const [createdShareLinks, setCreatedShareLinks] = useState<Share[]>([]);
   // Email-share composer: which share is being emailed (null = closed).
   const [emailShare, setEmailShare] = useState<Share | null>(null);
+  const [publicSharePopupOpen, setPublicSharePopupOpen] = useState(false);
+  const [publicShareViewers, setPublicShareViewers] = useState<PublicShareViewerDraft[]>(() => [newPublicShareViewerDraft()]);
+  const [createdPublicShareLinks, setCreatedPublicShareLinks] = useState<PublicShare[]>([]);
+  const publicShareMenuRef = useRef<HTMLDivElement | null>(null);
   const [uploadLinkPasscodes, setUploadLinkPasscodes] = useState<Record<string, string>>({});
   const [expandedUploadLinkId, setExpandedUploadLinkId] = useState<string | null>(null);
   const [uploadLinkDraft, setUploadLinkDraft] = useState({ recipient_name: "", recipient_email: "", passcode: "" });
@@ -764,6 +803,24 @@ export default function BucketsAdminPage() {
   }, [sharePopupOpen]);
 
   useEffect(() => {
+    if (!publicSharePopupOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPublicSharePopupOpen(false);
+    };
+    const onMouseDown = (event: MouseEvent) => {
+      if (publicShareMenuRef.current && !publicShareMenuRef.current.contains(event.target as Node)) {
+        setPublicSharePopupOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("mousedown", onMouseDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [publicSharePopupOpen]);
+
+  useEffect(() => {
     if (!detail || detailFocus !== "vendors") return;
     const timer = window.setTimeout(() => {
       document.getElementById("bucket-vendors-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -954,6 +1011,42 @@ export default function BucketsAdminPage() {
     const date = new Date();
     date.setDate(date.getDate() + days);
     return date.toISOString();
+  }
+
+  function updatePublicShareViewer(id: string, patch: Partial<PublicShareViewerDraft>) {
+    setPublicShareViewers((viewers) => viewers.map((viewer) => (viewer.id === id ? { ...viewer, ...patch } : viewer)));
+  }
+
+  function addPublicShareViewer() {
+    setPublicShareViewers((viewers) => [...viewers, newPublicShareViewerDraft()]);
+  }
+
+  function removePublicShareViewer(id: string) {
+    setPublicShareViewers((viewers) => (viewers.length === 1 ? viewers : viewers.filter((viewer) => viewer.id !== id)));
+  }
+
+  function setPublicShareViewerFileIds(id: string, fileIds: string[]) {
+    updatePublicShareViewer(id, { file_ids: Array.from(new Set(fileIds)) });
+  }
+
+  function togglePublicShareViewerFile(id: string, fileId: string) {
+    setPublicShareViewers((viewers) =>
+      viewers.map((viewer) => {
+        if (viewer.id !== id) return viewer;
+        const next = viewer.file_ids.includes(fileId)
+          ? viewer.file_ids.filter((value) => value !== fileId)
+          : [...viewer.file_ids, fileId];
+        return { ...viewer, file_ids: next };
+      }),
+    );
+  }
+
+  function copyPublicShareLink(share: PublicShare) {
+    if (!share.share_url) {
+      setNotice("Public link is not available yet. Refresh the bucket and try again.");
+      return;
+    }
+    void copyText(share.share_url);
   }
 
   function shareFilesFor(share: Share) {
@@ -1319,6 +1412,41 @@ export default function BucketsAdminPage() {
       setShareViewers([newShareViewerDraft()]);
       setCreatedShareLinks(createdShares);
       setNotice(`${createdCount} no-login share link${createdCount === 1 ? "" : "s"} created. Copy the bank invite from this popup or the Shares panel.`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const canCreatePublicShareLinks =
+    !!detail &&
+    publicShareViewers.length > 0 &&
+    publicShareViewers.every((viewer) => viewer.file_ids.length > 0) &&
+    !busy;
+
+  async function createPublicShareLinks() {
+    if (!detail || !canCreatePublicShareLinks) return;
+    setBusy(true);
+    try {
+      let createdCount = 0;
+      const createdShares: PublicShare[] = [];
+      for (const viewer of publicShareViewers) {
+        const res = await call<PublicShare>(`/buckets/admin/${detail.id}/public-shares`, {
+          method: "POST",
+          body: JSON.stringify({
+            recipient_name: viewer.recipient_name.trim() || null,
+            can_download: viewer.can_download,
+            expires_at: shareExpiryDate(viewer.expires_days),
+            file_ids: viewer.file_ids,
+          }),
+        });
+        createdCount += 1;
+        createdShares.push(res);
+      }
+      const row = await call<BucketDetail>(`/buckets/admin/${detail.id}`);
+      setDetail(row);
+      setPublicShareViewers([newPublicShareViewerDraft()]);
+      setCreatedPublicShareLinks(createdShares);
+      setNotice(`${createdCount} public link${createdCount === 1 ? "" : "s"} created. Copy the link to send to other banks — no login or code required.`);
     } finally {
       setBusy(false);
     }
@@ -2256,6 +2384,121 @@ export default function BucketsAdminPage() {
                     </button>
                     <button style={{ ...primary, width: "100%", opacity: canCreateShareLinks ? 1 : 0.68 }} onClick={() => createShareLinks().catch((e) => setNotice(readableError(e)))} disabled={!canCreateShareLinks}>
                       {busy ? "Creating links..." : "Create share links"}
+                    </button>
+                  </div>
+                  </div>
+                ) : null}
+              </div>
+              <div ref={publicShareMenuRef} style={{ position: "relative" }}>
+                <button
+                  style={{
+                    ...iconButtonStyle(t),
+                    width: "auto",
+                    padding: "0 12px",
+                    borderColor: publicSharePopupOpen ? t.petrol : t.line,
+                    background: publicSharePopupOpen ? t.petrolSoft : t.surface,
+                    color: publicSharePopupOpen ? t.petrol : t.ink2,
+                    gap: 6,
+                  }}
+                  onClick={() => {
+                    setPublicSharePopupOpen((value) => !value);
+                  }}
+                  aria-label="Create public link, no login or code"
+                  title="Public link - no login, no code"
+                >
+                  <Icon name="link" size={16} />
+                  <span style={{ fontSize: 12, fontWeight: 900 }}>Public link</span>
+                </button>
+                {publicSharePopupOpen ? (
+                  <div style={sharePopupStyle(t)}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", paddingBottom: 10, borderBottom: `1px solid ${t.line}` }}>
+                    <div>
+                      <div style={{ color: t.ink, fontWeight: 900, fontSize: 14 }}>Public link</div>
+                      <div style={{ color: t.ink3, fontSize: 12, marginTop: 2 }}>No login, no access code. Opens immediately for anyone with the link.</div>
+                    </div>
+                    <button style={iconButtonStyle(t)} onClick={() => setPublicSharePopupOpen(false)} aria-label="Close public link popup">
+                      <Icon name="x" size={14} />
+                    </button>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                    <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface2, padding: 10, display: "grid", gap: 7 }}>
+                      <strong style={{ color: t.ink, fontSize: 12 }}>Use this only for trusted recipients.</strong>
+                      <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.35 }}>
+                        Anyone with this link can view/download the selected files — there is no access code. Intended for sending files to other banks or lenders.
+                      </span>
+                    </div>
+                    {createdPublicShareLinks.length ? (
+                      <div style={{ border: `1px solid ${t.profit}`, borderRadius: 12, background: t.profitBg, padding: 10, display: "grid", gap: 8 }}>
+                        <strong style={{ color: t.profit, fontSize: 12 }}>Public link ready</strong>
+                        {createdPublicShareLinks.map((share) => (
+                          <div key={share.id} style={{ display: "grid", gap: 7, borderTop: `1px solid ${t.line}`, paddingTop: 8 }}>
+                            <div style={{ color: t.ink, fontWeight: 900, fontSize: 13 }}>
+                              {share.recipient_name || "Public link"}
+                            </div>
+                            <div style={{ color: t.ink3, fontSize: 12 }}>
+                              {share.files?.length ?? 0} files | {share.can_download ? "download allowed" : "view only"} | no login or code required
+                            </div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button style={secondary} onClick={() => copyPublicShareLink(share)}>Copy link</button>
+                            </div>
+                          </div>
+                        ))}
+                        <button style={secondary} onClick={() => setCreatedPublicShareLinks([])}>
+                          Create another public link
+                        </button>
+                      </div>
+                    ) : null}
+                    {visibleFiles.length === 0 ? (
+                      <div style={emptyInlineStyle(t)}>Upload files before creating public links.</div>
+                    ) : null}
+                    <div style={{ display: "grid", gap: 8, maxHeight: 560, overflowY: "auto" }}>
+                      {publicShareViewers.map((viewer, index) => (
+                        <div key={viewer.id} style={shareViewerRowStyle(t)}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                            <strong style={{ color: t.ink, fontSize: 13 }}>Link {index + 1}</strong>
+                            <button style={iconButtonStyle(t)} onClick={() => removePublicShareViewer(viewer.id)} disabled={publicShareViewers.length === 1} aria-label={`Remove link ${index + 1}`}>
+                              <Icon name="x" size={13} />
+                            </button>
+                          </div>
+                          <input style={field} placeholder="Recipient label, optional (e.g. First National Bank)" value={viewer.recipient_name} onChange={(event) => updatePublicShareViewer(viewer.id, { recipient_name: event.target.value })} />
+                          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
+                            <label style={permissionRowStyle(t)}>
+                              <span>
+                                <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Allow download</strong>
+                                <span style={{ color: t.ink3, fontSize: 12 }}>Otherwise preview only.</span>
+                              </span>
+                              <input type="checkbox" checked={viewer.can_download} onChange={(event) => updatePublicShareViewer(viewer.id, { can_download: event.target.checked })} />
+                            </label>
+                            <label style={permissionRowStyle(t)}>
+                              <span>
+                                <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Expires</strong>
+                                <span style={{ color: t.ink3, fontSize: 12 }}>Default 7 days.</span>
+                              </span>
+                              <select style={{ ...field, width: 92 }} value={viewer.expires_days} onChange={(event) => updatePublicShareViewer(viewer.id, { expires_days: Number(event.target.value) })}>
+                                <option value={1}>1 day</option>
+                                <option value={7}>7 days</option>
+                                <option value={14}>14 days</option>
+                                <option value={30}>30 days</option>
+                              </select>
+                            </label>
+                          </div>
+                          {renderShareFilePicker({
+                            selectedIds: viewer.file_ids,
+                            search: viewer.file_search,
+                            onSearch: (value) => updatePublicShareViewer(viewer.id, { file_search: value }),
+                            onToggle: (fileId) => togglePublicShareViewerFile(viewer.id, fileId),
+                            onSetSelected: (fileIds) => setPublicShareViewerFileIds(viewer.id, fileIds),
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                    <button style={secondary} onClick={addPublicShareViewer}>
+                      <Icon name="plus" size={14} />
+                      Add another link
+                    </button>
+                    <button style={{ ...primary, width: "100%", opacity: canCreatePublicShareLinks ? 1 : 0.68 }} onClick={() => createPublicShareLinks().catch((e) => setNotice(readableError(e)))} disabled={!canCreatePublicShareLinks}>
+                      {busy ? "Creating links..." : "Create public link"}
                     </button>
                   </div>
                   </div>
