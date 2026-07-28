@@ -18,6 +18,7 @@ type RequestedDoc = {
   requires_signature?: boolean;
   signature_kind?: string | null;
   signature_document_text?: string | null;
+  template_download_url?: string | null;
 };
 
 type UploadedFile = {
@@ -58,15 +59,7 @@ type BookingSlot = {
 };
 
 type Widget = {
-  type:
-    | "deal_profile"
-    | "entity_structure"
-    | "real_estate_schedule"
-    | "upload_files"
-    | "referral"
-    | "run_review"
-    | "bankability_result"
-    | "book_call";
+  type: "upload_files" | "book_call";
   title: string;
   description: string;
   missing_document_ids?: string[];
@@ -99,13 +92,6 @@ type AssetRow = {
   estimated_loan_amount?: number | null;
   estimated_property_value?: number | null;
   notes?: string | null;
-};
-
-type EntityStructure = {
-  primary_operating_entity: string;
-  main_operating_bank_account: string;
-  related_entities: string;
-  relationship_explanation: string;
 };
 
 type WidgetType = Widget["type"];
@@ -158,12 +144,6 @@ function useCompactViewport() {
 }
 
 const initialContact = { full_name: "", email: "", phone: "", business_name: "" };
-const initialEntity: EntityStructure = {
-  primary_operating_entity: "",
-  main_operating_bank_account: "",
-  related_entities: "",
-  relationship_explanation: "",
-};
 
 export default function DealerAIUnderwriterPage() {
   const compact = useCompactViewport();
@@ -176,10 +156,6 @@ export default function DealerAIUnderwriterPage() {
   const [token, setToken] = useState<string>("");
   const [dealerSessionToken, setDealerSessionToken] = useState<string>("");
   const [contact, setContact] = useState(initialContact);
-  const [deal, setDeal] = useState({ loan_purpose: "", requested_loan_amount: "", estimated_credit_score: "" });
-  const [assets, setAssets] = useState<AssetRow[]>([{ id: cryptoId(), address: "", estimated_loan_amount: null, estimated_property_value: null, notes: "" }]);
-  const [entity, setEntity] = useState<EntityStructure>(initialEntity);
-  const [referral, setReferral] = useState("");
   const [response, setResponse] = useState<IntakeResponse | null>(null);
   const [chat, setChat] = useState<ChatLine[]>([]);
   const [chatText, setChatText] = useState("");
@@ -236,26 +212,6 @@ export default function DealerAIUnderwriterPage() {
       loadIntake(savedToken, true).catch(() => window.sessionStorage.removeItem(DEALER_AI_TOKEN_KEY));
     }
   }, []);
-
-  useEffect(() => {
-    if (!response) return;
-    setDeal({
-      loan_purpose: response.intake.loan_purpose ?? "",
-      requested_loan_amount: response.intake.requested_loan_amount ? String(Math.round(response.intake.requested_loan_amount)) : "",
-      estimated_credit_score: response.intake.estimated_credit_score ? String(response.intake.estimated_credit_score) : "",
-    });
-    setReferral(response.intake.referral_source ?? "");
-    if (response.intake.asset_rows?.length) setAssets(response.intake.asset_rows.map((row) => ({ ...row, id: row.id || cryptoId() })));
-    const savedEntity = asRecord(response.intake.intake_state?.entity_structure);
-    if (savedEntity) {
-      setEntity({
-        primary_operating_entity: String(savedEntity.primary_operating_entity ?? ""),
-        main_operating_bank_account: String(savedEntity.main_operating_bank_account ?? ""),
-        related_entities: String(savedEntity.related_entities ?? ""),
-        relationship_explanation: String(savedEntity.relationship_explanation ?? ""),
-      });
-    }
-  }, [response]);
 
   const currentResult = response?.intake.result_snapshot ?? response?.latest_review?.result ?? null;
   const missingDocs = useMemo(() => {
@@ -500,69 +456,6 @@ export default function DealerAIUnderwriterPage() {
       });
       applyResponse(payload, token);
       pushAssistant(payload.assistant_message);
-    } catch (error) {
-      setStatus(errorMessage(error));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submitDealProfile() {
-    await sendChat("I updated the loan purpose, requested amount, and estimated credit score.", {
-      loan_purpose: deal.loan_purpose.trim() || null,
-      requested_loan_amount: numericOrNull(deal.requested_loan_amount),
-      estimated_credit_score: numericOrNull(deal.estimated_credit_score),
-    });
-  }
-
-  async function submitEntityStructure() {
-    const cleaned = {
-      primary_operating_entity: entity.primary_operating_entity.trim(),
-      main_operating_bank_account: entity.main_operating_bank_account.trim(),
-      related_entities: entity.related_entities.trim(),
-      relationship_explanation: entity.relationship_explanation.trim(),
-    };
-    if (!Object.values(cleaned).some(Boolean)) {
-      setStatus("Add the primary operating entity, bank account, or related-entity explanation.");
-      return;
-    }
-    await sendChat("I clarified the dealer LLC and operating account structure.", { entity_structure: cleaned });
-  }
-
-  async function submitAssets() {
-    const cleanRows = assets
-      .map((row) => ({
-        id: row.id || cryptoId(),
-        address: row.address.trim(),
-        estimated_loan_amount: row.estimated_loan_amount ?? null,
-        estimated_property_value: row.estimated_property_value ?? null,
-        notes: row.notes?.trim() || null,
-      }))
-      .filter((row) => row.address || row.estimated_loan_amount || row.estimated_property_value);
-    if (!cleanRows.length) {
-      setStatus("Add at least one real estate or asset row.");
-      return;
-    }
-    await sendChat("I added the real estate and asset schedule.", { asset_rows: cleanRows });
-  }
-
-  async function submitReferral() {
-    if (!referral.trim()) {
-      setStatus("Enter who referred you, or type self.");
-      return;
-    }
-    await sendChat("I added the referral source.", { referral_source: referral.trim() });
-  }
-
-  async function runReview() {
-    if (!token) return;
-    setBusy(true);
-    setStatus("Running AI review. This can take a moment for large PDFs or spreadsheets.");
-    try {
-      const payload = await call<IntakeResponse>(`/public/dealer-ai-intake/${encodeURIComponent(token)}/run-review`, { method: "POST" });
-      applyResponse(payload, token);
-      pushAssistant(payload.assistant_message);
-      setStatus("");
     } catch (error) {
       setStatus(errorMessage(error));
     } finally {
@@ -1257,162 +1150,6 @@ function DealerContinuationWidget({
   );
 }
 
-function EntityWidget({ entity, setEntity, busy, onSubmit }: { entity: EntityStructure; setEntity: (value: EntityStructure) => void; busy: boolean; onSubmit: () => void }) {
-  return (
-    <WidgetBox title="Dealer LLC and account structure" description="Dealers often operate through multiple LLCs. Clarify the main operating entity and how related accounts connect before underwriting.">
-      <Field label="Primary operating LLC / entity" value={entity.primary_operating_entity} onChange={(value) => setEntity({ ...entity, primary_operating_entity: value })} placeholder="ABC Auto Sales LLC" />
-      <Field label="Main operating bank account" value={entity.main_operating_bank_account} onChange={(value) => setEntity({ ...entity, main_operating_bank_account: value })} placeholder="Bank name and account purpose" />
-      <TextAreaField label="Related LLCs / entities" value={entity.related_entities} onChange={(value) => setEntity({ ...entity, related_entities: value })} placeholder="List related dealership, real estate, holding, or floorplan entities" />
-      <TextAreaField label="How accounts work together" value={entity.relationship_explanation} onChange={(value) => setEntity({ ...entity, relationship_explanation: value })} placeholder="Explain which entity receives sales deposits, pays expenses, owns real estate, or carries debt" />
-      <button style={primaryWide} disabled={busy} onClick={onSubmit}>Save entity structure</button>
-    </WidgetBox>
-  );
-}
-
-function DealWidget({ deal, setDeal, busy, onSubmit }: { deal: { loan_purpose: string; requested_loan_amount: string; estimated_credit_score: string }; setDeal: (value: { loan_purpose: string; requested_loan_amount: string; estimated_credit_score: string }) => void; busy: boolean; onSubmit: () => void }) {
-  return (
-    <WidgetBox title="Essential funding facts" description="No product selection required. The AI uses these answers and your files to infer the likely path.">
-      <TextAreaField
-        label="Detailed use of funds"
-        value={deal.loan_purpose}
-        onChange={(value) => setDeal({ ...deal, loan_purpose: value })}
-        placeholder="Break down payoff amounts, working capital, inventory, taxes, repairs, acquisition, cash-out reserves, or other planned uses."
-      />
-      <Field label="Requested loan amount" value={deal.requested_loan_amount} onChange={(value) => setDeal({ ...deal, requested_loan_amount: onlyDigits(value) })} placeholder="6000000" />
-      <Field label="Estimated credit score" value={deal.estimated_credit_score} onChange={(value) => setDeal({ ...deal, estimated_credit_score: onlyDigits(value).slice(0, 3) })} placeholder="720" />
-      <button style={primaryWide} disabled={busy} onClick={onSubmit}>Save profile</button>
-    </WidgetBox>
-  );
-}
-
-function AssetWidget({ assets, setAssets, busy, onSubmit }: { assets: AssetRow[]; setAssets: (rows: AssetRow[]) => void; busy: boolean; onSubmit: () => void }) {
-  function update(index: number, patch: Partial<AssetRow>) {
-    setAssets(assets.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
-  }
-  function remove(index: number) {
-    const next = assets.filter((_, rowIndex) => rowIndex !== index);
-    setAssets(next.length ? next : [{ id: cryptoId(), address: "", estimated_loan_amount: null, estimated_property_value: null, notes: "" }]);
-  }
-  return (
-    <WidgetBox title="Add real estate collateral" description="Type each property line by line. You can also upload mortgage notes, but estimated value is still needed for the preliminary screen.">
-      <div style={tableHeader}>
-        <span>Full property address</span>
-        <span>Amount owed</span>
-        <span>Estimated value</span>
-      </div>
-      <div style={{ display: "grid", gap: 8 }}>
-        {assets.map((row, index) => (
-          <div key={row.id || index} style={assetTableRow}>
-            <input style={tableInput} value={row.address} onChange={(event) => update(index, { address: event.target.value })} placeholder="Full address" />
-            <input style={tableInput} value={row.estimated_loan_amount ? String(row.estimated_loan_amount) : ""} onChange={(event) => update(index, { estimated_loan_amount: numericOrNull(event.target.value) })} placeholder="$ owed" inputMode="numeric" />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
-              <input style={tableInput} value={row.estimated_property_value ? String(row.estimated_property_value) : ""} onChange={(event) => update(index, { estimated_property_value: numericOrNull(event.target.value) })} placeholder="$ value" inputMode="numeric" />
-              <button style={iconButton} onClick={() => remove(index)} aria-label="Remove row">x</button>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div style={buttonRow}>
-        <button style={secondaryButton} onClick={() => setAssets([...assets, { id: cryptoId(), address: "", estimated_loan_amount: null, estimated_property_value: null, notes: "" }])}>+ Add property</button>
-        <button style={primaryButton} disabled={busy} onClick={onSubmit}>Save properties</button>
-      </div>
-    </WidgetBox>
-  );
-}
-
-function UploadWidget(props: {
-  requestedDocs: RequestedDoc[];
-  missingDocs: RequestedDoc[];
-  queuedFiles: QueuedFile[];
-  onRemoveQueuedFile: (id: string) => void;
-  fileInputRef: MutableRefObject<HTMLInputElement | null>;
-  dragging: boolean;
-  setDragging: (value: boolean) => void;
-  onDrop: (event: DragEvent<HTMLDivElement>) => void;
-  addFiles: (files: FileList | File[]) => void;
-  busy: boolean;
-  onUpload: () => void;
-}) {
-  const { requestedDocs, missingDocs, queuedFiles, onRemoveQueuedFile, fileInputRef, dragging, setDragging, onDrop, addFiles, busy, onUpload } = props;
-  const uploadedCount = requestedDocs.filter((doc) => !missingDocs.some((missing) => missing.id === doc.id)).length;
-  const visibleQueue = queuedFiles.filter((item) => item.status !== "uploaded");
-  return (
-    <WidgetBox title="Upload baseline documents" description="Attach what you have now. You can keep chatting before every baseline item is uploaded.">
-      <div style={baselineSummary}>
-        <strong>{uploadedCount} uploaded | {missingDocs.length} missing</strong>
-        <span>Baseline package only: taxes, current P&L, bank statements, real estate collateral, and applicable MCA/floorplan/inventory statements.</span>
-      </div>
-      <div style={chipWrap}>
-        {requestedDocs.map((doc) => {
-          const missing = missingDocs.some((item) => item.id === doc.id);
-          return <span key={doc.id} style={missing ? missingChip : completeChip}>{missing ? "Needed" : "Uploaded"}: {doc.name}</span>;
-        })}
-      </div>
-      <div
-        style={{ ...dropZone, borderColor: dragging ? "#21d3c7" : "rgba(255,255,255,.16)", background: dragging ? "rgba(33,211,199,.12)" : "rgba(255,255,255,.035)" }}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        <strong>Add files</strong>
-        <span>Drag documents here or click to choose files.</span>
-        <input ref={fileInputRef} type="file" multiple hidden onChange={(event) => event.target.files && addFiles(event.target.files)} />
-      </div>
-      <div style={{ display: "grid", gap: 8 }}>
-        {visibleQueue.length ? visibleQueue.map((item) => (
-          <div key={item.id} style={queueRow}>
-            <div style={{ minWidth: 0 }}>
-              <strong style={truncate}>{item.file.name}</strong>
-              <span style={smallMuted}>{formatSize(item.file.size)} | {item.status}{item.message ? ` | ${item.message}` : ""}</span>
-            </div>
-            <span style={smallMuted}>AI will classify after upload</span>
-            {item.status !== "uploading" ? (
-              <button
-                type="button"
-                style={queueRemoveButton}
-                aria-label={`Remove ${item.file.name}`}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onRemoveQueuedFile(item.id);
-                }}
-              >
-                x
-              </button>
-            ) : (
-              <span style={queueRemovePlaceholder} />
-            )}
-          </div>
-        )) : <div style={emptyBox}>No local files selected yet.</div>}
-      </div>
-      <button style={primaryWide} disabled={busy || !queuedFiles.some((file) => file.status === "ready" || file.status === "error")} onClick={onUpload}>
-        {busy ? "Uploading..." : "Upload selected files"}
-      </button>
-    </WidgetBox>
-  );
-}
-
-function ReferralWidget({ referral, setReferral, busy, onSubmit }: { referral: string; setReferral: (value: string) => void; busy: boolean; onSubmit: () => void }) {
-  return (
-    <WidgetBox title="Referral credit" description="Tell us who referred you to this link so the correct person gets credit.">
-      <Field label="Who referred you?" value={referral} onChange={setReferral} placeholder="Name, email, company, or self" />
-      <button style={primaryWide} disabled={busy} onClick={onSubmit}>Save referral</button>
-    </WidgetBox>
-  );
-}
-
-function RunReviewWidget({ busy, hasResult, onRun }: { busy: boolean; hasResult: boolean; onRun: () => void }) {
-  return (
-    <WidgetBox title={hasResult ? "Refresh AI review" : "Run preliminary AI review"} description="The AI reads the baseline file only, classifies fundable, not fundable, or cannot determine, and does not ask for unlimited extra documents.">
-      <button style={primaryWide} disabled={busy} onClick={onRun}>{busy ? "Reviewing..." : hasResult ? "Re-run with current files" : "Run preliminary screen"}</button>
-    </WidgetBox>
-  );
-}
-
 function ChatTypingDots() {
   return (
     <span style={{ display: "inline-flex", gap: 4, alignItems: "center", padding: "2px 2px" }} aria-label="AI is thinking">
@@ -1451,49 +1188,6 @@ function BookCallWidget({ widget, busy, onBook }: { widget: Widget | null; busy:
         </div>
       ) : null}
     </WidgetBox>
-  );
-}
-
-function ResultWidget({
-  result,
-  bankability,
-  busy,
-  onRun,
-}: {
-  result: Record<string, unknown> | null;
-  bankability: Record<string, unknown> | null;
-  busy: boolean;
-  onRun: () => void;
-}) {
-  const missing = arrayOfRecords(result?.missing_or_incomplete_items);
-  const gaps = arrayOfRecords(result?.proof_of_funds_financial_collateral_gaps);
-  return (
-    <WidgetBox title="Preliminary result" description="This is a file screen, not a commitment to lend.">
-      <div style={resultCard}>
-        <div style={eyebrow}>Status</div>
-        <strong style={resultStatus}>{String(bankability?.status || "Review completed")}</strong>
-        <p style={muted}>{String(bankability?.reason || result?.executive_summary || "Review the missing items and next steps.")}</p>
-      </div>
-      <ListBlock title="Missing or incomplete" items={missing} />
-      <ListBlock title="Financial / collateral gaps" items={gaps} />
-      <button style={secondaryButton} disabled={busy} onClick={onRun}>{busy ? "Reviewing..." : "Re-run with current files"}</button>
-    </WidgetBox>
-  );
-}
-
-function CompactRoomStatus({ response, missingDocs, compact = false }: { response: IntakeResponse; missingDocs: RequestedDoc[]; compact?: boolean }) {
-  return (
-    <div style={compact ? roomStatusStripMobile : roomStatusStrip}>
-      <div>
-        <div style={compact ? eyebrowMobile : eyebrow}>Secure bucket created</div>
-        <strong style={compact ? roomNameMobile : undefined}>{response.intake.business_name || response.intake.full_name}</strong>
-        <p style={smallMuted}>{response.files.length} uploaded | {missingDocs.length} missing | {response.intake.status}</p>
-      </div>
-      <div style={compact ? compactMetricsMobile : compactMetrics}>
-        <Metric value={response.intake.estimated_credit_score ? String(response.intake.estimated_credit_score) : "TBD"} label="est. credit" />
-        <Metric value={response.files.length.toString()} label="files" />
-      </div>
-    </div>
   );
 }
 
@@ -1627,21 +1321,6 @@ function AttachmentTray({ files, compact, onRemove }: { files: QueuedFile[]; com
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function ToolSuggestionCard({ widget, onOpen }: { widget: Widget; onOpen: () => void }) {
-  return (
-    <div style={toolSuggestionCard}>
-      <div style={toolSuggestionIcon}>{toolIcon(widget.type)}</div>
-      <div style={{ minWidth: 0 }}>
-        <div style={toolSuggestionTitle}>{widget.title}</div>
-        <p style={toolSuggestionCopy}>{widget.description || widget.reason || "Use this when you are ready."}</p>
-      </div>
-      <button type="button" style={toolSuggestionButton} onClick={onOpen}>
-        {toolCta(widget.type)}
-      </button>
     </div>
   );
 }
@@ -1803,18 +1482,24 @@ function FileDrawerPanel({
         </div>
         <div style={chipWrap}>
           {missingDocs.length ? missingDocs.map((doc) => (
-            doc.requires_signature && setSigningDocId ? (
-              <button
-                key={doc.id}
-                type="button"
-                onClick={() => setSigningDocId(doc.id)}
-                style={{ ...missingChip, cursor: "pointer", border: "none" }}
-              >
-                Sign: {doc.name}
-              </button>
-            ) : (
-              <span key={doc.id} style={missingChip}>{doc.name}</span>
-            )
+            <span key={doc.id} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+              {doc.requires_signature && setSigningDocId ? (
+                <button
+                  type="button"
+                  onClick={() => setSigningDocId(doc.id)}
+                  style={{ ...missingChip, cursor: "pointer", border: "none" }}
+                >
+                  Sign: {doc.name}
+                </button>
+              ) : (
+                <span style={missingChip}>{doc.name}</span>
+              )}
+              {doc.template_download_url ? (
+                <a href={doc.template_download_url} target="_blank" rel="noopener noreferrer" style={templateDownloadLink}>
+                  Download blank form
+                </a>
+              ) : null}
+            </span>
           )) : <span style={completeChip}>Baseline package uploaded</span>}
         </div>
         {signingDocId && onSign ? (
@@ -1916,72 +1601,6 @@ function FundabilityBanner({ banner }: { banner: FundabilityBannerData }) {
         <p>{banner.detail}</p>
       </div>
     </div>
-  );
-}
-
-function toolCta(type: WidgetType): string {
-  switch (type) {
-    case "upload_files":
-      return "Add files";
-    case "real_estate_schedule":
-      return "Enter schedule";
-    case "entity_structure":
-      return "Clarify";
-    case "deal_profile":
-      return "Add facts";
-    case "referral":
-      return "Add referral";
-    case "run_review":
-      return "Run screen";
-    case "bankability_result":
-      return "View result";
-    case "book_call":
-      return "Pick time";
-    default:
-      return "Open";
-  }
-}
-
-function toolIcon(type: WidgetType): string {
-  switch (type) {
-    case "upload_files":
-      return "+";
-    case "real_estate_schedule":
-      return "$";
-    case "entity_structure":
-      return "LLC";
-    case "book_call":
-      return "Cal";
-    case "bankability_result":
-      return "AI";
-    default:
-      return ">";
-  }
-}
-
-function ReviewSidePanel({ result, bankability, reviewStatus, onOpenReview }: { result: Record<string, unknown> | null; bankability: Record<string, unknown> | null; reviewStatus: string; onOpenReview: () => void }) {
-  const probability = String(result?.probability_status || "").trim();
-  const summary = String(result?.one_next_step || bankability?.reason || result?.executive_summary || "Upload files and run the preliminary screen to generate an underwriting summary.");
-  return (
-    <section style={sideCard}>
-      <div style={sideCardHeader}>
-        <div>
-          <div style={sideEyebrow}>Review</div>
-          <h2 style={sideTitle}>AI analysis</h2>
-        </div>
-        <span style={statusPill}>{reviewStatus}</span>
-      </div>
-      <div style={resultCard}>
-        <div style={eyebrow}>Preliminary status</div>
-        <strong style={resultStatus}>{probability || String(bankability?.status || (result ? "Review ready" : "No review yet"))}</strong>
-        <p style={muted}>{summary}</p>
-      </div>
-      {result ? (
-        <button type="button" style={primaryWide} onClick={onOpenReview}>Open review in chat</button>
-      ) : (
-        <div style={emptyBox}>The review will update automatically after files upload, and you can also ask the AI for the next step in chat.</div>
-      )}
-    </section>
   );
 }
 
@@ -2325,20 +1944,6 @@ function Metric({ value, label }: { value: string; label: string }) {
     <div style={metric}>
       <strong>{value}</strong>
       <span>{label}</span>
-    </div>
-  );
-}
-
-function ListBlock({ title, items }: { title: string; items: Record<string, unknown>[] }) {
-  return (
-    <div style={{ display: "grid", gap: 8 }}>
-      <strong>{title}</strong>
-      {items.length ? items.slice(0, 5).map((item, index) => (
-        <div key={`${title}-${index}`} style={emptyBox}>
-          <strong>{String(item.title || item.question || "Item")}</strong>
-          <div style={smallMuted}>{String(item.detail || item.reason || item.instructions || "")}</div>
-        </div>
-      )) : <div style={emptyBox}>No items listed.</div>}
     </div>
   );
 }
@@ -3323,31 +2928,6 @@ const headerActionRow: CSSProperties = { display: "flex", gap: 8, flexWrap: "wra
 const mobileActionRow: CSSProperties = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 };
 const sectionTitle: CSSProperties = { margin: 0, fontSize: 20, color: "#F6F8FB", letterSpacing: 0 };
 const muted: CSSProperties = { margin: "4px 0 0", color: "#95A3B6", lineHeight: 1.45 };
-const roomStatusStrip: CSSProperties = {
-  margin: 18,
-  marginBottom: 0,
-  border: "1px solid rgba(255,255,255,.10)",
-  borderRadius: 16,
-  background: "linear-gradient(135deg,rgba(255,255,255,.06),rgba(212,175,55,.055))",
-  padding: 14,
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 12,
-  alignItems: "center",
-  flexWrap: "wrap",
-};
-const roomStatusStripMobile: CSSProperties = {
-  ...roomStatusStrip,
-  margin: 12,
-  marginBottom: 0,
-  padding: 12,
-  display: "grid",
-  gap: 10,
-  borderRadius: 16,
-};
-const roomNameMobile: CSSProperties = { display: "block", fontSize: 18, color: "#F8FAFC", overflowWrap: "anywhere" };
-const compactMetrics: CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" };
-const compactMetricsMobile: CSSProperties = { ...compactMetrics, display: "grid", gridTemplateColumns: "1fr 1fr", justifyContent: "stretch" };
 const messages: CSSProperties = { padding: 18, display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", minHeight: 520 };
 const messagesMobile: CSSProperties = { ...messages, padding: 12, minHeight: 360 };
 const assistantRow: CSSProperties = {
@@ -3422,44 +3002,6 @@ const aiPromptCopy: CSSProperties = {
   color: "#B8C4D6",
   lineHeight: 1.45,
   fontSize: 13,
-};
-const toolSuggestionCard: CSSProperties = {
-  alignSelf: "flex-start",
-  width: "min(680px,100%)",
-  border: "1px solid rgba(255,255,255,.10)",
-  borderRadius: 18,
-  background: "rgba(255,255,255,.045)",
-  padding: 12,
-  display: "grid",
-  gridTemplateColumns: "38px minmax(0,1fr) auto",
-  gap: 12,
-  alignItems: "center",
-  boxShadow: "0 18px 48px rgba(0,0,0,.22)",
-};
-const toolSuggestionIcon: CSSProperties = {
-  width: 38,
-  height: 38,
-  borderRadius: 12,
-  display: "grid",
-  placeItems: "center",
-  background: "rgba(233,213,138,.10)",
-  border: "1px solid rgba(233,213,138,.22)",
-  color: "#E9D58A",
-  fontWeight: 900,
-  fontSize: 12,
-};
-const toolSuggestionTitle: CSSProperties = { color: "#F8FAFC", fontWeight: 900, fontSize: 14, overflowWrap: "anywhere" };
-const toolSuggestionCopy: CSSProperties = { margin: "3px 0 0", color: "#AAB4C3", fontSize: 13, lineHeight: 1.35 };
-const toolSuggestionButton: CSSProperties = {
-  border: "1px solid rgba(255,255,255,.14)",
-  borderRadius: 999,
-  background: "rgba(255,255,255,.065)",
-  color: "#F6F8FB",
-  minHeight: 34,
-  padding: "0 13px",
-  fontWeight: 900,
-  cursor: "pointer",
-  whiteSpace: "nowrap",
 };
 const composer: CSSProperties = { display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, padding: "14px min(7vw,92px) 24px", alignItems: "center" };
 const composerMobile: CSSProperties = { ...composer, gap: 8, padding: 12, gridTemplateColumns: "40px minmax(0, 1fr) auto" };
@@ -4048,53 +3590,9 @@ const secondaryButton: CSSProperties = {
 const ghostButton: CSSProperties = { ...secondaryButton, minHeight: 34, fontSize: 13 };
 const smallGhostButton: CSSProperties = { ...ghostButton, justifySelf: "start", padding: "0 12px", minHeight: 32 };
 const ghostLink: CSSProperties = { ...ghostButton, display: "inline-flex", alignItems: "center", textDecoration: "none" };
-const buttonRow: CSSProperties = { display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" };
-const tableHeader: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1.4fr .8fr .8fr",
-  gap: 8,
-  color: "#B8C4D6",
-  fontSize: 11,
-  fontWeight: 900,
-  textTransform: "uppercase",
-};
-const assetTableRow: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1.4fr .8fr .8fr",
-  gap: 8,
-  alignItems: "center",
-};
-const tableInput: CSSProperties = {
-  ...input,
-  minHeight: 40,
-  borderRadius: 10,
-  width: "100%",
-  minWidth: 0,
-};
-const iconButton: CSSProperties = {
-  width: 40,
-  height: 40,
-  borderRadius: 10,
-  border: "1px solid rgba(248,113,113,.35)",
-  background: "rgba(248,113,113,.08)",
-  color: "#FCA5A5",
-  fontSize: 20,
-  fontWeight: 900,
-  cursor: "pointer",
-};
 const missingBox: CSSProperties = {
   border: "1px solid rgba(212,175,55,.28)",
   background: "rgba(212,175,55,.08)",
-  color: "#F6E7A6",
-  borderRadius: 12,
-  padding: 12,
-  display: "grid",
-  gap: 4,
-  lineHeight: 1.35,
-};
-const baselineSummary: CSSProperties = {
-  border: "1px solid rgba(212,175,55,.24)",
-  background: "rgba(212,175,55,.07)",
   color: "#F6E7A6",
   borderRadius: 12,
   padding: 12,
@@ -4112,6 +3610,13 @@ const missingChip: CSSProperties = {
   fontSize: 12,
   fontWeight: 800,
 };
+const templateDownloadLink: CSSProperties = {
+  color: "#9CC7FF",
+  fontSize: 11,
+  fontWeight: 800,
+  textDecoration: "underline",
+  whiteSpace: "nowrap",
+};
 const completeChip: CSSProperties = {
   ...missingChip,
   border: "1px solid rgba(33,211,199,.28)",
@@ -4122,27 +3627,6 @@ const verifiedSourcePill: CSSProperties = { ...completeChip, padding: "4px 8px",
 const extractedSourcePill: CSSProperties = { ...statusPill, minHeight: 0, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" };
 const estimatedSourcePill: CSSProperties = { ...missingChip, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" };
 const unavailableSourcePill: CSSProperties = { ...metricPill, minHeight: 0, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" };
-const dropZone: CSSProperties = {
-  border: "1px dashed rgba(255,255,255,.16)",
-  borderRadius: 14,
-  minHeight: 96,
-  display: "grid",
-  placeItems: "center",
-  textAlign: "center",
-  gap: 4,
-  cursor: "pointer",
-  color: "#D9E5F5",
-};
-const queueRow: CSSProperties = {
-  border: "1px solid rgba(255,255,255,.1)",
-  borderRadius: 12,
-  padding: 10,
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) minmax(170px, 230px) auto",
-  gap: 10,
-  alignItems: "center",
-  background: "rgba(255,255,255,.025)",
-};
 const queueRemoveButton: CSSProperties = {
   width: 34,
   height: 34,
@@ -4153,7 +3637,6 @@ const queueRemoveButton: CSSProperties = {
   fontWeight: 900,
   cursor: "pointer",
 };
-const queueRemovePlaceholder: CSSProperties = { width: 34, height: 34, display: "block" };
 const select: CSSProperties = {
   minHeight: 38,
   border: "1px solid rgba(255,255,255,.16)",
@@ -4171,8 +3654,6 @@ const emptyBox: CSSProperties = {
   display: "grid",
   gap: 4,
 };
-const resultCard: CSSProperties = { border: "1px solid rgba(33,211,199,.3)", background: "rgba(33,211,199,.09)", borderRadius: 14, padding: 14 };
-const resultStatus: CSSProperties = { display: "block", fontSize: 20, color: "#70ded5", marginTop: 4 };
 const smallMuted: CSSProperties = { display: "block", color: "#8FA0B8", fontSize: 13, lineHeight: 1.35 };
 const truncate: CSSProperties = { display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#F8FAFC" };
 const statusBox: CSSProperties = {

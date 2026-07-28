@@ -703,6 +703,21 @@ export interface LeadCreditStatusResponse {
   expires_at: string | null;
 }
 
+// Deterministic (non-AI) program-fit screen for a dealer AI Underwriter Lead
+// — never shown to the borrower, admin-only. Each program key is null when
+// computed=false (a real-estate lead) or absent from the compute pass.
+export interface LeadProgramFitProgram {
+  eligible: boolean;
+  [key: string]: unknown;
+}
+export interface LeadProgramFitResponse {
+  computed: boolean;
+  sba: LeadProgramFitProgram | null;
+  real_estate_backed: LeadProgramFitProgram | null;
+  reinsurance_backed: LeadProgramFitProgram | null;
+  jumbo_dscr: LeadProgramFitProgram | null;
+}
+
 export interface BucketRequestedDocumentRead {
   id: string;
   bucket_id: string;

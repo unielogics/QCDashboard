@@ -71,6 +71,7 @@ import type {
   SetupIntentResponse,
   CreditPullAccessRead,
   LeadCreditStatusResponse,
+  LeadProgramFitResponse,
   BucketRequestedDocumentRead,
   BucketFileUploadInitResponse,
   ParsedReport,
@@ -772,6 +773,19 @@ export function useLeadCreditStatus(intakeId: string | null | undefined) {
   return useQuery({
     queryKey: ["lead-credit-status", intakeId, devUser],
     queryFn: () => apiCall<LeadCreditStatusResponse>(`/admin/ai-underwriter-leads/${intakeId}/credit-status`),
+    enabled: !!intakeId,
+  });
+}
+
+// Admin-only, deterministic program-fit screen (SBA / real-estate-backed /
+// reinsurance-backed / jumbo-DSCR) — dealer leads only. Never shown to the
+// borrower.
+export function useLeadProgramFit(intakeId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lead-program-fit", intakeId, devUser],
+    queryFn: () => apiCall<LeadProgramFitResponse>(`/admin/ai-underwriter-leads/${intakeId}/program-fit`),
     enabled: !!intakeId,
   });
 }

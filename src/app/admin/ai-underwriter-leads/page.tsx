@@ -29,6 +29,7 @@ import { Role } from "@/lib/enums.generated";
 import { useCurrentUser, useBookingLink, useDriveFiles, type DriveFile } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage } from "@/components/admin/LeadCockpit";
 import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
+import { LeadProgramFitPanel } from "@/components/admin/LeadProgramFitPanel";
 import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
 import type { IntakeResponse } from "@/lib/intake";
 import { useUI } from "@/store/ui";
@@ -1029,7 +1030,10 @@ function LeadDetailPanel({
           ) : null}
 
           {activeTab === "workspace" && workspaceSub === "credit" ? (
-            <LeadCreditPanel intakeId={detail.intake.id} />
+            <div style={{ display: "grid", gap: 14 }}>
+              <LeadCreditPanel intakeId={detail.intake.id} />
+              {!isRealEstate ? <LeadProgramFitPanel intakeId={detail.intake.id} /> : null}
+            </div>
           ) : null}
 
           {activeTab === "workspace" && workspaceSub === "package" ? (
