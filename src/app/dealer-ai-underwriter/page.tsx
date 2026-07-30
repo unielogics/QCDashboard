@@ -6,6 +6,7 @@ import { QCMark } from "@/components/QCMark";
 import { apiBase } from "@/lib/api";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal";
 import { SignRequestedDocument, type SignRequestedDocumentPayload } from "@/components/intake/SignRequestedDocument";
+import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
 
 type RequestedDoc = {
   id: string;
@@ -167,6 +168,9 @@ export default function DealerAIUnderwriterPage() {
   const [signingDocId, setSigningDocId] = useState<string | null>(null);
   const [signBusy, setSignBusy] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
+  const [draftingDocKind, setDraftingDocKind] = useState<"pfs" | "debt_schedule" | null>(null);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceTab>("chat");
   const [reviewProgress, setReviewProgress] = useState<ReviewProgressStage>("idle");
   const [reviewCompletedAt, setReviewCompletedAt] = useState<string | null>(null);
@@ -606,6 +610,44 @@ export default function DealerAIUnderwriterPage() {
     }
   }
 
+  async function submitPfsForm(payload: PfsFormPayload) {
+    if (!token) return;
+    setDraftBusy(true);
+    setDraftError(null);
+    try {
+      await call(`/public/dealer-ai-intake/${encodeURIComponent(token)}/requested-documents/pfs`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      setDraftingDocKind(null);
+      await loadIntake();
+      pushAssistant("Thanks — your personal financial statement is on file.");
+    } catch (error) {
+      setDraftError(errorMessage(error));
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  async function submitDebtScheduleForm(payload: DebtScheduleFormPayload) {
+    if (!token) return;
+    setDraftBusy(true);
+    setDraftError(null);
+    try {
+      await call(`/public/dealer-ai-intake/${encodeURIComponent(token)}/requested-documents/debt-schedule`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      setDraftingDocKind(null);
+      await loadIntake();
+      pushAssistant("Thanks — your debt schedule is on file.");
+    } catch (error) {
+      setDraftError(errorMessage(error));
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
   async function submitComposer() {
     if (!token || busy) return;
     const text = chatText.trim();
@@ -1000,6 +1042,12 @@ export default function DealerAIUnderwriterPage() {
                     signBusy={signBusy}
                     signError={signError}
                     onSign={signRequestedDocument}
+                    draftingDocKind={draftingDocKind}
+                    setDraftingDocKind={setDraftingDocKind}
+                    draftBusy={draftBusy}
+                    draftError={draftError}
+                    onSubmitPfs={submitPfsForm}
+                    onSubmitDebtSchedule={submitDebtScheduleForm}
                   />
                 ) : null}
                 {activeWorkspace === "files" ? (
@@ -1023,6 +1071,12 @@ export default function DealerAIUnderwriterPage() {
                     signBusy={signBusy}
                     signError={signError}
                     onSign={signRequestedDocument}
+                    draftingDocKind={draftingDocKind}
+                    setDraftingDocKind={setDraftingDocKind}
+                    draftBusy={draftBusy}
+                    draftError={draftError}
+                    onSubmitPfs={submitPfsForm}
+                    onSubmitDebtSchedule={submitDebtScheduleForm}
                   />
                 ) : null}
                 {activeWorkspace === "intelligence" ? (
@@ -1345,6 +1399,12 @@ function FileDrawerPanel({
   signBusy,
   signError,
   onSign,
+  draftingDocKind,
+  setDraftingDocKind,
+  draftBusy,
+  draftError,
+  onSubmitPfs,
+  onSubmitDebtSchedule,
 }: {
   response: IntakeResponse;
   missingDocs: RequestedDoc[];
@@ -1365,6 +1425,12 @@ function FileDrawerPanel({
   signBusy?: boolean;
   signError?: string | null;
   onSign?: (payload: SignRequestedDocumentPayload) => void;
+  draftingDocKind?: "pfs" | "debt_schedule" | null;
+  setDraftingDocKind?: (kind: "pfs" | "debt_schedule" | null) => void;
+  draftBusy?: boolean;
+  draftError?: string | null;
+  onSubmitPfs?: (payload: PfsFormPayload) => void;
+  onSubmitDebtSchedule?: (payload: DebtScheduleFormPayload) => void;
 }) {
   const docsById = new Map(response.requested_documents.map((doc) => [doc.id, doc]));
   const readyCount = pendingFiles.filter((file) => file.status === "ready" || file.status === "error").length;
@@ -1499,9 +1565,37 @@ function FileDrawerPanel({
                   Download blank form
                 </a>
               ) : null}
+              {(doc.category === "Personal Financials" || doc.category === "Debts") && setDraftingDocKind ? (
+                <button
+                  type="button"
+                  onClick={() => setDraftingDocKind(doc.category === "Personal Financials" ? "pfs" : "debt_schedule")}
+                  style={{ ...templateDownloadLink, background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                >
+                  Fill out online instead
+                </button>
+              ) : null}
             </span>
           )) : <span style={completeChip}>Baseline package uploaded</span>}
         </div>
+        {onSubmitPfs ? (
+          <PfsFormModal
+            open={draftingDocKind === "pfs"}
+            onClose={() => setDraftingDocKind?.(null)}
+            busy={Boolean(draftBusy)}
+            error={draftError ?? null}
+            onSubmit={onSubmitPfs}
+          />
+        ) : null}
+        {onSubmitDebtSchedule ? (
+          <DebtScheduleFormModal
+            open={draftingDocKind === "debt_schedule"}
+            onClose={() => setDraftingDocKind?.(null)}
+            businessNameDefault={response.intake.business_name ?? undefined}
+            busy={Boolean(draftBusy)}
+            error={draftError ?? null}
+            onSubmit={onSubmitDebtSchedule}
+          />
+        ) : null}
         {signingDocId && onSign ? (
           (() => {
             const signingDoc = response.requested_documents.find((doc) => doc.id === signingDocId);
