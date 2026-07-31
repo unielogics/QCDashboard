@@ -1251,6 +1251,7 @@ const ASSIGNABLE_ROLES: { value: Role; label: string }[] = [
   { value: Role.BROKER, label: "Agent" },
   { value: Role.REGIONAL_MANAGER, label: "Regional Manager" },
   { value: Role.LOAN_EXEC, label: "Underwriter" },
+  { value: Role.DEALER_PARTNER, label: "Dealer Partner" },
   { value: Role.SUPER_ADMIN, label: "Super Admin" },
 ];
 
