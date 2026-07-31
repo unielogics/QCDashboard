@@ -71,6 +71,7 @@ type CreateLeadPayload = {
   phone?: string;
   business_name?: string;
   notify_client: boolean;
+  preferred_language: "en" | "es";
 };
 
 const OUTCOME_COLUMNS: Array<{ key: "submitted" | "closed" | "denied"; label: string }> = [
@@ -384,6 +385,7 @@ function CreateBrokerLeadModal({
   const [phone, setPhone] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [notifyClient, setNotifyClient] = useState(false);
+  const [preferredLanguage, setPreferredLanguage] = useState<"en" | "es">("en");
   const [error, setError] = useState("");
 
   const label = (text: string) => ({ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: 1, marginBottom: 4, display: "block" });
@@ -398,6 +400,7 @@ function CreateBrokerLeadModal({
       phone: phone.trim() || undefined,
       business_name: businessName.trim() || undefined,
       notify_client: notifyClient,
+      preferred_language: preferredLanguage,
     });
   }
 
@@ -425,6 +428,13 @@ function CreateBrokerLeadModal({
           <div>
             <label style={label("Business")}>Business name</label>
             <input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Dealership / business" style={{ ...inputStyle(t), width: "100%" }} />
+          </div>
+          <div>
+            <label style={label("Language")}>Preferred language (client)</label>
+            <select value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value as "en" | "es")} style={{ ...inputStyle(t), width: "100%" }}>
+              <option value="en">English</option>
+              <option value="es">Español (Spanish)</option>
+            </select>
           </div>
         </div>
 

@@ -10,6 +10,7 @@ import { Card } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import type { LegalDocument } from "@/lib/legal";
 import { COMPANY_NAME } from "@/lib/legal";
+import type { Lang } from "@/lib/intakeCopy";
 
 interface Props {
   doc: LegalDocument;
@@ -17,10 +18,17 @@ interface Props {
   // Terms ↔ Privacy without going back to the dashboard.
   peerHref: string;
   peerLabel: string;
+  language?: Lang;
 }
 
-export function LegalDocumentView({ doc, peerHref, peerLabel }: Props) {
+const CHROME_COPY: Record<Lang, { backToApp: string; effectiveDate: string }> = {
+  en: { backToApp: "Back to app", effectiveDate: "Effective Date:" },
+  es: { backToApp: "Volver a la aplicación", effectiveDate: "Fecha de vigencia:" },
+};
+
+export function LegalDocumentView({ doc, peerHref, peerLabel, language = "en" }: Props) {
   const { t } = useTheme();
+  const cc = CHROME_COPY[language];
   return (
     <div
       style={{
@@ -45,7 +53,7 @@ export function LegalDocumentView({ doc, peerHref, peerLabel }: Props) {
               textDecoration: "none",
             }}
           >
-            <Icon name="arrowL" size={12} /> Back to app
+            <Icon name="arrowL" size={12} /> {cc.backToApp}
           </Link>
           <div
             style={{
@@ -66,7 +74,7 @@ export function LegalDocumentView({ doc, peerHref, peerLabel }: Props) {
             {doc.title}
           </h1>
           <div style={{ fontSize: 12.5, color: t.ink3, marginTop: 6 }}>
-            Effective Date: {doc.effectiveDate}
+            {cc.effectiveDate} {doc.effectiveDate}
           </div>
         </div>
 

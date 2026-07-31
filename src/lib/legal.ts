@@ -187,6 +187,158 @@ export const PRIVACY_POLICY: LegalDocument = {
   ],
 };
 
+// TODO(compliance-review-es): Spanish translation of the Privacy Policy —
+// AI-assisted translation, NOT YET reviewed by a native-Spanish-speaking
+// compliance reviewer. Do not treat as legally equivalent to the English
+// version until reviewed and this TODO is removed.
+export const PRIVACY_POLICY_ES: LegalDocument = {
+  title: "Política de Privacidad y Aviso de Privacidad Financiera",
+  effectiveDate: "19 de mayo de 2026",
+  preamble:
+    'Qualified Commercial LLC ("Qualified Commercial", "nosotros" o "nuestro") — una sociedad de responsabilidad limitada de Nueva Jersey. Dirección postal: 14 53rd St #408N, Brooklyn, NY 11232. Contacto: support@qualifiedcommercial.com. Versión 1.0, aprobada por Jonathan Franco, Socio Ejecutivo.',
+  sections: [
+    {
+      heading: "Resumen en lenguaje sencillo",
+      paragraphs: [
+        "Qualified Commercial LLC no vende información de leads ni información de prestatarios. Usamos la información para operar la plataforma, comunicarnos sobre cuentas y expedientes de financiamiento, realizar revisiones internas de expedientes, preparar paquetes para prestamistas, apoyar flujos de trabajo asistidos por IA y enviar paquetes validados a compañías de préstamo seleccionadas o proveedores de servicios autorizados. Ciertas herramientas de publicidad y análisis pueden considerarse publicidad dirigida o compartición de datos bajo algunas leyes de privacidad; las opciones de exclusión se describen a continuación.",
+      ],
+    },
+    {
+      heading: "1. Alcance",
+      paragraphs: [
+        "Esta Política de Privacidad y Aviso de Privacidad Financiera explica cómo Qualified Commercial LLC recopila, usa, protege, retiene y divulga información a través del sitio web de QualifiedCommercial, el portal web, las aplicaciones móviles, las herramientas de mensajería, los flujos de firma electrónica, las herramientas de financiamiento asistidas por IA, los flujos de trabajo de agentes/agentes inmobiliarios y servicios relacionados. Se aplica a prestatarios, propietarios de negocios, garantes, profesionales inmobiliarios, corredores, agentes, usuarios internos y otros usuarios de la plataforma.",
+        "Esta política tiene el propósito de cubrir información personal, información financiera, información personal no pública, documentos subidos a un expediente de financiamiento, comunicaciones, registros de consentimiento, datos del dispositivo y registros operativos relacionados. Debe leerse junto con los Términos y Condiciones, la Divulgación de Financiamiento/IA/Comunicaciones y el Paquete de Autorización de Firma.",
+      ],
+    },
+    {
+      heading: "2. Información que recopilamos",
+      paragraphs: [
+        "Información de cuenta, incluyendo nombre, nombre del negocio, dirección de correo electrónico, número de teléfono, rol, información de inicio de sesión, preferencias de contacto y estado de la cuenta.",
+        "Información del expediente de financiamiento, incluyendo dirección de la propiedad, propósito del préstamo, monto solicitado, valores estimados, estados de cuenta bancarios, documentos de la entidad, documentos fiscales, documentos financieros, información relacionada con el crédito, información de identidad, documentos inmobiliarios y otra información proporcionada por un usuario, agente, agente inmobiliario, corredor o representante autorizado.",
+        "Información de autorización de crédito y suscripción, incluyendo registros de consentimiento, estado de autorización de consulta de crédito, resultados de revisión interna del expediente, observaciones generadas por IA, notas de suscripción, estado del paquete para el prestamista y respuestas del prestamista.",
+        "Información de pago y autorización de tarjeta de crédito, incluyendo monto autorizado, propósito del pago, marca de la tarjeta, últimos cuatro dígitos, mes/año de vencimiento, token de pago o referencia del procesador, información de facturación y registros de autorización/auditoría. No almacenamos intencionalmente los códigos CVV/CVC y no debemos almacenar números de tarjeta completos en la base de datos de QualifiedCommercial.",
+        "Información de comunicaciones, incluyendo correos electrónicos, mensajes SMS/texto, notificaciones push móviles, mensajes dentro de la aplicación, transcripciones de chat, notas de llamadas, tickets de soporte, estados de entrega, registros de aceptación y exclusión, y registros de campañas/notificaciones.",
+        "Información del dispositivo y de uso, incluyendo dirección IP, navegador, sistema operativo, tipo de dispositivo móvil, versión de la aplicación, zona horaria, páginas/pantallas vistas, datos de sesión, clics, eventos de consentimiento y registros del sistema.",
+        "Información de publicidad y análisis, incluyendo identificadores de cookies, eventos de píxeles, interacciones con anuncios, datos de fuente/medio/campaña, audiencias de remarketing, eventos de conversión y análisis agregados de herramientas como Meta/Facebook, Google Ads y plataformas similares.",
+        "Información de leads/clientes de profesionales inmobiliarios subida por un agente inmobiliario, corredor o agente, incluyendo detalles de leads/contactos, notas del cliente, estado de tareas, etapa del expediente, comunicaciones e instrucciones delegadas del pipeline de IA.",
+        "Registros de firma electrónica, incluyendo versión del documento, identidad del firmante, método de firma, confirmaciones de casillas, dirección IP, datos del dispositivo, fecha y hora, pista de auditoría, PDF final y certificado de finalización o registro de integridad del documento.",
+      ],
+    },
+    {
+      heading: "3. Cómo usamos la información",
+      paragraphs: [
+        "Para crear, mantener y proteger cuentas de usuario y expedientes de financiamiento.",
+        "Para verificar identidad, autoridad, consentimiento y elegibilidad para usar la plataforma.",
+        "Para realizar revisión interna del expediente, análisis asistido por IA, validación de documentos, revisión de escenarios y evaluación preliminar de financiamiento.",
+        "Para preparar, organizar y enviar paquetes validados para prestamistas a compañías de préstamo, socios de financiamiento, procesadores, suscriptores y proveedores de servicios de terceros seleccionados para suscripción y revisión de financiamiento real.",
+        "Para obtener, documentar y retener autorizaciones para pagos con tarjeta de crédito, consultas de crédito estrictas, compartición de archivos, firmas electrónicas, registros electrónicos y comunicaciones por SMS/correo electrónico/push, y avisos de cuenta relacionados.",
+        "Para comunicarnos por correo electrónico, SMS/mensaje de texto, teléfono, notificación push, mensaje dentro de la aplicación y otros canales sobre cuentas, expedientes pendientes, solicitudes de documentos, firmas, actualizaciones de financiamiento, actividad de la plataforma y anuncios de servicio.",
+        "Para apoyar los flujos de trabajo de agentes inmobiliarios, corredores y agentes, incluyendo la delegación del pipeline de IA, el seguimiento de tareas, la participación del cliente y la preparación del expediente.",
+        "Para brindar soporte al cliente, resolución de problemas, monitoreo de seguridad, prevención de fraude, revisión de cumplimiento y registros de auditoría.",
+        "Para mejorar la plataforma, entrenar flujos de trabajo internos, medir el rendimiento, analizar la actividad de conversión, depurar errores y desarrollar nuevas funciones.",
+        "Para ejecutar publicidad, remarketing, medición, atribución y gestión de audiencias a través de herramientas como Meta/Facebook y Google Ads, sujeto a derechos de exclusión y la ley aplicable.",
+        "Para cumplir con la ley, hacer cumplir acuerdos, responder a solicitudes legales, proteger derechos, investigar el mal uso y defender reclamaciones.",
+      ],
+    },
+    {
+      heading: "4. Suscripción con IA y asistencia automatizada",
+      paragraphs: [
+        "QualifiedCommercial utiliza herramientas asistidas por IA para revisar expedientes, identificar información faltante, producir observaciones, apoyar la preparación de la suscripción, ayudar a los agentes a gestionar pipelines y generar comunicaciones internas o dirigidas al prestatario. El resultado de la IA puede ser incompleto, inexacto, tardío, inconsistente o basado en información limitada. El resultado de la IA no es una aprobación final del préstamo, una decisión final de suscripción, asesoría legal, asesoría fiscal, una tasación, una valoración, un compromiso de prestar ni una instrucción de servicio.",
+        "Las decisiones finales de préstamo, los términos del préstamo, las aprobaciones, los rechazos, las condiciones de crédito, los bloqueos de tasa, las condiciones de documentos y el servicio posterior al cierre están controlados por el prestamista, la compañía de financiamiento, el administrador de préstamos u otro tercero aplicable. Qualified Commercial LLC no representa que cada proyección, escenario, término interno, precalificación o recomendación generada por IA se cerrará según lo proyectado.",
+      ],
+    },
+    {
+      heading: "5. Cómo compartimos información",
+      paragraphs: [
+        "No vendemos información de prestatarios, leads o clientes subidos por agentes inmobiliarios a cambio de dinero. No usamos leads subidos por agentes inmobiliarios para solicitar o competir independientemente por ese cliente fuera de la relación y el propósito del expediente proporcionado por el agente inmobiliario, corredor o agente, excepto cuando el cliente nos contacte de manera independiente, la ley requiera acción, o la relación agente inmobiliario/cliente haya sido autorizada por separado.",
+        "Podemos divulgar información de la siguiente manera:",
+        "A compañías de préstamo, socios de financiamiento, procesadores, suscriptores y proveedores de servicios de crédito/reportes seleccionados cuando un paquete de financiamiento sea validado, autorizado o esté listo para revisión de suscripción.",
+        "A proveedores de servicios que ayudan a operar la plataforma, incluyendo alojamiento en la nube, infraestructura de AWS, mensajería de Twilio, entrega de correo electrónico, procesamiento de pagos, análisis, verificación de identidad, generación de documentos, firma electrónica, soporte al cliente y proveedores de seguridad.",
+        "A Meta/Facebook, Google Ads y plataformas de publicidad/análisis similares para remarketing, seguimiento de conversiones, análisis y medición de campañas. Estas actividades pueden considerarse publicidad dirigida o compartición bajo algunas leyes de privacidad, aunque no vendamos información a cambio de dinero.",
+        "A agentes inmobiliarios, corredores, agentes o representantes autorizados asociados con un expediente de cliente, cuando sea necesario para gestionar el expediente, completar tareas, comunicarse con el cliente o procesar una solicitud de financiamiento.",
+        "Para cumplir con la ley, procesos legales, investigación regulatoria, revisión del prestamista o inversor, investigación de fraude/seguridad, resolución de disputas o cumplimiento de derechos.",
+        "En relación con una fusión, financiamiento, reorganización, venta, cesión o transferencia de activos comerciales, sujeto a requisitos razonables de confidencialidad y legales.",
+      ],
+    },
+    {
+      heading: "6. Aviso de Privacidad Financiera",
+      paragraphs: [
+        "Debido a que la plataforma apoya flujos de trabajo de financiamiento comercial e inmobiliario, tratamos la información financiera y personal no pública con mayor cuidado.",
+        "Propósitos comerciales habituales (operar cuentas, procesar expedientes de financiamiento, preparar paquetes para prestamistas, responder a solicitudes autorizadas, mantener registros): Sí, compartimos. No puede limitar esta compartición cuando sea necesaria para prestar el servicio, completar el flujo de financiamiento, cumplir con la ley o proteger la plataforma.",
+        "Con prestamistas, socios de financiamiento, proveedores de crédito/reportes, procesadores, suscriptores y proveedores de servicios seleccionados para suscripción y revisión de financiamiento: Sí, cuando esté autorizado o sea necesario para un expediente. Puede dejar de usar el servicio o retirar el consentimiento antes del envío cuando sea posible, pero el retiro puede impedir la revisión de financiamiento.",
+        "Para nuestra propia mercadotecnia, remarketing, medición de conversiones y mejora de la plataforma: Sí, limitado a usos permitidos. Puede optar por no recibir correos de mercadotecnia, SMS de mercadotecnia, notificaciones push, cookies y publicidad dirigida como se describe a continuación.",
+        "Con compañías no afiliadas para su mercadotecnia independiente no relacionada con su solicitud de financiamiento: No.",
+        "Leads o contactos de clientes subidos por agentes inmobiliarios vendidos a terceros no relacionados: No — no vendemos esos leads o contactos.",
+      ],
+    },
+    {
+      heading: "7. Comunicaciones, SMS, correo electrónico y notificaciones push",
+      paragraphs: [
+        "Cuando un usuario se registra, crea una cuenta, proporciona un número de teléfono, inicia un expediente de financiamiento, es invitado por un agente inmobiliario/corredor/agente autorizado, o de otro modo usa la plataforma, el usuario acepta recibir comunicaciones relacionadas con la cuenta y el expediente de financiamiento por correo electrónico, SMS/mensaje de texto, teléfono, notificación push móvil y mensaje dentro de la aplicación. Estas pueden incluir mensajes de inicio de sesión/seguridad, solicitudes de documentos, solicitudes de firma, actualizaciones del estado del expediente, actualizaciones del paquete para el prestamista, alertas de información faltante, mensajes del flujo de trabajo de IA y avisos de servicio.",
+        "Los mensajes de texto pueden enviarse usando Twilio u otro proveedor de mensajería. La frecuencia de los mensajes varía. Pueden aplicarse tarifas de mensajes y datos. Un usuario puede optar por no recibir SMS no esenciales respondiendo STOP donde esté disponible, y puede solicitar ayuda respondiendo HELP donde esté disponible. Optar por no participar puede limitar nuestra capacidad de proporcionar comunicaciones oportunas sobre la cuenta, el financiamiento o los documentos. Puede solicitarse un consentimiento separado para mensajes de texto de mercadotecnia/promocionales cuando la ley lo requiera.",
+        "Los usuarios pueden cancelar la suscripción a correos de mercadotecnia usando el enlace de cancelación o contactándonos. Los correos transaccionales y relacionados con la cuenta pueden continuar según sea necesario. Las notificaciones push móviles pueden controlarse a través de la configuración del dispositivo o la aplicación.",
+      ],
+    },
+    {
+      heading: "8. Cookies, píxeles, remarketing y publicidad",
+      paragraphs: [
+        "Podemos usar cookies, píxeles, SDKs, etiquetas y tecnologías similares de Meta/Facebook, Google Ads, proveedores de análisis y otros socios para medir el tráfico, entender el uso de la plataforma, mejorar campañas, atribuir conversiones y mostrar anuncios de remarketing. Los anuncios de remarketing pueden aparecer en el feed de redes sociales de un usuario, resultados de búsqueda, ubicaciones de display u otros canales digitales después de interactuar con QualifiedCommercial.",
+        "Estas tecnologías pueden procesar identificadores de dispositivo, dirección IP, información del navegador, datos de eventos, páginas/pantallas visitadas e identificadores de campaña. No usamos estas herramientas para vender información de leads o listas de clientes subidas por agentes inmobiliarios. Los usuarios pueden controlar las cookies a través de la configuración del navegador, la configuración del dispositivo, las opciones de exclusión de la plataforma, las herramientas de preferencias de anuncios, o contactándonos al correo electrónico listado en esta política.",
+      ],
+    },
+    {
+      heading: "9. Seguridad y encriptación",
+      paragraphs: [
+        "Usamos salvaguardas administrativas, técnicas y físicas diseñadas para proteger la información, incluyendo encriptación en tránsito y en reposo cuando corresponda, controles de acceso, permisos basados en roles, controles de autenticación, registro, monitoreo, respaldos y revisión de proveedores. Ningún sistema puede garantizarse completamente seguro. Los usuarios son responsables de proteger sus credenciales de inicio de sesión, dispositivos, cuentas de correo electrónico y números de teléfono.",
+        "Podemos usar AWS y otros proveedores de infraestructura. La plataforma puede experimentar tiempo de inactividad, latencia, acceso interrumpido, retrasos de datos, retrasos de mensajes o rendimiento degradado debido a interrupciones de AWS, problemas de proveedores externos, mantenimiento, eventos de ciberseguridad, interrupciones de internet, problemas de operadores móviles u otras condiciones fuera de nuestro control.",
+      ],
+    },
+    {
+      heading: "10. Datos sensibles y minimización de datos",
+      paragraphs: [
+        "Buscamos minimizar la información sensible cuando sea posible. Sin embargo, los expedientes de financiamiento, las autorizaciones de crédito, los estados de cuenta bancarios, los registros fiscales, los documentos de identidad, los documentos de la entidad, los documentos de la propiedad y otros registros subidos pueden contener información sensible necesaria para evaluar, preparar o enviar un paquete de financiamiento. Usamos encriptación y controles de acceso para dichos registros y limitamos el acceso a personal autorizado, representantes, proveedores de servicios y partes prestamistas seleccionadas que necesiten la información para el flujo de financiamiento.",
+        "Los datos de tarjetas de pago deben manejarse a través de proveedores de pago tokenizados u hospedados cuando sea posible. No almacenamos intencionalmente los códigos CVV/CVC después de la autorización y no debemos almacenar números de tarjeta completos en bases de datos de la plataforma o PDFs firmados.",
+      ],
+    },
+    {
+      heading: "11. Retención de datos",
+      paragraphs: [
+        "Retenemos la información durante el tiempo que sea razonablemente necesario para operar la plataforma, mantener registros de cuentas y financiamiento, cumplir con obligaciones legales y regulatorias, apoyar la revisión del prestamista o inversor, documentar autorizaciones, resolver disputas, hacer cumplir acuerdos y mantener pistas de auditoría. Los períodos de retención pueden variar según el tipo de registro, el requisito del prestamista, la ley y la necesidad comercial.",
+      ],
+    },
+    {
+      heading: "12. Opciones y derechos del usuario",
+      paragraphs: [
+        "Las solicitudes de acceso o corrección pueden enviarse a support@qualifiedcommercial.com.",
+        "Los usuarios pueden solicitar la eliminación de cierta información de la cuenta, sujeto a requisitos legales, de seguridad, transaccionales, de financiamiento, de auditoría, del prestamista, regulatorios y de retención de registros.",
+        "Los usuarios pueden optar por no recibir correos de mercadotecnia a través de enlaces de cancelación donde se proporcionen.",
+        "Los usuarios pueden optar por no recibir mensajes SMS no esenciales respondiendo STOP donde esté disponible.",
+        "Los usuarios pueden controlar las notificaciones push móviles a través de la configuración del dispositivo o la aplicación.",
+        "Los usuarios pueden gestionar las cookies y el remarketing a través de la configuración del navegador/dispositivo y las herramientas de preferencias de las plataformas de anuncios.",
+        "El retiro del consentimiento puede impedirnos continuar un expediente de financiamiento, comunicarnos sobre documentos, enviar un paquete a prestamistas o proporcionar ciertas funciones de la plataforma.",
+      ],
+    },
+    {
+      heading: "13. Menores",
+      paragraphs: [
+        "La plataforma está destinada para uso comercial, inmobiliario, de financiamiento y profesional por adultos. No está dirigida a menores de 13 años, y no recopilamos a sabiendas información personal de menores de 13 años.",
+      ],
+    },
+    {
+      heading: "14. Cambios a esta política",
+      paragraphs: [
+        "Podemos actualizar esta política periódicamente. La versión y fecha de vigencia anteriores identifican la política actual. El uso continuado de la plataforma después de una actualización significa que el usuario acepta la política actualizada, excepto cuando la ley requiera aviso o consentimiento adicional.",
+      ],
+    },
+    {
+      heading: "15. Contacto",
+      paragraphs: [
+        "Las preguntas, solicitudes, instrucciones de exclusión o inquietudes de privacidad pueden enviarse a Qualified Commercial LLC, 14 53rd St #408N, Brooklyn, NY 11232, correo electrónico: support@qualifiedcommercial.com.",
+      ],
+    },
+  ],
+};
+
 // ---------------------------------------------------------------------------
 // Terms and Conditions — v1.0 (Effective 2026-05-19)
 // ---------------------------------------------------------------------------
@@ -340,6 +492,159 @@ export const TERMS_AND_CONDITIONS: LegalDocument = {
   ],
 };
 
+// TODO(compliance-review-es): Spanish translation of the Terms and
+// Conditions — AI-assisted translation, NOT YET reviewed by a native-
+// Spanish-speaking compliance reviewer. Do not treat as legally equivalent
+// to the English version until reviewed and this TODO is removed.
+export const TERMS_AND_CONDITIONS_ES: LegalDocument = {
+  title: "Términos y Condiciones",
+  effectiveDate: "19 de mayo de 2026",
+  preamble:
+    "Qualified Commercial LLC — formada en Nueva Jersey. Dirección postal: 14 53rd St #408N, Brooklyn, NY 11232. Contacto: support@qualifiedcommercial.com. Versión 1.0, aprobada por Jonathan Franco, Socio Ejecutivo. Estos Términos contienen limitaciones de responsabilidad, requisitos de responsabilidad del usuario, consentimiento de comunicación electrónica, limitaciones de IA, términos de autorización de pago, límites de disponibilidad del servicio, arbitraje y disposiciones de renuncia a acciones colectivas. Por favor léalos cuidadosamente antes de usar la plataforma.",
+  sections: [
+    {
+      heading: "1. Aceptación de los Términos",
+      paragraphs: [
+        "Estos Términos y Condiciones son un acuerdo vinculante entre el usuario y Qualified Commercial LLC. Al crear una cuenta, acceder a la plataforma, usar la aplicación móvil, invitar a un cliente, subir un documento, delegar tareas a la IA, firmar electrónicamente, autorizar comunicaciones, enviar un expediente de financiamiento o de otro modo usar QualifiedCommercial, el usuario acepta estos Términos.",
+        "Si un usuario actúa en nombre de una empresa, prestatario, cliente, garante, agente inmobiliario, corredor, agente u otra organización, el usuario declara que tiene autoridad para vincular a esa persona u organización y para proporcionar información, consentimientos, documentos e instrucciones a través de la plataforma.",
+      ],
+    },
+    {
+      heading: "2. Descripción de los servicios",
+      paragraphs: [
+        "QualifiedCommercial proporciona una plataforma tecnológica para flujos de trabajo de financiamiento comercial e inmobiliario. La plataforma puede incluir admisión de clientes, recopilación de documentos, revisión de expedientes asistida por IA, auditoría interna de expedientes, gestión de tareas, herramientas de pipeline para agentes inmobiliarios/corredores/agentes, notificaciones móviles, flujos de firma electrónica, flujos de autorización de pago, herramientas de comunicación, preparación de paquetes para prestamistas y envío de paquetes validados a compañías de préstamo o socios de financiamiento externos seleccionados.",
+        "A menos que un acuerdo escrito separado indique lo contrario, Qualified Commercial LLC no es el prestamista, el administrador del préstamo, la agencia de informes de crédito, la agencia de calificación crediticia, el tasador, la compañía de títulos, el agente de liquidación, el proveedor de seguros, el asesor fiscal, el abogado, el contador público o el proveedor de soporte al cliente de servicio de préstamos posterior al cierre.",
+      ],
+    },
+    {
+      heading: "3. Elegibilidad y responsabilidad de la cuenta",
+      paragraphs: [
+        "Los usuarios deben proporcionar información precisa, actual y completa.",
+        "Los usuarios deben mantener la confidencialidad de las credenciales de inicio de sesión, dispositivos, cuentas de correo electrónico y números de teléfono usados para verificación.",
+        "Los usuarios deben actualizar rápidamente la información de la cuenta y del expediente de financiamiento si cambia.",
+        "Los usuarios no pueden hacerse pasar por otra persona, subir información no autorizada, hacer un mal uso de la plataforma, interferir con la seguridad o intentar acceder a expedientes sin permiso.",
+        "Los usuarios son responsables de la actividad bajo sus cuentas, incluyendo la actividad de empleados, asistentes, miembros del equipo, contratistas o representantes autorizados.",
+      ],
+    },
+    {
+      heading: "4. Expedientes de financiamiento, paquetes para prestamistas y sin garantía de aprobación",
+      paragraphs: [
+        "Las proyecciones de financiamiento, los términos de préstamo estimados, las observaciones generadas por IA, los escenarios de suscripción internos, las estimaciones de pago, las suposiciones de tasa, las estimaciones de apalancamiento, las estimaciones HUD, los cálculos de DSCR/LTV/LTC y resultados similares son preliminares e informativos. No son aprobaciones finales, compromisos de prestar, bloqueos de tasa, hojas de términos vinculantes, tasaciones, valoraciones, opiniones legales, asesoría fiscal ni garantías de cierre.",
+        "La aprobación final, precios, condiciones, decisiones de crédito, requisitos de documentación, tratamiento de valoración, bloqueos de tasa, excepciones, financiamiento y servicio están controlados por el prestamista, la compañía de préstamo, el socio de financiamiento, el administrador, el inversor o el proveedor externo aplicable. Las proyecciones de préstamo y los términos internos pueden no cerrarse según lo proyectado debido a cambios del mercado, cambios de crédito, problemas de garantía, cambios de tasa, sobrecargas del prestamista, condiciones de la propiedad, retrasos de terceros, retrasos de documentos, retrasos del prestatario, retrasos humanos para bloquear tasas u otros factores.",
+      ],
+    },
+    {
+      heading: "5. Asistencia de IA y supervisión del usuario",
+      paragraphs: [
+        "QualifiedCommercial puede usar sistemas asistidos por IA para analizar información, identificar documentos faltantes, ayudar a preparar paquetes, redactar comunicaciones, apoyar la revisión de suscripción, resumir expedientes, gestionar flujos de trabajo y ayudar a agentes inmobiliarios/corredores/agentes. La IA puede cometer errores. La IA puede producir resultados incompletos, inexactos, obsoletos, inconsistentes o inapropiados. Los usuarios deben revisar el resultado de la IA antes de confiar en él, enviarlo, presentarlo o usarlo en un expediente de financiamiento.",
+        "La IA no reemplaza la revisión humana, la suscripción del prestamista, la revisión legal, la revisión fiscal, el juicio profesional ni la responsabilidad del usuario. Los usuarios permanecen responsables de verificar la información, supervisar las tareas delegadas, corregir errores, confirmar consentimientos y determinar si un expediente está listo para el envío al prestamista.",
+      ],
+    },
+    {
+      heading: "6. Obligaciones de agentes inmobiliarios, corredores, agentes y usuarios profesionales",
+      paragraphs: [
+        "Los agentes inmobiliarios, corredores, agentes y otros usuarios profesionales son responsables de mantener sus relaciones con clientes, asegurar autoridad para subir información de clientes, obtener los consentimientos requeridos, supervisar el pipeline de IA, revisar las tareas delegadas, verificar las comunicaciones y asegurar que su uso de la plataforma cumpla con las obligaciones inmobiliarias, de préstamo, publicidad, privacidad, profesionales y de protección al consumidor que les apliquen.",
+        "QualifiedCommercial no venderá leads o contactos de clientes subidos por agentes inmobiliarios, y no intentará hacer negocios con esos clientes fuera de la relación proporcionada por el agente inmobiliario, corredor o agente, excepto cuando el cliente contacte a QualifiedCommercial de manera independiente, se proporcione una autorización separada, la relación ya no sea aplicable, o la ley requiera acción. QualifiedCommercial puede comunicarse con dichos clientes según sea necesario para operar la plataforma, completar tareas delegadas por el usuario profesional, obtener documentos/firmas, procesar expedientes de financiamiento y enviar paquetes autorizados a prestamistas.",
+      ],
+    },
+    {
+      heading: "7. Consentimiento de comunicaciones",
+      paragraphs: [
+        "Al registrarse, proporcionar información de contacto, iniciar o participar en un expediente de financiamiento, aceptar una invitación o usar la plataforma, los usuarios consienten recibir comunicaciones relacionadas con la cuenta y el expediente de financiamiento de QualifiedCommercial y sus proveedores de servicios por correo electrónico, SMS/mensaje de texto, teléfono, notificación push móvil, mensaje dentro de la aplicación y canales similares. Las comunicaciones pueden incluir solicitudes de documentos, recordatorios de información faltante, solicitudes de firma electrónica, actualizaciones del expediente, mensajes del flujo de trabajo de IA, alertas de cuenta, mensajes de seguridad, avisos del paquete para el prestamista y avisos de servicio.",
+        "Los mensajes SMS/de texto pueden enviarse a través de Twilio o proveedores similares. La frecuencia de los mensajes varía. Pueden aplicarse tarifas de mensajes y datos. Los usuarios pueden responder STOP para optar por no participar donde esté disponible y HELP para obtener ayuda donde esté disponible. Optar por no participar puede afectar la capacidad de recibir actualizaciones oportunas del expediente. Los mensajes de mercadotecnia/promocionales pueden requerir un consentimiento separado cuando la ley lo requiera.",
+      ],
+    },
+    {
+      heading: "8. Registros electrónicos y firmas electrónicas",
+      paragraphs: [
+        "Los usuarios consienten realizar transacciones electrónicamente, recibir registros electrónicos, firmar documentos electrónicamente y recibir copias a través de la plataforma o correo electrónico. Las firmas electrónicas, confirmaciones de casillas, nombres escritos, firmas dibujadas, acciones de clic para firmar, confirmaciones OTP y acciones similares pueden tratarse como firmas, consentimientos, autorizaciones y registros.",
+        "La plataforma puede capturar el nombre del firmante, correo electrónico, teléfono, ID de usuario, dirección IP, dispositivo/navegador, fecha y hora, idioma de consentimiento, versión del documento, método de firma, pista de auditoría y hash del documento final. Los usuarios pueden solicitar copias en papel o retirar el consentimiento electrónico contactando a QualifiedCommercial, pero el retiro puede retrasar o impedir el uso continuado de la plataforma, la finalización de la firma, la autorización de crédito, la autorización de pago o el envío del paquete al prestamista.",
+      ],
+    },
+    {
+      heading: "9. Consultas de crédito, revisión de expedientes y compartición con el prestamista",
+      paragraphs: [
+        "La revisión interna del expediente puede incluir la revisión de información proporcionada por el usuario, agente inmobiliario, corredor, agente, prestatario, garante o representante autorizado. La revisión interna del expediente no necesariamente crea una consulta de crédito estricta. Una consulta de crédito estricta requiere una autorización separada. Cuando un usuario autoriza una consulta estricta, el usuario autoriza a QualifiedCommercial, su proveedor de crédito/reportes y las partes prestamistas seleccionadas a obtener reportes de consumidor, reportes de crédito e información de crédito relacionada para revisión de financiamiento, suscripción, procesamiento, colocación, servicio u otro propósito permisible relacionado. Una consulta de crédito estricta puede aparecer en el reporte de crédito del usuario y puede afectar su puntaje de crédito.",
+        "Cuando un expediente de financiamiento sea validado y esté listo para suscripción real, QualifiedCommercial puede enviar el paquete de préstamo, los documentos y la información relacionada a compañías de préstamo, socios de financiamiento, procesadores, suscriptores, proveedores de crédito/reportes y proveedores de servicios de terceros seleccionados según sea autorizado o necesario para el flujo de financiamiento.",
+      ],
+    },
+    {
+      heading: "10. Autorización de pago y tarjeta de crédito",
+      paragraphs: [
+        "Si un usuario proporciona información de pago o firma una autorización de tarjeta de crédito, el usuario autoriza a QualifiedCommercial o a su procesador de pagos a cobrar al método de pago autorizado por los montos, propósitos, plazos y términos divulgados en la autorización aplicable o la pantalla de la plataforma. Los datos de tarjetas de pago deben procesarse usando métodos de pago tokenizados u hospedados cuando sea posible. QualifiedCommercial no almacena intencionalmente los códigos CVV/CVC y no debe almacenar números de tarjeta completos en las bases de datos de la plataforma ni en PDFs firmados.",
+        "Los usuarios son responsables de asegurar que la información de pago sea precisa y que estén autorizados para usar el método de pago. Las tarifas, reembolsos, reversiones, contracargos y cancelaciones están regidos por la autorización de pago aplicable, los términos de la plataforma y cualquier acuerdo escrito separado.",
+      ],
+    },
+    {
+      heading: "11. Privacidad, protección de datos y publicidad",
+      paragraphs: [
+        "El uso de la plataforma está sujeto a la Política de Privacidad y al Aviso de Privacidad Financiera. QualifiedCommercial no vende información de prestatarios ni información de leads subidos por agentes inmobiliarios a cambio de dinero. QualifiedCommercial puede usar proveedores de servicios como AWS, Twilio, proveedores de correo electrónico, procesadores de pago, herramientas de firma electrónica/documentos, Meta/Facebook, Google Ads, proveedores de análisis y proveedores similares para operar, proteger, comunicar, anunciar, remercadear, medir y mejorar la plataforma.",
+        "Los anuncios de remarketing pueden aparecer en el feed de redes sociales de un usuario, resultados de búsqueda, ubicaciones de display u otros canales digitales. Algunas leyes de privacidad pueden tratar ciertas actividades de remarketing o análisis como compartición o publicidad dirigida, incluso cuando no se vende información a cambio de dinero. Los usuarios pueden revisar las opciones de exclusión en la Política de Privacidad.",
+      ],
+    },
+    {
+      heading: "12. Disponibilidad del servicio y sistemas de terceros",
+      paragraphs: [
+        "La plataforma puede depender de AWS, proveedores de servicios de internet, operadores móviles, proveedores de SMS, proveedores de correo electrónico, procesadores de pago, tiendas de aplicaciones, proveedores de IA, proveedores de crédito/reportes, prestamistas y otros terceros. QualifiedCommercial no garantiza disponibilidad ininterrumpida, libre de errores, segura o en tiempo real. La plataforma puede experimentar tiempo de inactividad, retrasos, interrupciones, fallas de mensajes, problemas de sincronización de datos, rendimiento degradado o pérdida de acceso debido a mantenimiento, interrupción de proveedores, interrupción de AWS, evento cibernético, problema de operador, falla de internet, defecto de software o circunstancias fuera del control de QualifiedCommercial.",
+      ],
+    },
+    {
+      heading: "13. Usos prohibidos",
+      paragraphs: [
+        "Enviar información falsa, engañosa, no autorizada, incompleta o fraudulenta.",
+        "Subir información de clientes, prestatarios, garantes o leads sin la autoridad o el consentimiento adecuados.",
+        "Usar la plataforma para tomar decisiones de crédito, préstamo, vivienda, publicidad o discriminatorias no permitidas por la ley.",
+        "Evadir la seguridad, extraer datos, realizar ingeniería inversa, interrumpir operaciones o intentar acceso no autorizado.",
+        "Usar el resultado de la IA sin la revisión humana apropiada cuando el resultado afecte a un cliente, prestatario, expediente de financiamiento, paquete para el prestamista, pago u obligación legal/de cumplimiento.",
+        "Enviar spam, mensajes de texto ilegales, llamadas ilegales, comunicaciones engañosas o mensajes sin el consentimiento requerido.",
+      ],
+    },
+    {
+      heading: "14. Propiedad intelectual",
+      paragraphs: [
+        "QualifiedCommercial, su software, diseño de flujo de trabajo, funciones del pipeline de IA, plantillas, interfaces, texto, gráficos, marca, logotipos y materiales de la plataforma son propiedad de Qualified Commercial LLC o sus licenciantes. Los usuarios reciben un derecho limitado, revocable, no exclusivo y no transferible para usar la plataforma solo para propósitos autorizados.",
+      ],
+    },
+    {
+      heading: "15. Renuncias de responsabilidad",
+      paragraphs: [
+        'La plataforma se proporciona "tal como está" y "según disponibilidad". En la máxima medida permitida por la ley, QualifiedCommercial renuncia a garantías de comerciabilidad, idoneidad para un propósito particular, título, no infracción, acceso ininterrumpido, operación libre de errores, precisión del resultado de la IA, aprobación de financiamiento, disponibilidad de tasa, aceptación del prestamista, cierre, rentabilidad, precisión de valoración o soporte de servicio posterior al cierre.',
+      ],
+    },
+    {
+      heading: "16. Limitación de responsabilidad",
+      paragraphs: [
+        "En la máxima medida permitida por la ley, QualifiedCommercial no será responsable por daños indirectos, incidentales, especiales, consecuentes, ejemplares, punitivos, pérdida de ganancias, pérdida de ingresos, pérdida de oportunidad, pérdida de reputación, pérdida de datos, interrupción del negocio, negación de financiamiento, retraso del préstamo, cambio de tasa, problema de servicio, decisión del prestamista externo, error de IA, retraso de mensajería o daños por interrupción. La responsabilidad total de QualifiedCommercial por cualquier reclamación no excederá el monto pagado por el usuario a QualifiedCommercial por el servicio que dio origen a la reclamación durante los tres meses anteriores al evento, o cien dólares si no se pagó ningún monto, a menos que la ley requiera un límite diferente.",
+      ],
+    },
+    {
+      heading: "17. Indemnización",
+      paragraphs: [
+        "Los usuarios acuerdan defender, indemnizar y mantener indemne a QualifiedCommercial, sus propietarios, funcionarios, empleados, contratistas, proveedores de servicios y afiliados de reclamaciones, pérdidas, responsabilidades, daños, costos y gastos que surjan del contenido del usuario, cargas no autorizadas, información inexacta, mal uso de la plataforma, violación de estos Términos, violación de la ley, disputas de clientes, fallas de consentimiento, obligaciones profesionales, disputas de pago o confianza en el resultado de la IA sin la revisión adecuada.",
+      ],
+    },
+    {
+      heading: "18. Ley aplicable, arbitraje y renuncia a acciones colectivas",
+      paragraphs: [
+        "Estos Términos se rigen por las leyes de Nueva Jersey, sin considerar reglas de conflicto de leyes. Antes de presentar una reclamación, las partes acuerdan intentar una resolución informal mediante notificación escrita enviada a support@qualifiedcommercial.com o a la dirección postal mencionada anteriormente.",
+        "Excepto para reclamaciones de menor cuantía, propiedad intelectual, medidas cautelares o reclamaciones que legalmente no puedan arbitrarse, las disputas se resolverán mediante arbitraje individual vinculante administrado por la Asociación Americana de Arbitraje o un proveedor de arbitraje comparable seleccionado por QualifiedCommercial si la AAA no está disponible. El arbitraje se realizará únicamente de forma individual. Las acciones colectivas, arbitrajes colectivos, acciones representativas, acciones de fiscal general privado y juicios con jurado se renuncian en la máxima medida permitida por la ley.",
+      ],
+    },
+    {
+      heading: "19. Terminación",
+      paragraphs: [
+        "QualifiedCommercial puede suspender o terminar el acceso, eliminar contenido, deshabilitar funciones o negar el servicio si un usuario viola estos Términos, crea riesgo, no paga tarifas autorizadas, hace mal uso de las comunicaciones, sube información no autorizada, amenaza la integridad de la plataforma, o si el servicio continuado no es comercial, legal u operativamente apropiado. La terminación no elimina las obligaciones de pago, la retención de registros, los derechos de auditoría, las renuncias de responsabilidad, las limitaciones, las disposiciones de arbitraje, la indemnización u obligaciones que por su naturaleza deban sobrevivir.",
+      ],
+    },
+    {
+      heading: "20. Contacto",
+      paragraphs: [
+        "Las preguntas sobre estos Términos pueden enviarse a Qualified Commercial LLC, 14 53rd St #408N, Brooklyn, NY 11232, correo electrónico: support@qualifiedcommercial.com.",
+      ],
+    },
+  ],
+};
+
 // ---------------------------------------------------------------------------
 // Funding, AI, Communications, and Platform Disclosure — v1.0 (2026-05-19)
 // ---------------------------------------------------------------------------
@@ -439,6 +744,111 @@ export const FUNDING_AI_DISCLOSURE: LegalDocument = {
       heading: "14. Contact",
       paragraphs: [
         "Questions about this disclosure may be sent to Qualified Commercial LLC, 14 53rd St #408N, Brooklyn, NY 11232, email: support@qualifiedcommercial.com.",
+      ],
+    },
+  ],
+};
+
+// TODO(compliance-review-es): Spanish translation of the Funding, AI,
+// Communications, and Platform Disclosure — AI-assisted translation, NOT
+// YET reviewed by a native-Spanish-speaking compliance reviewer. Do not
+// treat as legally equivalent to the English version until reviewed and
+// this TODO is removed.
+export const FUNDING_AI_DISCLOSURE_ES: LegalDocument = {
+  title: "Divulgación de Financiamiento, IA, Comunicaciones y Plataforma",
+  effectiveDate: "19 de mayo de 2026",
+  preamble:
+    "Qualified Commercial LLC — formada en Nueva Jersey. Dirección postal: 14 53rd St #408N, Brooklyn, NY 11232. Contacto: support@qualifiedcommercial.com. Versión 1.0, aprobada por Jonathan Franco, Socio Ejecutivo. Esta divulgación explica limitaciones y consentimientos importantes relacionados con proyecciones de financiamiento, apoyo de suscripción con IA, auditorías internas de expedientes, envío de paquetes para prestamistas, comunicaciones, firmas electrónicas, autorización de pago, publicidad, seguridad de datos, tiempo de inactividad y servicio posterior al cierre.",
+  sections: [
+    {
+      heading: "1. QualifiedCommercial es una plataforma tecnológica y de flujo de trabajo de financiamiento",
+      paragraphs: [
+        "QualifiedCommercial ayuda a los usuarios a recopilar información, organizar documentos, preparar expedientes de financiamiento, obtener autorizaciones, gestionar comunicaciones y enviar paquetes validados a compañías de préstamo o socios de financiamiento externos seleccionados. A menos que un acuerdo escrito separado indique lo contrario, Qualified Commercial LLC no proporciona el préstamo final, no da servicio al préstamo después del cierre, no garantiza la aprobación, no garantiza el cierre, no garantiza bloqueos de tasa, ni actúa como soporte al cliente posterior al cierre para el prestamista o administrador.",
+      ],
+    },
+    {
+      heading: "2. Divulgación del suscriptor de IA y del pipeline de IA",
+      paragraphs: [
+        "QualifiedCommercial utiliza herramientas de suscripción y flujo de trabajo asistidas por IA. La IA puede revisar documentos subidos, identificar elementos faltantes, resumir expedientes, generar observaciones internas, estimar escenarios, ayudar con comunicaciones y ayudar a agentes inmobiliarios/corredores/agentes a gestionar tareas de pipeline delegadas. La IA puede cometer errores. La IA puede producir resultados inexactos, incompletos, tardíos, inconsistentes, obsoletos o no respaldados.",
+        "Los resultados generados por IA no son decisiones finales de suscripción, decisiones finales del prestamista, asesoría legal, asesoría fiscal, tasaciones, valoraciones, aprobaciones de crédito, compromisos de prestar ni garantías. Los usuarios humanos, los usuarios profesionales y los prestamistas deben revisar y validar la información antes de usarla para suscripción real, comunicaciones, autorización de pago, solicitudes de firma, envío al prestamista o decisiones comerciales.",
+      ],
+    },
+    {
+      heading: "3. Distinción entre auditoría interna del expediente y consulta de crédito estricta",
+      paragraphs: [
+        "QualifiedCommercial puede realizar una auditoría interna del expediente usando información proporcionada por el usuario, agente inmobiliario, corredor, agente, prestatario, garante o representante autorizado. Esta auditoría interna puede evaluar la integridad de los documentos, la idoneidad del financiamiento, la información de la propiedad, la información financiera, la información relacionada con el crédito proporcionada por el usuario y la posible preparación del paquete para el prestamista. Una auditoría interna por sí sola no necesariamente crea una consulta de crédito estricta.",
+        "Una consulta de crédito estricta requiere una autorización separada. Si un usuario autoriza una consulta estricta, el usuario autoriza a QualifiedCommercial, su proveedor de crédito/reportes, los socios prestamistas seleccionados, los socios de financiamiento, los procesadores, los suscriptores y los proveedores de servicios relacionados a obtener reportes de consumidor, reportes de crédito e información de crédito relacionada para un propósito permisible de financiamiento, suscripción, procesamiento, colocación, servicio o relacionado. Una consulta de crédito estricta puede aparecer en el reporte de crédito del usuario y puede afectar su puntaje de crédito.",
+      ],
+    },
+    {
+      heading: "4. Envío de paquete al prestamista y suscripción de terceros",
+      paragraphs: [
+        "Cuando un expediente sea validado y esté listo para suscripción real, QualifiedCommercial puede enviar o transmitir el paquete de préstamo, los documentos, los datos y la información relacionada a compañías de préstamo, socios de financiamiento, procesadores, suscriptores, proveedores de crédito/reportes y proveedores de servicios de terceros seleccionados. Ninguna parte no relacionada recibe la información para propósitos de mercadotecnia independiente o venta de leads. La información se comparte para el flujo de financiamiento, la suscripción, el procesamiento, el servicio, el cumplimiento o los propósitos legalmente requeridos descritos en la Política de Privacidad.",
+        "La compañía de préstamo, el socio de financiamiento, el inversor, el suscriptor o el administrador puede imponer requisitos adicionales, solicitar documentos adicionales, ajustar términos, rechazar el expediente, modificar condiciones o tomar decisiones finales de manera independiente. QualifiedCommercial no controla cada requisito del prestamista ni cada resultado posterior al envío.",
+      ],
+    },
+    {
+      heading: "5. Proyecciones de préstamo, términos y riesgo de mercado",
+      paragraphs: [
+        "No todas las proyecciones de préstamo, escenarios, HUDs estimados, montos de pago, términos internos de suscripción, hallazgos de IA, indicadores de precalificación o términos esperados del prestamista se cierran según lo proyectado. Los resultados pueden cambiar debido a cambios del mercado, cambios de tasa, sobrecargas del prestamista, información de crédito, valoración de la propiedad, resultados de tasación, problemas de título, problemas de seguro, retraso del prestatario, retraso de documentos, retraso humano para bloquear tasas, tiempo de procesamiento de terceros, condiciones del prestamista, requisitos de servicio u otros factores.",
+        "Los usuarios no deben confiar en las proyecciones preliminares como una garantía de rentabilidad, asequibilidad, aprobación, tasa, monto de financiamiento, fecha de cierre o aceptación final del prestamista.",
+      ],
+    },
+    {
+      heading: "6. Responsabilidad del agente inmobiliario, corredor y agente",
+      paragraphs: [
+        "Los agentes inmobiliarios, corredores, agentes y usuarios profesionales son responsables de supervisar el pipeline de IA, revisar las tareas delegadas, mantener la autoridad adecuada de sus clientes, obtener los consentimientos del cliente, verificar documentos, revisar las comunicaciones antes de enviarlas, y asegurar que su uso de QualifiedCommercial cumpla con las obligaciones profesionales, de publicidad, inmobiliarias, de préstamo, privacidad y protección al consumidor.",
+        "QualifiedCommercial no venderá leads o contactos de clientes subidos por agentes inmobiliarios y no intentará hacer negocios con esos clientes fuera de la relación proporcionada por el agente inmobiliario, corredor o agente, excepto cuando el cliente contacte a QualifiedCommercial de manera independiente, se proporcione una autorización separada, la relación ya no sea aplicable, o la ley requiera acción. QualifiedCommercial puede comunicarse con dichos clientes según sea necesario para completar tareas de expediente autorizadas, firmas, solicitudes de documentos, mensajes del flujo de trabajo de IA y procesamiento del paquete para el prestamista.",
+      ],
+    },
+    {
+      heading: "7. Consentimiento de comunicaciones",
+      paragraphs: [
+        "Al registrarse, crear una cuenta, aceptar una invitación, proporcionar un número de teléfono, iniciar un expediente, participar en un expediente o usar la plataforma, el usuario consiente recibir correos electrónicos, mensajes SMS/de texto, llamadas telefónicas, notificaciones push móviles, mensajes dentro de la aplicación y comunicaciones similares relacionadas con la cuenta y el expediente de financiamiento de QualifiedCommercial y sus proveedores de servicios.",
+        "Los mensajes pueden relacionarse con acceso a la cuenta, verificación de identidad, actualizaciones del expediente, solicitudes de documentos, solicitudes de firma, elementos faltantes, autorización de pago, tareas del flujo de trabajo de IA, estado del paquete para el prestamista, recordatorios, seguridad, anuncios de servicio y soporte. Los mensajes SMS/de texto pueden enviarse a través de Twilio u otro proveedor. La frecuencia de los mensajes varía. Pueden aplicarse tarifas de mensajes y datos. Responda STOP para optar por no participar donde esté disponible y HELP para obtener ayuda donde esté disponible. Optar por no participar puede impedir el procesamiento oportuno del expediente o reducir la funcionalidad de la plataforma.",
+      ],
+    },
+    {
+      heading: "8. Aplicación móvil y notificaciones push",
+      paragraphs: [
+        "La aplicación móvil puede enviar notificaciones push sobre actividad de la cuenta, actualizaciones del expediente, tareas de IA, documentos faltantes, solicitudes de firma, estado de envío al prestamista, alertas de seguridad y avisos de servicio. Las notificaciones push pueden gestionarse a través de la configuración del dispositivo o la aplicación. Deshabilitar las notificaciones push puede afectar la capacidad del usuario de recibir actualizaciones oportunas.",
+      ],
+    },
+    {
+      heading: "9. Firmas electrónicas y registros electrónicos",
+      paragraphs: [
+        "QualifiedCommercial puede presentar autorizaciones, divulgaciones, consentimientos, formularios de pago, autorizaciones de consulta de crédito, autorizaciones del paquete para el prestamista y otros registros electrónicamente. Al firmar electrónicamente o hacer clic para aceptar, el usuario acepta que las firmas electrónicas, casillas, nombres escritos, firmas dibujadas, acciones de clic para firmar, confirmaciones OTP y acciones similares pueden ser legalmente vinculantes y pueden usarse para documentar el consentimiento.",
+        "La plataforma puede capturar la identidad del firmante, correo electrónico, teléfono, dirección IP, dispositivo/navegador, fecha y hora, versión del documento, texto de consentimiento, pista de auditoría y PDF final o certificado. Los usuarios pueden solicitar una copia en papel o retirar el consentimiento electrónico contactando a QualifiedCommercial, pero el retiro puede retrasar o impedir la finalización del expediente.",
+      ],
+    },
+    {
+      heading: "10. Autorización de pago y tarjeta de crédito",
+      paragraphs: [
+        "Si un usuario autoriza una tarjeta de crédito o método de pago, el usuario autoriza el cargo o pago según el monto, propósito, plazo y términos mostrados en la pantalla de autorización o en la autorización firmada. QualifiedCommercial debe usar procesamiento de pagos tokenizado u hospedado cuando sea posible. QualifiedCommercial no almacena intencionalmente los códigos CVV/CVC y no debe almacenar números de tarjeta completos en su base de datos o en PDFs firmados. Los registros de pago pueden mostrar la marca de la tarjeta, los últimos cuatro dígitos, el mes/año de vencimiento, el token/referencia, el monto autorizado, el propósito, la fecha y hora, y el registro de auditoría.",
+      ],
+    },
+    {
+      heading: "11. Privacidad, publicidad y remarketing",
+      paragraphs: [
+        "QualifiedCommercial no vende información de prestatarios, leads subidos por agentes inmobiliarios ni información de contacto de clientes a cambio de dinero. QualifiedCommercial puede usar Meta/Facebook, Google Ads, cookies, píxeles, SDKs y herramientas similares para análisis, remarketing, medición de conversiones y publicidad. Los anuncios de remarketing pueden aparecer en el feed del usuario u otras ubicaciones digitales. Algunas leyes pueden clasificar cierta actividad de remarketing o análisis como publicidad dirigida o compartición, incluso cuando la información no se vende a cambio de dinero. Los usuarios pueden revisar las opciones en la Política de Privacidad.",
+      ],
+    },
+    {
+      heading: "12. Seguridad, encriptación y tiempo de inactividad",
+      paragraphs: [
+        "QualifiedCommercial usa encriptación y controles de seguridad diseñados para proteger los datos. Sin embargo, ningún sistema es perfectamente seguro. La plataforma puede no estar disponible, retrasarse, degradarse o interrumpirse debido a interrupciones de AWS, interrupciones de proveedores externos, problemas de operadores móviles, fallas de internet, mantenimiento, eventos de seguridad, defectos de software u otras causas. QualifiedCommercial no es responsable de las decisiones del prestamista, el soporte de servicio posterior al cierre ni las interrupciones de terceros fuera de su control.",
+      ],
+    },
+    {
+      heading: "13. Sin soporte de servicio posterior al préstamo",
+      paragraphs: [
+        "Después de que un préstamo se cierre o se transfiera a una compañía de préstamo, administrador, socio de financiamiento o tercero, el servicio posterior al cierre, el procesamiento de pagos, las preguntas de fideicomiso, las declaraciones de liquidación, las disputas de servicio, las solicitudes de modificación y el soporte al cliente del prestamista son gestionados por el prestamista, el administrador o el tercero aplicable. QualifiedCommercial no representa que sea el departamento de soporte al cliente o servicio del prestamista a menos que un acuerdo de servicio escrito separado lo indique expresamente.",
+      ],
+    },
+    {
+      heading: "14. Contacto",
+      paragraphs: [
+        "Las preguntas sobre esta divulgación pueden enviarse a Qualified Commercial LLC, 14 53rd St #408N, Brooklyn, NY 11232, correo electrónico: support@qualifiedcommercial.com.",
       ],
     },
   ],

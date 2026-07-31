@@ -7,6 +7,9 @@ import { apiBase } from "@/lib/api";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal";
 import { SignRequestedDocument, type SignRequestedDocumentPayload } from "@/components/intake/SignRequestedDocument";
 import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
+import { LanguagePickerScreen } from "@/components/intake/LanguagePickerScreen";
+import { CHART_COPY } from "@/components/intake/IntelligenceCharts";
+import { dealerCopy, getStoredLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
 
 type RequestedDoc = {
   id: string;
@@ -44,6 +47,7 @@ type Intake = {
   email: string;
   phone?: string | null;
   business_name?: string | null;
+  preferred_language?: string;
   loan_purpose?: string | null;
   requested_loan_amount?: number | null;
   estimated_credit_score?: number | null;
@@ -179,6 +183,16 @@ export default function DealerAIUnderwriterPage() {
   const [loginCode, setLoginCode] = useState("");
   const [loginCodeSent, setLoginCodeSent] = useState(false);
   const [showContinuationLogin, setShowContinuationLogin] = useState(false);
+  const [language, setLanguage] = useState<Lang | null>(null);
+  // True while checking for a resume path (URL token / saved session / saved
+  // token) on first mount -- suppresses the language picker so a returning
+  // client never flashes it before their existing session's response loads.
+  const [checkingResume, setCheckingResume] = useState(true);
+  const c = useMemo(() => dealerCopy(language ?? "en"), [language]);
+
+  useEffect(() => {
+    setLanguage(getStoredLanguage());
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -198,23 +212,31 @@ export default function DealerAIUnderwriterPage() {
     }
     if (urlToken) {
       setToken(urlToken);
-      loadIntake(urlToken, true).catch((error) => setStatus(errorMessage(error)));
+      loadIntake(urlToken, true)
+        .catch((error) => setStatus(errorMessage(error)))
+        .finally(() => setCheckingResume(false));
       return;
     }
     const savedSession = typeof window !== "undefined" ? window.sessionStorage.getItem(DEALER_AI_SESSION_KEY) : null;
     if (savedSession) {
       setDealerSessionToken(savedSession);
-      loadDealerSession(savedSession).catch(() => {
-        window.sessionStorage.removeItem(DEALER_AI_SESSION_KEY);
-        window.sessionStorage.removeItem(DEALER_AI_TOKEN_KEY);
-      });
+      loadDealerSession(savedSession)
+        .catch(() => {
+          window.sessionStorage.removeItem(DEALER_AI_SESSION_KEY);
+          window.sessionStorage.removeItem(DEALER_AI_TOKEN_KEY);
+        })
+        .finally(() => setCheckingResume(false));
       return;
     }
     const savedToken = typeof window !== "undefined" ? window.sessionStorage.getItem(DEALER_AI_TOKEN_KEY) : null;
     if (savedToken) {
       setToken(savedToken);
-      loadIntake(savedToken, true).catch(() => window.sessionStorage.removeItem(DEALER_AI_TOKEN_KEY));
+      loadIntake(savedToken, true)
+        .catch(() => window.sessionStorage.removeItem(DEALER_AI_TOKEN_KEY))
+        .finally(() => setCheckingResume(false));
+      return;
     }
+    setCheckingResume(false);
   }, []);
 
   const currentResult = response?.intake.result_snapshot ?? response?.latest_review?.result ?? null;
@@ -309,11 +331,11 @@ export default function DealerAIUnderwriterPage() {
 
   async function startIntake() {
     if (!contact.full_name.trim() || !contact.email.trim()) {
-      setStatus("Full name and email are required before uploading documents.");
+      setStatus(c.errFullNameEmailRequired);
       return;
     }
     if (!legalAccepted) {
-      setStatus("Accept the Terms and Privacy Policy before opening the secure intake.");
+      setStatus(c.errAcceptTerms);
       return;
     }
     setBusy(true);
@@ -330,6 +352,7 @@ export default function DealerAIUnderwriterPage() {
           privacy_accepted: true,
           terms_version: TERMS_VERSION,
           privacy_version: PRIVACY_VERSION,
+          preferred_language: language ?? "en",
         }),
       });
       applyResponse(payload, payload.token ?? "", true);
@@ -355,7 +378,7 @@ export default function DealerAIUnderwriterPage() {
   async function requestDealerCode() {
     const email = (resumeEmail || contact.email).trim();
     if (!email) {
-      setStatus("Enter your email and we will send a secure access code if a file exists.");
+      setStatus(c.errEnterEmailForCode);
       return;
     }
     setBusy(true);
@@ -399,7 +422,7 @@ export default function DealerAIUnderwriterPage() {
   async function verifyDealerCode() {
     const email = (resumeEmail || contact.email).trim();
     if (!email || !loginCode.trim()) {
-      setStatus("Enter your email and access code.");
+      setStatus(c.errEnterEmailAndCode);
       return;
     }
     setBusy(true);
@@ -568,7 +591,7 @@ export default function DealerAIUnderwriterPage() {
       await loadIntake();
       setQueuedFiles((current) => current.filter((item) => !uploadedIds.has(item.id)));
       if (uploaded > 0) {
-        pushAssistant(`${uploaded} file${uploaded === 1 ? "" : "s"} uploaded. I am analyzing the file set now.`);
+        pushAssistant(c.filesUploadedAnalyzing(uploaded));
         setStatus("Analyzing uploaded files...");
         beginReviewTimeline();
         const payload = await call<IntakeResponse>(`/public/dealer-ai-intake/${encodeURIComponent(token)}/run-review`, { method: "POST" });
@@ -578,8 +601,8 @@ export default function DealerAIUnderwriterPage() {
         setStatus("");
       } else {
         failReviewProgress();
-        setStatus("No files uploaded successfully. Correct the file errors and try again.");
-        pushAssistant("No files uploaded successfully. Correct the file errors and try again.");
+        setStatus(c.noFilesUploaded);
+        pushAssistant(c.noFilesUploaded);
       }
     } catch (error) {
       failReviewProgress();
@@ -602,7 +625,7 @@ export default function DealerAIUnderwriterPage() {
       });
       setSigningDocId(null);
       await loadIntake();
-      pushAssistant("Thanks — the form is signed and on file.");
+      pushAssistant(c.signedFormThanks);
     } catch (error) {
       setSignError(errorMessage(error));
     } finally {
@@ -621,7 +644,7 @@ export default function DealerAIUnderwriterPage() {
       });
       setDraftingDocKind(null);
       await loadIntake();
-      pushAssistant("Thanks — your personal financial statement is on file.");
+      pushAssistant(c.pfsThanks);
     } catch (error) {
       setDraftError(errorMessage(error));
     } finally {
@@ -640,7 +663,7 @@ export default function DealerAIUnderwriterPage() {
       });
       setDraftingDocKind(null);
       await loadIntake();
-      pushAssistant("Thanks — your debt schedule is on file.");
+      pushAssistant(c.debtScheduleThanks);
     } catch (error) {
       setDraftError(errorMessage(error));
     } finally {
@@ -690,6 +713,14 @@ export default function DealerAIUnderwriterPage() {
   function applyResponse(payload: IntakeResponse, activeToken: string, persist = false) {
     setResponse(payload);
     if (activeToken) setToken(activeToken);
+    // Sticky per-lead language, sourced from the server response -- overrides
+    // the local picker/sessionStorage pick with whatever the lead's row
+    // actually holds (self-picked at start, or admin/broker-assigned).
+    const serverLanguage = payload.intake.preferred_language;
+    if (serverLanguage === "en" || serverLanguage === "es") {
+      setLanguage(serverLanguage);
+      setStoredLanguage(serverLanguage);
+    }
     if (persist) persistDealerSession({ token: activeToken || payload.token, session_token: payload.session_token });
     setContact((current) => ({
       full_name: payload.intake.full_name || current.full_name,
@@ -748,7 +779,7 @@ export default function DealerAIUnderwriterPage() {
     setLoginCode("");
     setLoginCodeSent(false);
     setShowContinuationLogin(false);
-    setStatus("You are logged out of this secure room. Enter your email to receive a continuation code.");
+    setStatus(c.statusLoggedOut);
     if (typeof window !== "undefined") {
       window.sessionStorage.removeItem(DEALER_AI_SESSION_KEY);
       window.sessionStorage.removeItem(DEALER_AI_TOKEN_KEY);
@@ -772,7 +803,14 @@ export default function DealerAIUnderwriterPage() {
   return (
     <main style={response ? (compact ? appViewportMobile : appViewport) : (compact ? pageMobile : page)}>
       <section style={response ? (compact ? appShellMobile : appShell) : (compact ? shellMobile : shell)}>
-        {!response ? (
+        {!response && !language && !checkingResume ? (
+          <LanguagePickerScreen
+            onPick={(lang) => {
+              setLanguage(lang);
+              setStoredLanguage(lang);
+            }}
+          />
+        ) : !response ? (
           <>
             <nav style={stepOneNav}>
               <div style={stepOneBrand}>
@@ -780,33 +818,26 @@ export default function DealerAIUnderwriterPage() {
                 <strong>Qualified Commercial</strong>
               </div>
               <div style={stepOneNavActions}>
-                <span style={navPill}>AI Underwriter</span>
-                <button type="button" style={loginPill} onClick={() => setShowContinuationLogin(true)}>Continue</button>
+                <span style={navPill}>{c.aiUnderwriterPill}</span>
+                <button type="button" style={loginPill} onClick={() => setShowContinuationLogin(true)}>{c.loginPill}</button>
               </div>
             </nav>
 
             <div style={stepOneHeading}>
               <div>
-                <div style={tealEyebrow}>Qualified Commercial - Dealer Funding Review</div>
-                <h1 style={stepOneTitle}>AI Underwriter</h1>
+                <div style={tealEyebrow}>{c.eyebrow}</div>
+                <h1 style={stepOneTitle}>{c.aiUnderwriterPill}</h1>
               </div>
-              <div style={stepOneSecurePill}><span style={greenDot} />Encrypted uploads - Preliminary review</div>
+              <div style={stepOneSecurePill}><span style={greenDot} />{c.encryptedUploadsPill}</div>
             </div>
 
             <section style={stepOneHero}>
               <div style={stepOneCopy}>
-                <div style={stepBadge}>Step 1 - Open your secure file</div>
-                <h2 style={stepOneHeroTitle}>Tell us who you are - then the review runs in chat.</h2>
-                <p style={stepOneLead}>
-                  We open an encrypted file room in your name first, so nothing you share is ever lost. Then the full-doc funding review happens in one conversation - no forms, no portals.
-                </p>
+                <div style={stepBadge}>{c.stepOneBadge}</div>
+                <h2 style={stepOneHeroTitle}>{c.heroTitle}</h2>
+                <p style={stepOneLead}>{c.heroLead}</p>
                 <div style={checkList}>
-                  {[
-                    "A full-doc review that runs entirely in chat - no forms, no portals",
-                    "Attach bank statements and financials straight into the conversation",
-                    "An encrypted file room - everything you share is kept",
-                    "A strict preliminary screen before any lender sees the file",
-                  ].map((item) => (
+                  {c.checklist.map((item) => (
                     <div key={item} style={checkItem}>
                       <span style={checkIcon}>{"\u2713"}</span>
                       <span>{item}</span>
@@ -817,6 +848,7 @@ export default function DealerAIUnderwriterPage() {
               <div style={stepOneFormColumn}>
                 {showContinuationLogin ? (
                   <DealerContinuationWidget
+                    c={c}
                     email={resumeEmail || contact.email}
                     setEmail={(value) => {
                       setResumeEmail(value);
@@ -836,6 +868,8 @@ export default function DealerAIUnderwriterPage() {
                   />
                 ) : (
                   <ContactWidget
+                    c={c}
+                    language={language ?? "en"}
                     contact={contact}
                     setContact={setContact}
                     busy={busy || emailLookupBusy}
@@ -861,7 +895,7 @@ export default function DealerAIUnderwriterPage() {
                 <div style={ghostGoldLine} />
                 <div style={ghostLineMid} />
               </div>
-              <div style={lockedBadge}>Locked - The full review runs in chat and unlocks after you start your file</div>
+              <div style={lockedBadge}>{c.lockedPreviewBadge}</div>
             </section>
           </>
         ) : (
@@ -1048,6 +1082,7 @@ export default function DealerAIUnderwriterPage() {
                     draftError={draftError}
                     onSubmitPfs={submitPfsForm}
                     onSubmitDebtSchedule={submitDebtScheduleForm}
+                    language={language ?? "en"}
                   />
                 ) : null}
                 {activeWorkspace === "files" ? (
@@ -1077,6 +1112,7 @@ export default function DealerAIUnderwriterPage() {
                     draftError={draftError}
                     onSubmitPfs={submitPfsForm}
                     onSubmitDebtSchedule={submitDebtScheduleForm}
+                    language={language ?? "en"}
                   />
                 ) : null}
                 {activeWorkspace === "intelligence" ? (
@@ -1086,6 +1122,7 @@ export default function DealerAIUnderwriterPage() {
                       response={response}
                       result={currentResult}
                       onExport={() => exportIntelligencePdf().catch((error) => setStatus(errorMessage(error)))}
+                      language={language ?? "en"}
                     />
                   ) : (
                     <IntelligenceUnavailableCover
@@ -1106,6 +1143,8 @@ export default function DealerAIUnderwriterPage() {
 }
 
 function ContactWidget({
+  c,
+  language,
   contact,
   setContact,
   busy,
@@ -1116,6 +1155,8 @@ function ContactWidget({
   onStart,
   onShowLogin,
 }: {
+  c: ReturnType<typeof dealerCopy>;
+  language: Lang;
   contact: typeof initialContact;
   setContact: (value: typeof initialContact) => void;
   busy: boolean;
@@ -1129,38 +1170,39 @@ function ContactWidget({
   return (
     <div style={stepOneFormCard}>
       <div>
-        <h2 style={stepOneFormTitle}>Start secure intake</h2>
-        <p style={stepOneFormCopy}>Takes under a minute. No credit pull to begin.</p>
+        <h2 style={stepOneFormTitle}>{c.startCardTitle}</h2>
+        <p style={stepOneFormCopy}>{c.startCardSub}</p>
       </div>
-      <Field label="Full name" value={contact.full_name} onChange={(value) => setContact({ ...contact, full_name: value })} />
-      <Field label="Email" value={contact.email} onChange={(value) => setContact({ ...contact, email: value })} onBlur={onEmailBlur} />
-      {emailLookupBusy ? <div style={fieldHint}>Checking for an existing secure file...</div> : null}
+      <Field label={c.fieldFullName} value={contact.full_name} onChange={(value) => setContact({ ...contact, full_name: value })} />
+      <Field label={c.fieldEmail} value={contact.email} onChange={(value) => setContact({ ...contact, email: value })} onBlur={onEmailBlur} />
+      {emailLookupBusy ? <div style={fieldHint}>{c.emailLookupChecking}</div> : null}
       <div style={stepOneFormGrid}>
-        <Field label="Phone" value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} />
-        <Field label="Dealership" value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} />
+        <Field label={c.fieldPhone} value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} />
+        <Field label={c.fieldBusinessName} value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} />
       </div>
       <label style={legalCheckRow}>
         <input type="checkbox" checked={legalAccepted} onChange={(event) => setLegalAccepted(event.target.checked)} />
         <span>
-          I agree to the <a style={inlineLink} href="/terms" target="_blank" rel="noreferrer">Terms and Conditions</a> and <a style={inlineLink} href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.
+          {c.legalAgreePrefix}<a style={inlineLink} href={`/terms${language === "es" ? "?lang=es" : ""}`} target="_blank" rel="noreferrer">{c.legalAgreeTerms}</a>{c.legalAgreeAnd}<a style={inlineLink} href={`/privacy${language === "es" ? "?lang=es" : ""}`} target="_blank" rel="noreferrer">{c.legalAgreePrivacy}</a>{c.legalAgreeSuffix}
         </span>
       </label>
-      <button style={stepOneCta} disabled={busy} onClick={onStart}>{busy ? "Creating secure room..." : "Start my funding review ->"}</button>
+      <button style={stepOneCta} disabled={busy} onClick={onStart}>{busy ? c.startCtaBusy : c.startCta}</button>
       <button type="button" style={inlineLoginButton} onClick={onShowLogin}>
-        Already started? Login with email code
+        {c.loginWithCodeLink}
       </button>
       <div style={formTrustLine}>
-        <span>Bank-grade encryption</span>
+        <span>{c.trustBankGrade}</span>
         <span>|</span>
-        <span>No credit pull to start</span>
+        <span>{c.trustNoCreditPull}</span>
         <span>|</span>
-        <span>Preliminary review only</span>
+        <span>{c.trustPreliminaryOnly}</span>
       </div>
     </div>
   );
 }
 
 function DealerContinuationWidget({
+  c,
   email,
   setEmail,
   code,
@@ -1171,6 +1213,7 @@ function DealerContinuationWidget({
   onVerify,
   onBack,
 }: {
+  c: ReturnType<typeof dealerCopy>;
   email: string;
   setEmail: (value: string) => void;
   code: string;
@@ -1184,21 +1227,21 @@ function DealerContinuationWidget({
   return (
     <div style={resumeCard}>
       <div>
-        <strong>Already started?</strong>
-        <p style={stepOneFormCopy}>Enter your email and we will send a short access code for your existing dealer file.</p>
+        <strong>{c.alreadyStarted}</strong>
+        <p style={stepOneFormCopy}>{c.resumeSub}</p>
       </div>
       <div style={resumeGrid}>
         <input style={input} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@dealership.com" />
-        <button type="button" style={secondaryButton} disabled={busy} onClick={onSendCode}>{codeSent ? "Resend code" : "Send code"}</button>
+        <button type="button" style={secondaryButton} disabled={busy} onClick={onSendCode}>{codeSent ? c.resumeResendCode : c.resumeSendCode}</button>
       </div>
       {codeSent ? (
         <div style={resumeGrid}>
-          <input style={input} value={code} onChange={(event) => setCode(event.target.value)} placeholder="6-digit code" inputMode="numeric" />
-          <button type="button" style={secondaryButton} disabled={busy} onClick={onVerify}>Continue</button>
+          <input style={input} value={code} onChange={(event) => setCode(event.target.value)} placeholder={c.resumeCodePlaceholder} inputMode="numeric" />
+          <button type="button" style={secondaryButton} disabled={busy} onClick={onVerify}>{c.resumeContinue}</button>
         </div>
       ) : null}
       <button type="button" style={inlineLoginButton} onClick={onBack}>
-        Start a new dealer review instead
+        {c.resumeStartNewInstead}
       </button>
     </div>
   );
@@ -1405,6 +1448,7 @@ function FileDrawerPanel({
   draftError,
   onSubmitPfs,
   onSubmitDebtSchedule,
+  language = "en",
 }: {
   response: IntakeResponse;
   missingDocs: RequestedDoc[];
@@ -1431,6 +1475,7 @@ function FileDrawerPanel({
   draftError?: string | null;
   onSubmitPfs?: (payload: PfsFormPayload) => void;
   onSubmitDebtSchedule?: (payload: DebtScheduleFormPayload) => void;
+  language?: Lang;
 }) {
   const docsById = new Map(response.requested_documents.map((doc) => [doc.id, doc]));
   const readyCount = pendingFiles.filter((file) => file.status === "ready" || file.status === "error").length;
@@ -1608,6 +1653,7 @@ function FileDrawerPanel({
                   error={signError ?? null}
                   onSign={onSign}
                   onCancel={() => setSigningDocId?.(null)}
+                  language={language}
                 />
               </div>
             );
@@ -1753,11 +1799,13 @@ function IntelligencePanel({
   response,
   result,
   onExport,
+  language = "en",
 }: {
   model: IntelligenceModel;
   response: IntakeResponse;
   result: Record<string, unknown> | null;
   onExport: () => void;
+  language?: Lang;
 }) {
   const probability = String(result?.probability_status || model.status?.title || "Awaiting review");
   return (
@@ -1794,7 +1842,7 @@ function IntelligencePanel({
             <strong>Debt service coverage</strong>
             <span style={metricSourcePill(model.dscr.source)}>{model.dscr.source}</span>
           </div>
-          <GaugeChart value={model.dscr.raw} />
+          <GaugeChart value={model.dscr.raw} language={language} />
           <p style={smallMuted}>{model.dscr.detail || "Coverage will populate when cash flow and debt service evidence is available."}</p>
         </div>
 
@@ -1803,7 +1851,7 @@ function IntelligencePanel({
             <strong>Real estate equity / LTV</strong>
             <span style={metricSourcePill(model.ltv.source)}>{model.ltv.source}</span>
           </div>
-          <EquityChart equity={model.equity.raw} ltv={model.ltv.raw} />
+          <EquityChart equity={model.equity.raw} ltv={model.ltv.raw} language={language} />
           <p style={smallMuted}>{model.equity.detail || "Collateral values and payoff balances are needed for equity and LTV."}</p>
         </div>
 
@@ -1812,7 +1860,7 @@ function IntelligencePanel({
             <strong>Cash flow stack</strong>
             <span style={smallMuted}>Revenue / cash flow / debt service</span>
           </div>
-          <CashFlowBars bars={model.cashFlowBars} />
+          <CashFlowBars bars={model.cashFlowBars} language={language} />
         </div>
 
         <div style={chartCard}>
@@ -1838,20 +1886,20 @@ function IntelligencePanel({
             <strong>Evidence coverage</strong>
             <span style={smallMuted}>{response.files.length} files</span>
           </div>
-          <EvidenceCoverageTable rows={model.coverage} />
+          <EvidenceCoverageTable rows={model.coverage} language={language} />
         </div>
         <div style={chartCard}>
           <div style={chartHeader}>
             <strong>Still needed</strong>
             <span style={smallMuted}>{model.missing.length} items</span>
           </div>
-          <MissingTable rows={model.missing} />
+          <MissingTable rows={model.missing} language={language} />
         </div>
       </div>
 
       <div style={intelligenceTables}>
-        <RiskStrengthTable title="Strengths" rows={model.strengths} tone="green" />
-        <RiskStrengthTable title="Risks" rows={model.risks} tone="amber" />
+        <RiskStrengthTable title="Strengths" rows={model.strengths} tone="green" language={language} />
+        <RiskStrengthTable title="Risks" rows={model.risks} tone="amber" language={language} />
       </div>
 
       <div style={intelligenceNextStep}>
@@ -1875,7 +1923,8 @@ function IntelligenceKpi({ metric, emphasis }: { metric: IntelligenceValue; emph
   );
 }
 
-function GaugeChart({ value }: { value: number | null | undefined }) {
+function GaugeChart({ value, language = "en" }: { value: number | null | undefined; language?: Lang }) {
+  const cc = CHART_COPY[language];
   const numeric = typeof value === "number" && Number.isFinite(value) ? value : null;
   const clamped = numeric === null ? 0 : Math.max(0, Math.min(numeric, 3));
   const angle = -90 + (clamped / 3) * 180;
@@ -1891,13 +1940,14 @@ function GaugeChart({ value }: { value: number | null | undefined }) {
         <line x1="100" y1="92" x2={x} y2={y} stroke="#F8FAFC" strokeWidth="4" strokeLinecap="round" />
         <circle cx="100" cy="92" r="8" fill="#F8FAFC" />
       </svg>
-      <strong>{numeric === null ? "Awaiting evidence" : `${numeric.toFixed(2)}x`}</strong>
-      <span>0.00x - 3.00x</span>
+      <strong>{numeric === null ? cc.awaitingEvidence : `${numeric.toFixed(2)}x`}</strong>
+      <span>{cc.dscrRange}</span>
     </div>
   );
 }
 
-function EquityChart({ equity, ltv }: { equity: number | null | undefined; ltv: number | null | undefined }) {
+function EquityChart({ equity, ltv, language = "en" }: { equity: number | null | undefined; ltv: number | null | undefined; language?: Lang }) {
+  const cc = CHART_COPY[language];
   const ltvPct = typeof ltv === "number" && Number.isFinite(ltv) ? Math.max(0, Math.min(ltv, 100)) : null;
   const equityPct = ltvPct === null ? null : Math.max(0, 100 - ltvPct);
   return (
@@ -1907,14 +1957,15 @@ function EquityChart({ equity, ltv }: { equity: number | null | undefined; ltv: 
         <div style={{ ...equityValueFill, width: `${equityPct ?? 0}%` }} />
       </div>
       <div style={equityLegend}>
-        <span><b style={legendDebtDot} /> Debt / proposed LTV {ltvPct === null ? "—" : `${ltvPct.toFixed(1)}%`}</span>
-        <span><b style={legendEquityDot} /> Equity {typeof equity === "number" ? formatMoneyCompact(equity) : "Awaiting evidence"}</span>
+        <span><b style={legendDebtDot} /> {cc.debtProposedLtv} {ltvPct === null ? "—" : `${ltvPct.toFixed(1)}%`}</span>
+        <span><b style={legendEquityDot} /> {cc.equity} {typeof equity === "number" ? formatMoneyCompact(equity) : cc.awaitingEvidence}</span>
       </div>
     </div>
   );
 }
 
-function CashFlowBars({ bars }: { bars: IntelligenceModel["cashFlowBars"] }) {
+function CashFlowBars({ bars, language = "en" }: { bars: IntelligenceModel["cashFlowBars"]; language?: Lang }) {
+  const cc = CHART_COPY[language];
   const max = Math.max(...bars.map((bar) => Math.abs(bar.value || 0)), 1);
   return (
     <div style={cashFlowBarList}>
@@ -1925,7 +1976,7 @@ function CashFlowBars({ bars }: { bars: IntelligenceModel["cashFlowBars"] }) {
           <div key={bar.label} style={cashFlowBarRow}>
             <div style={cashFlowBarLabel}>
               <span>{bar.label}</span>
-              <strong>{value === null ? "Awaiting evidence" : formatMoneyCompact(value)}</strong>
+              <strong>{value === null ? cc.awaitingEvidence : formatMoneyCompact(value)}</strong>
             </div>
             <div style={cashFlowTrack}>
               <div style={{ ...cashFlowFill, width: `${width}%`, background: value !== null && value < 0 ? "#EF4444" : "#21D3C7" }} />
@@ -1959,23 +2010,25 @@ function MiniBarChart({ series, emptyLabel }: { series: Array<{ label: string; v
   );
 }
 
-function EvidenceCoverageTable({ rows }: { rows: IntelligenceModel["coverage"] }) {
-  if (!rows.length) return <div style={chartEmptyState}>Awaiting AI evidence map.</div>;
+function EvidenceCoverageTable({ rows, language = "en" }: { rows: IntelligenceModel["coverage"]; language?: Lang }) {
+  const cc = CHART_COPY[language];
+  if (!rows.length) return <div style={chartEmptyState}>{cc.awaitingEvidenceMap}</div>;
   return (
     <div style={intelligenceTable}>
       {rows.slice(0, 8).map((row) => (
         <div key={row.category} style={intelligenceTableRow}>
           <strong>{row.category}</strong>
           <span style={coverageStatusStyle(row.status)}>{row.status}</span>
-          <small>{row.evidence || row.gap || "No evidence listed yet."}</small>
+          <small>{row.evidence || row.gap || cc.noEvidenceListed}</small>
         </div>
       ))}
     </div>
   );
 }
 
-function MissingTable({ rows }: { rows: IntelligenceModel["missing"] }) {
-  if (!rows.length) return <div style={chartEmptyState}>No blocking Stage 1 items listed in the latest screen.</div>;
+function MissingTable({ rows, language = "en" }: { rows: IntelligenceModel["missing"]; language?: Lang }) {
+  const cc = CHART_COPY[language];
+  if (!rows.length) return <div style={chartEmptyState}>{cc.noBlockingItems}</div>;
   return (
     <div style={intelligenceTable}>
       {rows.slice(0, 8).map((row) => (
@@ -1989,7 +2042,8 @@ function MissingTable({ rows }: { rows: IntelligenceModel["missing"] }) {
   );
 }
 
-function RiskStrengthTable({ title, rows, tone }: { title: string; rows: string[]; tone: "green" | "amber" }) {
+function RiskStrengthTable({ title, rows, tone, language = "en" }: { title: string; rows: string[]; tone: "green" | "amber"; language?: Lang }) {
+  const cc = CHART_COPY[language];
   return (
     <div style={chartCard}>
       <div style={chartHeader}>
@@ -1999,7 +2053,7 @@ function RiskStrengthTable({ title, rows, tone }: { title: string; rows: string[
       <div style={riskList}>
         {rows.length ? rows.slice(0, 7).map((row, index) => (
           <div key={`${title}-${index}`} style={tone === "green" ? strengthRow : riskRow}>{row}</div>
-        )) : <div style={chartEmptyState}>Awaiting review extraction.</div>}
+        )) : <div style={chartEmptyState}>{cc.awaitingReviewExtraction}</div>}
       </div>
     </div>
   );

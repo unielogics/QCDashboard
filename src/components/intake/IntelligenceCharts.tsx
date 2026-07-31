@@ -12,6 +12,46 @@
 
 import type { CSSProperties } from "react";
 import type { IntelligenceModel, IntelligenceValue } from "@/lib/intake";
+import type { Lang } from "@/lib/intakeCopy";
+
+// Chart-chrome copy for the small set of hardcoded strings in this file.
+// Defaults to English everywhere ("en" is the type default below and every
+// component's `language` prop defaults to it) -- admin/broker call sites
+// (Lead Cockpit, broker portal) intentionally never pass `language`, so this
+// module renders in English there regardless of the underlying lead's
+// preferred_language. Only the two client-facing intake pages pass their
+// live language state. Not consent-bearing, so no per-string compliance flag.
+export const CHART_COPY: Record<Lang, {
+  awaitingEvidence: string;
+  dscrRange: string;
+  debtProposedLtv: string;
+  equity: string;
+  awaitingEvidenceMap: string;
+  noEvidenceListed: string;
+  noBlockingItems: string;
+  awaitingReviewExtraction: string;
+}> = {
+  en: {
+    awaitingEvidence: "Awaiting evidence",
+    dscrRange: "0.00x - 3.00x",
+    debtProposedLtv: "Debt / proposed LTV",
+    equity: "Equity",
+    awaitingEvidenceMap: "Awaiting AI evidence map.",
+    noEvidenceListed: "No evidence listed yet.",
+    noBlockingItems: "No blocking Stage 1 items listed in the latest screen.",
+    awaitingReviewExtraction: "Awaiting review extraction.",
+  },
+  es: {
+    awaitingEvidence: "Esperando evidencia",
+    dscrRange: "0.00x - 3.00x",
+    debtProposedLtv: "Deuda / LTV propuesto",
+    equity: "Capital",
+    awaitingEvidenceMap: "Esperando el mapa de evidencia de la IA.",
+    noEvidenceListed: "Aún no hay evidencia registrada.",
+    noBlockingItems: "No hay elementos bloqueantes de la Etapa 1 en la última evaluación.",
+    awaitingReviewExtraction: "Esperando la extracción de la revisión.",
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Small formatting/style helpers
@@ -64,7 +104,8 @@ export function IntelligenceKpi({ metric, emphasis }: { metric: IntelligenceValu
   );
 }
 
-export function GaugeChart({ value }: { value: number | null | undefined }) {
+export function GaugeChart({ value, language = "en" }: { value: number | null | undefined; language?: Lang }) {
+  const cc = CHART_COPY[language];
   const numeric = typeof value === "number" && Number.isFinite(value) ? value : null;
   const clamped = numeric === null ? 0 : Math.max(0, Math.min(numeric, 3));
   const angle = -90 + (clamped / 3) * 180;
@@ -80,13 +121,14 @@ export function GaugeChart({ value }: { value: number | null | undefined }) {
         <line x1="100" y1="92" x2={x} y2={y} stroke="#F8FAFC" strokeWidth="4" strokeLinecap="round" />
         <circle cx="100" cy="92" r="8" fill="#F8FAFC" />
       </svg>
-      <strong>{numeric === null ? "Awaiting evidence" : `${numeric.toFixed(2)}x`}</strong>
-      <span>0.00x - 3.00x</span>
+      <strong>{numeric === null ? cc.awaitingEvidence : `${numeric.toFixed(2)}x`}</strong>
+      <span>{cc.dscrRange}</span>
     </div>
   );
 }
 
-export function EquityChart({ equity, ltv }: { equity: number | null | undefined; ltv: number | null | undefined }) {
+export function EquityChart({ equity, ltv, language = "en" }: { equity: number | null | undefined; ltv: number | null | undefined; language?: Lang }) {
+  const cc = CHART_COPY[language];
   const ltvPct = typeof ltv === "number" && Number.isFinite(ltv) ? Math.max(0, Math.min(ltv, 100)) : null;
   const equityPct = ltvPct === null ? null : Math.max(0, 100 - ltvPct);
   return (
@@ -96,14 +138,15 @@ export function EquityChart({ equity, ltv }: { equity: number | null | undefined
         <div style={{ ...equityValueFill, width: `${equityPct ?? 0}%` }} />
       </div>
       <div style={equityLegend}>
-        <span><b style={legendDebtDot} /> Debt / proposed LTV {ltvPct === null ? "—" : `${ltvPct.toFixed(1)}%`}</span>
-        <span><b style={legendEquityDot} /> Equity {typeof equity === "number" ? formatMoneyCompactLocal(equity) : "Awaiting evidence"}</span>
+        <span><b style={legendDebtDot} /> {cc.debtProposedLtv} {ltvPct === null ? "—" : `${ltvPct.toFixed(1)}%`}</span>
+        <span><b style={legendEquityDot} /> {cc.equity} {typeof equity === "number" ? formatMoneyCompactLocal(equity) : cc.awaitingEvidence}</span>
       </div>
     </div>
   );
 }
 
-export function CashFlowBars({ bars }: { bars: IntelligenceModel["cashFlowBars"] }) {
+export function CashFlowBars({ bars, language = "en" }: { bars: IntelligenceModel["cashFlowBars"]; language?: Lang }) {
+  const cc = CHART_COPY[language];
   const max = Math.max(...bars.map((bar) => Math.abs(bar.value || 0)), 1);
   return (
     <div style={cashFlowBarList}>
@@ -114,7 +157,7 @@ export function CashFlowBars({ bars }: { bars: IntelligenceModel["cashFlowBars"]
           <div key={bar.label} style={cashFlowBarRow}>
             <div style={cashFlowBarLabel}>
               <span>{bar.label}</span>
-              <strong>{value === null ? "Awaiting evidence" : formatMoneyCompactLocal(value)}</strong>
+              <strong>{value === null ? cc.awaitingEvidence : formatMoneyCompactLocal(value)}</strong>
             </div>
             <div style={cashFlowTrack}>
               <div style={{ ...cashFlowFill, width: `${width}%`, background: value !== null && value < 0 ? "#EF4444" : "#21D3C7" }} />
@@ -148,23 +191,25 @@ export function MiniBarChart({ series, emptyLabel }: { series: Array<{ label: st
   );
 }
 
-export function EvidenceCoverageTable({ rows }: { rows: IntelligenceModel["coverage"] }) {
-  if (!rows.length) return <div style={chartEmptyState}>Awaiting AI evidence map.</div>;
+export function EvidenceCoverageTable({ rows, language = "en" }: { rows: IntelligenceModel["coverage"]; language?: Lang }) {
+  const cc = CHART_COPY[language];
+  if (!rows.length) return <div style={chartEmptyState}>{cc.awaitingEvidenceMap}</div>;
   return (
     <div style={intelligenceTable}>
       {rows.slice(0, 8).map((row) => (
         <div key={row.category} style={intelligenceTableRow}>
           <strong>{row.category}</strong>
           <span style={coverageStatusStyle(row.status)}>{row.status}</span>
-          <small>{row.evidence || row.gap || "No evidence listed yet."}</small>
+          <small>{row.evidence || row.gap || cc.noEvidenceListed}</small>
         </div>
       ))}
     </div>
   );
 }
 
-export function MissingTable({ rows }: { rows: IntelligenceModel["missing"] }) {
-  if (!rows.length) return <div style={chartEmptyState}>No blocking Stage 1 items listed in the latest screen.</div>;
+export function MissingTable({ rows, language = "en" }: { rows: IntelligenceModel["missing"]; language?: Lang }) {
+  const cc = CHART_COPY[language];
+  if (!rows.length) return <div style={chartEmptyState}>{cc.noBlockingItems}</div>;
   return (
     <div style={intelligenceTable}>
       {rows.slice(0, 8).map((row) => (
@@ -178,7 +223,8 @@ export function MissingTable({ rows }: { rows: IntelligenceModel["missing"] }) {
   );
 }
 
-export function RiskStrengthTable({ title, rows, tone }: { title: string; rows: string[]; tone: "green" | "amber" }) {
+export function RiskStrengthTable({ title, rows, tone, language = "en" }: { title: string; rows: string[]; tone: "green" | "amber"; language?: Lang }) {
+  const cc = CHART_COPY[language];
   return (
     <div style={chartCard}>
       <div style={chartHeader}>
@@ -188,7 +234,7 @@ export function RiskStrengthTable({ title, rows, tone }: { title: string; rows: 
       <div style={riskList}>
         {rows.length ? rows.slice(0, 7).map((row, index) => (
           <div key={`${title}-${index}`} style={tone === "green" ? strengthRow : riskRow}>{row}</div>
-        )) : <div style={chartEmptyState}>Awaiting review extraction.</div>}
+        )) : <div style={chartEmptyState}>{cc.awaitingReviewExtraction}</div>}
       </div>
     </div>
   );

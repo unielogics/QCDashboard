@@ -553,6 +553,16 @@ export const FeedbackRatingOptions = [
   { value: "down", label: "Down" }
 ] as const;
 
+export const Language = {
+  EN: "en",
+  ES: "es"
+} as const;
+export type Language = (typeof Language)[keyof typeof Language];
+export const LanguageOptions = [
+  { value: "en", label: "En" },
+  { value: "es", label: "Es" }
+] as const;
+
 export const LinkKind = {
   DOCUSIGN: "docusign",
   ESIGN: "esign",

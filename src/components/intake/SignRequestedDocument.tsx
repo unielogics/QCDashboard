@@ -11,6 +11,7 @@
 
 import { useRef, useState } from "react";
 import { SignaturePad, type SignaturePadHandle } from "@/components/design-system/SignaturePad";
+import type { Lang } from "@/lib/intakeCopy";
 
 export type SignRequestedDocumentPayload = {
   requested_document_id: string;
@@ -34,10 +35,85 @@ export type SignableDoc = {
   signature_document_text?: string | null;
 };
 
-const DEFAULT_CREDIT_AUTH_TEXT =
-  "By signing this authorization, I authorize a soft credit inquiry (a \"soft pull\") on my consumer " +
-  "credit file, for the purpose of evaluating financing. A soft pull does not affect my credit score. " +
-  "I certify the identifying information below is accurate and is my own.";
+// TODO(compliance-review-es): Spanish translation of the default credit-pull
+// authorization consent text -- AI-assisted, NOT YET reviewed by a native-
+// Spanish-speaking compliance reviewer. Do not treat as legally equivalent
+// to the English version until reviewed and this TODO is removed.
+const DEFAULT_CREDIT_AUTH_TEXT: Record<Lang, string> = {
+  en:
+    "By signing this authorization, I authorize a soft credit inquiry (a \"soft pull\") on my consumer " +
+    "credit file, for the purpose of evaluating financing. A soft pull does not affect my credit score. " +
+    "I certify the identifying information below is accurate and is my own.",
+  es:
+    "Al firmar esta autorización, autorizo una consulta de crédito blanda (\"soft pull\") en mi expediente " +
+    "de crédito de consumidor, con el propósito de evaluar el financiamiento. Una consulta blanda no afecta " +
+    "mi puntaje de crédito. Certifico que la información de identificación a continuación es precisa y es mía.",
+};
+
+// TODO(compliance-review-es): Spanish E-SIGN consent checkbox label and field
+// labels below -- AI-assisted, NOT YET reviewed by a native-Spanish-speaking
+// compliance reviewer.
+const SIGN_COPY: Record<Lang, {
+  legalFirstName: string;
+  legalLastName: string;
+  dob: string;
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  typedName: string;
+  esignConsent: string;
+  drawSignature: string;
+  clearSignature: string;
+  cancel: string;
+  signSubmit: string;
+  signSubmitting: string;
+  errTypedName: string;
+  errConsent: string;
+  errSignature: string;
+  errIdentity: string;
+}> = {
+  en: {
+    legalFirstName: "Legal first name",
+    legalLastName: "Legal last name",
+    dob: "Date of birth",
+    street: "Street address",
+    city: "City",
+    state: "State",
+    zip: "ZIP",
+    typedName: "Type your full legal name",
+    esignConsent: "I consent to use electronic records and signatures under the U.S. E-SIGN Act and UETA.",
+    drawSignature: "Draw your signature",
+    clearSignature: "Clear signature",
+    cancel: "Cancel",
+    signSubmit: "Sign & submit",
+    signSubmitting: "Submitting…",
+    errTypedName: "Type your full legal name.",
+    errConsent: "Check the E-SIGN consent box.",
+    errSignature: "Draw your signature.",
+    errIdentity: "All identity fields are required to sign this form.",
+  },
+  es: {
+    legalFirstName: "Nombre legal",
+    legalLastName: "Apellido legal",
+    dob: "Fecha de nacimiento",
+    street: "Dirección",
+    city: "Ciudad",
+    state: "Estado",
+    zip: "Código postal",
+    typedName: "Escribe tu nombre legal completo",
+    esignConsent: "Consiento el uso de registros y firmas electrónicas bajo la Ley E-SIGN de EE. UU. y UETA.",
+    drawSignature: "Dibuja tu firma",
+    clearSignature: "Borrar firma",
+    cancel: "Cancelar",
+    signSubmit: "Firmar y enviar",
+    signSubmitting: "Enviando…",
+    errTypedName: "Escribe tu nombre legal completo.",
+    errConsent: "Marca la casilla de consentimiento E-SIGN.",
+    errSignature: "Dibuja tu firma.",
+    errIdentity: "Todos los campos de identidad son obligatorios para firmar este formulario.",
+  },
+};
 
 export function SignRequestedDocument({
   doc,
@@ -45,15 +121,18 @@ export function SignRequestedDocument({
   error,
   onSign,
   onCancel,
+  language = "en",
 }: {
   doc: SignableDoc;
   busy: boolean;
   error: string | null;
   onSign: (payload: SignRequestedDocumentPayload) => void;
   onCancel?: () => void;
+  language?: Lang;
 }) {
+  const s = SIGN_COPY[language];
   const isCreditAuth = doc.signature_kind === "credit_authorization";
-  const documentText = doc.signature_document_text || (isCreditAuth ? DEFAULT_CREDIT_AUTH_TEXT : "");
+  const documentText = doc.signature_document_text || (isCreditAuth ? DEFAULT_CREDIT_AUTH_TEXT[language] : "");
   const sigPadRef = useRef<SignaturePadHandle | null>(null);
   const [typedName, setTypedName] = useState("");
   const [esignConsent, setEsignConsent] = useState(false);
@@ -67,13 +146,13 @@ export function SignRequestedDocument({
   const [formError, setFormError] = useState("");
 
   function submit() {
-    if (!typedName.trim()) { setFormError("Type your full legal name."); return; }
-    if (!esignConsent) { setFormError("Check the E-SIGN consent box."); return; }
+    if (!typedName.trim()) { setFormError(s.errTypedName); return; }
+    if (!esignConsent) { setFormError(s.errConsent); return; }
     const sigPad = sigPadRef.current;
-    if (!sigPad?.hasSignature()) { setFormError("Draw your signature."); return; }
+    if (!sigPad?.hasSignature()) { setFormError(s.errSignature); return; }
     if (isCreditAuth) {
       if (!firstName.trim() || !lastName.trim() || !dob.trim() || !street.trim() || !city.trim() || !state.trim() || !zip.trim()) {
-        setFormError("All identity fields are required to sign this form.");
+        setFormError(s.errIdentity);
         return;
       }
     }
@@ -112,30 +191,30 @@ export function SignRequestedDocument({
 
       {isCreditAuth ? (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <SignField label="Legal first name" value={firstName} onChange={setFirstName} />
-          <SignField label="Legal last name" value={lastName} onChange={setLastName} />
-          <SignField label="Date of birth" value={dob} onChange={setDob} placeholder="YYYY-MM-DD" />
-          <SignField label="Street address" value={street} onChange={setStreet} />
-          <SignField label="City" value={city} onChange={setCity} />
+          <SignField label={s.legalFirstName} value={firstName} onChange={setFirstName} />
+          <SignField label={s.legalLastName} value={lastName} onChange={setLastName} />
+          <SignField label={s.dob} value={dob} onChange={setDob} placeholder="YYYY-MM-DD" />
+          <SignField label={s.street} value={street} onChange={setStreet} />
+          <SignField label={s.city} value={city} onChange={setCity} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <SignField label="State" value={state} onChange={(v) => setState(v.toUpperCase().slice(0, 2))} />
-            <SignField label="ZIP" value={zip} onChange={setZip} />
+            <SignField label={s.state} value={state} onChange={(v) => setState(v.toUpperCase().slice(0, 2))} />
+            <SignField label={s.zip} value={zip} onChange={setZip} />
           </div>
         </div>
       ) : null}
 
-      <SignField label="Type your full legal name" value={typedName} onChange={setTypedName} />
+      <SignField label={s.typedName} value={typedName} onChange={setTypedName} />
 
       <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, color: "#374151", cursor: "pointer" }}>
         <input type="checkbox" checked={esignConsent} onChange={(e) => setEsignConsent(e.target.checked)} style={{ marginTop: 2 }} />
-        I consent to use electronic records and signatures under the U.S. E-SIGN Act and UETA.
+        {s.esignConsent}
       </label>
 
       <div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 6 }}>Draw your signature</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 6 }}>{s.drawSignature}</div>
         <SignaturePad ref={sigPadRef} />
         <button type="button" onClick={() => sigPadRef.current?.clear()} style={{ marginTop: 8, fontSize: 12, background: "none", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 10px", cursor: "pointer" }}>
-          Clear signature
+          {s.clearSignature}
         </button>
       </div>
 
@@ -144,11 +223,11 @@ export function SignRequestedDocument({
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         {onCancel ? (
           <button type="button" onClick={onCancel} disabled={busy} style={{ fontSize: 13, padding: "8px 14px", borderRadius: 8, border: "1px solid #d1d5db", background: "none", cursor: "pointer" }}>
-            Cancel
+            {s.cancel}
           </button>
         ) : null}
         <button type="button" onClick={submit} disabled={busy} style={{ fontSize: 13, fontWeight: 700, padding: "8px 16px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer" }}>
-          {busy ? "Submitting…" : "Sign & submit"}
+          {busy ? s.signSubmitting : s.signSubmit}
         </button>
       </div>
     </div>

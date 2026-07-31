@@ -47,6 +47,7 @@ type LeadRow = {
   business_name?: string | null;
   status: string;
   outcome_status: string;
+  preferred_language: string;
   probability_status?: string | null;
   confidence?: string | null;
   one_next_step?: string | null;
@@ -368,6 +369,16 @@ export default function AdminAIUnderwriterLeadsPage() {
     await loadLeads();
   }
 
+  async function updateLeadLanguage(id: string, language: string) {
+    await call(`/admin/ai-underwriter-leads/${id}/language`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preferred_language: language }),
+    });
+    await refreshSelectedLead();
+    await loadLeads();
+  }
+
   function closeLead() {
     setSelectedId(null);
     setDetail(null);
@@ -674,6 +685,7 @@ export default function AdminAIUnderwriterLeadsPage() {
             onDownloadZip={() => downloadPackageZip(selectedId)}
             onPostNote={(content) => postLeadNote(selectedId, content)}
             onUpdateOutcomeStatus={(status) => updateOutcomeStatus(selectedId, status)}
+            onUpdateLanguage={(language) => updateLeadLanguage(selectedId, language)}
           />
         ) : null}
       </Modal>
@@ -716,6 +728,7 @@ function LeadDetailPanel({
   onDownloadZip,
   onPostNote,
   onUpdateOutcomeStatus,
+  onUpdateLanguage,
 }: {
   detail: LeadDetail | null;
   loading: boolean;
@@ -735,6 +748,7 @@ function LeadDetailPanel({
   onDownloadZip: () => Promise<void>;
   onPostNote: (content: string) => Promise<void>;
   onUpdateOutcomeStatus: (status: string) => Promise<void>;
+  onUpdateLanguage: (language: string) => Promise<void>;
 }) {
   const { t } = useTheme();
   const toast = useToast();
@@ -748,6 +762,7 @@ function LeadDetailPanel({
   const [notesPosting, setNotesPosting] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
   const [outcomeBusy, setOutcomeBusy] = useState(false);
+  const [languageBusy, setLanguageBusy] = useState(false);
   // Real send (via the operator's connected Gmail) — recipients, Drive picker,
   // and selected Drive files to attach.
   const [toEmails, setToEmails] = useState("");
@@ -923,6 +938,17 @@ function LeadDetailPanel({
     }
   }
 
+  async function changeLanguage(nextLanguage: string) {
+    setLanguageBusy(true);
+    try {
+      await onUpdateLanguage(nextLanguage);
+    } catch (error) {
+      toast.show(error instanceof Error ? error.message : "Could not update client language.");
+    } finally {
+      setLanguageBusy(false);
+    }
+  }
+
   return (
     <Card pad={0} style={{ minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <div style={{ flexShrink: 0, padding: 16, borderBottom: `1px solid ${t.line}`, display: "flex", justifyContent: "space-between", gap: 12 }}>
@@ -943,6 +969,18 @@ function LeadDetailPanel({
               <option value="submitted">Submitted</option>
               <option value="closed">Closed</option>
               <option value="denied">Denied</option>
+            </select>
+          ) : null}
+          {detail ? (
+            <select
+              value={detail.intake.preferred_language}
+              disabled={languageBusy}
+              onChange={(e) => changeLanguage(e.target.value)}
+              style={{ ...inputStyle(t), minHeight: 34, fontSize: 12, padding: "0 8px" }}
+              title="Client language"
+            >
+              <option value="en">English</option>
+              <option value="es">Español</option>
             </select>
           ) : null}
           <button style={qcBtn(t)} onClick={onClose}>Close</button>
@@ -1580,6 +1618,7 @@ type CreateLeadPayload = {
   monthly_rent?: number;
   estimated_credit_tier?: string;
   notify_client: boolean;
+  preferred_language: "en" | "es";
 };
 
 function CreateLeadModal({
@@ -1605,6 +1644,7 @@ function CreateLeadModal({
   const [monthlyRent, setMonthlyRent] = useState("");
   const [creditTier, setCreditTier] = useState("");
   const [notifyClient, setNotifyClient] = useState(false);
+  const [preferredLanguage, setPreferredLanguage] = useState<"en" | "es">("en");
   const [error, setError] = useState("");
 
   const isRE = variant === "real_estate";
@@ -1629,6 +1669,7 @@ function CreateLeadModal({
       monthly_rent: isRE ? num(monthlyRent) : undefined,
       estimated_credit_tier: isRE ? (creditTier.trim() || undefined) : undefined,
       notify_client: notifyClient,
+      preferred_language: preferredLanguage,
     });
   }
 
@@ -1639,12 +1680,21 @@ function CreateLeadModal({
           Create a lead on behalf of a client and start underwriting now. The client can log in later with this email (they receive a secure code by email).
         </p>
 
-        <div>
-          <label style={label("Type")}>Lead type</label>
-          <select value={variant} onChange={(e) => setVariant(e.target.value as "dealer" | "real_estate")} style={{ ...inputStyle(t), width: "100%" }}>
-            <option value="dealer">Dealer</option>
-            <option value="real_estate">Real estate</option>
-          </select>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <label style={label("Type")}>Lead type</label>
+            <select value={variant} onChange={(e) => setVariant(e.target.value as "dealer" | "real_estate")} style={{ ...inputStyle(t), width: "100%" }}>
+              <option value="dealer">Dealer</option>
+              <option value="real_estate">Real estate</option>
+            </select>
+          </div>
+          <div>
+            <label style={label("Language")}>Preferred language (client)</label>
+            <select value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value as "en" | "es")} style={{ ...inputStyle(t), width: "100%" }}>
+              <option value="en">English</option>
+              <option value="es">Español (Spanish)</option>
+            </select>
+          </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
