@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, useToast, Toast } from "@/components/design-system/primitives";
 import { Modal } from "@/components/design-system/Modal";
+import { Icon } from "@/components/design-system/Icon";
 import { TypingDots } from "@/components/design-system/TypingDots";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { api, ApiError } from "@/lib/api";
@@ -761,6 +762,7 @@ function LeadDetailPanel({
   const [zipBusy, setZipBusy] = useState(false);
   const [notesPosting, setNotesPosting] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [outcomeBusy, setOutcomeBusy] = useState(false);
   const [languageBusy, setLanguageBusy] = useState(false);
   // Real send (via the operator's connected Gmail) — recipients, Drive picker,
@@ -1039,7 +1041,7 @@ function LeadDetailPanel({
 
           {activeTab === "conversation" ? (
             cockpitResponse && cockpitAdapter ? (
-              <div style={{ flex: 1, minHeight: 460, display: "grid", gridTemplateColumns: "minmax(0,2fr) minmax(0,1fr)", gap: 14 }}>
+              <div style={{ flex: 1, minHeight: 460, position: "relative", overflow: "hidden" }}>
                 <LeadCockpit
                   response={cockpitResponse}
                   adapter={cockpitAdapter}
@@ -1048,7 +1050,53 @@ function LeadDetailPanel({
                   onResponse={onCockpitResponse}
                   onRequestRerun={onRerun}
                 />
-                <LeadNotesPanel notes={detail.notes ?? []} onPost={postNote} posting={notesPosting} error={notesError} />
+                <button
+                  type="button"
+                  onClick={() => setNotesOpen((v) => !v)}
+                  aria-label={notesOpen ? "Hide internal notes" : "Show internal notes"}
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    right: notesOpen ? 360 : 0,
+                    transform: "translateY(-50%)",
+                    zIndex: 21,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "10px 6px",
+                    borderRadius: "10px 0 0 10px",
+                    border: `1px solid ${t.line}`,
+                    borderRight: notesOpen ? `1px solid ${t.line}` : "none",
+                    background: t.surface,
+                    color: t.ink2,
+                    cursor: "pointer",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    transition: "right 200ms ease",
+                  }}
+                >
+                  <Icon name={notesOpen ? "chevR" : "chevL"} size={12} />
+                  <span style={{ writingMode: "vertical-rl", letterSpacing: 0.5 }}>
+                    Notes{detail.notes?.length ? ` (${detail.notes.length})` : ""}
+                  </span>
+                </button>
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                    width: 360,
+                    zIndex: 20,
+                    display: "grid",
+                    transform: notesOpen ? "translateX(0)" : "translateX(100%)",
+                    transition: "transform 200ms ease",
+                    boxShadow: notesOpen ? "-8px 0 24px rgba(0,0,0,0.18)" : "none",
+                  }}
+                >
+                  <LeadNotesPanel notes={detail.notes ?? []} onPost={postNote} posting={notesPosting} error={notesError} />
+                </div>
               </div>
             ) : (
               <span style={{ color: t.ink3 }}>Loading conversation…</span>

@@ -118,6 +118,8 @@ const ICON_PATHS: Record<string, string> = {
   rewards:   "M12 2l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z",
   upload:    "M12 21V9M7 14l5-5 5 5M5 3h14",
   paperclip: "M21 11l-9.5 9.5a5.5 5.5 0 01-7.78-7.78L13.4 3a4 4 0 015.66 5.66L9.5 18.22a2.5 2.5 0 01-3.54-3.54L14.62 5.99",
+  maximize:  "M8 3H5a2 2 0 00-2 2v3M16 3h3a2 2 0 012 2v3M8 21H5a2 2 0 01-2-2v-3M16 21h3a2 2 0 002-2v-3",
+  minimize:  "M9 3v3a2 2 0 01-2 2H4M15 3v3a2 2 0 002 2h3M9 21v-3a2 2 0 00-2-2H4M15 21v-3a2 2 0 012-2h3",
 };
 
 export interface IconProps extends Omit<SVGProps<SVGSVGElement>, "stroke"> {

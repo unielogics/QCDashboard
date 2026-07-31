@@ -18,6 +18,7 @@ export function FileDropzone({
   title = "Drag files here or click to browse",
   hint,
   children,
+  compact = false,
 }: {
   onFiles: (files: File[]) => void;
   disabled?: boolean;
@@ -26,6 +27,8 @@ export function FileDropzone({
   title?: string;
   hint?: ReactNode;
   children?: ReactNode;
+  /** Shrinks padding/icon/gap ~30% for tight layouts (e.g. beside a chat composer). */
+  compact?: boolean;
 }) {
   const { t } = useTheme();
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -68,8 +71,8 @@ export function FileDropzone({
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        gap: 6,
-        padding: "18px 16px",
+        gap: compact ? 4 : 6,
+        padding: compact ? "12px 16px" : "18px 16px",
         borderRadius: 12,
         border: `1.5px dashed ${dragging ? t.brand : t.line}`,
         background: dragging ? t.brandSoft : t.surface2,
@@ -82,7 +85,7 @@ export function FileDropzone({
     >
       {children ?? (
         <>
-          <Icon name="upload" size={18} />
+          <Icon name="upload" size={compact ? 14 : 18} />
           <span style={{ fontSize: 13, fontWeight: 700, color: t.ink2 }}>{title}</span>
           {hint ? <span style={{ fontSize: 12 }}>{hint}</span> : null}
         </>

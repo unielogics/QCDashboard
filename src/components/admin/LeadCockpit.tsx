@@ -104,7 +104,9 @@ export function LeadCockpit({
   const [uploading, setUploading] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [status, setStatus] = useState("");
+  const [fullScreen, setFullScreen] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // Signature of the last server thread we seeded, so we re-sync when the
   // parent supplies a genuinely different/newer message set (e.g. after reopen
   // or re-run) instead of keeping the stale first-mount snapshot.
@@ -133,6 +135,23 @@ export function LeadCockpit({
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [chat, reviewing]);
+
+  // Grow the composer with multi-line input, up to the existing 160px cap.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [chatText]);
+
+  useEffect(() => {
+    if (!fullScreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFullScreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fullScreen]);
 
   const result = useMemo(
     () => (current.intake?.result_snapshot as Record<string, unknown> | null) ?? current.latest_review?.result ?? null,
@@ -253,13 +272,28 @@ export function LeadCockpit({
   return (
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(0,0.85fr)", gap: 14, minHeight: 0, height: "100%" }}>
       {/* CHAT + UPLOAD */}
-      <section style={{ display: "flex", flexDirection: "column", minHeight: 0, border: `1px solid ${t.line}`, borderRadius: 14, background: t.surface2, overflow: "hidden" }}>
+      <section
+        style={
+          fullScreen
+            ? { display: "flex", flexDirection: "column", minHeight: 0, border: `1px solid ${t.line}`, borderRadius: 0, background: t.surface2, overflow: "hidden", position: "fixed", inset: 0, zIndex: 400, height: "100vh", width: "100vw" }
+            : { display: "flex", flexDirection: "column", minHeight: 0, border: `1px solid ${t.line}`, borderRadius: 14, background: t.surface2, overflow: "hidden" }
+        }
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", borderBottom: `1px solid ${t.line}` }}>
           <Icon name="spark" size={14} />
           <strong style={{ color: t.ink, fontSize: 13 }}>Underwriter conversation</strong>
-          {fundability ? (
-            <span style={{ marginLeft: "auto", ...pill(t, bannerTone(fundability.tone)) }}>{fundability.label}</span>
-          ) : null}
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            {fundability ? <span style={pill(t, bannerTone(fundability.tone))}>{fundability.label}</span> : null}
+            <button
+              type="button"
+              onClick={() => setFullScreen((v) => !v)}
+              aria-label={fullScreen ? "Exit full screen" : "Full screen"}
+              title={fullScreen ? "Exit full screen" : "Full screen"}
+              style={{ all: "unset", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, borderRadius: 8, color: t.ink3 }}
+            >
+              <Icon name={fullScreen ? "minimize" : "maximize"} size={14} />
+            </button>
+          </div>
         </div>
 
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -308,9 +342,10 @@ export function LeadCockpit({
         ) : null}
 
         <div style={{ padding: "10px 14px", borderTop: `1px solid ${t.line}`, display: "flex", flexDirection: "column", gap: 8 }}>
-          <FileDropzone onFiles={addFiles} disabled={uploading || busy} title="Drop files or click to attach" />
+          <FileDropzone onFiles={addFiles} disabled={uploading || busy} title="Drop files or click to attach" compact />
           <div style={{ display: "flex", gap: 8 }}>
             <textarea
+              ref={textareaRef}
               value={chatText}
               onChange={(e) => setChatText(e.target.value)}
               onKeyDown={(e) => {
@@ -322,7 +357,7 @@ export function LeadCockpit({
               }}
               rows={1}
               placeholder="Ask the AI underwriter…  (Enter to send, Shift+Enter for a new line)"
-              style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, fontSize: 13, outline: "none", resize: "vertical", minHeight: 40, maxHeight: 160, fontFamily: "inherit", lineHeight: 1.45 }}
+              style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, fontSize: 13, outline: "none", resize: "none", minHeight: 40, maxHeight: 160, overflowY: "auto", fontFamily: "inherit", lineHeight: 1.45 }}
             />
             <button
               type="button"
