@@ -19,6 +19,22 @@ import {
   type IntelligenceModel,
   type IntelligenceValue,
 } from "@/lib/intake";
+import {
+  CashFlowBars,
+  chartCard,
+  chartCardWide,
+  chartEmptyState,
+  chartGrid,
+  chartHeader,
+  EquityChart,
+  EvidenceCoverageTable,
+  GaugeChart,
+  IntelligenceKpi,
+  intelligenceTables,
+  MiniBarChart,
+  MissingTable,
+  RiskStrengthTable,
+} from "@/components/intake/IntelligenceCharts";
 
 /**
  * Transport for the admin cockpit. The parent injects Clerk-authenticated calls
@@ -47,13 +63,6 @@ export type LeadCockpitAdapter = {
 
 type ChatLine = { id: string; role: "assistant" | "user"; content: string; ts?: string };
 type QueuedFile = { id: string; file: File; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
-
-const SOURCE_LABEL: Record<IntelligenceValue["source"], string> = {
-  verified: "Verified",
-  extracted: "Extracted",
-  estimated: "Estimated",
-  unavailable: "—",
-};
 
 /**
  * Interactive admin cockpit for an AI Underwriter lead: a live chat + file
@@ -364,7 +373,7 @@ export function LeadCockpit({
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
                 {[intelligence.requestedAmount, intelligence.annualizedRevenue, intelligence.dscr, intelligence.ltv, intelligence.equity, intelligence.debtBurden].map((m, i) => (
-                  <MetricTile key={i} metric={m} />
+                  <IntelligenceKpi key={i} metric={m} />
                 ))}
               </div>
 
@@ -375,46 +384,71 @@ export function LeadCockpit({
                 </div>
               ) : null}
 
-              {/* Full coverage / strengths / risks / file tables live in the
-                  Workspace → Overview and Documents sub-tabs. This panel stays a
-                  compact glance (readiness + metric tiles + next step) while chatting. */}
-              <p style={{ margin: 0, color: t.ink3, fontSize: 11, lineHeight: 1.4 }}>
-                See the Workspace tab for full evidence coverage, missing items, and documents.
-              </p>
+              <div style={chartGrid}>
+                <div style={chartCard}>
+                  <div style={chartHeader}>
+                    <strong>Debt service coverage</strong>
+                  </div>
+                  <GaugeChart value={intelligence.dscr.raw} />
+                </div>
+
+                <div style={chartCard}>
+                  <div style={chartHeader}>
+                    <strong>Real estate equity / LTV</strong>
+                  </div>
+                  <EquityChart equity={intelligence.equity.raw} ltv={intelligence.ltv.raw} />
+                </div>
+
+                <div style={chartCardWide}>
+                  <div style={chartHeader}>
+                    <strong>Cash flow stack</strong>
+                    <span style={{ color: "#8FA0B8", fontSize: 12 }}>Revenue / cash flow / debt service</span>
+                  </div>
+                  <CashFlowBars bars={intelligence.cashFlowBars} />
+                </div>
+
+                <div style={chartCard}>
+                  <div style={chartHeader}>
+                    <strong>Year-to-year performance</strong>
+                    <span style={{ color: "#8FA0B8", fontSize: 12 }}>Tax / P&amp;L trend</span>
+                  </div>
+                  <MiniBarChart series={intelligence.yearlySeries} emptyLabel="Awaiting tax returns and YTD P&L figures." />
+                </div>
+
+                <div style={chartCard}>
+                  <div style={chartHeader}>
+                    <strong>Month-to-month cash flow</strong>
+                    <span style={{ color: "#8FA0B8", fontSize: 12 }}>Bank statement trend</span>
+                  </div>
+                  <MiniBarChart series={intelligence.monthlySeries} emptyLabel="Awaiting six months of main operating bank statements." />
+                </div>
+              </div>
+
+              <div style={intelligenceTables}>
+                <div style={chartCard}>
+                  <div style={chartHeader}>
+                    <strong>Evidence coverage</strong>
+                    <span style={{ color: "#8FA0B8", fontSize: 12 }}>{current.files.length} files</span>
+                  </div>
+                  <EvidenceCoverageTable rows={intelligence.coverage} />
+                </div>
+                <div style={chartCard}>
+                  <div style={chartHeader}>
+                    <strong>Still needed</strong>
+                    <span style={{ color: "#8FA0B8", fontSize: 12 }}>{intelligence.missing.length} items</span>
+                  </div>
+                  <MissingTable rows={intelligence.missing} />
+                </div>
+              </div>
+
+              <div style={intelligenceTables}>
+                <RiskStrengthTable title="Strengths" rows={intelligence.strengths} tone="green" />
+                <RiskStrengthTable title="Risks" rows={intelligence.risks} tone="amber" />
+              </div>
             </>
           )}
         </div>
       </section>
-    </div>
-  );
-}
-
-function MetricTile({ metric }: { metric: IntelligenceValue }) {
-  const { t } = useTheme();
-  const unavailable = metric.source === "unavailable";
-  return (
-    <div style={{ border: `1px solid ${t.line}`, borderRadius: 10, padding: "9px 11px", background: t.surface2 }}>
-      <div style={{ color: t.ink3, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4 }}>{metric.label}</div>
-      <div style={{ color: unavailable ? t.ink3 : t.ink, fontSize: unavailable && metric.hint ? 13 : 16, fontWeight: 800, marginTop: 3 }}>{metric.value}</div>
-      {/* When a number can't be computed, show what's needed instead of a bare source label. */}
-      <div style={{ color: t.ink4, fontSize: 10, marginTop: 2 }}>{unavailable && metric.hint ? metric.hint : SOURCE_LABEL[metric.source]}</div>
-    </div>
-  );
-}
-
-function TwoColList({ title, items, tone }: { title: string; items: string[]; tone: "profit" | "warn" }) {
-  const { t } = useTheme();
-  const color = tone === "profit" ? t.profit : t.warn;
-  return (
-    <div>
-      <div style={sectionLabel(t)}>{title}</div>
-      <ul style={{ margin: "6px 0 0", paddingLeft: 16, display: "flex", flexDirection: "column", gap: 4 }}>
-        {items.slice(0, 6).map((s, i) => (
-          <li key={i} style={{ color: t.ink2, fontSize: 12, lineHeight: 1.45 }}>
-            <span style={{ color }}>•</span> {s}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

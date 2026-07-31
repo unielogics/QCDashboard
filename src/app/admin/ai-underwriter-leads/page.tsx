@@ -31,6 +31,7 @@ import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage } from "
 import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
 import { LeadProgramFitPanel } from "@/components/admin/LeadProgramFitPanel";
 import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
+import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import type { IntakeResponse } from "@/lib/intake";
 import { useUI } from "@/store/ui";
 
@@ -45,6 +46,7 @@ type LeadRow = {
   phone?: string | null;
   business_name?: string | null;
   status: string;
+  outcome_status: string;
   probability_status?: string | null;
   confidence?: string | null;
   one_next_step?: string | null;
@@ -100,6 +102,7 @@ type LeadDetail = {
   messages?: Array<{ id: string; role: string; content: string; created_at: string }>;
   artifacts?: Artifact[];
   email_sends?: EmailSend[];
+  notes?: LeadNote[];
 };
 
 type Artifact = {
@@ -344,6 +347,25 @@ export default function AdminAIUnderwriterLeadsPage() {
 
   async function refreshSelectedLead() {
     if (selectedId) await openLead(selectedId);
+  }
+
+  async function postLeadNote(id: string, content: string) {
+    await call(`/admin/ai-underwriter-leads/${id}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    await refreshSelectedLead();
+  }
+
+  async function updateOutcomeStatus(id: string, outcomeStatus: string) {
+    await call(`/admin/ai-underwriter-leads/${id}/outcome-status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ outcome_status: outcomeStatus }),
+    });
+    await refreshSelectedLead();
+    await loadLeads();
   }
 
   function closeLead() {
@@ -650,6 +672,8 @@ export default function AdminAIUnderwriterLeadsPage() {
             cockpitAdapter={cockpitAdapter}
             onCockpitResponse={() => { /* cockpit owns its live state; refresh the list lazily on close */ }}
             onDownloadZip={() => downloadPackageZip(selectedId)}
+            onPostNote={(content) => postLeadNote(selectedId, content)}
+            onUpdateOutcomeStatus={(status) => updateOutcomeStatus(selectedId, status)}
           />
         ) : null}
       </Modal>
@@ -690,6 +714,8 @@ function LeadDetailPanel({
   cockpitAdapter,
   onCockpitResponse,
   onDownloadZip,
+  onPostNote,
+  onUpdateOutcomeStatus,
 }: {
   detail: LeadDetail | null;
   loading: boolean;
@@ -707,6 +733,8 @@ function LeadDetailPanel({
   cockpitAdapter: LeadCockpitAdapter | null;
   onCockpitResponse: (r: IntakeResponse) => void;
   onDownloadZip: () => Promise<void>;
+  onPostNote: (content: string) => Promise<void>;
+  onUpdateOutcomeStatus: (status: string) => Promise<void>;
 }) {
   const { t } = useTheme();
   const toast = useToast();
@@ -717,6 +745,9 @@ function LeadDetailPanel({
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState("");
   const [zipBusy, setZipBusy] = useState(false);
+  const [notesPosting, setNotesPosting] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
+  const [outcomeBusy, setOutcomeBusy] = useState(false);
   // Real send (via the operator's connected Gmail) — recipients, Drive picker,
   // and selected Drive files to attach.
   const [toEmails, setToEmails] = useState("");
@@ -869,6 +900,29 @@ function LeadDetailPanel({
     }
   }
 
+  async function postNote(content: string) {
+    setNotesPosting(true);
+    setNotesError(null);
+    try {
+      await onPostNote(content);
+    } catch (error) {
+      setNotesError(error instanceof Error ? error.message : "Could not post the note.");
+    } finally {
+      setNotesPosting(false);
+    }
+  }
+
+  async function changeOutcomeStatus(nextStatus: string) {
+    setOutcomeBusy(true);
+    try {
+      await onUpdateOutcomeStatus(nextStatus);
+    } catch (error) {
+      toast.show(error instanceof Error ? error.message : "Could not update outcome status.");
+    } finally {
+      setOutcomeBusy(false);
+    }
+  }
+
   return (
     <Card pad={0} style={{ minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <div style={{ flexShrink: 0, padding: 16, borderBottom: `1px solid ${t.line}`, display: "flex", justifyContent: "space-between", gap: 12 }}>
@@ -878,7 +932,21 @@ function LeadDetailPanel({
             {detail ? `${variantLabel(detail.intake.variant)} · ${detail.intake.email}` : "Loading"}
           </p>
         </div>
-        <button style={qcBtn(t)} onClick={onClose}>Close</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {detail ? (
+            <select
+              value={detail.intake.outcome_status}
+              disabled={outcomeBusy}
+              onChange={(e) => changeOutcomeStatus(e.target.value)}
+              style={{ ...inputStyle(t), minHeight: 34, fontSize: 12, padding: "0 8px" }}
+            >
+              <option value="submitted">Submitted</option>
+              <option value="closed">Closed</option>
+              <option value="denied">Denied</option>
+            </select>
+          ) : null}
+          <button style={qcBtn(t)} onClick={onClose}>Close</button>
+        </div>
       </div>
       {loading || !detail ? (
         <div style={{ padding: 20, color: t.ink3 }}>Loading lead detail...</div>
@@ -933,7 +1001,7 @@ function LeadDetailPanel({
 
           {activeTab === "conversation" ? (
             cockpitResponse && cockpitAdapter ? (
-              <div style={{ flex: 1, minHeight: 460, display: "flex" }}>
+              <div style={{ flex: 1, minHeight: 460, display: "grid", gridTemplateColumns: "minmax(0,2fr) minmax(0,1fr)", gap: 14 }}>
                 <LeadCockpit
                   response={cockpitResponse}
                   adapter={cockpitAdapter}
@@ -942,6 +1010,7 @@ function LeadDetailPanel({
                   onResponse={onCockpitResponse}
                   onRequestRerun={onRerun}
                 />
+                <LeadNotesPanel notes={detail.notes ?? []} onPost={postNote} posting={notesPosting} error={notesError} />
               </div>
             ) : (
               <span style={{ color: t.ink3 }}>Loading conversation…</span>

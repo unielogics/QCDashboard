@@ -71,6 +71,15 @@ const VENDOR_NAV: NavItem[] = [
   { href: "/profile", label: "Profile", icon: "user" },
 ];
 
+// DEALER_PARTNER_NAV — explicit allow-list for external loan-referral
+// partners, scoped to the dealer AI-intake tool only (no book-of-business
+// like Role.BROKER's AGENT_NAV has). Same deny-by-default philosophy as
+// CLIENT_NAV above.
+const DEALER_PARTNER_NAV: NavItem[] = [
+  { href: "/broker/ai-underwriter-leads", label: "My Leads", icon: "spark" },
+  { href: "/profile", label: "Profile", icon: "user" },
+];
+
 // CLIENT_NAV — explicit allow-list for borrowers. Previously CLIENT fell
 // through to OPERATOR_NAV below and was excluded only from items that
 // declared a `roles` array — meaning a future operator-only nav item added
@@ -118,6 +127,7 @@ const ROLE_LABEL: Record<string, string> = {
   loan_exec: "Underwriter",
   client: "Client",
   vendor: "Vendor",
+  dealer_partner: "Dealer Partner",
 };
 
 export default function Sidebar() {
@@ -143,10 +153,12 @@ export default function Sidebar() {
     : user?.role === Role.REGIONAL_MANAGER ? REGIONAL_MANAGER_NAV
     : user?.role === Role.VENDOR ? VENDOR_NAV
     : user?.role === Role.CLIENT ? CLIENT_NAV
+    : user?.role === Role.DEALER_PARTNER ? DEALER_PARTNER_NAV
     : OPERATOR_NAV;
   const items = NAV.filter((n) => !n.roles || (user && n.roles.includes(user.role as Role)));
-  // Insert "Inbox" after Elara Inbox (or at top) for mailbox owners, non-clients.
-  if (user && user.role !== Role.CLIENT && googleConn?.gmail_connected) {
+  // Insert "Inbox" after Elara Inbox (or at top) for mailbox owners — never
+  // for clients or dealer partners, both thin allow-listed roles.
+  if (user && user.role !== Role.CLIENT && user.role !== Role.DEALER_PARTNER && googleConn?.gmail_connected) {
     const inboxItem: NavItem = { href: "/inbox", label: "Inbox", icon: "mail" };
     if (!items.some((n) => n.href === "/inbox")) {
       const anchor = items.findIndex((n) => n.href === "/ai-inbox");

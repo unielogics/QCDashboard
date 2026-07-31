@@ -45,6 +45,11 @@ export default function TopBar() {
   const setAiChatOpen = useUI((s) => s.setAiOpen);
 
   const isClient = user?.role === Role.CLIENT;
+  // Dealer partners are a thin external role with no per-loan/AI-task
+  // workflows of their own — suppress the operator Elara toggle for them too
+  // (but they're not borrowers, so the "borrower-view" badge below stays
+  // client-only).
+  const isDealerPartner = user?.role === Role.DEALER_PARTNER;
   const pendingTasks = tasks.filter((task) => task.status === "pending").length;
   const notifications = notificationData?.items ?? [];
   const unreadCount = notificationData?.unread_count ?? 0;
@@ -346,9 +351,10 @@ export default function TopBar() {
           )}
         </div>
 
-        {/* Elara toggle — only for non-client roles, with pending-task badge.
-            Account / sign-out controls live in the sidebar footer now. */}
-        {!isClient && (
+        {/* Elara toggle — only for non-client, non-dealer-partner roles, with
+            pending-task badge. Account / sign-out controls live in the
+            sidebar footer now. */}
+        {!isClient && !isDealerPartner && (
           <button
             onClick={() => setAiOpen(!aiOpen)}
             style={{

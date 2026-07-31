@@ -1,0 +1,459 @@
+"use client";
+
+// Dealer-partner ("broker") portal: start dealer AI-intake applications on
+// behalf of your own clients, chat/upload/run-review on them, and leave
+// internal notes with the underwriting team. Curated subset of the admin
+// "AI Underwriter Leads" cockpit — no credit-pull, program-fit, vendor-email,
+// exports, or client-thread reply here; those stay admin-only. Every fetch in
+// this file targets /broker/ai-underwriter-leads* only, by construction.
+
+import { useMemo, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { useTheme } from "@/components/design-system/ThemeProvider";
+import { Card, Pill } from "@/components/design-system/primitives";
+import { Modal } from "@/components/design-system/Modal";
+import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { api, ApiError } from "@/lib/api";
+import { Role } from "@/lib/enums.generated";
+import { useCurrentUser } from "@/hooks/useApi";
+import { LeadCockpit, type LeadCockpitAdapter } from "@/components/admin/LeadCockpit";
+import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
+import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
+import type { IntakeResponse } from "@/lib/intake";
+
+type LeadRow = {
+  id: string;
+  bucket_id: string;
+  bucket_name: string;
+  full_name: string;
+  email: string;
+  phone?: string | null;
+  business_name?: string | null;
+  status: string;
+  outcome_status: string;
+  probability_status?: string | null;
+  one_next_step?: string | null;
+  file_count: number;
+  missing_required_count: number;
+  updated_at: string;
+};
+
+type LeadPage = { items: LeadRow[]; total: number; limit: number; offset: number };
+
+type RequestedDoc = { id: string; name: string; description?: string | null; required: boolean; status: string };
+type UploadedFile = {
+  id: string;
+  requested_document_id?: string | null;
+  parent_zip_file_id?: string | null;
+  zip_entry_path?: string | null;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+  status: string;
+  created_at: string;
+};
+
+type LeadDetail = {
+  intake: LeadRow & {
+    loan_purpose?: string | null;
+    result_snapshot?: Record<string, unknown> | null;
+  };
+  requested_documents: RequestedDoc[];
+  files: UploadedFile[];
+  latest_review?: { status: string; result?: Record<string, unknown> | null; error?: string | null } | null;
+  messages?: Array<{ id: string; role: string; content: string; created_at: string }>;
+  notes?: LeadNote[];
+};
+
+type CreateLeadPayload = {
+  full_name: string;
+  email: string;
+  phone?: string;
+  business_name?: string;
+  notify_client: boolean;
+};
+
+const OUTCOME_COLUMNS: Array<{ key: "submitted" | "closed" | "denied"; label: string }> = [
+  { key: "submitted", label: "Submitted" },
+  { key: "closed", label: "Closed" },
+  { key: "denied", label: "Denied" },
+];
+
+export default function BrokerAIUnderwriterLeadsPage() {
+  const { t } = useTheme();
+  const { getToken } = useAuth();
+  const { data: me, isLoading: meLoading } = useCurrentUser();
+
+  const [rows, setRows] = useState<LeadRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<LeadDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [rerunOpen, setRerunOpen] = useState(false);
+  const [notesPosting, setNotesPosting] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
+
+  async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const token = await getToken();
+    return api<T>(path, { ...init, authToken: token ?? undefined });
+  }
+
+  async function loadLeads() {
+    setLoading(true);
+    setNotice("");
+    try {
+      const data = await call<LeadPage>("/broker/ai-underwriter-leads?limit=100&offset=0");
+      setRows(data.items);
+      setTotal(data.total);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Leads are unavailable.");
+    } finally {
+      setLoading(false);
+      setLoaded(true);
+    }
+  }
+
+  async function openLead(id: string) {
+    setSelectedId(id);
+    setDetailLoading(true);
+    setNotice("");
+    try {
+      const data = await call<LeadDetail>(`/broker/ai-underwriter-leads/${id}`);
+      setDetail(data);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Lead detail is unavailable.");
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  function closeLead() {
+    setSelectedId(null);
+    setDetail(null);
+    loadLeads().catch(() => undefined);
+  }
+
+  async function refreshSelectedLead() {
+    if (selectedId) await openLead(selectedId);
+  }
+
+  async function createLead(payload: CreateLeadPayload) {
+    setCreating(true);
+    setNotice("");
+    try {
+      const res = await call<LeadDetail>("/broker/ai-underwriter-leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setCreateOpen(false);
+      await loadLeads();
+      await openLead(res.intake.id);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        const body = (error.body as { detail?: { intake_id?: string; message?: string } } | undefined)?.detail;
+        if (body?.intake_id) {
+          setCreateOpen(false);
+          setNotice(body.message || "An active lead already exists for this email — opening it.");
+          await openLead(body.intake_id);
+          return;
+        }
+      }
+      setNotice(error instanceof Error ? error.message : "Could not create the lead.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function postNote(content: string) {
+    if (!selectedId) return;
+    setNotesPosting(true);
+    setNotesError(null);
+    try {
+      await call(`/broker/ai-underwriter-leads/${selectedId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      await refreshSelectedLead();
+    } catch (error) {
+      setNotesError(error instanceof Error ? error.message : "Could not post the note.");
+    } finally {
+      setNotesPosting(false);
+    }
+  }
+
+  function openRerun() {
+    if (selectedId) setRerunOpen(true);
+  }
+
+  async function startRerun(): Promise<{ review_id: string }> {
+    if (!selectedId) throw new Error("No lead selected.");
+    return call<{ review_id: string }>(`/broker/ai-underwriter-leads/${selectedId}/run-review`, { method: "POST" });
+  }
+
+  async function pollRerun(reviewId: string) {
+    if (!selectedId) throw new Error("No lead selected.");
+    return call<ReviewProgress>(`/broker/ai-underwriter-leads/${selectedId}/review-progress?review_id=${reviewId}`);
+  }
+
+  async function onRerunDone(completed: boolean) {
+    if (completed) {
+      await refreshSelectedLead();
+      await loadLeads();
+      setNotice("AI review re-run complete.");
+    }
+  }
+
+  const cockpitResponse = useMemo<IntakeResponse | null>(() => {
+    if (!detail) return null;
+    return {
+      token: null,
+      session_token: null,
+      intake: {
+        id: detail.intake.id,
+        bucket_id: detail.intake.bucket_id,
+        full_name: detail.intake.full_name,
+        email: detail.intake.email,
+        phone: detail.intake.phone ?? null,
+        business_name: detail.intake.business_name ?? null,
+        loan_purpose: detail.intake.loan_purpose ?? null,
+        status: detail.intake.status,
+        result_snapshot: detail.intake.result_snapshot ?? null,
+      },
+      requested_documents: detail.requested_documents,
+      files: detail.files,
+      latest_review: detail.latest_review ?? null,
+      messages: detail.messages,
+      assistant_message: "",
+      widget: null,
+    } as unknown as IntakeResponse;
+  }, [detail]);
+
+  const cockpitAdapter = useMemo<LeadCockpitAdapter | null>(() => {
+    if (!selectedId) return null;
+    const base = `/broker/ai-underwriter-leads/${selectedId}`;
+    const post = <T,>(path: string, body?: unknown) =>
+      call<T>(`${base}${path}`, {
+        method: "POST",
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    return {
+      sendChat: (message: string) => post<IntakeResponse>("/chat", { message }),
+      uploadInit: (payload) => post("/files/upload-init", payload),
+      uploadComplete: async (fileId: string) => {
+        await post("/files/complete", { file_id: fileId });
+      },
+      runReview: () => post<IntakeResponse>("/run-review"),
+      reload: () => call<IntakeResponse>(base),
+      // Not offered to dealer partners — the broker page never renders a UI
+      // element that would call these, so throwing is safe (never invoked).
+      loadClientThread: () => {
+        throw new Error("Client thread is not available in the broker portal.");
+      },
+      replyClientThread: () => {
+        throw new Error("Client thread is not available in the broker portal.");
+      },
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  if (meLoading) {
+    return <main style={{ padding: 24 }}>Loading…</main>;
+  }
+  if (me && me.role !== Role.DEALER_PARTNER) {
+    return (
+      <main style={{ padding: 24 }}>
+        <Card pad={20}>This page is only available to dealer partner accounts.</Card>
+      </main>
+    );
+  }
+  if (!loaded && !loading) {
+    loadLeads().catch(() => undefined);
+  }
+
+  const columns = OUTCOME_COLUMNS.map((col) => ({
+    ...col,
+    rows: rows.filter((r) => r.outcome_status === col.key),
+  }));
+
+  return (
+    <main style={{ padding: 24, display: "grid", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 22, color: t.ink }}>My Leads</h1>
+          <p style={{ margin: "4px 0 0", color: t.ink3, fontSize: 13 }}>{total} leads on file</p>
+        </div>
+        <button type="button" style={qcBtnPrimary(t)} onClick={() => setCreateOpen(true)}>
+          New lead
+        </button>
+      </div>
+
+      {notice ? <Card pad={12}><span style={{ color: t.ink2, fontSize: 13 }}>{notice}</span></Card> : null}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14 }}>
+        {columns.map((col) => (
+          <Card key={col.key} pad={14}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <strong style={{ color: t.ink, fontSize: 13 }}>{col.label}</strong>
+              <Pill bg={t.surface2} color={t.ink3}>{col.rows.length}</Pill>
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {col.rows.length === 0 ? (
+                <span style={{ color: t.ink3, fontSize: 12.5 }}>No leads here yet.</span>
+              ) : (
+                col.rows.map((row) => (
+                  <button
+                    key={row.id}
+                    type="button"
+                    onClick={() => openLead(row.id)}
+                    style={{
+                      textAlign: "left",
+                      border: `1px solid ${t.line}`,
+                      borderRadius: 12,
+                      padding: 12,
+                      background: t.surface2,
+                      cursor: "pointer",
+                      display: "grid",
+                      gap: 4,
+                    }}
+                  >
+                    <strong style={{ color: t.ink, fontSize: 13 }}>{row.business_name || row.full_name}</strong>
+                    <span style={{ color: t.ink3, fontSize: 12 }}>{row.full_name} · {row.email}</span>
+                    <span style={{ color: t.ink3, fontSize: 12 }}>
+                      {row.file_count} files · {row.missing_required_count} missing
+                    </span>
+                    <span style={{ color: t.ink2, fontSize: 12 }}>{row.probability_status || row.one_next_step || "Awaiting AI screen"}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <Modal open={!!selectedId} onClose={closeLead} size="stage" bodyStyle={{ display: "flex", flexDirection: "column" }}>
+        {selectedId ? (
+          detailLoading || !cockpitResponse || !cockpitAdapter ? (
+            <div style={{ padding: 24, color: t.ink3 }}>Loading lead…</div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateRows: "auto 1fr", gap: 12, height: "100%", padding: 16, minHeight: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div>
+                  <h2 style={{ margin: 0, color: t.ink, fontSize: 18 }}>{detail?.intake.business_name || detail?.intake.full_name}</h2>
+                  <span style={{ color: t.ink3, fontSize: 12 }}>{detail?.intake.email}</span>
+                </div>
+                <Pill bg={t.surface2} color={t.ink2}>{detail?.intake.outcome_status}</Pill>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,2fr) minmax(0,1fr)", gap: 14, minHeight: 0 }}>
+                <LeadCockpit response={cockpitResponse} adapter={cockpitAdapter} onRequestRerun={openRerun} />
+                <LeadNotesPanel notes={detail?.notes ?? []} onPost={postNote} posting={notesPosting} error={notesError} />
+              </div>
+            </div>
+          )
+        ) : null}
+      </Modal>
+
+      <RunReviewDialog open={rerunOpen} onClose={() => setRerunOpen(false)} onStart={startRerun} poll={pollRerun} onDone={onRerunDone} />
+
+      {createOpen ? (
+        <CreateBrokerLeadModal onClose={() => setCreateOpen(false)} onCreate={createLead} creating={creating} />
+      ) : null}
+    </main>
+  );
+}
+
+function CreateBrokerLeadModal({
+  onClose,
+  onCreate,
+  creating,
+}: {
+  onClose: () => void;
+  onCreate: (payload: CreateLeadPayload) => void | Promise<void>;
+  creating: boolean;
+}) {
+  const { t } = useTheme();
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [notifyClient, setNotifyClient] = useState(false);
+  const [error, setError] = useState("");
+
+  const label = (text: string) => ({ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: 1, marginBottom: 4, display: "block" });
+
+  function submit() {
+    if (!fullName.trim()) { setError("Client name is required."); return; }
+    if (!email.trim() || !email.includes("@")) { setError("A valid client email is required."); return; }
+    setError("");
+    onCreate({
+      full_name: fullName.trim(),
+      email: email.trim(),
+      phone: phone.trim() || undefined,
+      business_name: businessName.trim() || undefined,
+      notify_client: notifyClient,
+    });
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Create a new lead" size="md">
+      <div style={{ display: "grid", gap: 12, padding: 4 }}>
+        <p style={{ margin: 0, color: t.ink3, fontSize: 13, lineHeight: 1.45 }}>
+          Create a lead on behalf of your client and start underwriting now. Your client can log in later with this
+          email — they receive a secure code by email.
+        </p>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <label style={label("Name")}>Client full name *</label>
+            <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" style={{ ...inputStyle(t), width: "100%" }} />
+          </div>
+          <div>
+            <label style={label("Email")}>Client email *</label>
+            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" style={{ ...inputStyle(t), width: "100%" }} />
+          </div>
+          <div>
+            <label style={label("Phone")}>Phone</label>
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" style={{ ...inputStyle(t), width: "100%" }} />
+          </div>
+          <div>
+            <label style={label("Business")}>Business name</label>
+            <input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Dealership / business" style={{ ...inputStyle(t), width: "100%" }} />
+          </div>
+        </div>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: t.ink2, cursor: "pointer" }}>
+          <input type="checkbox" checked={notifyClient} onChange={(e) => setNotifyClient(e.target.checked)} />
+          Email the client a secure login/resume link now
+        </label>
+
+        {error ? <div style={{ color: t.danger, fontSize: 12 }}>{error}</div> : null}
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
+          <button style={qcBtn(t)} onClick={onClose} disabled={creating}>Cancel</button>
+          <button style={qcBtnPrimary(t)} onClick={submit} disabled={creating}>
+            {creating ? "Creating…" : "Create lead"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function inputStyle(t: ReturnType<typeof useTheme>["t"]) {
+  return {
+    minHeight: 42,
+    border: `1px solid ${t.line}`,
+    borderRadius: 12,
+    background: t.surface,
+    color: t.ink,
+    padding: "0 12px",
+    outline: "none",
+  };
+}
