@@ -9,6 +9,8 @@ export interface User {
   email: string;
   name: string;
   role: Role;
+  // Only ever set for Role.DEALER_PARTNER; drives the AppShell NDA gate.
+  nda_signed_at?: string | null;
 }
 
 export interface Loan {

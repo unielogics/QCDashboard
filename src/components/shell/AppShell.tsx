@@ -9,11 +9,13 @@ import AIRail from "./AIRail";
 import GlobalSearch from "./GlobalSearch";
 import { useUI, readPersistedSidebar } from "@/store/ui";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { useCurrentUser } from "@/hooks/useApi";
+import { useCurrentUser, useNdaStatus } from "@/hooks/useApi";
 import { useRecordPendingConsent } from "@/hooks/useRecordPendingConsent";
 import { SIGN_IN_URL } from "@/lib/appUrl";
 import { _setActiveProfileFromUser } from "@/store/role";
 import { isPrimaryShortcut } from "@/lib/platformShortcuts";
+import { Role } from "@/lib/enums.generated";
+import { BrokerNdaGate } from "@/components/broker/BrokerNdaGate";
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const { t } = useTheme();
@@ -37,6 +39,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
   // Flush any pending sign-up consent (from localStorage) into the
   // /legal/accept audit table once the user resolves.
   useRecordPendingConsent();
+  // Hard-gates Role.DEALER_PARTNER access until the NDA is signed. Fetched
+  // for every authenticated user (cheap, `required` is false for everyone
+  // else) rather than only brokers, so the query is ready the instant a
+  // broker's role resolves without a render-order dependency.
+  const { data: ndaStatus } = useNdaStatus();
 
   // Mirror the real /auth/me user into the legacy useActiveProfile() shim so
   // older call sites keep working while we migrate them off.
@@ -96,6 +103,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   if (!authLoaded || isSignedIn === false) {
     return <div style={{ background: t.bg, minHeight: "100vh" }} />;
+  }
+
+  // Hard block: a dealer partner with no signed NDA sees only the gate,
+  // never the sidebar/topbar/routes, until they sign. Enforcement also
+  // lives server-side (_require_nda_signed on every broker endpoint) — this
+  // is the UX half of that guarantee, not the only one.
+  if (user?.role === Role.DEALER_PARTNER && !user.nda_signed_at) {
+    return <BrokerNdaGate status={ndaStatus} />;
   }
 
   return (

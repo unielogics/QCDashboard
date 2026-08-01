@@ -3337,6 +3337,42 @@ export function useAcceptLegal() {
   });
 }
 
+// Broker NDA / non-solicitation agreement — hard-gates Role.DEALER_PARTNER
+// access in AppShell.tsx until signed. See app/routers/broker_nda.py.
+export type NdaStatus = { required: boolean; signed_at: string | null; document_version: string };
+
+export function useNdaStatus() {
+  const apiCall = useAuthedApi();
+  const { isSignedIn } = useAuth();
+  return useQuery({
+    queryKey: ["nda-status"],
+    queryFn: () => apiCall<NdaStatus>("/broker/nda/status"),
+    enabled: !!isSignedIn,
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useSignNda() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      typed_name: string;
+      esign_consent: boolean;
+      signature_data_url: string;
+      prior_relationships_disclosure?: string;
+    }) =>
+      apiCall<{ id: string }>("/broker/nda/sign", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["nda-status"] });
+      qc.invalidateQueries({ queryKey: ["auth-me"] });
+    },
+  });
+}
+
 // Operator-side view of a client's vault — drives the Vault section on
 // the Client detail page. Joins Document → Loan → client_id server-side
 // so we don't need the loans list first.
