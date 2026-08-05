@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { isAgreementPortalHost } from "@/lib/agreementPortal";
 
 const isAuthPage = createRouteMatcher([
   "/sign-in(.*)",
@@ -25,6 +26,9 @@ const isPublicPage = createRouteMatcher([
   "/buckets/request(.*)",
   "/buckets/share(.*)",
   "/buckets/public-share(.*)",
+  // agreement.qualifiedcommercial.com portal -- public, unauthenticated,
+  // token-free fill-and-sign contract portal (see the host rewrite below).
+  "/agreement(.*)",
 ]);
 
 // Super-admin-only routes. Edge-level hard-deny so a non-super-admin who
@@ -81,6 +85,22 @@ function getRoleFromClaims(
 }
 
 export default clerkMiddleware(async (auth, req) => {
+  // agreement.qualifiedcommercial.com serves the /agreement route tree at
+  // its own root — a visitor there requesting "/" should see the
+  // /agreement page, "/referral-protection" should see
+  // /agreement/referral-protection, etc. This is the same qcdesktop
+  // app/branch as app.qualifiedcommercial.com; only the served path
+  // differs, via rewrite (not a second deployed app). layout.tsx does its
+  // own host check (see lib/agreementPortal.ts) to tell AppShell to render
+  // bare, since usePathname() never reflects this rewrite client-side.
+  if (isAgreementPortalHost(req.headers.get("host") || "")) {
+    if (!req.nextUrl.pathname.startsWith("/agreement")) {
+      const rewritten = req.nextUrl.clone();
+      rewritten.pathname = `/agreement${req.nextUrl.pathname === "/" ? "" : req.nextUrl.pathname}`;
+      return NextResponse.rewrite(rewritten);
+    }
+  }
+
   const { userId, sessionClaims, redirectToSignIn } = await auth();
 
   // Already signed in? Don't show them the sign-in / sign-up pages — bounce

@@ -816,6 +816,40 @@ export function useRunLeadCreditPull(intakeId: string) {
   });
 }
 
+// Admin "Request X" contract panel on an AI Underwriter Lead — the 3
+// client-facing contract types (SBA/Client Engagement, Consulting Addendum)
+// delivered through the existing requested-document/chat sign flow. See
+// app/routers/dealer_ai_intake.py's request_lead_contract.
+export type AdminContractRequestStatus = {
+  contract_type: string;
+  requested: boolean;
+  signed: boolean;
+  requested_document_id: string | null;
+};
+
+export function useLeadContractStatus(intakeId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lead-contract-status", intakeId, devUser],
+    queryFn: () => apiCall<AdminContractRequestStatus[]>(`/admin/ai-underwriter-leads/${intakeId}/contracts`),
+    enabled: !!intakeId,
+  });
+}
+
+export function useRequestLeadContract(intakeId: string) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { contract_type: string; field_values?: Record<string, string> }) =>
+      apiCall<BucketRequestedDocumentRead>(`/admin/ai-underwriter-leads/${intakeId}/contracts`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["lead-contract-status", intakeId] }),
+  });
+}
+
 // Uploads an admin-supplied template file (e.g. the dealer-specific
 // authorization document) into this lead's bucket and returns its file_id,
 // for passing as `template_file_id` on useRequestLeadCreditAuthorization.
@@ -1067,7 +1101,7 @@ export function useInviteUser() {
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["users"]
-    mutationFn: (body: { email: string; name: string; role: Role }) =>
+    mutationFn: (body: { email: string; name: string; role: Role; company_name?: string }) =>
       apiCall<UserRow>("/users", {
         method: "POST",
         body: JSON.stringify(body),
@@ -3337,22 +3371,58 @@ export function useAcceptLegal() {
   });
 }
 
-// Broker NDA / non-solicitation agreement — hard-gates Role.DEALER_PARTNER
-// access in AppShell.tsx until signed. See app/routers/broker_nda.py.
-export type NdaStatus = { required: boolean; signed_at: string | null; document_version: string };
+// Real contract templates (Platform Access, Referral Protection, and the 3
+// client-facing types) — hard-gates Role.DEALER_PARTNER access in
+// AppShell.tsx until BOTH the individual and their company have signed.
+// See app/routers/contracts.py.
+export type ContractField = {
+  name: string;
+  label: string;
+  field_type: string;
+  default: string;
+  row_group: string | null;
+  in_scope_for_initial_signing: boolean;
+};
+export type ContractSection = { heading: string; paragraphs: string[] };
+export type ContractDocument = {
+  title: string;
+  party_facing_notice: string | null;
+  preamble: string[];
+  sections: ContractSection[];
+};
+export type ContractStatus = {
+  required: boolean;
+  signed_at: string | null;
+  document_version: string;
+  document: ContractDocument;
+  fields: ContractField[];
+  certificate_download_url: string | null;
+};
 
-export function useNdaStatus() {
+export function useContractStatus(contractType: string) {
   const apiCall = useAuthedApi();
   const { isSignedIn } = useAuth();
   return useQuery({
-    queryKey: ["nda-status"],
-    queryFn: () => apiCall<NdaStatus>("/broker/nda/status"),
+    queryKey: ["contract-status", contractType],
+    queryFn: () => apiCall<ContractStatus>(`/contracts/${contractType}/status`),
     enabled: !!isSignedIn,
     staleTime: 30 * 1000,
   });
 }
 
-export function useSignNda() {
+export type ContractAgreementRead = {
+  id: string;
+  contract_type: string;
+  contract_number: string;
+  subject_type: string;
+  subject_id: string;
+  typed_name: string;
+  esign_consent: boolean;
+  signed_at: string | null;
+  certificate_download_url: string | null;
+};
+
+export function useSignPlatformAccess() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
@@ -3360,16 +3430,57 @@ export function useSignNda() {
       typed_name: string;
       esign_consent: boolean;
       signature_data_url: string;
-      prior_relationships_disclosure?: string;
+      field_values?: Record<string, string>;
     }) =>
-      apiCall<{ id: string }>("/broker/nda/sign", {
+      apiCall<ContractAgreementRead>("/contracts/platform-access/sign", {
         method: "POST",
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["nda-status"] });
+      qc.invalidateQueries({ queryKey: ["contract-status"] });
       qc.invalidateQueries({ queryKey: ["auth-me"] });
     },
+  });
+}
+
+// Public, token-free preview — powers the agreement.qualifiedcommercial.com
+// portal (unauthenticated, no Clerk session). Fetches the blank template +
+// field schema directly via `api()`, not `useAuthedApi()`'s wrapper, since
+// there's no signed-in user to attach a dev-user/auth header for.
+export type ContractPreview = {
+  document_version: string;
+  document: ContractDocument;
+  fields: ContractField[];
+};
+
+export function useContractPreview(contractType: string) {
+  return useQuery({
+    queryKey: ["contract-preview", contractType],
+    queryFn: () => api<ContractPreview>(`/contracts/${contractType}/preview`),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+// Public, token-free sign — creates the ReferralPartnerCompany (find-or-create
+// by name) and the ContractAgreement in one call. No auth token, no dev-user
+// header; this is reachable by anyone at the public portal.
+export function useSignReferralProtection() {
+  return useMutation({
+    mutationFn: (body: {
+      typed_name: string;
+      esign_consent: boolean;
+      signature_data_url: string;
+      field_values?: Record<string, string>;
+      signer_email?: string;
+      company_name: string;
+      company_entity_type?: string;
+      company_state_of_formation?: string;
+      company_principal_address?: string;
+    }) =>
+      api<ContractAgreementRead>("/contracts/referral-protection/sign", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
   });
 }
 

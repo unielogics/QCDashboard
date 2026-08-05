@@ -29,6 +29,7 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState<Role>(Role.BROKER);
+  const [companyName, setCompanyName] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,16 +37,26 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
       setEmail("");
       setName("");
       setRole(Role.BROKER);
+      setCompanyName("");
       setErr(null);
     }
   }, [open]);
 
-  const valid = /\S+@\S+\.\S+/.test(email) && name.trim().length > 0;
+  const isDealerPartner = role === Role.DEALER_PARTNER;
+  const valid =
+    /\S+@\S+\.\S+/.test(email) &&
+    name.trim().length > 0 &&
+    (!isDealerPartner || companyName.trim().length > 0);
 
   const submit = async () => {
     setErr(null);
     try {
-      await invite.mutateAsync({ email: email.trim(), name: name.trim(), role });
+      await invite.mutateAsync({
+        email: email.trim(),
+        name: name.trim(),
+        role,
+        company_name: isDealerPartner ? companyName.trim() : undefined,
+      });
       onInvited?.();
       onClose();
     } catch (e) {
@@ -148,6 +159,21 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
           })}
         </div>
       </div>
+
+      {isDealerPartner ? (
+        <Field t={t} label="Company name">
+          <input
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
+            placeholder="Acme Auto Group LLC"
+            style={inputStyle(t)}
+          />
+          <div style={{ fontSize: 11, color: t.ink3, marginTop: 6, lineHeight: 1.4 }}>
+            Their company must have a signed Referral Protection Agreement on file before they can use the
+            platform. If this company already exists, it will be linked automatically.
+          </div>
+        </Field>
+      ) : null}
 
       {err && <Pill bg={t.dangerBg} color={t.danger}>{err}</Pill>}
 

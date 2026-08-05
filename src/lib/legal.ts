@@ -17,10 +17,6 @@
 export const TERMS_VERSION = "2026-05-19";
 export const PRIVACY_VERSION = "2026-05-19";
 export const DISCLOSURE_VERSION = "2026-05-19";
-// Dealer partner ("broker") NDA / non-solicitation agreement. Kept in sync
-// with app/services/broker_nda.py's BROKER_NDA_DOCUMENT_VERSION on the
-// backend -- bump both together if the text changes.
-export const BROKER_NDA_VERSION = "2026-07-31-1";
 
 // Short legal entity name surfaced in UI strings (consent checkbox label, etc.)
 export const COMPANY_NAME = "Qualified Commercial LLC";
@@ -853,64 +849,6 @@ export const FUNDING_AI_DISCLOSURE_ES: LegalDocument = {
       heading: "14. Contacto",
       paragraphs: [
         "Las preguntas sobre esta divulgación pueden enviarse a Qualified Commercial LLC, 14 53rd St #408N, Brooklyn, NY 11232, correo electrónico: support@qualifiedcommercial.com.",
-      ],
-    },
-  ],
-};
-
-// ---------------------------------------------------------------------------
-// Dealer Partner NDA / Non-Solicitation Agreement — v2026-07-31-1
-//
-// TODO(legal-review): drafted by an engineer from the business's plain-
-// English requirements, NOT by counsel. Must be reviewed by an attorney
-// before being relied on in an actual dispute. This English text must stay
-// byte-for-byte identical to app/services/broker_nda.py's
-// broker_nda_document_text() -- the backend computes the SHA-256 document
-// hash from ITS copy, and the certificate PDF embeds that hash as evidence
-// of exactly what the signer agreed to. If either copy changes, update both
-// and bump BROKER_NDA_VERSION / BROKER_NDA_DOCUMENT_VERSION together.
-// ---------------------------------------------------------------------------
-
-export const BROKER_NDA_DOCUMENT: LegalDocument = {
-  title: "Dealer Partner Non-Disclosure and Non-Solicitation Agreement",
-  effectiveDate: "July 31, 2026",
-  preamble:
-    'This Agreement is entered into between Qualified Commercial LLC ("QC", "Company") and the individual or entity identified below ("Partner", "you") in connection with Partner\'s access to the QC platform as a dealer partner / broker.',
-  sections: [
-    {
-      heading: "1. Confidential Information",
-      paragraphs: [
-        "Partner acknowledges that in the course of using the QC platform, Partner will have access to QC's proprietary business model, underwriting processes, technology, pricing, and its relationships with banks, lenders, and other capital sources (collectively, \"Confidential Information\"). Partner agrees to hold all Confidential Information in strict confidence and not to disclose it to any third party, except as required by law.",
-      ],
-    },
-    {
-      heading: "2. Non-Solicitation and Non-Circumvention",
-      paragraphs: [
-        "Partner agrees not to use Confidential Information to build, operate, or assist a competing brokerage, lending, or underwriting business modeled on QC's business, processes, or technology. Any transaction, communication, or relationship Partner has with a bank, lender, or capital source that Partner is introduced to, or otherwise engages through, the QC platform must be processed exclusively through QC's brokerage/fintech entity or its designated executives. Partner will not contact, negotiate with, or transact directly with any such bank, lender, or capital source outside of the QC platform in connection with any deal originated on or through the platform.",
-      ],
-    },
-    {
-      heading: "3. Prior Relationships Disclosure",
-      paragraphs: [
-        "Partner may disclose, at the time of signing this Agreement, any pre-existing relationships with lenders, dealers, or other parties that Partner wishes to exclude from the scope of Section 2. Any relationship not disclosed at signing is presumed to be within the scope of this Agreement. QC reserves the right to dispute the scope or validity of any disclosed relationship.",
-      ],
-    },
-    {
-      heading: "4. Term and Survival",
-      paragraphs: [
-        "This Agreement is effective immediately upon signature and remains in effect for the duration of Partner's use of the QC platform. The obligations in Sections 1 and 2 survive for two (2) years following the termination of Partner's access to the QC platform or the end of Partner's relationship with QC, whichever occurs later.",
-      ],
-    },
-    {
-      heading: "5. Remedies",
-      paragraphs: [
-        "Partner acknowledges that a breach of this Agreement may cause QC irreparable harm for which monetary damages alone may be an inadequate remedy, and that QC is entitled to seek injunctive relief in addition to any other remedies available at law or in equity.",
-      ],
-    },
-    {
-      heading: "6. Electronic Signature",
-      paragraphs: [
-        "Partner consents to use electronic records and electronic signatures under the U.S. E-SIGN Act and UETA. Partner understands that their typed legal name, checkbox acknowledgment, drawn signature, any prior-relationships disclosure submitted, timestamp, IP address, and device/browser information will be retained by QC as evidence of this Agreement and may be used in connection with any dispute arising from it. Partner may request a copy of this signed record at any time.",
       ],
     },
   ],

@@ -1115,6 +1115,9 @@ export interface UserRow {
   email: string;
   name: string;
   role: Role;
+  referral_partner_company_id: string | null;
+  referral_partner_company_name: string | null;
+  company_agreement_signed: boolean | null;
   created_at: string | null;
 }
 

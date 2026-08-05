@@ -30,6 +30,7 @@ import { Role } from "@/lib/enums.generated";
 import { useCurrentUser, useBookingLink, useDriveFiles, type DriveFile } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage } from "@/components/admin/LeadCockpit";
 import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
+import { LeadContractsPanel } from "@/components/admin/LeadContractsPanel";
 import { LeadProgramFitPanel } from "@/components/admin/LeadProgramFitPanel";
 import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
@@ -755,7 +756,7 @@ function LeadDetailPanel({
   const toast = useToast();
   const bookingLink = useBookingLink();
   const [activeTab, setActiveTab] = useState<"conversation" | "workspace">("conversation");
-  const [workspaceSub, setWorkspaceSub] = useState<"overview" | "documents" | "client" | "credit" | "package">("overview");
+  const [workspaceSub, setWorkspaceSub] = useState<"overview" | "documents" | "client" | "credit" | "contracts" | "package">("overview");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState("");
@@ -1014,6 +1015,7 @@ function LeadDetailPanel({
                 ["documents", "Documents"],
                 ["client", "Client conversation"],
                 ["credit", "Credit"],
+                ["contracts", "Contracts"],
                 ["package", "Package"],
               ].map(([value, label]) => (
                 <button
@@ -1189,6 +1191,10 @@ function LeadDetailPanel({
               <LeadCreditPanel intakeId={detail.intake.id} />
               {!isRealEstate ? <LeadProgramFitPanel intakeId={detail.intake.id} /> : null}
             </div>
+          ) : null}
+
+          {activeTab === "workspace" && workspaceSub === "contracts" ? (
+            <LeadContractsPanel intakeId={detail.intake.id} />
           ) : null}
 
           {activeTab === "workspace" && workspaceSub === "package" ? (

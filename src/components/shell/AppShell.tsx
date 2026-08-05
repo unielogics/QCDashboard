@@ -9,15 +9,26 @@ import AIRail from "./AIRail";
 import GlobalSearch from "./GlobalSearch";
 import { useUI, readPersistedSidebar } from "@/store/ui";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { useCurrentUser, useNdaStatus } from "@/hooks/useApi";
+import { useCurrentUser, useContractStatus } from "@/hooks/useApi";
 import { useRecordPendingConsent } from "@/hooks/useRecordPendingConsent";
 import { SIGN_IN_URL } from "@/lib/appUrl";
 import { _setActiveProfileFromUser } from "@/store/role";
 import { isPrimaryShortcut } from "@/lib/platformShortcuts";
 import { Role } from "@/lib/enums.generated";
-import { BrokerNdaGate } from "@/components/broker/BrokerNdaGate";
+import { PlatformAccessGate } from "@/components/broker/PlatformAccessGate";
 
-export default function AppShell({ children }: { children: ReactNode }) {
+export default function AppShell({
+  children,
+  isAgreementPortal = false,
+}: {
+  children: ReactNode;
+  // Server-detected: true when this request's Host header is
+  // agreement.qualifiedcommercial.com (see layout.tsx + lib/agreementPortal.ts).
+  // After middleware's host-based rewrite, usePathname() below still reports
+  // the ORIGINAL request path ("/", "/referral-protection"), never
+  // "/agreement/...", so pathname alone can't detect the portal on that host.
+  isAgreementPortal?: boolean;
+}) {
   const { t } = useTheme();
   const pathname = usePathname();
   const aiOpen = useUI((s) => s.aiOpen);
@@ -39,11 +50,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
   // Flush any pending sign-up consent (from localStorage) into the
   // /legal/accept audit table once the user resolves.
   useRecordPendingConsent();
-  // Hard-gates Role.DEALER_PARTNER access until the NDA is signed. Fetched
-  // for every authenticated user (cheap, `required` is false for everyone
-  // else) rather than only brokers, so the query is ready the instant a
-  // broker's role resolves without a render-order dependency.
-  const { data: ndaStatus } = useNdaStatus();
+  // Hard-gates Role.DEALER_PARTNER access until the Platform Access
+  // Agreement is signed. Fetched for every authenticated user (cheap,
+  // `required` is false for everyone else) rather than only brokers, so the
+  // query is ready the instant a broker's role resolves without a
+  // render-order dependency.
+  const { data: platformAccessStatus } = useContractStatus("platform-access");
 
   // Mirror the real /auth/me user into the legacy useActiveProfile() shim so
   // older call sites keep working while we migrate them off.
@@ -87,6 +99,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
     pathname.startsWith("/buckets/request") ||
     pathname.startsWith("/buckets/share") ||
     pathname.startsWith("/buckets/public-share") ||
+    // Direct-path access to /agreement (e.g. app.qualifiedcommercial.com/agreement
+    // during local dev/testing) -- separate from the isAgreementPortal host
+    // check below, which covers the real agreement.qualifiedcommercial.com
+    // subdomain where pathname never actually shows "/agreement".
+    pathname.startsWith("/agreement") ||
+    // agreement.qualifiedcommercial.com portal (rewritten server-side by
+    // middleware.ts's host-based rewrite) -- public, unauthenticated,
+    // fill-and-sign contract portal, same bare-shell treatment as the
+    // other public intake pages above.
+    isAgreementPortal ||
     // Token-resolved HUD shares — opened by title / escrow / insurance
     // contacts without an account, so we render them bare.
     pathname.startsWith("/hud/share");
@@ -105,12 +127,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
     return <div style={{ background: t.bg, minHeight: "100vh" }} />;
   }
 
-  // Hard block: a dealer partner with no signed NDA sees only the gate,
-  // never the sidebar/topbar/routes, until they sign. Enforcement also
-  // lives server-side (_require_nda_signed on every broker endpoint) — this
-  // is the UX half of that guarantee, not the only one.
-  if (user?.role === Role.DEALER_PARTNER && !user.nda_signed_at) {
-    return <BrokerNdaGate status={ndaStatus} />;
+  // Hard block: a dealer partner with no signed Platform Access Agreement
+  // sees only the gate, never the sidebar/topbar/routes, until they sign.
+  // Enforcement also lives server-side (_require_dealer_partner on every
+  // broker endpoint checks both this AND the company's Referral Protection
+  // Agreement) — this is the UX half of that guarantee, not the only one.
+  if (user?.role === Role.DEALER_PARTNER && platformAccessStatus?.required) {
+    return <PlatformAccessGate />;
   }
 
   return (

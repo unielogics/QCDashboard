@@ -1458,17 +1458,17 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
         {users && users.length > 0 && (
           <div>
             <div style={{
-              display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 2fr) 160px 120px 50px",
+              display: "grid", gridTemplateColumns: "minmax(0, 1.6fr) minmax(0, 1.6fr) 150px minmax(0, 1.4fr) 110px 50px",
               padding: "10px 16px", fontSize: 11, fontWeight: 700, color: t.ink3,
               textTransform: "uppercase", letterSpacing: 1.2, borderBottom: `1px solid ${t.line}`,
             }}>
-              <div>Name</div><div>Email</div><div>Role</div><div>Joined</div><div></div>
+              <div>Name</div><div>Email</div><div>Role</div><div>Company / Agreement</div><div>Joined</div><div></div>
             </div>
             {users.map((u) => {
               const isSelf = me?.id === u.id;
               return (
                 <div key={u.id} style={{
-                  display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 2fr) 160px 120px 50px",
+                  display: "grid", gridTemplateColumns: "minmax(0, 1.6fr) minmax(0, 1.6fr) 150px minmax(0, 1.4fr) 110px 50px",
                   padding: "10px 16px", borderBottom: `1px solid ${t.line}`, alignItems: "center", fontSize: 13,
                   gap: 8,
                 }}>
@@ -1495,6 +1495,22 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
                         <option key={r.value} value={r.value}>{r.label}</option>
                       ))}
                     </select>
+                  </div>
+                  <div style={{ overflow: "hidden" }}>
+                    {u.referral_partner_company_name ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                        <span style={{ color: t.ink2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {u.referral_partner_company_name}
+                        </span>
+                        {u.company_agreement_signed ? (
+                          <Pill bg={t.profitBg} color={t.profit}>Signed</Pill>
+                        ) : (
+                          <Pill bg={t.dangerBg} color={t.danger}>No agreement</Pill>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ color: t.ink3 }}>—</span>
+                    )}
                   </div>
                   <div style={{ color: t.ink3 }}>
                     {u.created_at ? new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}

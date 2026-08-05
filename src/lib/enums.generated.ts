@@ -339,6 +339,32 @@ export const CompletionModeOptions = [
   { value: "borrower_self_attest", label: "Borrower Self Attest" }
 ] as const;
 
+export const ContractSubjectType = {
+  USER: "user",
+  COMPANY: "company"
+} as const;
+export type ContractSubjectType = (typeof ContractSubjectType)[keyof typeof ContractSubjectType];
+export const ContractSubjectTypeOptions = [
+  { value: "user", label: "User" },
+  { value: "company", label: "Company" }
+] as const;
+
+export const ContractType = {
+  PLATFORM_ACCESS: "platform_access",
+  REFERRAL_PROTECTION: "referral_protection",
+  SBA_ENGAGEMENT: "sba_engagement",
+  CLIENT_ENGAGEMENT: "client_engagement",
+  CONSULTING_ADDENDUM: "consulting_addendum"
+} as const;
+export type ContractType = (typeof ContractType)[keyof typeof ContractType];
+export const ContractTypeOptions = [
+  { value: "platform_access", label: "Platform Access" },
+  { value: "referral_protection", label: "Referral Protection" },
+  { value: "sba_engagement", label: "Sba Engagement" },
+  { value: "client_engagement", label: "Client Engagement" },
+  { value: "consulting_addendum", label: "Consulting Addendum" }
+] as const;
+
 export const CreditPullStatus = {
   NONE: "none",
   PENDING: "pending",
