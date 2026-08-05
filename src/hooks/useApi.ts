@@ -3461,6 +3461,19 @@ export function useContractPreview(contractType: string) {
   });
 }
 
+// Public, token-free render-with-values — same shape as useContractPreview,
+// but folds the signer's own typed field values into the document so the
+// portal can show the actual filled agreement (review step) before signing.
+export function useRenderContract() {
+  return useMutation({
+    mutationFn: ({ contractType, fieldValues }: { contractType: string; fieldValues: Record<string, string> }) =>
+      api<ContractPreview>(`/contracts/${contractType}/render`, {
+        method: "POST",
+        body: JSON.stringify({ field_values: fieldValues }),
+      }),
+  });
+}
+
 // Public, token-free sign — creates the ReferralPartnerCompany (find-or-create
 // by name) and the ContractAgreement in one call. No auth token, no dev-user
 // header; this is reachable by anyone at the public portal.

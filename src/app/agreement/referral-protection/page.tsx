@@ -23,8 +23,10 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { QCMark } from "@/components/QCMark";
 import { SignaturePad, type SignaturePadHandle } from "@/components/design-system/SignaturePad";
-import { useContractPreview, useSignReferralProtection } from "@/hooks/useApi";
+import { useContractPreview, useRenderContract, useSignReferralProtection } from "@/hooks/useApi";
 import { ContractType } from "@/lib/enums.generated";
+
+type Step = "fill" | "review" | "signed";
 
 type FormState = {
   companyName: string;
@@ -58,8 +60,10 @@ const EMPTY_FORM: FormState = {
 
 export default function ReferralProtectionSignPage() {
   const { data: preview } = useContractPreview(ContractType.REFERRAL_PROTECTION);
+  const render = useRenderContract();
   const sign = useSignReferralProtection();
   const sigPadRef = useRef<SignaturePadHandle | null>(null);
+  const [step, setStep] = useState<Step>("fill");
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [typedName, setTypedName] = useState("");
   const [esignConsent, setEsignConsent] = useState(false);
@@ -91,9 +95,21 @@ export default function ReferralProtectionSignPage() {
     };
   }, [form]);
 
-  function submit() {
+  function continueToReview() {
     if (!form.companyName.trim()) { setFormError("Enter your company's legal name."); return; }
     if (!form.officerName.trim()) { setFormError("Enter the certifying officer's name."); return; }
+    setFormError("");
+    render.mutate(
+      { contractType: ContractType.REFERRAL_PROTECTION, fieldValues: fieldValues },
+      { onSuccess: () => setStep("review") },
+    );
+  }
+
+  function backToForm() {
+    setStep("fill");
+  }
+
+  function submit() {
     if (!typedName.trim()) { setFormError("Type your full legal name to sign."); return; }
     if (!esignConsent) { setFormError("Check the E-SIGN consent box."); return; }
     const sigPad = sigPadRef.current;
@@ -112,7 +128,8 @@ export default function ReferralProtectionSignPage() {
     });
   }
 
-  const doc = preview?.document;
+  const blankDoc = preview?.document;
+  const filledDoc = render.data?.document;
 
   if (sign.data) {
     return (
@@ -134,31 +151,74 @@ export default function ReferralProtectionSignPage() {
     );
   }
 
+  if (step === "review") {
+    return (
+      <main style={page}>
+        <div style={shell}>
+          <BrandHeader />
+          <h1 style={title}>Review your agreement</h1>
+          <p style={copy}>Check the filled agreement below reflects your information correctly, then sign at the bottom.</p>
+          {render.data?.document_version ? <p style={versionLine}>Version {render.data.document_version}</p> : null}
+
+          <div style={docCard}>
+            {!filledDoc ? (
+              <div style={muted}>Rendering agreement…</div>
+            ) : (
+              <>
+                {filledDoc.party_facing_notice ? <p style={noticeBox}>{filledDoc.party_facing_notice}</p> : null}
+                <div style={docScrollFull}>
+                  {filledDoc.preamble.map((p, i) => (p.trim() ? <p key={`pre-${i}`} style={docPara}>{p}</p> : null))}
+                  {filledDoc.sections.map((section, i) => (
+                    <div key={i}>
+                      <div style={docHeading}>{section.heading}</div>
+                      {section.paragraphs.map((p, j) => (<p key={j} style={docPara}>{p}</p>))}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          <div style={formCard}>
+            <SectionTitle>Sign</SectionTitle>
+            <Field label="Type your full legal name" value={typedName} onChange={setTypedName} />
+            <label style={consentLabel}>
+              <input type="checkbox" checked={esignConsent} onChange={(e) => setEsignConsent(e.target.checked)} style={{ marginTop: 2 }} />
+              I consent to use electronic records and signatures under the U.S. E-SIGN Act and UETA, and I agree to the
+              terms above on behalf of the company identified. I understand I may request a paper copy of this signed
+              agreement at any time by contacting support@qualifiedcommercial.com, and that I may withdraw consent to
+              electronic records prospectively through that same address.
+            </label>
+
+            <div>
+              <div style={sigLabel}>Draw your signature</div>
+              <SignaturePad ref={sigPadRef} />
+              <button type="button" onClick={() => sigPadRef.current?.clear()} style={clearButton}>Clear signature</button>
+            </div>
+
+            {(formError || sign.error) ? (
+              <div style={errorText}>{formError || (sign.error instanceof Error ? sign.error.message : "Something went wrong.")}</div>
+            ) : null}
+
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <button type="button" onClick={backToForm} style={secondaryButton}>Back to form</button>
+              <button type="button" onClick={submit} disabled={sign.isPending || !filledDoc} style={{ ...primaryButton, opacity: sign.isPending || !filledDoc ? 0.6 : 1 }}>
+                {sign.isPending ? "Submitting…" : "Sign & submit"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main style={page}>
       <div style={shell}>
         <BrandHeader />
-        <h1 style={title}>{doc?.title ?? "Loading agreement…"}</h1>
+        <h1 style={title}>{blankDoc?.title ?? "Loading agreement…"}</h1>
         {preview?.document_version ? <p style={versionLine}>Version {preview.document_version}</p> : null}
-
-        <div style={docCard}>
-          {!doc ? (
-            <div style={muted}>Loading agreement…</div>
-          ) : (
-            <>
-              {doc.party_facing_notice ? <p style={noticeBox}>{doc.party_facing_notice}</p> : null}
-              <div style={docScroll}>
-                {doc.preamble.map((p, i) => (p.trim() ? <p key={`pre-${i}`} style={docPara}>{p}</p> : null))}
-                {doc.sections.map((section, i) => (
-                  <div key={i}>
-                    <div style={docHeading}>{section.heading}</div>
-                    {section.paragraphs.map((p, j) => (<p key={j} style={docPara}>{p}</p>))}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+        <p style={copy}>Fill in your company's details below. On the next step you'll review the completed agreement before signing.</p>
 
         <div style={formCard}>
           <SectionTitle>Your company</SectionTitle>
@@ -189,29 +249,13 @@ export default function ReferralProtectionSignPage() {
           </Row>
           <Field label="Effective date" value={form.effectiveDate} onChange={(v) => set("effectiveDate", v)} type="date" />
 
-          <SectionTitle>Sign</SectionTitle>
-          <Field label="Type your full legal name" value={typedName} onChange={setTypedName} />
-          <label style={consentLabel}>
-            <input type="checkbox" checked={esignConsent} onChange={(e) => setEsignConsent(e.target.checked)} style={{ marginTop: 2 }} />
-            I consent to use electronic records and signatures under the U.S. E-SIGN Act and UETA, and I agree to the
-            terms above on behalf of the company identified. I understand I may request a paper copy of this signed
-            agreement at any time by contacting support@qualifiedcommercial.com, and that I may withdraw consent to
-            electronic records prospectively through that same address.
-          </label>
-
-          <div>
-            <div style={sigLabel}>Draw your signature</div>
-            <SignaturePad ref={sigPadRef} />
-            <button type="button" onClick={() => sigPadRef.current?.clear()} style={clearButton}>Clear signature</button>
-          </div>
-
-          {(formError || sign.error) ? (
-            <div style={errorText}>{formError || (sign.error instanceof Error ? sign.error.message : "Something went wrong.")}</div>
+          {(formError || render.error) ? (
+            <div style={errorText}>{formError || (render.error instanceof Error ? render.error.message : "Something went wrong.")}</div>
           ) : null}
 
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button type="button" onClick={submit} disabled={sign.isPending || !doc} style={{ ...primaryButton, opacity: sign.isPending || !doc ? 0.6 : 1 }}>
-              {sign.isPending ? "Submitting…" : "Sign & submit"}
+            <button type="button" onClick={continueToReview} disabled={render.isPending} style={{ ...primaryButton, opacity: render.isPending ? 0.6 : 1 }}>
+              {render.isPending ? "Preparing agreement…" : "Continue to review"}
             </button>
           </div>
         </div>
@@ -260,6 +304,7 @@ const title: CSSProperties = { margin: "8px 0 0", fontSize: 24, lineHeight: 1.2,
 const versionLine: CSSProperties = { margin: "4px 0 0", color: "#95A3B6", fontSize: 12.5 };
 const docCard: CSSProperties = { border: "1px solid rgba(255,255,255,.10)", borderRadius: 14, background: "rgba(255,255,255,.03)", padding: 16 };
 const docScroll: CSSProperties = { maxHeight: 320, overflowY: "auto", display: "grid", gap: 10, paddingRight: 4 };
+const docScrollFull: CSSProperties = { maxHeight: 460, overflowY: "auto", display: "grid", gap: 10, paddingRight: 4 };
 const noticeBox: CSSProperties = { margin: "0 0 12px", color: "#F0C36D", fontSize: 12, lineHeight: 1.5, fontWeight: 700 };
 const docHeading: CSSProperties = { fontWeight: 800, fontSize: 12.5, color: "#F8FAFC", marginTop: 10, marginBottom: 4 };
 const docPara: CSSProperties = { margin: "0 0 6px", color: "#B8C4D6", fontSize: 12.5, lineHeight: 1.55 };
@@ -277,3 +322,4 @@ const clearButton: CSSProperties = { marginTop: 8, fontSize: 12, background: "no
 const errorText: CSSProperties = { color: "#FCA5A5", fontSize: 12.5 };
 const copy: CSSProperties = { color: "#B8C4D6", fontSize: 14, lineHeight: 1.6 };
 const primaryButton: CSSProperties = { height: 44, border: "none", borderRadius: 999, padding: "0 18px", font: "inherit", fontWeight: 900, background: "linear-gradient(135deg,#E9D58A,#D4AF37)", color: "#0B1326", cursor: "pointer" };
+const secondaryButton: CSSProperties = { height: 44, border: "1px solid rgba(255,255,255,.14)", borderRadius: 999, padding: "0 18px", font: "inherit", fontWeight: 700, background: "none", color: "#B8C4D6", cursor: "pointer" };
