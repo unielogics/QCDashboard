@@ -14,7 +14,7 @@ import { useRecordPendingConsent } from "@/hooks/useRecordPendingConsent";
 import { SIGN_IN_URL } from "@/lib/appUrl";
 import { _setActiveProfileFromUser } from "@/store/role";
 import { isPrimaryShortcut } from "@/lib/platformShortcuts";
-import { Role } from "@/lib/enums.generated";
+import { Role, ContractType } from "@/lib/enums.generated";
 import { PlatformAccessGate } from "@/components/broker/PlatformAccessGate";
 
 export default function AppShell({
@@ -55,7 +55,7 @@ export default function AppShell({
   // `required` is false for everyone else) rather than only brokers, so the
   // query is ready the instant a broker's role resolves without a
   // render-order dependency.
-  const { data: platformAccessStatus } = useContractStatus("platform-access");
+  const { data: platformAccessStatus } = useContractStatus(ContractType.PLATFORM_ACCESS);
 
   // Mirror the real /auth/me user into the legacy useActiveProfile() shim so
   // older call sites keep working while we migrate them off.

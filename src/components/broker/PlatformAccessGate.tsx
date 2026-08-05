@@ -18,10 +18,11 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { qcBtnPrimary } from "@/components/design-system/buttons";
 import { SignaturePad, type SignaturePadHandle } from "@/components/design-system/SignaturePad";
 import { useContractStatus, useSignPlatformAccess } from "@/hooks/useApi";
+import { ContractType } from "@/lib/enums.generated";
 
 export function PlatformAccessGate() {
   const { t } = useTheme();
-  const { data: status } = useContractStatus("platform-access");
+  const { data: status } = useContractStatus(ContractType.PLATFORM_ACCESS);
   const sign = useSignPlatformAccess();
   const sigPadRef = useRef<SignaturePadHandle | null>(null);
   const [typedName, setTypedName] = useState("");

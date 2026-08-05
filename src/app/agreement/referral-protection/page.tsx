@@ -24,6 +24,7 @@ import type { CSSProperties } from "react";
 import { QCMark } from "@/components/QCMark";
 import { SignaturePad, type SignaturePadHandle } from "@/components/design-system/SignaturePad";
 import { useContractPreview, useSignReferralProtection } from "@/hooks/useApi";
+import { ContractType } from "@/lib/enums.generated";
 
 type FormState = {
   companyName: string;
@@ -56,7 +57,7 @@ const EMPTY_FORM: FormState = {
 };
 
 export default function ReferralProtectionSignPage() {
-  const { data: preview } = useContractPreview("referral-protection");
+  const { data: preview } = useContractPreview(ContractType.REFERRAL_PROTECTION);
   const sign = useSignReferralProtection();
   const sigPadRef = useRef<SignaturePadHandle | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
