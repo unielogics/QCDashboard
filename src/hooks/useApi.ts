@@ -3375,15 +3375,33 @@ export function useAcceptLegal() {
 // client-facing types) — hard-gates Role.DEALER_PARTNER access in
 // AppShell.tsx until BOTH the individual and their company have signed.
 // See app/routers/contracts.py.
+export type TableColumn = {
+  key: string;
+  label: string;
+  input_type: string; // "text" | "date" | "checkbox" | "select"
+  options: string[] | null;
+};
 export type ContractField = {
   name: string;
   label: string;
-  field_type: string;
+  field_type: string; // includes "disclosure_rows" for Schedule A's signer-submitted tables
   default: string;
   row_group: string | null;
   in_scope_for_initial_signing: boolean;
+  table_columns: TableColumn[] | null;
 };
-export type ContractSection = { heading: string; paragraphs: string[] };
+export type ContractSection = {
+  heading: string;
+  paragraphs: string[];
+  // Static reference tables (fee schedules, registries, Exhibit 1) --
+  // when set, render an actual <table> instead of the paragraph loop.
+  columns: string[] | null;
+  rows: string[][] | null;
+  // Only set on Schedule A's 3 disclosure sections -- names the
+  // "disclosure_rows"-type field whose signer-submitted rows this section's
+  // `rows` reflects (placeholder text when nothing has been submitted yet).
+  disclosure_field: string | null;
+};
 export type ContractDocument = {
   title: string;
   party_facing_notice: string | null;
@@ -3466,7 +3484,7 @@ export function useContractPreview(contractType: string) {
 // portal can show the actual filled agreement (review step) before signing.
 export function useRenderContract() {
   return useMutation({
-    mutationFn: ({ contractType, fieldValues }: { contractType: string; fieldValues: Record<string, string> }) =>
+    mutationFn: ({ contractType, fieldValues }: { contractType: string; fieldValues: Record<string, unknown> }) =>
       api<ContractPreview>(`/contracts/${contractType}/render`, {
         method: "POST",
         body: JSON.stringify({ field_values: fieldValues }),
@@ -3483,7 +3501,7 @@ export function useSignReferralProtection() {
       typed_name: string;
       esign_consent: boolean;
       signature_data_url: string;
-      field_values?: Record<string, string>;
+      field_values?: Record<string, unknown>;
       signer_email?: string;
       company_name: string;
       company_entity_type?: string;
@@ -3494,6 +3512,68 @@ export function useSignReferralProtection() {
         method: "POST",
         body: JSON.stringify(body),
       }),
+  });
+}
+
+// Deal Registrations (Exhibit 1 of a signed Referral Protection Agreement) --
+// admin-issued each time Qualified Commercial introduces a specific
+// financing opportunity to a referral partner company, per Article 4. See
+// app/routers/agreements.py.
+export type DealRegistrationRead = {
+  id: string;
+  referral_partner_company_id: string;
+  registration_number: string;
+  introduced_at: string;
+  client_borrower: string;
+  financing_opportunity: string;
+  introduced_capital_source: string;
+  introduced_program: string | null;
+  introduced_contact: string | null;
+  method_of_introduction: string;
+  method_other_description: string | null;
+  documents_transmitted: string | null;
+  coded_designation: string | null;
+  capital_source_number: string | null;
+  date_identity_disclosed: string | null;
+  certificate_download_url: string | null;
+  created_at: string;
+};
+
+export function useDealRegistrations(companyId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["deal-registrations", companyId],
+    queryFn: () => apiCall<DealRegistrationRead[]>(`/admin/agreements/deal-registrations?company_id=${companyId}`),
+    enabled: !!companyId,
+  });
+}
+
+export function useIssueDealRegistration() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      referral_partner_company_id: string;
+      introduced_at: string;
+      client_borrower: string;
+      financing_opportunity: string;
+      introduced_capital_source: string;
+      introduced_program?: string;
+      introduced_contact?: string;
+      method_of_introduction: string;
+      method_other_description?: string;
+      documents_transmitted?: string;
+      coded_designation?: string;
+      capital_source_number?: string;
+      date_identity_disclosed?: string;
+    }) =>
+      apiCall<DealRegistrationRead>("/admin/agreements/deal-registrations", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: ["deal-registrations", variables.referral_partner_company_id] });
+    },
   });
 }
 

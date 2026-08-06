@@ -35,7 +35,7 @@ export const SignaturePad = forwardRef<SignaturePadHandle, { width?: number; hei
         ref={canvasRef}
         width={width}
         height={height}
-        onPointerDown={(e) => startDraw(e, canvasRef.current, drawing)}
+        onPointerDown={(e) => startDraw(e, canvasRef.current, drawing, isDark)}
         onPointerMove={(e) => moveDraw(e, canvasRef.current, drawing)}
         onPointerUp={() => { drawing.current = false; }}
         onPointerLeave={() => { drawing.current = false; }}
@@ -52,7 +52,7 @@ export const SignaturePad = forwardRef<SignaturePadHandle, { width?: number; hei
   },
 );
 
-function startDraw(event: ReactPointerEvent<HTMLCanvasElement>, canvas: HTMLCanvasElement | null, drawing: { current: boolean }) {
+function startDraw(event: ReactPointerEvent<HTMLCanvasElement>, canvas: HTMLCanvasElement | null, drawing: { current: boolean }, isDark: boolean) {
   if (!canvas) return;
   drawing.current = true;
   const ctx = canvas.getContext("2d");
@@ -61,7 +61,9 @@ function startDraw(event: ReactPointerEvent<HTMLCanvasElement>, canvas: HTMLCanv
   ctx.lineWidth = 3;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  ctx.strokeStyle = "#111827";
+  // Must contrast against the canvas background above (#080A10 dark / #F8FAFC
+  // light) -- a fixed dark stroke was nearly invisible on the dark canvas.
+  ctx.strokeStyle = isDark ? "#F8FAFC" : "#111827";
   ctx.beginPath();
   ctx.moveTo(pos.x, pos.y);
 }

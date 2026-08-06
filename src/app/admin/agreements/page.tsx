@@ -17,6 +17,7 @@ import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
 import { useCurrentUser } from "@/hooks/useApi";
+import { IssueDealRegistrationModal } from "@/components/IssueDealRegistrationModal";
 
 type AgreementRow = {
   id: string;
@@ -28,6 +29,7 @@ type AgreementRow = {
   party_email: string | null;
   party_company: string | null;
   party_kind: "user" | "company" | "lead" | "client" | "unknown";
+  company_id: string | null;
   typed_name: string;
   signed_at: string | null;
   document_version: string;
@@ -69,6 +71,7 @@ export default function AdminAgreementsPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
+  const [dealRegTarget, setDealRegTarget] = useState<{ id: string; name: string } | null>(null);
 
   async function call<T>(path: string): Promise<T> {
     const token = await getToken();
@@ -166,7 +169,16 @@ export default function AdminAgreementsPage() {
               </div>
               <div style={{ color: t.ink2, fontSize: 13 }}>{row.contract_number || "—"}</div>
               <div style={{ color: t.ink3, fontSize: 12 }}>{formatDateTime(row.signed_at)}</div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+                {row.agreement_type === "referral_protection" && row.company_id ? (
+                  <button
+                    type="button"
+                    onClick={() => setDealRegTarget({ id: row.company_id!, name: row.party_company || row.party_name || "Referral partner" })}
+                    style={{ ...qcBtn(t), padding: "6px 10px", fontSize: 12 }}
+                  >
+                    Issue Deal Registration
+                  </button>
+                ) : null}
                 {row.certificate_download_url ? (
                   <a href={row.certificate_download_url} target="_blank" rel="noreferrer" style={{ ...qcBtn(t), padding: "6px 10px", fontSize: 12, textDecoration: "none" }}>
                     Certificate
@@ -186,6 +198,15 @@ export default function AdminAgreementsPage() {
           </div>
         </div>
       </Card>
+
+      {dealRegTarget ? (
+        <IssueDealRegistrationModal
+          open
+          onClose={() => setDealRegTarget(null)}
+          companyId={dealRegTarget.id}
+          companyName={dealRegTarget.name}
+        />
+      ) : null}
     </div>
   );
 }
