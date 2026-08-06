@@ -17,14 +17,23 @@
 // each real-world fact ONCE and fans it out to every backend field that
 // needs it, rather than asking the signer to type their own company name
 // three times.
+//
+// The document's SIGNATURES section (backend: scripts/patch_signature_blocks.py)
+// is rendered by a dedicated SignatureBlock component here, NOT the generic
+// section-paragraph loop -- Qualified Commercial's side is shown pre-filled
+// (its standing signatory), and the counterparty's Name/Title lines are live
+// inline inputs anchored at the exact spot in the document where they're
+// needed, with the drawn-signature pad directly beneath. The server-rendered
+// text for that one section is never displayed; the final signed document
+// gets the real values via field_values at submit time.
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import Link from "next/link";
-import type { CSSProperties } from "react";
 import { QCMark } from "@/components/QCMark";
 import { SignaturePad, type SignaturePadHandle } from "@/components/design-system/SignaturePad";
 import { useContractPreview, useRenderContract, useSignReferralProtection } from "@/hooks/useApi";
 import { ContractType } from "@/lib/enums.generated";
+import type { ContractSection } from "@/hooks/useApi";
 
 type Step = "fill" | "review" | "signed";
 
@@ -58,16 +67,30 @@ const EMPTY_FORM: FormState = {
   effectiveDate: new Date().toISOString().slice(0, 10),
 };
 
+const SIGNATURE_SECTION_HEADING = "SIGNATURES";
+
 export default function ReferralProtectionSignPage() {
   const { data: preview } = useContractPreview(ContractType.REFERRAL_PROTECTION);
   const render = useRenderContract();
   const sign = useSignReferralProtection();
   const sigPadRef = useRef<SignaturePadHandle | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const sigAnchorRef = useRef<HTMLDivElement | null>(null);
   const [step, setStep] = useState<Step>("fill");
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [typedName, setTypedName] = useState("");
+  const [signerTitle, setSignerTitle] = useState("");
   const [esignConsent, setEsignConsent] = useState(false);
   const [formError, setFormError] = useState("");
+  // SignaturePad exposes hasSignature() only imperatively (no onChange --
+  // it's a shared primitive also used by PlatformAccessGate/
+  // PaymentAuthorizationPanel/SignRequestedDocument, not worth changing for
+  // this one page). Drawing on the canvas never triggers a React re-render
+  // on its own, so the checklist below would show "Signature" as incomplete
+  // forever even after the user actually draws one. Re-check on pointer-up,
+  // bubbled up from the canvas's own (non-stopPropagation'd) handler.
+  const [sigDrawn, setSigDrawn] = useState(false);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -92,8 +115,16 @@ export default function ReferralProtectionSignPage() {
       schedule_a_certifying_officer_title: form.officerTitle,
       schedule_a_certification_date: form.effectiveDate,
       effective_date: form.effectiveDate,
+      // The main SIGNATURES block's counterparty Name/Title lines -- filled
+      // live from the sign panel's own state, empty until the signer reaches
+      // it. Harmless to include at the fill step's /render call (renders
+      // blank there, but that section is never shown using this fetched
+      // text -- see SignatureBlock below); required at actual /sign time so
+      // the final hashed, certificate-rendered document is complete.
+      counterparty_signatory_name: typedName,
+      counterparty_signatory_title: signerTitle,
     };
-  }, [form]);
+  }, [form, typedName, signerTitle]);
 
   function continueToReview() {
     if (!form.companyName.trim()) { setFormError("Enter your company's legal name."); return; }
@@ -109,11 +140,17 @@ export default function ReferralProtectionSignPage() {
     setStep("fill");
   }
 
+  function focusAndScroll(ref: RefObject<HTMLElement>) {
+    ref.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (ref.current instanceof HTMLInputElement) ref.current.focus();
+  }
+
   function submit() {
-    if (!typedName.trim()) { setFormError("Type your full legal name to sign."); return; }
+    if (!typedName.trim()) { setFormError("Type your full legal name in the signature block below."); focusAndScroll(nameInputRef); return; }
+    if (!signerTitle.trim()) { setFormError("Enter your title in the signature block below."); focusAndScroll(titleInputRef); return; }
     if (!esignConsent) { setFormError("Check the E-SIGN consent box."); return; }
     const sigPad = sigPadRef.current;
-    if (!sigPad?.hasSignature()) { setFormError("Draw your signature."); return; }
+    if (!sigPad?.hasSignature()) { setFormError("Draw your signature."); focusAndScroll(sigAnchorRef); return; }
     setFormError("");
     sign.mutate({
       typed_name: typedName.trim(),
@@ -152,36 +189,85 @@ export default function ReferralProtectionSignPage() {
   }
 
   if (step === "review") {
-    return (
-      <main style={page}>
-        <div style={shell}>
-          <BrandHeader />
-          <h1 style={title}>Review your agreement</h1>
-          <p style={copy}>Check the filled agreement below reflects your information correctly, then sign at the bottom.</p>
-          {render.data?.document_version ? <p style={versionLine}>Version {render.data.document_version}</p> : null}
+    const nonSignatureSections = (filledDoc?.sections ?? []).filter((s) => s.heading !== SIGNATURE_SECTION_HEADING);
+    const signatureSection = (filledDoc?.sections ?? []).find((s) => s.heading === SIGNATURE_SECTION_HEADING);
+    const preambleBlocks = filledDoc ? splitPreamble(filledDoc.preamble) : null;
 
-          <div style={docCard}>
-            {!filledDoc ? (
+    const nameComplete = typedName.trim().length > 0;
+    const titleComplete = signerTitle.trim().length > 0;
+    const sigComplete = sigDrawn;
+
+    return (
+      <main style={reviewPage}>
+        <div style={reviewShell}>
+          <div style={{ flexShrink: 0 }}>
+            <BrandHeader />
+            <h1 style={title}>Review your agreement</h1>
+            <p style={copy}>Check the filled agreement below reflects your information correctly, then sign at the bottom.</p>
+            {render.data?.document_version ? <p style={versionLine}>Version {render.data.document_version}</p> : null}
+          </div>
+
+          <div style={docCardFull}>
+            {!filledDoc || !preambleBlocks ? (
               <div style={muted}>Rendering agreement…</div>
             ) : (
-              <>
+              <div style={docScrollFull}>
                 {filledDoc.party_facing_notice ? <p style={noticeBox}>{filledDoc.party_facing_notice}</p> : null}
-                <div style={docScrollFull}>
-                  {filledDoc.preamble.map((p, i) => (p.trim() ? <p key={`pre-${i}`} style={docPara}>{p}</p> : null))}
-                  {filledDoc.sections.map((section, i) => (
-                    <div key={i}>
-                      <div style={docHeading}>{section.heading}</div>
-                      {section.paragraphs.map((p, j) => (<p key={j} style={docPara}>{p}</p>))}
-                    </div>
-                  ))}
-                </div>
-              </>
+
+                {preambleBlocks.titleLines.length > 0 ? (
+                  <div style={coverTitleBlock}>
+                    {preambleBlocks.titleLines.map((p, i) => <div key={`t-${i}`}>{p}</div>)}
+                  </div>
+                ) : null}
+
+                {preambleBlocks.partyLines.length > 0 ? (
+                  <div style={partyBlock}>
+                    {preambleBlocks.partyLines.map((p, i) => <div key={`pt-${i}`} style={partyLine(p)}>{p}</div>)}
+                  </div>
+                ) : null}
+
+                {preambleBlocks.repeatedTitleLines.length > 0 ? (
+                  <div style={repeatedTitleBlock}>
+                    {preambleBlocks.repeatedTitleLines.map((p, i) => <div key={`rt-${i}`}>{p}</div>)}
+                  </div>
+                ) : null}
+
+                {preambleBlocks.bodyLines.map((p, i) => (p.trim() ? <p key={`pre-${i}`} style={docPara}>{p}</p> : null))}
+
+                {nonSignatureSections.map((section, i) => (
+                  <div key={i}>
+                    <div style={docHeading}>{section.heading}</div>
+                    {section.paragraphs.map((p, j) => (<p key={j} style={docPara}>{p}</p>))}
+                  </div>
+                ))}
+
+                {signatureSection ? (
+                  <SignatureBlock
+                    section={signatureSection}
+                    companyName={form.companyName}
+                    effectiveDate={form.effectiveDate}
+                    typedName={typedName}
+                    onTypedNameChange={setTypedName}
+                    signerTitle={signerTitle}
+                    onSignerTitleChange={setSignerTitle}
+                    nameInputRef={nameInputRef}
+                    titleInputRef={titleInputRef}
+                    sigAnchorRef={sigAnchorRef}
+                    sigPadRef={sigPadRef}
+                    onSignatureChange={setSigDrawn}
+                  />
+                ) : null}
+              </div>
             )}
           </div>
 
-          <div style={formCard}>
-            <SectionTitle>Sign</SectionTitle>
-            <Field label="Type your full legal name" value={typedName} onChange={setTypedName} />
+          <div style={{ ...formCard, flexShrink: 0 }}>
+            <div style={checklistRow}>
+              <ChecklistItem done={nameComplete} label="Name" onClick={() => focusAndScroll(nameInputRef)} />
+              <ChecklistItem done={titleComplete} label="Title" onClick={() => focusAndScroll(titleInputRef)} />
+              <ChecklistItem done={sigComplete} label="Signature" onClick={() => focusAndScroll(sigAnchorRef)} />
+            </div>
+
             <label style={consentLabel}>
               <input type="checkbox" checked={esignConsent} onChange={(e) => setEsignConsent(e.target.checked)} style={{ marginTop: 2 }} />
               I consent to use electronic records and signatures under the U.S. E-SIGN Act and UETA, and I agree to the
@@ -189,12 +275,6 @@ export default function ReferralProtectionSignPage() {
               agreement at any time by contacting support@qualifiedcommercial.com, and that I may withdraw consent to
               electronic records prospectively through that same address.
             </label>
-
-            <div>
-              <div style={sigLabel}>Draw your signature</div>
-              <SignaturePad ref={sigPadRef} />
-              <button type="button" onClick={() => sigPadRef.current?.clear()} style={clearButton}>Clear signature</button>
-            </div>
 
             {(formError || sign.error) ? (
               <div style={errorText}>{formError || (sign.error instanceof Error ? sign.error.message : "Something went wrong.")}</div>
@@ -264,6 +344,166 @@ export default function ReferralProtectionSignPage() {
   );
 }
 
+// Splits a document's preamble into structural blocks so the review page can
+// give each a distinct visual weight instead of one flat paragraph list:
+// the cover title (repeated multi-line ALL-CAPS heading), the party-identity
+// block (both parties' names/entity lines + Effective Date, bounded by the
+// literal "QUALIFIED COMMERCIAL LLC" line -- constant across every contract
+// -- through the "Effective Date:" line), any immediately-following
+// re-stated title lines (the source .docx's own page-break running header,
+// kept per this session's "never silently drop content" precedent but
+// de-emphasized rather than shown at full weight), and the actual recital
+// prose.
+function splitPreamble(preamble: string[]): {
+  titleLines: string[];
+  partyLines: string[];
+  repeatedTitleLines: string[];
+  bodyLines: string[];
+} {
+  const partyStartIdx = preamble.findIndex((p) => p.trim() === "QUALIFIED COMMERCIAL LLC");
+  if (partyStartIdx === -1) {
+    return { titleLines: [], partyLines: [], repeatedTitleLines: [], bodyLines: preamble };
+  }
+  const titleLines = preamble.slice(0, partyStartIdx);
+  const effectiveDateIdx = preamble.findIndex((p, i) => i > partyStartIdx && p.trim().startsWith("Effective Date:"));
+  const partyEndIdx = effectiveDateIdx === -1 ? partyStartIdx : effectiveDateIdx;
+  const partyLines = preamble.slice(partyStartIdx, partyEndIdx + 1);
+  const rest = preamble.slice(partyEndIdx + 1);
+  let repeatedCount = 0;
+  while (repeatedCount < rest.length && isAllCapsLine(rest[repeatedCount])) repeatedCount++;
+  return { titleLines, partyLines, repeatedTitleLines: rest.slice(0, repeatedCount), bodyLines: rest.slice(repeatedCount) };
+}
+
+function isAllCapsLine(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.length > 0 && trimmed === trimmed.toUpperCase() && trimmed !== trimmed.toLowerCase();
+}
+
+function partyLine(text: string): CSSProperties {
+  if (text.trim() === "and") return { ...partyLineBase, color: "#7A889B", fontStyle: "italic" };
+  if (text.trim() === "QUALIFIED COMMERCIAL LLC") return { ...partyLineBase, fontWeight: 800, fontSize: 14 };
+  return partyLineBase;
+}
+
+// Renders the document's real SIGNATURES/ACKNOWLEDGMENT section (see
+// scripts/patch_signature_blocks.py) at the exact point it appears in the
+// document flow, instead of a generic sign panel floating at the very
+// bottom. Qualified Commercial's own By:/Name:/Title:/Date: lines render
+// read-only (already-executed styling); the counterparty's Name/Title lines
+// are live inline inputs, and the drawn-signature pad sits directly beneath
+// the counterparty's "By:" line -- guided to the exact spot it's needed.
+function SignatureBlock({
+  section,
+  companyName,
+  effectiveDate,
+  typedName,
+  onTypedNameChange,
+  signerTitle,
+  onSignerTitleChange,
+  nameInputRef,
+  titleInputRef,
+  sigAnchorRef,
+  sigPadRef,
+  onSignatureChange,
+}: {
+  section: ContractSection;
+  companyName: string;
+  effectiveDate: string;
+  typedName: string;
+  onTypedNameChange: (v: string) => void;
+  signerTitle: string;
+  onSignerTitleChange: (v: string) => void;
+  nameInputRef: RefObject<HTMLInputElement>;
+  titleInputRef: RefObject<HTMLInputElement>;
+  sigAnchorRef: RefObject<HTMLDivElement>;
+  sigPadRef: RefObject<SignaturePadHandle>;
+  onSignatureChange: (drawn: boolean) => void;
+}) {
+  const witnessLine = section.paragraphs[0];
+  const qcLabel = section.paragraphs[1];
+  const counterpartyLabel = companyName.trim() || section.paragraphs[6] || "Referral Partner";
+
+  return (
+    <div style={signatureSectionWrap}>
+      <div style={docHeading}>{section.heading}</div>
+      <p style={docPara}>{witnessLine}</p>
+
+      <div style={signatureColumns}>
+        <div style={signatureCard}>
+          <div style={signatureCardLabel}>{qcLabel}</div>
+          <SignatureFieldRow label="By" value="Jonathan Franco (e-signed on file)" readOnly />
+          <SignatureFieldRow label="Name" value="Jonathan Franco" readOnly />
+          <SignatureFieldRow label="Title" value="Executive Partner" readOnly />
+          <SignatureFieldRow label="Date" value={effectiveDate || "—"} readOnly />
+          <div style={executedPill}>Already executed</div>
+        </div>
+
+        <div ref={sigAnchorRef} style={signatureCard}>
+          <div style={signatureCardLabel}>{counterpartyLabel}</div>
+          <SignatureFieldRow label="Name" inputRef={nameInputRef} value={typedName} onChange={onTypedNameChange} placeholder="Type your full legal name" />
+          <SignatureFieldRow label="Title" inputRef={titleInputRef} value={signerTitle} onChange={onSignerTitleChange} placeholder="Your title (e.g. Managing Member)" />
+          <SignatureFieldRow label="Date" value={effectiveDate || "—"} readOnly />
+          <div style={{ marginTop: 10 }} onPointerUp={() => onSignatureChange(!!sigPadRef.current?.hasSignature())}>
+            <div style={sigLabel}>Draw your signature</div>
+            <SignaturePad ref={sigPadRef} />
+            <button
+              type="button"
+              onClick={() => { sigPadRef.current?.clear(); onSignatureChange(false); }}
+              style={clearButton}
+            >
+              Clear signature
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SignatureFieldRow({
+  label,
+  value,
+  onChange,
+  readOnly,
+  placeholder,
+  inputRef,
+}: {
+  label: string;
+  value: string;
+  onChange?: (v: string) => void;
+  readOnly?: boolean;
+  placeholder?: string;
+  inputRef?: RefObject<HTMLInputElement>;
+}) {
+  return (
+    <div style={sigFieldRow}>
+      <span style={sigFieldLabel}>{label}:</span>
+      {readOnly ? (
+        <span style={sigFieldReadOnly}>{value}</span>
+      ) : (
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={(e) => onChange?.(e.target.value)}
+          placeholder={placeholder}
+          style={sigFieldInput}
+        />
+      )}
+    </div>
+  );
+}
+
+function ChecklistItem({ done, label, onClick }: { done: boolean; label: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} style={{ ...checklistItem, borderColor: done ? "#21D3C7" : "rgba(255,255,255,.14)" }}>
+      <span style={{ ...checklistDot, background: done ? "#21D3C7" : "transparent", borderColor: done ? "#21D3C7" : "#5B6B80" }}>
+        {done ? "✓" : ""}
+      </span>
+      {label}
+    </button>
+  );
+}
+
 function BrandHeader() {
   return (
     <div style={brandHeader}>
@@ -297,17 +537,26 @@ function Field({ label, value, onChange, type = "text" }: { label: string; value
 
 const page: CSSProperties = { minHeight: "100vh", background: "radial-gradient(1200px 620px at 50% -12%, #0C1428 0%, #060B1A 62%)", color: "#F1F5F9", padding: 24, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" };
 const shell: CSSProperties = { maxWidth: 760, margin: "6vh auto 60px", display: "grid", gap: 18 };
+// Full-viewport layout for the review step: the page itself is exactly the
+// viewport height with no outer scroll, and the shell is a flex column
+// (min-height:0 required so the inner docCard can actually shrink/scroll
+// instead of pushing the page taller -- same pattern already established in
+// AppShell.tsx for the app's main content area) so the long document scrolls
+// WITHIN a bounded area that fills the desktop window, rather than floating
+// in a narrow fixed-width column.
+const reviewPage: CSSProperties = { ...page, height: "100vh", minHeight: "100vh", overflow: "hidden", display: "flex", flexDirection: "column" };
+const reviewShell: CSSProperties = { maxWidth: "min(1180px, 94vw)", width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: 14, flex: 1, minHeight: 0, paddingBottom: 16 };
 const brandHeader: CSSProperties = { display: "flex", alignItems: "center", gap: 10 };
 const brand: CSSProperties = { color: "#21D3C7", fontSize: 12, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase" };
 const brandName: CSSProperties = { color: "#F8FAFC", fontSize: 15, fontWeight: 900, lineHeight: 1.2 };
 const title: CSSProperties = { margin: "8px 0 0", fontSize: 24, lineHeight: 1.2, color: "#F8FAFC" };
 const versionLine: CSSProperties = { margin: "4px 0 0", color: "#95A3B6", fontSize: 12.5 };
 const docCard: CSSProperties = { border: "1px solid rgba(255,255,255,.10)", borderRadius: 14, background: "rgba(255,255,255,.03)", padding: 16 };
-const docScroll: CSSProperties = { maxHeight: 320, overflowY: "auto", display: "grid", gap: 10, paddingRight: 4 };
-const docScrollFull: CSSProperties = { maxHeight: 460, overflowY: "auto", display: "grid", gap: 10, paddingRight: 4 };
-const noticeBox: CSSProperties = { margin: "0 0 12px", color: "#F0C36D", fontSize: 12, lineHeight: 1.5, fontWeight: 700 };
-const docHeading: CSSProperties = { fontWeight: 800, fontSize: 12.5, color: "#F8FAFC", marginTop: 10, marginBottom: 4 };
-const docPara: CSSProperties = { margin: "0 0 6px", color: "#B8C4D6", fontSize: 12.5, lineHeight: 1.55 };
+const docCardFull: CSSProperties = { ...docCard, flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "20px 28px" };
+const docScrollFull: CSSProperties = { flex: 1, minHeight: 0, overflowY: "auto", display: "grid", gap: 10, paddingRight: 6 };
+const noticeBox: CSSProperties = { margin: "0 0 16px", color: "#F0C36D", fontSize: 12, lineHeight: 1.5, fontWeight: 700, border: "1px solid rgba(240,195,109,.3)", borderRadius: 8, padding: "10px 12px", background: "rgba(240,195,109,.06)" };
+const docHeading: CSSProperties = { fontWeight: 900, fontSize: 14, color: "#F8FAFC", marginTop: 22, marginBottom: 8, letterSpacing: 0.3, borderBottom: "1px solid rgba(255,255,255,.10)", paddingBottom: 6 };
+const docPara: CSSProperties = { margin: "0 0 8px", color: "#B8C4D6", fontSize: 12.5, lineHeight: 1.6 };
 const muted: CSSProperties = { color: "#95A3B6", fontSize: 13 };
 const formCard: CSSProperties = { border: "1px solid rgba(255,255,255,.10)", borderRadius: 14, background: "rgba(255,255,255,.03)", padding: 18, display: "grid", gap: 12 };
 const sectionTitle: CSSProperties = { fontSize: 13, fontWeight: 800, color: "#7FE7DE", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 8 };
@@ -323,3 +572,23 @@ const errorText: CSSProperties = { color: "#FCA5A5", fontSize: 12.5 };
 const copy: CSSProperties = { color: "#B8C4D6", fontSize: 14, lineHeight: 1.6 };
 const primaryButton: CSSProperties = { height: 44, border: "none", borderRadius: 999, padding: "0 18px", font: "inherit", fontWeight: 900, background: "linear-gradient(135deg,#E9D58A,#D4AF37)", color: "#0B1326", cursor: "pointer" };
 const secondaryButton: CSSProperties = { height: 44, border: "1px solid rgba(255,255,255,.14)", borderRadius: 999, padding: "0 18px", font: "inherit", fontWeight: 700, background: "none", color: "#B8C4D6", cursor: "pointer" };
+
+// Part 2 -- document visual hierarchy styles
+const coverTitleBlock: CSSProperties = { textAlign: "center", fontWeight: 900, fontSize: 20, lineHeight: 1.3, color: "#F8FAFC", letterSpacing: 0.4, margin: "4px 0 18px" };
+const partyBlock: CSSProperties = { textAlign: "center", margin: "0 0 18px", display: "grid", gap: 3 };
+const partyLineBase: CSSProperties = { fontSize: 13, color: "#D7DEE8", lineHeight: 1.45 };
+const repeatedTitleBlock: CSSProperties = { textAlign: "center", fontWeight: 700, fontSize: 12, lineHeight: 1.4, color: "#5B6B80", margin: "0 0 14px", opacity: 0.75 };
+
+// Part 3 -- SignatureBlock styles
+const signatureSectionWrap: CSSProperties = { marginTop: 26 };
+const signatureColumns: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14, marginTop: 12 };
+const signatureCard: CSSProperties = { border: "1px solid rgba(255,255,255,.14)", borderRadius: 12, padding: 16, background: "rgba(255,255,255,.02)" };
+const signatureCardLabel: CSSProperties = { fontWeight: 800, fontSize: 12.5, color: "#F8FAFC", marginBottom: 10 };
+const sigFieldRow: CSSProperties = { display: "flex", alignItems: "center", gap: 8, marginBottom: 8 };
+const sigFieldLabel: CSSProperties = { fontSize: 11.5, fontWeight: 700, color: "#95A3B6", minWidth: 36 };
+const sigFieldReadOnly: CSSProperties = { fontSize: 13, color: "#D7DEE8", borderBottom: "1px solid rgba(255,255,255,.14)", flex: 1, paddingBottom: 2 };
+const sigFieldInput: CSSProperties = { fontSize: 13, color: "#F8FAFC", background: "transparent", border: "none", borderBottom: "1px solid #21D3C7", flex: 1, paddingBottom: 2, outline: "none", font: "inherit" };
+const executedPill: CSSProperties = { marginTop: 10, display: "inline-block", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5, color: "#7FE7DE", background: "rgba(127,231,222,.10)", borderRadius: 999, padding: "4px 10px" };
+const checklistRow: CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap" };
+const checklistItem: CSSProperties = { display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#D7DEE8", background: "none", border: "1px solid rgba(255,255,255,.14)", borderRadius: 999, padding: "6px 12px", cursor: "pointer" };
+const checklistDot: CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16, borderRadius: "50%", border: "1px solid #5B6B80", fontSize: 10, color: "#0B1326" };
