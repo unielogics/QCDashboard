@@ -77,6 +77,7 @@ const VENDOR_NAV: NavItem[] = [
 // CLIENT_NAV above.
 const DEALER_PARTNER_NAV: NavItem[] = [
   { href: "/broker/ai-underwriter-leads", label: "My Leads", icon: "spark" },
+  { href: "/broker/programs", label: "Programs & Resources", icon: "docCheck" },
   { href: "/profile", label: "Profile", icon: "user" },
 ];
 

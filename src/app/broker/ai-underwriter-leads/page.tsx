@@ -7,7 +7,8 @@
 // exports, or client-thread reply here; those stay admin-only. Every fetch in
 // this file targets /broker/ai-underwriter-leads* only, by construction.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill } from "@/components/design-system/primitives";
@@ -81,10 +82,24 @@ const OUTCOME_COLUMNS: Array<{ key: "submitted" | "closed" | "denied"; label: st
   { key: "denied", label: "Denied" },
 ];
 
+// Mirrors the program titles on /broker/programs -- keyed by the same slug
+// passed via ?program=. Purely a display label for the create-lead modal's
+// contextual note; BrokerLeadCreate has no program field to actually
+// persist this against yet (see broker/programs/page.tsx's header comment).
+const PROGRAM_TITLES: Record<string, string> = {
+  sba: "SBA 7(a) / 504 / Express",
+  "working-capital": "Dealer Working Capital Facility",
+  floorplan: "Dealer Floorplan / Dealer LOC",
+  "real-estate-backed": "Real Estate Backed Dealer Capital",
+  "reinsurance-backed": "Reinsurance-Backed Financing",
+  "bridge-private-credit": "Bridge / Private Credit Refinance",
+};
+
 export default function BrokerAIUnderwriterLeadsPage() {
   const { t } = useTheme();
   const { getToken } = useAuth();
   const { data: me, isLoading: meLoading } = useCurrentUser();
+  const searchParams = useSearchParams();
 
   const [rows, setRows] = useState<LeadRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -100,6 +115,18 @@ export default function BrokerAIUnderwriterLeadsPage() {
   const [notesPosting, setNotesPosting] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [programLabel, setProgramLabel] = useState<string | null>(null);
+
+  // Coming from a "Start" button on /broker/programs -- auto-open the
+  // create-lead modal with a contextual note naming the program. No
+  // fabricated backend field: this is display-only, not persisted.
+  useEffect(() => {
+    const slug = searchParams.get("program");
+    if (slug && PROGRAM_TITLES[slug]) {
+      setProgramLabel(PROGRAM_TITLES[slug]);
+      setCreateOpen(true);
+    }
+  }, [searchParams]);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
@@ -155,6 +182,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
         body: JSON.stringify(payload),
       });
       setCreateOpen(false);
+      setProgramLabel(null);
       await loadLeads();
       await openLead(res.intake.id);
     } catch (error) {
@@ -412,7 +440,12 @@ export default function BrokerAIUnderwriterLeadsPage() {
       <RunReviewDialog open={rerunOpen} onClose={() => setRerunOpen(false)} onStart={startRerun} poll={pollRerun} onDone={onRerunDone} />
 
       {createOpen ? (
-        <CreateBrokerLeadModal onClose={() => setCreateOpen(false)} onCreate={createLead} creating={creating} />
+        <CreateBrokerLeadModal
+          onClose={() => { setCreateOpen(false); setProgramLabel(null); }}
+          onCreate={createLead}
+          creating={creating}
+          programLabel={programLabel}
+        />
       ) : null}
     </main>
   );
@@ -422,10 +455,12 @@ function CreateBrokerLeadModal({
   onClose,
   onCreate,
   creating,
+  programLabel,
 }: {
   onClose: () => void;
   onCreate: (payload: CreateLeadPayload) => void | Promise<void>;
   creating: boolean;
+  programLabel?: string | null;
 }) {
   const { t } = useTheme();
   const [fullName, setFullName] = useState("");
@@ -459,6 +494,12 @@ function CreateBrokerLeadModal({
           Create a lead on behalf of your client and start underwriting now. Your client can log in later with this
           email — they receive a secure code by email.
         </p>
+
+        {programLabel ? (
+          <div style={{ border: `1px solid ${t.petrol}40`, background: t.petrolSoft, borderRadius: 10, padding: "8px 12px", fontSize: 12.5, color: t.petrol, fontWeight: 700 }}>
+            Starting a lead for: {programLabel}
+          </div>
+        ) : null}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div>

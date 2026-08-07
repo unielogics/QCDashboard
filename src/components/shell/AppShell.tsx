@@ -2,7 +2,7 @@
 
 import { useEffect, type ReactNode } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 import AIRail from "./AIRail";
@@ -31,6 +31,7 @@ export default function AppShell({
 }) {
   const { t } = useTheme();
   const pathname = usePathname();
+  const router = useRouter();
   const aiOpen = useUI((s) => s.aiOpen);
   const setAiOpen = useUI((s) => s.setAiOpen);
   const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
@@ -119,6 +120,26 @@ export default function AppShell({
     }
   }, [authLoaded, isBareRoute, isSignedIn]);
 
+  // Ongoing confinement, past the one-time Platform Access signature gate
+  // below: a signed dealer partner has no book-of-business (see
+  // Role.DEALER_PARTNER's docstring in app/enums.py) and must never render
+  // the operator dashboard or any other internal route — via bookmark, deep
+  // link, or browser back button. This is defense-in-depth alongside the
+  // backend scoping fix (scope_loan_query / scope_client_query / calendar /
+  // ai-tasks all deny DEALER_PARTNER by default now); the real enforcement
+  // is server-side, this just keeps the UI from ever showing the wrong
+  // screen while a redirect races the deny. Hook must run unconditionally
+  // (before the isBareRoute/auth early returns below) per Rules of Hooks.
+  const isDealerPartnerConfinedRoute =
+    pathname.startsWith("/broker") || pathname.startsWith("/profile");
+  const isDealerPartnerOutOfBounds =
+    !isBareRoute && user?.role === Role.DEALER_PARTNER && !isDealerPartnerConfinedRoute;
+  useEffect(() => {
+    if (isDealerPartnerOutOfBounds) {
+      router.replace("/broker/ai-underwriter-leads");
+    }
+  }, [isDealerPartnerOutOfBounds, router]);
+
   if (isBareRoute) {
     return <div style={{ background: t.bg, minHeight: "100vh" }}>{children}</div>;
   }
@@ -134,6 +155,10 @@ export default function AppShell({
   // Agreement) — this is the UX half of that guarantee, not the only one.
   if (user?.role === Role.DEALER_PARTNER && platformAccessStatus?.required) {
     return <PlatformAccessGate />;
+  }
+
+  if (isDealerPartnerOutOfBounds) {
+    return <div style={{ background: t.bg, minHeight: "100vh" }} />;
   }
 
   return (

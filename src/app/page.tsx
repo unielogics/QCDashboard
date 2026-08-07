@@ -83,11 +83,17 @@ export default function DashboardPage() {
   const isBroker = user?.role === Role.BROKER;
   const isVendor = user?.role === Role.VENDOR;
   const isRegionalManager = user?.role === Role.REGIONAL_MANAGER;
+  // External loan-referral partner -- no book-of-business (see
+  // Role.DEALER_PARTNER's docstring in app/enums.py). Must never render
+  // this firm-wide operator dashboard; redirect to their own portal, same
+  // pattern as isVendor below.
+  const isDealerPartner = user?.role === Role.DEALER_PARTNER;
   const showOperatorPipeline = !isClient && !isBroker;
 
   useEffect(() => {
     if (isVendor) router.replace("/vendor/buckets");
-  }, [isVendor, router]);
+    if (isDealerPartner) router.replace("/broker/ai-underwriter-leads");
+  }, [isVendor, isDealerPartner, router]);
 
   const datelineDate = today.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
   const datelineTime = today.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
@@ -99,6 +105,9 @@ export default function DashboardPage() {
     return <AgentHomeView />;
   }
   if (isVendor) {
+    return null;
+  }
+  if (isDealerPartner) {
     return null;
   }
 
