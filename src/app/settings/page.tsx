@@ -1434,6 +1434,20 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
   }
 
   const onChangeRole = (userId: string, role: Role) => {
+    // DEALER_PARTNER is hard-blocked server-side until their company has a
+    // signed Referral Protection Agreement -- a user with no company link
+    // at all (e.g. one promoted via this dropdown rather than invited)
+    // can never pass that check. Collect a company name here, same as the
+    // invite flow, so this path can't create a permanently-locked-out user.
+    const target = users?.find((u) => u.id === userId);
+    if (role === Role.DEALER_PARTNER && !target?.referral_partner_company_name) {
+      const companyName = window.prompt(
+        "Their company must have a signed Referral Protection Agreement on file.\n\nEnter the company name (existing companies are matched by name):"
+      );
+      if (!companyName?.trim()) return;
+      updateRole.mutate({ userId, role, company_name: companyName.trim() });
+      return;
+    }
     updateRole.mutate({ userId, role });
   };
   const onRevoke = (userId: string) => {

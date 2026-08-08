@@ -1115,7 +1115,7 @@ export function useUpdateUserRole() {
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["users"]
-    mutationFn: ({ userId, ...patch }: { userId: string; role?: Role; name?: string }) =>
+    mutationFn: ({ userId, ...patch }: { userId: string; role?: Role; name?: string; company_name?: string }) =>
       apiCall<UserRow>(`/users/${userId}`, {
         method: "PATCH",
         body: JSON.stringify(patch),
