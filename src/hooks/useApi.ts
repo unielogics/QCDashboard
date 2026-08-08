@@ -72,6 +72,7 @@ import type {
   CreditPullAccessRead,
   LeadCreditStatusResponse,
   LeadProgramFitResponse,
+  PrepareBankerSubmissionResponse,
   BucketRequestedDocumentRead,
   BucketFileUploadInitResponse,
   ParsedReport,
@@ -813,6 +814,22 @@ export function useRunLeadCreditPull(intakeId: string) {
         body: JSON.stringify(payload),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["lead-credit-status", intakeId] }),
+  });
+}
+
+// Admin-only "prepare banker submission" — assembles the normalized JSON
+// payload an admin hands to the banker's own intake system (dealer leads
+// only). Stateless on the backend: nothing is persisted or invalidated by
+// this call, so unlike useRunLeadCreditPull there is no onSuccess cache
+// invalidation. See BankerSubmissionModal for the SSN/Tax ID collection UI.
+export function usePrepareBankerSubmission(intakeId: string) {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (payload: { identifiers: { ssn?: string; personal_tax_id?: string } }) =>
+      apiCall<PrepareBankerSubmissionResponse>(`/admin/ai-underwriter-leads/${intakeId}/prepare-banker-submission`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
   });
 }
 

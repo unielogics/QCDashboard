@@ -714,10 +714,26 @@ export interface LeadProgramFitProgram {
 }
 export interface LeadProgramFitResponse {
   computed: boolean;
-  sba: LeadProgramFitProgram | null;
-  real_estate_backed: LeadProgramFitProgram | null;
-  reinsurance_backed: LeadProgramFitProgram | null;
-  jumbo_dscr: LeadProgramFitProgram | null;
+  programs: Record<string, LeadProgramFitProgram>;
+}
+
+// Admin-only "prepare banker submission" payload — a normalized JSON document
+// assembled server-side (app/services/banker_submission.py) for an admin to
+// hand to the banker's own intake system. Dealer leads only. SSN / personal
+// Tax ID are transient (collected once per generation, never persisted) and
+// only ever live in this response — see BankerSubmissionModal.
+export interface BankerSubmissionPayload {
+  borrower: { full_name: string; email: string; phone: string | null; business_name: string | null };
+  financing_request: { loan_purpose: string | null; requested_loan_amount: number | null };
+  entity_structure: Record<string, unknown>;
+  owners: Record<string, unknown>[];
+  asset_rows: Record<string, unknown>[];
+  key_metrics: Record<string, unknown>;
+  program_fit: Record<string, unknown>;
+  sensitive_identifiers: Record<string, unknown>;
+}
+export interface PrepareBankerSubmissionResponse {
+  payload: BankerSubmissionPayload;
 }
 
 export interface BucketRequestedDocumentRead {

@@ -603,6 +603,36 @@ export const LinkKindOptions = [
   { value: "reference", label: "Reference" }
 ] as const;
 
+export const LoanProgram = {
+  SBA: "sba",
+  REAL_ESTATE_BACKED: "real_estate_backed",
+  REINSURANCE_BACKED: "reinsurance_backed",
+  JUMBO_DSCR: "jumbo_dscr",
+  TERM_LOAN_10_YEAR: "term_loan_10_year",
+  TERM_LOAN_3_5_YEAR: "term_loan_3_5_year",
+  TERM_LOAN_LOC_HYBRID: "term_loan_loc_hybrid",
+  LINE_OF_CREDIT: "line_of_credit",
+  EQUIPMENT_FINANCING: "equipment_financing",
+  MERCHANT_PROCESSING: "merchant_processing",
+  TRANSPORTATION_FACTORING: "transportation_factoring",
+  DEBT_CONSULTING: "debt_consulting"
+} as const;
+export type LoanProgram = (typeof LoanProgram)[keyof typeof LoanProgram];
+export const LoanProgramOptions = [
+  { value: "sba", label: "Sba" },
+  { value: "real_estate_backed", label: "Real Estate Backed" },
+  { value: "reinsurance_backed", label: "Reinsurance Backed" },
+  { value: "jumbo_dscr", label: "Jumbo Dscr" },
+  { value: "term_loan_10_year", label: "Term Loan 10 Year" },
+  { value: "term_loan_3_5_year", label: "Term Loan 3 5 Year" },
+  { value: "term_loan_loc_hybrid", label: "Term Loan Loc Hybrid" },
+  { value: "line_of_credit", label: "Line Of Credit" },
+  { value: "equipment_financing", label: "Equipment Financing" },
+  { value: "merchant_processing", label: "Merchant Processing" },
+  { value: "transportation_factoring", label: "Transportation Factoring" },
+  { value: "debt_consulting", label: "Debt Consulting" }
+] as const;
+
 export const LoanPurpose = {
   PURCHASE: "purchase",
   RATE_TERM_REFI: "rate_term_refi",

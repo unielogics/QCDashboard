@@ -32,6 +32,7 @@ import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage } from "
 import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
 import { LeadContractsPanel } from "@/components/admin/LeadContractsPanel";
 import { LeadProgramFitPanel } from "@/components/admin/LeadProgramFitPanel";
+import { BankerSubmissionModal } from "@/components/admin/BankerSubmissionModal";
 import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import type { IntakeResponse } from "@/lib/intake";
@@ -761,6 +762,7 @@ function LeadDetailPanel({
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState("");
   const [zipBusy, setZipBusy] = useState(false);
+  const [bankerModalOpen, setBankerModalOpen] = useState(false);
   const [notesPosting, setNotesPosting] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -1406,6 +1408,26 @@ function LeadDetailPanel({
                   </div>
                 </div>
               </InfoBlock>
+
+              {/* Final step — assemble the normalized JSON payload for the
+                  banker's own intake system. Dealer leads only, mirroring the
+                  Program Fit panel's dealer-only gate. */}
+              {!isRealEstate ? (
+                <InfoBlock title="Prepare banker submission">
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
+                      Assemble a normalized JSON payload — borrower, entity, key metrics, and program fit — for
+                      an admin to hand to the banker's own intake system. SSN / personal Tax ID are collected
+                      transiently in the modal and never stored.
+                    </span>
+                    <div>
+                      <button style={qcBtnPrimary(t)} onClick={() => setBankerModalOpen(true)}>
+                        Open banker submission
+                      </button>
+                    </div>
+                  </div>
+                </InfoBlock>
+              ) : null}
             </>
           ) : null}
           </div>
@@ -1440,6 +1462,13 @@ function LeadDetailPanel({
         onUnpick={(id) => setIngestFiles((prev) => prev.filter((f) => f.id !== id))}
         onConfirm={runIngest}
       />
+      {detail ? (
+        <BankerSubmissionModal
+          open={bankerModalOpen}
+          onClose={() => setBankerModalOpen(false)}
+          intakeId={detail.intake.id}
+        />
+      ) : null}
     </Card>
   );
 }
