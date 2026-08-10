@@ -562,57 +562,60 @@ export function LeadCockpit({
                 </div>
               </div>
 
-              {variant !== "real_estate_dscr_v1" && (adapter.requestPfs || adapter.requestDebtSchedule) ? (
-                <div style={chartCard}>
-                  <div style={chartHeader}>
-                    <strong>Financial forms</strong>
-                    <span style={{ color: "#8FA0B8", fontSize: 12 }}>{missingPfsOrDebtDocs.length} open</span>
-                  </div>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <p style={{ margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
-                      Request a Personal Financial Statement or Debt Schedule from the client, or fill one out on
-                      their behalf right here.
-                    </p>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {adapter.requestPfs ? (
-                        <button type="button" style={qcBtn(t)} onClick={requestPfs} disabled={requestingDoc}>
-                          {requestingDoc ? "Requesting…" : "Request PFS"}
-                        </button>
-                      ) : null}
-                      {adapter.requestDebtSchedule ? (
-                        <button type="button" style={qcBtn(t)} onClick={requestDebtSchedule} disabled={requestingDoc}>
-                          {requestingDoc ? "Requesting…" : "Request debt schedule"}
-                        </button>
-                      ) : null}
-                    </div>
-                    {missingPfsOrDebtDocs.length ? (
-                      <div style={{ display: "grid", gap: 6 }}>
-                        {missingPfsOrDebtDocs.map((doc) => (
-                          <div key={doc.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, border: `1px solid ${t.line}`, borderRadius: 10, padding: "8px 10px" }}>
-                            <span style={{ color: t.ink2, fontSize: 12.5 }}>{doc.name}</span>
-                            {adapter.submitPfs || adapter.submitDebtSchedule ? (
-                              <button
-                                type="button"
-                                style={{ ...qcBtn(t), fontSize: 11.5, padding: "5px 10px" }}
-                                onClick={() => setDraftingDocKind(doc.category === "Personal Financials" ? "pfs" : "debt_schedule")}
-                              >
-                                Fill out online
-                              </button>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-
               <div style={intelligenceTables}>
                 <RiskStrengthTable title="Strengths" rows={intelligence.strengths} tone="green" />
                 <RiskStrengthTable title="Risks" rows={intelligence.risks} tone="amber" />
               </div>
             </>
           )}
+
+          {/* Always visible, independent of whether an AI review has run yet —
+              a brand-new lead with no documents should still let admin/broker
+              request or fill out a PFS/debt-schedule immediately. */}
+          {variant !== "real_estate_dscr_v1" && (adapter.requestPfs || adapter.requestDebtSchedule) ? (
+            <div style={chartCard}>
+              <div style={chartHeader}>
+                <strong>Financial forms</strong>
+                <span style={{ color: "#8FA0B8", fontSize: 12 }}>{missingPfsOrDebtDocs.length} open</span>
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                <p style={{ margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
+                  Request a Personal Financial Statement or Debt Schedule from the client, or fill one out on
+                  their behalf right here.
+                </p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {adapter.requestPfs ? (
+                    <button type="button" style={qcBtn(t)} onClick={requestPfs} disabled={requestingDoc}>
+                      {requestingDoc ? "Requesting…" : "Request PFS"}
+                    </button>
+                  ) : null}
+                  {adapter.requestDebtSchedule ? (
+                    <button type="button" style={qcBtn(t)} onClick={requestDebtSchedule} disabled={requestingDoc}>
+                      {requestingDoc ? "Requesting…" : "Request debt schedule"}
+                    </button>
+                  ) : null}
+                </div>
+                {missingPfsOrDebtDocs.length ? (
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {missingPfsOrDebtDocs.map((doc) => (
+                      <div key={doc.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, border: `1px solid ${t.line}`, borderRadius: 10, padding: "8px 10px" }}>
+                        <span style={{ color: t.ink2, fontSize: 12.5 }}>{doc.name}</span>
+                        {adapter.submitPfs || adapter.submitDebtSchedule ? (
+                          <button
+                            type="button"
+                            style={{ ...qcBtn(t), fontSize: 11.5, padding: "5px 10px" }}
+                            onClick={() => setDraftingDocKind(doc.category === "Personal Financials" ? "pfs" : "debt_schedule")}
+                          >
+                            Fill out online
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
 
