@@ -6,6 +6,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { TypingDots } from "@/components/design-system/TypingDots";
 import { FileDropzone } from "@/components/design-system/FileDropzone";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
 import {
   buildIntelligenceModel,
   cryptoId,
@@ -59,6 +60,16 @@ export type LeadCockpitAdapter = {
   loadClientThread: () => Promise<ClientThreadResponse>;
   /** Post a message on behalf into the client thread (attributed as underwriter). */
   replyClientThread: (message: string) => Promise<ClientThreadResponse>;
+  /** Push a PFS/debt-schedule requested-document onto the lead (idempotent —
+   *  a safe no-op if it already exists). Dealer leads only; omitted by the
+   *  parent for real-estate leads, where PFS/debt-schedule are not offered. */
+  requestPfs?: (ownerName?: string) => Promise<void>;
+  requestDebtSchedule?: () => Promise<void>;
+  /** Fill out the on-screen PFS/debt-schedule on the client's behalf — same
+   *  fallback the client sees on their own pages, usable here so admin/broker
+   *  can close out the checklist without waiting on the client. */
+  submitPfs?: (payload: PfsFormPayload) => Promise<void>;
+  submitDebtSchedule?: (payload: DebtScheduleFormPayload) => Promise<void>;
 };
 
 type ChatLine = { id: string; role: "assistant" | "user"; content: string; ts?: string };
@@ -105,6 +116,10 @@ export function LeadCockpit({
   const [reviewing, setReviewing] = useState(false);
   const [status, setStatus] = useState("");
   const [fullScreen, setFullScreen] = useState(false);
+  const [draftingDocKind, setDraftingDocKind] = useState<"pfs" | "debt_schedule" | null>(null);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [requestingDoc, setRequestingDoc] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // Signature of the last server thread we seeded, so we re-sync when the
@@ -172,6 +187,15 @@ export function LeadCockpit({
       (d) => d.required && isStageOneRequestedDoc(d, keywords) && d.status !== "uploaded" && !uploadedIds.has(d.id),
     );
   }, [current, variant]);
+  // PFS/debt-schedule sit outside the Stage-1 keyword set above (they're
+  // Stage-2/parallel documents), so they need their own not-yet-uploaded
+  // check — mirrors dealer-ai-underwriter/page.tsx's category gate exactly.
+  const missingPfsOrDebtDocs = useMemo(() => {
+    const uploadedIds = new Set((current.files ?? []).map((f) => f.requested_document_id).filter(Boolean));
+    return (current.requested_documents ?? []).filter(
+      (d) => (d.category === "Personal Financials" || d.category === "Debts") && d.status !== "uploaded" && !uploadedIds.has(d.id),
+    );
+  }, [current]);
   const intelligence = useMemo<IntelligenceModel | null>(
     () => (result ? buildIntelligenceModel(current, result, missingDocs, fundability) : null),
     [current, result, missingDocs, fundability],
@@ -248,6 +272,68 @@ export function LeadCockpit({
       pushLine("assistant", "Files uploaded. Re-run the AI review to fold them into the latest breakdown.");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function requestPfs() {
+    if (!adapter.requestPfs || requestingDoc) return;
+    setRequestingDoc(true);
+    try {
+      await adapter.requestPfs();
+      const r = await adapter.reload();
+      applyResponse(r);
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Could not request the PFS.");
+    } finally {
+      setRequestingDoc(false);
+    }
+  }
+
+  async function requestDebtSchedule() {
+    if (!adapter.requestDebtSchedule || requestingDoc) return;
+    setRequestingDoc(true);
+    try {
+      await adapter.requestDebtSchedule();
+      const r = await adapter.reload();
+      applyResponse(r);
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Could not request the debt schedule.");
+    } finally {
+      setRequestingDoc(false);
+    }
+  }
+
+  async function submitPfsForm(payload: PfsFormPayload) {
+    if (!adapter.submitPfs) return;
+    setDraftBusy(true);
+    setDraftError(null);
+    try {
+      await adapter.submitPfs(payload);
+      setDraftingDocKind(null);
+      const r = await adapter.reload();
+      applyResponse(r);
+      pushLine("assistant", "Personal financial statement recorded.");
+    } catch (err) {
+      setDraftError(err instanceof Error ? err.message : "Could not submit the PFS.");
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  async function submitDebtScheduleForm(payload: DebtScheduleFormPayload) {
+    if (!adapter.submitDebtSchedule) return;
+    setDraftBusy(true);
+    setDraftError(null);
+    try {
+      await adapter.submitDebtSchedule(payload);
+      setDraftingDocKind(null);
+      const r = await adapter.reload();
+      applyResponse(r);
+      pushLine("assistant", "Debt schedule recorded.");
+    } catch (err) {
+      setDraftError(err instanceof Error ? err.message : "Could not submit the debt schedule.");
+    } finally {
+      setDraftBusy(false);
     }
   }
 
@@ -476,6 +562,51 @@ export function LeadCockpit({
                 </div>
               </div>
 
+              {variant !== "real_estate_dscr_v1" && (adapter.requestPfs || adapter.requestDebtSchedule) ? (
+                <div style={chartCard}>
+                  <div style={chartHeader}>
+                    <strong>Financial forms</strong>
+                    <span style={{ color: "#8FA0B8", fontSize: 12 }}>{missingPfsOrDebtDocs.length} open</span>
+                  </div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <p style={{ margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
+                      Request a Personal Financial Statement or Debt Schedule from the client, or fill one out on
+                      their behalf right here.
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {adapter.requestPfs ? (
+                        <button type="button" style={qcBtn(t)} onClick={requestPfs} disabled={requestingDoc}>
+                          {requestingDoc ? "Requesting…" : "Request PFS"}
+                        </button>
+                      ) : null}
+                      {adapter.requestDebtSchedule ? (
+                        <button type="button" style={qcBtn(t)} onClick={requestDebtSchedule} disabled={requestingDoc}>
+                          {requestingDoc ? "Requesting…" : "Request debt schedule"}
+                        </button>
+                      ) : null}
+                    </div>
+                    {missingPfsOrDebtDocs.length ? (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        {missingPfsOrDebtDocs.map((doc) => (
+                          <div key={doc.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, border: `1px solid ${t.line}`, borderRadius: 10, padding: "8px 10px" }}>
+                            <span style={{ color: t.ink2, fontSize: 12.5 }}>{doc.name}</span>
+                            {adapter.submitPfs || adapter.submitDebtSchedule ? (
+                              <button
+                                type="button"
+                                style={{ ...qcBtn(t), fontSize: 11.5, padding: "5px 10px" }}
+                                onClick={() => setDraftingDocKind(doc.category === "Personal Financials" ? "pfs" : "debt_schedule")}
+                              >
+                                Fill out online
+                              </button>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
               <div style={intelligenceTables}>
                 <RiskStrengthTable title="Strengths" rows={intelligence.strengths} tone="green" />
                 <RiskStrengthTable title="Risks" rows={intelligence.risks} tone="amber" />
@@ -484,6 +615,27 @@ export function LeadCockpit({
           )}
         </div>
       </section>
+
+      {adapter.submitPfs ? (
+        <PfsFormModal
+          open={draftingDocKind === "pfs"}
+          onClose={() => setDraftingDocKind(null)}
+          ownerDefaultName={current.intake.full_name}
+          busy={draftBusy}
+          error={draftError}
+          onSubmit={submitPfsForm}
+        />
+      ) : null}
+      {adapter.submitDebtSchedule ? (
+        <DebtScheduleFormModal
+          open={draftingDocKind === "debt_schedule"}
+          onClose={() => setDraftingDocKind(null)}
+          businessNameDefault={current.intake.business_name ?? undefined}
+          busy={draftBusy}
+          error={draftError}
+          onSubmit={submitDebtScheduleForm}
+        />
+      ) : null}
     </div>
   );
 }

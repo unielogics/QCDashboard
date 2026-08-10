@@ -454,6 +454,7 @@ export default function AdminAIUnderwriterLeadsPage() {
         headers: body ? { "Content-Type": "application/json" } : undefined,
         body: body ? JSON.stringify(body) : undefined,
       });
+    const isDealer = detail?.intake.variant !== "real_estate_dscr_v1";
     return {
       sendChat: (message: string) => post<IntakeResponse>("/chat", { message }),
       uploadInit: (payload) => post("/files/upload-init", payload),
@@ -464,9 +465,15 @@ export default function AdminAIUnderwriterLeadsPage() {
       reload: () => call<IntakeResponse>(base),
       loadClientThread: () => call<{ messages: Array<{ id: string; role: string; author_name?: string | null; content: string; created_at: string }> }>(`${base}/client-thread`),
       replyClientThread: (message: string) => post<{ messages: Array<{ id: string; role: string; author_name?: string | null; content: string; created_at: string }> }>("/client-thread/reply", { message }),
+      // PFS/debt-schedule request + fill-in are dealer-only — real-estate
+      // leads never see these fields, so the adapter omits them entirely.
+      requestPfs: isDealer ? async (ownerName?: string) => { await post("/request-pfs", { owner_name: ownerName || null }); } : undefined,
+      requestDebtSchedule: isDealer ? async () => { await post("/request-debt-schedule"); } : undefined,
+      submitPfs: isDealer ? async (payload) => { await post("/requested-documents/pfs", payload); } : undefined,
+      submitDebtSchedule: isDealer ? async (payload) => { await post("/requested-documents/debt-schedule", payload); } : undefined,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
+  }, [selectedId, detail?.intake.variant]);
 
   async function generateExecutiveSummary(id: string) {
     setNotice("");

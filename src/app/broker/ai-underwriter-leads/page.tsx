@@ -291,6 +291,12 @@ export default function BrokerAIUnderwriterLeadsPage() {
       replyClientThread: () => {
         throw new Error("Client thread is not available in the broker portal.");
       },
+      // Broker leads are always dealer-variant (create_broker_ai_lead never
+      // offers a real-estate path), so these are unconditional here.
+      requestPfs: async (ownerName?: string) => { await post("/request-pfs", { owner_name: ownerName || null }); },
+      requestDebtSchedule: async () => { await post("/request-debt-schedule"); },
+      submitPfs: async (payload) => { await post("/requested-documents/pfs", payload); },
+      submitDebtSchedule: async (payload) => { await post("/requested-documents/debt-schedule", payload); },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
@@ -380,7 +386,10 @@ export default function BrokerAIUnderwriterLeadsPage() {
                   <h2 style={{ margin: 0, color: t.ink, fontSize: 18 }}>{detail?.intake.business_name || detail?.intake.full_name}</h2>
                   <span style={{ color: t.ink3, fontSize: 12 }}>{detail?.intake.email}</span>
                 </div>
-                <Pill bg={t.surface2} color={t.ink2}>{detail?.intake.outcome_status}</Pill>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Pill bg={t.surface2} color={t.ink2}>{detail?.intake.outcome_status}</Pill>
+                  <button type="button" style={qcBtn(t)} onClick={closeLead}>Close</button>
+                </div>
               </div>
               <div style={{ position: "relative", overflow: "hidden", minHeight: 0 }}>
                 <LeadCockpit response={cockpitResponse} adapter={cockpitAdapter} onRequestRerun={openRerun} />

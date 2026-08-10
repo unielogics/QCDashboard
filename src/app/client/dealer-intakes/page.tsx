@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { api } from "@/lib/api";
+import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
 
 type Intake = {
   id: string;
@@ -32,6 +33,9 @@ export default function ClientDealerIntakesPage() {
   const [messages, setMessages] = useState<{ role: "assistant" | "user"; content: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("Loading dealer intakes...");
+  const [draftingDocKind, setDraftingDocKind] = useState<"pfs" | "debt_schedule" | null>(null);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
 
   useEffect(() => {
     loadRows().catch((error) => setNotice(errorMessage(error)));
@@ -114,6 +118,42 @@ export default function ClientDealerIntakesPage() {
     }
   }
 
+  async function submitPfsForm(payload: PfsFormPayload) {
+    if (!detail) return;
+    setDraftBusy(true);
+    setDraftError(null);
+    try {
+      await authed(`/buckets/client/intakes/${detail.intake.id}/requested-documents/pfs`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      setDraftingDocKind(null);
+      await openIntake(detail.intake.id);
+    } catch (error) {
+      setDraftError(errorMessage(error));
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
+  async function submitDebtScheduleForm(payload: DebtScheduleFormPayload) {
+    if (!detail) return;
+    setDraftBusy(true);
+    setDraftError(null);
+    try {
+      await authed(`/buckets/client/intakes/${detail.intake.id}/requested-documents/debt-schedule`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      setDraftingDocKind(null);
+      await openIntake(detail.intake.id);
+    } catch (error) {
+      setDraftError(errorMessage(error));
+    } finally {
+      setDraftBusy(false);
+    }
+  }
+
   function addFiles(files: FileList | null) {
     if (!files || !detail) return;
     const defaultDocId = missingDocs(detail)[0]?.id || detail.requested_documents[0]?.id || "";
@@ -166,7 +206,18 @@ export default function ClientDealerIntakesPage() {
                   {detail.requested_documents.map((doc) => (
                     <div key={doc.id} style={docRow}>
                       <span>{doc.name}</span>
-                      <strong>{doc.status === "uploaded" ? "Uploaded" : "Needed"}</strong>
+                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <strong>{doc.status === "uploaded" ? "Uploaded" : "Needed"}</strong>
+                        {doc.status !== "uploaded" && (doc.category === "Personal Financials" || doc.category === "Debts") ? (
+                          <button
+                            type="button"
+                            onClick={() => setDraftingDocKind(doc.category === "Personal Financials" ? "pfs" : "debt_schedule")}
+                            style={fillOnlineLink}
+                          >
+                            Fill out online instead
+                          </button>
+                        ) : null}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -211,6 +262,22 @@ export default function ClientDealerIntakesPage() {
           {notice && detail ? <div style={noticeBox}>{notice}</div> : null}
         </section>
       </div>
+      <PfsFormModal
+        open={draftingDocKind === "pfs"}
+        onClose={() => setDraftingDocKind(null)}
+        ownerDefaultName={detail?.intake.full_name}
+        busy={draftBusy}
+        error={draftError}
+        onSubmit={submitPfsForm}
+      />
+      <DebtScheduleFormModal
+        open={draftingDocKind === "debt_schedule"}
+        onClose={() => setDraftingDocKind(null)}
+        businessNameDefault={detail?.intake.business_name ?? undefined}
+        busy={draftBusy}
+        error={draftError}
+        onSubmit={submitDebtScheduleForm}
+      />
     </main>
   );
 }
@@ -240,6 +307,7 @@ const twoCol: CSSProperties = { display: "grid", gridTemplateColumns: "1fr 1fr",
 const box: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 14, padding: 14, background: "#f8fafc", display: "grid", gap: 10 };
 const smallTitle: CSSProperties = { margin: 0, fontSize: 15 };
 const docRow: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 10, borderBottom: "1px solid #e2e8f0", padding: "8px 0" };
+const fillOnlineLink: CSSProperties = { background: "none", border: "none", color: "#18A89F", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" };
 const fileRow: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 220px auto", gap: 8, alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 10, padding: 8, background: "#fff" };
 const primary: CSSProperties = { border: 0, borderRadius: 999, minHeight: 40, padding: "0 16px", background: "#0f172a", color: "#fff", fontWeight: 900, cursor: "pointer" };
 const messagesBox: CSSProperties = { display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflowY: "auto" };
