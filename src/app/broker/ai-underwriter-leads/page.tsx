@@ -413,7 +413,12 @@ export default function BrokerAIUnderwriterLeadsPage() {
                 </div>
               </div>
               <div style={{ position: "relative", overflow: "hidden", minHeight: 0 }}>
-                <LeadCockpit response={cockpitResponse} adapter={cockpitAdapter} onRequestRerun={openRerun} />
+                <LeadCockpit
+                  response={cockpitResponse}
+                  adapter={cockpitAdapter}
+                  initialMessages={detail?.messages}
+                  onRequestRerun={openRerun}
+                />
                 <button
                   type="button"
                   onClick={() => setNotesOpen((v) => !v)}
