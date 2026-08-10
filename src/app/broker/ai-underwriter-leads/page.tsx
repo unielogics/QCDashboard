@@ -116,6 +116,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
   const [notesError, setNotesError] = useState<string | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
   const [programLabel, setProgramLabel] = useState<string | null>(null);
+  const [deletionBusy, setDeletionBusy] = useState(false);
 
   // Coming from a "Start" button on /broker/programs -- auto-open the
   // create-lead modal with a contextual note naming the program. No
@@ -221,6 +222,25 @@ export default function BrokerAIUnderwriterLeadsPage() {
 
   function openRerun() {
     if (selectedId) setRerunOpen(true);
+  }
+
+  async function requestDeletion() {
+    if (!selectedId) return;
+    if (!window.confirm("Flag this lead for deletion? This does not delete anything yet — a super admin must confirm before it's removed.")) return;
+    setDeletionBusy(true);
+    try {
+      await call(`/broker/ai-underwriter-leads/${selectedId}/request-deletion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: null }),
+      });
+      // The lead vanishes from this board once flagged — close and reload.
+      closeLead();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not flag this lead for deletion.");
+    } finally {
+      setDeletionBusy(false);
+    }
   }
 
   async function startRerun(): Promise<{ review_id: string }> {
@@ -388,6 +408,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <Pill bg={t.surface2} color={t.ink2}>{detail?.intake.outcome_status}</Pill>
+                  <button type="button" style={qcBtn(t)} disabled={deletionBusy} onClick={requestDeletion}>Request deletion</button>
                   <button type="button" style={qcBtn(t)} onClick={closeLead}>Close</button>
                 </div>
               </div>

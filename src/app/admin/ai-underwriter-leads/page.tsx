@@ -64,6 +64,8 @@ type LeadRow = {
   created_at: string;
   updated_at: string;
   last_message_at?: string | null;
+  delete_requested_at?: string | null;
+  delete_requested_by?: string | null;
 };
 
 type LeadPage = {
@@ -382,6 +384,34 @@ export default function AdminAIUnderwriterLeadsPage() {
     await loadLeads();
   }
 
+  async function requestLeadDeletion(id: string, reason?: string) {
+    await call(`/admin/ai-underwriter-leads/${id}/request-deletion`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: reason || null }),
+    });
+    await refreshSelectedLead();
+    await loadLeads();
+  }
+
+  async function cancelLeadDeletionRequest(id: string) {
+    await call(`/admin/ai-underwriter-leads/${id}/cancel-deletion-request`, { method: "POST" });
+    await refreshSelectedLead();
+    await loadLeads();
+  }
+
+  async function confirmLeadDeletion(id: string, confirmName: string) {
+    await call(`/admin/ai-underwriter-leads/${id}/confirm-deletion`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm_name: confirmName }),
+    });
+    // The lead no longer exists — close the modal and splice it out of the
+    // local list immediately rather than waiting on a full reload.
+    setRows((current) => current.filter((row) => row.id !== id));
+    closeLead();
+  }
+
   function closeLead() {
     setSelectedId(null);
     setDetail(null);
@@ -696,6 +726,9 @@ export default function AdminAIUnderwriterLeadsPage() {
             onPostNote={(content) => postLeadNote(selectedId, content)}
             onUpdateOutcomeStatus={(status) => updateOutcomeStatus(selectedId, status)}
             onUpdateLanguage={(language) => updateLeadLanguage(selectedId, language)}
+            onRequestDeletion={(reason) => requestLeadDeletion(selectedId, reason)}
+            onCancelDeletionRequest={() => cancelLeadDeletionRequest(selectedId)}
+            onConfirmDeletion={(confirmName) => confirmLeadDeletion(selectedId, confirmName)}
           />
         ) : null}
       </Modal>
@@ -739,6 +772,9 @@ function LeadDetailPanel({
   onPostNote,
   onUpdateOutcomeStatus,
   onUpdateLanguage,
+  onRequestDeletion,
+  onCancelDeletionRequest,
+  onConfirmDeletion,
 }: {
   detail: LeadDetail | null;
   loading: boolean;
@@ -759,6 +795,9 @@ function LeadDetailPanel({
   onPostNote: (content: string) => Promise<void>;
   onUpdateOutcomeStatus: (status: string) => Promise<void>;
   onUpdateLanguage: (language: string) => Promise<void>;
+  onRequestDeletion: (reason?: string) => Promise<void>;
+  onCancelDeletionRequest: () => Promise<void>;
+  onConfirmDeletion: (confirmName: string) => Promise<void>;
 }) {
   const { t } = useTheme();
   const toast = useToast();
@@ -790,6 +829,8 @@ function LeadDetailPanel({
   // (distinct from the email-attach picker above).
   const [ingestPickerOpen, setIngestPickerOpen] = useState(false);
   const [ingestFiles, setIngestFiles] = useState<DriveFile[]>([]);
+  const [deletionBusy, setDeletionBusy] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const result = detail?.latest_review?.result || detail?.intake.result_snapshot || null;
   const evidence = asRecord(result?.document_evidence_map);
   const missing = arrayOfRecords(result?.missing_or_incomplete_items);
@@ -961,6 +1002,29 @@ function LeadDetailPanel({
     }
   }
 
+  async function handleRequestDeletion() {
+    if (!window.confirm("Flag this lead for deletion? This does not delete anything yet — it only marks it pending until a super admin confirms.")) return;
+    setDeletionBusy(true);
+    try {
+      await onRequestDeletion();
+    } catch (error) {
+      toast.show(error instanceof Error ? error.message : "Could not flag this lead for deletion.");
+    } finally {
+      setDeletionBusy(false);
+    }
+  }
+
+  async function handleCancelDeletionRequest() {
+    setDeletionBusy(true);
+    try {
+      await onCancelDeletionRequest();
+    } catch (error) {
+      toast.show(error instanceof Error ? error.message : "Could not cancel the deletion request.");
+    } finally {
+      setDeletionBusy(false);
+    }
+  }
+
   return (
     <Card pad={0} style={{ minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <div style={{ flexShrink: 0, padding: 16, borderBottom: `1px solid ${t.line}`, display: "flex", justifyContent: "space-between", gap: 12 }}>
@@ -995,6 +1059,17 @@ function LeadDetailPanel({
               <option value="es">Español</option>
             </select>
           ) : null}
+          {detail?.intake.delete_requested_at ? (
+            <>
+              <span title={`Requested by ${detail.intake.delete_requested_by || "unknown"} on ${new Date(detail.intake.delete_requested_at).toLocaleString()}`}>
+                <Pill bg={t.dangerBg} color={t.danger}>Pending deletion</Pill>
+              </span>
+              <button style={qcBtn(t)} disabled={deletionBusy} onClick={handleCancelDeletionRequest}>Cancel deletion</button>
+              <button style={{ ...qcBtnPrimary(t), background: t.danger }} disabled={deletionBusy} onClick={() => setConfirmDeleteOpen(true)}>Confirm delete</button>
+            </>
+          ) : (
+            <button style={qcBtn(t)} disabled={deletionBusy} onClick={handleRequestDeletion}>Request deletion</button>
+          )}
           <button style={qcBtn(t)} onClick={onClose}>Close</button>
         </div>
       </div>
@@ -1476,7 +1551,86 @@ function LeadDetailPanel({
           intakeId={detail.intake.id}
         />
       ) : null}
+      {detail ? (
+        <ConfirmDeleteLeadModal
+          open={confirmDeleteOpen}
+          onClose={() => setConfirmDeleteOpen(false)}
+          expectedName={detail.intake.business_name || detail.intake.full_name}
+          onConfirm={async (confirmName) => {
+            await onConfirmDeletion(confirmName);
+            setConfirmDeleteOpen(false);
+          }}
+        />
+      ) : null}
     </Card>
+  );
+}
+
+function ConfirmDeleteLeadModal({
+  open,
+  onClose,
+  expectedName,
+  onConfirm,
+}: {
+  open: boolean;
+  onClose: () => void;
+  expectedName: string;
+  onConfirm: (confirmName: string) => Promise<void>;
+}) {
+  const { t } = useTheme();
+  const toast = useToast();
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const matches = typed.trim().toLowerCase() === expectedName.trim().toLowerCase();
+
+  useEffect(() => {
+    if (open) setTyped("");
+  }, [open]);
+
+  async function handleConfirm() {
+    if (!matches || busy) return;
+    setBusy(true);
+    try {
+      await onConfirm(typed);
+    } catch (error) {
+      toast.show(error instanceof Error ? error.message : "Could not delete this lead.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Permanently delete this lead" icon="alert" size="md">
+      <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+        <p style={{ margin: 0, color: t.ink, fontSize: 13, lineHeight: 1.5 }}>
+          This permanently erases <strong>everything</strong> for this lead — uploaded documents, generated PDFs,
+          chat history, and all database records. This cannot be undone.
+        </p>
+        <p style={{ margin: 0, color: t.ink3, fontSize: 12.5, lineHeight: 1.5 }}>
+          Type <strong style={{ color: t.ink }}>{expectedName}</strong> to confirm.
+        </p>
+        <input
+          autoFocus
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          placeholder={expectedName}
+          style={inputStyle(t)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && matches && !busy) handleConfirm();
+          }}
+        />
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 6 }}>
+          <button style={qcBtn(t)} onClick={onClose} disabled={busy}>Cancel</button>
+          <button
+            style={{ ...qcBtnPrimary(t), background: t.danger, opacity: matches && !busy ? 1 : 0.5 }}
+            disabled={!matches || busy}
+            onClick={handleConfirm}
+          >
+            {busy ? <><Spinner /> Deleting…</> : "Delete permanently"}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
