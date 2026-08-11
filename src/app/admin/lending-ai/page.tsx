@@ -21,6 +21,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
+import { DscrPricingSection } from "@/components/admin/DscrPricingSection";
 import {
   isAINotDeployed,
   useCurrentUser,
@@ -232,7 +233,12 @@ export default function LendingAISettingsPage() {
             </Link>
           </Section>
 
-          <Section t={t} kicker="Step 7" title="Elara AI usage and controls"
+          <Section t={t} kicker="Step 7" title="DSCR pricing (real-estate leads)"
+            copy="Rate assumptions for the deterministic DSCR-potential screen. The lead's credit signal picks a tier; changes apply within a minute, no deploy needed.">
+            <DscrPricingSection />
+          </Section>
+
+          <Section t={t} kicker="Step 8" title="Elara AI usage and controls"
             copy="Review AI cost, average spend per client file, category-level alerts, and manual controls for paid Bedrock calls.">
             <Link href="/admin/token-usage" style={linkButton(t)}>
               Open Elara AI Usage & Controls →

@@ -1117,6 +1117,19 @@ export interface LetterheadSettings {
   office_address_line_3: string;
   signature_s3_key: string | null;
 }
+// Admin-editable rate assumptions for the deterministic DSCR-potential
+// screen on real-estate AI Underwriter Leads (backend DscrPricingSettings).
+export interface DscrRateTier {
+  min_fico: number;
+  annual_rate: number;
+}
+export interface DscrPricingSettings {
+  rate_tiers: DscrRateTier[];
+  band_spread: number;
+  amortization_months: number;
+  tax_insurance_annual_pct_of_value: number;
+}
+
 export interface AppSettingsData {
   checklists: Record<string, LoanTypeChecklist>;
   // Transaction-side defaults (alembic 0025 / realtor overhaul). Keyed
@@ -1131,12 +1144,14 @@ export interface AppSettingsData {
   security: SecuritySettings;
   simulator: SimulatorSettings;
   letterhead: LetterheadSettings;
+  dscr_pricing?: DscrPricingSettings;
 }
 export interface AppSettingsRead {
   data: AppSettingsData;
 }
 export type AppSettingsUpdate = Partial<{
   checklists: Record<string, LoanTypeChecklist>;
+  dscr_pricing: DscrPricingSettings;
   ai_cadence: AICadenceSettings;
   ai_spend: AISpendSettings;
   referrals: ReferralSettings;
