@@ -717,6 +717,32 @@ export interface LeadProgramFitResponse {
   programs: Record<string, LeadProgramFitProgram>;
 }
 
+// Deterministic DSCR-potential screen for a real-estate AI Underwriter Lead —
+// admin-only, mirrors LeadProgramFitResponse's live-recompute pattern. The
+// backend (_compute_dscr_potential) is the single source of the math; this
+// shape indexes generically so new backend fields need no matching change.
+export interface LeadDscrScenario {
+  annual_rate: number;
+  monthly_principal_interest: number;
+  monthly_pitia: number;
+  dscr: number | null;
+}
+export interface LeadDscrPotential {
+  computed: boolean;
+  missing?: string[];
+  inputs?: Record<string, unknown>;
+  assumptions?: { amortization_months?: number; rate_bands?: number[]; benchmark_rate?: number; note?: string };
+  ltv?: number | null;
+  dscr_at_requested?: number | null;
+  scenarios?: LeadDscrScenario[];
+  max_loan_at_target_dscr?: Record<string, { max_loan: number; implied_ltv: number | null; at_annual_rate: number }>;
+  required_monthly_rent_at_requested?: Record<string, number>;
+}
+export interface LeadDscrPotentialResponse {
+  computed: boolean;
+  potential: LeadDscrPotential;
+}
+
 // Admin-only "prepare banker submission" payload — a normalized JSON document
 // assembled server-side (app/services/banker_submission.py) for an admin to
 // hand to the banker's own intake system. Dealer leads only. SSN / personal

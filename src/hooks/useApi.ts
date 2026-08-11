@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { useActiveProfile } from "@/store/role";
-import type { NotificationList, User } from "@/lib/types";
+import type { NotificationList, User , LeadDscrPotentialResponse } from "@/lib/types";
 import type {
   Activity,
   AIChatRequest,
@@ -788,6 +788,16 @@ export function useLeadProgramFit(intakeId: string | null | undefined) {
     queryKey: ["lead-program-fit", intakeId, devUser],
     queryFn: () => apiCall<LeadProgramFitResponse>(`/admin/ai-underwriter-leads/${intakeId}/program-fit`),
     enabled: !!intakeId,
+  });
+}
+
+export function useLeadDscrPotential(intakeId: string | null | undefined, enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["lead-dscr-potential", intakeId, devUser],
+    queryFn: () => apiCall<LeadDscrPotentialResponse>(`/admin/ai-underwriter-leads/${intakeId}/dscr-potential`),
+    enabled: !!intakeId && enabled,
   });
 }
 

@@ -417,6 +417,22 @@ export default function BrokerAIUnderwriterLeadsPage() {
                   response={cockpitResponse}
                   adapter={cockpitAdapter}
                   initialMessages={detail?.messages}
+                  onResponse={(r) => {
+                    // Keep detail in sync with live cockpit turns so any
+                    // remount (notes toggle, reopen) seeds the full thread.
+                    setDetail((current) =>
+                      current
+                        ? {
+                            ...current,
+                            messages: r.messages ?? current.messages,
+                            files: r.files ?? current.files,
+                            requested_documents: r.requested_documents ?? current.requested_documents,
+                            latest_review: r.latest_review ?? current.latest_review,
+                            intake: { ...current.intake, result_snapshot: r.intake?.result_snapshot ?? current.intake.result_snapshot },
+                          }
+                        : current,
+                    );
+                  }}
                   onRequestRerun={openRerun}
                 />
                 <button

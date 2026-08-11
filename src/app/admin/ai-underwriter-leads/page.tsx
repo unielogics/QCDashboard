@@ -32,6 +32,7 @@ import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage } from "
 import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
 import { LeadContractsPanel } from "@/components/admin/LeadContractsPanel";
 import { LeadProgramFitPanel } from "@/components/admin/LeadProgramFitPanel";
+import { LeadDscrPanel } from "@/components/admin/LeadDscrPanel";
 import { BankerSubmissionModal } from "@/components/admin/BankerSubmissionModal";
 import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
@@ -721,7 +722,24 @@ export default function AdminAIUnderwriterLeadsPage() {
             rerunning={rerunOpen}
             cockpitResponse={cockpitResponse}
             cockpitAdapter={cockpitAdapter}
-            onCockpitResponse={() => { /* cockpit owns its live state; refresh the list lazily on close */ }}
+            onCockpitResponse={(r) => {
+              // Fold every cockpit response (chat turns, uploads, re-runs) back
+              // into `detail` — the cockpit unmounts when the admin switches to
+              // the Workspace tab, and remounts seeded from detail.messages, so
+              // a stale detail silently drops the conversation sent since open.
+              setDetail((current) =>
+                current
+                  ? {
+                      ...current,
+                      messages: r.messages ?? current.messages,
+                      files: r.files ?? current.files,
+                      requested_documents: r.requested_documents ?? current.requested_documents,
+                      latest_review: r.latest_review ?? current.latest_review,
+                      intake: { ...current.intake, result_snapshot: r.intake?.result_snapshot ?? current.intake.result_snapshot },
+                    }
+                  : current,
+              );
+            }}
             onDownloadZip={() => downloadPackageZip(selectedId)}
             onPostNote={(content) => postLeadNote(selectedId, content)}
             onUpdateOutcomeStatus={(status) => updateOutcomeStatus(selectedId, status)}
@@ -1274,6 +1292,7 @@ function LeadDetailPanel({
             <div style={{ display: "grid", gap: 14 }}>
               <LeadCreditPanel intakeId={detail.intake.id} />
               {!isRealEstate ? <LeadProgramFitPanel intakeId={detail.intake.id} /> : null}
+              {isRealEstate ? <LeadDscrPanel intakeId={detail.intake.id} /> : null}
             </div>
           ) : null}
 
