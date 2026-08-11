@@ -2,13 +2,14 @@
   "name": "qcdesktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Qualified Commercial — operator desktop console (AE / UW / Admin / Borrower-view).",
+  "description": "Qualified Commercial \u2014 operator desktop console (AE / UW / Admin / Borrower-view).",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "node scripts/copy-pdfjs-assets.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.0.0",

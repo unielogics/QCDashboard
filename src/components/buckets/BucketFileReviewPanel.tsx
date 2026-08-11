@@ -113,8 +113,19 @@ export function BucketFileReviewPanel({
     async function loadPdf() {
       setStatus("Loading PDF...");
       const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-      pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-      const doc = await pdfjs.getDocument({ url: review!.preview_url! }).promise;
+      // All pdf.js runtime assets are staged version-locked into /pdfjs/ by
+      // scripts/copy-pdfjs-assets.mjs (postinstall). The wasm decoders and
+      // font/cmap data are fetched lazily at render time — without these URLs
+      // the fetches 404 and scanned documents paint as blank white pages.
+      pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
+      const doc = await pdfjs.getDocument({
+        url: review!.preview_url!,
+        wasmUrl: "/pdfjs/wasm/",
+        standardFontDataUrl: "/pdfjs/standard_fonts/",
+        cMapUrl: "/pdfjs/cmaps/",
+        cMapPacked: true,
+        iccUrl: "/pdfjs/iccs/",
+      }).promise;
       if (cancelled) return;
       setPdfDoc(doc);
       setPageCount(doc.numPages);
