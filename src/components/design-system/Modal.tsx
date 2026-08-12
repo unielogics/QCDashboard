@@ -114,7 +114,7 @@ export function Modal({
           >
             {icon ? <Icon name={icon} size={15} /> : null}
             {title ? (
-              <span style={{ fontSize: 15, fontWeight: 900, color: t.ink }}>{title}</span>
+              <span style={{ fontFamily: "var(--font-inter-tight), var(--font-inter), system-ui, sans-serif", fontSize: 15, fontWeight: 900, color: t.ink }}>{title}</span>
             ) : null}
             <div style={{ flex: 1 }} />
             {headerAccessory}

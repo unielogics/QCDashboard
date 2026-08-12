@@ -66,6 +66,10 @@ export function SectionLabel({
     >
       <div
         style={{
+          // The app has no heading component; these four primitives are the
+          // only heading-shaped surfaces, so Inter Tight goes here and is not
+          // chased across the ~6,900 bespoke inline styles.
+          fontFamily: "var(--font-inter-tight), var(--font-inter), system-ui, sans-serif",
           fontSize: 11,
           fontWeight: 700,
           letterSpacing: 1.6,
@@ -305,6 +309,7 @@ export function KPI({
       </div>
       <div
         style={{
+          fontFamily: "var(--font-inter-tight), var(--font-inter), system-ui, sans-serif",
           fontSize: 26,
           fontWeight: 700,
           color: t.ink,
@@ -505,7 +510,7 @@ export function Panel({
             borderBottom: `1px solid ${t.line}`,
           }}
         >
-          <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{title}</div>
+          <div style={{ fontFamily: "var(--font-inter-tight), var(--font-inter), system-ui, sans-serif", fontSize: 13, fontWeight: 700, color: t.ink }}>{title}</div>
           {action}
         </div>
       )}

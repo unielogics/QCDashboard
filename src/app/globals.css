@@ -63,7 +63,7 @@ a { color: inherit; text-decoration: none; }
 
   background: var(--ms-bg);
   color: var(--ms-text);
-  font-family: "Inter", -apple-system, system-ui, sans-serif;
+  font-family: var(--font-inter), "Inter", -apple-system, system-ui, sans-serif;
 }
 
 /* Rate strip. Pinned to the BOTTOM, matching the marketing site — at the top
