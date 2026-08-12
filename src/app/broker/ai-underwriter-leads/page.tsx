@@ -14,7 +14,10 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Modal } from "@/components/design-system/Modal";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { IconButton } from "@/components/design-system/IconButton";
+import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
+import { qcBtn, qcBtnPrimary, qcBtnDanger } from "@/components/design-system/buttons";
+import { useUI } from "@/store/ui";
 import { api, ApiError } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
 import { useCurrentUser } from "@/hooks/useApi";
@@ -95,8 +98,33 @@ const PROGRAM_TITLES: Record<string, string> = {
   "bridge-private-credit": "Bridge / Private Credit Refinance",
 };
 
+// Relative "time ago" for lead cards — banking dashboards always show recency.
+function timeAgo(iso?: string | null): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const s = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
 export default function BrokerAIUnderwriterLeadsPage() {
   const { t } = useTheme();
+  const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
+  const sidebarWidth = sidebarCollapsed ? 68 : 232;
+
+  // Outcome-column accent: a subtle left stripe + pill tone per lifecycle state.
+  const outcomeTone = (key: string): { fg: string; bg: string } => {
+    if (key === "closed" || key === "funded") return { fg: t.profit, bg: t.profitBg };
+    if (key === "denied") return { fg: t.danger, bg: t.dangerBg };
+    return { fg: t.ink3, bg: t.surface2 };
+  };
   const { getToken } = useAuth();
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const searchParams = useSearchParams();
@@ -117,6 +145,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
   const [notesOpen, setNotesOpen] = useState(false);
   const [programLabel, setProgramLabel] = useState<string | null>(null);
   const [deletionBusy, setDeletionBusy] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   // Coming from a "Start" button on /broker/programs -- auto-open the
   // create-lead modal with a contextual note naming the program. No
@@ -226,7 +255,11 @@ export default function BrokerAIUnderwriterLeadsPage() {
 
   async function requestDeletion() {
     if (!selectedId) return;
-    if (!window.confirm("Flag this lead for deletion? This does not delete anything yet — a super admin must confirm before it's removed.")) return;
+    setConfirmDeleteOpen(true);
+  }
+
+  async function performDeletion() {
+    if (!selectedId) return;
     setDeletionBusy(true);
     try {
       await call(`/broker/ai-underwriter-leads/${selectedId}/request-deletion`, {
@@ -240,6 +273,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
       setNotice(error instanceof Error ? error.message : "Could not flag this lead for deletion.");
     } finally {
       setDeletionBusy(false);
+      setConfirmDeleteOpen(false);
     }
   }
 
@@ -355,63 +389,121 @@ export default function BrokerAIUnderwriterLeadsPage() {
       {notice ? <Card pad={12}><span style={{ color: t.ink2, fontSize: 13 }}>{notice}</span></Card> : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14 }}>
-        {columns.map((col) => (
-          <Card key={col.key} pad={14}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <strong style={{ color: t.ink, fontSize: 13 }}>{col.label}</strong>
-              <Pill bg={t.surface2} color={t.ink3}>{col.rows.length}</Pill>
-            </div>
-            <div style={{ display: "grid", gap: 8 }}>
-              {col.rows.length === 0 ? (
-                <span style={{ color: t.ink3, fontSize: 12.5 }}>No leads here yet.</span>
-              ) : (
-                col.rows.map((row) => (
-                  <button
-                    key={row.id}
-                    type="button"
-                    onClick={() => openLead(row.id)}
-                    style={{
-                      textAlign: "left",
-                      border: `1px solid ${t.line}`,
-                      borderRadius: 12,
-                      padding: 12,
-                      background: t.surface2,
-                      cursor: "pointer",
-                      display: "grid",
-                      gap: 4,
-                    }}
-                  >
-                    <strong style={{ color: t.ink, fontSize: 13 }}>{row.business_name || row.full_name}</strong>
-                    <span style={{ color: t.ink3, fontSize: 12 }}>{row.full_name} · {row.email}</span>
-                    <span style={{ color: t.ink3, fontSize: 12 }}>
-                      {row.file_count} files · {row.missing_required_count} missing
-                    </span>
-                    <span style={{ color: t.ink2, fontSize: 12 }}>{row.probability_status || row.one_next_step || "Awaiting AI screen"}</span>
-                  </button>
-                ))
-              )}
-            </div>
-          </Card>
-        ))}
+        {columns.map((col) => {
+          const tone = outcomeTone(col.key);
+          return (
+            <Card key={col.key} pad={14}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 999, background: tone.fg }} />
+                  <strong style={{ color: t.ink, fontSize: 13, letterSpacing: 0.2 }}>{col.label}</strong>
+                </div>
+                <Pill bg={tone.bg} color={tone.fg}>{col.rows.length}</Pill>
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {col.rows.length === 0 ? (
+                  <span style={{ color: t.ink4, fontSize: 12.5, padding: "8px 2px" }}>No leads here yet.</span>
+                ) : (
+                  col.rows.map((row) => {
+                    const missing = row.missing_required_count > 0;
+                    return (
+                      <button
+                        key={row.id}
+                        type="button"
+                        onClick={() => openLead(row.id)}
+                        style={{
+                          all: "unset",
+                          boxSizing: "border-box",
+                          position: "relative",
+                          width: "100%",
+                          textAlign: "left",
+                          border: `1px solid ${t.line}`,
+                          borderRadius: 12,
+                          padding: "12px 12px 12px 15px",
+                          background: t.surface,
+                          cursor: "pointer",
+                          display: "grid",
+                          gap: 6,
+                          boxShadow: t.shadow,
+                          transition: "border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = t.brand;
+                          e.currentTarget.style.boxShadow = t.shadowLg;
+                          e.currentTarget.style.transform = "translateY(-1px)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = t.line;
+                          e.currentTarget.style.boxShadow = t.shadow;
+                          e.currentTarget.style.transform = "none";
+                        }}
+                      >
+                        {/* left status stripe */}
+                        <span style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 3, borderRadius: 999, background: tone.fg }} />
+                        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                          <strong style={{ color: t.ink, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {row.business_name || row.full_name}
+                          </strong>
+                          <span style={{ color: t.ink4, fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}>{timeAgo(row.updated_at)}</span>
+                        </div>
+                        <span style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {row.full_name} · {row.email}
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <Pill bg={t.surface2} color={t.ink2}>
+                            <span className="qc-num">{row.file_count}</span>&nbsp;files
+                          </Pill>
+                          {missing ? (
+                            <Pill bg={t.warnBg} color={t.warn}>
+                              <span className="qc-num">{row.missing_required_count}</span>&nbsp;missing
+                            </Pill>
+                          ) : (
+                            <Pill bg={t.profitBg} color={t.profit}>Complete</Pill>
+                          )}
+                        </div>
+                        <span style={{ color: t.ink2, fontSize: 12, lineHeight: 1.4 }}>
+                          {row.probability_status || row.one_next_step || "Awaiting AI screen"}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </Card>
+          );
+        })}
       </div>
 
-      <Modal open={!!selectedId} onClose={closeLead} size="stage" bodyStyle={{ display: "flex", flexDirection: "column" }}>
+      <Modal
+        open={!!selectedId}
+        onClose={closeLead}
+        size="stage"
+        insetLeft={sidebarWidth}
+        icon="layers"
+        title={detail?.intake.business_name || detail?.intake.full_name || "Lead"}
+        headerAccessory={
+          detail ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Pill bg={outcomeTone(detail.intake.outcome_status).bg} color={outcomeTone(detail.intake.outcome_status).fg}>
+                {detail.intake.outcome_status}
+              </Pill>
+              <IconButton
+                name="trash"
+                label="Request deletion"
+                tone="danger"
+                disabled={deletionBusy}
+                onClick={requestDeletion}
+              />
+            </div>
+          ) : null
+        }
+        bodyStyle={{ display: "flex", flexDirection: "column" }}
+      >
         {selectedId ? (
           detailLoading || !cockpitResponse || !cockpitAdapter ? (
             <div style={{ padding: 24, color: t.ink3 }}>Loading lead…</div>
           ) : (
-            <div style={{ display: "grid", gridTemplateRows: "auto 1fr", gap: 12, height: "100%", padding: 16, minHeight: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <div>
-                  <h2 style={{ margin: 0, color: t.ink, fontSize: 18 }}>{detail?.intake.business_name || detail?.intake.full_name}</h2>
-                  <span style={{ color: t.ink3, fontSize: 12 }}>{detail?.intake.email}</span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Pill bg={t.surface2} color={t.ink2}>{detail?.intake.outcome_status}</Pill>
-                  <button type="button" style={qcBtn(t)} disabled={deletionBusy} onClick={requestDeletion}>Request deletion</button>
-                  <button type="button" style={qcBtn(t)} onClick={closeLead}>Close</button>
-                </div>
-              </div>
+            <div style={{ display: "grid", gridTemplateRows: "1fr", gap: 12, height: "100%", padding: 16, minHeight: 0 }}>
               <div style={{ position: "relative", overflow: "hidden", minHeight: 0 }}>
                 <LeadCockpit
                   response={cockpitResponse}
@@ -489,6 +581,18 @@ export default function BrokerAIUnderwriterLeadsPage() {
       </Modal>
 
       <RunReviewDialog open={rerunOpen} onClose={() => setRerunOpen(false)} onStart={startRerun} poll={pollRerun} onDone={onRerunDone} />
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        tone="danger"
+        busy={deletionBusy}
+        title="Flag this lead for deletion?"
+        body="This does not delete anything yet — a super admin must confirm before it's removed from the board."
+        confirmLabel="Flag for deletion"
+        cancelLabel="Keep lead"
+        onConfirm={performDeletion}
+        onClose={() => setConfirmDeleteOpen(false)}
+      />
 
       {createOpen ? (
         <CreateBrokerLeadModal

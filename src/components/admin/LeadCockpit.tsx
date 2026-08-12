@@ -523,7 +523,7 @@ export function LeadCockpit({
                 <div style={chartCardWide}>
                   <div style={chartHeader}>
                     <strong>Cash flow stack</strong>
-                    <span style={{ color: "#8FA0B8", fontSize: 12 }}>Revenue / cash flow / debt service</span>
+                    <span style={{ color: t.ink3, fontSize: 12 }}>Revenue / cash flow / debt service</span>
                   </div>
                   <CashFlowBars bars={intelligence.cashFlowBars} />
                 </div>
@@ -531,7 +531,7 @@ export function LeadCockpit({
                 <div style={chartCard}>
                   <div style={chartHeader}>
                     <strong>Year-to-year performance</strong>
-                    <span style={{ color: "#8FA0B8", fontSize: 12 }}>Tax / P&amp;L trend</span>
+                    <span style={{ color: t.ink3, fontSize: 12 }}>Tax / P&amp;L trend</span>
                   </div>
                   <MiniBarChart series={intelligence.yearlySeries} emptyLabel="Awaiting tax returns and YTD P&L figures." />
                 </div>
@@ -539,7 +539,7 @@ export function LeadCockpit({
                 <div style={chartCard}>
                   <div style={chartHeader}>
                     <strong>Month-to-month cash flow</strong>
-                    <span style={{ color: "#8FA0B8", fontSize: 12 }}>Bank statement trend</span>
+                    <span style={{ color: t.ink3, fontSize: 12 }}>Bank statement trend</span>
                   </div>
                   <MiniBarChart series={intelligence.monthlySeries} emptyLabel="Awaiting six months of main operating bank statements." />
                 </div>
@@ -549,14 +549,14 @@ export function LeadCockpit({
                 <div style={chartCard}>
                   <div style={chartHeader}>
                     <strong>Evidence coverage</strong>
-                    <span style={{ color: "#8FA0B8", fontSize: 12 }}>{current.files.length} files</span>
+                    <span style={{ color: t.ink3, fontSize: 12 }}>{current.files.length} files</span>
                   </div>
                   <EvidenceCoverageTable rows={intelligence.coverage} />
                 </div>
                 <div style={chartCard}>
                   <div style={chartHeader}>
                     <strong>Still needed</strong>
-                    <span style={{ color: "#8FA0B8", fontSize: 12 }}>{intelligence.missing.length} items</span>
+                    <span style={{ color: t.ink3, fontSize: 12 }}>{intelligence.missing.length} items</span>
                   </div>
                   <MissingTable rows={intelligence.missing} />
                 </div>
@@ -576,7 +576,7 @@ export function LeadCockpit({
             <div style={chartCard}>
               <div style={chartHeader}>
                 <strong>Financial forms</strong>
-                <span style={{ color: "#8FA0B8", fontSize: 12 }}>{missingPfsOrDebtDocs.length} open</span>
+                <span style={{ color: t.ink3, fontSize: 12 }}>{missingPfsOrDebtDocs.length} open</span>
               </div>
               <div style={{ display: "grid", gap: 8 }}>
                 <p style={{ margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>

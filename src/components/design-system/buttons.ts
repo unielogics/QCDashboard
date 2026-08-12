@@ -62,3 +62,10 @@ export function qcLinkBtn(t: QCTokens): CSSProperties {
     padding: 0,
   };
 }
+
+// Destructive action button. Admin/broker surfaces were faking this with
+// { ...qcBtnPrimary(t), background: t.danger }; make it a real primitive so
+// delete / revoke / request-deletion read consistently.
+export function qcBtnDanger(t: QCTokens): CSSProperties {
+  return { ...qcBtnPrimary(t), background: t.danger, color: t.inverse };
+}

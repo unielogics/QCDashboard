@@ -24,6 +24,7 @@ const ROLE_LABEL: Record<string, string> = {
   super_admin: "Super Admin",
   broker: "Agent",
   loan_exec: "Underwriter",
+  dealer_partner: "Dealer Partner",
   client: "Client",
 };
 
@@ -33,6 +34,7 @@ const ROLE_TIER: Record<string, string> = {
   super_admin: "Operator · Super Admin",
   broker: "Operator · Agent",
   loan_exec: "Operator · Underwriter",
+  dealer_partner: "Partner · Dealer",
   client: "Tier II Client",
 };
 

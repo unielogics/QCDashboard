@@ -4,6 +4,8 @@ import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { api } from "@/lib/api";
+import { useTheme } from "@/components/design-system/ThemeProvider";
+import type { QCTokens } from "@/components/design-system/tokens";
 import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
 
 type Intake = {
@@ -23,6 +25,7 @@ type IntakeDetail = { intake: Intake; requested_documents: RequestedDoc[]; files
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
 
 export default function ClientDealerIntakesPage() {
+  const { t } = useTheme();
   const { getToken } = useAuth();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [rows, setRows] = useState<Intake[]>([]);
@@ -170,41 +173,41 @@ export default function ClientDealerIntakesPage() {
   }
 
   return (
-    <main style={page}>
+    <main style={page(t)}>
       <header style={header}>
         <div>
-          <div style={eyebrow}>Client continuation</div>
+          <div style={eyebrow(t)}>Client continuation</div>
           <h1 style={title}>Dealer AI intakes</h1>
-          <p style={muted}>Continue uploading documents and ask questions about your active dealer financing screen.</p>
+          <p style={muted(t)}>Continue uploading documents and ask questions about your active dealer financing screen.</p>
         </div>
       </header>
       <div style={grid}>
-        <aside style={panel}>
+        <aside style={panel(t)}>
           <h2 style={sectionTitle}>Your intakes</h2>
           <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
             {rows.map((row) => (
-              <button key={row.id} style={selectedId === row.id ? activeRow : rowButton} onClick={() => openIntake(row.id).catch((error) => setNotice(errorMessage(error)))}>
+              <button key={row.id} style={selectedId === row.id ? activeRow(t) : rowButton(t)} onClick={() => openIntake(row.id).catch((error) => setNotice(errorMessage(error)))}>
                 <strong>{row.business_name || row.full_name}</strong>
                 <span>{row.status} | {new Date(row.updated_at).toLocaleDateString()}</span>
               </button>
             ))}
           </div>
         </aside>
-        <section style={panel}>
+        <section style={panel(t)}>
           {detail ? (
             <div style={{ display: "grid", gap: 16 }}>
               <div style={summary}>
                 <div>
                   <h2 style={sectionTitle}>{detail.intake.business_name || detail.intake.full_name}</h2>
-                  <p style={muted}>{detail.files.length} uploaded | {missingDocs(detail).length} missing</p>
+                  <p style={muted(t)}>{detail.files.length} uploaded | {missingDocs(detail).length} missing</p>
                 </div>
-                <span style={statusPill}>{detail.intake.status}</span>
+                <span style={statusPill(t)}>{detail.intake.status}</span>
               </div>
               <div style={twoCol}>
-                <div style={box}>
+                <div style={box(t)}>
                   <h3 style={smallTitle}>Required documents</h3>
                   {detail.requested_documents.map((doc) => (
-                    <div key={doc.id} style={docRow}>
+                    <div key={doc.id} style={docRow(t)}>
                       <span>{doc.name}</span>
                       <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <strong>{doc.status === "uploaded" ? "Uploaded" : "Needed"}</strong>
@@ -212,7 +215,7 @@ export default function ClientDealerIntakesPage() {
                           <button
                             type="button"
                             onClick={() => setDraftingDocKind(doc.category === "Personal Financials" ? "pfs" : "debt_schedule")}
-                            style={fillOnlineLink}
+                            style={fillOnlineLink(t)}
                           >
                             Fill out online instead
                           </button>
@@ -221,12 +224,12 @@ export default function ClientDealerIntakesPage() {
                     </div>
                   ))}
                 </div>
-                <div style={box}>
+                <div style={box(t)}>
                   <h3 style={smallTitle}>Upload more files</h3>
                   <input ref={fileInputRef} type="file" multiple onChange={(event) => addFiles(event.target.files)} />
                   <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                     {queuedFiles.map((item) => (
-                      <div key={item.id} style={fileRow}>
+                      <div key={item.id} style={fileRow(t)}>
                         <span>{item.file.name}</span>
                         <select value={item.requestedDocumentId} onChange={(event) => setQueuedFiles(queuedFiles.map((file) => (file.id === item.id ? { ...file, requestedDocumentId: event.target.value } : file)))}>
                           <option value="">Unmatched</option>
@@ -236,30 +239,30 @@ export default function ClientDealerIntakesPage() {
                       </div>
                     ))}
                   </div>
-                  <button style={primary} disabled={busy || !queuedFiles.length} onClick={() => uploadQueued().catch((error) => setNotice(errorMessage(error)))}>
+                  <button style={primary(t)} disabled={busy || !queuedFiles.length} onClick={() => uploadQueued().catch((error) => setNotice(errorMessage(error)))}>
                     Upload files
                   </button>
                 </div>
               </div>
-              <div style={box}>
+              <div style={box(t)}>
                 <h3 style={smallTitle}>Ask AI</h3>
                 <div style={messagesBox}>
                   {messages.map((message, index) => (
-                    <div key={`${message.role}-${index}`} style={message.role === "assistant" ? assistant : userBubble}>{message.content}</div>
+                    <div key={`${message.role}-${index}`} style={message.role === "assistant" ? assistant(t) : userBubble(t)}>{message.content}</div>
                   ))}
                 </div>
                 <div style={composer}>
-                  <input style={input} value={chatText} onChange={(event) => setChatText(event.target.value)} placeholder="Ask what is still needed..." />
-                  <button style={primary} disabled={busy || !chatText.trim()} onClick={() => sendChat().catch((error) => setNotice(errorMessage(error)))}>
+                  <input style={input(t)} value={chatText} onChange={(event) => setChatText(event.target.value)} placeholder="Ask what is still needed..." />
+                  <button style={primary(t)} disabled={busy || !chatText.trim()} onClick={() => sendChat().catch((error) => setNotice(errorMessage(error)))}>
                     Send
                   </button>
                 </div>
               </div>
             </div>
           ) : (
-            <div style={box}>{notice}</div>
+            <div style={box(t)}>{notice}</div>
           )}
-          {notice && detail ? <div style={noticeBox}>{notice}</div> : null}
+          {notice && detail ? <div style={noticeBox(t)}>{notice}</div> : null}
         </section>
       </div>
       <PfsFormModal
@@ -291,28 +294,28 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
 
-const page: CSSProperties = { padding: 32, minHeight: "100vh", background: "#f3f6fb", color: "#0f172a" };
+const page = (t: QCTokens): CSSProperties => ({ padding: 32, minHeight: "100vh", background: t.bg, color: t.ink });
 const header: CSSProperties = { maxWidth: 1320, margin: "0 auto 18px" };
-const eyebrow: CSSProperties = { color: "#64748b", fontSize: 12, fontWeight: 900, letterSpacing: 0, textTransform: "uppercase" };
+const eyebrow = (t: QCTokens): CSSProperties => ({ color: t.ink3, fontSize: 12, fontWeight: 900, letterSpacing: 0, textTransform: "uppercase" });
 const title: CSSProperties = { margin: "4px 0", fontSize: 34, letterSpacing: 0 };
-const muted: CSSProperties = { margin: 0, color: "#64748b" };
+const muted = (t: QCTokens): CSSProperties => ({ margin: 0, color: t.ink3 });
 const grid: CSSProperties = { maxWidth: 1320, margin: "0 auto", display: "grid", gridTemplateColumns: "320px minmax(0, 1fr)", gap: 16, alignItems: "start" };
-const panel: CSSProperties = { background: "#fff", border: "1px solid #dbe3ef", borderRadius: 18, padding: 18, boxShadow: "0 18px 50px rgba(15,23,42,.06)" };
+const panel = (t: QCTokens): CSSProperties => ({ background: t.surface, border: `1px solid ${t.line}`, borderRadius: 18, padding: 18, boxShadow: t.shadow });
 const sectionTitle: CSSProperties = { margin: 0, fontSize: 20 };
-const rowButton: CSSProperties = { border: "1px solid #e2e8f0", background: "#fff", borderRadius: 12, padding: 12, display: "grid", gap: 4, textAlign: "left", cursor: "pointer", color: "#0f172a" };
-const activeRow: CSSProperties = { ...rowButton, borderColor: "#18A89F", background: "#ecfffb" };
+const rowButton = (t: QCTokens): CSSProperties => ({ border: `1px solid ${t.line}`, background: t.surface, borderRadius: 12, padding: 12, display: "grid", gap: 4, textAlign: "left", cursor: "pointer", color: t.ink });
+const activeRow = (t: QCTokens): CSSProperties => ({ ...rowButton(t), borderColor: t.petrol, background: t.petrolSoft });
 const summary: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" };
-const statusPill: CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 999, padding: "8px 12px", fontWeight: 800, color: "#334155" };
+const statusPill = (t: QCTokens): CSSProperties => ({ border: `1px solid ${t.lineStrong}`, borderRadius: 999, padding: "8px 12px", fontWeight: 800, color: t.ink2 });
 const twoCol: CSSProperties = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 };
-const box: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 14, padding: 14, background: "#f8fafc", display: "grid", gap: 10 };
+const box = (t: QCTokens): CSSProperties => ({ border: `1px solid ${t.line}`, borderRadius: 14, padding: 14, background: t.surface2, display: "grid", gap: 10 });
 const smallTitle: CSSProperties = { margin: 0, fontSize: 15 };
-const docRow: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 10, borderBottom: "1px solid #e2e8f0", padding: "8px 0" };
-const fillOnlineLink: CSSProperties = { background: "none", border: "none", color: "#18A89F", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" };
-const fileRow: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 220px auto", gap: 8, alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 10, padding: 8, background: "#fff" };
-const primary: CSSProperties = { border: 0, borderRadius: 999, minHeight: 40, padding: "0 16px", background: "#0f172a", color: "#fff", fontWeight: 900, cursor: "pointer" };
+const docRow = (t: QCTokens): CSSProperties => ({ display: "flex", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${t.line}`, padding: "8px 0" });
+const fillOnlineLink = (t: QCTokens): CSSProperties => ({ background: "none", border: "none", color: t.petrol, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" });
+const fileRow = (t: QCTokens): CSSProperties => ({ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 220px auto", gap: 8, alignItems: "center", border: `1px solid ${t.line}`, borderRadius: 10, padding: 8, background: t.surface });
+const primary = (t: QCTokens): CSSProperties => ({ border: 0, borderRadius: 999, minHeight: 40, padding: "0 16px", background: t.ink, color: t.inverse, fontWeight: 900, cursor: "pointer" });
 const messagesBox: CSSProperties = { display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflowY: "auto" };
-const assistant: CSSProperties = { alignSelf: "flex-start", maxWidth: "80%", border: "1px solid #cfe3ff", background: "#eef6ff", color: "#17324d", borderRadius: 14, padding: 12, lineHeight: 1.4 };
-const userBubble: CSSProperties = { alignSelf: "flex-end", maxWidth: "80%", background: "#0f172a", color: "#fff", borderRadius: 14, padding: 12, lineHeight: 1.4 };
+const assistant = (t: QCTokens): CSSProperties => ({ alignSelf: "flex-start", maxWidth: "80%", border: `1px solid ${t.line}`, background: t.brandSoft, color: t.ink, borderRadius: 14, padding: 12, lineHeight: 1.4 });
+const userBubble = (t: QCTokens): CSSProperties => ({ alignSelf: "flex-end", maxWidth: "80%", background: t.ink, color: t.inverse, borderRadius: 14, padding: 12, lineHeight: 1.4 });
 const composer: CSSProperties = { display: "grid", gridTemplateColumns: "1fr auto", gap: 8 };
-const input: CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 999, padding: "0 14px", minHeight: 40, outline: "none" };
-const noticeBox: CSSProperties = { border: "1px solid #fde68a", background: "#fffbeb", color: "#92400e", borderRadius: 12, padding: 12, marginTop: 12 };
+const input = (t: QCTokens): CSSProperties => ({ border: `1px solid ${t.lineStrong}`, borderRadius: 999, padding: "0 14px", minHeight: 40, outline: "none" });
+const noticeBox = (t: QCTokens): CSSProperties => ({ border: `1px solid ${t.warn}`, background: t.warnBg, color: t.warn, borderRadius: 12, padding: 12, marginTop: 12 });

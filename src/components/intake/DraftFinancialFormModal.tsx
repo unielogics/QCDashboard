@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { Modal } from "@/components/design-system/Modal";
+import { useTheme } from "@/components/design-system/ThemeProvider";
 
 export type PfsFormPayload = {
   owner_full_name: string;
@@ -61,6 +62,7 @@ export function PfsFormModal({
   error: string | null;
   onSubmit: (payload: PfsFormPayload) => void;
 }) {
+  const { t } = useTheme();
   const [ownerName, setOwnerName] = useState(ownerDefaultName ?? "");
   const [assetValues, setAssetValues] = useState<Record<string, string>>({});
   const [liabilityValues, setLiabilityValues] = useState<Record<string, string>>({});
@@ -98,7 +100,7 @@ export function PfsFormModal({
             type="button"
             onClick={onClose}
             disabled={busy}
-            style={{ fontSize: 13, padding: "8px 14px", borderRadius: 8, border: "1px solid #d1d5db", background: "none", cursor: "pointer" }}
+            style={{ fontSize: 13, padding: "8px 14px", borderRadius: 8, border: `1px solid ${t.line}`, background: t.surface, cursor: "pointer" }}
           >
             Cancel
           </button>
@@ -106,7 +108,7 @@ export function PfsFormModal({
             type="button"
             onClick={submit}
             disabled={busy}
-            style={{ fontSize: 13, fontWeight: 700, padding: "8px 16px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer" }}
+            style={{ fontSize: 13, fontWeight: 700, padding: "8px 16px", borderRadius: 8, border: "none", background: t.brand, color: t.inverse, cursor: "pointer" }}
           >
             {busy ? "Submitting…" : "Submit"}
           </button>
@@ -114,7 +116,7 @@ export function PfsFormModal({
       }
     >
       <div style={{ padding: 18, display: "grid", gap: 12 }}>
-        <p style={{ margin: 0, fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontSize: 12, color: t.ink3, lineHeight: 1.5 }}>
           This short online form takes the place of an uploaded PFS. It is for underwriting processing only — it
           is not financial or investment advice, and completing it is voluntary. We do not collect your Social
           Security Number here.
@@ -140,12 +142,12 @@ export function PfsFormModal({
             type="number"
           />
         ))}
-        <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, color: "#374151", cursor: "pointer" }}>
+        <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, color: t.ink2, cursor: "pointer" }}>
           <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} style={{ marginTop: 2 }} />
           I understand this form is informational-only, not financial or investment advice, and I am submitting
           this information voluntarily.
         </label>
-        {(formError || error) ? <div style={{ color: "#b42318", fontSize: 12.5 }}>{formError || error}</div> : null}
+        {(formError || error) ? <div style={{ color: t.danger, fontSize: 12.5 }}>{formError || error}</div> : null}
       </div>
     </Modal>
   );
@@ -166,6 +168,7 @@ export function DebtScheduleFormModal({
   error: string | null;
   onSubmit: (payload: DebtScheduleFormPayload) => void;
 }) {
+  const { t } = useTheme();
   const [businessName, setBusinessName] = useState(businessNameDefault ?? "");
   const [rows, setRows] = useState<{ lender: string; balance: string; monthly_payment: string }[]>([
     { lender: "", balance: "", monthly_payment: "" },
@@ -205,7 +208,7 @@ export function DebtScheduleFormModal({
             type="button"
             onClick={onClose}
             disabled={busy}
-            style={{ fontSize: 13, padding: "8px 14px", borderRadius: 8, border: "1px solid #d1d5db", background: "none", cursor: "pointer" }}
+            style={{ fontSize: 13, padding: "8px 14px", borderRadius: 8, border: `1px solid ${t.line}`, background: t.surface, cursor: "pointer" }}
           >
             Cancel
           </button>
@@ -213,7 +216,7 @@ export function DebtScheduleFormModal({
             type="button"
             onClick={submit}
             disabled={busy}
-            style={{ fontSize: 13, fontWeight: 700, padding: "8px 16px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer" }}
+            style={{ fontSize: 13, fontWeight: 700, padding: "8px 16px", borderRadius: 8, border: "none", background: t.brand, color: t.inverse, cursor: "pointer" }}
           >
             {busy ? "Submitting…" : "Submit"}
           </button>
@@ -221,7 +224,7 @@ export function DebtScheduleFormModal({
       }
     >
       <div style={{ padding: 18, display: "grid", gap: 12 }}>
-        <p style={{ margin: 0, fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontSize: 12, color: t.ink3, lineHeight: 1.5 }}>
           List every outstanding business debt: who it&apos;s owed to, the current balance, and the monthly
           payment. This is for underwriting processing only and is not financial or investment advice.
         </p>
@@ -248,7 +251,7 @@ export function DebtScheduleFormModal({
             <button
               type="button"
               onClick={() => setRows((r) => r.filter((_, j) => j !== i))}
-              style={{ fontSize: 12, background: "none", border: "1px solid #d1d5db", borderRadius: 8, padding: "9px 10px", cursor: "pointer", height: 36 }}
+              style={{ fontSize: 12, background: t.surface, border: `1px solid ${t.line}`, borderRadius: 8, padding: "9px 10px", cursor: "pointer", height: 36 }}
             >
               Remove
             </button>
@@ -257,16 +260,16 @@ export function DebtScheduleFormModal({
         <button
           type="button"
           onClick={() => setRows((r) => [...r, { lender: "", balance: "", monthly_payment: "" }])}
-          style={{ fontSize: 12, fontWeight: 700, background: "none", border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 12px", cursor: "pointer", justifySelf: "start" }}
+          style={{ fontSize: 12, fontWeight: 700, background: t.surface, border: `1px solid ${t.line}`, borderRadius: 8, padding: "8px 12px", cursor: "pointer", justifySelf: "start" }}
         >
           + Add another debt
         </button>
-        <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, color: "#374151", cursor: "pointer" }}>
+        <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, color: t.ink2, cursor: "pointer" }}>
           <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} style={{ marginTop: 2 }} />
           I understand this form is informational-only, not financial or investment advice, and I am submitting
           this information voluntarily.
         </label>
-        {(formError || error) ? <div style={{ color: "#b42318", fontSize: 12.5 }}>{formError || error}</div> : null}
+        {(formError || error) ? <div style={{ color: t.danger, fontSize: 12.5 }}>{formError || error}</div> : null}
       </div>
     </Modal>
   );
@@ -283,14 +286,15 @@ function FormField({
   onChange: (v: string) => void;
   type?: string;
 }) {
+  const { t } = useTheme();
   return (
     <label style={{ display: "block" }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: "#6b7280", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, marginBottom: 4 }}>{label}</div>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13 }}
+        style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: `1px solid ${t.line}`, fontSize: 13 }}
       />
     </label>
   );
