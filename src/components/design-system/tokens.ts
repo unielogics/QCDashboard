@@ -39,73 +39,95 @@ export interface QCTokens {
 }
 
 export const QC_TOKENS: Record<ThemeMode, QCTokens> = {
+  // Values are ported from QCWeb/src/styles/tokens.css, the canonical design
+  // system shared with the marketing site and the auth pages. Keep the three
+  // copies in step: QCWeb tokens.css, this file, and the `--ms-*` block in
+  // src/app/globals.css (which the auth shell reads).
+  //
+  // Two accessibility failures were fixed in the move and should not regress:
+  // `ink3` was 3.94:1 on the old cream ground — below AA, on the single
+  // most-used token in the app — and `gold` on `goldSoft` was 2.63:1.
   light: {
-    bg: "#F4F1EA",
+    bg: "#F5F7FA",
     surface: "#FFFFFF",
-    surface2: "#FAF7F1",
+    // Sunken, not raised. The old #FAF7F1 sat *above* bg and was invisible
+    // against a white card (delta 1.03); this recedes, so table headers,
+    // inputs and wells finally read as recessed.
+    surface2: "#EEF1F6",
     elevated: "#FFFFFF",
-    line: "rgba(11, 22, 41, 0.08)",
-    lineStrong: "rgba(11, 22, 41, 0.16)",
+    line: "rgba(15, 23, 32, 0.12)",
+    lineStrong: "rgba(15, 23, 32, 0.20)",
 
-    ink: "#0B1629",
-    ink2: "#3C4A60",
-    ink3: "#6B7891",
-    ink4: "#A2ABBD",
+    ink: "#0F1720",
+    ink2: "#353E4A",
+    ink3: "#5A6675",
+    ink4: "#8B97A6",
     inverse: "#FFFFFF",
 
-    brand: "#0B1F3A",
-    brandSoft: "#E6ECF5",
-    petrol: "#0F5F66",
-    petrolSoft: "#D9EAEB",
-    gold: "#B98A2E",
-    goldSoft: "#F5EBD3",
+    // The three accents stay distinct. They are categorical, not decorative:
+    // DealChatThread renders a five-way actor scale off them, and StageBadge
+    // puts petrol and brand on adjacent pipeline stages.
+    brand: "#1B4B9E",
+    brandSoft: "#EEF3FB",
+    petrol: "#0D6E63",
+    petrolSoft: "#E6F4F1",
+    gold: "#8A6A1F",
+    goldSoft: "#FAF5E8",
 
-    profit: "#0B7A3E",
-    profitBg: "#DCEFE2",
-    warn: "#A86A12",
-    warnBg: "#F8EAD1",
-    danger: "#B0322F",
-    dangerBg: "#F4DAD8",
+    profit: "#0F7B4F",
+    profitBg: "#E6F4EC",
+    warn: "#A15C07",
+    warnBg: "#FDF2E2",
+    danger: "#B42318",
+    dangerBg: "#FDECEB",
 
-    chip: "#EFEAE0",
-    shadow: "0 1px 2px rgba(11,22,41,0.04), 0 8px 24px rgba(11,22,41,0.06)",
-    shadowLg: "0 2px 6px rgba(11,22,41,0.06), 0 24px 48px rgba(11,22,41,0.10)",
+    chip: "#E6EAEF",
+    // Shallow. The old 0 8px 24px is what made every card read as an app tile
+    // rather than a document.
+    shadow: "0 1px 2px rgba(15,23,32,0.06), 0 1px 1px rgba(15,23,32,0.04)",
+    shadowLg: "0 12px 32px rgba(15,23,32,0.10)",
     glass: "rgba(255,255,255,0.7)",
-    spark: "#0B1F3A",
+    spark: "#1B4B9E",
   },
   dark: {
-    bg: "#06070B",
-    surface: "#0D1018",
-    surface2: "#11151F",
-    elevated: "#161B27",
-    line: "rgba(255,255,255,0.07)",
-    lineStrong: "rgba(255,255,255,0.14)",
+    bg: "#0B1017",
+    surface: "#141C26",
+    // DELIBERATE DEVIATION from the shared system, which has its sunken step
+    // *below* the ground. That is right in light and wrong here: AIRail's chat
+    // bubbles and task tiles rely on surface2 sitting one step ABOVE surface,
+    // and 550 references would flip from raised to a hole. One step up.
+    surface2: "#1D2632",
+    elevated: "#232D3B",
+    line: "rgba(238, 242, 247, 0.14)",
+    lineStrong: "rgba(238, 242, 247, 0.24)",
 
-    ink: "#F1F5F9",
-    ink2: "#C5CDDB",
-    ink3: "#8892A6",
-    ink4: "#5A6378",
-    inverse: "#06070B",
+    ink: "#EEF2F7",
+    ink2: "#D2D8E0",
+    ink3: "#97A3B4",
+    ink4: "#6B7787",
+    inverse: "#0B1017",
 
-    brand: "#5EEAD4",
-    brandSoft: "rgba(94,234,212,0.10)",
-    petrol: "#22D3C7",
-    petrolSoft: "rgba(34,211,199,0.12)",
-    gold: "#E0B85A",
-    goldSoft: "rgba(224,184,90,0.12)",
+    // brand flips teal -> blue here. Cosmetic, but it changes the "teal one"
+    // mental model operators have; it needs a changelog line.
+    brand: "#7FA8E0",
+    brandSoft: "rgba(127, 168, 224, 0.16)",
+    petrol: "#4BBFAE",
+    petrolSoft: "rgba(75, 191, 174, 0.16)",
+    gold: "#D1B268",
+    goldSoft: "rgba(209, 178, 104, 0.16)",
 
-    profit: "#34D399",
-    profitBg: "rgba(52,211,153,0.13)",
-    warn: "#F4B95A",
-    warnBg: "rgba(244,185,90,0.13)",
-    danger: "#F87171",
-    dangerBg: "rgba(248,113,113,0.13)",
+    profit: "#4ADE80",
+    profitBg: "rgba(74, 222, 128, 0.14)",
+    warn: "#FBBF24",
+    warnBg: "rgba(251, 191, 36, 0.14)",
+    danger: "#FB7185",
+    dangerBg: "rgba(251, 113, 133, 0.14)",
 
-    chip: "rgba(255,255,255,0.06)",
-    shadow: "0 1px 2px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.4)",
-    shadowLg: "0 2px 6px rgba(0,0,0,0.6), 0 24px 48px rgba(0,0,0,0.55)",
-    glass: "rgba(20,24,34,0.55)",
-    spark: "#5EEAD4",
+    chip: "rgba(238, 242, 247, 0.08)",
+    shadow: "0 1px 2px rgba(0,0,0,0.5)",
+    shadowLg: "0 12px 32px rgba(0,0,0,0.6)",
+    glass: "rgba(20,28,38,0.55)",
+    spark: "#7FA8E0",
   },
 };
 
