@@ -50,7 +50,7 @@ const labelStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 800,
   letterSpacing: 0.4,
-  color: "#94A3B8",
+  color: "var(--ms-muted)",
   textTransform: "uppercase",
   marginBottom: 6,
   display: "block",
@@ -71,8 +71,10 @@ const btnStyle = (enabled: boolean): React.CSSProperties => ({
   padding: "12px 18px",
   borderRadius: 999,
   border: "none",
-  background: "linear-gradient(135deg, #E9D58A, #D4AF37)",
-  color: "#0A1020",
+  background: "var(--ms-accent)",
+  // White, not near-black: that was legible on the gold gradient this
+  // replaced, and unreadable on the deep blue accent.
+  color: "#ffffff",
   fontSize: 14,
   fontWeight: 800,
   cursor: enabled ? "pointer" : "not-allowed",
@@ -163,10 +165,10 @@ export default function ForgotPasswordPage() {
     <AuthMarketingShell>
       <div style={cardStyle}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#F8FAFC", letterSpacing: -0.3 }}>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "var(--ms-text)", letterSpacing: -0.3 }}>
             Reset your password
           </h1>
-          <p style={{ margin: "6px 0 0", fontSize: 13, color: "#94A3B8", lineHeight: 1.55 }}>
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--ms-muted)", lineHeight: 1.55 }}>
             {step === "email"
               ? "Enter your account email and we'll send you a 6-digit code."
               : "Enter the code we emailed you, then choose a new password."}
@@ -177,7 +179,7 @@ export default function ForgotPasswordPage() {
           <div style={{ fontSize: 13.5, color: "#E2E8F0", lineHeight: 1.6 }}>
             Your password has been reset. Your account has two-factor
             authentication enabled — please{" "}
-            <Link href="/sign-in" style={{ color: "#E9D58A", fontWeight: 700 }}>
+            <Link href="/sign-in" style={{ color: "var(--ms-accent-700)", fontWeight: 700 }}>
               sign in
             </Link>{" "}
             with your new password to finish.
@@ -252,7 +254,7 @@ export default function ForgotPasswordPage() {
               style={{
                 background: "none",
                 border: "none",
-                color: "#94A3B8",
+                color: "var(--ms-muted)",
                 fontSize: 12.5,
                 cursor: "pointer",
                 fontFamily: "inherit",
@@ -271,7 +273,7 @@ export default function ForgotPasswordPage() {
         ) : null}
 
         <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 12 }}>
-          <Link href="/sign-in" style={{ color: "#94A3B8", fontSize: 13, textDecoration: "none" }}>
+          <Link href="/sign-in" style={{ color: "var(--ms-muted)", fontSize: 13, textDecoration: "none" }}>
             ← Back to sign in
           </Link>
         </div>

@@ -1,12 +1,17 @@
 "use client";
 
-// AuthMarketingShell — wraps the Clerk SignIn / SignUp widget in the
-// same brand chrome the marketing site uses at qualifiedcommercial.com:
+// AuthMarketingShell — wraps the Clerk SignIn / SignUp widget in the same
+// brand chrome the marketing site uses at qualifiedcommercial.com:
 //
-//   - Top rate ticker (decorative, mirrors marketing-site copy)
-//   - Fixed dark-navy nav with logo + brand text + "Back to site" link
-//   - Hero grid background centered on the content
-//   - Slim footer with the CTA + legal disclaimer
+//   - Sticky light masthead with the mark, brand text and a "Back to site" link
+//   - Paper ground behind the auth card
+//   - Slim footer with the legal disclaimer
+//   - Rate strip pinned to the BOTTOM (it used to sit at the top, where it
+//     covered the nav and intercepted clicks on the links beneath it)
+//
+// The marketing site moved from dark navy + gold to a light institutional
+// system; these surfaces follow it. All the colour lives in the .qc-*
+// classes in globals.css, scoped to .qc-marketing.
 //
 // The Clerk widget itself is themed via its `appearance` prop on the
 // individual page so SignIn / SignUp can each pass it. This component
@@ -27,7 +32,6 @@ const TICKER_ROWS = [
 export function AuthMarketingShell({ children }: { children: ReactNode }) {
   return (
     <div className="qc-marketing" style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <TickerBar />
       <TopNav />
 
       {/* Hero — sign-in widget sits centered here */}
@@ -35,8 +39,8 @@ export function AuthMarketingShell({ children }: { children: ReactNode }) {
         className="qc-hero-grid-bg"
         style={{
           flex: 1,
-          paddingTop: 140,
-          paddingBottom: 80,
+          paddingTop: 64,
+          paddingBottom: 96,
           paddingLeft: 20,
           paddingRight: 20,
           display: "flex",
@@ -50,6 +54,7 @@ export function AuthMarketingShell({ children }: { children: ReactNode }) {
       </div>
 
       <Footer />
+      <TickerBar />
     </div>
   );
 }
@@ -101,7 +106,7 @@ function TopNav() {
             fontWeight: 800,
             letterSpacing: "-0.03em",
             fontSize: 18,
-            color: "#F8FAFC",
+            color: "var(--ms-text)",
           }}
         >
           <LogoBadge />
@@ -111,19 +116,19 @@ function TopNav() {
           <a
             href="https://qualifiedcommercial.com"
             style={{
-              color: "#CBD5E1",
+              color: "var(--ms-muted)",
               fontSize: 13,
               fontWeight: 600,
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
             }}
-            className="hover:text-white"
+            
           >
             ← Back to site
           </a>
-          <a href="https://qualifiedcommercial.com/#engine" className="qc-btn-primary">
-            Calculate My Rate
+          <a href="https://qualifiedcommercial.com/start" className="qc-btn-primary">
+            Check your rate
           </a>
         </div>
       </div>
@@ -145,7 +150,6 @@ function LogoBadge() {
       style={{
         display: "block",
         borderRadius: 11,
-        boxShadow: "0 0 35px rgba(33, 211, 199, 0.25)",
       }}
     >
       <defs>
@@ -202,11 +206,11 @@ function Footer() {
           textAlign: "center",
         }}
       >
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 10, fontWeight: 800, color: "#F8FAFC" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 10, fontWeight: 800, color: "var(--ms-text)" }}>
           <LogoBadge />
           <span>Qualified Commercial</span>
         </div>
-        <p style={{ fontSize: 13, color: "#94A3B8", lineHeight: 1.65, maxWidth: 720, margin: 0 }}>
+        <p style={{ fontSize: 12, color: "var(--ms-muted)", lineHeight: 1.6, maxWidth: 720, margin: 0 }}>
           © 2026 Qualified Commercial LLC. All rights reserved. Qualified Commercial LLC is a
           commercial real estate technology platform. All rates displayed are estimates based on
           live API data and do not constitute a binding commitment to lend. Final terms are
@@ -219,10 +223,10 @@ function Footer() {
           <span style={chipStyle}>Institutional capital routing</span>
         </div>
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center", fontSize: 13 }}>
-          <a href="/programs/car-dealers" style={{ color: "#CBD5E1", fontWeight: 700 }}>
-            Programs: Car Dealers
+          <a href="https://qualifiedcommercial.com/industries/auto" style={{ color: "var(--ms-accent-700)", fontWeight: 600 }}>
+            Auto &amp; dealer capital
           </a>
-          <a href="/dealer-ai-underwriter" style={{ color: "#CBD5E1", fontWeight: 700 }}>
+          <a href="/dealer-ai-underwriter" style={{ color: "var(--ms-accent-700)", fontWeight: 600 }}>
             Use our AI Underwriter
           </a>
         </div>
@@ -234,9 +238,9 @@ function Footer() {
 const chipStyle: React.CSSProperties = {
   padding: "6px 12px",
   borderRadius: 999,
-  border: "1px solid rgba(255, 255, 255, 0.10)",
-  background: "rgba(255, 255, 255, 0.035)",
-  color: "#94A3B8",
+  border: "1px solid var(--ms-divider)",
+  background: "var(--ms-sunken)",
+  color: "var(--ms-muted)",
   fontSize: 12,
   whiteSpace: "nowrap",
 };

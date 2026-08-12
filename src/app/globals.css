@@ -27,22 +27,54 @@ a { color: inherit; text-decoration: none; }
 
 
 /* ── Marketing-site brand surfaces ────────────────────────────────────
- * Used by the unauthenticated /sign-in and /sign-up pages so the
- * app subdomain matches the qualifiedcommercial.com look (dark navy,
- * gold accents, grid-bg hero, rate ticker, footer).
+ * Used by the unauthenticated /sign-in, /sign-up and /forgot-password pages
+ * so the app subdomain matches qualifiedcommercial.com.
  *
- * Tailwind config stays clean — these are scoped utilities consumed
- * only by the auth shell, not the operator console.
+ * The marketing site moved from dark navy + gold to a light institutional
+ * system (white document surfaces on a cool paper ground, one deep blue
+ * accent). These surfaces follow it. The token block below is a copy of the
+ * marketing site's, scoped to .qc-marketing so it cannot collide with the
+ * operator console's --qc-* theme variables, which are unrelated and stay
+ * exactly as they were.
+ *
+ * Consumed only by the auth shell — nothing in /admin or /broker reads these.
  * ─────────────────────────────────────────────────────────────────── */
 
-.qc-marketing { background: #060B1A; color: #E2E8F0; }
+.qc-marketing {
+  --ms-bg: #f5f7fa;
+  --ms-surface: #ffffff;
+  --ms-sunken: #eef1f6;
+  --ms-text: #0f1720;
+  --ms-muted: #5a6675;
+  --ms-accent: #1b4b9e;
+  --ms-accent-100: #eef3fb;
+  --ms-accent-300: #b3cbee;
+  --ms-accent-700: #153c7e;
+  --ms-accent-800: #112e60;
+  --ms-divider: rgba(15, 23, 32, 0.12);
+  --ms-divider-strong: rgba(15, 23, 32, 0.2);
+  --ms-success: #0f7b4f;
+  --ms-danger: #b42318;
+  --ms-radius: 8px;
+  --ms-radius-lg: 12px;
+
+  background: var(--ms-bg);
+  color: var(--ms-text);
+  font-family: "Inter", -apple-system, system-ui, sans-serif;
+}
+
+/* Rate strip. Pinned to the BOTTOM, matching the marketing site — at the top
+   it covered the nav and swallowed clicks on the links underneath. Decorative
+   only, so pointer-events are off and it can never intercept one again. */
 .qc-ticker-bar {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-  height: 34px; background: #020617;
-  border-bottom: 1px solid rgba(212, 175, 55, 0.25);
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
+  pointer-events: none;
+  height: 34px; background: var(--ms-sunken);
+  border-top: 1px solid var(--ms-divider);
   overflow: hidden; white-space: nowrap;
-  color: #E2E8F0; font-size: 12px; letter-spacing: 0.04em;
+  color: var(--ms-muted); font-size: 12px; letter-spacing: 0.04em;
   display: flex; align-items: center;
+  font-variant-numeric: tabular-nums;
 }
 .qc-ticker-track {
   display: inline-flex; gap: 32px; align-items: center; height: 100%;
@@ -50,44 +82,68 @@ a { color: inherit; text-decoration: none; }
   animation: qc-ticker-scroll 42s linear infinite;
 }
 .qc-ticker-track > span { display: inline-flex; align-items: center; gap: 4px; }
-.qc-ticker-track b { color: #E9D58A; font-weight: 800; letter-spacing: 0.05em; }
-.qc-ticker-track em.up   { color: #34D399; font-style: normal; }
-.qc-ticker-track em.down { color: #F87171; font-style: normal; }
+.qc-ticker-track b { color: var(--ms-accent-700); font-weight: 700; letter-spacing: 0.02em; }
+.qc-ticker-track em.up   { color: var(--ms-success); font-style: normal; }
+.qc-ticker-track em.down { color: var(--ms-danger); font-style: normal; }
 @keyframes qc-ticker-scroll {
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }
 }
+@media (prefers-reduced-motion: reduce) {
+  .qc-ticker-track { animation: none; }
+}
 
+/* The nav sits at the very top now that the ticker has moved to the bottom. */
 .qc-nav {
-  position: fixed; top: 34px; left: 0; right: 0; z-index: 90;
-  backdrop-filter: blur(18px);
-  background: rgba(6, 11, 26, 0.7);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  position: sticky; top: 0; z-index: 50;
+  background: var(--ms-surface);
+  border-bottom: 1px solid var(--ms-divider);
 }
 
-/* Hero grid background — radial vignette + faint white grid lines. */
-.qc-hero-grid-bg {
-  position: relative;
-  background:
-    radial-gradient(60% 80% at 50% 20%, rgba(33, 211, 199, 0.10), transparent 70%),
-    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px) 0 0 / 32px 32px,
-    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px) 0 0 / 32px 32px,
-    #060B1A;
-}
+/* No radial washes and no grid lines — the replaced system's vocabulary. The
+   ground is simply the paper the auth card sits on. */
+.qc-hero-grid-bg { position: relative; background: var(--ms-bg); }
 
 .qc-btn-primary {
-  background: linear-gradient(135deg, #E9D58A 0%, #D4AF37 100%);
-  color: #0B1326; font-weight: 800;
-  border-radius: 999px; padding: 11px 18px;
-  box-shadow: 0 12px 36px rgba(212, 175, 55, 0.28);
-  transition: transform .15s ease;
+  background: var(--ms-accent);
+  color: #fff; font-weight: 600;
+  border-radius: var(--ms-radius); padding: 11px 16px;
+  border: 1px solid var(--ms-accent);
+  transition: background .14s ease, border-color .14s ease;
   display: inline-flex; align-items: center; gap: 6px;
-  font-size: 13px; letter-spacing: 0.01em;
+  font-size: 14px; letter-spacing: 0;
 }
-.qc-btn-primary:hover { transform: translateY(-1px); }
+.qc-btn-primary:hover { background: var(--ms-accent-700); border-color: var(--ms-accent-700); }
+.qc-btn-primary:active { background: var(--ms-accent-800); border-color: var(--ms-accent-800); }
+
+.qc-btn-secondary {
+  background: var(--ms-surface);
+  color: var(--ms-text); font-weight: 600;
+  border: 1px solid var(--ms-divider-strong);
+  border-radius: var(--ms-radius); padding: 11px 16px;
+  font-size: 14px;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: background .14s ease, border-color .14s ease;
+}
+.qc-btn-secondary:hover { background: var(--ms-accent-100); border-color: var(--ms-accent-300); }
 
 .qc-footer-bg {
-  background: linear-gradient(180deg, #060B1A 0%, #04081A 100%);
-  border-top: 1px solid rgba(212, 175, 55, 0.18);
-  color: #94A3B8;
+  background: var(--ms-surface);
+  border-top: 1px solid var(--ms-divider);
+  color: var(--ms-muted);
+}
+
+/* The auth card itself — a white document on the paper ground. */
+.qc-auth-card {
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-divider);
+  border-radius: var(--ms-radius-lg);
+  box-shadow: 0 4px 12px rgba(15, 23, 32, 0.08);
+}
+.qc-fineprint { font-size: 12px; line-height: 1.55; color: var(--ms-muted); }
+.qc-tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 600;
+  padding: 4px 10px; border-radius: 999px;
+  background: var(--ms-accent-100); color: var(--ms-accent-800);
 }

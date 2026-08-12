@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AuthMarketingShell } from "@/components/auth/AuthMarketingShell";
-import { CLERK_DARK_APPEARANCE } from "@/components/auth/clerkAppearance";
+import { CLERK_APPEARANCE } from "@/components/auth/clerkAppearance";
 import {
   COMPANY_NAME,
   DISCLOSURE_VERSION,
@@ -79,7 +79,7 @@ export default function SignUpPage() {
             aria-required
             style={{
               marginTop: 2,
-              accentColor: "#D4AF37",
+              accentColor: "var(--ms-accent)",
               width: 18,
               height: 18,
               cursor: "pointer",
@@ -90,7 +90,7 @@ export default function SignUpPage() {
             <Link
               href="/terms"
               target="_blank"
-              style={{ color: "#E9D58A", fontWeight: 700, textDecoration: "underline" }}
+              style={{ color: "var(--ms-accent-700)", fontWeight: 700, textDecoration: "underline" }}
             >
               Terms &amp; Conditions
             </Link>
@@ -98,7 +98,7 @@ export default function SignUpPage() {
             <Link
               href="/privacy"
               target="_blank"
-              style={{ color: "#E9D58A", fontWeight: 700, textDecoration: "underline" }}
+              style={{ color: "var(--ms-accent-700)", fontWeight: 700, textDecoration: "underline" }}
             >
               Privacy Policy
             </Link>
@@ -106,7 +106,7 @@ export default function SignUpPage() {
             <Link
               href="/disclosures"
               target="_blank"
-              style={{ color: "#E9D58A", fontWeight: 700, textDecoration: "underline" }}
+              style={{ color: "var(--ms-accent-700)", fontWeight: 700, textDecoration: "underline" }}
             >
               Funding / AI / Communications Disclosure
             </Link>
@@ -118,7 +118,7 @@ export default function SignUpPage() {
           style={{
             marginTop: 10,
             fontSize: 11,
-            color: accepted ? "#34D399" : "#94A3B8",
+            color: accepted ? "#34D399" : "var(--ms-muted)",
             fontWeight: 600,
             display: "flex",
             alignItems: "center",
@@ -132,7 +132,7 @@ export default function SignUpPage() {
       </div>
 
       {accepted ? (
-        <SignUp appearance={CLERK_DARK_APPEARANCE} routing="path" path="/sign-up" />
+        <SignUp appearance={CLERK_APPEARANCE} routing="path" path="/sign-up" />
       ) : (
         <div
           style={{
@@ -141,7 +141,7 @@ export default function SignUpPage() {
             borderRadius: 12,
             background: "rgba(255, 255, 255, 0.03)",
             border: "1px dashed rgba(255, 255, 255, 0.12)",
-            color: "#94A3B8",
+            color: "var(--ms-muted)",
             fontSize: 13,
             textAlign: "center",
           }}
