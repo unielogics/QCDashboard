@@ -738,6 +738,25 @@ export interface LeadDscrPotential {
   max_loan_at_target_dscr?: Record<string, { max_loan: number; implied_ltv: number | null; at_annual_rate: number }>;
   required_monthly_rent_at_requested?: Record<string, number>;
 }
+// Client/broker platform activity for the super-admin what's-new feed.
+export interface WhatsNewItem {
+  event_id: string;
+  intake_id?: string | null;
+  lead_name?: string | null;
+  variant?: string | null;
+  action: string;
+  label: string;
+  actor_name?: string | null;
+  actor_role?: string | null;
+  detail?: string | null;
+  created_at: string;
+}
+export interface WhatsNewResponse {
+  items: WhatsNewItem[];
+  unseen_count: number;
+  feed_seen_at?: string | null;
+}
+
 export interface LeadDscrPotentialResponse {
   computed: boolean;
   potential: LeadDscrPotential;

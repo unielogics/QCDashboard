@@ -33,6 +33,7 @@ import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
 import { LeadContractsPanel } from "@/components/admin/LeadContractsPanel";
 import { LeadProgramFitPanel } from "@/components/admin/LeadProgramFitPanel";
 import { LeadDscrPanel } from "@/components/admin/LeadDscrPanel";
+import { WhatsNewButton, WhatsNewRail } from "@/components/admin/WhatsNewRail";
 import { BankerSubmissionModal } from "@/components/admin/BankerSubmissionModal";
 import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
@@ -66,6 +67,7 @@ type LeadRow = {
   updated_at: string;
   last_message_at?: string | null;
   delete_requested_at?: string | null;
+  unseen_activity_count?: number;
   delete_requested_by?: string | null;
 };
 
@@ -228,6 +230,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   const [rerunOpen, setRerunOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [creating, setCreating] = useState(false);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -618,6 +621,7 @@ export default function AdminAIUnderwriterLeadsPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <WhatsNewButton onClick={() => setWhatsNewOpen(true)} />
           <button style={qcBtnPrimary(t)} onClick={() => setCreateOpen(true)}>Create lead</button>
           <Link href="/admin/buckets" style={{ ...qcBtn(t), textDecoration: "none" }}>Buckets</Link>
         </div>
@@ -668,8 +672,16 @@ export default function AdminAIUnderwriterLeadsPage() {
             ) : rows.map((row) => (
               <button key={row.id} type="button" onClick={() => openLead(row.id)} style={rowStyle(t, selectedId === row.id)}>
                 <div style={{ minWidth: 0 }}>
-                  <strong style={{ color: t.ink, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {row.business_name || row.full_name}
+                  <strong style={{ color: t.ink, display: "flex", alignItems: "center", gap: 7, overflow: "hidden", whiteSpace: "nowrap" }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{row.business_name || row.full_name}</span>
+                    {row.unseen_activity_count ? (
+                      <span
+                        title={`${row.unseen_activity_count} client/broker update${row.unseen_activity_count !== 1 ? "s" : ""} since you last opened this lead`}
+                        style={{ flexShrink: 0, background: t.brand, color: "#fff", borderRadius: 999, fontSize: 10, fontWeight: 800, padding: "2px 7px", letterSpacing: 0.4 }}
+                      >
+                        NEW {row.unseen_activity_count > 9 ? "9+" : row.unseen_activity_count}
+                      </span>
+                    ) : null}
                   </strong>
                   <span style={{ color: t.ink3, fontSize: 12 }}>{variantLabel(row.variant)} · {row.full_name} · {row.email}</span>
                 </div>
@@ -704,6 +716,17 @@ export default function AdminAIUnderwriterLeadsPage() {
         </Card>
 
       </div>
+
+      <WhatsNewRail
+        open={whatsNewOpen}
+        onClose={() => setWhatsNewOpen(false)}
+        onOpenLead={(intakeId) => {
+          setWhatsNewOpen(false);
+          openLead(intakeId).catch(() => undefined);
+          // Reflect the cleared NEW badge once the lead loads.
+          loadLeads().catch(() => undefined);
+        }}
+      />
 
       <Modal open={!!selectedId} onClose={closeLead} size="stage" insetLeft={sidebarWidth} bodyStyle={{ display: "flex", flexDirection: "column" }}>
         {selectedId ? (

@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { useActiveProfile } from "@/store/role";
-import type { NotificationList, User , LeadDscrPotentialResponse } from "@/lib/types";
+import type { NotificationList, User , LeadDscrPotentialResponse, WhatsNewResponse } from "@/lib/types";
 import type {
   Activity,
   AIChatRequest,
@@ -798,6 +798,30 @@ export function useLeadDscrPotential(intakeId: string | null | undefined, enable
     queryKey: ["lead-dscr-potential", intakeId, devUser],
     queryFn: () => apiCall<LeadDscrPotentialResponse>(`/admin/ai-underwriter-leads/${intakeId}/dscr-potential`),
     enabled: !!intakeId && enabled,
+  });
+}
+
+export function useLeadsWhatsNew(enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["leads-whats-new", devUser],
+    queryFn: () => apiCall<WhatsNewResponse>("/admin/ai-underwriter-leads/whats-new"),
+    refetchInterval: 60 * 1000,
+    enabled,
+  });
+}
+
+export function useMarkWhatsNewSeen() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiCall<WhatsNewResponse>("/admin/ai-underwriter-leads/whats-new/seen", { method: "POST" }),
+    onSuccess: (data) => {
+      qc.setQueryData(["leads-whats-new", devUser], data);
+    },
   });
 }
 
