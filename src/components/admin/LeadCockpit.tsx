@@ -24,7 +24,6 @@ import {
   CashFlowBars,
   chartCard,
   chartCardWide,
-  chartEmptyState,
   chartGrid,
   chartHeader,
   EquityChart,
@@ -506,21 +505,21 @@ export function LeadCockpit({
               ) : null}
 
               <div style={chartGrid}>
-                <div style={chartCard}>
+                <div style={chartCard(t)}>
                   <div style={chartHeader}>
                     <strong>Debt service coverage</strong>
                   </div>
                   <GaugeChart value={intelligence.dscr.raw} />
                 </div>
 
-                <div style={chartCard}>
+                <div style={chartCard(t)}>
                   <div style={chartHeader}>
                     <strong>Real estate equity / LTV</strong>
                   </div>
                   <EquityChart equity={intelligence.equity.raw} ltv={intelligence.ltv.raw} />
                 </div>
 
-                <div style={chartCardWide}>
+                <div style={chartCardWide(t)}>
                   <div style={chartHeader}>
                     <strong>Cash flow stack</strong>
                     <span style={{ color: t.ink3, fontSize: 12 }}>Revenue / cash flow / debt service</span>
@@ -528,7 +527,7 @@ export function LeadCockpit({
                   <CashFlowBars bars={intelligence.cashFlowBars} />
                 </div>
 
-                <div style={chartCard}>
+                <div style={chartCard(t)}>
                   <div style={chartHeader}>
                     <strong>Year-to-year performance</strong>
                     <span style={{ color: t.ink3, fontSize: 12 }}>Tax / P&amp;L trend</span>
@@ -536,7 +535,7 @@ export function LeadCockpit({
                   <MiniBarChart series={intelligence.yearlySeries} emptyLabel="Awaiting tax returns and YTD P&L figures." />
                 </div>
 
-                <div style={chartCard}>
+                <div style={chartCard(t)}>
                   <div style={chartHeader}>
                     <strong>Month-to-month cash flow</strong>
                     <span style={{ color: t.ink3, fontSize: 12 }}>Bank statement trend</span>
@@ -546,14 +545,14 @@ export function LeadCockpit({
               </div>
 
               <div style={intelligenceTables}>
-                <div style={chartCard}>
+                <div style={chartCard(t)}>
                   <div style={chartHeader}>
                     <strong>Evidence coverage</strong>
                     <span style={{ color: t.ink3, fontSize: 12 }}>{current.files.length} files</span>
                   </div>
                   <EvidenceCoverageTable rows={intelligence.coverage} />
                 </div>
-                <div style={chartCard}>
+                <div style={chartCard(t)}>
                   <div style={chartHeader}>
                     <strong>Still needed</strong>
                     <span style={{ color: t.ink3, fontSize: 12 }}>{intelligence.missing.length} items</span>
@@ -573,7 +572,7 @@ export function LeadCockpit({
               a brand-new lead with no documents should still let admin/broker
               request or fill out a PFS/debt-schedule immediately. */}
           {variant !== "real_estate_dscr_v1" && (adapter.requestPfs || adapter.requestDebtSchedule) ? (
-            <div style={chartCard}>
+            <div style={chartCard(t)}>
               <div style={chartHeader}>
                 <strong>Financial forms</strong>
                 <span style={{ color: t.ink3, fontSize: 12 }}>{missingPfsOrDebtDocs.length} open</span>

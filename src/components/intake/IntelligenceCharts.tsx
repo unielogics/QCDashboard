@@ -1,16 +1,20 @@
 "use client";
 
 // Shared chart/table rendering components for the underwriting intelligence
-// board — extracted from dealer-ai-underwriter/page.tsx so the same DSCR
-// gauge, equity/LTV chart, cash-flow bars, annual/monthly bar charts, and
-// evidence/missing/risk tables can be reused by the admin Lead Cockpit and
-// the broker portal, not just the public dealer intake page. Pure
-// presentational components — no fetching, no theme-provider dependency (the
-// dark analytic-widget palette below is intentional and self-contained, the
-// same "dark cockpit tile on a light shell" pattern already used elsewhere
-// in this app).
+// board — the DSCR gauge, equity/LTV chart, cash-flow bars, annual/monthly bar
+// charts, and evidence/missing/risk tables used by the admin Lead Cockpit and
+// the broker portal.
+//
+// These render on the LIGHT institutional console (the admin/broker surfaces
+// consume them inside a white t.surface panel), so the palette here is
+// theme-driven off the design-system tokens via useTheme(). The two PUBLIC
+// dark intake cockpits (dealer-ai-underwriter, funding-review) do NOT use these
+// components — they keep their own local dark-cockpit chart code and import
+// only CHART_COPY from this file. So recoloring here is safe for them.
 
 import type { CSSProperties } from "react";
+import { useTheme } from "@/components/design-system/ThemeProvider";
+import type { QCTokens } from "@/components/design-system/tokens";
 import type { IntelligenceModel, IntelligenceValue } from "@/lib/intake";
 import type { Lang } from "@/lib/intakeCopy";
 
@@ -54,7 +58,7 @@ export const CHART_COPY: Record<Lang, {
 };
 
 // ---------------------------------------------------------------------------
-// Small formatting/style helpers
+// Small formatting helpers
 // ---------------------------------------------------------------------------
 
 export function formatMoneyCompactLocal(value: number): string {
@@ -65,39 +69,114 @@ export function formatMoneyCompactLocal(value: number): string {
   return `${sign}$${abs.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
-export function metricSourcePill(source: IntelligenceValue["source"]): CSSProperties {
-  if (source === "verified") return verifiedSourcePill;
-  if (source === "extracted") return extractedSourcePill;
-  if (source === "estimated") return estimatedSourcePill;
-  return unavailableSourcePill;
+// ---------------------------------------------------------------------------
+// Theme-driven style bundle — every colour resolves through the design tokens.
+// ---------------------------------------------------------------------------
+
+// Layout-only chrome (no colour): safe to share as plain consts, and exported
+// directly for the Lead Cockpit's grid/header scaffolding.
+export const chartGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,320px),1fr))",
+  gap: 12,
+};
+export const chartHeader: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" };
+export const intelligenceTables: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,360px),1fr))", gap: 12 };
+
+function chartStyles(t: QCTokens) {
+  const card: CSSProperties = { border: `1px solid ${t.line}`, borderRadius: 14, background: t.surface2, padding: 16, display: "grid", gap: 12, minWidth: 0, color: t.ink2 };
+  const missing: CSSProperties = { border: `1px solid ${t.line}`, background: t.warnBg, color: t.warn, borderRadius: 999, padding: "7px 10px", fontSize: 12, fontWeight: 800 };
+  const complete: CSSProperties = { ...missing, background: t.profitBg, color: t.profit };
+  const status: CSSProperties = { border: `1px solid ${t.line}`, background: t.petrolSoft, color: t.petrol, borderRadius: 999, minHeight: 30, padding: "0 10px", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, whiteSpace: "nowrap" };
+  const metric: CSSProperties = { ...status, background: t.surface2, color: t.ink2 };
+  return {
+    chartCard: card,
+    chartCardWide: { ...card, gridColumn: "1 / -1" } as CSSProperties,
+    chartEmptyState: { border: `1px dashed ${t.line}`, borderRadius: 14, minHeight: 110, display: "grid", placeItems: "center", textAlign: "center", padding: 14, color: t.ink3, lineHeight: 1.45 } as CSSProperties,
+    intelligenceTable: { display: "grid", gap: 8 } as CSSProperties,
+    intelligenceTableRow: { border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface, padding: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 6, alignItems: "start", color: t.ink2 } as CSSProperties,
+    gaugeWrap: { display: "grid", justifyItems: "center", gap: 3, color: t.ink } as CSSProperties,
+    gaugeSvg: { width: "min(260px, 100%)", height: 145, display: "block" } as CSSProperties,
+    gaugeTrackStroke: t.line,
+    gaugeNeedle: t.ink,
+    equityChartWrap: { display: "grid", gap: 12 } as CSSProperties,
+    equityTrack: { height: 22, borderRadius: 999, overflow: "hidden", background: t.line, display: "flex" } as CSSProperties,
+    equityDebtFill: { height: "100%", background: `linear-gradient(90deg,${t.danger},${t.warn})`, transition: "width .3s ease" } as CSSProperties,
+    equityValueFill: { height: "100%", background: `linear-gradient(90deg,${t.petrol},${t.profit})`, transition: "width .3s ease" } as CSSProperties,
+    equityLegend: { display: "grid", gap: 6, color: t.ink3, fontSize: 12 } as CSSProperties,
+    legendDebtDot: { display: "inline-block", width: 8, height: 8, borderRadius: 99, background: t.warn, marginRight: 6 } as CSSProperties,
+    legendEquityDot: { display: "inline-block", width: 8, height: 8, borderRadius: 99, background: t.petrol, marginRight: 6 } as CSSProperties,
+    cashFlowBarList: { display: "grid", gap: 12 } as CSSProperties,
+    cashFlowBarRow: { display: "grid", gap: 6 } as CSSProperties,
+    cashFlowBarLabel: { display: "flex", justifyContent: "space-between", gap: 12, color: t.ink2, fontSize: 13 } as CSSProperties,
+    cashFlowTrack: { height: 9, borderRadius: 999, overflow: "hidden", background: t.line } as CSSProperties,
+    cashFlowFill: { height: "100%", borderRadius: 999, transition: "width .3s ease" } as CSSProperties,
+    cashFlowPos: t.petrol,
+    cashFlowNeg: t.danger,
+    miniChart: { height: 180, display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(32px,1fr)", gap: 8, alignItems: "end" } as CSSProperties,
+    miniChartColumn: { height: "100%", display: "grid", gridTemplateRows: "1fr auto", gap: 8, justifyItems: "center", minWidth: 0, color: t.ink3, fontSize: 11 } as CSSProperties,
+    miniChartBarWrap: { height: "100%", width: "100%", display: "flex", alignItems: "end", justifyContent: "center" } as CSSProperties,
+    miniChartBar: { width: "72%", borderRadius: "10px 10px 2px 2px", background: `linear-gradient(180deg,${t.petrol},${t.gold})` } as CSSProperties,
+    riskList: { display: "grid", gap: 8 } as CSSProperties,
+    riskRow: { borderRadius: 12, padding: 10, background: t.warnBg, color: t.warn, border: `1px solid ${t.line}`, lineHeight: 1.35 } as CSSProperties,
+    strengthRow: { borderRadius: 12, padding: 10, background: t.profitBg, color: t.profit, border: `1px solid ${t.line}`, lineHeight: 1.35 } as CSSProperties,
+    kpiCard: { border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface2, padding: 12, display: "grid", gap: 4, color: t.ink3, fontSize: 12 } as CSSProperties,
+    kpiCardEmphasis: { border: `1px solid ${t.petrol}`, borderRadius: 12, background: t.petrolSoft, padding: 12, display: "grid", gap: 4, color: t.ink3, fontSize: 12 } as CSSProperties,
+    kpiValue: { color: t.ink, fontSize: 15, fontWeight: 800 } as CSSProperties,
+    kpiFooter: { display: "grid", gap: 5, alignContent: "end" } as CSSProperties,
+    missingChip: missing,
+    completeChip: complete,
+    statusPill: status,
+    metricPill: metric,
+    verifiedSourcePill: { ...complete, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" } as CSSProperties,
+    extractedSourcePill: { ...status, minHeight: 0, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" } as CSSProperties,
+    estimatedSourcePill: { ...missing, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" } as CSSProperties,
+    unavailableSourcePill: { ...metric, minHeight: 0, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" } as CSSProperties,
+  };
 }
 
-export function coverageStatusStyle(status: string): CSSProperties {
+type ChartStyles = ReturnType<typeof chartStyles>;
+
+function sourcePill(s: ChartStyles, source: IntelligenceValue["source"]): CSSProperties {
+  if (source === "verified") return s.verifiedSourcePill;
+  if (source === "extracted") return s.extractedSourcePill;
+  if (source === "estimated") return s.estimatedSourcePill;
+  return s.unavailableSourcePill;
+}
+
+function coverageStyle(s: ChartStyles, status: string): CSSProperties {
   const normalized = status.toLowerCase();
-  if (normalized.includes("satisfied")) return completeChip;
-  if (normalized.includes("partial")) return estimatedSourcePill;
-  if (normalized.includes("missing")) return missingChip;
-  return unavailableSourcePill;
+  if (normalized.includes("satisfied")) return s.completeChip;
+  if (normalized.includes("partial")) return s.estimatedSourcePill;
+  if (normalized.includes("missing")) return s.missingChip;
+  return s.unavailableSourcePill;
 }
 
-export function priorityPill(priority: string): CSSProperties {
+function priorityStyle(s: ChartStyles, priority: string): CSSProperties {
   const normalized = priority.toLowerCase();
-  if (normalized.includes("high")) return missingChip;
-  if (normalized.includes("low")) return completeChip;
-  return estimatedSourcePill;
+  if (normalized.includes("high")) return s.missingChip;
+  if (normalized.includes("low")) return s.completeChip;
+  return s.estimatedSourcePill;
 }
+
+// Exported colour-bearing scaffolding for the Lead Cockpit (needs `t`).
+export const chartCard = (t: QCTokens): CSSProperties => chartStyles(t).chartCard;
+export const chartCardWide = (t: QCTokens): CSSProperties => chartStyles(t).chartCardWide;
+export const chartEmptyState = (t: QCTokens): CSSProperties => chartStyles(t).chartEmptyState;
 
 // ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
 
 export function IntelligenceKpi({ metric, emphasis }: { metric: IntelligenceValue; emphasis?: boolean }) {
+  const { t } = useTheme();
+  const s = chartStyles(t);
   return (
-    <div style={emphasis ? kpiCardEmphasis : kpiCard}>
+    <div style={emphasis ? s.kpiCardEmphasis : s.kpiCard}>
       <span>{metric.label}</span>
-      <strong>{metric.value}</strong>
-      <div style={kpiFooter}>
-        <span style={metricSourcePill(metric.source)}>{metric.source}</span>
+      <strong style={s.kpiValue}>{metric.value}</strong>
+      <div style={s.kpiFooter}>
+        <span style={sourcePill(s, metric.source)}>{metric.source}</span>
         {metric.detail ? <small>{metric.detail}</small> : null}
       </div>
     </div>
@@ -105,6 +184,8 @@ export function IntelligenceKpi({ metric, emphasis }: { metric: IntelligenceValu
 }
 
 export function GaugeChart({ value, language = "en" }: { value: number | null | undefined; language?: Lang }) {
+  const { t } = useTheme();
+  const s = chartStyles(t);
   const cc = CHART_COPY[language];
   const numeric = typeof value === "number" && Number.isFinite(value) ? value : null;
   const clamped = numeric === null ? 0 : Math.max(0, Math.min(numeric, 3));
@@ -112,14 +193,14 @@ export function GaugeChart({ value, language = "en" }: { value: number | null | 
   const x = 100 + 70 * Math.cos((angle * Math.PI) / 180);
   const y = 92 + 70 * Math.sin((angle * Math.PI) / 180);
   return (
-    <div style={gaugeWrap}>
-      <svg viewBox="0 0 200 120" style={gaugeSvg} aria-label="DSCR gauge">
-        <path d="M30 92 A70 70 0 0 1 170 92" fill="none" stroke="rgba(255,255,255,.10)" strokeWidth="16" strokeLinecap="round" />
+    <div style={s.gaugeWrap}>
+      <svg viewBox="0 0 200 120" style={s.gaugeSvg} aria-label="DSCR gauge">
+        <path d="M30 92 A70 70 0 0 1 170 92" fill="none" stroke={s.gaugeTrackStroke} strokeWidth="16" strokeLinecap="round" />
         <path d="M30 92 A70 70 0 0 1 73 28" fill="none" stroke="#EF4444" strokeWidth="16" strokeLinecap="round" />
         <path d="M73 28 A70 70 0 0 1 116 28" fill="none" stroke="#F59E0B" strokeWidth="16" strokeLinecap="round" />
-        <path d="M116 28 A70 70 0 0 1 170 92" fill="none" stroke="#34D399" strokeWidth="16" strokeLinecap="round" />
-        <line x1="100" y1="92" x2={x} y2={y} stroke="#F8FAFC" strokeWidth="4" strokeLinecap="round" />
-        <circle cx="100" cy="92" r="8" fill="#F8FAFC" />
+        <path d="M116 28 A70 70 0 0 1 170 92" fill="none" stroke="#12A150" strokeWidth="16" strokeLinecap="round" />
+        <line x1="100" y1="92" x2={x} y2={y} stroke={s.gaugeNeedle} strokeWidth="4" strokeLinecap="round" />
+        <circle cx="100" cy="92" r="8" fill={s.gaugeNeedle} />
       </svg>
       <strong>{numeric === null ? cc.awaitingEvidence : `${numeric.toFixed(2)}x`}</strong>
       <span>{cc.dscrRange}</span>
@@ -128,39 +209,43 @@ export function GaugeChart({ value, language = "en" }: { value: number | null | 
 }
 
 export function EquityChart({ equity, ltv, language = "en" }: { equity: number | null | undefined; ltv: number | null | undefined; language?: Lang }) {
+  const { t } = useTheme();
+  const s = chartStyles(t);
   const cc = CHART_COPY[language];
   const ltvPct = typeof ltv === "number" && Number.isFinite(ltv) ? Math.max(0, Math.min(ltv, 100)) : null;
   const equityPct = ltvPct === null ? null : Math.max(0, 100 - ltvPct);
   return (
-    <div style={equityChartWrap}>
-      <div style={equityTrack}>
-        <div style={{ ...equityDebtFill, width: `${ltvPct ?? 0}%` }} />
-        <div style={{ ...equityValueFill, width: `${equityPct ?? 0}%` }} />
+    <div style={s.equityChartWrap}>
+      <div style={s.equityTrack}>
+        <div style={{ ...s.equityDebtFill, width: `${ltvPct ?? 0}%` }} />
+        <div style={{ ...s.equityValueFill, width: `${equityPct ?? 0}%` }} />
       </div>
-      <div style={equityLegend}>
-        <span><b style={legendDebtDot} /> {cc.debtProposedLtv} {ltvPct === null ? "—" : `${ltvPct.toFixed(1)}%`}</span>
-        <span><b style={legendEquityDot} /> {cc.equity} {typeof equity === "number" ? formatMoneyCompactLocal(equity) : cc.awaitingEvidence}</span>
+      <div style={s.equityLegend}>
+        <span><b style={s.legendDebtDot} /> {cc.debtProposedLtv} {ltvPct === null ? "—" : `${ltvPct.toFixed(1)}%`}</span>
+        <span><b style={s.legendEquityDot} /> {cc.equity} {typeof equity === "number" ? formatMoneyCompactLocal(equity) : cc.awaitingEvidence}</span>
       </div>
     </div>
   );
 }
 
 export function CashFlowBars({ bars, language = "en" }: { bars: IntelligenceModel["cashFlowBars"]; language?: Lang }) {
+  const { t } = useTheme();
+  const s = chartStyles(t);
   const cc = CHART_COPY[language];
   const max = Math.max(...bars.map((bar) => Math.abs(bar.value || 0)), 1);
   return (
-    <div style={cashFlowBarList}>
+    <div style={s.cashFlowBarList}>
       {bars.map((bar) => {
         const value = typeof bar.value === "number" && Number.isFinite(bar.value) ? bar.value : null;
         const width = value === null ? 0 : Math.max(4, Math.min(100, (Math.abs(value) / max) * 100));
         return (
-          <div key={bar.label} style={cashFlowBarRow}>
-            <div style={cashFlowBarLabel}>
+          <div key={bar.label} style={s.cashFlowBarRow}>
+            <div style={s.cashFlowBarLabel}>
               <span>{bar.label}</span>
               <strong>{value === null ? cc.awaitingEvidence : formatMoneyCompactLocal(value)}</strong>
             </div>
-            <div style={cashFlowTrack}>
-              <div style={{ ...cashFlowFill, width: `${width}%`, background: value !== null && value < 0 ? "#EF4444" : "#21D3C7" }} />
+            <div style={s.cashFlowTrack}>
+              <div style={{ ...s.cashFlowFill, width: `${width}%`, background: value !== null && value < 0 ? s.cashFlowNeg : s.cashFlowPos }} />
             </div>
           </div>
         );
@@ -170,18 +255,20 @@ export function CashFlowBars({ bars, language = "en" }: { bars: IntelligenceMode
 }
 
 export function MiniBarChart({ series, emptyLabel }: { series: Array<{ label: string; value: number | null }>; emptyLabel: string }) {
+  const { t } = useTheme();
+  const s = chartStyles(t);
   const valid = series.filter((item) => typeof item.value === "number" && Number.isFinite(item.value));
-  if (!valid.length) return <div style={chartEmptyState}>{emptyLabel}</div>;
+  if (!valid.length) return <div style={s.chartEmptyState}>{emptyLabel}</div>;
   const max = Math.max(...valid.map((item) => Math.abs(item.value || 0)), 1);
   return (
-    <div style={miniChart}>
+    <div style={s.miniChart}>
       {series.map((item) => {
         const value = typeof item.value === "number" && Number.isFinite(item.value) ? item.value : null;
         const height = value === null ? 8 : Math.max(12, Math.min(100, (Math.abs(value) / max) * 100));
         return (
-          <div key={item.label} style={miniChartColumn}>
-            <div style={miniChartBarWrap}>
-              <div style={{ ...miniChartBar, height: `${height}%`, opacity: value === null ? 0.22 : 1 }} />
+          <div key={item.label} style={s.miniChartColumn}>
+            <div style={s.miniChartBarWrap}>
+              <div style={{ ...s.miniChartBar, height: `${height}%`, opacity: value === null ? 0.22 : 1 }} />
             </div>
             <span>{item.label}</span>
           </div>
@@ -192,14 +279,16 @@ export function MiniBarChart({ series, emptyLabel }: { series: Array<{ label: st
 }
 
 export function EvidenceCoverageTable({ rows, language = "en" }: { rows: IntelligenceModel["coverage"]; language?: Lang }) {
+  const { t } = useTheme();
+  const s = chartStyles(t);
   const cc = CHART_COPY[language];
-  if (!rows.length) return <div style={chartEmptyState}>{cc.awaitingEvidenceMap}</div>;
+  if (!rows.length) return <div style={s.chartEmptyState}>{cc.awaitingEvidenceMap}</div>;
   return (
-    <div style={intelligenceTable}>
+    <div style={s.intelligenceTable}>
       {rows.slice(0, 8).map((row) => (
-        <div key={row.category} style={intelligenceTableRow}>
+        <div key={row.category} style={s.intelligenceTableRow}>
           <strong>{row.category}</strong>
-          <span style={coverageStatusStyle(row.status)}>{row.status}</span>
+          <span style={coverageStyle(s, row.status)}>{row.status}</span>
           <small>{row.evidence || row.gap || cc.noEvidenceListed}</small>
         </div>
       ))}
@@ -208,14 +297,16 @@ export function EvidenceCoverageTable({ rows, language = "en" }: { rows: Intelli
 }
 
 export function MissingTable({ rows, language = "en" }: { rows: IntelligenceModel["missing"]; language?: Lang }) {
+  const { t } = useTheme();
+  const s = chartStyles(t);
   const cc = CHART_COPY[language];
-  if (!rows.length) return <div style={chartEmptyState}>{cc.noBlockingItems}</div>;
+  if (!rows.length) return <div style={s.chartEmptyState}>{cc.noBlockingItems}</div>;
   return (
-    <div style={intelligenceTable}>
+    <div style={s.intelligenceTable}>
       {rows.slice(0, 8).map((row) => (
-        <div key={`${row.title}-${row.priority}`} style={intelligenceTableRow}>
+        <div key={`${row.title}-${row.priority}`} style={s.intelligenceTableRow}>
           <strong>{row.title}</strong>
-          <span style={priorityPill(row.priority)}>{row.priority || "open"}</span>
+          <span style={priorityStyle(s, row.priority)}>{row.priority || "open"}</span>
           <small>{row.detail}</small>
         </div>
       ))}
@@ -224,142 +315,20 @@ export function MissingTable({ rows, language = "en" }: { rows: IntelligenceMode
 }
 
 export function RiskStrengthTable({ title, rows, tone, language = "en" }: { title: string; rows: string[]; tone: "green" | "amber"; language?: Lang }) {
+  const { t } = useTheme();
+  const s = chartStyles(t);
   const cc = CHART_COPY[language];
   return (
-    <div style={chartCard}>
+    <div style={s.chartCard}>
       <div style={chartHeader}>
         <strong>{title}</strong>
-        <span style={tone === "green" ? completeChip : missingChip}>{rows.length || 0}</span>
+        <span style={tone === "green" ? s.completeChip : s.missingChip}>{rows.length || 0}</span>
       </div>
-      <div style={riskList}>
+      <div style={s.riskList}>
         {rows.length ? rows.slice(0, 7).map((row, index) => (
-          <div key={`${title}-${index}`} style={tone === "green" ? strengthRow : riskRow}>{row}</div>
-        )) : <div style={chartEmptyState}>{cc.awaitingReviewExtraction}</div>}
+          <div key={`${title}-${index}`} style={tone === "green" ? s.strengthRow : s.riskRow}>{row}</div>
+        )) : <div style={s.chartEmptyState}>{cc.awaitingReviewExtraction}</div>}
       </div>
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Styles — dark analytic-widget palette, self-contained (not theme-driven).
-// ---------------------------------------------------------------------------
-
-export const chartGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,320px),1fr))",
-  gap: 12,
-};
-export const chartCard: CSSProperties = {
-  border: "1px solid rgba(255,255,255,.10)",
-  borderRadius: 18,
-  background: "rgba(255,255,255,.035)",
-  padding: 16,
-  display: "grid",
-  gap: 12,
-  minWidth: 0,
-};
-export const chartCardWide: CSSProperties = { ...chartCard, gridColumn: "1 / -1" };
-export const chartHeader: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" };
-const gaugeWrap: CSSProperties = { display: "grid", justifyItems: "center", gap: 3, color: "#D9E5F5" };
-const gaugeSvg: CSSProperties = { width: "min(260px, 100%)", height: 145, display: "block" };
-const equityChartWrap: CSSProperties = { display: "grid", gap: 12 };
-const equityTrack: CSSProperties = {
-  height: 22,
-  borderRadius: 999,
-  overflow: "hidden",
-  background: "rgba(255,255,255,.08)",
-  display: "flex",
-};
-const equityDebtFill: CSSProperties = { height: "100%", background: "linear-gradient(90deg,#EF4444,#F59E0B)", transition: "width .3s ease" };
-const equityValueFill: CSSProperties = { height: "100%", background: "linear-gradient(90deg,#21D3C7,#34D399)", transition: "width .3s ease" };
-const equityLegend: CSSProperties = { display: "grid", gap: 6, color: "#AEBBD0", fontSize: 12 };
-const legendDebtDot: CSSProperties = { display: "inline-block", width: 8, height: 8, borderRadius: 99, background: "#F59E0B", marginRight: 6 };
-const legendEquityDot: CSSProperties = { ...legendDebtDot, background: "#21D3C7" };
-const cashFlowBarList: CSSProperties = { display: "grid", gap: 12 };
-const cashFlowBarRow: CSSProperties = { display: "grid", gap: 6 };
-const cashFlowBarLabel: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 12, color: "#D9E5F5", fontSize: 13 };
-const cashFlowTrack: CSSProperties = { height: 9, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.08)" };
-const cashFlowFill: CSSProperties = { height: "100%", borderRadius: 999, transition: "width .3s ease" };
-const miniChart: CSSProperties = { height: 180, display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(32px,1fr)", gap: 8, alignItems: "end" };
-const miniChartColumn: CSSProperties = { height: "100%", display: "grid", gridTemplateRows: "1fr auto", gap: 8, justifyItems: "center", minWidth: 0, color: "#8FA0B8", fontSize: 11 };
-const miniChartBarWrap: CSSProperties = { height: "100%", width: "100%", display: "flex", alignItems: "end", justifyContent: "center" };
-const miniChartBar: CSSProperties = { width: "72%", borderRadius: "10px 10px 2px 2px", background: "linear-gradient(180deg,#21D3C7,#D4AF37)" };
-export const chartEmptyState: CSSProperties = {
-  border: "1px dashed rgba(255,255,255,.13)",
-  borderRadius: 14,
-  minHeight: 110,
-  display: "grid",
-  placeItems: "center",
-  textAlign: "center",
-  padding: 14,
-  color: "#9DABC0",
-  lineHeight: 1.45,
-};
-export const intelligenceTables: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,360px),1fr))", gap: 12 };
-const intelligenceTable: CSSProperties = { display: "grid", gap: 8 };
-const intelligenceTableRow: CSSProperties = {
-  border: "1px solid rgba(255,255,255,.08)",
-  borderRadius: 12,
-  background: "rgba(0,0,0,.14)",
-  padding: 10,
-  display: "grid",
-  gridTemplateColumns: "minmax(0,1fr) auto",
-  gap: 6,
-  alignItems: "start",
-};
-const riskList: CSSProperties = { display: "grid", gap: 8 };
-const riskRow: CSSProperties = { borderRadius: 12, padding: 10, background: "rgba(212,175,55,.08)", color: "#F6E7A6", border: "1px solid rgba(212,175,55,.18)", lineHeight: 1.35 };
-const strengthRow: CSSProperties = { ...riskRow, background: "rgba(33,211,199,.08)", color: "#BFFCF7", border: "1px solid rgba(33,211,199,.18)" };
-
-const kpiCard: CSSProperties = {
-  border: "1px solid rgba(255,255,255,.10)",
-  borderRadius: 14,
-  background: "rgba(255,255,255,.035)",
-  padding: 12,
-  display: "grid",
-  gap: 4,
-  color: "#D9E5F5",
-  fontSize: 12,
-};
-const kpiCardEmphasis: CSSProperties = { ...kpiCard, border: "1px solid rgba(33,211,199,.35)", background: "rgba(33,211,199,.06)" };
-const kpiFooter: CSSProperties = { display: "grid", gap: 5, alignContent: "end" };
-
-const missingChip: CSSProperties = {
-  border: "1px solid rgba(212,175,55,.25)",
-  background: "rgba(212,175,55,.08)",
-  color: "#F6E7A6",
-  borderRadius: 999,
-  padding: "7px 10px",
-  fontSize: 12,
-  fontWeight: 800,
-};
-const completeChip: CSSProperties = {
-  ...missingChip,
-  border: "1px solid rgba(33,211,199,.28)",
-  background: "rgba(33,211,199,.08)",
-  color: "#A7F3D0",
-};
-const statusPill: CSSProperties = {
-  border: "1px solid rgba(33,211,199,.25)",
-  background: "rgba(33,211,199,.10)",
-  color: "#BFFCF7",
-  borderRadius: 999,
-  minHeight: 30,
-  padding: "0 10px",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: 12,
-  fontWeight: 900,
-  whiteSpace: "nowrap",
-};
-const metricPill: CSSProperties = {
-  ...statusPill,
-  borderColor: "rgba(255,255,255,.12)",
-  background: "rgba(255,255,255,.05)",
-  color: "#D9E5F5",
-};
-const verifiedSourcePill: CSSProperties = { ...completeChip, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" };
-const extractedSourcePill: CSSProperties = { ...statusPill, minHeight: 0, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" };
-const estimatedSourcePill: CSSProperties = { ...missingChip, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" };
-const unavailableSourcePill: CSSProperties = { ...metricPill, minHeight: 0, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" };
