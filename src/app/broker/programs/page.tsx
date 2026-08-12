@@ -6,8 +6,10 @@
 // Start button. Static content -- no backend endpoint distinguishes
 // documents/timelines per program today (only one shared baseline
 // checklist exists, see dealer_ai_intake.py's REQUIRED_DOCUMENTS), so this
-// mirrors the same authored-copy approach as the public
-// /programs/car-dealers marketing page. "Start" hands off to the My Leads
+// mirrors the same authored-copy approach the public dealer marketing page
+// uses (now qualifiedcommercial.com/industries/auto; the old
+// /programs/car-dealers route here permanently redirects to it).
+// "Start" hands off to the My Leads
 // page via a ?program= query param rather than inventing a backend field
 // that doesn't exist yet (BrokerLeadCreate has no program slot).
 
