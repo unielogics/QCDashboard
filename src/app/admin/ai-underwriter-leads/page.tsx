@@ -1222,7 +1222,14 @@ function LeadDetailPanel({
                     boxShadow: notesOpen ? "-8px 0 24px rgba(0,0,0,0.18)" : "none",
                   }}
                 >
-                  <LeadNotesPanel notes={detail.notes ?? []} onPost={postNote} posting={notesPosting} error={notesError} />
+                  <LeadNotesPanel
+                    notes={detail.notes ?? []}
+                    onPost={postNote}
+                    posting={notesPosting}
+                    error={notesError}
+                    subtitle="Private channel with this lead's dealer partner — never visible to the client."
+                    emptyLabel="No messages yet. Start the conversation with this lead's dealer partner."
+                  />
                 </div>
               </div>
             ) : (

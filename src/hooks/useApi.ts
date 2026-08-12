@@ -263,6 +263,42 @@ export function useCurrentUser() {
   });
 }
 
+// Dealer-partner communication inbox: one row per lead with a team<->partner
+// message thread, newest first, with this partner's unread count. Backs
+// /broker/messages and the nav unread dot.
+export type DealerChannelMessage = {
+  content: string;
+  author_name: string | null;
+  author_role: string | null;
+  created_at: string;
+};
+export type DealerChannelInboxItem = {
+  intake_id: string;
+  name: string;
+  business_name: string | null;
+  full_name: string;
+  status: string;
+  outcome_status: string;
+  unread_count: number;
+  last_message: DealerChannelMessage | null;
+  last_message_at: string | null;
+};
+export type DealerChannelInbox = { items: DealerChannelInboxItem[]; total_unread: number };
+
+export function useDealerChannelInbox(enabled = true) {
+  const apiCall = useAuthedApi();
+  const { isLoaded, isSignedIn } = useAuth();
+  return useQuery({
+    queryKey: ["dealer-channel-inbox"],
+    queryFn: () => apiCall<DealerChannelInbox>("/broker/ai-underwriter-leads/messages"),
+    staleTime: 20 * 1000,
+    refetchOnWindowFocus: true,
+    refetchInterval: 60 * 1000,
+    retry: false,
+    enabled: enabled && isLoaded && isSignedIn === true,
+  });
+}
+
 // ── Queries ────────────────────────────────────────────────────────────────
 
 // `scope` is optional. When omitted, the backend decides based on the JWT

@@ -13,6 +13,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Modal } from "@/components/design-system/Modal";
+import { Tabs } from "@/components/design-system/Tabs";
 import { Icon } from "@/components/design-system/Icon";
 import { IconButton } from "@/components/design-system/IconButton";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
@@ -41,6 +42,7 @@ type LeadRow = {
   file_count: number;
   missing_required_count: number;
   updated_at: string;
+  channel_unread_count?: number;
 };
 
 type LeadPage = { items: LeadRow[]; total: number; limit: number; offset: number };
@@ -142,7 +144,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
   const [rerunOpen, setRerunOpen] = useState(false);
   const [notesPosting, setNotesPosting] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
-  const [notesOpen, setNotesOpen] = useState(false);
+  const [detailTab, setDetailTab] = useState<"files" | "messages">("files");
   const [programLabel, setProgramLabel] = useState<string | null>(null);
   const [deletionBusy, setDeletionBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -156,6 +158,16 @@ export default function BrokerAIUnderwriterLeadsPage() {
       setProgramLabel(PROGRAM_TITLES[slug]);
       setCreateOpen(true);
     }
+  }, [searchParams]);
+
+  // Deep link from the global Messages inbox: ?lead=<id>&tab=messages opens
+  // that lead straight on its Messages tab (files one click away).
+  useEffect(() => {
+    const leadId = searchParams.get("lead");
+    if (!leadId) return;
+    const tab = searchParams.get("tab") === "messages" ? "messages" : "files";
+    void openLead(leadId, tab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -178,10 +190,12 @@ export default function BrokerAIUnderwriterLeadsPage() {
     }
   }
 
-  async function openLead(id: string) {
+  async function openLead(id: string, initialTab: "files" | "messages" = "files") {
     setSelectedId(id);
+    setDetailTab(initialTab);
     setDetailLoading(true);
     setNotice("");
+    if (initialTab === "messages") void markMessagesSeen(id);
     try {
       const data = await call<LeadDetail>(`/broker/ai-underwriter-leads/${id}`);
       setDetail(data);
@@ -192,9 +206,25 @@ export default function BrokerAIUnderwriterLeadsPage() {
     }
   }
 
+  // Opening the Messages tab clears this lead's unread badge (server + local).
+  async function markMessagesSeen(id: string) {
+    try {
+      await call(`/broker/ai-underwriter-leads/${id}/messages/seen`, { method: "POST" });
+      setRows((current) => current.map((r) => (r.id === id ? { ...r, channel_unread_count: 0 } : r)));
+    } catch {
+      // Non-fatal — the badge just stays until the next load.
+    }
+  }
+
+  function openDetailTab(tab: "files" | "messages") {
+    setDetailTab(tab);
+    if (tab === "messages" && selectedId) void markMessagesSeen(selectedId);
+  }
+
   function closeLead() {
     setSelectedId(null);
     setDetail(null);
+    setDetailTab("files");
     loadLeads().catch(() => undefined);
   }
 
@@ -374,6 +404,8 @@ export default function BrokerAIUnderwriterLeadsPage() {
     rows: rows.filter((r) => r.outcome_status === col.key),
   }));
 
+  const selectedUnread = rows.find((r) => r.id === selectedId)?.channel_unread_count ?? 0;
+
   return (
     <main style={{ padding: 24, display: "grid", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -503,75 +535,67 @@ export default function BrokerAIUnderwriterLeadsPage() {
           detailLoading || !cockpitResponse || !cockpitAdapter ? (
             <div style={{ padding: 24, color: t.ink3 }}>Loading lead…</div>
           ) : (
-            <div style={{ display: "grid", gridTemplateRows: "1fr", gap: 12, height: "100%", padding: 16, minHeight: 0 }}>
-              <div style={{ position: "relative", overflow: "hidden", minHeight: 0 }}>
-                <LeadCockpit
-                  response={cockpitResponse}
-                  adapter={cockpitAdapter}
-                  initialMessages={detail?.messages}
-                  onResponse={(r) => {
-                    // Keep detail in sync with live cockpit turns so any
-                    // remount (notes toggle, reopen) seeds the full thread.
-                    setDetail((current) =>
-                      current
-                        ? {
-                            ...current,
-                            messages: r.messages ?? current.messages,
-                            files: r.files ?? current.files,
-                            requested_documents: r.requested_documents ?? current.requested_documents,
-                            latest_review: r.latest_review ?? current.latest_review,
-                            intake: { ...current.intake, result_snapshot: r.intake?.result_snapshot ?? current.intake.result_snapshot },
-                          }
-                        : current,
-                    );
-                  }}
-                  onRequestRerun={openRerun}
-                />
-                <button
-                  type="button"
-                  onClick={() => setNotesOpen((v) => !v)}
-                  aria-label={notesOpen ? "Hide internal notes" : "Show internal notes"}
-                  style={{
-                    position: "absolute",
-                    top: "50%",
-                    right: notesOpen ? 360 : 0,
-                    transform: "translateY(-50%)",
-                    zIndex: 21,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 4,
-                    padding: "10px 6px",
-                    borderRadius: "10px 0 0 10px",
-                    border: `1px solid ${t.line}`,
-                    borderRight: notesOpen ? `1px solid ${t.line}` : "none",
-                    background: t.surface,
-                    color: t.ink2,
-                    cursor: "pointer",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    transition: "right 200ms ease",
-                  }}
-                >
-                  <Icon name={notesOpen ? "chevR" : "chevL"} size={12} />
-                  <span style={{ writingMode: "vertical-rl", letterSpacing: 0.5 }}>
-                    Notes{detail?.notes?.length ? ` (${detail.notes.length})` : ""}
-                  </span>
-                </button>
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    right: 0,
-                    bottom: 0,
-                    width: 360,
-                    zIndex: 20,
-                    display: "grid",
-                    transform: notesOpen ? "translateX(0)" : "translateX(100%)",
-                    transition: "transform 200ms ease",
-                    boxShadow: notesOpen ? "-8px 0 24px rgba(0,0,0,0.18)" : "none",
-                  }}
-                >
+            <div style={{ display: "grid", gridTemplateRows: "auto 1fr", gap: 12, height: "100%", padding: 16, minHeight: 0 }}>
+              <Tabs
+                variant="underline"
+                value={detailTab}
+                onChange={openDetailTab}
+                options={[
+                  { id: "files", label: "Files & Review" },
+                  {
+                    id: "messages",
+                    label: "Messages",
+                    badge:
+                      selectedUnread > 0 ? (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            minWidth: 16,
+                            height: 16,
+                            padding: "0 5px",
+                            borderRadius: 999,
+                            background: t.brand,
+                            color: t.inverse,
+                            fontSize: 10,
+                            fontWeight: 800,
+                          }}
+                        >
+                          {selectedUnread}
+                        </span>
+                      ) : undefined,
+                  },
+                ]}
+              />
+              {/* Both panels stay mounted (toggled via display) so the cockpit's
+                  in-progress chat/uploads survive switching to Messages. */}
+              <div style={{ minHeight: 0 }}>
+                <div style={{ height: "100%", minHeight: 0, overflow: "hidden", display: detailTab === "files" ? "block" : "none" }}>
+                  <LeadCockpit
+                    response={cockpitResponse}
+                    adapter={cockpitAdapter}
+                    initialMessages={detail?.messages}
+                    onResponse={(r) => {
+                      // Keep detail in sync with live cockpit turns so any
+                      // remount (reopen) seeds the full thread.
+                      setDetail((current) =>
+                        current
+                          ? {
+                              ...current,
+                              messages: r.messages ?? current.messages,
+                              files: r.files ?? current.files,
+                              requested_documents: r.requested_documents ?? current.requested_documents,
+                              latest_review: r.latest_review ?? current.latest_review,
+                              intake: { ...current.intake, result_snapshot: r.intake?.result_snapshot ?? current.intake.result_snapshot },
+                            }
+                          : current,
+                      );
+                    }}
+                    onRequestRerun={openRerun}
+                  />
+                </div>
+                <div style={{ height: "100%", minHeight: 0, overflow: "hidden", display: detailTab === "messages" ? "block" : "none" }}>
                   <LeadNotesPanel notes={detail?.notes ?? []} onPost={postNote} posting={notesPosting} error={notesError} />
                 </div>
               </div>

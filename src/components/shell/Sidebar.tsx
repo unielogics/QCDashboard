@@ -9,7 +9,7 @@ import { Avatar } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useUI } from "@/store/ui";
 import { SIGN_IN_URL } from "@/lib/appUrl";
-import { useCurrentUser, useGoogleConnection } from "@/hooks/useApi";
+import { useCurrentUser, useGoogleConnection, useDealerChannelInbox } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { QCMark } from "@/components/QCMark";
 
@@ -77,6 +77,7 @@ const VENDOR_NAV: NavItem[] = [
 // CLIENT_NAV above.
 const DEALER_PARTNER_NAV: NavItem[] = [
   { href: "/broker/ai-underwriter-leads", label: "My Leads", icon: "spark" },
+  { href: "/broker/messages", label: "Messages", icon: "chat" },
   { href: "/broker/programs", label: "Programs & Resources", icon: "docCheck" },
   { href: "/profile", label: "Profile", icon: "user" },
 ];
@@ -140,6 +141,10 @@ export default function Sidebar() {
   const collapsed = useUI((s) => s.sidebarCollapsed);
   const toggleSidebar = useUI((s) => s.toggleSidebar);
   const { data: user } = useCurrentUser();
+  // Dealer-partner Messages unread → nav dot on /broker/messages. Only fetches
+  // for dealer partners (enabled flag), so no extra load for other roles.
+  const { data: dealerInbox } = useDealerChannelInbox(user?.role === Role.DEALER_PARTNER);
+  const dealerUnread = dealerInbox?.total_unread ?? 0;
   // Workspace inbox visibility is a RUNTIME gate (has a connected Gmail mailbox),
   // which the static `roles` field can't express — inject the /inbox link only
   // when the user's mailbox is connected. Clients never see it.
@@ -337,6 +342,29 @@ export default function Sidebar() {
               )}
               <Icon name={n.icon} size={17} stroke={active ? 2.4 : 1.8} />
               {!collapsed && <span style={{ flex: 1, textAlign: "left" }}>{n.label}</span>}
+              {n.href === "/broker/messages" && dealerUnread > 0 && (
+                <span
+                  aria-label={`${dealerUnread} unread`}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minWidth: 18,
+                    height: 18,
+                    padding: "0 5px",
+                    borderRadius: 999,
+                    background: t.brand,
+                    color: t.inverse,
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    position: collapsed ? "absolute" : "static",
+                    top: collapsed ? 4 : undefined,
+                    right: collapsed ? 6 : undefined,
+                  }}
+                >
+                  {dealerUnread}
+                </span>
+              )}
             </Link>
           );
         })}
