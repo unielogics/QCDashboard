@@ -30,6 +30,7 @@ import {
   type CapitalPartnerApp,
   type CapitalPartnerStatus,
 } from "@/hooks/useApi";
+import { withAlpha } from "@/components/design-system/tokens";
 
 type FilterId = CapitalPartnerStatus | "all";
 
@@ -161,7 +162,7 @@ export default function CapitalPartnerApplicationsPage() {
                 padding: "8px 14px",
                 borderRadius: 999,
                 background: active ? accent.bg : "transparent",
-                border: `1px solid ${active ? accent.fg + "30" : t.line}`,
+                border: `1px solid ${active ? withAlpha(accent.fg, 0.19) : t.line}`,
                 color: active ? accent.fg : t.ink2,
                 fontSize: 12,
                 fontWeight: 700,
@@ -178,7 +179,7 @@ export default function CapitalPartnerApplicationsPage() {
                   fontFeatureSettings: '"tnum"',
                   padding: "1px 6px",
                   borderRadius: 999,
-                  background: active ? accent.fg + "22" : t.surface2,
+                  background: active ? withAlpha(accent.fg, 0.13) : t.surface2,
                   color: active ? accent.fg : t.ink3,
                   minWidth: 18,
                   textAlign: "center",
@@ -734,7 +735,7 @@ function ReviewModal({ id, onClose }: { id: string; onClose: () => void }) {
                         style={{
                           ...qcBtn(t),
                           color: t.danger,
-                          borderColor: t.danger + "40",
+                          borderColor: withAlpha(t.danger, 0.25),
                           opacity: decide.isPending ? 0.6 : 1,
                           display: "inline-flex",
                           alignItems: "center",

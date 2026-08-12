@@ -10,6 +10,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useDocuments, useDocumentsForClient, useDocumentsAnalysis, type DocAnalysisResponse } from "@/hooks/useApi";
+import { withAlpha } from "@/components/design-system/tokens";
 
 type DocsScope = "agent" | "funding";
 
@@ -223,7 +224,7 @@ function UnderwritingSummary({
                 style={{
                   padding: "8px 10px",
                   borderRadius: 9,
-                  border: `1px solid ${hasIssues ? t.warn + "55" : t.line}`,
+                  border: `1px solid ${hasIssues ? withAlpha(t.warn, 0.33) : t.line}`,
                   background: hasIssues ? t.warnBg : t.surface,
                 }}
               >

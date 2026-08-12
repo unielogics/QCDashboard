@@ -12,7 +12,7 @@ import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT, withAlpha } from "@/components/design-system/tokens";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
 import { useAdminPrequalQueue } from "@/hooks/useApi";
@@ -270,7 +270,7 @@ export default function AdminPrequalQueuePage() {
                 padding: "8px 14px",
                 borderRadius: 999,
                 background: active ? accent.bg : "transparent",
-                border: `1px solid ${active ? accent.fg + "30" : t.line}`,
+                border: `1px solid ${active ? withAlpha(accent.fg, 0.19) : t.line}`,
                 color: active ? accent.fg : t.ink2,
                 fontSize: 12,
                 fontWeight: 700,
@@ -287,7 +287,7 @@ export default function AdminPrequalQueuePage() {
                 fontFeatureSettings: '"tnum"',
                 padding: "1px 6px",
                 borderRadius: 999,
-                background: active ? accent.fg + "22" : t.surface2,
+                background: active ? withAlpha(accent.fg, 0.13) : t.surface2,
                 color: active ? accent.fg : t.ink3,
                 minWidth: 18,
                 textAlign: "center",

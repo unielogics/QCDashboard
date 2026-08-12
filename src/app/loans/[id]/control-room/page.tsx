@@ -15,7 +15,7 @@ import { useDocuments, useLoan, useMessages, useRecalc, useSendMessage, useUpdat
 import { useDealChannel } from "@/hooks/useDealChannel";
 import { useActiveProfile } from "@/store/role";
 import { Role, MessageFrom, PropertyType, PropertyTypeOptions } from "@/lib/enums.generated";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT, withAlpha } from "@/components/design-system/tokens";
 import { parseUSD } from "@/lib/formCoerce";
 import type { Document, Loan } from "@/lib/types";
 import { DocUploadButton } from "@/app/documents/components/DocUploadButton";
@@ -351,7 +351,7 @@ function AIMonitor({
       </div>
 
       {paused && canEdit && (
-        <div style={{ padding: 12, borderTop: `1px solid ${t.line}`, display: "flex", gap: 8, background: t.warnBg + "55" }}>
+        <div style={{ padding: 12, borderTop: `1px solid ${t.line}`, display: "flex", gap: 8, background: withAlpha(t.warnBg, 0.33) }}>
           <input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}

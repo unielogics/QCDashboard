@@ -16,6 +16,7 @@ import {
 import { Role } from "@/lib/enums.generated";
 import { AIChatPanel } from "@/components/AIChatPanel";
 import { usePrimaryShortcutLabel } from "@/lib/platformShortcuts";
+import { withAlpha } from "@/components/design-system/tokens";
 
 export default function TopBar() {
   const { t, isDark, toggle } = useTheme();
@@ -219,7 +220,7 @@ export default function TopBar() {
               width: 32,
               height: 32,
               borderRadius: 8,
-              border: `1px solid ${notificationsOpen ? t.petrol + "66" : t.line}`,
+              border: `1px solid ${notificationsOpen ? withAlpha(t.petrol, 0.4) : t.line}`,
               background: notificationsOpen ? t.petrolSoft : "transparent",
               color: notificationsOpen ? t.petrol : t.ink2,
               cursor: "pointer",
@@ -364,7 +365,7 @@ export default function TopBar() {
               padding: "7px 12px",
               borderRadius: 9,
               background: aiOpen ? t.petrolSoft : "transparent",
-              border: `1px solid ${aiOpen ? t.petrol + "40" : t.line}`,
+              border: `1px solid ${aiOpen ? withAlpha(t.petrol, 0.25) : t.line}`,
               color: aiOpen ? t.petrol : t.ink2,
               fontSize: 12.5,
               fontWeight: 700,

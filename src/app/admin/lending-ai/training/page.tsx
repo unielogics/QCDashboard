@@ -26,6 +26,7 @@ import {
   useAiTrainingFeedback,
   type AiTaskConfig,
 } from "@/hooks/useApi";
+import { withAlpha } from "@/components/design-system/tokens";
 
 const linesToArr = (s: string): string[] =>
   s.split("\n").map((x) => x.trim()).filter(Boolean);
@@ -175,7 +176,7 @@ export default function AiTrainingPage() {
                     padding: "8px 14px",
                     borderRadius: 999,
                     background: on ? t.brandSoft : "transparent",
-                    border: `1px solid ${on ? t.brand + "40" : t.line}`,
+                    border: `1px solid ${on ? withAlpha(t.brand, 0.25) : t.line}`,
                     color: on ? t.brand : t.ink2,
                     fontSize: 12.5,
                     fontWeight: 700,
