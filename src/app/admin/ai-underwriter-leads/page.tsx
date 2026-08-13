@@ -1054,6 +1054,24 @@ function LeadDetailPanel({
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            type="button"
+            aria-label="Messages with the dealer partner"
+            title="Messages with the dealer partner"
+            onClick={() => setNotesOpen(true)}
+            style={{
+              all: "unset", cursor: "pointer", position: "relative", minHeight: 34, padding: "0 10px",
+              borderRadius: 8, border: `1px solid ${t.line}`, background: t.surface2, color: t.ink2,
+              display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700,
+            }}
+          >
+            <Icon name="chat" size={14} /> Messages
+            {detail?.notes && detail.notes.length > 0 ? (
+              <span style={{ background: t.brand, color: t.inverse, borderRadius: 999, fontSize: 10, fontWeight: 800, padding: "1px 6px" }}>
+                {detail.notes.length}
+              </span>
+            ) : null}
+          </button>
           {detail ? (
             <select
               value={detail.intake.outcome_status}
