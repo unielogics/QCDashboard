@@ -1370,7 +1370,7 @@ function TodaysOverduePanel({
           </Link>
         )}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 8 }}>
         {ranked.map((item) => {
           const us = urgencyStyle(item.urgency);
           return (
@@ -1386,6 +1386,7 @@ function TodaysOverduePanel({
                 background: t.surface,
                 border: `1px solid ${t.line}`,
                 textDecoration: "none",
+                minWidth: 0,
               }}
             >
               <span
