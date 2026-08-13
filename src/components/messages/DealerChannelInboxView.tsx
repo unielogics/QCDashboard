@@ -11,10 +11,11 @@ import { useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill } from "@/components/design-system/primitives";
-import { qcBtn } from "@/components/design-system/buttons";
+import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { Icon } from "@/components/design-system/Icon";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { useDealerChannelInbox, type DealerChannelInboxItem } from "@/hooks/useApi";
+import { DealerChannelComposeDialog } from "@/components/messages/DealerChannelComposeDialog";
 import { api } from "@/lib/api";
 
 function timeAgo(iso?: string | null): string {
@@ -58,6 +59,7 @@ export function DealerChannelInboxView({
   const [threadLoading, setThreadLoading] = useState(false);
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
 
   const items = useMemo(() => data?.items ?? [], [data]);
   const selected = items.find((it) => it.intake_id === selectedId) ?? null;
@@ -68,13 +70,17 @@ export function DealerChannelInboxView({
   }
 
   async function openThread(item: DealerChannelInboxItem) {
-    setSelectedId(item.intake_id);
+    await openById(item.intake_id);
+  }
+
+  async function openById(intakeId: string) {
+    setSelectedId(intakeId);
     setThreadLoading(true);
     setPostError(null);
     try {
-      const rows = await call<LeadNote[]>(`${apiPrefix}/${item.intake_id}/notes`);
+      const rows = await call<LeadNote[]>(`${apiPrefix}/${intakeId}/notes`);
       setNotes(rows);
-      await call(`${apiPrefix}/${item.intake_id}/messages/seen`, { method: "POST" });
+      await call(`${apiPrefix}/${intakeId}/messages/seen`, { method: "POST" });
       void refetch();
     } catch {
       setNotes([]);
@@ -118,7 +124,24 @@ export function DealerChannelInboxView({
           <Pill bg={t.brandSoft} color={t.brand}>{data.total_unread} unread</Pill>
         ) : null}
         <span style={{ color: t.ink3, fontSize: 13 }}>{subtitle}</span>
+        {scope === "admin" ? (
+          <button type="button" style={{ ...qcBtnPrimary(t), marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => setComposeOpen(true)}>
+            <Icon name="plus" size={13} /> New message
+          </button>
+        ) : null}
       </div>
+
+      {composeOpen ? (
+        <DealerChannelComposeDialog
+          apiPrefix={apiPrefix}
+          onClose={() => setComposeOpen(false)}
+          onSent={(intakeId) => {
+            setComposeOpen(false);
+            void refetch();
+            void openById(intakeId);
+          }}
+        />
+      ) : null}
 
       <div
         style={{
