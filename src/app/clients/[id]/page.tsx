@@ -285,6 +285,18 @@ export default function ClientDetailPage() {
               <Icon name="gear" size={12} /> Edit
             </button>
           )}
+          <button
+            aria-label="Close"
+            title="Close"
+            onClick={() => router.push("/clients")}
+            style={{
+              all: "unset", cursor: "pointer", width: 34, height: 34, borderRadius: 9,
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              color: t.ink3, border: `1px solid ${t.line}`, flexShrink: 0,
+            }}
+          >
+            <Icon name="x" size={16} />
+          </button>
         </div>
       </Card>
       <SmartIntakeModal

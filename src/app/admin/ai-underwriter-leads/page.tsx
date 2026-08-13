@@ -388,16 +388,6 @@ export default function AdminAIUnderwriterLeadsPage() {
     await loadLeads();
   }
 
-  async function requestLeadDeletion(id: string, reason?: string) {
-    await call(`/admin/ai-underwriter-leads/${id}/request-deletion`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason: reason || null }),
-    });
-    await refreshSelectedLead();
-    await loadLeads();
-  }
-
   async function cancelLeadDeletionRequest(id: string) {
     await call(`/admin/ai-underwriter-leads/${id}/cancel-deletion-request`, { method: "POST" });
     await refreshSelectedLead();
@@ -683,7 +673,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                       </span>
                     ) : null}
                   </strong>
-                  <span style={{ color: t.ink3, fontSize: 12 }}>{variantLabel(row.variant)} · {row.full_name} · {row.email}</span>
+                  <span style={{ color: t.ink3, fontSize: 12, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{variantLabel(row.variant)} · {row.full_name} · {row.email}</span>
                 </div>
                 <div>
                   <Pill bg={probabilityTone(t, row.probability_status).bg} color={probabilityTone(t, row.probability_status).fg}>
@@ -767,7 +757,6 @@ export default function AdminAIUnderwriterLeadsPage() {
             onPostNote={(content) => postLeadNote(selectedId, content)}
             onUpdateOutcomeStatus={(status) => updateOutcomeStatus(selectedId, status)}
             onUpdateLanguage={(language) => updateLeadLanguage(selectedId, language)}
-            onRequestDeletion={(reason) => requestLeadDeletion(selectedId, reason)}
             onCancelDeletionRequest={() => cancelLeadDeletionRequest(selectedId)}
             onConfirmDeletion={(confirmName) => confirmLeadDeletion(selectedId, confirmName)}
           />
@@ -813,7 +802,6 @@ function LeadDetailPanel({
   onPostNote,
   onUpdateOutcomeStatus,
   onUpdateLanguage,
-  onRequestDeletion,
   onCancelDeletionRequest,
   onConfirmDeletion,
 }: {
@@ -836,7 +824,6 @@ function LeadDetailPanel({
   onPostNote: (content: string) => Promise<void>;
   onUpdateOutcomeStatus: (status: string) => Promise<void>;
   onUpdateLanguage: (language: string) => Promise<void>;
-  onRequestDeletion: (reason?: string) => Promise<void>;
   onCancelDeletionRequest: () => Promise<void>;
   onConfirmDeletion: (confirmName: string) => Promise<void>;
 }) {
@@ -1043,18 +1030,6 @@ function LeadDetailPanel({
     }
   }
 
-  async function handleRequestDeletion() {
-    if (!window.confirm("Flag this lead for deletion? This does not delete anything yet — it only marks it pending until a super admin confirms.")) return;
-    setDeletionBusy(true);
-    try {
-      await onRequestDeletion();
-    } catch (error) {
-      toast.show(error instanceof Error ? error.message : "Could not flag this lead for deletion.");
-    } finally {
-      setDeletionBusy(false);
-    }
-  }
-
   async function handleCancelDeletionRequest() {
     setDeletionBusy(true);
     try {
@@ -1101,17 +1076,22 @@ function LeadDetailPanel({
             </select>
           ) : null}
           {detail?.intake.delete_requested_at ? (
-            <>
-              <span title={`Requested by ${detail.intake.delete_requested_by || "unknown"} on ${new Date(detail.intake.delete_requested_at).toLocaleString()}`}>
-                <Pill bg={t.dangerBg} color={t.danger}>Pending deletion</Pill>
-              </span>
-              <button style={qcBtn(t)} disabled={deletionBusy} onClick={handleCancelDeletionRequest}>Cancel deletion</button>
-              <button style={{ ...qcBtnPrimary(t), background: t.danger }} disabled={deletionBusy} onClick={() => setConfirmDeleteOpen(true)}>Confirm delete</button>
-            </>
-          ) : (
-            <button style={qcBtn(t)} disabled={deletionBusy} onClick={handleRequestDeletion}>Request deletion</button>
-          )}
-          <button style={qcBtn(t)} onClick={onClose}>Close</button>
+            <span title={`Requested by ${detail.intake.delete_requested_by || "unknown"} on ${new Date(detail.intake.delete_requested_at).toLocaleString()}`}>
+              <Pill bg={t.warnBg} color={t.warn}>Partner requested delete</Pill>
+            </span>
+          ) : null}
+          <button style={{ ...qcBtnPrimary(t), background: t.danger }} disabled={deletionBusy} onClick={() => setConfirmDeleteOpen(true)}>Delete lead</button>
+          {detail?.intake.delete_requested_at ? (
+            <button style={qcBtn(t)} disabled={deletionBusy} onClick={handleCancelDeletionRequest}>Keep</button>
+          ) : null}
+          <button
+            aria-label="Close"
+            title="Close"
+            onClick={onClose}
+            style={{ all: "unset", cursor: "pointer", width: 32, height: 32, borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", color: t.ink2 }}
+          >
+            <Icon name="x" size={16} />
+          </button>
         </div>
       </div>
       {loading || !detail ? (
@@ -1628,19 +1608,13 @@ function ConfirmDeleteLeadModal({
 }) {
   const { t } = useTheme();
   const toast = useToast();
-  const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
-  const matches = typed.trim().toLowerCase() === expectedName.trim().toLowerCase();
-
-  useEffect(() => {
-    if (open) setTyped("");
-  }, [open]);
 
   async function handleConfirm() {
-    if (!matches || busy) return;
+    if (busy) return;
     setBusy(true);
     try {
-      await onConfirm(typed);
+      await onConfirm(expectedName);
     } catch (error) {
       toast.show(error instanceof Error ? error.message : "Could not delete this lead.");
     } finally {
@@ -1652,27 +1626,14 @@ function ConfirmDeleteLeadModal({
     <Modal open={open} onClose={onClose} title="Permanently delete this lead" icon="alert" size="md">
       <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
         <p style={{ margin: 0, color: t.ink, fontSize: 13, lineHeight: 1.5 }}>
-          This permanently erases <strong>everything</strong> for this lead — uploaded documents, generated PDFs,
-          chat history, and all database records. This cannot be undone.
+          This permanently erases <strong>everything</strong> for <strong style={{ color: t.ink }}>{expectedName}</strong> —
+          uploaded documents, generated PDFs, chat history, and all database records. This cannot be undone.
         </p>
-        <p style={{ margin: 0, color: t.ink3, fontSize: 12.5, lineHeight: 1.5 }}>
-          Type <strong style={{ color: t.ink }}>{expectedName}</strong> to confirm.
-        </p>
-        <input
-          autoFocus
-          value={typed}
-          onChange={(e) => setTyped(e.target.value)}
-          placeholder={expectedName}
-          style={inputStyle(t)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && matches && !busy) handleConfirm();
-          }}
-        />
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 6 }}>
           <button style={qcBtn(t)} onClick={onClose} disabled={busy}>Cancel</button>
           <button
-            style={{ ...qcBtnPrimary(t), background: t.danger, opacity: matches && !busy ? 1 : 0.5 }}
-            disabled={!matches || busy}
+            style={{ ...qcBtnPrimary(t), background: t.danger, opacity: busy ? 0.6 : 1 }}
+            disabled={busy}
             onClick={handleConfirm}
           >
             {busy ? <><Spinner /> Deleting…</> : "Delete permanently"}
@@ -2171,7 +2132,10 @@ function rowStyle(t: ReturnType<typeof useTheme>["t"], active: boolean) {
   return {
     width: "100%",
     display: "grid",
-    gridTemplateColumns: "minmax(220px,1.2fr) minmax(190px,.9fr) 170px minmax(240px,1.2fr) 100px",
+    // minmax(0,…) on the text columns so they shrink + ellipsize instead of
+    // forcing horizontal overflow when the sidebar is expanded / on smaller
+    // screens (a fixed floor here clipped the name column).
+    gridTemplateColumns: "minmax(0,1.3fr) minmax(0,1fr) minmax(120px,150px) minmax(0,1.3fr) 90px",
     gap: 12,
     alignItems: "center",
     padding: "15px 16px",
