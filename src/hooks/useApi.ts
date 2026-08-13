@@ -285,12 +285,17 @@ export type DealerChannelInboxItem = {
 };
 export type DealerChannelInbox = { items: DealerChannelInboxItem[]; total_unread: number };
 
-export function useDealerChannelInbox(enabled = true) {
+// scope "broker" = the dealer partner's own leads (/broker); "admin" = the
+// internal team's view across all leads (/admin). Same shape both sides.
+export function useDealerChannelInbox(enabled = true, scope: "broker" | "admin" = "broker") {
   const apiCall = useAuthedApi();
   const { isLoaded, isSignedIn } = useAuth();
+  const path = scope === "admin"
+    ? "/admin/ai-underwriter-leads/messages"
+    : "/broker/ai-underwriter-leads/messages";
   return useQuery({
-    queryKey: ["dealer-channel-inbox"],
-    queryFn: () => apiCall<DealerChannelInbox>("/broker/ai-underwriter-leads/messages"),
+    queryKey: ["dealer-channel-inbox", scope],
+    queryFn: () => apiCall<DealerChannelInbox>(path),
     staleTime: 20 * 1000,
     refetchOnWindowFocus: true,
     refetchInterval: 60 * 1000,

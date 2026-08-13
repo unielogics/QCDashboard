@@ -107,6 +107,7 @@ const OPERATOR_NAV: NavItem[] = [
   { href: "/vault", label: "Vault", icon: "vault" },
   { href: "/admin/buckets", label: "Buckets", icon: "lock", roles: [Role.SUPER_ADMIN] },
   { href: "/admin/ai-underwriter-leads", label: "AI Underwriter Leads", icon: "spark", roles: [Role.SUPER_ADMIN] },
+  { href: "/admin/dealer-messages", label: "Dealer Messages", icon: "chat", roles: [Role.SUPER_ADMIN] },
   { href: "/admin/prequal-requests", label: "Prequalifications", icon: "docCheck", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
   { href: "/admin/lenders", label: "Lenders", icon: "building", roles: [Role.SUPER_ADMIN] },
   { href: "/admin/agreements", label: "Agreements", icon: "docCheck", roles: [Role.SUPER_ADMIN] },
@@ -144,7 +145,13 @@ export default function Sidebar() {
   // Dealer-partner Messages unread → nav dot on /broker/messages. Only fetches
   // for dealer partners (enabled flag), so no extra load for other roles.
   const { data: dealerInbox } = useDealerChannelInbox(user?.role === Role.DEALER_PARTNER);
-  const dealerUnread = dealerInbox?.total_unread ?? 0;
+  const { data: adminDealerInbox } = useDealerChannelInbox(user?.role === Role.SUPER_ADMIN, "admin");
+  const unreadForNav = (href: string): number =>
+    href === "/broker/messages"
+      ? dealerInbox?.total_unread ?? 0
+      : href === "/admin/dealer-messages"
+        ? adminDealerInbox?.total_unread ?? 0
+        : 0;
   // Workspace inbox visibility is a RUNTIME gate (has a connected Gmail mailbox),
   // which the static `roles` field can't express — inject the /inbox link only
   // when the user's mailbox is connected. Clients never see it.
@@ -342,9 +349,9 @@ export default function Sidebar() {
               )}
               <Icon name={n.icon} size={17} stroke={active ? 2.4 : 1.8} />
               {!collapsed && <span style={{ flex: 1, textAlign: "left" }}>{n.label}</span>}
-              {n.href === "/broker/messages" && dealerUnread > 0 && (
+              {unreadForNav(n.href) > 0 && (
                 <span
-                  aria-label={`${dealerUnread} unread`}
+                  aria-label={`${unreadForNav(n.href)} unread`}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -362,7 +369,7 @@ export default function Sidebar() {
                     right: collapsed ? 6 : undefined,
                   }}
                 >
-                  {dealerUnread}
+                  {unreadForNav(n.href)}
                 </span>
               )}
             </Link>

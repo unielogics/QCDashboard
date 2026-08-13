@@ -79,6 +79,7 @@ export default function ClientsPage() {
   const { data: loans = [] } = useLoans();
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<StageFilter>("all");
+  const [dealerOnly, setDealerOnly] = useState(false);
   const [intakeOpen, setIntakeOpen] = useState(false);
 
   const canCreate = user?.role !== Role.CLIENT;
@@ -129,6 +130,7 @@ export default function ClientsPage() {
   const filtered = useMemo(() => {
     let rows = enriched;
     if (stageFilter !== "all") rows = rows.filter((c) => c._stage === stageFilter);
+    if (dealerOnly) rows = rows.filter((c) => c.source_channel === "dealer_ai_intake");
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       rows = rows.filter(
@@ -139,7 +141,7 @@ export default function ClientsPage() {
       );
     }
     return rows;
-  }, [enriched, stageFilter, search]);
+  }, [enriched, stageFilter, search, dealerOnly]);
 
   const { sort, onSort, compare } = useSort("exposure", "desc");
   const sorted = useMemo(() => [...filtered].sort(compare), [filtered, compare]);
@@ -238,15 +240,33 @@ export default function ClientsPage() {
             </button>
           );
         })}
+        <button
+          onClick={() => setDealerOnly((v) => !v)}
+          title="Show only clients created from a dealer AI intake"
+          style={{
+            all: "unset", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700,
+            border: `1px solid ${dealerOnly ? t.brand : t.line}`,
+            background: dealerOnly ? t.brandSoft : "transparent",
+            color: dealerOnly ? t.brand : t.ink2,
+          }}
+        >
+          Dealer AI intake
+        </button>
       </div>
 
       <Card pad={0}>
         <SortableTableHead cols={COLS} sort={sort} onSort={onSort} />
         {sorted.map((c) => {
           const baseValues = [
-            <div key="n">
-              <div style={{ fontWeight: 700, color: t.ink }}>{c.name}</div>
-              <div style={{ fontSize: 11, color: t.ink3 }}>{c.email}</div>
+            <div key="n" style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                <span style={{ fontWeight: 700, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                {c.source_channel === "dealer_ai_intake" ? (
+                  <Pill bg={t.brandSoft} color={t.brand}>Dealer AI</Pill>
+                ) : null}
+              </div>
+              <div style={{ fontSize: 11, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email}</div>
             </div>,
             <StagePill key="st" t={t} stage={c._stage} />,
             c._type ? (

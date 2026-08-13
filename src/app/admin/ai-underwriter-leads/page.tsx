@@ -723,6 +723,7 @@ export default function AdminAIUnderwriterLeadsPage() {
           <LeadDetailPanel
             detail={detail}
             loading={detailLoading}
+            initialNotesOpen={searchParams.get("notes") === "1"}
             onClose={closeLead}
             onExport={() => exportPdf(selectedId)}
             onGenerateSummary={() => generateExecutiveSummary(selectedId)}
@@ -785,6 +786,7 @@ export default function AdminAIUnderwriterLeadsPage() {
 function LeadDetailPanel({
   detail,
   loading,
+  initialNotesOpen = false,
   onClose,
   onExport,
   onGenerateSummary,
@@ -807,6 +809,7 @@ function LeadDetailPanel({
 }: {
   detail: LeadDetail | null;
   loading: boolean;
+  initialNotesOpen?: boolean;
   onClose: () => void;
   onExport: () => void;
   onGenerateSummary: () => Promise<void> | void;
@@ -839,7 +842,7 @@ function LeadDetailPanel({
   const [bankerModalOpen, setBankerModalOpen] = useState(false);
   const [notesPosting, setNotesPosting] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
-  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(initialNotesOpen);
   const [outcomeBusy, setOutcomeBusy] = useState(false);
   const [languageBusy, setLanguageBusy] = useState(false);
   // Real send (via the operator's connected Gmail) — recipients, Drive picker,
