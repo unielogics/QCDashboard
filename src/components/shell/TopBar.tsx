@@ -173,6 +173,22 @@ export default function TopBar() {
           <Icon name={isDark ? "sun" : "moon"} size={14} />
         </button>
 
+        {/* Funding ⇄ Audit system switcher — operators only. Both apps share
+            the same Clerk application, so one sign-in works on app. and
+            audit.qualifiedcommercial.com (Dealer Capital OS). */}
+        {(user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC) && (
+          <a
+            href="https://audit.qualifiedcommercial.com"
+            title="Open Dealer Capital OS (audit.qualifiedcommercial.com) — same login"
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px",
+              borderRadius: 999, border: `1px solid ${t.line}`, background: t.surface2,
+              color: t.ink2, fontSize: 12, fontWeight: 700, textDecoration: "none",
+            }}
+          >
+            Funding <span style={{ color: t.ink4 }}>⇄</span> <span style={{ color: t.brand }}>Audit</span>
+          </a>
+        )}
         {/* Elara chat — visible to all roles.
             Opens a right-side panel mirroring the mobile sheet. */}
         <button
