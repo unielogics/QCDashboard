@@ -200,6 +200,8 @@ const VARIANT_FILTERS = [
   { value: "all", label: "All reviews" },
   { value: "dealer", label: "Dealer" },
   { value: "real_estate", label: "Real estate" },
+  // Raw slugs pass straight through the backend's variant_filter else-branch.
+  { value: "mca_refi_v1", label: "MCA refinance" },
 ];
 
 const LIMIT = 25;
@@ -2192,6 +2194,8 @@ function variantLabel(value?: string | null) {
   // "dealer_gatekeeper_v1" is the canonical dealer marker; "dealer_financing_v1"
   // is the legacy value kept as a fallback during the deploy window.
   if (value === "dealer_gatekeeper_v1" || value === "dealer_financing_v1") return "Dealer";
+  if (value === "mca_refi_v1") return "MCA refinance";
+  if (value === "main_street_v1") return "Main Street";
   return "AI review";
 }
 

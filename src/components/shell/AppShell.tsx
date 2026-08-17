@@ -97,6 +97,7 @@ export default function AppShell({
     pathname.startsWith("/programs") ||
     pathname.startsWith("/dealer-ai-underwriter") ||
     pathname.startsWith("/funding-review") ||
+    pathname.startsWith("/mca-refinance-intake") ||
     pathname.startsWith("/buckets/request") ||
     pathname.startsWith("/buckets/share") ||
     pathname.startsWith("/buckets/public-share") ||
