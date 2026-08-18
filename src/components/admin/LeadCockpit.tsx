@@ -115,6 +115,7 @@ export function LeadCockpit({
   const [reviewing, setReviewing] = useState(false);
   const [status, setStatus] = useState("");
   const [fullScreen, setFullScreen] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [draftingDocKind, setDraftingDocKind] = useState<"pfs" | "debt_schedule" | null>(null);
   const [draftBusy, setDraftBusy] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
@@ -387,18 +388,59 @@ export function LeadCockpit({
               Ask the AI underwriter about this file, or attach documents and re-run the review. This thread is internal — the client does not see it.
             </div>
           ) : (
-            chat.map((line) =>
-              line.role === "assistant" ? (
-                <div key={line.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                  <div style={{ width: 26, height: 26, borderRadius: 8, background: t.brand, color: t.inverse, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900, flexShrink: 0 }}>QC</div>
-                  <div style={{ ...bubble(t), background: t.surface, color: t.ink2 }}>{line.content}</div>
-                </div>
-              ) : (
-                <div key={line.id} style={{ display: "flex", justifyContent: "flex-end" }}>
-                  <div style={{ ...bubble(t), background: t.brandSoft, color: t.ink }}>{line.content}</div>
-                </div>
-              ),
-            )
+            (() => {
+              // A month of Q&A rendered as one wall reads like unrelated
+              // messages invading the current conversation. Show recent days
+              // in full; collapse everything older behind one control, and
+              // mark day boundaries so history reads as history.
+              const dayOf = (ts?: string) => (ts ? ts.slice(0, 10) : "");
+              const days = Array.from(new Set(chat.map((l) => dayOf(l.ts)).filter(Boolean)));
+              const recentDays = new Set(days.slice(-2)); // today + the previous chat day
+              const older = chat.filter((l) => dayOf(l.ts) && !recentDays.has(dayOf(l.ts)));
+              const visible = showHistory ? chat : chat.filter((l) => !dayOf(l.ts) || recentDays.has(dayOf(l.ts)));
+              let lastDay = "";
+              const out: React.ReactNode[] = [];
+              if (!showHistory && older.length > 0) {
+                out.push(
+                  <button
+                    key="hist"
+                    type="button"
+                    onClick={() => setShowHistory(true)}
+                    style={{ all: "unset", cursor: "pointer", alignSelf: "center", color: t.brand, fontSize: 12, fontWeight: 700, padding: "4px 10px", border: `1px solid ${t.line}`, borderRadius: 999 }}
+                  >
+                    Show earlier conversation ({older.length} message{older.length === 1 ? "" : "s"})
+                  </button>,
+                );
+              }
+              for (const line of visible) {
+                const d = dayOf(line.ts);
+                if (d && d !== lastDay) {
+                  lastDay = d;
+                  out.push(
+                    <div key={`day-${d}`} style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0" }}>
+                      <div style={{ flex: 1, height: 1, background: t.line }} />
+                      <span style={{ color: t.ink3, fontSize: 11, fontWeight: 700 }}>
+                        {new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </span>
+                      <div style={{ flex: 1, height: 1, background: t.line }} />
+                    </div>,
+                  );
+                }
+                out.push(
+                  line.role === "assistant" ? (
+                    <div key={line.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                      <div style={{ width: 26, height: 26, borderRadius: 8, background: t.brand, color: t.inverse, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900, flexShrink: 0 }}>QC</div>
+                      <div style={{ ...bubble(t), background: t.surface, color: t.ink2 }}>{line.content}</div>
+                    </div>
+                  ) : (
+                    <div key={line.id} style={{ display: "flex", justifyContent: "flex-end" }}>
+                      <div style={{ ...bubble(t), background: t.brandSoft, color: t.ink }}>{line.content}</div>
+                    </div>
+                  ),
+                );
+              }
+              return out;
+            })()
           )}
           {busy && !uploading ? (
             <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
