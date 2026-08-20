@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ChangeEvent, type CSSProperties, type ReactNode } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
+import { QC_TOKENS, withAlpha } from "@/components/design-system/tokens";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
@@ -199,7 +200,6 @@ export default function BookingSettingsPage() {
               </Field>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <Field label="Accent color"><input type="color" value={draft.primary_color} onChange={(e) => patch({ primary_color: e.target.value })} style={colorStyle(t)} /></Field>
-                <Field label="Background color"><input type="color" value={draft.background_color} onChange={(e) => patch({ background_color: e.target.value })} style={colorStyle(t)} /></Field>
               </div>
             </div>
           </Card>
@@ -240,31 +240,53 @@ export default function BookingSettingsPage() {
 }
 
 function BookingPreview({ settings, hostName, logoUrl, profileUrl }: { settings: UserBookingSettings; hostName: string; logoUrl: string | null; profileUrl: string | null }) {
-  const accent = settings.primary_color;
-  const bg = settings.background_color;
+  // Mirrors the real /book/[slug] page, which is locked to the light token set.
+  // This preview used to render the retired dark styling, so a host tuning
+  // their colours here was looking at a page that no longer exists.
+  const l = QC_TOKENS.light;
+  const accent = settings.primary_color || l.brand;
   return (
-    <div style={{ position: "sticky", top: 18, borderRadius: 18, border: "1px solid rgba(255,255,255,0.16)", background: bg, color: "#fff", padding: 20, boxShadow: "0 18px 50px rgba(0,0,0,0.28)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "center" }}>
-        <div style={{ minWidth: 0 }}>
-          {logoUrl ? <img src={logoUrl} alt="" style={{ maxHeight: 42, maxWidth: 180, objectFit: "contain", marginBottom: 14 }} /> : <div style={{ color: accent, fontSize: 12, fontWeight: 950, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 14 }}>Qualified Commercial</div>}
-          <div style={{ color: accent, fontSize: 11, fontWeight: 900, letterSpacing: 1.3, textTransform: "uppercase" }}>{settings.duration_min} minute meeting</div>
-        </div>
-        <div style={{ width: 72, height: 72, borderRadius: 18, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", overflow: "hidden", display: "grid", placeItems: "center", flexShrink: 0 }}>
-          {profileUrl ? <img src={profileUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Icon name="user" size={30} />}
-        </div>
+    <div style={{ position: "sticky", top: 18, borderRadius: 16, border: `1px solid ${l.line}`, borderTop: `3px solid ${accent}`, background: l.bg, color: l.ink, padding: 20, boxShadow: l.shadowLg }}>
+      {logoUrl ? <img src={logoUrl} alt="" style={{ maxHeight: 30, maxWidth: 170, objectFit: "contain", marginBottom: 14 }} /> : <div style={{ color: l.ink, fontSize: 12, fontWeight: 800, marginBottom: 14 }}>Qualified Commercial</div>}
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: withAlpha(accent, 0.1), color: accent }}>{settings.duration_min} minutes</span>
+        <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: l.chip, color: l.ink2 }}>{settings.timezone.replace(/_/g, " ")}</span>
       </div>
-      <h2 style={{ margin: "18px 0 8px", fontSize: 30, lineHeight: 1.05 }}>{settings.title || `Book a meeting with ${hostName}`}</h2>
-      <p style={{ color: "rgba(255,255,255,0.72)", lineHeight: 1.55, fontSize: 14, margin: 0 }}>{settings.intro || "Choose a time that works for you. You will receive a confirmation after booking."}</p>
-      <div style={{ marginTop: 18, display: "grid", gap: 8 }}>
-        {["Tomorrow", "Thursday", "Friday"].map((label, index) => (
-          <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "11px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.06)" }}>
-            <span>{label}</span>
-            <span style={{ color: accent, fontWeight: 950 }}>{index === 0 ? settings.start_time : "10:30"}</span>
-          </div>
-        ))}
+
+      <h2 style={{ margin: "0 0 8px", fontSize: 24, lineHeight: 1.12, fontWeight: 800, letterSpacing: -0.5, color: l.ink }}>{settings.title || `Book a meeting with ${hostName}`}</h2>
+      <p style={{ color: l.ink3, lineHeight: 1.6, fontSize: 13.5, margin: 0 }}>{settings.intro || "Choose a time that works for you. You will receive a calendar invitation after booking."}</p>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "16px 0" }}>
+        <div style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${l.line}`, background: withAlpha(accent, 0.12), color: accent, overflow: "hidden", display: "grid", placeItems: "center", flexShrink: 0 }}>
+          {profileUrl ? <img src={profileUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Icon name="user" size={17} />}
+        </div>
+        <span style={{ fontSize: 13, fontWeight: 700, color: l.ink }}>{hostName}</span>
+      </div>
+
+      <div style={{ background: l.surface, border: `1px solid ${l.line}`, borderRadius: 12, padding: 14 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: l.ink, marginBottom: 10 }}>Pick a time</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+          {[settings.start_time, "10:30", "11:00", "13:00", "14:30", "15:00"].map((label, index) => (
+            <div key={`${label}-${index}`} style={{ textAlign: "center", padding: "8px 4px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, fontVariantNumeric: "tabular-nums", border: `1px solid ${index === 0 ? accent : l.lineStrong}`, background: index === 0 ? accent : l.surface, color: index === 0 ? onAccentPreview(accent, l.ink) : l.ink }}>{label}</div>
+          ))}
+        </div>
       </div>
     </div>
   );
+}
+
+/** Same luminance rule the public page uses, so the preview cannot lie about contrast. */
+function onAccentPreview(hex: string, inkFallback: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex || "").trim());
+  if (!m) return "#FFFFFF";
+  const int = parseInt(m[1], 16);
+  const chan = [(int >> 16) & 255, (int >> 8) & 255, int & 255].map((c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  });
+  const L = 0.2126 * chan[0] + 0.7152 * chan[1] + 0.0722 * chan[2];
+  return L > 0.45 ? inkFallback : "#FFFFFF";
 }
 
 function UploadCard({ title, description, imageUrl, inputId, onChange, circle }: { title: string; description: string; imageUrl: string | null; inputId: string; onChange: (e: ChangeEvent<HTMLInputElement>) => void; circle?: boolean }) {
