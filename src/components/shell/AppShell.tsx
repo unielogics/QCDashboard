@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from "react";
 import { useAuth } from "@clerk/nextjs";
+import MfaBanner from "@/components/MfaBanner";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
@@ -115,11 +116,19 @@ export default function AppShell({
     // contacts without an account, so we render them bare.
     pathname.startsWith("/hud/share");
 
+  // A session that still owes a required task — setting up two-step
+  // verification, for instance — reports isSignedIn === false, because
+  // @clerk/backend treats a `pending` session as signed out by default. Clerk
+  // renders those tasks under the sign-in route, so bouncing there is correct.
+  // /account is excluded because it is where someone lands to satisfy the
+  // task, and sending them back to sign-in from it would be a loop.
+  const isAccountRoute = pathname.startsWith("/account");
+
   useEffect(() => {
-    if (!isBareRoute && authLoaded && isSignedIn === false) {
+    if (!isBareRoute && !isAccountRoute && authLoaded && isSignedIn === false) {
       window.location.assign(SIGN_IN_URL);
     }
-  }, [authLoaded, isBareRoute, isSignedIn]);
+  }, [authLoaded, isBareRoute, isAccountRoute, isSignedIn]);
 
   // Ongoing confinement, past the one-time Platform Access signature gate
   // below: a signed dealer partner has no book-of-business (see
@@ -179,7 +188,12 @@ export default function AppShell({
           grows to fit children's content and the whole document scrolls. */}
       <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
         <TopBar />
-        <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: 24 }}>{children}</main>
+        <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: 24 }}>
+          {/* Above the page, not inside it: the prompt has to be visible
+              wherever you land, not only on one screen you might not open. */}
+          <MfaBanner />
+          {children}
+        </main>
       </div>
       <AIRail />
       <GlobalSearch />

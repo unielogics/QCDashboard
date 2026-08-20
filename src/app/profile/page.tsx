@@ -110,9 +110,9 @@ export default function ProfilePage() {
   }> = [
     {
       label: "Personal Info",
-      sub: "Avatar, name, phone, address — managed in Clerk",
+      sub: "Avatar, name, phone, address",
       icon: "user",
-      onClick: () => clerk.openUserProfile(),
+      onClick: () => router.push("/account"),
     },
     {
       label: "Investor Profile",
@@ -128,10 +128,13 @@ export default function ProfilePage() {
       onClick: () => router.push("/settings"),
     },
     {
+      // Deep-links to the Security tab rather than opening the profile root.
+      // openUserProfile() lands two clicks away from the thing this row is
+      // named after, which is how a required control stays unused.
       label: "Two-Factor Auth",
-      sub: "Managed in Clerk",
+      sub: "Required on every login — set up or review",
       icon: "key",
-      onClick: () => clerk.openUserProfile(),
+      onClick: () => router.push("/account/security"),
     },
     {
       label: signingOut ? "Signing out…" : "Sign Out",

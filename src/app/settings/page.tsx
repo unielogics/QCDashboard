@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useUser } from "@clerk/nextjs";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
@@ -820,6 +821,45 @@ function PricingSection({ draft, setDraft, canEdit, dirty, onSave, saving }: Sec
 
 // ── Section: Security ───────────────────────────────────────────────────
 
+/** Real two-step verification state, read from Clerk rather than asserted.
+ *
+ * Replaces three toggles that wrote to our settings row and were read by
+ * nothing. This shows what is actually true for the signed-in operator and
+ * sends them to the one place that can change it. Instance-wide enforcement is
+ * a Clerk dashboard setting; we deliberately do not mirror it here, because a
+ * mirrored copy is exactly what went stale last time.
+ */
+function MfaPanel({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
+  const { isLoaded, user } = useUser();
+  const enrolled = !!user && (user.twoFactorEnabled || (user.passkeys?.length ?? 0) > 0);
+
+  return (
+    <div style={{ border: `1px solid ${t.line}`, borderRadius: 10, padding: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 600, color: t.ink }}>Two-step verification</span>
+        {isLoaded && (
+          <span
+            style={{
+              fontSize: 11.5, fontWeight: 700, padding: "2px 9px", borderRadius: 20,
+              background: enrolled ? t.profitBg : t.dangerBg,
+              color: enrolled ? t.profit : t.danger,
+            }}
+          >
+            {enrolled ? "Active on your account" : "Not set up"}
+          </span>
+        )}
+      </div>
+      <div style={{ fontSize: 13, color: t.ink3, marginTop: 6, lineHeight: 1.55 }}>
+        Required for every operator login. Enrolment and instance-wide enforcement are
+        managed in Clerk, so this page reports the state rather than setting it.
+      </div>
+      <Link href="/account/security" style={{ ...qcBtn(t), marginTop: 10, display: "inline-flex" }}>
+        {enrolled ? "Review" : "Set it up"}
+      </Link>
+    </div>
+  );
+}
+
 function SecuritySection({ draft, setDraft, canEdit, dirty, onSave, saving }: SectionProps) {
   const { t } = useTheme();
   const s = draft.security;
@@ -829,17 +869,23 @@ function SecuritySection({ draft, setDraft, canEdit, dirty, onSave, saving }: Se
     <Card pad={20}>
       <SectionLabel action={canEdit && <SaveBtn t={t} dirty={dirty} saving={saving} onClick={onSave} />}>Security</SectionLabel>
       <Toggle t={t} label="SSO (Okta)" sub="Enforce single sign-on for the operator console." value={s.sso_enabled} onChange={(v) => set({ sso_enabled: v })} disabled={!canEdit} />
-      <Toggle t={t} label="MFA enforcement (TOTP / hardware key)" value={s.mfa_enforced} onChange={(v) => set({ mfa_enforced: v })} disabled={!canEdit} />
-      <Toggle t={t} label="Borrower portal MFA" sub="Optional — recommended for refi flows." value={s.borrower_portal_mfa} onChange={(v) => set({ borrower_portal_mfa: v })} disabled={!canEdit} />
+
+      {/* Two-step verification is owned by Clerk, not by these settings.
+          This panel used to render toggles for "MFA enforcement", "Borrower
+          portal MFA" and a renewal period, all of which wrote to our own
+          settings row and were read by nothing. A control that claims to
+          enforce authentication and does not is worse than no control: it
+          tells an auditor, and us, that something is on when it is off.
+          Enforcement now lives in the Clerk dashboard, and this links there. */}
+      <div style={{ height: 14 }} />
+      <MfaPanel t={t} />
 
       <div style={{ height: 14 }} />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field t={t} label="MFA renewal (days)">
-          <NumInput t={t} value={s.mfa_renewal_days} onChange={(n) => set({ mfa_renewal_days: n })} disabled={!canEdit} />
-        </Field>
         <Field t={t} label="Session timeout (minutes)">
           <NumInput t={t} value={s.session_timeout_minutes} onChange={(n) => set({ session_timeout_minutes: n })} disabled={!canEdit} />
         </Field>
+        <div />
       </div>
       <Field t={t} label="IP allowlist (one CIDR per line)">
         <textarea
