@@ -849,7 +849,8 @@ export const Role = {
   CLIENT: "client",
   LENDER: "lender",
   VENDOR: "vendor",
-  DEALER_PARTNER: "dealer_partner"
+  DEALER_PARTNER: "dealer_partner",
+  FIELD_REP: "field_rep"
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];
 export const RoleOptions = [
@@ -860,7 +861,8 @@ export const RoleOptions = [
   { value: "client", label: "Client" },
   { value: "lender", label: "Lender" },
   { value: "vendor", label: "Vendor" },
-  { value: "dealer_partner", label: "Dealer Partner" }
+  { value: "dealer_partner", label: "Dealer Partner" },
+  { value: "field_rep", label: "Field Rep" }
 ] as const;
 
 export const StrEnum = {
