@@ -6,15 +6,9 @@ const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
-      fontFamily: {
-        sans: [
-          "-apple-system",
-          "SF Pro Text",
-          "Inter",
-          "system-ui",
-          "sans-serif",
-        ],
-      },
+      // fontFamily deliberately NOT overridden. It used to force -apple-system
+      // over the Inter / Inter Tight faces layout.tsx loads, so the app never
+      // rendered in its own typeface. globals.css owns type via --fh / --fb.
       colors: {
         bg: "var(--qc-bg)",
         surface: "var(--qc-surface)",

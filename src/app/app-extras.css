@@ -1,0 +1,88 @@
+/* Console extras — what the Operator Console design needs and the vendored
+   Capital OS sheet does not carry.
+
+   Kept in its own file so globals.css stays diffable against its source at
+   QCDealerOS/src/app/globals.css. When something here proves general, it should
+   move upstream into that sheet rather than diverging quietly. */
+
+/* Page action bar — the row of controls under a page header. */
+.pagebar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 0 0; }
+.pagebar .spacer { flex: 1; }
+.pgacts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Square icon-only button, sized to sit level with .btn.sm. */
+.iconbtn { width: 30px; height: 30px; padding: 0; display: grid; place-items: center; }
+.iconbtn svg { width: 15px; height: 15px; }
+
+/* ---------- drawer ----------
+   One centred overlay replacing both Modal and RightPanel. A single dialog
+   shape means a confirm, a form and a multi-step flow all read as the same
+   object, which is what stops the app feeling like three different products. */
+.drawer-scrim { position: fixed; inset: 0; background: rgba(15, 23, 32, 0.34); z-index: 60; }
+.drawer {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(1040px, 92vw); max-height: 86vh;
+  background: var(--surface); border: 1px solid var(--line2); border-radius: 16px;
+  box-shadow: var(--sh2); z-index: 61;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.drawer-h { padding: 22px 68px 20px 26px; border-bottom: 1px solid var(--line); }
+.drawer-b { padding: 24px 26px; overflow-y: auto; flex: 1; }
+.drawer-f { padding: 16px 26px; border-top: 1px solid var(--line); display: flex; gap: 10px; align-items: center; background: var(--sunken2); }
+.drawer-x {
+  position: absolute; top: 18px; right: 18px; width: 34px; height: 34px;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink2); display: grid; place-items: center; cursor: pointer; padding: 0; z-index: 2;
+}
+.drawer-x:hover { background: var(--sunken2); color: var(--ink); }
+.drawer-x svg { width: 16px; height: 16px; }
+
+/* Step dots for a multi-step drawer flow (the bucket ⇄ AI intake link). */
+.stepdot { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.stepdot i { width: 20px; height: 20px; border-radius: 50%; background: var(--sunken); color: var(--muted); display: grid; place-items: center; font-size: 11px; font-weight: 800; font-style: normal; }
+.stepdot.on i { background: var(--accent); color: #fff; }
+.stepdot.on { color: var(--ink); }
+
+/* Selectable row — a pick list inside a drawer. */
+.pick { display: flex; align-items: center; gap: 11px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; background: var(--surface); }
+.pick:hover { background: var(--sunken2); }
+.pick.on { border-color: var(--accent); background: var(--accent-100); }
+.pick + .pick { margin-top: 7px; }
+
+/* File row with a checkbox, used by the link flow and document lists. */
+.filerow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12.8px; }
+.filerow:last-child { border-bottom: 0; }
+.filerow input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; flex: 0 0 auto; }
+
+/* Menu variant of .popmenu anchored to a table row action. Aliased rather than
+   duplicated so both names stay in step. */
+.popmenu, .actmenu { }
+
+/* Small coloured status dot beside a rep/owner name. */
+.repdot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; display: inline-block; }
+
+/* Filter row above a dense table. */
+.vfilter { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 0 12px; }
+
+/* ---------- pipeline board ---------- */
+.kanban { display: grid; grid-template-columns: repeat(6, minmax(190px, 1fr)); gap: 12px; align-items: start; overflow-x: auto; }
+.kcol { background: var(--sunken2); border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-width: 0; }
+.kcol > .lbl { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.kcard { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--sh1); padding: 10px 11px; cursor: pointer; }
+.kcard + .kcard { margin-top: 8px; }
+.kcard:hover { box-shadow: var(--sh2); }
+
+/* ---------- all-tools drawer + nav overflow ---------- */
+.toollink { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7.5px 10px; border: 0; background: transparent; border-radius: 9px; color: var(--ink2); font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; text-align: left; text-decoration: none; }
+.toollink:hover { background: var(--sunken2); }
+.toollink svg { width: 16.5px; height: 16.5px; flex-shrink: 0; opacity: 0.85; }
+.navmore { position: fixed; inset: 0; background: rgba(15, 23, 32, 0.34); z-index: 60; }
+.navmore-p { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(760px, 92vw); max-height: 82vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--line2); border-radius: 16px; box-shadow: var(--sh2); z-index: 61; padding: 22px 24px 24px; }
+
+/* Elara rail — a sticky sibling of .content, not a grid column, so opening it
+   does not reflow the page it sits beside. */
+.rail { width: 360px; flex: 0 0 360px; position: sticky; top: 0; height: 100vh; border-left: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; overflow: hidden; }
+
+/* Tabular figures. Referenced by broker/ai-underwriter-leads and never defined
+   until now — a silent no-op in production. */
+.qc-num { font-variant-numeric: tabular-nums; }

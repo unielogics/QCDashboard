@@ -130,8 +130,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           background: t.bg,
           color: t.ink,
           minHeight: "100vh",
-          fontFamily:
-            '-apple-system, "SF Pro Text", "Inter", system-ui, sans-serif',
+          // No fontFamily here. This used to hardcode -apple-system and win over
+          // the Inter / Inter Tight faces layout.tsx already loads, so the app
+          // has never rendered in its own typeface. globals.css owns type now.
           WebkitFontSmoothing: "antialiased",
         }}
       >

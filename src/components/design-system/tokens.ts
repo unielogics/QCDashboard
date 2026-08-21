@@ -55,8 +55,12 @@ export const QC_TOKENS: Record<ThemeMode, QCTokens> = {
     // inputs and wells finally read as recessed.
     surface2: "#EEF1F6",
     elevated: "#FFFFFF",
-    line: "rgba(15, 23, 32, 0.12)",
-    lineStrong: "rgba(15, 23, 32, 0.20)",
+    // Matched byte-for-byte to --line / --line2 in globals.css. The two palettes
+    // coexist while routes migrate one at a time, and a hairline that differs by
+    // 0.03 alpha is exactly the seam that makes a half-migrated page look broken.
+    // tokens.ts is the copy that dies at the end; globals.css is the source of truth.
+    line: "rgba(15, 23, 32, 0.09)",
+    lineStrong: "rgba(15, 23, 32, 0.16)",
 
     ink: "#0F1720",
     ink2: "#353E4A",

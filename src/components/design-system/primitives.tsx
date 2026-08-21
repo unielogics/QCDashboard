@@ -28,7 +28,9 @@ export function Card({
             ? "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015))"
             : t.surface,
         border: `1px solid ${t.line}`,
-        borderRadius: 18,
+        // --r in globals.css. Card renders in 112 files; an 18px radius beside a
+        // 14px .panel is the most visible seam in a half-migrated screen.
+        borderRadius: 14,
         padding: pad,
         boxShadow: isDark ? "none" : t.shadow,
         backdropFilter: glass ? "blur(12px) saturate(160%)" : undefined,

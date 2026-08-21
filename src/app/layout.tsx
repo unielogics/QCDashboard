@@ -3,6 +3,9 @@ import { headers } from "next/headers";
 import { Inter, Inter_Tight } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
+// Console-only additions. Loads after globals so it can extend the vendored
+// Capital OS trunk without editing it — see the header of app-extras.css.
+import "./app-extras.css";
 import Providers from "./providers";
 import AppShell from "@/components/shell/AppShell";
 import { SIGN_IN_URL, SIGN_UP_URL } from "@/lib/appUrl";
