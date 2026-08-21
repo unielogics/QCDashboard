@@ -1,17 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
 import { Icon } from "@/components/design-system/Icon";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Pill, SectionLabel } from "@/components/design-system/primitives";
-import { QCMark } from "@/components/QCMark";
 import { useCurrentUser } from "@/hooks/useApi";
 import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
 import { openSignedUrl } from "@/lib/safeOpen";
+import {
+  Btn,
+  CG,
+  CellChip,
+  Note as InfoNote,
+  PageHeader,
+  Panel,
+  Sub,
+  Table,
+  Tag,
+  Td,
+  Textarea,
+  Tr,
+  WarnLine,
+  cx,
+  type Col,
+} from "@/components/ds";
 
 type VendorBucket = {
   id: string;
@@ -45,8 +59,15 @@ type VendorRoom = {
   notes: Note[];
 };
 
+const FILE_COLS: Col[] = [
+  { label: "File" },
+  { label: "Type" },
+  { label: "Added" },
+  { label: "Size", align: "r" },
+  { label: "Actions", align: "r" },
+];
+
 export default function VendorBucketsPage() {
-  const { t } = useTheme();
   const router = useRouter();
   const { getToken } = useAuth();
   const { data: me, isLoading: meLoading } = useCurrentUser();
@@ -143,122 +164,158 @@ export default function VendorBucketsPage() {
 
   const selectedBucket = useMemo(() => buckets.find((bucket) => bucket.id === selectedId), [buckets, selectedId]);
 
-  if (meLoading) return <div style={{ color: t.ink2 }}>Loading vendor buckets...</div>;
+  if (meLoading) return <div className="sub">Loading vendor buckets...</div>;
   if (me && me.role !== Role.VENDOR) return null;
 
   return (
-    <div style={{ display: "grid", gap: 14 }}>
-      <header style={heroStyle(t)}>
-        <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0 }}>
-          <QCMark size={38} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ color: t.ink3, fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0 }}>Vendor File Rooms</div>
-            <h1 style={{ margin: "2px 0 0", color: t.ink, fontSize: 28, lineHeight: 1.12 }}>Assigned Buckets</h1>
-          </div>
-        </div>
-        <Pill>{buckets.length} assigned</Pill>
-      </header>
+    <>
+      <PageHeader
+        title="Assigned Buckets"
+        lede="Vendor File Rooms"
+        actions={<Tag>{buckets.length} assigned</Tag>}
+      />
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, .34fr) minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
-        <Panel t={t}>
-          <SectionLabel>My buckets</SectionLabel>
-          <div style={{ display: "grid", gap: 8 }}>
-            {buckets.length === 0 ? (
-              <div style={emptyStyle(t)}>No buckets are assigned to your vendor account yet.</div>
-            ) : buckets.map((bucket) => (
-              <button key={bucket.id} style={bucketButtonStyle(t, bucket.id === selectedId)} onClick={() => setSelectedId(bucket.id)}>
-                <strong style={{ color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bucket.name}</strong>
-                <span style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {bucket.client_name || "No client"} | {bucket.uploaded_file_count ?? 0} files
+      <CG className="mt">
+        <Panel className="s3" title="My buckets">
+          {buckets.length === 0 ? (
+            <div className="sub">No buckets are assigned to your vendor account yet.</div>
+          ) : (
+            buckets.map((bucket) => (
+              <button
+                key={bucket.id}
+                type="button"
+                className={cx("pick", bucket.id === selectedId && "on")}
+                onClick={() => setSelectedId(bucket.id)}
+              >
+                {/* Bespoke: two stacked lines that each truncate. `.pick` is a
+                    centred row, so the stack lives in its own child. */}
+                <span style={{ display: "grid", gap: 2, minWidth: 0, flex: 1, textAlign: "left" }}>
+                  <b style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bucket.name}</b>
+                  <span className="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {bucket.client_name || "No client"} | {bucket.uploaded_file_count ?? 0} files
+                  </span>
                 </span>
               </button>
-            ))}
-          </div>
+            ))
+          )}
         </Panel>
 
-        <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
-          <Panel t={t}>
-            {!room ? (
-              <div style={emptyStyle(t)}>{busy ? "Opening secure room..." : selectedBucket ? "Select a bucket to open its room." : "No bucket selected."}</div>
-            ) : (
-              <div style={{ display: "grid", gap: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ color: t.ink3, fontSize: 12, fontWeight: 900, textTransform: "uppercase" }}>Secure vendor access</div>
-                    <h2 style={{ margin: "3px 0", color: t.ink, fontSize: 24 }}>{room.bucket.name}</h2>
-                    <div style={{ color: t.ink3, fontSize: 13 }}>
-                      {[room.bucket.client_name, room.bucket.purpose, room.vendor_access.file_scope === "all_active" ? "All active files" : "Selected files"].filter(Boolean).join(" | ")}
-                    </div>
-                  </div>
-                  <Pill color={room.vendor_access.status === "active" ? t.profit : t.danger} bg={room.vendor_access.status === "active" ? t.profitBg : t.dangerBg}>{room.vendor_access.status}</Pill>
+        <div className="s9 grid">
+          {!room ? (
+            <Panel>
+              <div className="sub">{busy ? "Opening secure room..." : selectedBucket ? "Select a bucket to open its room." : "No bucket selected."}</div>
+            </Panel>
+          ) : (
+            <Panel
+              title={room.bucket.name}
+              sub={[room.bucket.client_name, room.bucket.purpose, room.vendor_access.file_scope === "all_active" ? "All active files" : "Selected files"].filter(Boolean).join(" | ")}
+              actions={
+                <>
+                  <Tag>Secure vendor access</Tag>
+                  <CellChip tone={room.vendor_access.status === "active" ? "ok" : "bad"}>{room.vendor_access.status}</CellChip>
+                </>
+              }
+            >
+              <InfoNote>
+                <Icon name="shield" size={18} />
+                <div>
+                  Files are encrypted and access is controlled by <b>Qualified Commercial</b> permissions.
                 </div>
-                <div style={securityBarStyle(t)}>
-                  <Icon name="shield" size={15} />
-                  Files are encrypted and access is controlled by Qualified Commercial permissions.
-                </div>
-              </div>
-            )}
-          </Panel>
+              </InfoNote>
+            </Panel>
+          )}
 
           {room ? (
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(300px, .42fr)", gap: 14, alignItems: "start" }}>
-              <Panel t={t}>
-                <SectionLabel action={`${room.files.length} files`}>Files</SectionLabel>
-                <div style={{ display: "grid", gap: 8 }}>
+            <CG>
+              <Panel className="s8" title="Files" actions={<Sub>{room.files.length} files</Sub>} noPad>
+                <Table cols={FILE_COLS} caption="Files shared with this vendor">
                   {room.files.length === 0 ? (
-                    <div style={emptyStyle(t)}>No files are visible for this bucket.</div>
-                  ) : room.files.map((file) => (
-                    <div key={file.id} style={fileRowStyle(t)}>
-                      <div style={fileIconStyle(t)}>{fileExtension(file.file_name)}</div>
-                      <div style={{ minWidth: 0 }}>
-                        <strong style={{ display: "block", color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.file_name}</strong>
-                        <span style={{ color: t.ink3, fontSize: 12 }}>{fileKindLabel(file)} | {formatDate(file.created_at)} | {typeof file.size_bytes === "number" ? formatSize(file.size_bytes) : "Unknown size"}</span>
-                      </div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                        {file.preview_url ? (
-                          <button style={buttonStyle(t, "secondary")} onClick={() => setReviewFile(file)}>
-                            <Icon name="eye" size={13} />
-                            Preview
-                          </button>
-                        ) : null}
-                        {room.vendor_access.can_download ? (
-                          <button style={buttonStyle(t, "primary")} onClick={() => downloadFile(file)} disabled={downloadingId === file.id}>
-                            <Icon name="download" size={13} />
-                            {downloadingId === file.id ? "Preparing..." : "Download"}
-                          </button>
-                        ) : (
-                          <span style={{ color: t.ink3, fontSize: 12, alignSelf: "center" }}>Download disabled</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    <Tr>
+                      <Td colSpan={5}>
+                        <span className="sub">No files are visible for this bucket.</span>
+                      </Td>
+                    </Tr>
+                  ) : (
+                    room.files.map((file) => (
+                      <Tr key={file.id}>
+                        <Td>
+                          <b>{file.file_name}</b>
+                          <div className="sub">{fileKindLabel(file)}</div>
+                        </Td>
+                        <Td>
+                          <CellChip tone="pet">{fileExtension(file.file_name)}</CellChip>
+                        </Td>
+                        <Td>{formatDate(file.created_at)}</Td>
+                        <Td align="r">{typeof file.size_bytes === "number" ? formatSize(file.size_bytes) : "Unknown size"}</Td>
+                        <Td align="r">
+                          <div className="row" style={{ justifyContent: "flex-end" }}>
+                            {file.preview_url ? (
+                              <Btn size="sm" onClick={() => setReviewFile(file)}>
+                                <Icon name="eye" size={13} />
+                                Preview
+                              </Btn>
+                            ) : null}
+                            {room.vendor_access.can_download ? (
+                              <Btn size="sm" variant="pri" onClick={() => downloadFile(file)} disabled={downloadingId === file.id}>
+                                <Icon name="download" size={13} />
+                                {downloadingId === file.id ? "Preparing..." : "Download"}
+                              </Btn>
+                            ) : (
+                              <span className="sub">Download disabled</span>
+                            )}
+                          </div>
+                        </Td>
+                      </Tr>
+                    ))
+                  )}
+                </Table>
               </Panel>
 
-              <Panel t={t}>
-                <SectionLabel>Notes</SectionLabel>
-                {room.vendor_access.can_add_notes ? (
-                  <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
-                    <textarea style={{ ...inputStyle(t), minHeight: 88, paddingTop: 10, resize: "vertical" }} placeholder="Add a note for Qualified Commercial" value={note} onChange={(event) => setNote(event.target.value)} />
-                    <button style={buttonStyle(t, "primary")} onClick={addNote} disabled={busy || !note.trim()}>Add note</button>
-                  </div>
-                ) : <div style={emptyStyle(t)}>Notes are disabled for this vendor access.</div>}
-                <div style={{ display: "grid", gap: 8 }}>
-                  {room.notes.length === 0 ? <div style={emptyStyle(t)}>No notes yet.</div> : room.notes.map((item) => (
-                    <div key={item.id} style={smallCardStyle(t)}>
-                      <strong style={{ color: t.ink }}>{item.author_name || "Qualified Commercial"}</strong>
-                      <div style={{ color: t.ink3, fontSize: 12 }}>{formatDateTime(item.created_at)}</div>
-                      <div style={{ color: t.ink2, marginTop: 6, whiteSpace: "pre-wrap" }}>{item.content}</div>
-                    </div>
-                  ))}
+              <Panel className="s4" title="Notes">
+                <div className="thr">
+                  {room.notes.length === 0 ? (
+                    <div className="thr-empty">No notes yet.</div>
+                  ) : (
+                    room.notes.map((item) => (
+                      <div key={item.id} className="msg">
+                        <div className="msg-h">
+                          <span className="msg-who">{item.author_name || "Qualified Commercial"}</span>
+                          <span className="msg-when">{formatDateTime(item.created_at)}</span>
+                        </div>
+                        <div className="msg-b">{item.content}</div>
+                      </div>
+                    ))
+                  )}
                 </div>
+                {room.vendor_access.can_add_notes ? (
+                  <div className="composer">
+                    <Textarea
+                      placeholder="Add a note for Qualified Commercial"
+                      value={note}
+                      onChange={(event) => setNote(event.target.value)}
+                    />
+                    <div className="composer-row">
+                      <Btn variant="pri" onClick={addNote} disabled={busy || !note.trim()}>
+                        Add note
+                      </Btn>
+                    </div>
+                  </div>
+                ) : (
+                  <WarnLine className="mt">Notes are disabled for this vendor access.</WarnLine>
+                )}
               </Panel>
-            </div>
+            </CG>
           ) : null}
         </div>
-      </div>
+      </CG>
 
-      {status ? <div style={{ color: /error|failed|disabled|not/i.test(status) ? t.danger : t.ink2, fontWeight: 800 }}>{status}</div> : null}
+      {status ? (
+        /error|failed|disabled|not/i.test(status) ? (
+          <WarnLine className="mt">{status}</WarnLine>
+        ) : (
+          <InfoNote>{status}</InfoNote>
+        )
+      ) : null}
 
       {reviewFile ? (
         <BucketFileReviewPanel
@@ -269,12 +326,8 @@ export default function VendorBucketsPage() {
           onClose={() => setReviewFile(null)}
         />
       ) : null}
-    </div>
+    </>
   );
-}
-
-function Panel({ t, children }: { t: ReturnType<typeof useTheme>["t"]; children: ReactNode }) {
-  return <section style={{ border: `1px solid ${t.line}`, background: t.surface, borderRadius: 10, padding: 14, boxShadow: t.shadow }}>{children}</section>;
 }
 
 function readableError(error: unknown): string {
@@ -311,41 +364,3 @@ function formatSize(size: number): string {
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
-
-function heroStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, border: `1px solid ${t.line}`, background: t.surface, borderRadius: 10, padding: 16, boxShadow: t.shadow };
-}
-
-function bucketButtonStyle(t: ReturnType<typeof useTheme>["t"], active: boolean): CSSProperties {
-  return { border: `1px solid ${active ? t.petrol : t.line}`, background: active ? t.petrolSoft : t.surface2, borderRadius: 8, padding: 12, display: "grid", gap: 3, textAlign: "left", cursor: "pointer" };
-}
-
-function securityBarStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return { display: "flex", alignItems: "center", gap: 8, border: `1px solid ${t.petrol}`, background: t.petrolSoft, color: t.petrol, borderRadius: 8, padding: 10, fontSize: 13, fontWeight: 800 };
-}
-
-function emptyStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return { border: `1px solid ${t.line}`, background: t.surface2, borderRadius: 8, padding: 12, color: t.ink3, fontSize: 13 };
-}
-
-function fileRowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return { display: "grid", gridTemplateColumns: "48px minmax(0, 1fr) auto", gap: 10, alignItems: "center", border: `1px solid ${t.line}`, borderRadius: 8, padding: 10, background: t.surface2 };
-}
-
-function fileIconStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return { width: 48, height: 48, borderRadius: 8, display: "grid", placeItems: "center", background: t.petrolSoft, color: t.petrol, fontSize: 10, fontWeight: 950 };
-}
-
-function buttonStyle(t: ReturnType<typeof useTheme>["t"], tone: "primary" | "secondary"): CSSProperties {
-  const primary = tone === "primary";
-  return { minHeight: 34, border: `1px solid ${primary ? t.ink : t.line}`, borderRadius: 8, background: primary ? t.ink : t.surface, color: primary ? t.inverse : t.ink, padding: "0 11px", font: "inherit", fontWeight: 850, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 };
-}
-
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return { minHeight: 40, border: `1px solid ${t.line}`, borderRadius: 8, background: t.surface, color: t.ink, padding: "0 11px", font: "inherit", boxSizing: "border-box", minWidth: 0 };
-}
-
-function smallCardStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return { border: `1px solid ${t.line}`, borderRadius: 8, background: t.surface2, padding: 10 };
-}
-

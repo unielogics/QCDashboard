@@ -350,27 +350,47 @@ export function Seg<T extends string>({
   options,
   className,
   ariaLabel,
+  as = "tabs",
 }: {
   value: T;
   onChange: (v: T) => void;
   options: { value: T; label: ReactNode }[];
   className?: string;
   ariaLabel?: string;
+  /**
+   * What this control *is*, semantically.
+   *
+   * The same segmented pill is used for two different things: switching which
+   * view you are looking at (tabs), and narrowing a list (a filter). They look
+   * identical and announce completely differently — a filter described as a
+   * tablist tells a screen-reader user the page is about to change when it is
+   * not. Visuals are shared; semantics are not.
+   */
+  as?: "tabs" | "filter";
 }) {
+  const tabs = as === "tabs";
   return (
-    <div className={cx("seg", className)} role="tablist" aria-label={ariaLabel}>
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="tab"
-          aria-selected={o.value === value}
-          className={o.value === value ? "on" : ""}
-          onClick={() => onChange(o.value)}
-        >
-          {o.label}
-        </button>
-      ))}
+    <div
+      className={cx("seg", className)}
+      role={tabs ? "tablist" : "group"}
+      aria-label={ariaLabel}
+    >
+      {options.map((o) => {
+        const on = o.value === value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role={tabs ? "tab" : undefined}
+            aria-selected={tabs ? on : undefined}
+            aria-pressed={tabs ? undefined : on}
+            className={on ? "on" : ""}
+            onClick={() => onChange(o.value)}
+          >
+            {o.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -1,8 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SortableTableHead, TableRow, useSort } from "@/components/design-system/primitives";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useSort } from "@/components/design-system/primitives";
+import {
+  Btn,
+  CellChip,
+  Input,
+  PageHeader,
+  Panel,
+  Row,
+  Seg,
+  Table,
+  Td,
+  Tr,
+  cx,
+  type ChipTone,
+  type Col,
+} from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useBrokers, useClientPaymentAuthorizationSummaries, useClients, useCurrentUser, useLoans, useUpdateClient } from "@/hooks/useApi";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
@@ -35,31 +49,46 @@ const STAGE_LABEL: Record<ClientStage, string> = {
   lost: "Lost",
 };
 
+// Colour by lifecycle group: leads/early-funnel = neutral; lending stages =
+// petrol/brand; funded = profit-green; lost = muted. Same split the palette
+// map carried, now expressed as chip tones.
+const STAGE_TONE: Record<ClientStage, ChipTone> = {
+  lead: "mut",
+  contacted: "warn",
+  verified: "pet",
+  ready_for_lending: "acc",
+  processing: "acc",
+  funded: "ok",
+  lost: "mut",
+};
+
+type ClientCol = Col & { key?: string };
+
 // Internal users (super_admin / loan_exec) see an Agent column they can
 // click to assign or reassign the broker on each client. Brokers don't
 // see this column — they only own their own clients and don't need to
 // reassign anything.
-const INTERNAL_COLS = [
-  { label: "Client",   w: "minmax(0, 2fr)", key: "name" },
-  { label: "Stage",    w: "130px",          key: "_stage" },
-  { label: "Billing auth", w: "140px",      key: "_billing_auth" },
-  { label: "Type",     w: "90px",           key: "_type" },
-  { label: "Agent",    w: "160px",          key: "broker_name" },
-  { label: "FICO",     w: "70px",  align: "right" as const, key: "fico" },
-  { label: "Loans",    w: "60px",  align: "right" as const, key: "active_loans" },
-  { label: "Exposure", w: "100px", align: "right" as const, key: "exposure" },
-  { label: "City",     w: "120px",          key: "city" },
-  { label: "Since",    w: "80px",           key: "since" },
+const INTERNAL_COLS: ClientCol[] = [
+  { label: "Client",                            key: "name" },
+  { label: "Stage",       width: 130,           key: "_stage" },
+  { label: "Billing auth", width: 140,          key: "_billing_auth" },
+  { label: "Type",        width: 90,            key: "_type" },
+  { label: "Agent",       width: 160,           key: "broker_name" },
+  { label: "FICO",        width: 70,  align: "r", key: "fico" },
+  { label: "Loans",       width: 60,  align: "r", key: "active_loans" },
+  { label: "Exposure",    width: 100, align: "r", key: "exposure" },
+  { label: "City",        width: 120,           key: "city" },
+  { label: "Since",       width: 80,            key: "since" },
 ];
-const BROKER_COLS = [
-  { label: "Client",   w: "minmax(0, 2fr)", key: "name" },
-  { label: "Stage",    w: "130px",          key: "_stage" },
-  { label: "Type",     w: "90px",           key: "_type" },
-  { label: "FICO",     w: "70px",  align: "right" as const, key: "fico" },
-  { label: "Loans",    w: "60px",  align: "right" as const, key: "active_loans" },
-  { label: "Exposure", w: "100px", align: "right" as const, key: "exposure" },
-  { label: "City",     w: "120px",          key: "city" },
-  { label: "Since",    w: "80px",           key: "since" },
+const BROKER_COLS: ClientCol[] = [
+  { label: "Client",                            key: "name" },
+  { label: "Stage",       width: 130,           key: "_stage" },
+  { label: "Type",        width: 90,            key: "_type" },
+  { label: "FICO",        width: 70,  align: "r", key: "fico" },
+  { label: "Loans",       width: 60,  align: "r", key: "active_loans" },
+  { label: "Exposure",    width: 100, align: "r", key: "exposure" },
+  { label: "City",        width: 120,           key: "city" },
+  { label: "Since",       width: 80,            key: "since" },
 ];
 
 // Best-effort stage inference for legacy Client rows that don't yet carry the
@@ -72,8 +101,35 @@ function inferredStage(c: Client, activeLoans: number): ClientStage {
   return "lead";
 }
 
+// Header cell that carries the sort. `.tbl th` owns the type; this only adds
+// the click target and the direction caret.
+function SortLabel({
+  label,
+  colKey,
+  sortKey,
+  dir,
+  onSort,
+}: {
+  label: ReactNode;
+  colKey?: string;
+  sortKey: string;
+  dir: "asc" | "desc";
+  onSort: (key: string) => void;
+}) {
+  if (!colKey) return <>{label}</>;
+  const active = sortKey === colKey;
+  // No class and no style on purpose: a bare button inside `.tbl th` inherits
+  // the header's type, colour and letter-spacing, so the sort target looks
+  // exactly like the label it replaced. The caret carries the active state.
+  return (
+    <button type="button" onClick={() => onSort(colKey)} aria-label={`Sort by ${String(label)}`}>
+      {label}
+      {active ? (dir === "asc" ? " ▲" : " ▼") : ""}
+    </button>
+  );
+}
+
 export default function ClientsPage() {
-  const { t } = useTheme();
   const { data: user } = useCurrentUser();
   const { data: clients = [] } = useClients();
   const { data: loans = [] } = useLoans();
@@ -146,182 +202,135 @@ export default function ClientsPage() {
   const { sort, onSort, compare } = useSort("exposure", "desc");
   const sorted = useMemo(() => [...filtered].sort(compare), [filtered, compare]);
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: -0.5, color: t.ink, margin: 0 }}>
-          Clients
-        </h1>
-        <span style={{ color: t.ink3, fontSize: 14 }}>· {filtered.length} of {enriched.length}</span>
+  const cols: Col[] = COLS.map((c) => ({
+    label: <SortLabel label={c.label} colKey={c.key} sortKey={sort.key} dir={sort.dir} onSort={onSort} />,
+    align: c.align,
+    width: c.width,
+  }));
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              background: t.surface,
-              border: `1px solid ${t.line}`,
-              borderRadius: 10,
-              padding: "6px 10px",
-              width: 240,
-            }}
-          >
-            <Icon name="search" size={14} style={{ color: t.ink3 }} />
-            <input
+  return (
+    <div className="grid">
+      <PageHeader
+        title="Clients"
+        lede={`· ${filtered.length} of ${enriched.length}`}
+        actions={
+          <>
+            <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name, email, city…"
-              style={{
-                flex: 1,
-                border: "none",
-                outline: "none",
-                background: "transparent",
-                fontSize: 12.5,
-                color: t.ink,
-                fontFamily: "inherit",
-              }}
+              aria-label="Search clients"
+              style={{ width: 240 }}
             />
-          </div>
-          {canCreate && (
-            // Clients tab owns person/contact creation only — the slim
-            // AgentLeadModal mirrors the mobile single-page New Client
-            // form. Loan-file creation lives on /pipeline.
-            <button
-              onClick={() => setIntakeOpen(true)}
-              style={{
-                padding: "9px 14px",
-                borderRadius: 10,
-                background: t.ink,
-                color: t.inverse,
-                fontSize: 13,
-                fontWeight: 700,
-                border: "none",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 7,
-                cursor: "pointer",
-              }}
-            >
-              <Icon name="plus" size={14} /> New client
-            </button>
-          )}
-        </div>
-      </div>
+            {canCreate && (
+              // Clients tab owns person/contact creation only — the slim
+              // AgentLeadModal mirrors the mobile single-page New Client
+              // form. Loan-file creation lives on /pipeline.
+              <Btn variant="pri" onClick={() => setIntakeOpen(true)}>
+                <Icon name="plus" size={14} /> New client
+              </Btn>
+            )}
+          </>
+        }
+      />
 
       {/* Stage filter chips. Single-select, click again to clear (back to All). */}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {STAGE_CHIPS.map((chip) => {
-          const active = stageFilter === chip.value;
-          const count = stageCounts[chip.value] ?? 0;
-          return (
-            <button
-              key={chip.value}
-              onClick={() => setStageFilter(chip.value)}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "6px 12px",
-                borderRadius: 999,
-                fontSize: 12,
-                fontWeight: 700,
-                border: `1px solid ${active ? t.petrol : t.line}`,
-                background: active ? t.petrolSoft : "transparent",
-                color: active ? t.petrol : t.ink2,
-              }}
-            >
-              {chip.label}
-              <span style={{ fontSize: 11, color: active ? t.petrol : t.ink3, fontWeight: 600 }}>
-                {count}
-              </span>
-            </button>
-          );
-        })}
-        <button
+      <Row>
+        <Seg<StageFilter>
+          value={stageFilter}
+          onChange={setStageFilter}
+          ariaLabel="Stage filter"
+          options={STAGE_CHIPS.map((chip) => ({
+            value: chip.value,
+            label: (
+              <>
+                {chip.label} <span className="tag">{stageCounts[chip.value] ?? 0}</span>
+              </>
+            ),
+          }))}
+        />
+        <Btn
+          size="sm"
+          variant={dealerOnly ? "pri" : "default"}
+          aria-pressed={dealerOnly}
           onClick={() => setDealerOnly((v) => !v)}
           title="Show only clients created from a dealer AI intake"
-          style={{
-            all: "unset", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6,
-            padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700,
-            border: `1px solid ${dealerOnly ? t.brand : t.line}`,
-            background: dealerOnly ? t.brandSoft : "transparent",
-            color: dealerOnly ? t.brand : t.ink2,
-          }}
         >
           Dealer AI intake
-        </button>
-      </div>
+        </Btn>
+      </Row>
 
-      <Card pad={0}>
-        <SortableTableHead cols={COLS} sort={sort} onSort={onSort} />
-        {sorted.map((c) => {
-          const baseValues = [
-            <div key="n" style={{ minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                <span style={{ fontWeight: 700, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
-                {c.source_channel === "dealer_ai_intake" ? (
-                  <Pill bg={t.brandSoft} color={t.brand}>Dealer AI</Pill>
-                ) : null}
-              </div>
-              <div style={{ fontSize: 11, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email}</div>
-            </div>,
-            <StagePill key="st" t={t} stage={c._stage} />,
-            c._type ? (
-              <Pill key="ty" bg={c._type === "buyer" ? t.brandSoft : t.warnBg} color={c._type === "buyer" ? t.brand : t.warn}>
-                {c._type === "buyer" ? "Buyer" : "Seller"}
-              </Pill>
-            ) : (
-              <span key="ty" style={{ color: t.ink3, fontSize: 12 }}>—</span>
-            ),
-          ];
-          const tailValues = [
-            <span key="f" style={{ fontFeatureSettings: '"tnum"', color: t.ink2 }}>{c.fico ?? "—"}</span>,
-            <span key="l" style={{ fontFeatureSettings: '"tnum"', color: t.ink2 }}>{c.active_loans}</span>,
-            <span key="e" style={{ fontWeight: 700, fontFeatureSettings: '"tnum"', color: t.ink }}>{QC_FMT.short(c.exposure)}</span>,
-            <span key="c" style={{ color: t.ink3 }}>{c.city ?? "—"}</span>,
-            <span key="s" style={{ color: t.ink3 }}>{c.since ? new Date(c.since).getFullYear() : "—"}</span>,
-          ];
-          const values = isInternal
-            ? [
-                baseValues[0],
-                baseValues[1],
-                <BillingAuthPill key="ba" t={t} row={authByClient.get(c.id) ?? null} />,
-                baseValues[2],
-                <AssignBrokerCell key="br" client={c} />,
-                ...tailValues,
-              ]
-            : [...baseValues, ...tailValues];
-          return (
-            <TableRow
-              key={c.id}
-              cols={COLS}
-              onClick={() => (window.location.href = `/clients/${c.id}`)}
-              values={values}
-            />
-          );
-        })}
-        {sorted.length === 0 && (
-          <div style={{ padding: 24, textAlign: "center", fontSize: 13, color: t.ink3 }}>
-            {search || stageFilter !== "all"
-              ? "No clients match the current filters."
-              : "No clients yet."}
-            {canCreate && !search && stageFilter === "all" && (
-              <>
-                {" "}
-                <button
-                  onClick={() => setIntakeOpen(true)}
-                  style={{ all: "unset", cursor: "pointer", color: t.petrol, fontWeight: 700 }}
-                >
-                  Start a deal →
-                </button>
-              </>
-            )}
-          </div>
-        )}
-      </Card>
+      <Panel noPad>
+        <Table cols={cols} caption="Clients">
+          {sorted.map((c) => (
+            <Tr key={c.id} onClick={() => (window.location.href = `/clients/${c.id}`)}>
+              <Td>
+                <Row>
+                  <b>{c.name}</b>
+                  {c.source_channel === "dealer_ai_intake" ? <CellChip tone="acc">Dealer AI</CellChip> : null}
+                </Row>
+                <div className="sub">{c.email}</div>
+              </Td>
+              <Td>
+                <CellChip tone={STAGE_TONE[c._stage]}>{STAGE_LABEL[c._stage]}</CellChip>
+              </Td>
+              {isInternal && (
+                <Td>
+                  <BillingAuthPill row={authByClient.get(c.id) ?? null} />
+                </Td>
+              )}
+              <Td>
+                {c._type ? (
+                  <CellChip tone={c._type === "buyer" ? "acc" : "warn"}>
+                    {c._type === "buyer" ? "Buyer" : "Seller"}
+                  </CellChip>
+                ) : (
+                  <span className="sub">—</span>
+                )}
+              </Td>
+              {isInternal && (
+                <Td>
+                  <AssignBrokerCell client={c} />
+                </Td>
+              )}
+              <Td align="r">
+                <span className="num">{c.fico ?? "—"}</span>
+              </Td>
+              <Td align="r">
+                <span className="num">{c.active_loans}</span>
+              </Td>
+              <Td align="r">
+                <b className="num">{QC_FMT.short(c.exposure)}</b>
+              </Td>
+              <Td>
+                <span className="sub">{c.city ?? "—"}</span>
+              </Td>
+              <Td>
+                <span className="sub">{c.since ? new Date(c.since).getFullYear() : "—"}</span>
+              </Td>
+            </Tr>
+          ))}
+          {sorted.length === 0 && (
+            <tr>
+              <td colSpan={COLS.length} style={{ textAlign: "center", padding: 24 }}>
+                <span className="sub">
+                  {search || stageFilter !== "all"
+                    ? "No clients match the current filters."
+                    : "No clients yet."}
+                </span>
+                {canCreate && !search && stageFilter === "all" && (
+                  <>
+                    {" "}
+                    <button type="button" className="linky" onClick={() => setIntakeOpen(true)}>
+                      Start a deal →
+                    </button>
+                  </>
+                )}
+              </td>
+            </tr>
+          )}
+        </Table>
+      </Panel>
       <AgentLeadModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
     </div>
   );
@@ -333,7 +342,6 @@ export default function ClientsPage() {
 // PATCH /clients/{id} endpoint which already supports broker_id
 // updates for non-broker roles.
 function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | null; broker_name?: string | null } }) {
-  const { t } = useTheme();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -378,28 +386,16 @@ function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | 
 
   const assigned = !!client.broker_id;
   return (
-    <div ref={anchorRef} style={{ position: "relative" }}>
+    <div ref={anchorRef} className="popwrap">
       <button
+        type="button"
+        className={cx("cellchip", assigned ? "c-mut" : "c-warn")}
         onClick={(e) => {
           e.stopPropagation();
           setOpen((v) => !v);
         }}
         title={assigned ? "Reassign agent" : "Assign an agent"}
-        style={{
-          all: "unset",
-          cursor: "pointer",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "3px 8px",
-          borderRadius: 6,
-          border: `1px solid ${assigned ? t.line : t.warn}`,
-          background: assigned ? t.surface : t.warnBg,
-          color: assigned ? t.ink2 : t.warn,
-          fontSize: 12,
-          fontWeight: assigned ? 600 : 800,
-          maxWidth: 150,
-        }}
+        style={{ maxWidth: 150 }}
       >
         <Icon name={assigned ? "user" : "alert"} size={11} />
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -408,82 +404,45 @@ function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | 
         <Icon name="chevR" size={9} />
       </button>
       {open ? (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: "absolute",
-            top: "calc(100% + 4px)",
-            left: 0,
-            zIndex: 50,
-            width: 260,
-            background: t.surface,
-            border: `1px solid ${t.line}`,
-            borderRadius: 8,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-          }}
-        >
-          <div style={{ padding: "8px 8px 6px", borderBottom: `1px solid ${t.line}` }}>
-            <div style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 4 }}>
+        <div className="popmenu" onClick={(e) => e.stopPropagation()} style={{ width: 260 }}>
+          <div style={{ padding: "4px 6px 8px" }}>
+            <div className="lbl" style={{ marginBottom: 5 }}>
               {assigned ? "Reassign agent" : "Assign agent"}
             </div>
-            <input
+            <Input
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search agents…"
-              style={{
-                width: "100%",
-                padding: "6px 8px",
-                fontSize: 12,
-                borderRadius: 6,
-                border: `1px solid ${t.line}`,
-                background: t.surface,
-                color: t.ink,
-                boxSizing: "border-box",
-              }}
+              aria-label="Search agents"
+              style={{ width: "100%" }}
             />
           </div>
           <div style={{ maxHeight: 240, overflowY: "auto" }}>
             {isLoading ? (
-              <div style={{ padding: 12, fontSize: 12, color: t.ink3 }}>Loading agents…</div>
+              <div className="sub" style={{ padding: "8px 10px" }}>Loading agents…</div>
             ) : filtered.length === 0 ? (
-              <div style={{ padding: 12, fontSize: 12, color: t.ink3 }}>No matches.</div>
+              <div className="sub" style={{ padding: "8px 10px" }}>No matches.</div>
             ) : (
               filtered.map((b: Broker) => {
                 const isCurrent = b.id === client.broker_id;
                 return (
                   <button
                     key={b.id}
+                    type="button"
+                    className="mi"
                     onClick={() => pick(b)}
                     disabled={isCurrent || busyId !== null}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "8px 10px",
-                      width: "100%",
-                      border: "none",
-                      background: isCurrent ? t.brandSoft : "transparent",
-                      cursor: isCurrent ? "default" : "pointer",
-                      textAlign: "left",
-                      fontSize: 13,
-                      color: isCurrent ? t.brand : t.ink,
-                      fontFamily: "inherit",
-                      borderBottom: `1px solid ${t.line}`,
-                    }}
                   >
-                    <Icon name="user" size={11} />
-                    <span style={{ flex: 1, fontWeight: isCurrent ? 800 : 600 }}>{b.display_name}</span>
-                    {isCurrent ? (
-                      <span style={{ fontSize: 10, fontWeight: 800, color: t.brand, letterSpacing: 0.5, textTransform: "uppercase" }}>
-                        Current
-                      </span>
-                    ) : busyId === b.id ? (
-                      <span style={{ fontSize: 10.5, color: t.ink3 }}>Saving…</span>
-                    ) : null}
+                    <span className="row">
+                      <Icon name="user" size={11} />
+                      <span style={{ flex: 1 }}>{b.display_name}</span>
+                      {isCurrent ? (
+                        <span className="cellchip c-acc">Current</span>
+                      ) : busyId === b.id ? (
+                        <span className="sub">Saving…</span>
+                      ) : null}
+                    </span>
                   </button>
                 );
               })
@@ -491,20 +450,11 @@ function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | 
           </div>
           {assigned ? (
             <button
+              type="button"
+              className="mi"
               onClick={() => pick(null)}
               disabled={busyId !== null}
-              style={{
-                padding: "8px 10px",
-                border: "none",
-                borderTop: `1px solid ${t.line}`,
-                background: t.surface2,
-                color: t.danger,
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: 700,
-                textAlign: "left",
-                fontFamily: "inherit",
-              }}
+              style={{ color: "var(--danger)" }}
             >
               {busyId === "__unassign__" ? "Unassigning…" : "Unassign agent"}
             </button>
@@ -524,63 +474,19 @@ function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | 
 }
 
 
-function BillingAuthPill({
-  t,
-  row,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  row: PaymentAuthorizationClientSummaryRead | null;
-}) {
+function BillingAuthPill({ row }: { row: PaymentAuthorizationClientSummaryRead | null }) {
   const signed = !!row?.signed_at || row?.authorization_status === "active";
   const card = row?.card_status === "active" && !!row.card_last4;
   const ready = !!row?.authorized;
   const label = ready ? "Ready" : signed && !card ? "Card missing" : !signed && card ? "Signature missing" : "Not started";
-  const bg = ready ? t.profitBg : signed || card ? t.warnBg : t.surface2;
-  const fg = ready ? t.profit : signed || card ? t.warn : t.ink3;
+  const tone: ChipTone = ready ? "ok" : signed || card ? "warn" : "mut";
   const title = ready && row
     ? `${row.card_brand ?? "Card"} ending ${row.card_last4}; signed ${row.completed_at ? new Date(row.completed_at).toLocaleDateString() : "complete"}`
     : "Client must complete payment pre-authorization before credit actions are unlocked.";
   return (
-    <span
-      title={title}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "4px 9px",
-        borderRadius: 999,
-        background: bg,
-        color: fg,
-        fontSize: 11,
-        fontWeight: 800,
-        whiteSpace: "nowrap",
-      }}
-    >
-      <span style={{ width: 6, height: 6, borderRadius: 999, background: fg }} />
+    <span className={`cellchip c-${tone}`} title={title}>
+      <span className="repdot" style={{ background: "currentColor" }} />
       {label}
     </span>
   );
-}
-
-
-function StagePill({
-  t,
-  stage,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  stage: ClientStage;
-}) {
-  // Color by lifecycle group: leads/early-funnel = neutral; lending stages =
-  // petrol/brand; funded = profit-green; lost = muted.
-  const palette: Record<ClientStage, { bg: string; fg: string }> = {
-    lead:               { bg: t.chip,        fg: t.ink2 },
-    contacted:          { bg: t.warnBg,      fg: t.warn },
-    verified:           { bg: t.petrolSoft,  fg: t.petrol },
-    ready_for_lending:  { bg: t.brandSoft,   fg: t.brand },
-    processing:         { bg: t.brandSoft,   fg: t.brand },
-    funded:             { bg: t.profitBg,    fg: t.profit },
-    lost:               { bg: t.surface2,    fg: t.ink3 },
-  };
-  const { bg, fg } = palette[stage];
-  return <Pill bg={bg} color={fg}>{STAGE_LABEL[stage]}</Pill>;
 }

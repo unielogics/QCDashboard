@@ -3,11 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel, Avatar, useToast, Toast } from "@/components/design-system/primitives";
+import { useToast, Toast } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { apiErrorMessage } from "@/components/email/EmailComposer";
+import { Btn, CellChip, IconBtn, Input, Lbl, PageHeader, Panel, Textarea, cx } from "@/components/ds";
 import {
   useCurrentUser,
   useGoogleConnection,
@@ -20,6 +19,16 @@ import {
   type InboxThreadSummary,
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
+
+type InboxFilter = "all" | "unread" | "starred";
+
+// Labels are written out rather than text-transform:capitalize'd, because the
+// segmented control in the design system does not carry a transform.
+const FILTERS: { value: InboxFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "unread", label: "Unread" },
+  { value: "starred", label: "Starred" },
+];
 
 function fmtTime(iso: string | null): string {
   if (!iso) return "";
@@ -41,7 +50,6 @@ function initialsOf(email: string | null): string {
 }
 
 export default function InboxPage() {
-  const { t } = useTheme();
   const router = useRouter();
   const toast = useToast();
   const { data: user } = useCurrentUser();
@@ -49,7 +57,7 @@ export default function InboxPage() {
 
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "unread" | "starred">("all");
+  const [filter, setFilter] = useState<InboxFilter>("all");
   const [replyBody, setReplyBody] = useState("");
   const [replyBusy, setReplyBusy] = useState(false);
 
@@ -95,19 +103,23 @@ export default function InboxPage() {
   if (!connLoading && !conn?.gmail_connected) {
     return (
       <div style={{ maxWidth: 560, margin: "48px auto" }}>
-        <Card>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>
-            <Icon name="mail" size={28} />
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: t.ink, margin: 0 }}>Connect your inbox</h2>
-            <p style={{ fontSize: 13.5, color: t.ink2, margin: 0, lineHeight: 1.5 }}>
-              The Workspace inbox surfaces email from your clients and parties, matched to loans and
-              clients — privately, in your own mailbox. Connect Gmail in Settings to turn it on.
-            </p>
-            <Link href="/settings" style={{ ...qcBtnPrimary(t), textDecoration: "none" }}>
+        <div className="card">
+          <Icon name="mail" size={28} />
+          {/* h1, matching PageHeader: this branch IS the whole page, so it
+              must still contribute a top-level heading to the outline. */}
+          <div className="hd" style={{ marginTop: 10 }}>
+            <h1>Connect your inbox</h1>
+          </div>
+          <p className="sub mt">
+            The Workspace inbox surfaces email from your clients and parties, matched to loans and
+            clients — privately, in your own mailbox. Connect Gmail in Settings to turn it on.
+          </p>
+          <div className="mt">
+            <Link href="/settings" className="btn pri">
               Go to Settings
             </Link>
           </div>
-        </Card>
+        </div>
       </div>
     );
   }
@@ -135,77 +147,76 @@ export default function InboxPage() {
   }
 
   return (
+    // Full-height master/detail: the thread list and the open thread each scroll
+    // inside themselves so the composer never leaves the viewport. Deliberately
+    // not .cg — that grid sizes to content and would drop the composer below the
+    // fold, and the 38/62 split is a reading decision, not a 12-column one.
     <div style={{ display: "flex", flexDirection: "column", gap: 14, height: "100%" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>Inbox</h1>
-        {conn?.google_email && (
-          <Pill bg={t.brandSoft} color={t.brand}>
-            <Icon name="mail" size={12} /> {conn.google_email}
-          </Pill>
-        )}
-        <div style={{ flex: 1 }} />
-        <div style={{ position: "relative", minWidth: 220 }}>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search subject or sender…"
-            style={{
-              width: "100%",
-              padding: "8px 12px 8px 32px",
-              borderRadius: 10,
-              border: `1px solid ${t.line}`,
-              background: t.surface,
-              color: t.ink,
-              fontSize: 13,
-              fontFamily: "inherit",
-              outline: "none",
-            }}
-          />
-          <span style={{ position: "absolute", left: 10, top: 9, opacity: 0.6 }}>
-            <Icon name="search" size={14} />
-          </span>
-        </div>
-        <div style={{ display: "inline-flex", background: t.surface, border: `1px solid ${t.line}`, borderRadius: 10, padding: 3 }}>
-          {(["all", "unread", "starred"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              disabled={searching}
-              style={{
-                all: "unset",
-                cursor: searching ? "not-allowed" : "pointer",
-                padding: "6px 12px",
-                borderRadius: 7,
-                fontSize: 12,
-                fontWeight: 700,
-                textTransform: "capitalize",
-                opacity: searching ? 0.5 : 1,
-                background: filter === f ? t.brandSoft : "transparent",
-                color: filter === f ? t.brand : t.ink2,
-              }}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageHeader
+        title="Inbox"
+        lede={
+          conn?.google_email ? (
+            <CellChip tone="acc">
+              <Icon name="mail" size={12} /> {conn.google_email}
+            </CellChip>
+          ) : undefined
+        }
+        actions={
+          <>
+            <div className="row" style={{ minWidth: 220 }}>
+              <Icon name="search" size={14} />
+              <Input
+                grow
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search subject or sender…"
+              />
+            </div>
+            {/* Hand-rolled .seg rather than <Seg> because these tabs disable
+                while a search is running — a real `disabled` attribute, not a
+                dimmed-but-clickable one. */}
+            <div className="seg" role="tablist" aria-label="Filter threads">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={filter === f.value}
+                  className={filter === f.value ? "on" : ""}
+                  disabled={searching}
+                  onClick={() => setFilter(f.value)}
+                  style={searching ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </>
+        }
+      />
 
       {list?.truncated && (
-        <div style={{ fontSize: 12, color: t.ink3 }}>
+        <div className="sub">
           Showing your most recent mail — narrow with search to see older threads.
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 38fr) minmax(0, 62fr)", gap: 12, alignItems: "start", minHeight: 0, flex: 1 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 38fr) minmax(0, 62fr)",
+          gap: 14,
+          alignItems: "start",
+          minHeight: 0,
+          flex: 1,
+        }}
+      >
         {/* Thread list */}
-        <Card pad={0}>
-          <div style={{ padding: "10px 14px", borderBottom: `1px solid ${t.line}` }}>
-            <SectionLabel>{searching ? "Search results" : "Threads"}</SectionLabel>
-          </div>
-          <div style={{ maxHeight: "72vh", overflowY: "auto" }}>
-            {listLoading && <div style={{ padding: 14, fontSize: 12.5, color: t.ink3 }}>Loading…</div>}
+        <Panel title={searching ? "Search results" : "Threads"} noPad>
+          <div className="panel-b" style={{ maxHeight: "72vh", overflowY: "auto" }}>
+            {listLoading && <div className="sub">Loading…</div>}
             {!listLoading && threads.length === 0 && (
-              <div style={{ padding: 14, fontSize: 12.5, color: t.ink3 }}>
+              <div className="sub">
                 {searching ? "No matches." : "No email yet. Matched client and party mail will appear here."}
               </div>
             )}
@@ -215,118 +226,186 @@ export default function InboxPage() {
               return (
                 <button
                   key={th.thread_id}
+                  type="button"
                   onClick={() => setSelectedThread(th.thread_id)}
-                  style={{
-                    all: "unset",
-                    display: "block",
-                    width: "100%",
-                    boxSizing: "border-box",
-                    cursor: "pointer",
-                    padding: "11px 14px",
-                    borderBottom: `1px solid ${t.line}`,
-                    background: active ? t.surface2 : "transparent",
-                  }}
+                  className={cx("pick", active && "on")}
+                  aria-current={active}
+                  style={{ width: "100%", textAlign: "left" }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                    {unread && <span style={{ width: 7, height: 7, borderRadius: 999, background: t.brand, flexShrink: 0 }} />}
-                    <span style={{ fontSize: 12.5, fontWeight: unread ? 800 : 600, color: unread ? t.ink : t.ink2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>
-                      {th.last_from ?? "(unknown)"}
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {unread && <span className="repdot" style={{ background: "var(--accent)" }} />}
+                      <span
+                        style={{
+                          fontSize: 12.5,
+                          fontWeight: unread ? 800 : 600,
+                          color: unread ? "var(--ink)" : "var(--ink2)",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          flex: 1,
+                          minWidth: 0,
+                        }}
+                      >
+                        {th.last_from ?? "(unknown)"}
+                      </span>
+                      {th.is_starred && (
+                        <span title="Starred" style={{ color: "var(--warn)", fontSize: 12 }}>
+                          ★
+                        </span>
+                      )}
+                      {th.has_attachments && <Icon name="paperclip" size={12} />}
+                      <span className="msg-when">{fmtTime(th.last_received_at)}</span>
                     </span>
-                    {th.is_starred && <span title="Starred" style={{ color: t.warn, fontSize: 12 }}>★</span>}
-                    {th.has_attachments && <Icon name="paperclip" size={12} />}
-                    <span style={{ fontSize: 11, color: t.ink3, whiteSpace: "nowrap" }}>{fmtTime(th.last_received_at)}</span>
-                  </div>
-                  <div style={{ fontSize: 12.5, fontWeight: unread ? 700 : 500, color: t.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {th.subject || "(no subject)"}
-                    {th.message_count > 1 && <span style={{ color: t.ink3, fontWeight: 600 }}> · {th.message_count}</span>}
-                  </div>
-                  {th.preview && (
-                    <div style={{ fontSize: 11.5, color: t.ink3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: 2 }}>
-                      {th.preview}
-                    </div>
-                  )}
-                  <div style={{ display: "flex", gap: 6, marginTop: 5, flexWrap: "wrap" }}>
-                    {th.loan_id && (
-                      <Pill bg={t.petrolSoft} color={t.petrol}><Icon name="layers" size={10} /> Loan</Pill>
+                    <span
+                      style={{
+                        display: "block",
+                        marginTop: 3,
+                        fontSize: 12.5,
+                        fontWeight: unread ? 700 : 500,
+                        color: "var(--ink)",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {th.subject || "(no subject)"}
+                      {th.message_count > 1 && (
+                        <span className="sub" style={{ fontWeight: 600 }}> · {th.message_count}</span>
+                      )}
+                    </span>
+                    {th.preview && (
+                      <span
+                        className="sub"
+                        style={{
+                          display: "block",
+                          marginTop: 2,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {th.preview}
+                      </span>
                     )}
-                    {th.client_id && (
-                      <Pill bg={t.brandSoft} color={t.brand}><Icon name="clients" size={10} /> Client</Pill>
-                    )}
-                    {th.matched_party_role && (
-                      <Pill>{th.matched_party_role}</Pill>
-                    )}
-                  </div>
+                    <span style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                      {th.loan_id && (
+                        <CellChip tone="pet">
+                          <Icon name="layers" size={10} /> Loan
+                        </CellChip>
+                      )}
+                      {th.client_id && (
+                        <CellChip tone="acc">
+                          <Icon name="clients" size={10} /> Client
+                        </CellChip>
+                      )}
+                      {th.matched_party_role && <CellChip tone="mut">{th.matched_party_role}</CellChip>}
+                    </span>
+                  </span>
                 </button>
               );
             })}
           </div>
-        </Card>
+        </Panel>
 
         {/* Open thread */}
-        <Card pad={0}>
+        <div className="panel" style={{ minHeight: 0 }}>
           {!selectedThread && (
-            <div style={{ padding: 28, fontSize: 13, color: t.ink3, textAlign: "center" }}>
-              Select a thread to read it.
+            <div className="panel-b" style={{ textAlign: "center" }}>
+              <span className="sub">Select a thread to read it.</span>
             </div>
           )}
           {selectedThread && threadQ.isLoading && (
-            <div style={{ padding: 20, fontSize: 12.5, color: t.ink3 }}>Loading thread…</div>
+            <div className="panel-b">
+              <span className="sub">Loading thread…</span>
+            </div>
           )}
           {selectedThread && threadQ.data && (
-            <div style={{ display: "flex", flexDirection: "column", maxHeight: "78vh" }}>
+            <>
               {/* thread header */}
-              <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.line}`, display: "flex", alignItems: "flex-start", gap: 10 }}>
+              <div className="panel-h">
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: t.ink }}>
-                    {threadQ.data.subject || "(no subject)"}
-                  </div>
-                  <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                  <h3>{threadQ.data.subject || "(no subject)"}</h3>
+                  <div className="row" style={{ marginTop: 6 }}>
                     {threadQ.data.loan_id && (
                       <Link href={`/loans/${threadQ.data.loan_id}`} style={{ textDecoration: "none" }}>
-                        <Pill bg={t.petrolSoft} color={t.petrol}><Icon name="layers" size={11} /> Open loan</Pill>
+                        <CellChip tone="pet">
+                          <Icon name="layers" size={11} /> Open loan
+                        </CellChip>
                       </Link>
                     )}
                     {threadQ.data.client_id && (
                       <Link href={`/clients/${threadQ.data.client_id}`} style={{ textDecoration: "none" }}>
-                        <Pill bg={t.brandSoft} color={t.brand}><Icon name="clients" size={11} /> Open client</Pill>
+                        <CellChip tone="acc">
+                          <Icon name="clients" size={11} /> Open client
+                        </CellChip>
                       </Link>
                     )}
-                    {threadQ.data.matched_party_role && <Pill>{threadQ.data.matched_party_role}</Pill>}
+                    {threadQ.data.matched_party_role && (
+                      <CellChip tone="mut">{threadQ.data.matched_party_role}</CellChip>
+                    )}
                   </div>
                 </div>
-                <button
+                <IconBtn
                   title={activeSummary?.is_starred ? "Unstar" : "Star"}
+                  aria-pressed={!!activeSummary?.is_starred}
                   onClick={() => {
                     const last = threadQ.data!.messages[threadQ.data!.messages.length - 1];
-                    if (last) star.mutate({ messageId: last.id, isStarred: !activeSummary?.is_starred, threadId: selectedThread! });
+                    if (last)
+                      star.mutate({
+                        messageId: last.id,
+                        isStarred: !activeSummary?.is_starred,
+                        threadId: selectedThread!,
+                      });
                   }}
-                  style={{ all: "unset", cursor: "pointer", color: activeSummary?.is_starred ? t.warn : t.ink3, fontSize: 18 }}
                 >
-                  {activeSummary?.is_starred ? "★" : "☆"}
-                </button>
+                  <span
+                    style={{
+                      fontSize: 16,
+                      lineHeight: 1,
+                      color: activeSummary?.is_starred ? "var(--warn)" : "var(--muted)",
+                    }}
+                  >
+                    {activeSummary?.is_starred ? "★" : "☆"}
+                  </span>
+                </IconBtn>
               </div>
 
-              {/* messages */}
-              <div style={{ overflowY: "auto", flex: 1, padding: "4px 0" }}>
+              {/* messages — .msg.mine carries the outbound channel, matching the
+                  "Sent" chip and the petrol avatar, so a message read out of
+                  context still says which side of the mailbox it came from. */}
+              <div className="thr" style={{ paddingLeft: 16, paddingRight: 16, minHeight: 0 }}>
                 {threadQ.data.messages.map((m) => {
                   const outbound = m.direction === "outbound";
                   return (
-                    <div key={m.id} style={{ padding: "12px 16px", borderBottom: `1px solid ${t.line}` }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 6 }}>
-                        <Avatar label={initialsOf(m.from_email)} color={outbound ? t.petrol : t.brand} size={30} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink }}>
+                    <div key={m.id} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <span
+                        className="avatar"
+                        style={{ background: outbound ? "var(--petrol)" : "var(--accent)" }}
+                      >
+                        {initialsOf(m.from_email)}
+                      </span>
+                      <div className={cx("msg", outbound && "mine")} style={{ flex: 1, minWidth: 0 }}>
+                        <div className="msg-h">
+                          <span className="msg-who">
                             {m.from_email || (outbound ? "You" : "(unknown)")}
-                          </div>
-                          <div style={{ fontSize: 11, color: t.ink3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            to {(m.to_emails ?? []).join(", ") || "—"}
-                          </div>
+                          </span>
+                          {outbound && <CellChip tone="pet">Sent</CellChip>}
+                          <span className="msg-when">{fmtTime(m.received_at)}</span>
                         </div>
-                        {outbound && <Pill bg={t.petrolSoft} color={t.petrol}>Sent</Pill>}
-                        <span style={{ fontSize: 11, color: t.ink3, whiteSpace: "nowrap" }}>{fmtTime(m.received_at)}</span>
-                      </div>
-                      <div style={{ fontSize: 13, color: t.ink, whiteSpace: "pre-wrap", lineHeight: 1.5, wordBreak: "break-word" }}>
-                        {m.body_text || <span style={{ color: t.ink3, fontStyle: "italic" }}>(no readable text body)</span>}
+                        <div
+                          className="sub"
+                          style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                        >
+                          to {(m.to_emails ?? []).join(", ") || "—"}
+                        </div>
+                        <div className="msg-b">
+                          {m.body_text || (
+                            <span className="sub" style={{ fontStyle: "italic" }}>
+                              (no readable text body)
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -334,47 +413,30 @@ export default function InboxPage() {
               </div>
 
               {/* reply */}
-              <div style={{ padding: "12px 16px", borderTop: `1px solid ${t.line}`, background: t.surface }}>
-                <SectionLabel>Reply from your Gmail</SectionLabel>
-                <textarea
+              <div className="composer" style={{ paddingLeft: 16, paddingRight: 16, paddingBottom: 14 }}>
+                <Lbl>Reply from your Gmail</Lbl>
+                <Textarea
                   value={replyBody}
                   onChange={(e) => setReplyBody(e.target.value)}
                   placeholder="Write a reply…"
                   rows={4}
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    marginTop: 6,
-                    padding: 10,
-                    minHeight: 92,
-                    resize: "vertical",
-                    borderRadius: 10,
-                    border: `1px solid ${t.line}`,
-                    background: t.surface2,
-                    color: t.ink,
-                    fontSize: 13,
-                    fontFamily: "inherit",
-                    outline: "none",
-                  }}
                 />
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-                  <button style={qcBtnPrimary(t)} disabled={replyBusy} onClick={doReply}>
+                <div className="composer-row">
+                  <Btn variant="pri" disabled={replyBusy} onClick={doReply}>
                     {replyBusy ? "Sending…" : "Send reply"}
-                  </button>
-                  <button
-                    style={{ ...qcBtn(t), opacity: markRead.isPending ? 0.6 : 1 }}
+                  </Btn>
+                  <Btn
+                    style={markRead.isPending ? { opacity: 0.6 } : undefined}
                     onClick={() => markRead.mutate({ threadId: selectedThread!, isRead: false })}
                   >
                     Mark unread
-                  </button>
-                  <span style={{ fontSize: 11, color: t.ink3 }}>
-                    Replies to the latest sender in this thread.
-                  </span>
+                  </Btn>
+                  <span className="hint">Replies to the latest sender in this thread.</span>
                 </div>
               </div>
-            </div>
+            </>
           )}
-        </Card>
+        </div>
       </div>
       <Toast msg={toast.msg} />
     </div>

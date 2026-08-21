@@ -3,9 +3,21 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import {
+  Btn,
+  CellChip,
+  Lbl,
+  Linky,
+  Note,
+  PageHeader,
+  Panel,
+  Seg,
+  Textarea,
+  WarnLine,
+  cx,
+  type ChipTone,
+} from "@/components/ds";
 import { useAITasks, useAITaskDecision } from "@/hooks/useApi";
 import { useActiveProfile } from "@/store/role";
 import { FeedbackOutputType, Role } from "@/lib/enums.generated";
@@ -21,8 +33,12 @@ type PriorityFilter = (typeof PRIORITY_FILTERS)[number];
 
 type ActiveTab = "inbox" | "rules";
 
+/** high → red, medium → amber, everything else → neutral. */
+function priorityTone(priority: string): ChipTone {
+  return priority === "high" ? "bad" : priority === "medium" ? "warn" : "mut";
+}
+
 export default function AIInboxPage() {
-  const { t } = useTheme();
   const { data: tasks = [] } = useAITasks();
   const [tab, setTab] = useState<ActiveTab>("inbox");
   const [filter, setFilter] = useState<SourceFilter>("all");
@@ -51,128 +67,121 @@ export default function AIInboxPage() {
   if (profile.role === Role.CLIENT) return null;
 
   return (
+    // Full-height master/detail: the queue and the detail pane each scroll
+    // inside themselves so the approve/dismiss bar never leaves the viewport.
+    // Deliberately not .cg — that grid sizes to content and would drop the
+    // footer below the fold.
     <div style={{ display: "flex", flexDirection: "column", gap: 14, height: "100%" }}>
       {/* Header with Elara Inbox / Elara Rules tab toggle. Elara Rules is the
           standing-config surface that earlier lived at /ai-tasks; folded in
           here so the Agent has one mental model — "AI" = both the queue of
           drafted actions awaiting my approval AND the rules that produce them. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>AI</h1>
-        <div style={{ display: "inline-flex", background: t.surface, border: `1px solid ${t.line}`, borderRadius: 10, padding: 3 }}>
-          <button
-            onClick={() => setTab("inbox")}
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              padding: "6px 14px",
-              borderRadius: 7,
-              fontSize: 12.5,
-              fontWeight: 700,
-              background: tab === "inbox" ? t.ink : "transparent",
-              color: tab === "inbox" ? t.inverse : t.ink2,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <Icon name="bolt" size={12} /> Inbox
-            {tab === "inbox" && filtered.length > 0 && (
-              <span style={{ fontSize: 10.5, fontWeight: 800, opacity: 0.85 }}>{filtered.length}</span>
-            )}
-          </button>
-          <button
-            onClick={() => setTab("rules")}
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              padding: "6px 14px",
-              borderRadius: 7,
-              fontSize: 12.5,
-              fontWeight: 700,
-              background: tab === "rules" ? t.ink : "transparent",
-              color: tab === "rules" ? t.inverse : t.ink2,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <Icon name="spark" size={12} /> Rules
-          </button>
+      <PageHeader
+        title="AI"
+        actions={
+          <Seg<ActiveTab>
+            value={tab}
+            onChange={setTab}
+            ariaLabel="AI section"
+            options={[
+              {
+                value: "inbox",
+                label:
+                  tab === "inbox" && filtered.length > 0 ? (
+                    <>
+                      Inbox <span className="tag">{filtered.length}</span>
+                    </>
+                  ) : (
+                    "Inbox"
+                  ),
+              },
+              { value: "rules", label: "Rules" },
+            ]}
+          />
+        }
+      />
+
+      {tab === "inbox" && (
+        <div className="row">
+          <Lbl>Priority</Lbl>
+          <Seg<PriorityFilter>
+            value={priority}
+            onChange={setPriority}
+            ariaLabel="Filter by priority"
+            as="filter"
+            options={PRIORITY_FILTERS.map((p) => ({ value: p, label: humanLabel(p) }))}
+          />
+          <Lbl>Source</Lbl>
+          <div className="row">
+            {SOURCE_FILTERS.map((s) => (
+              <Btn
+                key={s}
+                size="sm"
+                variant={filter === s ? "pri" : "default"}
+                aria-pressed={filter === s}
+                onClick={() => setFilter(s)}
+              >
+                {humanLabel(s)}
+              </Btn>
+            ))}
+          </div>
         </div>
-        <div style={{ flex: 1 }} />
-        {tab === "inbox" && (
-          <>
-            <div style={{ display: "flex", gap: 4 }}>
-              {PRIORITY_FILTERS.map((p) => (
-                <button key={p} onClick={() => setPriority(p)} style={{
-                  padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 700,
-                  background: priority === p ? (p === "high" ? t.dangerBg : p === "medium" ? t.warnBg : t.brandSoft) : "transparent",
-                  color: priority === p ? t.ink : t.ink3,
-                  border: `1px solid ${priority === p ? t.line : "transparent"}`,
-                  textTransform: "capitalize",
-                  cursor: "pointer",
-                }}>{p}</button>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 4 }}>
-              {SOURCE_FILTERS.map((s) => (
-                <button key={s} onClick={() => setFilter(s)} style={{
-                  padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700,
-                  background: filter === s ? t.brandSoft : "transparent",
-                  color: filter === s ? t.ink : t.ink3,
-                  border: `1px solid ${filter === s ? t.line : "transparent"}`,
-                  textTransform: "capitalize",
-                  cursor: "pointer",
-                }}>{s}</button>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+      )}
 
       {tab === "inbox" ? (
         <div style={{ display: "grid", gridTemplateColumns: "minmax(380px, 1fr) 2fr", gap: 14, flex: 1, minHeight: 0 }}>
           {/* Master list */}
-          <Card pad={0} style={{ overflow: "auto" }}>
-            {filtered.map((task) => (
-              <button key={task.id} onClick={() => setSelectedId(task.id)} style={{
-                width: "100%", textAlign: "left", padding: "12px 16px",
-                borderBottom: `1px solid ${t.line}`,
-                background: selected?.id === task.id ? t.brandSoft : "transparent",
-                borderLeft: `3px solid ${task.priority === "high" ? t.danger : task.priority === "medium" ? t.warn : t.line}`,
-                cursor: "pointer",
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                  {task.source === "broker_suggestion" ? (
-                    <Pill bg={t.goldSoft} color={t.gold}>
-                      <Icon name="user" size={9} stroke={2.4} /> broker suggestion
-                    </Pill>
-                  ) : (
-                    <Pill>{task.source}</Pill>
-                  )}
-                  <Pill bg={task.priority === "high" ? t.dangerBg : task.priority === "medium" ? t.warnBg : t.chip} color={task.priority === "high" ? t.danger : task.priority === "medium" ? t.warn : t.ink2}>
-                    {task.priority}
-                  </Pill>
-                  {task.loan_id && (
-                    <span style={{ marginLeft: "auto", fontSize: 10.5, fontFamily: "ui-monospace, SF Mono, monospace", color: t.ink3 }}>
-                      {task.loan_id.slice(0, 8)}
-                    </span>
-                  )}
-                </div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, marginBottom: 2 }}>{task.title}</div>
-                <div style={{ fontSize: 11.5, color: t.ink3 }}>conf {(task.confidence * 100).toFixed(0)}% · {task.agent}</div>
-              </button>
-            ))}
-            {filtered.length === 0 && <div style={{ padding: 24, color: t.ink3, fontSize: 13 }}>No pending tasks.</div>}
-          </Card>
+          <Panel title="Queue" sub={`${filtered.length} pending`} noPad>
+            <div className="panel-b" style={{ overflowY: "auto", minHeight: 0 }}>
+              {filtered.map((task) => (
+                <button
+                  key={task.id}
+                  onClick={() => setSelectedId(task.id)}
+                  className={cx("pick", selected?.id === task.id && "on")}
+                  aria-current={selected?.id === task.id}
+                  style={{ width: "100%", textAlign: "left" }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="row">
+                      {task.source === "broker_suggestion" ? (
+                        <CellChip tone="gold">
+                          <Icon name="user" size={9} stroke={2.4} /> broker suggestion
+                        </CellChip>
+                      ) : (
+                        <CellChip tone="mut">{task.source}</CellChip>
+                      )}
+                      <CellChip tone={priorityTone(task.priority)}>{task.priority}</CellChip>
+                      {task.loan_id && (
+                        <>
+                          <span className="sp" />
+                          <span className="sub num">{task.loan_id.slice(0, 8)}</span>
+                        </>
+                      )}
+                    </div>
+                    <div>
+                      <b>{task.title}</b>
+                    </div>
+                    <div className="sub num">
+                      conf {(task.confidence * 100).toFixed(0)}% · {task.agent}
+                    </div>
+                  </div>
+                </button>
+              ))}
+              {filtered.length === 0 && <div className="sub">No pending tasks.</div>}
+            </div>
+          </Panel>
 
           {/* Detail */}
-          <Card pad={0}>
-            {selected ? <Detail task={selected} key={selected.id} /> : <div style={{ padding: 24, color: t.ink3 }}>Select a task to view details.</div>}
-          </Card>
+          {selected ? (
+            <Detail task={selected} key={selected.id} />
+          ) : (
+            <div className="panel">
+              <div className="panel-b sub">Select a task to view details.</div>
+            </div>
+          )}
         </div>
       ) : (
-        <RulesPanel t={t} />
+        <RulesPanel />
       )}
     </div>
   );
@@ -182,82 +191,60 @@ export default function AIInboxPage() {
 // the Inbox tab. Lives next to the live work queue (rather than a separate
 // page) so the Agent has a single mental model for "the AI." The engine that
 // evaluates these rules ships in P1; this view is the configuration shell.
-function RulesPanel({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
+function RulesPanel() {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-      <Card pad={18}>
-        <SectionLabel>My Rules</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.6 }}>
-            Standing AI tasks scoped to your book. Each rule generates entries
-            in the Inbox tab when its condition fires. The engine ships in P1;
-            today this is the configuration shell.
-          </div>
+    <div className="cg">
+      <Panel className="s6" title="My Rules">
+        <p>
+          Standing AI tasks scoped to your book. Each rule generates entries in
+          the Inbox tab when its condition fires. The engine ships in P1; today
+          this is the configuration shell.
+        </p>
+        <div className="ladder mt">
           <RulePlaceholder
-            t={t}
             title="Stale-lead nudge"
             description="If no contact in 7 days, draft a follow-up message for my approval."
           />
           <RulePlaceholder
-            t={t}
             title="Document chase"
             description="When a deal hits ready_for_lending, request the standard funding-side docs."
           />
           <RulePlaceholder
-            t={t}
             title="Closing timeline alert"
             description="When a closing date is ≤ 14 days and any required doc is missing, surface it as high priority."
           />
         </div>
-      </Card>
+      </Panel>
 
-      <Card pad={18}>
-        <SectionLabel>Per-Client / Per-Deal Rules</SectionLabel>
-        <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.6 }}>
+      <Panel className="s6" title="Per-Client / Per-Deal Rules">
+        <p>
           For client-specific or deal-specific tuning, configure on the
           individual record:
-        </div>
-        <ul style={{ margin: "10px 0 0", paddingLeft: 18, fontSize: 12.5, color: t.ink2, lineHeight: 1.7 }}>
-          <li>Open a Client → AI rules section on their workspace</li>
-          <li>Open a Deal in the Pipeline → per-deal AI rules</li>
+        </p>
+        <ul className="mt">
+          <li className="filerow">Open a Client → AI rules section on their workspace</li>
+          <li className="filerow">Open a Deal in the Pipeline → per-deal AI rules</li>
         </ul>
-        <div style={{ marginTop: 14, padding: 12, borderRadius: 9, background: t.surface2, border: `1px solid ${t.line}`, fontSize: 11.5, color: t.ink3, lineHeight: 1.55 }}>
-          <strong style={{ color: t.ink2 }}>Compliance note:</strong> AI drafts
-          for borrower-facing messages always require Agent approval. The
-          firm-wide compliance policy (no &quot;you are approved&quot; / &quot;guaranteed
-          rate&quot; phrasing) is enforced at prompt level — these rules can&apos;t
-          override it.
-        </div>
-      </Card>
+        <Note>
+          <div>
+            <b>Compliance note:</b> AI drafts for borrower-facing messages always
+            require Agent approval. The firm-wide compliance policy (no
+            &quot;you are approved&quot; / &quot;guaranteed rate&quot; phrasing) is
+            enforced at prompt level — these rules can&apos;t override it.
+          </div>
+        </Note>
+      </Panel>
     </div>
   );
 }
 
-function RulePlaceholder({
-  t,
-  title,
-  description,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  title: string;
-  description: string;
-}) {
+function RulePlaceholder({ title, description }: { title: string; description: string }) {
   return (
-    <div
-      style={{
-        padding: 12,
-        borderRadius: 10,
-        background: t.surface2,
-        border: `1px dashed ${t.line}`,
-        opacity: 0.85,
-      }}
-    >
-      <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink, display: "flex", alignItems: "center", gap: 8 }}>
-        <Icon name="spark" size={12} />
-        {title}
-        <Pill bg={t.chip} color={t.ink3}>P1</Pill>
-      </div>
-      <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 4 }}>{description}</div>
+    <div className="rung">
+      <Icon name="spark" size={14} />
+      <div className="rk">{title}</div>
+      <div className="rq">{description}</div>
+      <CellChip tone="mut">P1</CellChip>
     </div>
   );
 }
@@ -277,7 +264,6 @@ function sourceHref(source: AITask["source"], loanId: string | null): string {
 }
 
 function Detail({ task }: { task: AITask }) {
-  const { t } = useTheme();
   const decision = useAITaskDecision();
   const [editMode, setEditMode] = useState(false);
   const [draftJson, setDraftJson] = useState<string>("");
@@ -332,67 +318,41 @@ function Detail({ task }: { task: AITask }) {
     }
   };
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ padding: 20, borderBottom: `1px solid ${t.line}` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-          <Pill>{task.source}</Pill>
-          <Pill bg={task.priority === "high" ? t.dangerBg : t.chip} color={task.priority === "high" ? t.danger : t.ink2}>{task.priority}</Pill>
-          <span style={{ fontSize: 11, color: t.ink3 }}>· {task.agent} · conf {(task.confidence * 100).toFixed(0)}%</span>
+  const confidencePct = (task.confidence * 100).toFixed(0);
 
+  return (
+    <Panel
+      title={task.title}
+      sub={`${task.agent} · conf ${confidencePct}%`}
+      noPad
+      actions={
+        <>
           {/* Source jump — bounces to whichever screen the agent came from */}
-          <Link
-            href={sourceHref(task.source, task.loan_id)}
-            style={{
-              marginLeft: "auto",
-              fontSize: 12,
-              color: t.ink2,
-              fontWeight: 700,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "5px 9px",
-              borderRadius: 7,
-              border: `1px solid ${t.line}`,
-              textDecoration: "none",
-            }}
-          >
+          <Link href={sourceHref(task.source, task.loan_id)} className="btn sm">
             <Icon name="external" size={11} /> Open source
           </Link>
-
           {task.loan_id && (
-            <Link
-              href={`/loans/${task.loan_id}`}
-              style={{
-                fontSize: 12,
-                color: t.petrol,
-                fontWeight: 700,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                padding: "5px 9px",
-                borderRadius: 7,
-                border: `1px solid ${t.petrol}40`,
-                background: t.petrolSoft,
-                textDecoration: "none",
-              }}
-            >
+            <Link href={`/loans/${task.loan_id}`} className="btn sm pri">
               Open loan <Icon name="chevR" size={12} />
             </Link>
           )}
+        </>
+      }
+    >
+      <div className="panel-b" style={{ overflowY: "auto", minHeight: 0 }}>
+        <div className="row">
+          <CellChip tone="mut">{task.source}</CellChip>
+          <CellChip tone={priorityTone(task.priority)}>{task.priority}</CellChip>
         </div>
-        <h2 style={{ fontSize: 20, fontWeight: 800, color: t.ink, margin: 0 }}>{task.title}</h2>
-        <div style={{ fontSize: 13, color: t.ink2, marginTop: 8 }}>{task.summary}</div>
-      </div>
+        <p className="mt">{task.summary}</p>
 
-      <div style={{ flex: 1, padding: 20, overflowY: "auto" }}>
         {/* Plain-language card for cadence-spawned tasks (Phase 5).
             The human-readable framing — What / Why / What happens if I
             approve — sits ABOVE the technical drafted-artifact view
             for these. Older tasks (non-cadence) keep the original
             detail-only layout. */}
         {task.action?.startsWith("cadence_") || task.action?.startsWith("confirm_") ? (
-          <div style={{ marginBottom: 16 }}>
+          <div className="mt">
             <AIInboxCard
               task={task}
               onApprove={handleApprove}
@@ -402,60 +362,51 @@ function Detail({ task }: { task: AITask }) {
           </div>
         ) : null}
 
-        <SectionLabel action={
-          editMode ? (
-            <button onClick={() => setEditMode(false)} style={{ background: "transparent", border: "none", color: t.ink3, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Cancel edit</button>
-          ) : (
-            task.draft_payload ? (
-              <button onClick={() => setEditMode(true)} style={{ background: "transparent", border: "none", color: t.petrol, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Edit draft</button>
-            ) : null
-          )
-        }>
-          Drafted artifact ({task.action})
-        </SectionLabel>
+        <div className="row mt">
+          <Lbl>Drafted artifact ({task.action})</Lbl>
+          <span className="sp" />
+          {editMode ? (
+            <Linky onClick={() => setEditMode(false)}>Cancel edit</Linky>
+          ) : task.draft_payload ? (
+            <Linky onClick={() => setEditMode(true)}>Edit draft</Linky>
+          ) : null}
+        </div>
         {editMode ? (
-          <textarea
+          <Textarea
+            aria-label="Drafted payload JSON"
             value={draftJson}
             onChange={(e) => setDraftJson(e.target.value)}
-            style={{
-              width: "100%",
-              minHeight: 200,
-              padding: 12,
-              borderRadius: 10,
-              border: `1px solid ${t.line}`,
-              background: t.surface2,
-              color: t.ink,
-              fontFamily: "ui-monospace, SF Mono, monospace",
-              fontSize: 12,
-              lineHeight: 1.5,
-              outline: "none",
-              resize: "vertical",
-            }}
+            style={{ width: "100%", minHeight: 200, resize: "vertical" }}
           />
         ) : (
-          <DraftedArtifactView payload={task.draft_payload} action={task.action} t={t} />
+          <DraftedArtifactView payload={task.draft_payload} action={task.action} />
         )}
-        {editError && <div style={{ marginTop: 8, color: t.danger, fontSize: 12, fontWeight: 700 }}>{editError}</div>}
+        {editError && <WarnLine className="mt">{editError}</WarnLine>}
 
         {/* Confidence bar */}
-        <div style={{ marginTop: 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <SectionLabel>Confidence</SectionLabel>
-            <div style={{ fontSize: 12, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"' }}>{(task.confidence * 100).toFixed(0)}%</div>
+        <div className="meter mt">
+          <div className="mn">Confidence</div>
+          <div className="track">
+            <div
+              className="fill"
+              style={{
+                width: `${task.confidence * 100}%`,
+                background:
+                  task.confidence >= 0.85
+                    ? "var(--ok)"
+                    : task.confidence >= 0.7
+                      ? "var(--warn)"
+                      : "var(--danger)",
+              }}
+            />
           </div>
-          <div style={{ height: 6, background: t.line, borderRadius: 999, overflow: "hidden" }}>
-            <div style={{
-              width: `${task.confidence * 100}%`,
-              height: "100%",
-              background: task.confidence >= 0.85 ? t.profit : task.confidence >= 0.7 ? t.warn : t.danger,
-            }} />
-          </div>
+          <div className="mv num">{confidencePct}%</div>
         </div>
 
         {/* Operator feedback — rolls into 'avoid these patterns' on the next
             AI run for this loan (services/ai/context.assemble_loan_context). */}
-        <div style={{ marginTop: 18 }}>
-          <SectionLabel>Operator feedback</SectionLabel>
+        <div className="mt">
+          <Lbl>Operator feedback</Lbl>
           <FeedbackWidget
             outputType={FeedbackOutputType.AI_TASK}
             outputId={task.id}
@@ -464,63 +415,23 @@ function Detail({ task }: { task: AITask }) {
         </div>
       </div>
 
-      <div style={{ padding: 16, borderTop: `1px solid ${t.line}`, display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
-        {feedback && <span style={{ flex: 1, fontSize: 12, color: t.ink2, fontWeight: 600 }}>{feedback}</span>}
-        <button
-          onClick={handleDismiss}
-          disabled={decision.isPending}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            color: t.ink3,
-            fontSize: 13,
-            fontWeight: 700,
-            background: "transparent",
-            border: "none",
-            cursor: decision.isPending ? "wait" : "pointer",
-          }}
-        >
+      <div className="drawer-f">
+        {feedback && <span className="sub">{feedback}</span>}
+        <span className="sp" />
+        <Btn onClick={handleDismiss} disabled={decision.isPending}>
           Dismiss
-        </button>
-        <button
+        </Btn>
+        <Btn
           onClick={() => setEditMode((m) => !m)}
           disabled={decision.isPending || !task.draft_payload}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: t.surface2,
-            color: t.ink,
-            fontSize: 13,
-            fontWeight: 700,
-            border: `1px solid ${t.line}`,
-            cursor: !task.draft_payload ? "not-allowed" : decision.isPending ? "wait" : "pointer",
-            opacity: !task.draft_payload ? 0.5 : 1,
-          }}
         >
           {editMode ? "Editing…" : "Edit"}
-        </button>
-        <button
-          onClick={handleApprove}
-          disabled={decision.isPending}
-          style={{
-            padding: "10px 16px",
-            borderRadius: 10,
-            background: t.brand,
-            color: t.inverse,
-            fontSize: 13,
-            fontWeight: 700,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            border: "none",
-            cursor: decision.isPending ? "wait" : "pointer",
-            opacity: decision.isPending ? 0.6 : 1,
-          }}
-        >
+        </Btn>
+        <Btn variant="pri" onClick={handleApprove} disabled={decision.isPending}>
           <Icon name="check" size={14} /> {decision.isPending ? "Working…" : "Approve & Run"}
-        </button>
+        </Btn>
       </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -571,17 +482,17 @@ function humanLabel(key: string): string {
 function DraftedArtifactView({
   payload,
   action,
-  t,
 }: {
   payload: Record<string, unknown> | null;
   action: string;
-  t: ReturnType<typeof useTheme>["t"];
 }) {
   if (!payload) {
     return (
-      <div style={{ background: t.surface2, borderRadius: 10, padding: 14, fontSize: 13, color: t.ink3 }}>
-        No drafted content yet for action <code style={{ background: t.chip, padding: "1px 5px", borderRadius: 4 }}>{action}</code>.
-      </div>
+      <Note>
+        <div>
+          No drafted content yet for action <code className="tag">{action}</code>.
+        </div>
+      </Note>
     );
   }
 
@@ -609,124 +520,64 @@ function DraftedArtifactView({
   );
 
   return (
-    <div
-      style={{
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        borderRadius: 12,
-        padding: 16,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-      }}
-    >
-      {title && (
-        <div style={{ fontSize: 14, fontWeight: 700, color: t.ink, lineHeight: 1.45 }}>
-          {title}
-        </div>
-      )}
+    // The card is a document preview, so it keeps its own vertical rhythm
+    // rather than inheriting the body's block spacing.
+    <div className="card mt" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {title && <b>{title}</b>}
 
       {(kind || owner || priority || channel) && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {kind && <Pill>{humanLabel(kind)}</Pill>}
+        <div className="row">
+          {kind && <CellChip tone="mut">{humanLabel(kind)}</CellChip>}
           {owner && (
-            <Pill bg={t.petrolSoft} color={t.petrol}>
+            <CellChip tone="pet">
               <Icon name="user" size={9} stroke={2.4} /> {humanLabel(owner)}
-            </Pill>
+            </CellChip>
           )}
           {priority && (
-            <Pill
-              bg={priority === "high" ? t.dangerBg : priority === "medium" ? t.warnBg : t.chip}
-              color={priority === "high" ? t.danger : priority === "medium" ? t.warn : t.ink2}
-            >
-              {humanLabel(priority)} priority
-            </Pill>
+            <CellChip tone={priorityTone(priority)}>{humanLabel(priority)} priority</CellChip>
           )}
-          {channel && <Pill bg={t.brandSoft} color={t.brand}>via {channel}</Pill>}
+          {channel && <CellChip tone="acc">via {channel}</CellChip>}
         </div>
       )}
 
       {to && (
-        <div style={{ fontSize: 12.5, color: t.ink2 }}>
-          <span style={{ color: t.ink3, fontWeight: 700, marginRight: 6 }}>TO:</span>
-          {to}
+        <div>
+          <span className="lbl">TO:</span> {to}
         </div>
       )}
 
-      {body && (
-        <div
-          style={{
-            fontSize: 13,
-            color: t.ink2,
-            whiteSpace: "pre-wrap",
-            lineHeight: 1.55,
-            padding: "10px 12px",
-            background: t.surface,
-            border: `1px solid ${t.line}`,
-            borderRadius: 9,
-          }}
-        >
-          {body}
-        </div>
-      )}
+      {body && <div className="msg-b">{body}</div>}
 
       {dueAt && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: t.ink2 }}>
-          <Icon name="cal" size={13} style={{ color: t.ink3 }} />
-          <span style={{ color: t.ink3, fontWeight: 700 }}>Due:</span>
+        <div className="row">
+          <Icon name="cal" size={13} />
+          <span className="lbl">Due</span>
           {dueAt}
         </div>
       )}
 
       {cta && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: t.ink2 }}>
-          <Icon name="arrowR" size={13} style={{ color: t.ink3 }} />
-          <span style={{ color: t.ink3, fontWeight: 700 }}>Action:</span>
+        <div className="row">
+          <Icon name="arrowR" size={13} />
+          <span className="lbl">Action</span>
           {cta}
         </div>
       )}
 
       {extras.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div>
           {extras.map(([k, v]) => (
-            <div key={k} style={{ fontSize: 12, color: t.ink3 }}>
-              <span style={{ fontWeight: 700, marginRight: 6 }}>{humanLabel(k)}:</span>
-              <span style={{ color: t.ink2 }}>{String(v)}</span>
+            <div className="kv" key={k}>
+              <span>{humanLabel(k)}</span>
+              <b>{String(v)}</b>
             </div>
           ))}
         </div>
       )}
 
-      <details style={{ marginTop: 4 }}>
-        <summary
-          style={{
-            cursor: "pointer",
-            fontSize: 11,
-            color: t.ink3,
-            fontWeight: 700,
-            letterSpacing: 0.4,
-            textTransform: "uppercase",
-            userSelect: "none",
-          }}
-        >
-          View raw payload
-        </summary>
-        <pre
-          style={{
-            marginTop: 8,
-            background: t.surface,
-            border: `1px solid ${t.line}`,
-            borderRadius: 8,
-            padding: 10,
-            fontSize: 11,
-            color: t.ink3,
-            fontFamily: "ui-monospace, SF Mono, monospace",
-            overflowX: "auto",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {JSON.stringify(payload, null, 2)}
-        </pre>
+      <details>
+        <summary className="linky">View raw payload</summary>
+        <pre className="msg-b mt">{JSON.stringify(payload, null, 2)}</pre>
       </details>
     </div>
   );

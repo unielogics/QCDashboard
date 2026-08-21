@@ -7,12 +7,15 @@
 // data yet (Plaid, Notifications, MFA, Tax) — they navigate to coming-soon
 // destinations or no-op with a toast. Sign Out is the live row at the
 // bottom and goes through Clerk.
+//
+// Restyled onto globals.css (Phase 3): `.card`/`.panel` surfaces, `.pick`
+// rows, `.cellchip` tones. Every row target, endpoint, role gate and state
+// below is unchanged from the inline-styled version — this is paint only.
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useClerk } from "@clerk/nextjs";
-import { useTheme, type ThemePreference } from "@/components/design-system/ThemeProvider";
-import { Avatar, Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { Btn, Card, CellChip, Lbl, PageHeader, Panel, WarnLine } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useCurrentUser, useMyCredit } from "@/hooks/useApi";
 import { SIGN_IN_URL } from "@/lib/appUrl";
@@ -38,14 +41,20 @@ const ROLE_TIER: Record<string, string> = {
   client: "Tier II Client",
 };
 
-const THEME_OPTIONS: { id: ThemePreference; label: string; icon: string }[] = [
-  { id: "light", label: "Light", icon: "sun" },
-  { id: "system", label: "Auto", icon: "device" },
-  { id: "dark", label: "Dark", icon: "moon" },
-];
+// THEME_OPTIONS (Light / Auto / Dark) went with dark mode; the Appearance
+// section it fed was already removed and nothing referenced the constant.
+
+// `.pick` is the design system's selectable row and owns the box — border,
+// radius, padding, gap, background, hover, cursor. It does NOT own these
+// three, which a <button> needs and does not inherit on its own, so they are
+// the row's only inline properties rather than a second copy of the class's.
+const PICK_BUTTON: CSSProperties = { font: "inherit", textAlign: "left", width: "100%" };
+
+// The account column: a settings list reads as a column, not as a 1800px
+// band. `.grid` owns the stacking and the gap; only the measure is inline.
+const COLUMN: CSSProperties = { maxWidth: 760 };
 
 export default function ProfilePage() {
-  const { t } = useTheme();
   const router = useRouter();
   const clerk = useClerk();
   const { data: user } = useCurrentUser();
@@ -76,7 +85,7 @@ export default function ProfilePage() {
   const [investorOpen, setInvestorOpen] = useState(false);
 
   if (!user) {
-    return <div style={{ padding: 24, color: t.ink3, fontSize: 13 }}>Loading profile…</div>;
+    return <div className="sub">Loading profile…</div>;
   }
 
   const initials = user.name
@@ -147,91 +156,73 @@ export default function ProfilePage() {
   const visibleRows = accountRows.filter((r) => !r.hidden);
 
   return (
-    <div style={{ padding: 24, maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
+    <div className="grid" style={COLUMN}>
+      <PageHeader title="Profile" lede="Identity, credit file and account settings" />
+
       {/* Header */}
-      <Card pad={18}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <Avatar label={initials} color={t.petrol} size={56} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: t.ink, letterSpacing: -0.3 }}>{user.name}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-              <Pill bg={t.petrolSoft} color={t.petrol}>{tierLabel}</Pill>
-              <span style={{ fontSize: 11.5, color: t.ink3 }}>· Member since {memberSince}</span>
-            </div>
-            <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 4 }}>{user.email}</div>
+      <Card className="row">
+        <div className="avatar">{initials}</div>
+        <div className="sp">
+          <div className="big">{user.name}</div>
+          <div className="row mt">
+            <CellChip tone="pet">{tierLabel}</CellChip>
+            <span className="sub">Member since {memberSince}</span>
+            <span className="sub">{user.email}</span>
           </div>
         </div>
       </Card>
 
       {/* Credit — clients only */}
-      {isClient && (
-        <>
-          <SectionLabel>Credit</SectionLabel>
-          {credit?.fico ? (
-            <CreditVerifiedCard
-              t={t}
-              isDark={false}
-              fico={credit.fico}
-              expiresAt={credit.expires_at ?? null}
-              onRerun={() => { setPullMode("rerun"); setPullOpen(true); }}
-            />
-          ) : (
-            <CreditNotVerifiedCard
-              t={t}
-              onStart={() => { setPullMode("first"); setPullOpen(true); }}
-            />
-          )}
-        </>
-      )}
+      {isClient &&
+        (credit?.fico ? (
+          <CreditVerifiedCard
+            fico={credit.fico}
+            expiresAt={credit.expires_at ?? null}
+            onRerun={() => {
+              setPullMode("rerun");
+              setPullOpen(true);
+            }}
+          />
+        ) : (
+          <CreditNotVerifiedCard
+            onStart={() => {
+              setPullMode("first");
+              setPullOpen(true);
+            }}
+          />
+        ))}
 
       {/* No Appearance section: this app is light-only, matching Capital OS.
           The 3-way Light / Auto / Dark control was removed with dark mode. */}
 
       {/* Account */}
-      <SectionLabel>Account</SectionLabel>
-      <Card pad={0}>
-        {visibleRows.map((row, i) => (
-          <button
-            key={row.label}
-            onClick={row.onClick}
-            disabled={signingOut && row.danger}
-            style={{
-              all: "unset",
-              cursor: signingOut && row.danger ? "wait" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "13px 14px",
-              borderBottom: i < visibleRows.length - 1 ? `1px solid ${t.line}` : "none",
-              width: "100%",
-              boxSizing: "border-box",
-            }}
-          >
-            <div
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: 8,
-                background: row.danger ? t.dangerBg : t.surface2,
-                color: row.danger ? t.danger : t.ink2,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
+      <Panel title="Account">
+        {visibleRows.map((row) => {
+          const busy = signingOut && !!row.danger;
+          return (
+            <button
+              key={row.label}
+              type="button"
+              className="pick"
+              onClick={row.onClick}
+              disabled={busy}
+              style={busy ? { ...PICK_BUTTON, opacity: 0.55 } : PICK_BUTTON}
             >
-              <Icon name={row.icon} size={15} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: row.danger ? t.danger : t.ink }}>
+              {/* The chip tint replaces the old square icon tile: `.c-bad`
+                  carries the danger ground and the icon inherits its colour,
+                  so Sign Out still reads as the destructive row. */}
+              <CellChip tone={row.danger ? "bad" : "mut"}>
+                <Icon name={row.icon} size={13} />
+              </CellChip>
+              <div className="sp">
                 {row.label}
+                <div className="sub">{row.sub}</div>
               </div>
-              <div style={{ fontSize: 11, color: t.ink3, marginTop: 1 }}>{row.sub}</div>
-            </div>
-            <Icon name="chevR" size={14} style={{ color: t.ink4 }} />
-          </button>
-        ))}
-      </Card>
+              <Icon name="chevR" size={14} />
+            </button>
+          );
+        })}
+      </Panel>
 
       <CreditPullModal
         open={pullOpen}
@@ -248,155 +239,60 @@ export default function ProfilePage() {
 }
 
 function CreditVerifiedCard({
-  t,
-  isDark,
   fico,
   expiresAt,
   onRerun,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
-  isDark: boolean;
   fico: number;
   expiresAt: string | null;
   onRerun: () => void;
 }) {
   return (
-    <Card pad={14}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 12,
-            background: t.profitBg,
-            color: t.profit,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          <Icon name="shieldChk" size={22} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            <span style={{ fontSize: 22, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"', letterSpacing: -0.3 }}>
-              {fico}
-            </span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: t.profit, letterSpacing: 0.4, textTransform: "uppercase" }}>
-              Verified
-            </span>
-          </div>
-          <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
-            Soft pull on file{expiresAt ? ` · expires ${new Date(expiresAt).toLocaleDateString()}` : ""}
-          </div>
-        </div>
-      </div>
-      <div
-        style={{
-          marginTop: 12,
-          padding: 10,
-          borderRadius: 10,
-          background: isDark ? "rgba(245,158,11,0.10)" : "#FFF7E6",
-          border: `1px solid ${t.warn}40`,
-          fontSize: 11.5,
-          color: t.ink2,
-          lineHeight: 1.5,
-          display: "flex",
-          gap: 8,
-        }}
-      >
-        <Icon name="bell" size={14} style={{ color: t.warn, marginTop: 1, flexShrink: 0 }} />
-        <span>
-          Re-running will replace your existing pull and reset the 90-day window. Use only if your file
-          has materially changed.
-        </span>
-      </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <button
-          onClick={onRerun}
-          style={{
-            flex: 1,
-            padding: 10,
-            borderRadius: 10,
-            background: t.surface,
-            color: t.ink,
-            border: `1px solid ${t.lineStrong}`,
-            fontSize: 12.5,
-            fontWeight: 600,
-            cursor: "pointer",
-            fontFamily: "inherit",
-          }}
-        >
+    <Panel
+      title="Credit"
+      actions={
+        <Btn onClick={onRerun}>
+          <Icon name="shieldChk" size={13} />
           Re-Run Soft Pull
-        </button>
+        </Btn>
+      }
+    >
+      <div className="row">
+        <div>
+          <Lbl>FICO</Lbl>
+          <div className="big num">{fico}</div>
+        </div>
+        <CellChip tone="ok">Verified</CellChip>
       </div>
-    </Card>
+      <div className="sub mt">
+        Soft pull on file{expiresAt ? ` · expires ${new Date(expiresAt).toLocaleDateString()}` : ""}
+      </div>
+      <WarnLine className="mt">
+        <Icon name="bell" size={14} /> Re-running will replace your existing pull and reset the 90-day
+        window. Use only if your file has materially changed.
+      </WarnLine>
+    </Panel>
   );
 }
 
-function CreditNotVerifiedCard({
-  t,
-  onStart,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  onStart: () => void;
-}) {
+function CreditNotVerifiedCard({ onStart }: { onStart: () => void }) {
   return (
-    <Card pad={14} style={{ position: "relative", overflow: "hidden" }}>
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: `linear-gradient(135deg, ${t.petrolSoft}, transparent 70%)`,
-        }}
-      />
-      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12 }}>
-        <div
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 12,
-            background: t.petrolSoft,
-            color: t.petrol,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          <Icon name="lock" size={22} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: t.ink }}>Credit Not Yet Verified</div>
-          <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2, lineHeight: 1.4 }}>
-            One soft pull unlocks all applications for 3 months · no score impact.
-          </div>
-        </div>
+    <Panel
+      title="Credit"
+      actions={
+        <Btn variant="pri" onClick={onStart}>
+          <Icon name="unlock" size={13} />
+          Start Soft Pull
+        </Btn>
+      }
+    >
+      <CellChip tone="warn">
+        <Icon name="lock" size={12} />
+        Credit Not Yet Verified
+      </CellChip>
+      <div className="sub mt">
+        One soft pull unlocks all applications for 3 months · no score impact.
       </div>
-      <button
-        onClick={onStart}
-        style={{
-          position: "relative",
-          marginTop: 12,
-          width: "100%",
-          padding: 11,
-          borderRadius: 11,
-          background: t.petrol,
-          color: "#fff",
-          border: "none",
-          fontSize: 13,
-          fontWeight: 700,
-          cursor: "pointer",
-          fontFamily: "inherit",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 6,
-        }}
-      >
-        <Icon name="unlock" size={14} /> Start Soft Pull
-      </button>
-    </Card>
+    </Panel>
   );
 }

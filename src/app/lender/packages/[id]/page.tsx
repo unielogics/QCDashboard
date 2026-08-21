@@ -1,11 +1,37 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+// Lender portal — one secure package: download the documents, then quote it
+// (or mark no-quote).
+//
+// Styling only: migrated off the inline token objects onto the plain-CSS
+// design system in globals.css. Every endpoint, gate, state and control is the
+// one that was here before — the terms form still carries all 20 fields plus
+// the interest-only flag, and still disables itself when the package is
+// expired, revoked or already closed out.
+//
+// Two things deliberately did NOT become the obvious design-system component:
+//   - the field wrapper stays a `<label>` (see `Fld`), because ds `Field`
+//     renders a `<div>` and these inputs have no id/htmlFor pair to fall back
+//     on, so a div would leave every input with no accessible name;
+//   - the four-across form rows became `.cg` + `.s3` because 4 equal columns
+//     genuinely are 4×3 of a 12-column grid; the document row's
+//     "name … button" split did not, so it stays a `.filerow`.
+
+import { useEffect, useMemo, useState, type ReactNode, type TextareaHTMLAttributes } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import {
+  Btn,
+  Card,
+  CellChip,
+  Input,
+  PageHeader,
+  Panel,
+  Row,
+  Textarea,
+  type ChipTone,
+} from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import {
   useCurrentUser,
   useLenderPackageDownload,
@@ -42,7 +68,6 @@ type TermsDraft = {
 };
 
 export default function LenderPackageDetailPage() {
-  const { t } = useTheme();
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const packageId = typeof params.id === "string" ? params.id : "";
@@ -107,20 +132,28 @@ export default function LenderPackageDetailPage() {
   };
 
   if (meLoading) {
-    return <Card pad={18}><span style={{ color: t.ink3, fontSize: 13 }}>Loading...</span></Card>;
+    return (
+      <Card>
+        <span className="sub">Loading...</span>
+      </Card>
+    );
   }
   if (me && me.role !== Role.LENDER) return null;
 
   if (pkg.isLoading) {
-    return <Card pad={18}><span style={{ color: t.ink3, fontSize: 13 }}>Loading package...</span></Card>;
+    return (
+      <Card>
+        <span className="sub">Loading package...</span>
+      </Card>
+    );
   }
 
   if (pkg.isError || !pkg.data) {
     return (
-      <Card pad={18}>
-        <div style={{ color: t.danger, fontSize: 13 }}>
+      <Card>
+        <StatusLine tone="bad">
           {pkg.error instanceof Error ? pkg.error.message : "Package unavailable."}
-        </div>
+        </StatusLine>
       </Card>
     );
   }
@@ -128,136 +161,230 @@ export default function LenderPackageDetailPage() {
   const data = pkg.data;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Link href="/lender/packages" style={{ color: t.brand, fontSize: 12.5, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}>
-        <Icon name="chevL" size={13} /> Packages
-      </Link>
+    <div className="grid">
+      {/* `.row` keeps the back control at its own width — a bare grid child
+          would stretch the button across the page. */}
+      <Row>
+        <Link href="/lender/packages" className="btn sm">
+          <Icon name="chevL" size={13} /> Packages
+        </Link>
+      </Row>
 
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 850, letterSpacing: 1.5, textTransform: "uppercase", color: t.petrol }}>
-            Secure package
-          </div>
-          <h1 style={{ fontSize: 22, fontWeight: 850, margin: "6px 0 0", color: t.ink }}>
+      <PageHeader
+        // Fragment, not a template string: deal_id and address are nullable on
+        // LenderPackageRead, and `${null}` would print the word "null".
+        title={
+          <>
             {data.deal_id} - {data.address}
-          </h1>
-          <div style={{ fontSize: 12.5, color: t.ink3, marginTop: 5 }}>
-            Expires {fmtDate(data.expires_at)}
-          </div>
-        </div>
-        {recipient ? <StatusPill t={t} status={recipient.status} /> : null}
-      </div>
+          </>
+        }
+        lede={<>Secure package · Expires {fmtDate(data.expires_at)}</>}
+        actions={recipient ? <StatusPill status={recipient.status} /> : null}
+      />
 
-      {error ? <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill> : null}
-      {success ? <Pill bg={t.profitBg} color={t.profit}>{success}</Pill> : null}
+      {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
+      {success ? <StatusLine tone="ok">{success}</StatusLine> : null}
 
-      <Card pad={0}>
-        <div style={{ padding: "13px 16px", borderBottom: `1px solid ${t.line}` }}>
-          <SectionLabel>Documents</SectionLabel>
-        </div>
+      <Panel title="Documents">
         {data.documents.map((doc) => (
-          <div
-            key={doc.id}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1fr) auto",
-              gap: 12,
-              alignItems: "center",
-              padding: "12px 16px",
-              borderTop: `1px solid ${t.line}`,
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div key={doc.id} className="filerow">
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span
+                style={{
+                  display: "block",
+                  fontWeight: 650,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {doc.display_name}
-              </div>
-              <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 3 }}>
+              </span>
+              <span className="sub" style={{ display: "block", marginTop: 2 }}>
                 {doc.status ?? "document"}
-              </div>
-            </div>
-            <button type="button" disabled={!!disabled || download.isPending} onClick={() => handleDownload(doc.document_id)} style={buttonStyle(t, "primary", !!disabled)}>
+              </span>
+            </span>
+            <Btn
+              variant="pri"
+              size="sm"
+              disabled={!!disabled || download.isPending}
+              onClick={() => handleDownload(doc.document_id)}
+            >
               <Icon name="download" size={13} /> Download
-            </button>
+            </Btn>
           </div>
         ))}
-      </Card>
+      </Panel>
 
-      <Card pad={0}>
-        <div style={{ padding: "13px 16px", borderBottom: `1px solid ${t.line}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <SectionLabel>Proposed terms</SectionLabel>
-          {term ? <Pill bg={t.profitBg} color={t.profit}>Saved</Pill> : null}
+      <Panel
+        title="Proposed terms"
+        actions={term ? <CellChip tone="ok">Saved</CellChip> : null}
+        bodyClass="grid"
+      >
+        <div className="cg">
+          <Fld className="s3" label="Requested amount">
+            <Input value={draft.requestedAmount} onChange={(e) => set("requestedAmount", e.target.value)} disabled={!!disabled} />
+          </Fld>
+          <Fld className="s3" label="Approved amount">
+            <Input value={draft.approvedAmount} onChange={(e) => set("approvedAmount", e.target.value)} disabled={!!disabled} />
+          </Fld>
+          <Fld className="s3" label="Base rate %">
+            <Input value={draft.baseRatePct} onChange={(e) => set("baseRatePct", e.target.value)} disabled={!!disabled} />
+          </Fld>
+          <Fld className="s3" label="Final rate %">
+            <Input value={draft.finalRatePct} onChange={(e) => set("finalRatePct", e.target.value)} disabled={!!disabled} />
+          </Fld>
         </div>
 
-        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 13 }}>
-          <Grid4>
-            <Field t={t} label="Requested amount"><input value={draft.requestedAmount} onChange={(e) => set("requestedAmount", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-            <Field t={t} label="Approved amount"><input value={draft.approvedAmount} onChange={(e) => set("approvedAmount", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-            <Field t={t} label="Base rate %"><input value={draft.baseRatePct} onChange={(e) => set("baseRatePct", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-            <Field t={t} label="Final rate %"><input value={draft.finalRatePct} onChange={(e) => set("finalRatePct", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-          </Grid4>
-          <Grid4>
-            <Field t={t} label="Points"><input value={draft.points} onChange={(e) => set("points", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-            <Field t={t} label="Origination %"><input value={draft.originationPct} onChange={(e) => set("originationPct", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-            <Field t={t} label="Lender fees"><input value={draft.lenderFees} onChange={(e) => set("lenderFees", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-            <Field t={t} label="Term months"><input value={draft.termMonths} onChange={(e) => set("termMonths", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-          </Grid4>
-          <Grid4>
-            <Field t={t} label="LTV %"><input value={draft.ltvPct} onChange={(e) => set("ltvPct", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-            <Field t={t} label="LTC %"><input value={draft.ltcPct} onChange={(e) => set("ltcPct", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-            <Field t={t} label="DSCR"><input value={draft.dscr} onChange={(e) => set("dscr", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-            <Field t={t} label="Reserves"><input value={draft.reserves} onChange={(e) => set("reserves", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-          </Grid4>
-          <Grid4>
-            <Field t={t} label="Amortization"><input value={draft.amortizationStyle} onChange={(e) => set("amortizationStyle", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-            <Field t={t} label="Prepay"><input value={draft.prepayPenalty} onChange={(e) => set("prepayPenalty", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-            <Field t={t} label="Close days"><input value={draft.closeDays} onChange={(e) => set("closeDays", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-            <label style={{ display: "flex", alignItems: "end", gap: 8, paddingBottom: 8, fontSize: 12.5, color: t.ink2 }}>
-              <input type="checkbox" checked={draft.interestOnly} onChange={(e) => set("interestOnly", e.target.checked)} disabled={!!disabled} />
-              Interest only
-            </label>
-          </Grid4>
-          <Grid4>
-            <Field t={t} label="Holdback %"><input value={draft.constructionHoldbackPct} onChange={(e) => set("constructionHoldbackPct", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-            <Field t={t} label="Draws"><input value={draft.drawCount} onChange={(e) => set("drawCount", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-            <Field t={t} label="Exit strategy"><input value={draft.exitStrategy} onChange={(e) => set("exitStrategy", e.target.value)} disabled={!!disabled} style={inputStyle(t)} /></Field>
-          </Grid4>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <Field t={t} label="Conditions"><textarea value={draft.conditions} onChange={(e) => set("conditions", e.target.value)} disabled={!!disabled} rows={4} style={textareaStyle(t)} /></Field>
-            <Field t={t} label="Missing items"><textarea value={draft.missingItems} onChange={(e) => set("missingItems", e.target.value)} disabled={!!disabled} rows={4} style={textareaStyle(t)} /></Field>
-          </div>
-          <Field t={t} label="Notes"><textarea value={draft.notes} onChange={(e) => set("notes", e.target.value)} disabled={!!disabled} rows={4} style={textareaStyle(t)} /></Field>
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" onClick={handleNoQuote} disabled={!!disabled || noQuote.isPending} style={buttonStyle(t)}>
-              No quote
-            </button>
-            <button type="button" onClick={handleSubmitTerms} disabled={!!disabled || submitTerms.isPending} style={buttonStyle(t, "primary", !!disabled)}>
-              {submitTerms.isPending ? "Submitting..." : "Submit terms"}
-            </button>
-          </div>
+        <div className="cg">
+          <Fld className="s3" label="Points">
+            <Input value={draft.points} onChange={(e) => set("points", e.target.value)} disabled={!!disabled} />
+          </Fld>
+          <Fld className="s3" label="Origination %">
+            <Input value={draft.originationPct} onChange={(e) => set("originationPct", e.target.value)} disabled={!!disabled} />
+          </Fld>
+          <Fld className="s3" label="Lender fees">
+            <Input value={draft.lenderFees} onChange={(e) => set("lenderFees", e.target.value)} disabled={!!disabled} />
+          </Fld>
+          <Fld className="s3" label="Term months">
+            <Input value={draft.termMonths} onChange={(e) => set("termMonths", e.target.value)} disabled={!!disabled} />
+          </Fld>
         </div>
-      </Card>
+
+        <div className="cg">
+          <Fld className="s3" label="LTV %">
+            <Input value={draft.ltvPct} onChange={(e) => set("ltvPct", e.target.value)} disabled={!!disabled} />
+          </Fld>
+          <Fld className="s3" label="LTC %">
+            <Input value={draft.ltcPct} onChange={(e) => set("ltcPct", e.target.value)} disabled={!!disabled} />
+          </Fld>
+          <Fld className="s3" label="DSCR">
+            <Input value={draft.dscr} onChange={(e) => set("dscr", e.target.value)} disabled={!!disabled} />
+          </Fld>
+          <Fld className="s3" label="Reserves">
+            <Input value={draft.reserves} onChange={(e) => set("reserves", e.target.value)} disabled={!!disabled} />
+          </Fld>
+        </div>
+
+        <div className="cg">
+          <Fld className="s3" label="Amortization">
+            <Input value={draft.amortizationStyle} onChange={(e) => set("amortizationStyle", e.target.value)} disabled={!!disabled} />
+          </Fld>
+          <Fld className="s3" label="Prepay">
+            <Input value={draft.prepayPenalty} onChange={(e) => set("prepayPenalty", e.target.value)} disabled={!!disabled} />
+          </Fld>
+          <Fld className="s3" label="Close days">
+            <Input value={draft.closeDays} onChange={(e) => set("closeDays", e.target.value)} disabled={!!disabled} />
+          </Fld>
+          {/* Sits in the 4th column of the row, bottom-aligned with the inputs
+              beside it — `.cg` aligns its children to the top. */}
+          <label className="row s3" style={{ alignSelf: "end", paddingBottom: 8 }}>
+            <input
+              type="checkbox"
+              checked={draft.interestOnly}
+              onChange={(e) => set("interestOnly", e.target.checked)}
+              disabled={!!disabled}
+            />
+            <span className="sub">Interest only</span>
+          </label>
+        </div>
+
+        <div className="cg">
+          <Fld className="s3" label="Holdback %">
+            <Input value={draft.constructionHoldbackPct} onChange={(e) => set("constructionHoldbackPct", e.target.value)} disabled={!!disabled} />
+          </Fld>
+          <Fld className="s3" label="Draws">
+            <Input value={draft.drawCount} onChange={(e) => set("drawCount", e.target.value)} disabled={!!disabled} />
+          </Fld>
+          <Fld className="s3" label="Exit strategy">
+            <Input value={draft.exitStrategy} onChange={(e) => set("exitStrategy", e.target.value)} disabled={!!disabled} />
+          </Fld>
+        </div>
+
+        <div className="cg">
+          <Fld className="s6" label="Conditions">
+            <TA value={draft.conditions} onChange={(e) => set("conditions", e.target.value)} disabled={!!disabled} rows={4} />
+          </Fld>
+          <Fld className="s6" label="Missing items">
+            <TA value={draft.missingItems} onChange={(e) => set("missingItems", e.target.value)} disabled={!!disabled} rows={4} />
+          </Fld>
+        </div>
+
+        <Fld label="Notes">
+          <TA value={draft.notes} onChange={(e) => set("notes", e.target.value)} disabled={!!disabled} rows={4} />
+        </Fld>
+
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <Btn onClick={handleNoQuote} disabled={!!disabled || noQuote.isPending}>
+            No quote
+          </Btn>
+          <Btn variant="pri" onClick={handleSubmitTerms} disabled={!!disabled || submitTerms.isPending}>
+            {submitTerms.isPending ? "Submitting..." : "Submit terms"}
+          </Btn>
+        </div>
+      </Panel>
     </div>
   );
 }
 
-function Grid4({ children }: { children: ReactNode }) {
-  return <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>{children}</div>;
-}
-
-function Field({ label, t, children }: { label: string; t: ReturnType<typeof useTheme>["t"]; children: ReactNode }) {
+/**
+ * Label + control, stacked.
+ *
+ * Deliberately a `<label>` rather than the ds `Field`, which renders a `<div>`:
+ * none of these inputs carries an id, so the implicit label association is the
+ * only thing giving them an accessible name — and the only thing that makes the
+ * caption click into the input. The inline value is the two-row stack itself,
+ * which no class in the sheet owns; `.lbl` owns the caption's type.
+ */
+function Fld({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <span style={{ fontSize: 10.5, fontWeight: 850, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>{label}</span>
+    <label className={className} style={{ display: "grid", gap: 5, minWidth: 0 }}>
+      <span className="lbl">{label}</span>
       {children}
     </label>
   );
 }
 
-function StatusPill({ t, status }: { t: ReturnType<typeof useTheme>["t"]; status: string }) {
-  if (status === "terms_submitted") return <Pill bg={t.profitBg} color={t.profit}>terms submitted</Pill>;
-  if (status === "expired" || status === "revoked" || status === "no_quote") return <Pill bg={t.dangerBg} color={t.danger}>{status.replace("_", " ")}</Pill>;
-  return <Pill bg={t.brandSoft} color={t.brand}>{status}</Pill>;
+/**
+ * `.field` textarea. The one inline property is the resize affordance: these
+ * were vertical-only before, and the browser default (`both`) lets a drag pull
+ * a textarea out past its grid column.
+ */
+function TA(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <Textarea {...props} style={{ resize: "vertical" }} />;
+}
+
+function StatusPill({ status }: { status: string }) {
+  if (status === "terms_submitted") return <CellChip tone="ok">terms submitted</CellChip>;
+  if (status === "expired" || status === "revoked" || status === "no_quote")
+    return <CellChip tone="bad">{status.replace("_", " ")}</CellChip>;
+  return <CellChip tone="acc">{status}</CellChip>;
+}
+
+/**
+ * Tinted status block. `.c-bad` / `.c-ok` own the tint and the text colour; the
+ * inline values are box geometry only — the tone classes in the sheet are
+ * pill-shaped (`.cellchip`, nowrap) and a server error message is a sentence,
+ * not a chip.
+ */
+function StatusLine({ tone, children }: { tone: ChipTone; children: ReactNode }) {
+  return (
+    <div
+      className={`c-${tone}`}
+      style={{ borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, lineHeight: 1.45 }}
+      role={tone === "bad" ? "alert" : "status"}
+    >
+      {children}
+    </div>
+  );
 }
 
 function toDraft(term: LenderTermRead | null): TermsDraft {
@@ -311,43 +438,6 @@ function toPayload(draft: TermsDraft): LenderTermFields {
     conditions: lines(draft.conditions),
     missing_items: lines(draft.missingItems),
     notes: emptyToNull(draft.notes),
-  };
-}
-
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    width: "100%",
-    boxSizing: "border-box",
-    border: `1px solid ${t.line}`,
-    background: t.surface,
-    color: t.ink,
-    borderRadius: 8,
-    padding: "9px 10px",
-    fontSize: 13,
-    outline: "none",
-  };
-}
-
-function textareaStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return { ...inputStyle(t), resize: "vertical", lineHeight: 1.45 };
-}
-
-function buttonStyle(t: ReturnType<typeof useTheme>["t"], tone: "default" | "primary" = "default", disabled = false): CSSProperties {
-  const primary = tone === "primary";
-  return {
-    all: "unset",
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.55 : 1,
-    padding: "9px 13px",
-    borderRadius: 8,
-    border: primary ? "none" : `1px solid ${t.line}`,
-    background: primary ? t.petrol : "transparent",
-    color: primary ? "#fff" : t.ink2,
-    fontSize: 12.5,
-    fontWeight: 850,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
   };
 }
 

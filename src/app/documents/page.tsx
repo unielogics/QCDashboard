@@ -1,16 +1,41 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
+import {
+  Btn,
+  CellChip,
+  Input,
+  PageHeader,
+  Panel,
+  Table,
+  Td,
+  Tr,
+  type ChipTone,
+  type Col,
+} from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useDocuments, useLoans, useClients } from "@/hooks/useApi";
 import { useActiveProfile } from "@/store/role";
 import { DocRequestModal } from "./components/DocRequestModal";
 import { DocUploadButton } from "./components/DocUploadButton";
 
+// Same four-way split the coloured Pill carried, now as chip tones:
+// verified → green, received → accent, flagged → red, everything else
+// (requested / pending) → amber.
+function statusTone(status: string): ChipTone {
+  if (status === "verified") return "ok";
+  if (status === "received") return "acc";
+  if (status === "flagged") return "bad";
+  return "warn";
+}
+
+const BASE_COLS: Col[] = [
+  { label: "Document" },
+  { label: "Source", width: 120 },
+  { label: "Status", width: 140 },
+];
+
 export default function DocumentsPage() {
-  const { t } = useTheme();
   const profile = useActiveProfile();
   const { data: docs = [] } = useDocuments();
   const { data: loans = [] } = useLoans();
@@ -42,89 +67,101 @@ export default function DocumentsPage() {
     (byClient[loan.client_id] ||= []).push(d);
   }
 
+  // The upload column only exists for roles that may act on a row.
+  const cols: Col[] = canRequest
+    ? [...BASE_COLS, { label: "Action", align: "r", width: 120 }]
+    : BASE_COLS;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>Documents</h1>
-        <Pill>{filtered.length} of {docs.length}</Pill>
-        <Pill bg={t.brandSoft} color={t.brand}>Funding</Pill>
-        <span style={{ fontSize: 11, color: t.ink3 }}>
-          Transaction docs (Agent-requested) join here in P1.
-        </span>
-        <div style={{ flex: 1 }} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search documents…" style={{
-          padding: "8px 12px", borderRadius: 8, background: t.surface, border: `1px solid ${t.line}`, fontSize: 13, color: t.ink, width: 280,
-        }} />
-        <label style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 12, color: t.ink2 }}>
+    <div className="grid">
+      <PageHeader
+        title="Documents"
+        lede={
+          <>
+            <CellChip tone="mut">
+              {filtered.length} of {docs.length}
+            </CellChip>{" "}
+            <CellChip tone="acc">Funding</CellChip>
+          </>
+        }
+        actions={
+          canRequest ? (
+            <Btn variant="pri" onClick={() => setRequestOpen(true)}>
+              <Icon name="plus" size={14} /> Request doc
+            </Btn>
+          ) : undefined
+        }
+      />
+      <div className="sub">Transaction docs (Agent-requested) join here in P1.</div>
+
+      <div className="pagebar">
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search documents…"
+          aria-label="Search documents"
+          style={{ width: 280 }}
+        />
+        <label className="row">
           <input type="checkbox" checked={hideClosed} onChange={(e) => setHideClosed(e.target.checked)} />
-          Hide funded
+          <span className="sub">Hide funded</span>
         </label>
-        {canRequest && (
-          <button
-            onClick={() => setRequestOpen(true)}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 10,
-              background: t.brand,
-              color: t.inverse,
-              fontSize: 13,
-              fontWeight: 700,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              cursor: "pointer",
-              border: "none",
-            }}
-          >
-            <Icon name="plus" size={14} /> Request doc
-          </button>
-        )}
       </div>
 
       <DocRequestModal open={requestOpen} onClose={() => setRequestOpen(false)} />
 
       {Object.entries(byClient).map(([clientId, items]) => {
         const client = clientsById[clientId];
+        const clientName = client?.name ?? "Unknown client";
         return (
-          <Card key={clientId} pad={16}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.4, color: t.ink3, textTransform: "uppercase", marginBottom: 8 }}>
-              {client?.name ?? "Unknown client"}
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <Panel key={clientId} title={clientName} noPad>
+            <Table cols={cols} caption={`Documents for ${clientName}`}>
               {items.map((d) => {
                 const loan = loansById[d.loan_id];
                 const showUpload = canRequest && (d.status === "requested" || d.status === "pending" || d.status === "flagged");
                 return (
-                  <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 10, border: `1px solid ${t.line}` }}>
-                    <Icon name="doc" size={16} style={{ color: t.ink3 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{d.name}</div>
-                      <div style={{ fontSize: 11.5, color: t.ink3 }}>{loan?.deal_id} — {loan?.address}</div>
-                    </div>
+                  <Tr key={d.id}>
+                    <Td>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <span className="sub">
+                          <Icon name="doc" size={16} />
+                        </span>
+                        <div style={{ minWidth: 0 }}>
+                          <b>{d.name}</b>
+                          <div className="sub">
+                            {loan?.deal_id} — {loan?.address}
+                          </div>
+                        </div>
+                      </div>
+                    </Td>
                     {/* Source label per Architecture decision #6. Every row in this
                         Document table is lender/funding-side. Agent-requested
                         transaction docs (Purchase Agreement, Inspection, etc.)
                         live in the future agent_document_request table and will
-                        render alongside with a "Transaction" pill — P1. */}
-                    <Pill bg={t.brandSoft} color={t.brand}>Funding</Pill>
-                    <Pill bg={
-                      d.status === "verified" ? t.profitBg : d.status === "received" ? t.brandSoft : d.status === "flagged" ? t.dangerBg : t.warnBg
-                    } color={
-                      d.status === "verified" ? t.profit : d.status === "received" ? t.brand : d.status === "flagged" ? t.danger : t.warn
-                    }>{d.status}</Pill>
-                    {showUpload && (
-                      <DocUploadButton
-                        loanId={d.loan_id}
-                        category={d.category ?? undefined}
-                        compact
-                        label="Upload"
-                      />
-                    )}
-                  </div>
+                        render alongside with a "Transaction" chip — P1. */}
+                    <Td>
+                      <CellChip tone="acc">Funding</CellChip>
+                    </Td>
+                    <Td>
+                      <CellChip tone={statusTone(d.status)}>{d.status}</CellChip>
+                    </Td>
+                    {canRequest ? (
+                      <Td align="r">
+                        {showUpload ? (
+                          <DocUploadButton
+                            loanId={d.loan_id}
+                            category={d.category ?? undefined}
+                            compact
+                            label="Upload"
+                          />
+                        ) : null}
+                      </Td>
+                    ) : null}
+                  </Tr>
                 );
               })}
-            </div>
-          </Card>
+            </Table>
+          </Panel>
         );
       })}
     </div>

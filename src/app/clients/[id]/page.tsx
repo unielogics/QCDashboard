@@ -3,11 +3,30 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, KPI, Pill, SectionLabel, VerifiedBadge } from "@/components/design-system/primitives";
+import {
+  Btn,
+  Card,
+  CellChip,
+  Field,
+  IconBtn,
+  Input,
+  Kpi,
+  KpiRow,
+  Lbl,
+  Note,
+  Panel,
+  Row,
+  Seg,
+  Select,
+  Table,
+  Tag,
+  Td,
+  WarnLine,
+  type ChipTone,
+  type Col,
+} from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
-import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { useBrokers, useClient, useClientActivity, useClientPaymentAuthorizationStatus, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useSendIntakeLink, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
 import { EmailsBreadcrumbTab } from "@/components/email/EmailsBreadcrumbTab";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
@@ -26,7 +45,6 @@ import { SmartIntakeModal } from "@/app/pipeline/components/SmartIntakeModal";
 import type { Broker, Client, ClientExperienceMode, ClientExperienceModeLockedBy, ClientExperienceModeReason, ClientStage, Document, Loan } from "@/lib/types";
 
 export default function ClientDetailPage() {
-  const { t } = useTheme();
   const profile = useActiveProfile();
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
@@ -105,7 +123,7 @@ export default function ClientDetailPage() {
     }
   }, [client?.id]);
 
-  if (!client) return <div style={{ color: t.ink3 }}>Loading…</div>;
+  if (!client) return <div className="sub">Loading…</div>;
 
   const clientLoans = loans.filter((l) => l.client_id === client.id);
   const exposure = clientLoans.reduce((s, l) => s + Number(l.amount), 0);
@@ -165,62 +183,45 @@ export default function ClientDetailPage() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="grid">
       <ActiveAgentStrip clientId={client.id} />
-      <Card pad={20}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 56, height: 56, borderRadius: 28, background: client.avatar_color ?? t.petrol, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800, flexShrink: 0 }}>
+      <Card>
+        <Row>
+          {/* Identity colour comes from the row, so it stays inline. */}
+          <div
+            style={{
+              width: 56, height: 56, borderRadius: 28,
+              background: client.avatar_color ?? "var(--petrol)", color: "#fff",
+              display: "grid", placeItems: "center",
+              fontSize: 22, fontWeight: 800, flexShrink: 0,
+            }}
+          >
             {client.name.split(" ").map(n => n[0]).slice(0, 2).join("")}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h1 style={{ fontSize: 24, fontWeight: 800, color: t.ink, margin: 0 }}>{client.name}</h1>
-            <div style={{ fontSize: 13, color: t.ink3 }}>{client.email ?? "—"} · {client.phone ?? "—"} · {client.city ?? "—"}</div>
+            <div className="hd"><h1>{client.name}</h1></div>
+            <div className="sub">{client.email ?? "—"} · {client.phone ?? "—"} · {client.city ?? "—"}</div>
           </div>
-          <Pill>{client.tier}</Pill>
+          <Tag>{client.tier}</Tag>
           {canEdit && (
-            <button
+            <Btn
               onClick={() => void onSendIntakeLink()}
               disabled={sendIntakeLink.isPending || (!client.email && !client.phone)}
               title={!client.email && !client.phone ? "Add an email or phone before sending an intake link." : "Send intake link"}
-              style={{
-                padding: "8px 12px", borderRadius: 9,
-                background: t.surface2, color: !client.email && !client.phone ? t.ink4 : t.ink,
-                border: `1px solid ${t.line}`,
-                fontSize: 12, fontWeight: 700,
-                display: "inline-flex", alignItems: "center", gap: 5,
-                cursor: sendIntakeLink.isPending ? "wait" : (!client.email && !client.phone ? "not-allowed" : "pointer"),
-                opacity: sendIntakeLink.isPending ? 0.65 : 1,
-              }}
             >
               <Icon name="send" size={12} />
               {sendIntakeLink.isPending ? "Sending…" : "Send intake link"}
-            </button>
+            </Btn>
           )}
           {canEdit && chatLoans.length > 0 && (
-            <button
-              onClick={onMessageClient}
-              style={{
-                padding: "8px 12px", borderRadius: 9,
-                background: t.petrol, color: t.inverse, border: "none",
-                fontSize: 12, fontWeight: 700,
-                display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer",
-              }}
-            >
+            <Btn onClick={onMessageClient}>
               <Icon name="chat" size={12} /> Message client
-            </button>
+            </Btn>
           )}
           {canStartDeal && (
-            <button
-              onClick={() => setIntakeOpen(true)}
-              style={{
-                padding: "8px 12px", borderRadius: 9,
-                background: t.ink, color: t.inverse, border: "none",
-                fontSize: 12, fontWeight: 700,
-                display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer",
-              }}
-            >
+            <Btn variant="pri" onClick={() => setIntakeOpen(true)}>
               <Icon name="plus" size={12} /> New file
-            </button>
+            </Btn>
           )}
           {/* Agent's controlled handoff to the funding team (alembic 0031).
               Click opens a confirmation modal showing the handoff
@@ -231,73 +232,33 @@ export default function ClientDetailPage() {
               funding queue. The agent doesn't pick a loan program —
               funding does that on review. */}
           {canRequestPrequal && client.lead_promotion_status !== "agent_requested_review" && (
-            <button
-              onClick={() => setHandoffOpen(true)}
-              disabled={requestPrequal.isPending}
-              style={{
-                padding: "8px 12px", borderRadius: 9,
-                background: t.brand, color: t.inverse, border: "none",
-                fontSize: 12, fontWeight: 700,
-                display: "inline-flex", alignItems: "center", gap: 5,
-                cursor: requestPrequal.isPending ? "wait" : "pointer",
-                opacity: requestPrequal.isPending ? 0.7 : 1,
-              }}
-            >
+            <Btn variant="pri" onClick={() => setHandoffOpen(true)} disabled={requestPrequal.isPending}>
               <Icon name="bolt" size={12} />
               {requestPrequal.isPending ? "Handing off…" : "Ready for Lending"}
-            </button>
+            </Btn>
           )}
           {canRequestPrequal && client.lead_promotion_status === "agent_requested_review" && (
-            <span
-              style={{
-                padding: "6px 10px", borderRadius: 999,
-                background: t.brandSoft, color: t.brand,
-                fontSize: 11, fontWeight: 700,
-                display: "inline-flex", alignItems: "center", gap: 5,
-              }}
-            >
+            <CellChip tone="acc">
               <Icon name="check" size={11} /> Funding review requested
-            </span>
-          )}
-          {prequalErr && (
-            <span style={{ fontSize: 11, color: t.danger, fontWeight: 700 }}>{prequalErr}</span>
-          )}
-          {intakeLinkStatus && (
-            <span
-              style={{
-                fontSize: 11,
-                color: intakeLinkStatus.tone === "ok" ? t.petrol : t.danger,
-                fontWeight: 700,
-              }}
-            >
-              {intakeLinkStatus.text}
-            </span>
+            </CellChip>
           )}
           {canEdit && !editing && (
-            <button
-              onClick={() => setEditing(true)}
-              style={{
-                padding: "8px 12px", borderRadius: 9, background: t.surface2, color: t.ink,
-                border: `1px solid ${t.line}`, fontSize: 12, fontWeight: 700,
-                display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer",
-              }}
-            >
+            <Btn onClick={() => setEditing(true)}>
               <Icon name="gear" size={12} /> Edit
-            </button>
+            </Btn>
           )}
-          <button
-            aria-label="Close"
-            title="Close"
-            onClick={() => router.push("/clients")}
-            style={{
-              all: "unset", cursor: "pointer", width: 34, height: 34, borderRadius: 9,
-              display: "inline-flex", alignItems: "center", justifyContent: "center",
-              color: t.ink3, border: `1px solid ${t.line}`, flexShrink: 0,
-            }}
-          >
+          <IconBtn aria-label="Close" title="Close" onClick={() => router.push("/clients")}>
             <Icon name="x" size={16} />
-          </button>
-        </div>
+          </IconBtn>
+        </Row>
+        {/* Action feedback moved under the button row: a full sentence does not
+            fit in a chip, and these two can both be long server messages. */}
+        {prequalErr && <WarnLine className="mt">{prequalErr}</WarnLine>}
+        {intakeLinkStatus && (
+          intakeLinkStatus.tone === "ok"
+            ? <Note>{intakeLinkStatus.text}</Note>
+            : <WarnLine className="mt">{intakeLinkStatus.text}</WarnLine>
+        )}
       </Card>
       <SmartIntakeModal
         open={intakeOpen}
@@ -311,7 +272,6 @@ export default function ClientDetailPage() {
         }}
       />
       <LoanChatPicker
-        t={t}
         open={chatPickerOpen}
         loans={chatLoans}
         onClose={() => setChatPickerOpen(false)}
@@ -321,7 +281,6 @@ export default function ClientDetailPage() {
         }}
       />
       <LendingHandoffModal
-        t={t}
         open={handoffOpen}
         client={client}
         result={handoffResult}
@@ -335,7 +294,7 @@ export default function ClientDetailPage() {
         }}
       />
 
-      <ClientStageCard t={t} client={client} canEdit={canEdit} clientLoans={clientLoans} />
+      <ClientStageCard client={client} canEdit={canEdit} clientLoans={clientLoans} />
 
       {/* Realtor-phase AI Plan card. The Realtor Elara is for
           nurturing pre-funding leads — once the client has any active
@@ -349,7 +308,6 @@ export default function ClientDetailPage() {
 
       {isAgent && (
         <AgentRelationshipWorkspace
-          t={t}
           client={client}
           clientLoans={clientLoans}
           docs={clientDocs}
@@ -365,57 +323,47 @@ export default function ClientDetailPage() {
         <RealtorReadinessCard profile={client.realtor_profile} />
       )}
 
-      <AssignedAgentCard t={t} client={client} />
-      <ExperienceModeCard t={t} client={client} />
-      {isInternal ? <PaymentAuthorizationCard t={t} clientId={client.id} /> : null}
+      <AssignedAgentCard client={client} />
+      <ExperienceModeCard client={client} />
+      {isInternal ? <PaymentAuthorizationCard clientId={client.id} /> : null}
 
       {editing && canEdit && (
-        <Card pad={20}>
-          <SectionLabel>Edit profile</SectionLabel>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            <Field t={t} label="Name">
-              <Input t={t} value={(draft.name ?? "") as string} onChange={(v) => setDraft((d) => ({ ...d, name: v }))} />
+        <Panel title="Edit profile">
+          <div className="cg">
+            <Field className="s6" label="Name">
+              <Input value={(draft.name ?? "") as string} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
             </Field>
-            <Field t={t} label="Email">
-              <Input t={t} value={(draft.email ?? "") as string} onChange={(v) => setDraft((d) => ({ ...d, email: v }))} />
+            <Field className="s6" label="Email">
+              <Input value={(draft.email ?? "") as string} onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))} />
             </Field>
-            <Field t={t} label="Phone">
-              <Input t={t} value={(draft.phone ?? "") as string} onChange={(v) => setDraft((d) => ({ ...d, phone: v }))} />
+            <Field className="s6" label="Phone">
+              <Input value={(draft.phone ?? "") as string} onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))} />
             </Field>
-            <Field t={t} label="City">
-              <Input t={t} value={(draft.city ?? "") as string} onChange={(v) => setDraft((d) => ({ ...d, city: v }))} />
+            <Field className="s6" label="City">
+              <Input value={(draft.city ?? "") as string} onChange={(e) => setDraft((d) => ({ ...d, city: e.target.value }))} />
             </Field>
-            <Field t={t} label="Tier">
-              <select
+            <Field className="s6" label="Tier">
+              <Select
                 value={(draft.tier ?? "standard") as string}
                 onChange={(e) => setDraft((d) => ({ ...d, tier: e.target.value }))}
-                style={{
-                  width: "100%", padding: "10px 12px", borderRadius: 9, background: t.surface2,
-                  border: `1px solid ${t.line}`, color: t.ink, fontSize: 13, fontFamily: "inherit",
-                }}
               >
                 <option value="standard">Standard</option>
                 <option value="Tier I">Tier I</option>
                 <option value="Tier II">Tier II</option>
                 <option value="Tier III">Tier III</option>
-              </select>
+              </Select>
             </Field>
-            <Field t={t} label="FICO (300–850)">
+            <Field className="s6" label="FICO (300–850)">
               <Input
-                t={t}
                 value={draft.fico != null ? String(draft.fico) : ""}
-                onChange={(v) => setDraft((d) => ({ ...d, fico: (parseIntStrict(v) || null) as Client["fico"] }))}
+                onChange={(e) => setDraft((d) => ({ ...d, fico: (parseIntStrict(e.target.value) || null) as Client["fico"] }))}
                 placeholder="720"
               />
             </Field>
-            <Field t={t} label="Preferred language">
-              <select
+            <Field className="s6" label="Preferred language">
+              <Select
                 value={(draft.language ?? "") as string}
                 onChange={(e) => setDraft((d) => ({ ...d, language: e.target.value }))}
-                style={{
-                  width: "100%", padding: "10px 12px", borderRadius: 9, background: t.surface2,
-                  border: `1px solid ${t.line}`, color: t.ink, fontSize: 13, fontFamily: "inherit",
-                }}
               >
                 <option value="">— Not set —</option>
                 <option value="English">English</option>
@@ -424,30 +372,26 @@ export default function ClientDetailPage() {
                 <option value="Mandarin">Mandarin</option>
                 <option value="French">French</option>
                 <option value="Other">Other</option>
-              </select>
+              </Select>
             </Field>
           </div>
-          {error && <div style={{ color: t.danger, fontSize: 12, fontWeight: 700, marginTop: 10 }}>{error}</div>}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
-            <button onClick={() => setEditing(false)} style={qcBtn(t)}>Cancel</button>
-            <button
-              onClick={handleSave}
-              disabled={updateClient.isPending}
-              style={{ ...qcBtnPrimary(t), opacity: updateClient.isPending ? 0.6 : 1, cursor: updateClient.isPending ? "wait" : "pointer" }}
-            >
+          {error && <WarnLine className="mt">{error}</WarnLine>}
+          <div className="row mt" style={{ justifyContent: "flex-end" }}>
+            <Btn onClick={() => setEditing(false)}>Cancel</Btn>
+            <Btn variant="pri" onClick={handleSave} disabled={updateClient.isPending}>
               <Icon name="check" size={13} />
               {updateClient.isPending ? "Saving…" : "Save"}
-            </button>
+            </Btn>
           </div>
-        </Card>
+        </Panel>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <KPI label="Exposure" value={QC_FMT.short(exposure)} />
-        <KPI label="Active loans" value={clientLoans.length} />
-        <KPI label="FICO" value={client.fico ?? "—"} />
-        <KPI label="Funded" value={QC_FMT.short(Number(client.funded_total))} />
-      </div>
+      <KpiRow>
+        <Kpi label="Exposure" value={QC_FMT.short(exposure)} />
+        <Kpi label="Active loans" value={clientLoans.length} />
+        <Kpi label="FICO" value={client.fico ?? "—"} />
+        <Kpi label="Funded" value={QC_FMT.short(Number(client.funded_total))} />
+      </KpiRow>
 
       {/* Credit pull widget — summary card + drill-down to the full
           parsed report. Operators see this as the canonical credit view
@@ -459,74 +403,54 @@ export default function ClientDetailPage() {
           {/* Operator-typed credit notes from iSoftpull. Operator-only —
               borrowers viewing their own page never see this. */}
           {canEdit && credit.notes && credit.notes.trim().length > 0 && (
-            <Card pad={14}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <SectionLabel>Credit notes (iSoftpull)</SectionLabel>
-                {credit.pulled_at && (
-                  <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600, letterSpacing: 0.6 }}>
-                    PULLED {new Date(credit.pulled_at).toLocaleDateString()}
-                  </span>
-                )}
-              </div>
-              <div style={{
-                fontSize: 12.5,
-                color: t.ink2,
-                lineHeight: 1.55,
-                whiteSpace: "pre-wrap",
-                fontFamily: "inherit",
-              }}>
-                {credit.notes}
-              </div>
-            </Card>
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button
-              onClick={() => setShowFullReport((v) => !v)}
-              style={{ ...qcBtn(t), display: "inline-flex", alignItems: "center", gap: 6 }}
+            <Panel
+              title="Credit notes (iSoftpull)"
+              sub={credit.pulled_at ? `PULLED ${new Date(credit.pulled_at).toLocaleDateString()}` : undefined}
             >
+              <div style={{ whiteSpace: "pre-wrap" }}>{credit.notes}</div>
+            </Panel>
+          )}
+          <Row>
+            <Btn onClick={() => setShowFullReport((v) => !v)}>
               <Icon name={showFullReport ? "arrowR" : "arrowR"} size={11} />
               {showFullReport ? "Hide full credit report" : "View full credit report"}
-            </button>
-            <div style={{ fontSize: 11, color: t.ink3 }}>
+            </Btn>
+            <span className="sub">
               {credit.pulled_at ? `Pulled ${new Date(credit.pulled_at).toLocaleDateString()}` : ""}
               {credit.expires_at ? ` · expires ${new Date(credit.expires_at).toLocaleDateString()}` : ""}
-            </div>
-          </div>
+            </span>
+          </Row>
           {showFullReport ? (
             <CreditReportDetail report={parsedReport} loading={parsedLoading} />
           ) : null}
         </>
       )}
 
-      <Card pad={16}>
-        <SectionLabel>Loans</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {clientLoans.length === 0 && <div style={{ fontSize: 13, color: t.ink3 }}>No loans for this client yet.</div>}
-          {clientLoans.map((l) => (
-            <Link key={l.id} href={`/loans/${l.id}`} style={{ display: "flex", gap: 10, padding: "10px 12px", borderRadius: 10, border: `1px solid ${t.line}`, textDecoration: "none", alignItems: "center" }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: t.ink3, width: 80 }}>{l.deal_id}</div>
-              <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: t.ink }}>{l.address}</div>
-              <Pill>{l.type.replace("_", " ")}</Pill>
-              <div style={{ fontWeight: 700, fontFeatureSettings: '"tnum"', color: t.ink }}>{QC_FMT.short(Number(l.amount))}</div>
-            </Link>
-          ))}
-        </div>
-      </Card>
+      <Panel title="Loans">
+        {clientLoans.length === 0 && <div className="sub">No loans for this client yet.</div>}
+        {clientLoans.map((l) => (
+          <Link key={l.id} href={`/loans/${l.id}`} className="pick">
+            <span className="sub" style={{ width: 80 }}>{l.deal_id}</span>
+            <b style={{ flex: 1, minWidth: 0 }}>{l.address}</b>
+            <Tag>{l.type.replace("_", " ")}</Tag>
+            <b className="num">{QC_FMT.short(Number(l.amount))}</b>
+          </Link>
+        ))}
+      </Panel>
 
       {/* Engagement timeline — buyer-intent + funnel signals captured per
           Architecture Rule #9. Empty until the backend GET
           /clients/{id}/engagement endpoint ships. */}
-      <Card pad={16}>
-        <SectionLabel>Engagement</SectionLabel>
+      <Panel title="Engagement">
         {engagement.length === 0 ? (
-          <div style={{ fontSize: 13, color: t.ink3, lineHeight: 1.55 }}>
+          <div className="sub">
             No engagement signals yet. As the client interacts (opens invites,
             starts/abandons intake, uploads docs, views messages, runs the simulator,
             updates their profile, pulls credit), each event lands here so the AI can
             reason about timing and intent.
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <>
             {engagement.slice(0, 12).map((s) => {
               // The backend returns Activity rows shaped {id, kind, summary,
               // actor_label, created_at, payload} (see EngagementSignalRead) — not
@@ -535,29 +459,16 @@ export default function ClientDetailPage() {
               const label = (s.summary || s.kind || s.signal_type || "activity").replace(/_/g, " ");
               const when = s.created_at || s.occurred_at;
               return (
-                <div
-                  key={s.id}
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    padding: "8px 12px",
-                    borderRadius: 9,
-                    border: `1px solid ${t.line}`,
-                    alignItems: "center",
-                    fontSize: 12,
-                  }}
-                >
-                  <Icon name="bolt" size={12} style={{ color: t.petrol }} />
-                  <div style={{ flex: 1, color: t.ink }}>{label}</div>
-                  <div style={{ color: t.ink3 }}>
-                    {when ? new Date(when).toLocaleDateString() : ""}
-                  </div>
+                <div key={s.id} className="filerow">
+                  <Icon name="bolt" size={12} style={{ color: "var(--petrol)" }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>{label}</div>
+                  <span className="sub">{when ? new Date(when).toLocaleDateString() : ""}</span>
                 </div>
               );
             })}
-          </div>
+          </>
         )}
-      </Card>
+      </Panel>
 
       {/* Tracked-email breadcrumbs — metadata only (sender/subject/time). The
           message body lives solely in the mailbox owner's inbox (isolation). */}
@@ -570,87 +481,59 @@ export default function ClientDetailPage() {
 
       {/* Next Best Actions stub — populated by the shared Deal Intelligence
           Core in P0B. Today renders a placeholder so the surface is visible. */}
-      <Card pad={16}>
-        <SectionLabel>Next Best Actions</SectionLabel>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, color: t.ink3, fontSize: 13 }}>
+      <Panel title="Next Best Actions">
+        <div className="note">
           <Icon name="spark" size={14} />
-          The Next Best Action engine ships in P0B (deterministic rules) and
-          P1 (LLM-driven). Tasks generated for this Borrower will route to the
-          Agent Inbox (relationship work) and the Funding Elara Inbox (lender
-          packaging, doc validation, escalations) per the shared Deal
-          Intelligence Core routing rules.
+          <span>
+            The Next Best Action engine ships in P0B (deterministic rules) and
+            P1 (LLM-driven). Tasks generated for this Borrower will route to the
+            Agent Inbox (relationship work) and the Funding Elara Inbox (lender
+            packaging, doc validation, escalations) per the shared Deal
+            Intelligence Core routing rules.
+          </span>
         </div>
-      </Card>
+      </Panel>
 
       {/* Vault — operator-side view of the same documents the client sees in
           their own /vault. Subject Property = docs tied to in-flight loans;
           REO Schedule = docs tied to funded loans. Backed by the new
           GET /documents?client_id={id} server-side join. */}
-      <ClientVaultCard t={t} clientLoans={clientLoans} docs={clientDocs} />
+      <ClientVaultCard clientLoans={clientLoans} docs={clientDocs} />
     </div>
   );
 }
 
 function LoanChatPicker({
-  t,
   open,
   loans,
   onClose,
   onPick,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   open: boolean;
   loans: Loan[];
   onClose: () => void;
   onPick: (loanId: string) => void;
 }) {
-  if (!open) return null;
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
-        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50,
-      }}
+    <Drawer
+      open={open}
+      onClose={onClose}
+      width="md"
+      title="Pick a loan to chat in"
+      sub="This client has more than one active loan. Choose which thread to open."
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: t.surface, borderRadius: 14, padding: 18,
-          maxWidth: 480, width: "92%", display: "flex", flexDirection: "column", gap: 10,
-        }}
-      >
-        <div style={{ fontSize: 15, fontWeight: 800, color: t.ink }}>Pick a loan to chat in</div>
-        <div style={{ fontSize: 12, color: t.ink3 }}>This client has more than one active loan. Choose which thread to open.</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
-          {loans.map((l) => (
-            <button
-              key={l.id}
-              onClick={() => onPick(l.id)}
-              style={{
-                all: "unset", cursor: "pointer",
-                padding: "10px 12px", borderRadius: 10, border: `1px solid ${t.line}`,
-                display: "flex", alignItems: "center", gap: 10,
-              }}
-            >
-              <div style={{ fontSize: 12, fontWeight: 700, color: t.ink3, width: 80 }}>{l.deal_id}</div>
-              <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: t.ink }}>{l.address}</div>
-              <div style={{ fontSize: 12, color: t.ink3 }}>{l.stage}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
+      {loans.map((l) => (
+        <button key={l.id} type="button" className="pick" onClick={() => onPick(l.id)} style={{ width: "100%" }}>
+          <span className="sub" style={{ width: 80 }}>{l.deal_id}</span>
+          <b style={{ flex: 1, minWidth: 0, textAlign: "left" }}>{l.address}</b>
+          <span className="sub">{l.stage}</span>
+        </button>
+      ))}
+    </Drawer>
   );
 }
 
-function PaymentAuthorizationCard({
-  t,
-  clientId,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  clientId: string;
-}) {
+function PaymentAuthorizationCard({ clientId }: { clientId: string }) {
   const { data, isLoading, error } = useClientPaymentAuthorizationStatus(clientId);
   const auth = data?.latest_authorization ?? null;
   const method = data?.payment_method ?? null;
@@ -658,8 +541,7 @@ function PaymentAuthorizationCard({
   const cardReady = method?.status === "active" && !!method.last4;
   const ready = !!data?.authorized;
   const statusLabel = ready ? "Authorized + card on file" : signed && !cardReady ? "Signed, card missing" : !signed && cardReady ? "Card on file, signature missing" : "Not completed";
-  const statusColor = ready ? t.profit : signed || cardReady ? t.warn : t.danger;
-  const statusBg = ready ? t.profitBg : signed || cardReady ? t.warnBg : t.dangerBg;
+  const statusTone: ChipTone = ready ? "ok" : signed || cardReady ? "warn" : "bad";
   const signedAt = auth?.completed_at || auth?.signed_at || null;
   const cardLabel = method?.last4
     ? `${method.brand ? method.brand.toUpperCase() : "CARD"} •••• ${method.last4}${method.exp_month && method.exp_year ? ` · exp ${String(method.exp_month).padStart(2, "0")}/${String(method.exp_year).slice(-2)}` : ""}`
@@ -674,130 +556,102 @@ function PaymentAuthorizationCard({
     : [];
 
   return (
-    <Card pad={18}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ flex: "1 1 300px", minWidth: 0 }}>
-          <SectionLabel>Payment pre-authorization</SectionLabel>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 7,
-                padding: "6px 12px",
-                borderRadius: 999,
-                background: statusBg,
-                color: statusColor,
-                fontSize: 12,
-                fontWeight: 800,
-              }}
-            >
-              <span style={{ width: 7, height: 7, borderRadius: 999, background: statusColor }} />
-              {isLoading ? "Checking status" : statusLabel}
-            </span>
-            <span style={{ fontSize: 12, color: t.ink3 }}>
-              {ready
-                ? "Credit actions are unlocked for this client."
-                : "Credit actions stay locked until signature and card setup are both complete."}
-            </span>
-          </div>
-          {error ? (
-            <div style={{ marginTop: 10, fontSize: 12, color: t.danger, fontWeight: 700 }}>
-              Could not load authorization status.
-            </div>
-          ) : null}
-        </div>
+    <Panel
+      title="Payment pre-authorization"
+      actions={
+        <CellChip tone={statusTone}>
+          <span className="repdot" style={{ background: "currentColor" }} />
+          {isLoading ? "Checking status" : statusLabel}
+        </CellChip>
+      }
+    >
+      <div className="sub">
+        {ready
+          ? "Credit actions are unlocked for this client."
+          : "Credit actions stay locked until signature and card setup are both complete."}
+      </div>
+      {error ? (
+        <WarnLine className="mt">Could not load authorization status.</WarnLine>
+      ) : null}
 
-        <div style={{ flex: "1 1 520px", display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-          <AuthInfoTile t={t} label="Signature" value={signedAt ? `Signed ${new Date(signedAt).toLocaleDateString()}` : "Missing"} tone={signedAt ? "ok" : "bad"} />
-          <AuthInfoTile t={t} label="Card" value={cardLabel} tone={cardReady ? "ok" : "bad"} />
-          <AuthInfoTile t={t} label="Document" value={auth?.document_version ?? "Not started"} tone={auth ? "ok" : "muted"} />
-        </div>
+      <div className="kpis mt">
+        <AuthInfoTile label="Signature" value={signedAt ? `Signed ${new Date(signedAt).toLocaleDateString()}` : "Missing"} tone={signedAt ? "ok" : "bad"} />
+        <AuthInfoTile label="Card" value={cardLabel} tone={cardReady ? "ok" : "bad"} />
+        <AuthInfoTile label="Document" value={auth?.document_version ?? "Not started"} tone={auth ? "ok" : "muted"} />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12, marginTop: 14 }}>
-        <div style={{ padding: 12, borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface2 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: t.ink3, marginBottom: 6 }}>
-            Billing details
-          </div>
+      <div className="cg mt">
+        <div className="card s6">
+          <Lbl>Billing details</Lbl>
           {method ? (
-            <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.55 }}>
-              <div style={{ fontWeight: 800, color: t.ink }}>{method.billing_name ?? "Name not returned"}</div>
+            <div>
+              <b>{method.billing_name ?? "Name not returned"}</b>
               <div>{method.billing_email ?? "No billing email"}</div>
               {billingAddress.length > 0 ? (
-                <div style={{ marginTop: 6 }}>{billingAddress.map((line) => <div key={line}>{line}</div>)}</div>
+                <div className="mt">{billingAddress.map((line) => <div key={line}>{line}</div>)}</div>
               ) : (
-                <div style={{ marginTop: 6, color: t.ink3 }}>No billing address on file.</div>
+                <div className="sub mt">No billing address on file.</div>
               )}
             </div>
           ) : (
-            <div style={{ fontSize: 12.5, color: t.ink3 }}>No Stripe payment method has been saved for this client.</div>
+            <div className="sub">No Stripe payment method has been saved for this client.</div>
           )}
         </div>
 
-        <div style={{ padding: 12, borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface2 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: t.ink3, marginBottom: 6 }}>
-            Audit record
-          </div>
-          <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.55 }}>
-            <div>Status: <strong style={{ color: t.ink }}>{auth?.status ?? "none"}</strong></div>
-            <div>SetupIntent: <strong style={{ color: t.ink }}>{auth?.setup_intent_status ?? "none"}</strong></div>
-            <div>Authorization ID: <span style={{ color: t.ink3 }}>{auth?.id ?? "not created"}</span></div>
+        <div className="card s6">
+          <Lbl>Audit record</Lbl>
+          <div>
+            <div>Status: <strong>{auth?.status ?? "none"}</strong></div>
+            <div>SetupIntent: <strong>{auth?.setup_intent_status ?? "none"}</strong></div>
+            <div>Authorization ID: <span className="sub">{auth?.id ?? "not created"}</span></div>
           </div>
           {data?.certificate_url ? (
             <a
+              className="btn mt"
               href={data.certificate_url}
               target="_blank"
               rel="noreferrer"
-              style={{ ...qcBtn(t), marginTop: 10, textDecoration: "none", width: "fit-content" }}
             >
               <Icon name="file" size={12} />
               View signed certificate
             </a>
           ) : (
-            <div style={{ marginTop: 10, fontSize: 12, color: t.ink3 }}>
+            <div className="sub mt">
               Certificate appears after the client completes e-sign and card setup.
             </div>
           )}
         </div>
       </div>
-    </Card>
+    </Panel>
   );
 }
 
 function AuthInfoTile({
-  t,
   label,
   value,
   tone,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   value: string;
   tone: "ok" | "bad" | "muted";
 }) {
-  const color = tone === "ok" ? t.profit : tone === "bad" ? t.danger : t.ink3;
-  const bg = tone === "ok" ? t.profitBg : tone === "bad" ? t.dangerBg : t.surface2;
+  const chipTone: ChipTone = tone === "ok" ? "ok" : tone === "bad" ? "bad" : "mut";
   return (
-    <div style={{ minWidth: 0, padding: 12, borderRadius: 10, background: bg, border: `1px solid ${t.line}` }}>
-      <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: t.ink3 }}>
-        {label}
-      </div>
-      <div style={{ marginTop: 5, fontSize: 12.5, fontWeight: 800, color, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {value}
+    <div className="kpi">
+      <Lbl>{label}</Lbl>
+      <div style={{ marginTop: 6 }}>
+        <CellChip tone={chipTone}>{value}</CellChip>
       </div>
     </div>
   );
 }
 
 function AgentRelationshipWorkspace({
-  t,
   client,
   clientLoans,
   docs,
   creditFico,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   client: Client;
   clientLoans: Loan[];
   docs: Document[];
@@ -836,103 +690,75 @@ function AgentRelationshipWorkspace({
       ];
 
   return (
-    <Card pad={18}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 18, flexWrap: "wrap" }}>
-        <div style={{ minWidth: 260, flex: 1 }}>
-          <SectionLabel>Agent Relationship Workspace</SectionLabel>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-            <Pill bg={isSeller ? t.warnBg : t.brandSoft} color={isSeller ? t.warn : t.brand}>
-              {isSeller ? "Seller workflow" : "Buyer workflow"}
-            </Pill>
-            <Pill>{STAGE_LABEL[activeStage]}</Pill>
-          </div>
-          <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.55, maxWidth: 720 }}>
-            This is the agent-owned client file. Relationship notes, buyer or seller readiness,
-            transaction context, and client follow-up stay here. Funding criteria and loan calculations
-            stay inside the internal funding file after handoff.
-          </div>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 120px)", gap: 10 }}>
-          <MiniStat t={t} label="Active file" value={activeLoans.length ? `${activeLoans.length}` : "None"} />
-          <MiniStat t={t} label="Exposure" value={exposure ? QC_FMT.short(exposure) : "$0"} />
-          <MiniStat t={t} label="Docs ready" value={`${verifiedDocs}/${docs.length || 0}`} />
-        </div>
+    <Panel
+      title="Agent Relationship Workspace"
+      actions={
+        <>
+          <CellChip tone={isSeller ? "warn" : "acc"}>
+            {isSeller ? "Seller workflow" : "Buyer workflow"}
+          </CellChip>
+          <Tag>{STAGE_LABEL[activeStage]}</Tag>
+        </>
+      }
+    >
+      <div style={{ maxWidth: 720 }}>
+        This is the agent-owned client file. Relationship notes, buyer or seller readiness,
+        transaction context, and client follow-up stay here. Funding criteria and loan calculations
+        stay inside the internal funding file after handoff.
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 14, marginTop: 16 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-          {workflow.map((item) => (
-            <div key={item.title} style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: 13, background: t.surface2 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, color: t.ink, fontWeight: 800, fontSize: 13 }}>
-                <Icon name={item.icon} size={15} style={{ color: t.petrol }} />
-                {item.title}
-              </div>
-              <div style={{ marginTop: 8, fontSize: 12.2, color: t.ink3, lineHeight: 1.45 }}>{item.detail}</div>
+      <div className="kpis mt">
+        <MiniStat label="Active file" value={activeLoans.length ? `${activeLoans.length}` : "None"} />
+        <MiniStat label="Exposure" value={exposure ? QC_FMT.short(exposure) : "$0"} />
+        <MiniStat label="Docs ready" value={`${verifiedDocs}/${docs.length || 0}`} />
+      </div>
+
+      <div className="cg mt">
+        {workflow.map((item) => (
+          <div key={item.title} className="card s4">
+            <Row>
+              <Icon name={item.icon} size={15} style={{ color: "var(--petrol)" }} />
+              <b>{item.title}</b>
+            </Row>
+            <div className="sub mt">{item.detail}</div>
+          </div>
+        ))}
+
+        <div className="card s12">
+          <Lbl>Next Agent Actions</Lbl>
+          {nextActions.map((action, index) => (
+            <div key={action} className="filerow">
+              <span className={`cellchip c-${index === 0 ? "pet" : "mut"}`}>{index + 1}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>{action}</span>
             </div>
           ))}
         </div>
-
-        <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: 13 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 10 }}>
-            Next Agent Actions
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {nextActions.map((action, index) => (
-              <div key={action} style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 12.5, color: t.ink2, lineHeight: 1.4 }}>
-                <span
-                  style={{
-                    width: 19,
-                    height: 19,
-                    borderRadius: 999,
-                    background: index === 0 ? t.petrolSoft : t.surface2,
-                    color: index === 0 ? t.petrol : t.ink3,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 10,
-                    fontWeight: 800,
-                    flexShrink: 0,
-                  }}
-                >
-                  {index + 1}
-                </span>
-                <span>{action}</span>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
-    </Card>
+    </Panel>
   );
 }
 
-function MiniStat({
-  t,
-  label,
-  value,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  label: string;
-  value: string;
-}) {
+function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: "10px 12px", background: t.surface2 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1.1, textTransform: "uppercase" }}>
-        {label}
-      </div>
-      <div style={{ marginTop: 5, fontSize: 19, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"' }}>
-        {value}
-      </div>
+    <div className="kpi">
+      <Lbl>{label}</Lbl>
+      <div className="knum num">{value}</div>
     </div>
   );
 }
 
+const VAULT_COLS: Col[] = [
+  { label: "Document" },
+  { label: "Category", width: 150 },
+  { label: "Loan", width: 130 },
+  { label: "Received", width: 120 },
+  { label: "Status", width: 120 },
+];
+
 function ClientVaultCard({
-  t,
   clientLoans,
   docs,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   clientLoans: Loan[];
   docs: Document[];
 }) {
@@ -955,76 +781,50 @@ function ClientVaultCard({
   );
 
   return (
-    <Card pad={0}>
-      <div
-        style={{
-          padding: "12px 16px",
-          borderBottom: `1px solid ${t.line}`,
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          flexWrap: "wrap",
-        }}
-      >
-        <SectionLabel>Vault</SectionLabel>
-        <Pill>{docs.length} total</Pill>
-        <div style={{ flex: 1 }} />
-        <div style={{ display: "inline-flex", gap: 4 }}>
-          <button
-            onClick={() => setTab("subject")}
-            style={{
-              ...vaultTabStyle(t, tab === "subject"),
-            }}
-          >
-            Subject Property <Pill>{subjectCount}</Pill>
-          </button>
-          <button
-            onClick={() => setTab("reo")}
-            style={{
-              ...vaultTabStyle(t, tab === "reo"),
-            }}
-          >
-            REO Schedule <Pill>{reoCount}</Pill>
-          </button>
-        </div>
-      </div>
-
+    <Panel
+      noPad
+      title="Vault"
+      sub={`${docs.length} total`}
+      actions={
+        <Seg<"subject" | "reo">
+          value={tab}
+          onChange={setTab}
+          ariaLabel="Vault section"
+          options={[
+            { value: "subject", label: <>Subject Property <span className="tag">{subjectCount}</span></> },
+            { value: "reo", label: <>REO Schedule <span className="tag">{reoCount}</span></> },
+          ]}
+        />
+      }
+    >
       {/* Agent-side upload strip: pick the target deal + drop a file.
           Replaces the now-hidden /vault entry by letting agents upload
           experience verification, supplemental docs, etc. directly
           from inside the client. */}
       {subjectLoans.length > 0 && (
-        <div style={{
-          padding: "10px 16px",
-          borderBottom: `1px solid ${t.line}`,
-          background: t.surface2,
-          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-        }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
-            Upload to deal
-          </span>
+        <div
+          className="row"
+          style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)", background: "var(--sunken2)" }}
+        >
+          <Lbl>Upload to deal</Lbl>
           {subjectLoans.length > 1 ? (
-            <select
+            <Select
               value={uploadLoanId || subjectLoans[0].id}
               onChange={(e) => setUploadLoanId(e.target.value)}
-              style={{
-                padding: "6px 10px", borderRadius: 7,
-                border: `1px solid ${t.line}`, background: t.surface,
-                color: t.ink, fontSize: 12.5, outline: "none",
-              }}
+              aria-label="Upload to deal"
             >
               {subjectLoans.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.deal_id} — {l.address}
                 </option>
               ))}
-            </select>
+            </Select>
           ) : (
-            <span style={{ fontSize: 12, color: t.ink2 }}>
+            <span>
               {subjectLoans[0].deal_id} &middot; {subjectLoans[0].address}
             </span>
           )}
-          <div style={{ flex: 1 }} />
+          <span style={{ flex: 1 }} />
           <DocUploadButton
             loanId={uploadLoanId || subjectLoans[0].id}
             label="Upload"
@@ -1034,149 +834,69 @@ function ClientVaultCard({
       )}
 
       {visible.length === 0 ? (
-        <div style={{ padding: 24, fontSize: 13, color: t.ink3, textAlign: "center" }}>
+        <div className="sub" style={{ padding: 24, textAlign: "center" }}>
           {tab === "subject"
             ? "No documents on in-flight loans yet. Documents requested from the client will land here."
             : "No documents on closed loans yet."}
         </div>
       ) : (
-        <>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 2fr) 130px 110px 120px 110px",
-              padding: "10px 16px",
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: 1.2,
-              textTransform: "uppercase",
-              color: t.ink3,
-              borderBottom: `1px solid ${t.line}`,
-              background: t.surface2,
-            }}
-          >
-            <div>Document</div>
-            <div>Category</div>
-            <div>Loan</div>
-            <div>Received</div>
-            <div>Status</div>
-          </div>
+        <Table cols={VAULT_COLS} caption="Client documents">
           {visible.map((d) => {
             const loan = loanById[d.loan_id];
+            // Same three-way split VerifiedBadge carried; the chip tones hold it now.
             const kind: "verified" | "pending" | "flagged" =
               d.status === "verified" ? "verified" : d.status === "flagged" ? "flagged" : "pending";
+            const statusTone: ChipTone = kind === "verified" ? "ok" : kind === "flagged" ? "bad" : "warn";
+            const statusLabel = kind === "verified" ? "Verified" : kind === "flagged" ? "Flagged" : "Pending";
             return (
-              <div
-                key={d.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(0, 2fr) 130px 110px 120px 110px",
-                  padding: "12px 16px",
-                  borderBottom: `1px solid ${t.line}`,
-                  alignItems: "center",
-                  fontSize: 13,
-                  color: t.ink,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                  <div
-                    style={{
-                      width: 30,
-                      height: 30,
-                      borderRadius: 8,
-                      background: t.brandSoft,
-                      color: t.brand,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Icon name="doc" size={14} />
-                  </div>
-                  <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700 }}>
-                    {d.name}
-                  </div>
-                </div>
-                <div>
-                  <Pill>{d.category ?? "—"}</Pill>
-                </div>
-                <div>
-                  {loan ? (
-                    <Link
-                      href={`/loans/${loan.id}`}
+              <tr key={d.id}>
+                <Td>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <span
                       style={{
-                        color: t.petrol,
-                        textDecoration: "none",
-                        fontFamily: "ui-monospace, SF Mono, monospace",
-                        fontSize: 12,
-                        fontWeight: 700,
+                        width: 30,
+                        height: 30,
+                        borderRadius: 8,
+                        background: "var(--accent-100)",
+                        color: "var(--accent)",
+                        display: "inline-grid",
+                        placeItems: "center",
+                        flexShrink: 0,
                       }}
                     >
+                      <Icon name="doc" size={14} />
+                    </span>
+                    <b>{d.name}</b>
+                  </div>
+                </Td>
+                <Td>
+                  <Tag>{d.category ?? "—"}</Tag>
+                </Td>
+                <Td>
+                  {loan ? (
+                    <Link href={`/loans/${loan.id}`} className="linky">
                       {loan.deal_id}
                     </Link>
                   ) : (
-                    <span style={{ color: t.ink3 }}>—</span>
+                    <span className="sub">—</span>
                   )}
-                </div>
-                <div style={{ color: t.ink3, fontSize: 12 }}>
-                  {d.received_on
-                    ? new Date(d.received_on).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-                    : "—"}
-                </div>
-                <div>
-                  <VerifiedBadge kind={kind} />
-                </div>
-              </div>
+                </Td>
+                <Td>
+                  <span className="sub">
+                    {d.received_on
+                      ? new Date(d.received_on).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                      : "—"}
+                  </span>
+                </Td>
+                <Td>
+                  <CellChip tone={statusTone}>{statusLabel}</CellChip>
+                </Td>
+              </tr>
             );
           })}
-        </>
+        </Table>
       )}
-    </Card>
-  );
-}
-
-function vaultTabStyle(
-  t: ReturnType<typeof useTheme>["t"],
-  active: boolean,
-): React.CSSProperties {
-  return {
-    all: "unset",
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "6px 12px",
-    borderRadius: 8,
-    background: active ? t.ink : t.surface2,
-    color: active ? t.inverse : t.ink2,
-    fontSize: 12,
-    fontWeight: 700,
-  };
-}
-
-function Field({ t, label, children }: { t: ReturnType<typeof useTheme>["t"]; label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 6 }}>
-        {label}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function Input({ t, value, onChange, placeholder }: { t: ReturnType<typeof useTheme>["t"]; value: string; onChange: (v: string) => void; placeholder?: string }) {
-  return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      style={{
-        width: "100%", padding: "10px 12px", borderRadius: 9, background: t.surface2,
-        border: `1px solid ${t.line}`, color: t.ink, fontSize: 13, fontFamily: "inherit", outline: "none",
-      }}
-    />
+    </Panel>
   );
 }
 
@@ -1198,6 +918,19 @@ const STAGE_LABEL: Record<ClientStage, string> = {
   lost: "Lost",
 };
 
+// Colour by lifecycle group: leads/early-funnel = neutral; lending stages =
+// petrol/brand; funded = profit-green; lost = muted. The palette map this
+// replaces expressed the same split in raw tokens.
+const STAGE_TONE: Record<ClientStage, ChipTone> = {
+  lead: "mut",
+  contacted: "warn",
+  verified: "pet",
+  ready_for_lending: "acc",
+  processing: "acc",
+  funded: "ok",
+  lost: "mut",
+};
+
 function inferStage(c: Client, activeLoans: number): ClientStage {
   if (c.stage) return c.stage;
   if (c.funded_count > 0) return "funded";
@@ -1206,12 +939,10 @@ function inferStage(c: Client, activeLoans: number): ClientStage {
 }
 
 function ClientStageCard({
-  t,
   client,
   canEdit,
   clientLoans,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   client: Client;
   canEdit: boolean;
   clientLoans: Loan[];
@@ -1244,106 +975,68 @@ function ClientStageCard({
     }
   };
 
-  const palette: Record<ClientStage, { bg: string; fg: string }> = {
-    lead:               { bg: t.chip,        fg: t.ink2 },
-    contacted:          { bg: t.warnBg,      fg: t.warn },
-    verified:           { bg: t.petrolSoft,  fg: t.petrol },
-    ready_for_lending:  { bg: t.brandSoft,   fg: t.brand },
-    processing:         { bg: t.brandSoft,   fg: t.brand },
-    funded:             { bg: t.profitBg,    fg: t.profit },
-    lost:               { bg: t.surface2,    fg: t.ink3 },
-  };
-  const { bg, fg } = palette[stage];
   const inFunding = stage === "ready_for_lending" || stage === "processing" || stage === "funded";
   const busy = updateStage.isPending || startFunding.isPending;
 
   return (
-    <Card pad={18}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
-            Pipeline stage
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "5px 12px",
-                borderRadius: 999,
-                background: bg,
-                color: fg,
-                fontSize: 13,
-                fontWeight: 700,
-              }}
-            >
-              <span style={{ width: 7, height: 7, borderRadius: 999, background: fg }} />
-              {STAGE_LABEL[stage]}
-            </span>
-            {client.client_type && (
-              <Pill bg={client.client_type === "buyer" ? t.brandSoft : t.warnBg} color={client.client_type === "buyer" ? t.brand : t.warn}>
-                {client.client_type === "buyer" ? "Buyer" : "Seller"}
-              </Pill>
-            )}
-          </div>
-        </div>
-
-        {canEdit && !inFunding && stage !== "lost" && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            {stage === "lead" && (
-              <button onClick={() => advance("contacted")} disabled={busy} style={qcBtn(t)}>
-                Mark contacted →
-              </button>
-            )}
-            {stage === "contacted" && (
-              <button onClick={() => advance("verified")} disabled={busy} style={qcBtn(t)}>
-                Mark verified →
-              </button>
-            )}
-            {stage === "verified" && (
-              <button
-                onClick={handleStartFunding}
-                disabled={busy}
-                style={{
-                  ...qcBtnPrimary(t),
-                  opacity: busy ? 0.6 : 1,
-                  cursor: busy ? "wait" : "pointer",
-                }}
-              >
-                <Icon name="bolt" size={13} />
-                {startFunding.isPending ? "Starting…" : "Start Funding"}
-              </button>
-            )}
-            <button
-              onClick={() => advance("lost")}
-              disabled={busy}
-              style={{ ...qcBtn(t), color: t.danger, borderColor: `${t.danger}40` }}
-            >
-              Mark lost
-            </button>
-          </div>
-        )}
-
-        {inFunding && (
-          <div style={{ fontSize: 12, color: t.ink3, maxWidth: 280, textAlign: "right" }}>
-            File is with the Funding Team. You retain read-only visibility on
-            funding-doc collection and lender milestones.
-          </div>
-        )}
-      </div>
-
-      {error && (
-        <div style={{ marginTop: 10, fontSize: 12, color: t.danger, fontWeight: 700 }}>{error}</div>
+    <Panel
+      title="Pipeline stage"
+      actions={
+        <>
+          <CellChip tone={STAGE_TONE[stage]}>
+            <span className="repdot" style={{ background: "currentColor" }} />
+            {STAGE_LABEL[stage]}
+          </CellChip>
+          {client.client_type && (
+            <CellChip tone={client.client_type === "buyer" ? "acc" : "warn"}>
+              {client.client_type === "buyer" ? "Buyer" : "Seller"}
+            </CellChip>
+          )}
+        </>
+      }
+    >
+      {canEdit && !inFunding && stage !== "lost" && (
+        <Row>
+          {stage === "lead" && (
+            <Btn onClick={() => advance("contacted")} disabled={busy}>
+              Mark contacted →
+            </Btn>
+          )}
+          {stage === "contacted" && (
+            <Btn onClick={() => advance("verified")} disabled={busy}>
+              Mark verified →
+            </Btn>
+          )}
+          {stage === "verified" && (
+            <Btn variant="pri" onClick={handleStartFunding} disabled={busy}>
+              <Icon name="bolt" size={13} />
+              {startFunding.isPending ? "Starting…" : "Start Funding"}
+            </Btn>
+          )}
+          <Btn onClick={() => advance("lost")} disabled={busy} style={{ color: "var(--danger)" }}>
+            Mark lost
+          </Btn>
+        </Row>
       )}
 
-      <div style={{ marginTop: 12, fontSize: 11, color: t.ink3, lineHeight: 1.55 }}>
+      {inFunding && (
+        <div className="sub">
+          File is with the Funding Team. You retain read-only visibility on
+          funding-doc collection and lender milestones.
+        </div>
+      )}
+
+      {error && (
+        <WarnLine className="mt">{error}</WarnLine>
+      )}
+
+      <div className="sub mt">
         Use the <strong>Documents</strong> section below to upload on the client&apos;s
         behalf when needed — funding docs verify only by the Funding Team, but
         you can always add transaction-side docs (purchase agreement, inspection,
         etc.) to keep the file moving.
       </div>
-    </Card>
+    </Panel>
   );
 }
 
@@ -1374,7 +1067,7 @@ const REASON_LABEL: Record<ClientExperienceModeReason, string> = {
 // Backend auto-flips client_experience_mode to "guided" on the
 // NULL→set transition, so assigning an agent here also unsticks the
 // mobile app from self_directed.
-function AssignedAgentCard({ t, client }: { t: ReturnType<typeof useTheme>["t"]; client: Client }) {
+function AssignedAgentCard({ client }: { client: Client }) {
   const { data: user } = useCurrentUser();
   const { data: brokers = [], isLoading } = useBrokers();
   const update = useUpdateClient();
@@ -1432,145 +1125,87 @@ function AssignedAgentCard({ t, client }: { t: ReturnType<typeof useTheme>["t"];
   }
 
   return (
-    <Card pad={18}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
-            Real estate agent
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-            <span
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 6,
-                padding: "5px 12px", borderRadius: 999,
-                background: assigned ? t.brandSoft : t.warnBg,
-                color: assigned ? t.brand : t.warn,
-                fontSize: 13, fontWeight: 700,
-              }}
-            >
-              <span style={{ width: 7, height: 7, borderRadius: 999, background: assigned ? t.brand : t.warn }} />
-              {assigned ? client.broker_name ?? "Assigned" : "Unassigned"}
-            </span>
-            <span style={{ fontSize: 11, color: t.ink3 }}>
-              {assigned
-                ? "Owns the relationship + receives all agent-pipeline notifications."
-                : "No broker on file — assign an agent so this client appears in their pipeline."}
-            </span>
-          </div>
-        </div>
-
-        <div ref={anchorRef} style={{ position: "relative" }}>
-          <button onClick={() => setOpen((v) => !v)} style={qcBtn(t)} disabled={busyId !== null}>
-            <Icon name="user" size={12} /> {assigned ? "Reassign agent" : "Assign agent"}
-          </button>
-          {open ? (
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                position: "absolute",
-                top: "calc(100% + 4px)",
-                right: 0,
-                zIndex: 50,
-                width: 280,
-                background: t.surface,
-                border: `1px solid ${t.line}`,
-                borderRadius: 8,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
-                display: "flex",
-                flexDirection: "column",
-                overflow: "hidden",
-              }}
-            >
-              <div style={{ padding: "8px 8px 6px", borderBottom: `1px solid ${t.line}` }}>
-                <input
-                  autoFocus
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search agents…"
-                  style={{
-                    width: "100%",
-                    padding: "6px 8px",
-                    fontSize: 12,
-                    borderRadius: 6,
-                    border: `1px solid ${t.line}`,
-                    background: t.surface,
-                    color: t.ink,
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-              <div style={{ maxHeight: 240, overflowY: "auto" }}>
-                {isLoading ? (
-                  <div style={{ padding: 12, fontSize: 12, color: t.ink3 }}>Loading agents…</div>
-                ) : filtered.length === 0 ? (
-                  <div style={{ padding: 12, fontSize: 12, color: t.ink3 }}>No matches.</div>
-                ) : (
-                  filtered.map((b: Broker) => {
-                    const isCurrent = b.id === client.broker_id;
-                    return (
-                      <button
-                        key={b.id}
-                        onClick={() => pick(b)}
-                        disabled={isCurrent || busyId !== null}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          padding: "8px 10px",
-                          width: "100%",
-                          border: "none",
-                          background: isCurrent ? t.brandSoft : "transparent",
-                          cursor: isCurrent ? "default" : "pointer",
-                          textAlign: "left",
-                          fontSize: 13,
-                          color: isCurrent ? t.brand : t.ink,
-                          fontFamily: "inherit",
-                          borderBottom: `1px solid ${t.line}`,
-                        }}
-                      >
-                        <Icon name="user" size={11} />
-                        <span style={{ flex: 1, fontWeight: isCurrent ? 800 : 600 }}>{b.display_name}</span>
-                        {isCurrent ? (
-                          <span style={{ fontSize: 10, fontWeight: 800, color: t.brand, letterSpacing: 0.5, textTransform: "uppercase" }}>
-                            Current
+    <Panel
+      title="Real estate agent"
+      actions={
+        <>
+          <CellChip tone={assigned ? "acc" : "warn"}>
+            <span className="repdot" style={{ background: "currentColor" }} />
+            {assigned ? client.broker_name ?? "Assigned" : "Unassigned"}
+          </CellChip>
+          <div ref={anchorRef} className="popwrap">
+            <Btn onClick={() => setOpen((v) => !v)} disabled={busyId !== null}>
+              <Icon name="user" size={12} /> {assigned ? "Reassign agent" : "Assign agent"}
+            </Btn>
+            {open ? (
+              <div className="popmenu" onClick={(e) => e.stopPropagation()} style={{ width: 280 }}>
+                <div style={{ padding: "4px 6px 8px" }}>
+                  <Input
+                    autoFocus
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search agents…"
+                    aria-label="Search agents"
+                    style={{ width: "100%" }}
+                  />
+                </div>
+                <div style={{ maxHeight: 240, overflowY: "auto" }}>
+                  {isLoading ? (
+                    <div className="sub" style={{ padding: "8px 10px" }}>Loading agents…</div>
+                  ) : filtered.length === 0 ? (
+                    <div className="sub" style={{ padding: "8px 10px" }}>No matches.</div>
+                  ) : (
+                    filtered.map((b: Broker) => {
+                      const isCurrent = b.id === client.broker_id;
+                      return (
+                        <button
+                          key={b.id}
+                          type="button"
+                          className="mi"
+                          onClick={() => pick(b)}
+                          disabled={isCurrent || busyId !== null}
+                        >
+                          <span className="row">
+                            <Icon name="user" size={11} />
+                            <span style={{ flex: 1 }}>{b.display_name}</span>
+                            {isCurrent ? (
+                              <span className="cellchip c-acc">Current</span>
+                            ) : busyId === b.id ? (
+                              <span className="sub">Saving…</span>
+                            ) : null}
                           </span>
-                        ) : busyId === b.id ? (
-                          <span style={{ fontSize: 10.5, color: t.ink3 }}>Saving…</span>
-                        ) : null}
-                      </button>
-                    );
-                  })
-                )}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+                {assigned ? (
+                  <button
+                    type="button"
+                    className="mi"
+                    onClick={() => pick(null)}
+                    disabled={busyId !== null}
+                    style={{ color: "var(--danger)" }}
+                  >
+                    {busyId === "__unassign__" ? "Unassigning…" : "Unassign agent"}
+                  </button>
+                ) : null}
               </div>
-              {assigned ? (
-                <button
-                  onClick={() => pick(null)}
-                  disabled={busyId !== null}
-                  style={{
-                    padding: "8px 10px",
-                    border: "none",
-                    borderTop: `1px solid ${t.line}`,
-                    background: t.surface2,
-                    color: t.danger,
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    textAlign: "left",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  {busyId === "__unassign__" ? "Unassigning…" : "Unassign agent"}
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+            ) : null}
+          </div>
+        </>
+      }
+    >
+      <div className="sub">
+        {assigned
+          ? "Owns the relationship + receives all agent-pipeline notifications."
+          : "No broker on file — assign an agent so this client appears in their pipeline."}
       </div>
       {error ? (
-        <div style={{ marginTop: 10, fontSize: 12, color: t.danger, fontWeight: 700 }}>{error}</div>
+        <WarnLine className="mt">{error}</WarnLine>
       ) : null}
       {!assigned ? (
-        <div style={{ marginTop: 10, fontSize: 11.5, color: t.ink3, lineHeight: 1.5 }}>
+        <div className="sub mt">
           Assigning an agent will also default the mobile experience to <strong>Guided</strong> if it&apos;s
           not explicitly set. The agent will see this client in their pipeline immediately.
         </div>
@@ -1583,12 +1218,12 @@ function AssignedAgentCard({ t, client }: { t: ReturnType<typeof useTheme>["t"];
           onClose={() => setSweepBroker(null)}
         />
       ) : null}
-    </Card>
+    </Panel>
   );
 }
 
 
-function ExperienceModeCard({ t, client }: { t: ReturnType<typeof useTheme>["t"]; client: Client }) {
+function ExperienceModeCard({ client }: { client: Client }) {
   const { data: user } = useCurrentUser();
   const updateClient = useUpdateClient();
   const [error, setError] = useState<string | null>(null);
@@ -1635,89 +1270,73 @@ function ExperienceModeCard({ t, client }: { t: ReturnType<typeof useTheme>["t"]
   const lockTarget: ClientExperienceModeLockedBy | null =
     user?.role === "loan_exec" ? "funding_team" : user?.role === "super_admin" ? "super_admin" : null;
 
-  return (
-    <Card pad={18}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
-            Mobile experience mode
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-            <span
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 6,
-                padding: "5px 12px", borderRadius: 999,
-                background: effective === "guided" ? t.brandSoft : t.petrolSoft,
-                color: effective === "guided" ? t.brand : t.petrol,
-                fontSize: 13, fontWeight: 700,
-              }}
-            >
-              <span style={{ width: 7, height: 7, borderRadius: 999, background: effective === "guided" ? t.brand : t.petrol }} />
-              {MODE_LABEL[effective]}
-            </span>
-            {!isExplicit && (
-              <span style={{ fontSize: 11, color: t.ink3 }}>
-                (default — derived from {client.broker_id ? "Agent referral" : "self sign-up"})
-              </span>
-            )}
-          </div>
-          {(reason || lockedBy) && (
-            <div style={{ fontSize: 11, color: t.ink3, marginTop: 6 }}>
-              {reason ? REASON_LABEL[reason] : ""}
-              {reason && lockedBy ? " · " : ""}
-              {lockedBy ? `Locked by ${LOCKED_BY_LABEL[lockedBy]}` : ""}
-            </div>
-          )}
-        </div>
+  // Everything here except the derivation note, the lock line and the error
+  // lives in the panel header. With none of the three, `.panel-b` would render
+  // as an empty padded strip under the hairline.
+  const hasBody = !isExplicit || !!reason || !!lockedBy || !!error;
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <div style={{ display: "inline-flex", border: `1px solid ${t.line}`, borderRadius: 9, overflow: "hidden" }}>
-            {(["guided", "self_directed"] as const).map((m) => {
-              const active = effective === m;
-              return (
-                <button
-                  key={m}
-                  onClick={() => setMode(m)}
-                  disabled={!canEdit || busy}
-                  title={!canEdit ? "You cannot change this client's experience mode." : undefined}
-                  style={{
-                    padding: "8px 14px",
-                    background: active ? t.brand : t.surface2,
-                    color: active ? "#fff" : t.ink,
-                    border: "none",
-                    fontSize: 12, fontWeight: 700,
-                    cursor: !canEdit || busy ? "not-allowed" : "pointer",
-                    opacity: !canEdit ? 0.55 : 1,
-                  }}
-                >
-                  {MODE_LABEL[m]}
-                </button>
-              );
-            })}
+  return (
+    <Panel
+      noPad={!hasBody}
+      title="Mobile experience mode"
+      actions={
+        <>
+          <CellChip tone={effective === "guided" ? "acc" : "pet"}>
+            <span className="repdot" style={{ background: "currentColor" }} />
+            {MODE_LABEL[effective]}
+          </CellChip>
+          {/* Hand-rolled `.seg` rather than <Seg>: these two buttons carry a
+              permission-disabled state and its explanatory title, which the
+              shared control has no slot for. */}
+          <div className="seg" role="group" aria-label="Mobile experience mode">
+            {(["guided", "self_directed"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={effective === m ? "on" : ""}
+                onClick={() => setMode(m)}
+                disabled={!canEdit || busy}
+                title={!canEdit ? "You cannot change this client's experience mode." : undefined}
+              >
+                {MODE_LABEL[m]}
+              </button>
+            ))}
           </div>
 
           {canOverrideLock && lockTarget && (
             lockedBy === lockTarget || lockedBy === "super_admin" ? (
-              <button
+              <Btn
                 onClick={() => setLock(null)}
                 disabled={busy || (lockedBy === "super_admin" && user?.role !== "super_admin")}
-                style={qcBtn(t)}
               >
                 Unlock
-              </button>
+              </Btn>
             ) : (
-              <button onClick={() => setLock(lockTarget)} disabled={busy} style={qcBtn(t)}>
+              <Btn onClick={() => setLock(lockTarget)} disabled={busy}>
                 Lock to {LOCKED_BY_LABEL[lockTarget]}
-              </button>
+              </Btn>
             )
           )}
+        </>
+      }
+    >
+      {!isExplicit && (
+        <div className="sub">
+          (default — derived from {client.broker_id ? "Agent referral" : "self sign-up"})
         </div>
-      </div>
+      )}
+      {(reason || lockedBy) && (
+        <div className="sub">
+          {reason ? REASON_LABEL[reason] : ""}
+          {reason && lockedBy ? " · " : ""}
+          {lockedBy ? `Locked by ${LOCKED_BY_LABEL[lockedBy]}` : ""}
+        </div>
+      )}
 
       {error && (
-        <div style={{ marginTop: 10, fontSize: 12, color: t.danger, fontWeight: 700 }}>{error}</div>
+        <WarnLine className="mt">{error}</WarnLine>
       )}
-    </Card>
+    </Panel>
   );
 }
 
@@ -1726,7 +1345,6 @@ function ExperienceModeCard({ t, client }: { t: ReturnType<typeof useTheme>["t"]
 // inherited + the first message it sent. Mirrors the spec's
 // "Send to Lending / Review Summary First" flow.
 function LendingHandoffModal({
-  t,
   open,
   client,
   result,
@@ -1735,7 +1353,6 @@ function LendingHandoffModal({
   onConfirm,
   onClose,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   open: boolean;
   client: Client;
   result: { summary: string | null; firstQuestion: string | null; missingItems: string[]; lendingThreadId: string | null } | null;
@@ -1744,171 +1361,76 @@ function LendingHandoffModal({
   onConfirm: () => void;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
+  // Escape, backdrop click and focus restore all live in Drawer now.
   const succeeded = result !== null;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Ready for Lending"
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, zIndex: 200,
-        background: "rgba(0,0,0,0.45)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 20,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: 520, width: "100%",
-          background: t.surface, borderRadius: 14, border: `1px solid ${t.line}`,
-          padding: 24, display: "flex", flexDirection: "column", gap: 14,
-          position: "relative",
-        }}
-      >
-        <ModalCloseButton onClick={onClose} label="Close handoff" style={{ position: "absolute", top: 12, right: 12 }} />
-        {!succeeded ? (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      width="md"
+      title={succeeded ? `${client.name} moved to Lending Intake` : `Ready to send ${client.name} to lending?`}
+      sub={
+        succeeded
+          ? "Funding team has been notified. The Lending AI started a fresh thread and already knows the context."
+          : "The AI will:"
+      }
+      footer={
+        succeeded ? (
           <>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: t.ink, marginBottom: 6 }}>
-                Ready to send {client.name} to lending?
-              </div>
-              <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.55 }}>
-                The AI will:
-              </div>
-            </div>
-            <ul style={{
-              margin: 0, paddingLeft: 18, fontSize: 12.5, color: t.ink2,
-              lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 3,
-            }}>
-              <li>Summarize the realtor conversation into a structured handoff</li>
-              <li>Carry over relevant facts and uploaded files</li>
-              <li>Identify missing lending items the Lending AI needs to collect</li>
-              <li>Create a prequal quote in the funding queue</li>
-              <li>Spawn a lending-side AI thread that already knows everything</li>
-              <li>Notify the funding team via Elara Inbox</li>
-            </ul>
-            {error && (
-              <div style={{
-                padding: "8px 12px", borderRadius: 8,
-                background: t.dangerBg, color: t.danger,
-                fontSize: 12, fontWeight: 600,
-              }}>
-                {error}
-              </div>
-            )}
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
-              <button
-                onClick={onClose}
-                disabled={pending}
-                style={{
-                  padding: "9px 14px", borderRadius: 9,
-                  background: t.surface2, color: t.ink, border: `1px solid ${t.line}`,
-                  fontSize: 13, fontWeight: 700, cursor: pending ? "wait" : "pointer",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => onConfirm()}
-                disabled={pending}
-                style={{
-                  padding: "9px 14px", borderRadius: 9,
-                  background: t.brand, color: t.inverse, border: "none",
-                  fontSize: 13, fontWeight: 700,
-                  cursor: pending ? "wait" : "pointer",
-                  opacity: pending ? 0.7 : 1,
-                  display: "inline-flex", alignItems: "center", gap: 6,
-                }}
-              >
-                <Icon name="bolt" size={12} />
-                {pending ? "Handing off…" : "Send to Lending"}
-              </button>
-            </div>
+            <span style={{ flex: 1 }} />
+            <Btn variant="pri" onClick={onClose}>Done</Btn>
           </>
         ) : (
           <>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
-                {client.name} moved to Lending Intake
-              </div>
-              <div style={{ fontSize: 13, color: t.ink3 }}>
-                Funding team has been notified. The Lending AI started a fresh thread and already knows the context.
-              </div>
-            </div>
-            {result?.summary && (
-              <div style={{
-                padding: "10px 12px", borderRadius: 9,
-                background: t.brandSoft, color: t.ink2,
-                fontSize: 12.5, lineHeight: 1.55, whiteSpace: "pre-wrap",
-              }}>
-                <div style={{
-                  fontSize: 10, fontWeight: 700, letterSpacing: 1,
-                  textTransform: "uppercase", color: t.brand, marginBottom: 4,
-                }}>
-                  Known from realtor side
-                </div>
-                {result.summary}
-              </div>
-            )}
-            {result && result.missingItems.length > 0 && (
-              <div>
-                <div style={{
-                  fontSize: 10, fontWeight: 700, letterSpacing: 1,
-                  textTransform: "uppercase", color: t.ink3, marginBottom: 4,
-                }}>
-                  Lending AI will collect
-                </div>
-                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
-                  {result.missingItems.map((m) => (
-                    <li key={m}>{m.replace(/_/g, " ")}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {result?.firstQuestion && (
-              <div style={{
-                padding: "10px 12px", borderRadius: 9,
-                border: `1px dashed ${t.line}`, background: t.surface2,
-              }}>
-                <div style={{
-                  fontSize: 10, fontWeight: 700, letterSpacing: 1,
-                  textTransform: "uppercase", color: t.ink3, marginBottom: 4,
-                }}>
-                  Lending AI's first question
-                </div>
-                <div style={{ fontSize: 12.5, color: t.ink, lineHeight: 1.5 }}>
-                  {result.firstQuestion}
-                </div>
-              </div>
-            )}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button
-                onClick={onClose}
-                style={{
-                  padding: "9px 14px", borderRadius: 9,
-                  background: t.brand, color: t.inverse, border: "none",
-                  fontSize: 13, fontWeight: 700, cursor: "pointer",
-                }}
-              >
-                Done
-              </button>
-            </div>
+            <span style={{ flex: 1 }} />
+            <Btn onClick={onClose} disabled={pending}>Cancel</Btn>
+            <Btn variant="pri" onClick={() => onConfirm()} disabled={pending}>
+              <Icon name="bolt" size={12} />
+              {pending ? "Handing off…" : "Send to Lending"}
+            </Btn>
           </>
-        )}
-      </div>
-    </div>
+        )
+      }
+    >
+      {!succeeded ? (
+        <>
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+            <li>Summarize the realtor conversation into a structured handoff</li>
+            <li>Carry over relevant facts and uploaded files</li>
+            <li>Identify missing lending items the Lending AI needs to collect</li>
+            <li>Create a prequal quote in the funding queue</li>
+            <li>Spawn a lending-side AI thread that already knows everything</li>
+            <li>Notify the funding team via Elara Inbox</li>
+          </ul>
+          {error && <div className="warnline mt">{error}</div>}
+        </>
+      ) : (
+        <>
+          {result?.summary && (
+            <div className="card">
+              <Lbl>Known from realtor side</Lbl>
+              <div style={{ whiteSpace: "pre-wrap" }}>{result.summary}</div>
+            </div>
+          )}
+          {result && result.missingItems.length > 0 && (
+            <div className="mt">
+              <Lbl>Lending AI will collect</Lbl>
+              <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+                {result.missingItems.map((m) => (
+                  <li key={m}>{m.replace(/_/g, " ")}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {result?.firstQuestion && (
+            <div className="card mt">
+              <Lbl>Lending AI&apos;s first question</Lbl>
+              <div>{result.firstQuestion}</div>
+            </div>
+          )}
+        </>
+      )}
+    </Drawer>
   );
 }

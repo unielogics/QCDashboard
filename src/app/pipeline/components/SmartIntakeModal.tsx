@@ -20,8 +20,8 @@
 //      but no longer surfaced — those are firm-wide / Super Admin concerns
 //      and don't belong on Agent intake per the architecture rules.
 //
-// Container is the shared <RightPanel> 1/3-width slide-in (was a centered
-// modal). Same UX standard the rest of the app is migrating to.
+// Container is the shared <Drawer> — the one dialog shape for the whole app,
+// which superseded both Modal and RightPanel.
 //
 // Backend payload (qcbackend POST /api/v1/intake) is preserved on the
 // existing borrower/asset/numbers/ai_rules shape, with the new fields
@@ -32,8 +32,8 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPetrol } from "@/components/design-system/buttons";
-import { RightPanel } from "@/components/design-system/RightPanel";
+import { Btn, CellChip, IconBtn, WarnLine, cx } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { GoogleAddressInput } from "@/components/property/GoogleAddressInput";
 import {
   useBrokerSettings,
@@ -538,85 +538,62 @@ export function SmartIntakeModal({
   };
 
   return (
-    <RightPanel
+    <Drawer
       open={open}
       onClose={onClose}
-      width="min(680px, max(45vw, 520px))"
-      eyebrow={(() => {
+      width="lg"
+      sub={(() => {
         const purposeLabel = form.loanPurpose === "refinance" ? "Refinance" : "Purchase";
         const sideLabel = showSideToggle ? ` · ${isSeller ? "Seller" : "Buyer"}` : "";
         const programLabel = LOAN_PROGRAM_LABELS[form.loanType] ?? "";
         return `New File · ${purposeLabel}${programLabel ? ` · ${programLabel}` : ""}${sideLabel}`;
       })()}
       title={STEPS[step].label}
-      ariaLabel="Smart Intake — new file"
       footer={
         <>
-          <button
+          <Btn
             onClick={() => (step === 0 ? onClose() : setStep(step - 1))}
-            style={qcBtn(t)}
             disabled={createIntake.isPending}
           >
             {step === 0 ? "Cancel" : "← Back"}
-          </button>
-          <div style={{ flex: 1, textAlign: "center", fontSize: 11, color: submitErr ? t.danger : t.ink3, fontWeight: 600 }}>
-            {submitErr ? submitErr : `Step ${step + 1} of ${STEPS.length}`}
-          </div>
+          </Btn>
+          {/* The step counter doubles as the submit-error line; a failed
+              activation has to be readable without hunting for it. */}
+          {submitErr ? (
+            <WarnLine className="sp">{submitErr}</WarnLine>
+          ) : (
+            <div className="sub" style={{ flex: 1, textAlign: "center" }}>
+              Step {step + 1} of {STEPS.length}
+            </div>
+          )}
           {step < STEPS.length - 1 ? (
-            <button
+            <Btn
+              variant="pri"
               onClick={() => canAdvance() && setStep(step + 1)}
               disabled={!canAdvance()}
-              style={{
-                ...qcBtnPetrol(t),
-                opacity: canAdvance() ? 1 : 0.5,
-                cursor: canAdvance() ? "pointer" : "not-allowed",
-              }}
             >
               Continue →
-            </button>
+            </Btn>
           ) : (
-            <button
-              onClick={handleActivate}
-              disabled={createIntake.isPending}
-              style={{
-                ...qcBtnPetrol(t),
-                opacity: createIntake.isPending ? 0.6 : 1,
-                cursor: createIntake.isPending ? "wait" : "pointer",
-              }}
-            >
+            <Btn variant="pri" onClick={handleActivate} disabled={createIntake.isPending}>
               <Icon name="bolt" size={13} />
               {createIntake.isPending ? "Activating…" : "Activate AI"}
-            </button>
+            </Btn>
           )}
         </>
       }
     >
-      {/* Stepper */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+      {/* Stepper — `.stepdot` carries the numbered pip and the done/active
+          tone; the connector rule between steps is the one bespoke bit. */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
         {STEPS.map((s, i) => (
           <div key={s.id} style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
-            <div
-              style={{
-                width: 18,
-                height: 18,
-                borderRadius: 999,
-                flexShrink: 0,
-                background: i <= step ? t.petrol : t.line,
-                color: i <= step ? "#fff" : t.ink3,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 10,
-                fontWeight: 800,
-              }}
-            >
-              {i < step ? "✓" : i + 1}
-            </div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: i <= step ? t.ink : t.ink3, letterSpacing: 0.3 }}>
+            <span className={cx("stepdot", i <= step && "on")}>
+              <i>{i < step ? "✓" : i + 1}</i>
               {s.label}
-            </div>
+            </span>
             {i < STEPS.length - 1 && (
-              <div style={{ flex: 1, height: 1, background: i < step ? t.petrol : t.line }} />
+              <div style={{ flex: 1, height: 1, background: i < step ? "var(--accent)" : "var(--line)" }} />
             )}
           </div>
         ))}
@@ -663,7 +640,7 @@ export function SmartIntakeModal({
           setCollectionStartUnit={setCollectionStartUnit}
         />
       )}
-    </RightPanel>
+    </Drawer>
   );
 }
 
@@ -837,12 +814,12 @@ function BorrowerStepView({
           listing-vs-purchase framing. */}
       {showSideToggle && (
         <div>
-          <Label t={t}>Buyer or Seller</Label>
+          <Label>Buyer or Seller</Label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <SideButton t={t} active={form.dealSide === "buyer"} onClick={() => update("dealSide", "buyer")}>
+            <SideButton active={form.dealSide === "buyer"} onClick={() => update("dealSide", "buyer")}>
               Buyer
             </SideButton>
-            <SideButton t={t} active={form.dealSide === "seller"} onClick={() => update("dealSide", "seller")}>
+            <SideButton active={form.dealSide === "seller"} onClick={() => update("dealSide", "seller")}>
               Seller
             </SideButton>
           </div>
@@ -857,20 +834,19 @@ function BorrowerStepView({
       {/* Loan purpose — drives the Step 3 calculator branch + persists
           on Loan.purpose. Refinance maps to CASH_OUT_REFI on the wire
           (the conservative LTV cap; rate-term refi is a v2 follow-up). */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field t={t} label="Purpose" required>
+      <div className="cg">
+        <Field label="Purpose" required>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-            <SideButton t={t} active={form.loanPurpose === "purchase"} onClick={() => update("loanPurpose", "purchase")}>
+            <SideButton active={form.loanPurpose === "purchase"} onClick={() => update("loanPurpose", "purchase")}>
               Purchase
             </SideButton>
-            <SideButton t={t} active={form.loanPurpose === "refinance"} onClick={() => update("loanPurpose", "refinance")}>
+            <SideButton active={form.loanPurpose === "refinance"} onClick={() => update("loanPurpose", "refinance")}>
               Refinance
             </SideButton>
           </div>
         </Field>
-        <Field t={t} label="Loan program" required>
+        <Field label="Loan program" required>
           <Select
-            t={t}
             value={String(form.loanType)}
             onChange={(v) => update("loanType", v as FormState["loanType"])}
             options={LOAN_PROGRAM_OPTIONS_ALL
@@ -931,19 +907,18 @@ function BorrowerStepView({
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field t={t} label="Name" required>
-          <Input t={t} value={form.borrowerName} onChange={(v) => update("borrowerName", v)} placeholder="Marcus Holloway" disabled={locked} />
+      <div className="cg">
+        <Field label="Name" required>
+          <Input value={form.borrowerName} onChange={(v) => update("borrowerName", v)} placeholder="Marcus Holloway" disabled={locked} />
         </Field>
-        <Field t={t} label="Email" required>
-          <Input t={t} type="email" value={form.borrowerEmail} onChange={(v) => update("borrowerEmail", v)} placeholder="marcus@holloway.cap" disabled={locked} />
+        <Field label="Email" required>
+          <Input type="email" value={form.borrowerEmail} onChange={(v) => update("borrowerEmail", v)} placeholder="marcus@holloway.cap" disabled={locked} />
         </Field>
-        <Field t={t} label="Phone">
-          <Input t={t} value={form.borrowerPhone} onChange={(v) => update("borrowerPhone", v)} placeholder="(917) 555-0148" disabled={locked} />
+        <Field label="Phone">
+          <Input value={form.borrowerPhone} onChange={(v) => update("borrowerPhone", v)} placeholder="(917) 555-0148" disabled={locked} />
         </Field>
-        <Field t={t} label="Entity type">
+        <Field label="Entity type">
           <Select
-            t={t}
             value={form.entityType}
             onChange={(v) => update("entityType", v as FormState["entityType"])}
             options={[
@@ -954,12 +929,11 @@ function BorrowerStepView({
             ]}
           />
         </Field>
-        <Field t={t} label="Entity name">
-          <Input t={t} value={form.entityName} onChange={(v) => update("entityName", v)} placeholder="Holloway Capital LLC" />
+        <Field label="Entity name">
+          <Input value={form.entityName} onChange={(v) => update("entityName", v)} placeholder="Holloway Capital LLC" />
         </Field>
-        <Field t={t} label="Experience level">
+        <Field label="Experience level">
           <Select
-            t={t}
             value={form.experience}
             onChange={(v) => update("experience", v as FormState["experience"])}
             options={[
@@ -975,10 +949,9 @@ function BorrowerStepView({
       {/* Source attribution (alembic 0029). When set to agent_referral
           surfaces the broker picker so the originating agent gets
           credit on the resulting Loan row. */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field t={t} label="Source attribution" required>
+      <div className="cg">
+        <Field label="Source attribution" required>
           <Select
-            t={t}
             value={form.sourceAttribution}
             onChange={(v) => update("sourceAttribution", v as SourceAttribution)}
             options={[
@@ -992,9 +965,8 @@ function BorrowerStepView({
           />
         </Field>
         {form.sourceAttribution === "agent_referral" && (
-          <Field t={t} label="Referring agent" required>
+          <Field label="Referring agent" required>
             <AgentPicker
-              t={t}
               value={form.referringAgentId}
               onChange={(v) => update("referringAgentId", v)}
             />
@@ -1002,7 +974,7 @@ function BorrowerStepView({
         )}
       </div>
 
-      <Note t={t}>
+      <Note>
         Submitting Step 1 creates the Client record. The rest of the flow enriches it.
       </Note>
     </div>
@@ -1013,13 +985,11 @@ function BorrowerStepView({
 // when source_attribution = agent_referral, and Step 4's assigned-owner
 // dropdown which spans operators broadly. Filtering happens client-side.
 function AgentPicker({
-  t,
   value,
   onChange,
   filterRoles,
   emptyLabel = "Select agent…",
 }: {
-  t: QCTokens;
   value: string;
   onChange: (id: string) => void;
   filterRoles?: Role[];
@@ -1034,13 +1004,10 @@ function AgentPicker({
   }, [users, filterRoles]);
   return (
     <select
+      className="field"
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      style={{
-        width: "100%", padding: "10px 12px", borderRadius: 9,
-        background: t.surface2, border: `1px solid ${t.line}`,
-        color: value ? t.ink : t.ink3, fontSize: 13, fontFamily: "inherit", outline: "none",
-      }}
+      style={{ width: "100%" }}
     >
       <option value="">{emptyLabel}</option>
       {filtered.map((u) => (
@@ -1054,10 +1021,8 @@ function AgentPicker({
 // Pulled live from /clients/{id} so freshly-edited tier / fico /
 // experience text reflects without the wizard caller passing it.
 function ClientContextCard({
-  t,
   clientId,
 }: {
-  t: QCTokens;
   clientId: string;
 }) {
   const { data: client, isLoading } = useClient(clientId);
@@ -1069,57 +1034,25 @@ function ClientContextCard({
     (client.tier && client.tier !== "standard");
   if (!hasContext) return null;
   return (
-    <div
-      style={{
-        padding: "10px 12px",
-        borderRadius: 9,
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-      }}
-    >
-      <div style={{
-        fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
-        textTransform: "uppercase", color: t.ink3,
-      }}>
-        Borrower context
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{client.name}</span>
+    <div className="card">
+      <div className="lbl">Borrower context</div>
+      <div className="row" style={{ marginTop: 6 }}>
+        <b>{client.name}</b>
         {client.tier && client.tier !== "standard" && (
-          <span style={{
-            fontSize: 10, fontWeight: 700, padding: "2px 8px",
-            borderRadius: 999, background: t.brandSoft, color: t.brand,
-          }}>
-            {client.tier}
-          </span>
+          <CellChip tone="acc">{client.tier}</CellChip>
         )}
-        {client.fico != null && (
-          <span style={{
-            fontSize: 10, fontWeight: 700, padding: "2px 8px",
-            borderRadius: 999, background: t.surface, color: t.ink2,
-            border: `1px solid ${t.line}`,
-          }}>
-            FICO {client.fico}
-          </span>
-        )}
+        {client.fico != null && <CellChip tone="mut">FICO {client.fico}</CellChip>}
       </div>
       {client.experience && (
-        <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
-          <strong style={{ color: t.ink3, fontWeight: 700, fontSize: 10.5, letterSpacing: 1, textTransform: "uppercase" }}>
-            Experience
-          </strong>
-          <div style={{ marginTop: 2 }}>{client.experience}</div>
+        <div className="mt">
+          <div className="lbl">Experience</div>
+          <div>{client.experience}</div>
         </div>
       )}
       {client.properties && (
-        <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
-          <strong style={{ color: t.ink3, fontWeight: 700, fontSize: 10.5, letterSpacing: 1, textTransform: "uppercase" }}>
-            Properties
-          </strong>
-          <div style={{ marginTop: 2 }}>{client.properties}</div>
+        <div className="mt">
+          <div className="lbl">Properties</div>
+          <div>{client.properties}</div>
         </div>
       )}
     </div>
@@ -1148,16 +1081,16 @@ function AssetStepView({
           borrower's experience / properties / tier / FICO live on the
           Client row already — no need to retype on every new deal. */}
       {pickedClientId && (
-        <ClientContextCard t={t} clientId={pickedClientId} />
+        <ClientContextCard clientId={pickedClientId} />
       )}
 
       {/* Subject property — required for sellers, optional for buyers */}
       <div>
-        <SectionHeader t={t}>
+        <SectionHeader>
           {isSeller ? "Property they're selling" : "Target property (optional)"}
         </SectionHeader>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <div style={{ gridColumn: "1 / -1" }}>
+        <div className="cg">
+          <div className="s12">
             <GoogleAddressInput
               value={{ street: form.subjectAddress, city: form.subjectCity, state: form.subjectState }}
               onChange={(next) => {
@@ -1169,9 +1102,8 @@ function AssetStepView({
               helperText="Search Google and select the property, or use manual entry if the address is not listed."
             />
           </div>
-          <Field t={t} label="Property type">
+          <Field label="Property type">
             <Select
-              t={t}
               value={form.subjectPropertyType}
               onChange={(v) => update("subjectPropertyType", v as FormState["subjectPropertyType"])}
               options={[
@@ -1192,9 +1124,8 @@ function AssetStepView({
       {/* Buyer-only — current portfolio */}
       {form.dealSide === "buyer" && (
         <div>
-          <SectionHeader t={t}>Properties currently owned</SectionHeader>
+          <SectionHeader>Properties currently owned</SectionHeader>
           <Toggle
-            t={t}
             label="The buyer currently owns real estate"
             sub="Add each property they own. Becomes part of their experience profile + financial picture."
             value={form.buyerOwnsProperties}
@@ -1205,18 +1136,11 @@ function AssetStepView({
               {form.ownedAssets.map((asset, idx) => (
                 <div
                   key={idx}
-                  style={{
-                    border: `1px solid ${t.line}`,
-                    borderRadius: 10,
-                    padding: 12,
-                    background: t.surface2,
-                    display: "grid",
-                    gridTemplateColumns: "1fr auto",
-                    gap: 10,
-                  }}
+                  className="card"
+                  style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10 }}
                 >
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    <div style={{ gridColumn: "1 / -1" }}>
+                  <div className="cg">
+                    <div className="s12">
                       <GoogleAddressInput
                         value={{ street: asset.address, city: asset.city, state: asset.state }}
                         onChange={(next) =>
@@ -1230,9 +1154,8 @@ function AssetStepView({
                         helperText="Search Google and select the property, or use manual entry if the address is not listed."
                       />
                     </div>
-                    <Field t={t} label="Use">
+                    <Field label="Use">
                       <Select
-                        t={t}
                         value={asset.ownership}
                         onChange={(v) => onUpdateAsset(idx, { ownership: v as AssetEntry["ownership"] })}
                         options={[
@@ -1241,46 +1164,26 @@ function AssetStepView({
                         ]}
                       />
                     </Field>
-                    <Field t={t} label="Estimated value">
-                      <Input t={t} value={asset.marketValue} onChange={(v) => onUpdateAsset(idx, { marketValue: v })} placeholder="525,000" prefix="$" />
+                    <Field label="Estimated value">
+                      <Input value={asset.marketValue} onChange={(v) => onUpdateAsset(idx, { marketValue: v })} placeholder="525,000" prefix="$" />
                     </Field>
-                    <Field t={t} label="Balance owed">
-                      <Input t={t} value={asset.balanceOwed} onChange={(v) => onUpdateAsset(idx, { balanceOwed: v })} placeholder="280,000" prefix="$" />
+                    <Field label="Balance owed">
+                      <Input value={asset.balanceOwed} onChange={(v) => onUpdateAsset(idx, { balanceOwed: v })} placeholder="280,000" prefix="$" />
                     </Field>
                   </div>
-                  <button
+                  <IconBtn
                     onClick={() => onRemoveAsset(idx)}
                     title="Remove asset"
-                    style={{
-                      all: "unset",
-                      cursor: "pointer",
-                      color: t.ink3,
-                      width: 28,
-                      height: 28,
-                      borderRadius: 8,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                      alignSelf: "start",
-                    }}
+                    aria-label="Remove asset"
+                    style={{ alignSelf: "start" }}
                   >
                     <Icon name="x" size={13} />
-                  </button>
+                  </IconBtn>
                 </div>
               ))}
-              <button
-                onClick={onAddAsset}
-                style={{
-                  ...qcBtn(t),
-                  alignSelf: "flex-start",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
+              <Btn onClick={onAddAsset} style={{ alignSelf: "flex-start" }}>
                 <Icon name="plus" size={12} /> Add property
-              </button>
+              </Btn>
             </div>
           )}
         </div>
@@ -1318,12 +1221,12 @@ function NumbersStepView({ t, form, update }: StepProps) {
   if (isSeller) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <Field t={t} label="Listing price" required full>
-            <Input t={t} value={form.salesPrice} onChange={(v) => update("salesPrice", v)} placeholder="485,000" prefix="$" />
+        <div className="cg">
+          <Field label="Listing price" required full>
+            <Input value={form.salesPrice} onChange={(v) => update("salesPrice", v)} placeholder="485,000" prefix="$" />
           </Field>
         </div>
-        <Note t={t}>
+        <Note>
           Listings don&apos;t carry loan terms — submit to create the seller-side
           deal record.
         </Note>
@@ -1371,15 +1274,15 @@ function NumbersStepView({ t, form, update }: StepProps) {
           these — that path is short-circuited above. */}
       {!isRefi && (
         <div>
-          <SectionHeader t={t}>
+          <SectionHeader>
             {isReno ? "Acquisition" : "Purchase & banking"}
           </SectionHeader>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            <Field t={t} label="Purchase price" required>
-              <Input t={t} value={form.purchasePrice} onChange={(v) => update("purchasePrice", v)} placeholder="485,000" prefix="$" />
+          <div className="cg">
+            <Field label="Purchase price" required>
+              <Input value={form.purchasePrice} onChange={(v) => update("purchasePrice", v)} placeholder="485,000" prefix="$" />
             </Field>
-            <Field t={t} label="Deposit available">
-              <Input t={t} value={form.depositAvailable} onChange={(v) => update("depositAvailable", v)} placeholder="125,000" prefix="$" />
+            <Field label="Deposit available">
+              <Input value={form.depositAvailable} onChange={(v) => update("depositAvailable", v)} placeholder="125,000" prefix="$" />
             </Field>
           </div>
         </div>
@@ -1388,54 +1291,54 @@ function NumbersStepView({ t, form, update }: StepProps) {
       {/* PROGRAM-SPECIFIC inputs — what the simulator needs to size
           the loan beyond price + deposit. */}
       <div>
-        <SectionHeader t={t}>
+        <SectionHeader>
           {isRefi ? "Refinance terms" : "Loan terms"}
         </SectionHeader>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <div className="cg">
 
           {/* DSCR refi: current value + payoff replace purchase price */}
           {isDscr && isRefi && (
             <>
-              <Field t={t} label="Current as-is value" required>
-                <Input t={t} value={form.currentValue} onChange={(v) => update("currentValue", v)} placeholder="500,000" prefix="$" />
+              <Field label="Current as-is value" required>
+                <Input value={form.currentValue} onChange={(v) => update("currentValue", v)} placeholder="500,000" prefix="$" />
               </Field>
-              <Field t={t} label="Existing payoff" required>
-                <Input t={t} value={form.payoff} onChange={(v) => update("payoff", v)} placeholder="320,000" prefix="$" />
+              <Field label="Existing payoff" required>
+                <Input value={form.payoff} onChange={(v) => update("payoff", v)} placeholder="320,000" prefix="$" />
               </Field>
             </>
           )}
 
           {/* DSCR (purchase or refi): monthly rent drives the DSCR calc */}
           {isDscr && (
-            <Field t={t} label="Expected monthly rent" full={isRefi}>
-              <Input t={t} value={form.expectedRent} onChange={(v) => update("expectedRent", v)} placeholder="3,650" prefix="$" />
+            <Field label="Expected monthly rent" full={isRefi}>
+              <Input value={form.expectedRent} onChange={(v) => update("expectedRent", v)} placeholder="3,650" prefix="$" />
             </Field>
           )}
 
           {/* F&F / GU purchase: ARV + rehab. BRV = purchase price above. */}
           {isReno && (
             <>
-              <Field t={t} label="ARV (after-repair value)" required>
-                <Input t={t} value={form.arv} onChange={(v) => update("arv", v)} placeholder="640,000" prefix="$" />
+              <Field label="ARV (after-repair value)" required>
+                <Input value={form.arv} onChange={(v) => update("arv", v)} placeholder="640,000" prefix="$" />
               </Field>
-              <Field t={t} label="Rehab budget">
-                <Input t={t} value={form.rehabBudget} onChange={(v) => update("rehabBudget", v)} placeholder="60,000" prefix="$" />
+              <Field label="Rehab budget">
+                <Input value={form.rehabBudget} onChange={(v) => update("rehabBudget", v)} placeholder="60,000" prefix="$" />
               </Field>
             </>
           )}
 
           {/* LTV / LTC selector — DSCR / Bridge use LTV; Reno uses LTC. */}
           {isReno ? (
-            <Field t={t} label="Target LTC (%)">
-              <Input t={t} value={form.targetLTC} onChange={(v) => update("targetLTC", v)} placeholder="85" suffix="%" />
+            <Field label="Target LTC (%)">
+              <Input value={form.targetLTC} onChange={(v) => update("targetLTC", v)} placeholder="85" suffix="%" />
             </Field>
           ) : (
-            <Field t={t} label={`Target LTV (%) · cap ${isRefi ? "75" : "80"}%`}>
-              <Input t={t} value={form.targetLTV} onChange={(v) => update("targetLTV", v)} placeholder={isRefi ? "70" : "75"} suffix="%" />
+            <Field label={`Target LTV (%) · cap ${isRefi ? "75" : "80"}%`}>
+              <Input value={form.targetLTV} onChange={(v) => update("targetLTV", v)} placeholder={isRefi ? "70" : "75"} suffix="%" />
             </Field>
           )}
-          <Field t={t} label="Base rate (%)">
-            <Input t={t} value={form.baseRate} onChange={(v) => update("baseRate", v)} placeholder="7.500" suffix="%" />
+          <Field label="Base rate (%)">
+            <Input value={form.baseRate} onChange={(v) => update("baseRate", v)} placeholder="7.500" suffix="%" />
           </Field>
         </div>
       </div>
@@ -1519,7 +1422,7 @@ function NumbersStepView({ t, form, update }: StepProps) {
         </div>
       </div>
 
-      <Note t={t}>
+      <Note>
         Type the numbers — operators tune precise terms on the loan detail
         after submit. Caps mirror the firm&apos;s underwriting matrix.
       </Note>
@@ -1577,10 +1480,9 @@ function CommunicationStepView({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field t={t} label="Preferred language">
+      <div className="cg">
+        <Field label="Preferred language">
           <Select
-            t={t}
             value={form.language}
             onChange={(v) => update("language", v)}
             options={[
@@ -1593,7 +1495,7 @@ function CommunicationStepView({
             ]}
           />
         </Field>
-        <Field t={t} label="Preferred channel">
+        <Field label="Preferred channel">
           {isBroker ? (
             <div
               style={{
@@ -1609,7 +1511,6 @@ function CommunicationStepView({
             </div>
           ) : (
             <Select
-              t={t}
               value={form.preferredChannel}
               onChange={(v) => update("preferredChannel", v as Channel)}
               options={[
@@ -1621,9 +1522,8 @@ function CommunicationStepView({
             />
           )}
         </Field>
-        <Field t={t} label="Target close date" full>
+        <Field label="Target close date" full>
           <Input
-            t={t}
             type="date"
             value={form.targetCloseDate}
             onChange={(v) => update("targetCloseDate", v)}
@@ -1631,27 +1531,29 @@ function CommunicationStepView({
         </Field>
       </div>
 
-      <Field t={t} label="Backstory / context">
+      <Field label="Backstory / context">
         <textarea
           value={form.backstory}
           onChange={(e) => update("backstory", e.target.value)}
           placeholder="Anything the AI should know up-front — relocation timeline, family situation, prior agent, why they're transacting now…"
-          style={textareaStyle(t)}
+          className="field"
+          style={TEXTAREA_STYLE}
           rows={3}
         />
       </Field>
 
-      <Field t={t} label="AI speaking instructions">
+      <Field label="AI speaking instructions">
         <textarea
           value={form.aiInstructions}
           onChange={(e) => update("aiInstructions", e.target.value)}
           placeholder="Keep messages short. Avoid jargon. Always copy me on first contact. Use a friendly, lower-pressure tone — they're nervous about timing."
-          style={textareaStyle(t)}
+          className="field"
+          style={TEXTAREA_STYLE}
           rows={3}
         />
       </Field>
 
-      <Note t={t}>
+      <Note>
         Compliance: AI drafts for borrower-facing messages always require your approval.
         Forbidden phrasings (&quot;you are approved&quot;, &quot;guaranteed rate&quot;) are
         enforced at prompt level — these instructions can&apos;t override them.
@@ -1660,19 +1562,17 @@ function CommunicationStepView({
       {/* Ownership + invite behavior (alembic 0029). assigned_owner_id
           blank → backend defaults to the creator. invite_behavior gates
           whether the Clerk invite fires at submit time. */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field t={t} label="Assigned funding owner">
+      <div className="cg">
+        <Field label="Assigned funding owner">
           <AgentPicker
-            t={t}
             value={form.assignedOwnerId}
             onChange={(v) => update("assignedOwnerId", v)}
             filterRoles={[Role.SUPER_ADMIN, Role.LOAN_EXEC]}
             emptyLabel="Funding Team queue"
           />
         </Field>
-        <Field t={t} label="Borrower app invite behavior">
+        <Field label="Borrower app invite behavior">
           <Select
-            t={t}
             value={form.inviteBehavior}
             onChange={(v) => update("inviteBehavior", v as InviteBehavior)}
             options={[
@@ -1686,7 +1586,7 @@ function CommunicationStepView({
 
       {isBroker && (
         <div style={{ marginBottom: 14 }}>
-          <Label t={t}>Start collecting</Label>
+          <Label>Start collecting</Label>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <input
               type="number"
@@ -1958,94 +1858,82 @@ function DocPreviewSection({
         </div>
       )}
 
-      <button
-        onClick={addCustom}
-        style={{
-          ...qcBtn(t),
-          alignSelf: "flex-start",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          marginTop: 4,
-        }}
-      >
+      <Btn onClick={addCustom} style={{ alignSelf: "flex-start", marginTop: 4 }}>
         <Icon name="plus" size={11} /> Add custom doc
-      </button>
+      </Btn>
     </div>
   );
 }
 
-// ── Tiny form primitives ──────────────────────────────────────────────────
+// ── Tiny form primitives ──────────────────────────────────────────
+//
+// These render the shared classes (`.lbl`, `.field`, `.sub`, `.btn`, `.pick`)
+// rather than carrying a palette, so the `t` prop they all used to take is
+// gone. The step views above still hold a `t` for the layout that has not
+// moved yet — that is the remaining half of this file's migration.
 
-function Field({ t, label, required, children, full }: { t: QCTokens; label: string; required?: boolean; children: ReactNode; full?: boolean }) {
+function Field({ label, required, children, full }: { label: string; required?: boolean; children: ReactNode; full?: boolean }) {
   return (
-    <div style={{ gridColumn: full ? "1 / -1" : "auto" }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 6 }}>
-        {label} {required && <span style={{ color: t.danger }}>*</span>}
+    <div className={full ? "s12" : "s6"}>
+      <div className="lbl" style={{ marginBottom: 6 }}>
+        {label} {required && <span style={{ color: "var(--danger)" }}>*</span>}
       </div>
       {children}
     </div>
   );
 }
 
-function Label({ t, children }: { t: QCTokens; children: ReactNode }) {
+function Label({ children }: { children: ReactNode }) {
   return (
-    <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 8 }}>
+    <div className="lbl" style={{ marginBottom: 8 }}>
       {children}
     </div>
   );
 }
 
-function SectionHeader({ t, children }: { t: QCTokens; children: ReactNode }) {
+function SectionHeader({ children }: { children: ReactNode }) {
   return (
-    <div style={{ fontSize: 12, fontWeight: 800, color: t.ink, marginBottom: 10, paddingBottom: 6, borderBottom: `1px solid ${t.line}` }}>
+    <div style={{ fontWeight: 700, marginBottom: 10, paddingBottom: 6, borderBottom: "1px solid var(--line)" }}>
       {children}
     </div>
   );
 }
 
+/** Two-up exclusive choice (buyer/seller, purchase/refinance). A pressed
+ *  button, not a radio group — kept as it was so the click targets and the
+ *  `active` contract are unchanged. */
 function SideButton({
-  t,
   active,
   onClick,
   children,
 }: {
-  t: QCTokens;
   active: boolean;
   onClick: () => void;
   children: ReactNode;
 }) {
   return (
     <button
+      type="button"
+      aria-pressed={active}
       onClick={onClick}
-      style={{
-        all: "unset",
-        cursor: "pointer",
-        padding: "12px 16px",
-        borderRadius: 10,
-        border: `1px solid ${active ? t.petrol : t.line}`,
-        background: active ? t.petrolSoft : t.surface2,
-        color: active ? t.petrol : t.ink2,
-        fontSize: 13,
-        fontWeight: 700,
-        textAlign: "center",
-      }}
+      className={cx("btn", active && "pri")}
+      style={{ justifyContent: "center" }}
     >
       {children}
     </button>
   );
 }
 
-function Note({ t, children }: { t: QCTokens; children: ReactNode }) {
+/** Hint line under a field — caption weight, NOT the `.note` callout. */
+function Note({ children }: { children: ReactNode }) {
   return (
-    <div style={{ fontSize: 11, color: t.ink3, lineHeight: 1.55, marginTop: 4 }}>
+    <div className="sub" style={{ marginTop: 4 }}>
       {children}
     </div>
   );
 }
 
 function Input({
-  t,
   value,
   onChange,
   placeholder,
@@ -2054,7 +1942,6 @@ function Input({
   suffix,
   disabled,
 }: {
-  t: QCTokens;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
@@ -2063,21 +1950,14 @@ function Input({
   suffix?: string;
   disabled?: boolean;
 }) {
+  // `.field` owns the box; the inner <input> is a bare text surface inside it
+  // so the affix spans sit within the same border.
   return (
     <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        width: "100%",
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        borderRadius: 9,
-        opacity: disabled ? 0.6 : 1,
-      }}
+      className="field"
+      style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "100%", opacity: disabled ? 0.6 : 1 }}
     >
-      {prefix && (
-        <span style={{ padding: "0 0 0 12px", color: t.ink3, fontSize: 13, fontWeight: 700 }}>{prefix}</span>
-      )}
+      {prefix && <span className="sub">{prefix}</span>}
       <input
         type={type}
         value={value}
@@ -2087,47 +1967,34 @@ function Input({
         style={{
           flex: 1,
           minWidth: 0,
-          padding: "10px 12px",
+          padding: 0,
           background: "transparent",
           border: "none",
-          color: t.ink,
-          fontSize: 13,
-          fontFamily: "inherit",
+          font: "inherit",
+          color: "inherit",
           outline: "none",
         }}
       />
-      {suffix && (
-        <span style={{ padding: "0 12px 0 0", color: t.ink3, fontSize: 12 }}>{suffix}</span>
-      )}
+      {suffix && <span className="sub">{suffix}</span>}
     </div>
   );
 }
 
 function Select({
-  t,
   value,
   onChange,
   options,
 }: {
-  t: QCTokens;
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
 }) {
   return (
     <select
+      className="field"
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      style={{
-        width: "100%",
-        padding: "10px 12px",
-        borderRadius: 9,
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        color: t.ink,
-        fontSize: 13,
-        fontFamily: "inherit",
-      }}
+      style={{ width: "100%" }}
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>
@@ -2139,13 +2006,11 @@ function Select({
 }
 
 function Toggle({
-  t,
   label,
   sub,
   value,
   onChange,
 }: {
-  t: QCTokens;
   label: string;
   sub?: string;
   value: boolean;
@@ -2153,26 +2018,21 @@ function Toggle({
 }) {
   return (
     <button
+      type="button"
+      role="switch"
+      aria-checked={value}
       onClick={() => onChange(!value)}
-      style={{
-        all: "unset",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        padding: "10px 12px",
-        borderRadius: 10,
-        border: `1px solid ${value ? t.petrol : t.line}`,
-        background: value ? t.petrolSoft : t.surface2,
-        width: "100%",
-      }}
+      className={cx("pick", value && "on")}
+      style={{ width: "100%", textAlign: "left" }}
     >
+      {/* The knob is a measured 38×22 track with a computed offset — genuinely
+          dynamic geometry, so it stays inline. */}
       <div
         style={{
           width: 38,
           height: 22,
           borderRadius: 999,
-          background: value ? t.petrol : t.line,
+          background: value ? "var(--accent)" : "var(--line2)",
           position: "relative",
           flexShrink: 0,
           transition: "background .15s ease",
@@ -2192,26 +2052,17 @@ function Toggle({
         />
       </div>
       <div>
-        <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink }}>{label}</div>
-        {sub && <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>{sub}</div>}
+        <b>{label}</b>
+        {sub && <div className="sub">{sub}</div>}
       </div>
     </button>
   );
 }
 
-function textareaStyle(t: QCTokens): React.CSSProperties {
-  return {
-    width: "100%",
-    minHeight: 70,
-    resize: "vertical",
-    padding: "10px 12px",
-    background: t.surface2,
-    border: `1px solid ${t.line}`,
-    borderRadius: 9,
-    color: t.ink,
-    fontSize: 13,
-    fontFamily: "inherit",
-    lineHeight: 1.5,
-    outline: "none",
-  };
-}
+/** Textarea geometry only — the surface itself comes from `.field`. */
+const TEXTAREA_STYLE: React.CSSProperties = {
+  width: "100%",
+  minHeight: 70,
+  resize: "vertical",
+  lineHeight: 1.5,
+};

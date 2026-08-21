@@ -8,31 +8,52 @@
 // Anyone signed in can read this page; the spread-editing controls are
 // gated to super-admin (UI-side; the /lender-spreads endpoint enforces
 // the same gate server-side).
+//
+// Styling: migrated off inline token objects onto the plain-CSS design system
+// in globals.css. The page owns no padding or max-width of its own — the app
+// shell's `.content` already sets both, and repeating them here is how you get
+// a double gutter nobody can find.
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import {
+  Btn,
+  CG,
+  Card,
+  CellChip,
+  Field,
+  Input,
+  Kpi,
+  KpiRow,
+  Note,
+  PageHeader,
+  Panel,
+  Row,
+  Seg,
+  Tag,
+  Textarea,
+} from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import {
   useCurrentUser,
   useFredSeries,
   useRefreshFred,
   useUpsertLenderSpread,
 } from "@/hooks/useApi";
-import { QC_FMT } from "@/components/design-system/tokens";
 import { Role } from "@/lib/enums.generated";
 import type { FredSeriesSummary } from "@/lib/types";
 import { FredChart } from "@/components/FredChart";
 
 type RangeDays = 7 | 14 | 30 | 60 | 90;
-const RANGE_OPTIONS: { id: RangeDays; label: string }[] = [
-  { id: 7, label: "7d" },
-  { id: 14, label: "14d" },
-  { id: 30, label: "30d" },
-  { id: 60, label: "60d" },
-  { id: 90, label: "90d" },
+// `Seg` is generic over a string union, so the range lives as a string key in
+// the control and is widened back to the numeric RangeDays the query takes.
+type RangeKey = "7" | "14" | "30" | "60" | "90";
+const RANGE_OPTIONS: { value: RangeKey; label: string }[] = [
+  { value: "7", label: "7d" },
+  { value: "14", label: "14d" },
+  { value: "30", label: "30d" },
+  { value: "60", label: "60d" },
+  { value: "90", label: "90d" },
 ];
 
 // Series → product / use-case copy. Mirrors the dashboard widget so the
@@ -45,7 +66,6 @@ const SERIES_LABELS: Record<string, { headline: string; sub: string }> = {
 };
 
 export default function MarketRatesPage() {
-  const { t } = useTheme();
   const { data: user } = useCurrentUser();
   const [rangeDays, setRangeDays] = useState<RangeDays>(30);
   const { data: series = [], isLoading, error: seriesError } = useFredSeries(rangeDays);
@@ -63,138 +83,99 @@ export default function MarketRatesPage() {
     .at(-1);
 
   return (
-    <div style={{ padding: 24, maxWidth: 1280, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="grid">
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: 1.6,
-              textTransform: "uppercase",
-              color: t.petrol,
-            }}
-          >
-            Market data · FRED
-          </div>
-          <h1 style={{ margin: "4px 0 0", fontSize: 28, fontWeight: 800, color: t.ink, letterSpacing: -0.6 }}>
-            Today&apos;s Market Rates
-          </h1>
-          <div style={{ fontSize: 13, color: t.ink2, marginTop: 4 }}>
-            Live benchmarks from the Federal Reserve, combined with our lender spread to produce
-            the estimated interest rate quoted on your dashboard.
-            {lastUpdated && (
-              <>
-                {" "}Updated{" "}
-                <strong>{new Date(lastUpdated).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</strong>.
-              </>
-            )}
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {isSuperAdmin && (
-            <button
-              onClick={() => refreshFred.mutate()}
-              disabled={refreshFred.isPending}
-              style={qcBtn(t)}
-            >
-              <Icon name="refresh" size={13} />
-              {refreshFred.isPending ? "Pulling…" : "Refresh from FRED"}
-            </button>
-          )}
-          {isSuperAdmin && (
-            <Link href="/rates" style={{ ...qcBtnPrimary(t), textDecoration: "none" }}>
-              <Icon name="sliders" size={13} /> Open Rate Sheet
-            </Link>
-          )}
-        </div>
+      <div>
+        <PageHeader
+          title="Today's Market Rates"
+          lede={
+            <>
+              Market data · FRED
+              {lastUpdated && (
+                <>
+                  {" · updated "}
+                  <strong>
+                    {new Date(lastUpdated).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </strong>
+                </>
+              )}
+            </>
+          }
+          actions={
+            <>
+              {isSuperAdmin && (
+                <Btn onClick={() => refreshFred.mutate()} disabled={refreshFred.isPending}>
+                  <Icon name="refresh" size={13} />
+                  {refreshFred.isPending ? "Pulling…" : "Refresh from FRED"}
+                </Btn>
+              )}
+              {isSuperAdmin && (
+                // next/link, not the ds <BtnLink>: this is an in-app route and
+                // client navigation is the affordance, not the styling.
+                <Link href="/rates" className="btn pri">
+                  <Icon name="sliders" size={13} /> Open Rate Sheet
+                </Link>
+              )}
+            </>
+          }
+        />
+        {/* Mirrors the `h2 + .sub` rule in globals.css, which is scoped to h2
+            and so does not reach the h1 that PageHeader emits. */}
+        <p className="sub" style={{ margin: "4px 0 0", maxWidth: 760 }}>
+          Live benchmarks from the Federal Reserve, combined with our lender spread to produce the
+          estimated interest rate quoted on your dashboard.
+        </p>
       </div>
 
       {/* Range filter — applies to every chart on the page */}
       {!fredNotDeployed && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "10px 14px",
-            borderRadius: 11,
-            background: t.surface,
-            border: `1px solid ${t.line}`,
-          }}
-        >
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: 1.2,
-              textTransform: "uppercase",
-              color: t.ink3,
-            }}
-          >
-            Range
-          </span>
-          <div style={{ display: "inline-flex", gap: 4, background: t.chip, padding: 3, borderRadius: 9 }}>
-            {RANGE_OPTIONS.map((opt) => {
-              const active = rangeDays === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  onClick={() => setRangeDays(opt.id)}
-                  style={{
-                    all: "unset",
-                    cursor: "pointer",
-                    padding: "5px 12px",
-                    borderRadius: 7,
-                    background: active ? t.surface : "transparent",
-                    color: active ? t.ink : t.ink3,
-                    boxShadow: active ? t.shadow : "none",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    fontFeatureSettings: '"tnum"',
-                  }}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-          <span style={{ flex: 1 }} />
-          <span style={{ fontSize: 11, color: t.ink3 }}>
-            Hover any chart to see the value on that date.
-          </span>
-        </div>
+        <Card className="row">
+          <span className="lbl">Range</span>
+          <Seg
+            value={String(rangeDays) as RangeKey}
+            onChange={(v) => setRangeDays(Number(v) as RangeDays)}
+            options={RANGE_OPTIONS}
+            ariaLabel="Chart range"
+          />
+          <span className="sp" />
+          <span className="sub">Hover any chart to see the value on that date.</span>
+        </Card>
       )}
 
       {fredNotDeployed && (
-        <Card pad={16} style={{ background: t.surface2 }}>
-          <div style={{ fontSize: 13, color: t.ink2 }}>
-            <strong>Market data not yet enabled.</strong> The backend at this environment doesn&apos;t expose
-            <code> /fred/series</code> yet — redeploy <code>qcbackend</code> to pick up the FRED router and run
-            <code> alembic upgrade head</code> for the matching schema.
+        <Card>
+          <div className="sub">
+            <strong>Market data not yet enabled.</strong> The backend at this environment
+            doesn&apos;t expose <code>/fred/series</code> yet — redeploy <code>qcbackend</code> to
+            pick up the FRED router and run <code>alembic upgrade head</code> for the matching
+            schema.
           </div>
         </Card>
       )}
 
       {!fredNotDeployed && isLoading && series.length === 0 && (
-        <Card pad={20}>
-          <div style={{ color: t.ink3, fontSize: 13 }}>Loading market data…</div>
+        <Card>
+          <div className="sub">Loading market data…</div>
         </Card>
       )}
 
       {refreshFred.error && (
-        <Pill bg={t.dangerBg} color={t.danger}>
-          Refresh failed: {refreshFred.error instanceof Error ? refreshFred.error.message : "unknown"}
-        </Pill>
+        <div role="alert">
+          <CellChip tone="bad">
+            Refresh failed:{" "}
+            {refreshFred.error instanceof Error ? refreshFred.error.message : "unknown"}
+          </CellChip>
+        </div>
       )}
 
       {/* One detailed card per series */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="grid">
         {series.map((s) => (
           <SeriesCard
             key={s.series_id}
-            t={t}
             series={s}
             canEditSpread={isSuperAdmin}
             rangeDays={rangeDays}
@@ -204,7 +185,7 @@ export default function MarketRatesPage() {
 
       {/* Footer note for non-super-admin operators */}
       {isOperator && !isSuperAdmin && (
-        <div style={{ fontSize: 11.5, color: t.ink3, textAlign: "center", padding: 8 }}>
+        <div className="demo">
           Spread adjustments are super-admin only. Contact your super-admin to update lender spreads.
         </div>
       )}
@@ -215,12 +196,10 @@ export default function MarketRatesPage() {
 // ── Per-series detail card ────────────────────────────────────────────────
 
 function SeriesCard({
-  t,
   series,
   canEditSpread,
   rangeDays,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   series: FredSeriesSummary;
   canEditSpread: boolean;
   rangeDays: RangeDays;
@@ -262,74 +241,49 @@ function SeriesCard({
     }
   };
 
+  // Data-derived, so it stays an inline value: a fall in the index is an
+  // improvement and a rise is not, and no class encodes a sign.
   const deltaColor =
     series.delta_bps == null
-      ? t.ink3
+      ? "var(--muted)"
       : series.delta_bps < 0
-        ? t.profit
+        ? "var(--ok)"
         : series.delta_bps > 0
-          ? t.danger
-          : t.ink3;
+          ? "var(--danger)"
+          : "var(--muted)";
+
+  // Derive a 7-day trend from history_7d (first vs last) since the backend
+  // response doesn't ship a separate trend field.
+  const trend7d = (() => {
+    const valid = series.history_7d.filter((p) => p.value != null);
+    if (valid.length < 2) return undefined;
+    const first = valid[0].value as number;
+    const last = valid[valid.length - 1].value as number;
+    const trendBps = Math.round((last - first) * 100);
+    return `7-day: ${trendBps > 0 ? "+" : ""}${trendBps} bps`;
+  })();
 
   return (
-    <Card pad={20}>
-      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 18, alignItems: "flex-start" }}>
-        {/* Left: identity + 30-day chart */}
-        <div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-            <span
-              style={{
-                fontFamily: "ui-monospace, SF Mono, monospace",
-                fontSize: 11.5,
-                fontWeight: 700,
-                color: t.ink3,
-                padding: "2px 7px",
-                borderRadius: 6,
-                background: t.surface2,
-              }}
-            >
-              {series.series_id}
-            </span>
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: t.ink, margin: 0, letterSpacing: -0.3 }}>
-              {meta.headline}
-            </h2>
-          </div>
-          <div style={{ fontSize: 12, color: t.ink3, marginTop: 4 }}>{meta.sub}</div>
-
-          <div style={{ marginTop: 14 }}>
-            {validCount >= 2 ? (
-              <FredChart
-                data={chartPoints}
-                width={620}
-                height={220}
-                variant="expanded"
-                color={t.spark}
-                fill
-              />
-            ) : (
-              <div style={{ fontSize: 12, color: t.ink3, padding: 24, textAlign: "center" }}>
-                Not enough history yet for a {rangeDays}-day window.
-              </div>
-            )}
-          </div>
-
-          <div
-            style={{
-              marginTop: 4,
-              fontSize: 11,
-              color: t.ink3,
-              textAlign: "center",
-            }}
-          >
+    <Panel title={meta.headline} sub={meta.sub} actions={<Tag className="num">{series.series_id}</Tag>}>
+      <CG>
+        {/* Left: identity + chart over the selected window */}
+        <div className="s7 grid">
+          {validCount >= 2 ? (
+            // No `color` prop: FredChart already defaults to the same spark
+            // colour the page used to pass in explicitly.
+            <FredChart data={chartPoints} width={620} height={220} variant="expanded" fill />
+          ) : (
+            <div className="sub">Not enough history yet for a {rangeDays}-day window.</div>
+          )}
+          <div className="sub">
             {rangeDays}-day window · {validCount} data points
           </div>
         </div>
 
         {/* Right: numbers + spread editor */}
-        <div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <BigStat
-              t={t}
+        <div className="s5">
+          <KpiRow>
+            <Kpi
               label="Index"
               value={series.current_value != null ? `${series.current_value.toFixed(3)}%` : "—"}
               sub={
@@ -338,247 +292,127 @@ function SeriesCard({
                   : undefined
               }
             />
-            <BigStat
-              t={t}
+            {/* The petrol accent said "this is the customer-facing number";
+                the petrol chip tone carries that without a colour lookup. */}
+            <Kpi
               label="Estimated rate"
-              accent={t.petrol}
-              value={
-                series.estimated_rate != null ? `${series.estimated_rate.toFixed(3)}%` : "—"
-              }
-              sub="customer-facing"
+              value={series.estimated_rate != null ? `${series.estimated_rate.toFixed(3)}%` : "—"}
+              delta="customer-facing"
+              tone="pet"
             />
-            <BigStat
-              t={t}
+            <Kpi
               label="Lender spread"
               value={`${(series.spread_bps / 100).toFixed(2)}%`}
               sub={`${series.spread_bps} bps`}
             />
-            <BigStat
-              t={t}
+            <Kpi
               label="vs prior"
               value={
-                series.delta_bps == null
-                  ? "—"
-                  : `${series.delta_bps > 0 ? "+" : ""}${series.delta_bps} bps`
+                <span style={{ color: deltaColor }}>
+                  {series.delta_bps == null
+                    ? "—"
+                    : `${series.delta_bps > 0 ? "+" : ""}${series.delta_bps} bps`}
+                </span>
               }
-              valueColor={deltaColor}
-              sub={(() => {
-                // Derive a 7-day trend from history_7d (first vs last) since
-                // the backend response doesn't ship a separate trend field.
-                const valid = series.history_7d.filter((p) => p.value != null);
-                if (valid.length < 2) return undefined;
-                const first = valid[0].value as number;
-                const last = valid[valid.length - 1].value as number;
-                const trendBps = Math.round((last - first) * 100);
-                return `7-day: ${trendBps > 0 ? "+" : ""}${trendBps} bps`;
-              })()}
+              sub={trend7d}
             />
-          </div>
+          </KpiRow>
 
           {/* Formula breakdown */}
-          <div
-            style={{
-              marginTop: 14,
-              padding: 12,
-              borderRadius: 9,
-              background: t.surface2,
-              border: `1px solid ${t.line}`,
-              fontSize: 12,
-              color: t.ink2,
-              lineHeight: 1.6,
-            }}
-          >
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 4 }}>
-              Formula
+          <Note>
+            <div>
+              <div className="lbl">Formula</div>
+              <span className="num">
+                {series.current_value != null ? series.current_value.toFixed(3) : "—"}%
+              </span>
+              <span className="sub"> (index) + </span>
+              <span className="num">{(series.spread_bps / 100).toFixed(2)}%</span>
+              <span className="sub"> (spread) = </span>
+              <b className="num">
+                {series.estimated_rate != null ? series.estimated_rate.toFixed(3) : "—"}%
+              </b>
             </div>
-            <span style={{ fontFamily: "ui-monospace, SF Mono, monospace", color: t.ink }}>
-              {series.current_value != null ? series.current_value.toFixed(3) : "—"}%
-            </span>
-            <span style={{ color: t.ink3 }}> (index)  + </span>
-            <span style={{ fontFamily: "ui-monospace, SF Mono, monospace", color: t.ink }}>
-              {(series.spread_bps / 100).toFixed(2)}%
-            </span>
-            <span style={{ color: t.ink3 }}> (spread)  = </span>
-            <span style={{ fontFamily: "ui-monospace, SF Mono, monospace", color: t.petrol, fontWeight: 700 }}>
-              {series.estimated_rate != null ? series.estimated_rate.toFixed(3) : "—"}%
-            </span>
-          </div>
+          </Note>
 
           {/* Spread editor (super-admin) */}
           {canEditSpread && (
-            <div
-              style={{
-                marginTop: 14,
-                padding: 12,
-                borderRadius: 10,
-                border: `1px solid ${t.line}`,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <SectionLabel>Adjust spread</SectionLabel>
+            <div className="card mt">
+              <Row>
+                <span className="lbl">Adjust spread</span>
+                <span className="sp" />
                 {!editing && (
-                  <button onClick={() => setEditing(true)} style={{ ...qcBtn(t), padding: "4px 9px", fontSize: 11.5 }}>
+                  <Btn size="sm" onClick={() => setEditing(true)}>
                     <Icon name="pencil" size={11} /> Edit
-                  </button>
+                  </Btn>
                 )}
-              </div>
+              </Row>
 
               {editing ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "end" }}>
-                    <Field t={t} label="Spread (basis points)">
-                      <input
+                <div className="grid mt">
+                  <Row>
+                    <Field label="Spread (basis points)">
+                      <Input
                         type="number"
+                        className="num"
                         value={draftBps}
                         onChange={(e) => setDraftBps(Number(e.target.value) || 0)}
                         min={-1000}
                         max={2000}
                         step={5}
-                        style={inputStyle(t)}
                       />
                     </Field>
-                    <div style={{ fontSize: 12, color: t.ink3, paddingBottom: 10 }}>
-                      = <strong style={{ color: t.ink }}>{(draftBps / 100).toFixed(2)}%</strong>
-                    </div>
-                  </div>
-                  <Field t={t} label="Notes (audit trail)">
-                    <textarea
+                    <span className="sub">
+                      = <b>{(draftBps / 100).toFixed(2)}%</b>
+                    </span>
+                  </Row>
+                  <Field label="Notes (audit trail)">
+                    <Textarea
                       value={draftNotes}
                       onChange={(e) => setDraftNotes(e.target.value)}
                       rows={2}
                       placeholder="e.g. Q2 repricing — tightening spread on bridge"
-                      style={{ ...inputStyle(t), resize: "vertical" }}
                     />
                   </Field>
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-                    <button
+                  <Row>
+                    <span className="sp" />
+                    <Btn
                       onClick={() => {
                         setEditing(false);
                         setDraftBps(series.spread_bps);
                         setDraftNotes("");
                       }}
-                      style={qcBtn(t)}
                     >
                       Cancel
-                    </button>
-                    <button
+                    </Btn>
+                    <Btn
+                      variant="pri"
                       onClick={submit}
-                      disabled={upsertSpread.isPending || (draftBps === series.spread_bps && !draftNotes.trim())}
-                      style={qcBtnPrimary(t)}
+                      disabled={
+                        upsertSpread.isPending ||
+                        (draftBps === series.spread_bps && !draftNotes.trim())
+                      }
                     >
                       <Icon name="check" size={13} />
                       {upsertSpread.isPending ? "Saving…" : "Save spread"}
-                    </button>
-                  </div>
+                    </Btn>
+                  </Row>
                 </div>
               ) : (
-                <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.55 }}>
-                  Current spread is <strong style={{ color: t.ink }}>{series.spread_bps} bps</strong>{" "}
-                  ({(series.spread_bps / 100).toFixed(2)}%). Each save creates a new audit-trail row.
+                <div className="sub mt">
+                  Current spread is <b>{series.spread_bps} bps</b> (
+                  {(series.spread_bps / 100).toFixed(2)}%). Each save creates a new audit-trail row.
                 </div>
               )}
 
               {flash && (
-                <div style={{ marginTop: 8 }}>
-                  <Pill
-                    bg={flash === "Spread updated." ? t.profitBg : t.dangerBg}
-                    color={flash === "Spread updated." ? t.profit : t.danger}
-                  >
-                    {flash}
-                  </Pill>
+                <div className="mt">
+                  <CellChip tone={flash === "Spread updated." ? "ok" : "bad"}>{flash}</CellChip>
                 </div>
               )}
             </div>
           )}
         </div>
-      </div>
-    </Card>
+      </CG>
+    </Panel>
   );
-}
-
-function BigStat({
-  t,
-  label,
-  value,
-  sub,
-  accent,
-  valueColor,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  label: string;
-  value: string;
-  sub?: string;
-  accent?: string;
-  valueColor?: string;
-}) {
-  return (
-    <div
-      style={{
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        borderRadius: 10,
-        padding: 12,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          color: t.ink3,
-          letterSpacing: 1.2,
-          textTransform: "uppercase",
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 22,
-          fontWeight: 800,
-          color: valueColor ?? accent ?? t.ink,
-          marginTop: 4,
-          fontFeatureSettings: '"tnum"',
-          letterSpacing: -0.4,
-        }}
-      >
-        {value}
-      </div>
-      {sub && <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>{sub}</div>}
-    </div>
-  );
-}
-
-function Field({ t, label, children }: { t: ReturnType<typeof useTheme>["t"]; label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 10.5,
-          fontWeight: 700,
-          color: t.ink3,
-          letterSpacing: 1.0,
-          textTransform: "uppercase",
-          marginBottom: 6,
-        }}
-      >
-        {label}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 9,
-    background: t.surface,
-    border: `1px solid ${t.line}`,
-    color: t.ink,
-    fontSize: 13,
-    fontFamily: "inherit",
-    outline: "none",
-    fontFeatureSettings: '"tnum"',
-  };
 }

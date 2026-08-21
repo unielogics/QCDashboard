@@ -4,7 +4,7 @@
 // the 2-step presigned-S3 flow in useUploadDocument.
 
 import { useEffect, useRef, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { Btn } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useUploadDocument } from "@/hooks/useApi";
 
@@ -31,7 +31,6 @@ export function DocUploadButton({
   autoOpen?: boolean;
   onAutoOpenHandled?: () => void;
 }) {
-  const { t } = useTheme();
   const upload = useUploadDocument();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -70,34 +69,28 @@ export function DocUploadButton({
   };
 
   return (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+    // Bespoke inline-flex: this button sits inside table cells and inline rows
+    // across four routes, so it must stay inline-level rather than become a
+    // block-level `.row`.
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
       <input
         ref={inputRef}
         type="file"
-        style={{ display: "none" }}
+        hidden
         onChange={(e) => onFile(e.target.files?.[0] ?? null)}
       />
-      <button
+      <Btn
+        size={compact ? "sm" : undefined}
         onClick={() => inputRef.current?.click()}
         disabled={upload.isPending}
-        style={{
-          padding: compact ? "5px 9px" : "8px 12px",
-          borderRadius: 8,
-          background: t.surface2,
-          color: t.ink,
-          border: `1px solid ${t.line}`,
-          fontSize: compact ? 11 : 12,
-          fontWeight: 700,
-          cursor: upload.isPending ? "wait" : "pointer",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 5,
-        }}
+        // In-flight cursor is state-derived; `.btn:disabled` only knows
+        // "not clickable", not "working".
+        style={upload.isPending ? { cursor: "wait" } : undefined}
       >
         <Icon name="upload" size={compact ? 11 : 13} />
         {upload.isPending ? "Uploading…" : label ?? "Upload"}
-      </button>
-      {feedback && <span style={{ fontSize: 11, color: t.ink3 }}>{feedback}</span>}
-    </div>
+      </Btn>
+      {feedback && <span className="sub">{feedback}</span>}
+    </span>
   );
 }

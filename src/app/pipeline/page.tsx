@@ -3,9 +3,19 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, StageBadge } from "@/components/design-system/primitives";
+import { StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import {
+  Btn,
+  CellChip,
+  PageHeader,
+  Panel,
+  Seg,
+  Select,
+  Tag,
+  cx,
+  type ChipTone,
+} from "@/components/ds";
 import {
   useClients,
   useDealSecretarySummary,
@@ -31,14 +41,11 @@ type PipelineMode = "leads" | "funding";
 // gets the operator pipeline below, byte-for-byte unchanged. Branching in
 // a thin wrapper keeps each side's hooks from running for the other role.
 export default function PipelinePage() {
-  const { t } = useTheme();
   const { data: user, isLoading } = useCurrentUser();
 
   if (!user) {
     return (
-      <div style={{ padding: 24, color: t.ink3, fontSize: 13 }}>
-        {isLoading ? "Loading pipeline..." : "Loading account..."}
-      </div>
+      <div className="sub">{isLoading ? "Loading pipeline..." : "Loading account..."}</div>
     );
   }
 
@@ -51,6 +58,12 @@ const STAGE_LABELS = ["Prequalified", "Collecting Docs", "Lender Connected", "Pr
 
 type SortKey = "deal_id" | "address" | "type" | "amount" | "dscr" | "stage" | "close_date";
 
+// Bespoke column tracks. These do not correspond to the 12-column `.cg`
+// system — chevron, name, three figures and a date is not "n equal columns" —
+// so the template stays inline and only the typography moves to classes.
+const AGENT_GRID = "32px minmax(0, 1.45fr) 118px 118px 118px 150px";
+const AGENT_FILE_GRID = "86px minmax(0, 1.35fr) 120px 110px 90px 112px";
+
 type FundingRow = {
   loan: Loan;
   loanDocs: Document[];
@@ -62,7 +75,6 @@ type FundingRow = {
 };
 
 function OperatorPipelinePage({ role }: { role: string }) {
-  const { t } = useTheme();
   const { data: loans = [] } = useLoans();
   const loanIds = useMemo(() => loans.map((l) => l.id), [loans]);
   const { data: secretarySummaries = [] } = useDealSecretarySummary(loanIds);
@@ -180,168 +192,128 @@ function OperatorPipelinePage({ role }: { role: string }) {
   const blockedAiCount = fundingRows.filter((row) => row.summary?.state === "blocked").length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, letterSpacing: 0, color: t.ink, margin: 0 }}>
-          {isInternal && activeMode === "funding" ? "Underwriting CRM" : "Pipeline"}
-        </h1>
+    <>
+      <PageHeader
+        title={isInternal && activeMode === "funding" ? "Underwriting CRM" : "Pipeline"}
+        lede={
+          activeMode === "funding"
+            ? `${visibleLoans.length} loans · ${QC_FMT.short(totalValue)} value`
+            : undefined
+        }
+        actions={
+          (activeMode === "funding" ? canCreateDeal : canCreateLead) ? (
+            <Btn variant="pri" onClick={() => setIntakeOpen(true)}>
+              <Icon name="plus" size={14} /> New file
+            </Btn>
+          ) : undefined
+        }
+      />
 
+      <div className="pagebar">
         {isInternal ? (
-          <div style={{
-            display: "inline-flex",
-            background: t.surface,
-            border: `1px solid ${t.line}`,
-            borderRadius: 10,
-            padding: 3,
-            gap: 2,
-            marginLeft: 4,
-          }}>
-            <button
-              type="button"
-              onClick={() => setMode("funding")}
-              style={modeSegBtn(t, activeMode === "funding")}
-            >
-              <Icon name="file" size={12} stroke={2.2} /> Funding Files
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("leads")}
-              style={modeSegBtn(t, activeMode === "leads")}
-            >
-              <Icon name="user" size={12} stroke={2.2} /> Agents
-            </button>
-          </div>
+          <Seg<PipelineMode>
+            ariaLabel="Pipeline mode"
+            value={activeMode}
+            onChange={setMode}
+            options={[
+              {
+                value: "funding",
+                label: (
+                  <>
+                    <Icon name="file" size={12} stroke={2.2} /> Funding Files
+                  </>
+                ),
+              },
+              {
+                value: "leads",
+                label: (
+                  <>
+                    <Icon name="user" size={12} stroke={2.2} /> Agents
+                  </>
+                ),
+              },
+            ]}
+          />
         ) : null}
+
+        <span className="spacer" />
+
+        {/* Search address or ID */}
+        <div
+          className="field"
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, width: 240 }}
+        >
+          <Icon name="search" size={14} />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search pipeline"
+            placeholder={activeMode === "funding" ? "Search address or ID..." : "Search agents, clients, files..."}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              border: "none",
+              outline: "none",
+              background: "transparent",
+              font: "inherit",
+              color: "inherit",
+            }}
+          />
+        </div>
+
+        {/* Loan-type filter only applies in Funding mode (Leads don't have a
+            loan type yet; that gets locked when Start Funding fires). */}
+        {activeMode === "funding" && (
+          <Select
+            aria-label="Loan type"
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+          >
+            <option value="all">All types</option>
+            <option value="dscr">DSCR</option>
+            <option value="fix_and_flip">Fix &amp; Flip</option>
+            <option value="ground_up">Ground Up</option>
+            <option value="bridge">Bridge</option>
+          </Select>
+        )}
+
+        {/* Isolate loans promoted from a realtor's Deal — admins/underwriters
+            only; brokers only ever see their own book anyway. */}
+        {activeMode === "funding" && isInternal && (
+          <Btn
+            variant={handoffOnly ? "pri" : "default"}
+            aria-pressed={handoffOnly}
+            onClick={() => setHandoffOnly((v) => !v)}
+          >
+            <Icon name="spark" size={13} /> From realtor handoff
+          </Btn>
+        )}
 
         {activeMode === "funding" ? (
-          <span style={{ color: t.ink3, fontSize: 14 }}>
-            · {visibleLoans.length} loans · {QC_FMT.short(totalValue)} value
-          </span>
+          <Seg<"table" | "kanban">
+            ariaLabel="Pipeline layout"
+            value={view}
+            onChange={setView}
+            options={[
+              {
+                value: "kanban",
+                label: (
+                  <>
+                    <Icon name="layers" size={14} /> Kanban
+                  </>
+                ),
+              },
+              {
+                value: "table",
+                label: (
+                  <>
+                    <Icon name="filter" size={14} /> Table
+                  </>
+                ),
+              },
+            ]}
+          />
         ) : null}
-
-        <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
-          {/* Search address or ID */}
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              background: t.surface,
-              border: `1px solid ${t.line}`,
-              borderRadius: 10,
-              padding: "6px 10px",
-              width: 240,
-            }}
-          >
-            <Icon name="search" size={14} style={{ color: t.ink3 }} />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={activeMode === "funding" ? "Search address or ID..." : "Search agents, clients, files..."}
-              style={{
-                flex: 1,
-                border: "none",
-                outline: "none",
-                background: "transparent",
-                fontSize: 12.5,
-                color: t.ink,
-                fontFamily: "inherit",
-              }}
-            />
-          </div>
-
-          {/* Loan-type filter only applies in Funding mode (Leads don't have a
-              loan type yet; that gets locked when Start Funding fires). */}
-          {activeMode === "funding" && (
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              style={{
-                background: t.surface,
-                color: t.ink2,
-                border: `1px solid ${t.line}`,
-                borderRadius: 10,
-                padding: "8px 10px",
-                fontSize: 12.5,
-                fontFamily: "inherit",
-                cursor: "pointer",
-              }}
-            >
-              <option value="all">All types</option>
-              <option value="dscr">DSCR</option>
-              <option value="fix_and_flip">Fix &amp; Flip</option>
-              <option value="ground_up">Ground Up</option>
-              <option value="bridge">Bridge</option>
-            </select>
-          )}
-
-          {/* Isolate loans promoted from a realtor's Deal — admins/underwriters
-              only; brokers only ever see their own book anyway. */}
-          {activeMode === "funding" && isInternal && (
-            <button
-              type="button"
-              onClick={() => setHandoffOnly((v) => !v)}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                background: handoffOnly ? t.brandSoft : t.surface,
-                color: handoffOnly ? t.brand : t.ink2,
-                border: `1px solid ${handoffOnly ? t.brand : t.line}`,
-                borderRadius: 10,
-                padding: "8px 10px",
-                fontSize: 12.5,
-                fontFamily: "inherit",
-                cursor: "pointer",
-              }}
-            >
-              <Icon name="spark" size={13} /> From realtor handoff
-            </button>
-          )}
-
-          {activeMode === "funding" ? (
-            <div
-              style={{
-                display: "inline-flex",
-                background: t.surface,
-                border: `1px solid ${t.line}`,
-                borderRadius: 10,
-                padding: 3,
-              }}
-            >
-              <button
-                onClick={() => setView("kanban")}
-                style={segBtn(t, view === "kanban")}
-              >
-                <Icon name="layers" size={14} /> Kanban
-              </button>
-              <button onClick={() => setView("table")} style={segBtn(t, view === "table")}>
-                <Icon name="filter" size={14} /> Table
-              </button>
-            </div>
-          ) : null}
-
-          {(activeMode === "funding" ? canCreateDeal : canCreateLead) && (
-            <button
-              onClick={() => setIntakeOpen(true)}
-              style={{
-                padding: "9px 14px",
-                borderRadius: 10,
-                background: t.ink,
-                color: t.inverse,
-                fontSize: 13,
-                fontWeight: 700,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 7,
-                cursor: "pointer",
-                border: "none",
-              }}
-            >
-              <Icon name="plus" size={14} /> New file
-            </button>
-          )}
-        </div>
       </div>
 
       {/* Pipeline owns loan-file creation (the funding target the AI
@@ -382,19 +354,24 @@ function OperatorPipelinePage({ role }: { role: string }) {
             ? "78px minmax(0, 1.55fr) 130px 122px 96px 110px 70px 82px 104px 126px"
             : "78px minmax(0, 1.55fr) 122px 96px 110px 70px 82px 104px 126px";
           return (
-            <Card pad={0}>
-              <div style={{
-                display: "grid", gridTemplateColumns: gridCols,
-                padding: "12px 16px", fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 1.2,
-                borderBottom: `1px solid ${t.line}`,
-              }}>
+            <Panel className="mt" noPad>
+              <div
+                className="lbl"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: gridCols,
+                  padding: "12px 16px",
+                  borderBottom: "1px solid var(--line2)",
+                  background: "var(--sunken2)",
+                }}
+              >
                 <SortHead label="ID" k="deal_id" current={sortKey} dir={sortDir} onClick={setSort} />
                 <SortHead label="Property" k="address" current={sortKey} dir={sortDir} onClick={setSort} />
                 {isInternal ? <div>Agent</div> : null}
                 <div>Readiness</div>
                 <SortHead label="Type" k="type" current={sortKey} dir={sortDir} onClick={setSort} />
                 <SortHead label="Amount" k="amount" current={sortKey} dir={sortDir} onClick={setSort} align="right" />
-                <div style={{ textAlign: "right" }}>Credit</div>
+                <div className="align-r">Credit</div>
                 <SortHead label="DSCR" k="dscr" current={sortKey} dir={sortDir} onClick={setSort} align="right" />
                 <div>Conditions</div>
                 <div>Next action</div>
@@ -419,24 +396,24 @@ function OperatorPipelinePage({ role }: { role: string }) {
                     }
                     style={{
                       display: "grid", gridTemplateColumns: gridCols,
-                      padding: "12px 16px", borderBottom: `1px solid ${t.line}`, alignItems: "center",
-                      fontSize: 13, color: t.ink,
+                      padding: "12px 16px", borderBottom: "1px solid var(--line)", alignItems: "center",
+                      color: "var(--ink)", textDecoration: "none",
                     }}>
-                    <div style={{ fontWeight: 800, color: t.ink2 }}>{loan.deal_id}</div>
+                    <div className="num"><b>{loan.deal_id}</b></div>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{loan.address}</div>
-                      <div style={{ fontSize: 11.5, color: t.ink3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <b style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{loan.address}</b>
+                      <div className="sub row">
                         <span>{loan.city}</span>
                         {isInternal && loan.client_name ? (
                           <>
                             <span aria-hidden>/</span>
-                            <span style={{ fontWeight: 700 }}>{loan.client_name}</span>
+                            <b>{loan.client_name}</b>
                           </>
                         ) : null}
                         {isInternal && loan.source_deal_id ? (
                           <>
                             <span aria-hidden>/</span>
-                            <span style={{ color: t.brand, fontWeight: 700 }}>From realtor handoff</span>
+                            <b style={{ color: "var(--accent)" }}>From realtor handoff</b>
                           </>
                         ) : null}
                         {loan.close_date ? (
@@ -449,22 +426,21 @@ function OperatorPipelinePage({ role }: { role: string }) {
                       </div>
                     </div>
                     {isInternal ? (
-                      <div style={{
-                        fontSize: 12.5,
-                        fontWeight: loan.broker_name ? 800 : 550,
-                        color: loan.broker_name ? t.ink2 : t.ink3,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}>
-                        {loan.broker_name ?? "Not assigned"}
+                      <div
+                        className={loan.broker_name ? undefined : "sub"}
+                        style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                      >
+                        {loan.broker_name ? <b>{loan.broker_name}</b> : "Not assigned"}
                       </div>
                     ) : null}
                     <ReadinessCell score={readiness.score} label={readiness.label} />
-                    <div><Pill>{loanTypeLabel(loan.type)}</Pill></div>
-                    <div style={{ textAlign: "right", fontWeight: 800, fontFeatureSettings: '"tnum"' }}>{QC_FMT.short(Number(loan.amount))}</div>
+                    <div><CellChip tone="mut">{loanTypeLabel(loan.type)}</CellChip></div>
+                    <div className="align-r num"><b>{QC_FMT.short(Number(loan.amount))}</b></div>
                     <CreditCell fico={loan.fico_override ?? loan.client_fico ?? null} override={loan.fico_override != null} />
-                    <div style={{ textAlign: "right", color: loan.dscr && loan.dscr >= 1.25 ? t.profit : loan.dscr && loan.dscr >= 1.0 ? t.warn : t.ink3, fontWeight: 800 }}>
+                    <div
+                      className="align-r num"
+                      style={{ color: loan.dscr && loan.dscr >= 1.25 ? "var(--ok)" : loan.dscr && loan.dscr >= 1.0 ? "var(--warn)" : "var(--muted)", fontWeight: 700 }}
+                    >
                       {loan.dscr ? loan.dscr.toFixed(2) : "—"}
                     </div>
                     <ConditionCell open={openDocs.length} flagged={flaggedDocs.length} total={loanDocs.length} />
@@ -472,20 +448,20 @@ function OperatorPipelinePage({ role }: { role: string }) {
                   </Link>
                 );
               })}
-            </Card>
+            </Panel>
           );
         })()
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
+        <div className="kanban mt">
           {STAGE_KEYS.map((k, i) => {
             const stageLoans = fundingRows.filter((row) => row.loan.stage === k);
             return (
-              <div key={k} style={{ background: t.surface2, padding: 12, borderRadius: 12, border: `1px solid ${t.line}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div key={k} className="kcol">
+                <div className="lbl">
                   <StageBadge stage={i} />
-                  <div style={{ fontSize: 12, fontWeight: 700, color: t.ink3 }}>{stageLoans.length}</div>
+                  <span className="num">{stageLoans.length}</span>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div>
                   {stageLoans.map(({ loan, readiness, openDocs, action }) => {
                     return (
                       <Link
@@ -500,39 +476,28 @@ function OperatorPipelinePage({ role }: { role: string }) {
                               }
                             : undefined
                         }
-                        style={{ background: t.surface, padding: 11, borderRadius: 10, border: `1px solid ${t.line}`, display: "flex", flexDirection: "column", gap: 8 }}>
+                        className="kcard"
+                        style={{ display: "flex", flexDirection: "column", gap: 8, color: "var(--ink)", textDecoration: "none" }}>
                         <div>
-                          <div style={{ fontSize: 11, color: t.ink3, fontWeight: 800 }}>{loan.deal_id}</div>
-                          <div style={{ fontSize: 12.5, fontWeight: 850, color: t.ink, marginTop: 2, lineHeight: 1.25 }}>{loan.address}</div>
-                          <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>{QC_FMT.short(Number(loan.amount))} / {loanTypeLabel(loan.type)}</div>
+                          <div className="lbl">{loan.deal_id}</div>
+                          <b style={{ display: "block", marginTop: 2, lineHeight: 1.25 }}>{loan.address}</b>
+                          <div className="sub">{QC_FMT.short(Number(loan.amount))} / {loanTypeLabel(loan.type)}</div>
                         </div>
                         <ReadinessBar score={readiness.score} label={readiness.label} />
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                          <span style={{ fontSize: 11, color: openDocs.length ? t.warn : t.profit, fontWeight: 850 }}>{openDocs.length} open</span>
-                          <span style={{ fontSize: 11, color: loan.dscr && loan.dscr >= 1.25 ? t.profit : loan.dscr ? t.warn : t.ink3, fontWeight: 850 }}>
+                          <CellChip tone={openDocs.length ? "warn" : "ok"}>{openDocs.length} open</CellChip>
+                          <CellChip tone={loan.dscr && loan.dscr >= 1.25 ? "ok" : loan.dscr ? "warn" : "mut"}>
                             DSCR {loan.dscr ? loan.dscr.toFixed(2) : "—"}
-                          </span>
+                          </CellChip>
                         </div>
                         <PipelineActionCell action={action} compact />
                         {isInternal && (loan.broker_name || loan.client_name) ? (
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          <div className="row">
                             {loan.broker_name ? (
-                              <span style={{
-                                fontSize: 10, fontWeight: 800,
-                                padding: "1px 5px", borderRadius: 3,
-                                background: t.brandSoft, color: t.brand,
-                              }}>
-                                {loan.broker_name}
-                              </span>
+                              <CellChip tone="acc">{loan.broker_name}</CellChip>
                             ) : null}
                             {loan.client_name ? (
-                              <span style={{
-                                fontSize: 10, fontWeight: 700,
-                                padding: "1px 5px", borderRadius: 3,
-                                background: t.surface2, color: t.ink2,
-                              }}>
-                                {loan.client_name}
-                              </span>
+                              <Tag>{loan.client_name}</Tag>
                             ) : null}
                           </div>
                         ) : null}
@@ -583,7 +548,7 @@ function OperatorPipelinePage({ role }: { role: string }) {
           }}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -695,7 +660,6 @@ function AgentsPipelineView({
   rows: FundingRow[];
   search: string;
 }) {
-  const { t } = useTheme();
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const clientIds = useMemo(() => clients.map((client) => client.id), [clients]);
   const { data: summaries = [] } = usePipelineClientSummary(clientIds);
@@ -744,140 +708,120 @@ function AgentsPipelineView({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-          gap: 8,
-        }}
-      >
+    <>
+      <div className="kpis mt">
         <MiniMetric label="Agents" value={totalAgents} tone="neutral" />
         <MiniMetric label="Active files" value={totalActiveFiles} tone={totalActiveFiles ? "watch" : "neutral"} />
         <MiniMetric label="Relationships" value={totalRelationships} tone="neutral" />
         <MiniMetric label="Active volume" value={QC_FMT.short(totalValue)} tone={totalValue ? "ready" : "neutral"} />
       </div>
 
-      <Card pad={0}>
-        <div style={{ padding: 16, borderBottom: `1px solid ${t.line}`, background: t.surface2 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.4, color: t.ink3, textTransform: "uppercase" }}>
-            Agents
-          </div>
-          <div style={{ marginTop: 4, fontSize: 13, color: t.ink2 }}>
-            Latest activity, active files, assigned relationships, and volume by owner.
-          </div>
-        </div>
-
+      <Panel
+        className="mt"
+        noPad
+        title="Agents"
+        sub="Latest activity, active files, assigned relationships, and volume by owner."
+      >
         <div
+          className="lbl"
           style={{
             display: "grid",
-            gridTemplateColumns: "32px minmax(0, 1.45fr) 118px 118px 118px 150px",
+            gridTemplateColumns: AGENT_GRID,
             gap: 12,
             padding: "12px 16px",
-            fontSize: 11,
-            fontWeight: 800,
-            color: t.ink3,
-            textTransform: "uppercase",
-            letterSpacing: 1.2,
-            borderBottom: `1px solid ${t.line}`,
+            background: "var(--sunken2)",
+            borderBottom: "1px solid var(--line2)",
           }}
         >
           <div />
           <div>Agent</div>
-          <div style={{ textAlign: "right" }}>Active files</div>
-          <div style={{ textAlign: "right" }}>Relationships</div>
-          <div style={{ textAlign: "right" }}>Volume</div>
+          <div className="align-r">Active files</div>
+          <div className="align-r">Relationships</div>
+          <div className="align-r">Volume</div>
           <div>Latest file</div>
         </div>
 
         {visibleGroups.map((group) => {
           const isOpen = expanded.has(group.key);
           return (
-            <div key={group.key} style={{ borderBottom: `1px solid ${t.line}` }}>
+            <div key={group.key} style={{ borderBottom: "1px solid var(--line)" }}>
               <button
                 type="button"
+                aria-expanded={isOpen}
                 onClick={() => toggle(group.key)}
                 style={{
                   width: "100%",
                   display: "grid",
-                  gridTemplateColumns: "32px minmax(0, 1.45fr) 118px 118px 118px 150px",
+                  gridTemplateColumns: AGENT_GRID,
                   gap: 12,
                   padding: "14px 16px",
-                  border: "none",
-                  background: isOpen ? t.surface2 : "transparent",
-                  color: t.ink,
+                  background: isOpen ? "var(--sunken2)" : "transparent",
                   textAlign: "left",
                   alignItems: "center",
                   cursor: "pointer",
-                  fontFamily: "inherit",
                 }}
               >
-                <Icon name={isOpen ? "chevD" : "chevR"} size={16} style={{ color: t.ink3 }} />
+                <Icon name={isOpen ? "chevD" : "chevR"} size={16} />
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 900, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {group.name}
-                  </div>
-                  <div style={{ marginTop: 2, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", fontSize: 11.5, color: t.ink3 }}>
+                  </b>
+                  <div className="sub row">
                     <span>{formatRelativeDays(group.latestFileAt)}</span>
-                    {group.key === "unassigned" ? <Pill bg={t.warnBg} color={t.warn}>Needs owner</Pill> : null}
+                    {group.key === "unassigned" ? <CellChip tone="warn">Needs owner</CellChip> : null}
                   </div>
                 </div>
-                <div style={{ textAlign: "right", fontSize: 13, fontWeight: 900, color: group.activeLoans.length ? t.ink : t.ink3 }}>
-                  {group.activeLoans.length}
+                <div className={cx("align-r num", !group.activeLoans.length && "sub")}>
+                  <b>{group.activeLoans.length}</b>
                 </div>
-                <div style={{ textAlign: "right", fontSize: 13, fontWeight: 900, color: group.clients.length ? t.ink : t.ink3 }}>
-                  {group.clients.length}
+                <div className={cx("align-r num", !group.clients.length && "sub")}>
+                  <b>{group.clients.length}</b>
                 </div>
-                <div style={{ textAlign: "right", fontSize: 13, fontWeight: 900, color: group.totalValue ? t.ink : t.ink3 }}>
-                  {group.totalValue ? QC_FMT.short(group.totalValue) : "-"}
+                <div className={cx("align-r num", !group.totalValue && "sub")}>
+                  <b>{group.totalValue ? QC_FMT.short(group.totalValue) : "-"}</b>
                 </div>
-                <div>
-                  <div style={{ fontSize: 12.5, fontWeight: 800, color: group.latestFileAt ? t.ink2 : t.ink3 }}>
-                    {formatShortDate(group.latestFileAt)}
-                  </div>
+                <div className={cx("num", !group.latestFileAt && "sub")}>
+                  <b>{formatShortDate(group.latestFileAt)}</b>
                 </div>
               </button>
 
               {isOpen ? (
                 <div style={{ padding: "0 16px 16px 48px", display: "grid", gap: 12 }}>
                   <div>
-                    <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase", margin: "4px 0 8px" }}>
+                    <div className="lbl" style={{ margin: "4px 0 8px" }}>
                       Active funding files
                     </div>
                     {group.activeLoans.length > 0 ? (
-                      <div style={{ display: "grid", gap: 6 }}>
+                      <div>
                         {group.activeLoans.map((row) => (
                           <Link
                             key={row.loan.id}
                             href={`/loans/${row.loan.id}`}
+                            className="kcard"
                             style={{
                               display: "grid",
-                              gridTemplateColumns: "86px minmax(0, 1.35fr) 120px 110px 90px 112px",
+                              gridTemplateColumns: AGENT_FILE_GRID,
                               gap: 10,
                               alignItems: "center",
-                              padding: "9px 10px",
-                              borderRadius: 8,
-                              border: `1px solid ${t.line}`,
-                              background: t.surface,
-                              color: t.ink,
+                              color: "var(--ink)",
                               textDecoration: "none",
                             }}
                           >
-                            <div style={{ fontSize: 12, fontWeight: 900, color: t.ink2 }}>{row.loan.deal_id}</div>
+                            <div className="num"><b>{row.loan.deal_id}</b></div>
                             <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: 12.5, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              <b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 {row.loan.address}
-                              </div>
-                              <div style={{ marginTop: 1, fontSize: 11, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              </b>
+                              <div className="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 {row.loan.client_name ?? "No client"}{row.loan.city ? ` / ${row.loan.city}` : ""}
                               </div>
                             </div>
                             <ReadinessCell score={row.readiness.score} label={row.readiness.label} />
-                            <div style={{ fontSize: 12, fontWeight: 850, color: t.ink2 }}>
-                              {loanTypeLabel(row.loan.type)}
-                              <div style={{ fontSize: 11, color: t.ink3 }}>{String(row.loan.stage).replace(/_/g, " ")}</div>
+                            <div>
+                              <b>{loanTypeLabel(row.loan.type)}</b>
+                              <div className="sub">{String(row.loan.stage).replace(/_/g, " ")}</div>
                             </div>
-                            <div style={{ textAlign: "right", fontSize: 12.5, fontWeight: 900 }}>{QC_FMT.short(Number(row.loan.amount))}</div>
+                            <div className="align-r num"><b>{QC_FMT.short(Number(row.loan.amount))}</b></div>
                             <div style={{ display: "flex", justifyContent: "flex-end" }}>
                               <ConditionCell open={row.openDocs.length} flagged={row.flaggedDocs.length} total={row.loanDocs.length} />
                             </div>
@@ -885,46 +829,34 @@ function AgentsPipelineView({
                         ))}
                       </div>
                     ) : (
-                      <div style={{ padding: 12, borderRadius: 8, border: `1px solid ${t.line}`, color: t.ink3, fontSize: 12.5 }}>
-                        No active funding files for this agent.
-                      </div>
+                      <div className="card sub">No active funding files for this agent.</div>
                     )}
                   </div>
 
                   <div>
-                    <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase", margin: "2px 0 8px" }}>
+                    <div className="lbl" style={{ margin: "2px 0 8px" }}>
                       Relationships
                     </div>
                     {group.clients.length > 0 ? (
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 8 }}>
+                      <div className="grid cols-auto">
                         {group.clients.map((client) => {
                           const summary = summaryByClientId.get(client.id);
                           return (
-                            <div
-                              key={client.id}
-                              style={{
-                                padding: 10,
-                                borderRadius: 8,
-                                border: `1px solid ${t.line}`,
-                                background: t.surface,
-                                display: "grid",
-                                gap: 7,
-                              }}
-                            >
+                            <div key={client.id} className="card" style={{ display: "grid", gap: 7 }}>
                               <div style={{ minWidth: 0 }}>
-                                <div style={{ fontSize: 13, fontWeight: 900, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                <b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                   {client.name}
-                                </div>
-                                <div style={{ fontSize: 11.5, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                </b>
+                                <div className="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                   {client.email ?? "No email"}{client.city ? ` / ${client.city}` : ""}
                                 </div>
                               </div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <Link href={`/clients/${client.id}/workspace`} style={agentMiniLink(t)}>
+                              <div className="row">
+                                <Link href={`/clients/${client.id}/workspace`} className="btn sm">
                                   <Icon name="clients" size={11} /> Client
                                 </Link>
                                 {summary?.primary_deal_id ? (
-                                  <Link href={`/deals/${summary.primary_deal_id}`} style={agentMiniLink(t)}>
+                                  <Link href={`/deals/${summary.primary_deal_id}`} className="btn sm">
                                     <Icon name="file" size={11} /> Deal
                                   </Link>
                                 ) : null}
@@ -934,9 +866,7 @@ function AgentsPipelineView({
                         })}
                       </div>
                     ) : (
-                      <div style={{ padding: 12, borderRadius: 8, border: `1px solid ${t.line}`, color: t.ink3, fontSize: 12.5 }}>
-                        No relationships assigned to this agent.
-                      </div>
+                      <div className="card sub">No relationships assigned to this agent.</div>
                     )}
                   </div>
                 </div>
@@ -946,29 +876,13 @@ function AgentsPipelineView({
         })}
 
         {visibleGroups.length === 0 ? (
-          <div style={{ padding: 24, textAlign: "center", color: t.ink3, fontSize: 13 }}>
+          <div className="sub" style={{ padding: 24, textAlign: "center" }}>
             {search ? `No agents, files, or relationships match "${search}".` : "No agents or relationships found."}
           </div>
         ) : null}
-      </Card>
-    </div>
+      </Panel>
+    </>
   );
-}
-
-function agentMiniLink(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 5,
-    padding: "5px 8px",
-    borderRadius: 7,
-    background: t.surface2,
-    color: t.ink2,
-    border: `1px solid ${t.line}`,
-    textDecoration: "none",
-    fontSize: 11.5,
-    fontWeight: 800,
-  };
 }
 
 // Right-click context menu for funding-mode pipeline rows. Currently
@@ -992,7 +906,6 @@ function PipelineRowContextMenu({
   onAssignAI: () => void;
   onClose: () => void;
 }) {
-  const { t } = useTheme();
   // Dismiss on Escape + outside-click. Defer the click handler one
   // tick so the right-click that opened this doesn't immediately
   // close it.
@@ -1011,98 +924,49 @@ function PipelineRowContextMenu({
       window.clearTimeout(id);
     };
   }, [onClose]);
+  // The cursor coordinates are the one genuinely dynamic value here. They sit
+  // on a zero-size fixed anchor so `.popmenu` — which positions itself
+  // absolutely against its offset parent — keeps owning the panel's own box.
+  // Hover feedback moved from the JS mouseover handlers to `.popmenu .mi:hover`.
   return (
     <div
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
-      style={{
-        position: "fixed",
-        top: y,
-        left: x,
-        zIndex: 80,
-        minWidth: 200,
-        background: t.surface,
-        border: `1px solid ${t.line}`,
-        borderRadius: 8,
-        boxShadow: "0 14px 32px rgba(0,0,0,0.32)",
-        padding: 4,
-        display: "flex",
-        flexDirection: "column",
-        gap: 2,
-      }}
+      style={{ position: "fixed", top: y, left: x, zIndex: 80, width: 212, height: 0 }}
     >
-      <div
-        style={{
-          padding: "8px 10px 4px",
-          fontSize: 10,
-          fontWeight: 900,
-          color: t.ink3,
-          letterSpacing: 0.6,
-          textTransform: "uppercase",
-        }}
-      >
-        {loan.deal_id} · {loan.broker_name ?? "Unassigned"}
-      </div>
-      {canReassign && (
+      <div className="popmenu">
+        <div className="lbl" style={{ padding: "8px 10px 4px" }}>
+          {loan.deal_id} · {loan.broker_name ?? "Unassigned"}
+        </div>
+        {canReassign && (
+          <button
+            type="button"
+            className="mi"
+            onClick={(e) => {
+              e.stopPropagation();
+              onReassign();
+            }}
+          >
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <Icon name="user" size={12} stroke={2.2} />
+              {loan.broker_id ? "Reassign agent…" : "Assign agent…"}
+            </span>
+          </button>
+        )}
         <button
+          type="button"
+          className="mi"
           onClick={(e) => {
             e.stopPropagation();
-            onReassign();
+            onAssignAI();
           }}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "8px 10px",
-            borderRadius: 4,
-            border: "none",
-            background: "transparent",
-            color: t.ink,
-            fontSize: 13,
-            cursor: "pointer",
-            textAlign: "left",
-            fontFamily: "inherit",
-          }}
-          onMouseOver={(e) =>
-            ((e.currentTarget as HTMLElement).style.background = t.surface2)
-          }
-          onMouseOut={(e) =>
-            ((e.currentTarget as HTMLElement).style.background = "transparent")
-          }
         >
-          <Icon name="user" size={12} stroke={2.2} />
-          {loan.broker_id ? "Reassign agent…" : "Assign agent…"}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <Icon name="spark" size={12} stroke={2.2} />
+            Assign AI agent…
+          </span>
         </button>
-      )}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onAssignAI();
-        }}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "8px 10px",
-          borderRadius: 4,
-          border: "none",
-          background: "transparent",
-          color: t.ink,
-          fontSize: 13,
-          cursor: "pointer",
-          textAlign: "left",
-          fontFamily: "inherit",
-        }}
-        onMouseOver={(e) =>
-          ((e.currentTarget as HTMLElement).style.background = t.surface2)
-        }
-        onMouseOut={(e) =>
-          ((e.currentTarget as HTMLElement).style.background = "transparent")
-        }
-      >
-        <Icon name="spark" size={12} stroke={2.2} />
-        Assign AI agent…
-      </button>
+      </div>
     </div>
   );
 }
@@ -1123,7 +987,6 @@ function FundingMetricsRow({
   totalValue: number;
   rows: { loan: import("@/lib/types").Loan }[];
 }) {
-  const { t } = useTheme();
   // Next closing — earliest close_date in the visible set that hasn't
   // already passed (or, if everything's past, the soonest past one so
   // the operator notices the slipped close).
@@ -1140,33 +1003,33 @@ function FundingMetricsRow({
     return upcoming ?? withDate[withDate.length - 1];
   }, [rows]);
 
+  // Five stat tiles beside one "next closing" card. Deliberately NOT the
+  // 12-column grid: the ratio is a design decision about how much room the
+  // closing card needs, not a column span.
   return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)",
-      gap: 10,
-      alignItems: "stretch",
-    }}>
-      <div style={{
+    <div
+      className="mt"
+      style={{
         display: "grid",
-        gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-        gap: 8,
-        padding: 8,
-        borderRadius: 11,
-        background: t.surface,
-        border: `1px solid ${t.line}`,
-      }}>
+        gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)",
+        gap: 10,
+        alignItems: "stretch",
+      }}
+    >
+      <div className="kpis">
         <MiniMetric label="Files" value={totalFiles} tone="neutral" />
         <MiniMetric label="UW ready" value={ready} tone={ready ? "ready" : "neutral"} />
         <MiniMetric label="Needs structure" value={needsStructure} tone={needsStructure ? "watch" : "ready"} />
         <MiniMetric label="Open conditions" value={openConditions} tone={openConditions ? "watch" : "ready"} />
         <MiniMetric label="AI blocked" value={blockedAi} tone={blockedAi ? "danger" : "ready"} sub={QC_FMT.short(totalValue)} />
       </div>
-      <NextClosingCard item={nextClose} t={t} />
+      <NextClosingCard item={nextClose} />
     </div>
   );
 }
 
+/** Tone here colours the FIGURE, not a delta chip — which is why this is not
+ *  the shared `Kpi`: the number itself is the status signal. */
 function MiniMetric({
   label, value, tone = "neutral", sub,
 }: {
@@ -1175,47 +1038,34 @@ function MiniMetric({
   tone?: "ready" | "watch" | "danger" | "neutral";
   sub?: string;
 }) {
-  const { t } = useTheme();
-  const color = tone === "ready" ? t.profit : tone === "watch" ? t.warn : tone === "danger" ? t.danger : t.ink;
+  const color =
+    tone === "ready" ? "var(--ok)"
+      : tone === "watch" ? "var(--warn)"
+        : tone === "danger" ? "var(--danger)"
+          : "var(--ink)";
   return (
-    <div style={{
-      padding: "6px 9px",
-      borderRadius: 8,
-      background: t.surface2,
-      border: `1px solid ${t.line}`,
-      minWidth: 0,
-      display: "flex",
-      flexDirection: "column",
-      gap: 1,
-    }}>
-      <span style={{ fontSize: 9.5, fontWeight: 900, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+    <div className="kpi">
+      <div className="lbl" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {label}
-      </span>
-      <span style={{ fontSize: 16, fontWeight: 950, color, fontFeatureSettings: '"tnum"', lineHeight: 1.1 }}>
-        {value}
-      </span>
-      {sub ? <span style={{ fontSize: 9.5, fontWeight: 800, color: t.ink3 }}>{sub} total</span> : null}
+      </div>
+      <div className="knum num" style={{ color }}>{value}</div>
+      {sub ? <div className="sub">{sub} total</div> : null}
     </div>
   );
 }
 
 function NextClosingCard({
-  item, t,
+  item,
 }: {
   item: { loan: import("@/lib/types").Loan; ts: number } | null;
-  t: ReturnType<typeof useTheme>["t"];
 }) {
   if (item === null) {
     return (
-      <div style={{
-        padding: 12, borderRadius: 11,
-        background: t.surface, border: `1px solid ${t.line}`,
-        display: "flex", alignItems: "center", gap: 10,
-      }}>
-        <Icon name="cal" size={16} style={{ color: t.ink3 }} />
+      <div className="card row">
+        <Icon name="cal" size={16} />
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 10, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>Next closing</div>
-          <div style={{ marginTop: 2, fontSize: 12.5, color: t.ink3 }}>No close dates on any file yet.</div>
+          <div className="lbl">Next closing</div>
+          <div className="sub">No close dates on any file yet.</div>
         </div>
       </div>
     );
@@ -1225,98 +1075,85 @@ function NextClosingCard({
   const days = Math.round((item.ts - today.getTime()) / 86_400_000);
   const overdue = days < 0;
   const daysLabel = days === 0 ? "today" : overdue ? `${Math.abs(days)}d overdue` : `in ${days}d`;
-  const tone = overdue ? t.danger : days <= 3 ? t.warn : days <= 10 ? t.brand : t.ink2;
-  const toneBg = overdue ? t.dangerBg : days <= 3 ? t.warnBg : days <= 10 ? t.brandSoft : t.surface2;
+  const tone: ChipTone = overdue ? "bad" : days <= 3 ? "warn" : days <= 10 ? "acc" : "mut";
   const dateStr = new Date(item.ts).toLocaleDateString("en-US", {
     weekday: "short", month: "short", day: "numeric",
   });
   return (
-    <Link href={`/loans/${item.loan.id}`} style={{
-      padding: 10, borderRadius: 11,
-      background: t.surface, border: `1px solid ${t.line}`,
-      display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", gap: 10,
-      alignItems: "center", textDecoration: "none", color: t.ink,
-    }}>
-      <div style={{
-        padding: "6px 10px", borderRadius: 8,
-        background: toneBg, color: tone,
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        minWidth: 64,
-      }}>
-        <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: 0.6, textTransform: "uppercase" }}>{overdue ? "Slipped" : "Closes"}</span>
-        <span style={{ fontSize: 14, fontWeight: 950, lineHeight: 1.1 }}>{daysLabel}</span>
+    <Link
+      href={`/loans/${item.loan.id}`}
+      className="card"
+      style={{
+        display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", gap: 10,
+        alignItems: "center", textDecoration: "none", color: "var(--ink)",
+      }}
+    >
+      <div style={{ minWidth: 64, textAlign: "center" }}>
+        <div className="lbl">{overdue ? "Slipped" : "Closes"}</div>
+        <CellChip tone={tone}>{daysLabel}</CellChip>
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 10, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>Next closing</div>
-        <div style={{ marginTop: 2, fontSize: 13.5, fontWeight: 850, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div className="lbl">Next closing</div>
+        <b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {item.loan.address}
-        </div>
-        <div style={{ marginTop: 1, fontSize: 11.5, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        </b>
+        <div className="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {dateStr} · {item.loan.deal_id}
           {item.loan.client_name ? ` · ${item.loan.client_name}` : ""}
         </div>
       </div>
-      <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-        <div style={{ fontSize: 14, fontWeight: 950, color: t.ink, fontFeatureSettings: '"tnum"' }}>
-          {QC_FMT.short(Number(item.loan.amount))}
-        </div>
-        <div style={{ fontSize: 10, fontWeight: 800, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.4 }}>
-          {String(item.loan.type).replace("_", " ")}
-        </div>
+      <div className="align-r" style={{ whiteSpace: "nowrap" }}>
+        <div className="num"><b>{QC_FMT.short(Number(item.loan.amount))}</b></div>
+        <div className="lbl">{String(item.loan.type).replace("_", " ")}</div>
       </div>
     </Link>
   );
 }
 
+/** Readiness colour is data-derived, so it stays an inline value on both the
+ *  figure and the `.track` fill — the bar itself is a class. */
+function readinessColor(score: number): string {
+  return score >= 85 ? "var(--ok)" : score >= 65 ? "var(--warn)" : "var(--accent)";
+}
+
 function CreditCell({ fico, override }: { fico: number | null; override: boolean }) {
-  const { t } = useTheme();
   if (fico === null) {
-    return (
-      <div style={{ textAlign: "right", color: t.ink3, fontWeight: 700, fontSize: 12.5 }}>—</div>
-    );
+    return <div className="align-r sub">—</div>;
   }
-  const tone = fico >= 740 ? t.profit : fico >= 680 ? t.warn : t.danger;
+  const tone = fico >= 740 ? "var(--ok)" : fico >= 680 ? "var(--warn)" : "var(--danger)";
   return (
-    <div style={{ textAlign: "right", fontFeatureSettings: '"tnum"' }}>
-      <div style={{ fontSize: 12.5, fontWeight: 900, color: tone, lineHeight: 1.1 }}>
-        {fico}
-      </div>
-      {override ? (
-        <div style={{ fontSize: 9, fontWeight: 800, color: t.ink3, letterSpacing: 0.3, textTransform: "uppercase" }}>
-          override
-        </div>
-      ) : null}
+    <div className="align-r num">
+      <b style={{ color: tone }}>{fico}</b>
+      {override ? <div className="lbl">override</div> : null}
     </div>
   );
 }
 
 function ReadinessCell({ score, label }: { score: number; label: string }) {
-  const { t } = useTheme();
-  const color = score >= 85 ? t.profit : score >= 65 ? t.warn : t.brand;
+  const color = readinessColor(score);
   return (
     <div style={{ minWidth: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-        <span style={{ fontSize: 12.5, fontWeight: 900, color, fontFeatureSettings: '"tnum"' }}>{score}%</span>
-        <span style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+        <b className="num" style={{ color }}>{score}%</b>
+        <span className="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
       </div>
-      <div style={{ height: 6, borderRadius: 999, background: t.line, overflow: "hidden", marginTop: 5 }}>
-        <div style={{ width: `${score}%`, height: "100%", background: color }} />
+      <div className="track" style={{ marginTop: 5 }}>
+        <div style={{ width: `${score}%`, height: "100%", borderRadius: 99, background: color }} />
       </div>
     </div>
   );
 }
 
 function ReadinessBar({ score, label }: { score: number; label: string }) {
-  const { t } = useTheme();
-  const color = score >= 85 ? t.profit : score >= 65 ? t.warn : t.brand;
+  const color = readinessColor(score);
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-        <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 850 }}>{label}</span>
-        <span style={{ fontSize: 11, color, fontWeight: 950, fontFeatureSettings: '"tnum"' }}>{score}%</span>
+        <span className="sub">{label}</span>
+        <b className="num" style={{ color }}>{score}%</b>
       </div>
-      <div style={{ height: 6, borderRadius: 999, background: t.line, overflow: "hidden", marginTop: 5 }}>
-        <div style={{ width: `${score}%`, height: "100%", background: color }} />
+      <div className="track" style={{ marginTop: 5 }}>
+        <div style={{ width: `${score}%`, height: "100%", borderRadius: 99, background: color }} />
       </div>
     </div>
   );
@@ -1343,29 +1180,26 @@ function getPipelineAction(
 }
 
 function PipelineActionCell({ action, compact }: { action: PipelineAction; compact?: boolean }) {
-  const { t } = useTheme();
-  const color = action.tone === "ready" ? t.profit : action.tone === "danger" ? t.danger : action.tone === "watch" ? t.warn : t.brand;
-  const bg = action.tone === "ready" ? t.profitBg : action.tone === "danger" ? t.dangerBg : action.tone === "watch" ? t.warnBg : t.brandSoft;
+  const tone: ChipTone =
+    action.tone === "ready" ? "ok"
+      : action.tone === "danger" ? "bad"
+        : action.tone === "watch" ? "warn"
+          : "acc";
+  // `compact` is the kanban card's left-aligned variant; the table cell centres.
   return (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: compact ? "flex-start" : "center", minWidth: 0 }}>
-      <span style={{ padding: compact ? "3px 7px" : "4px 8px", borderRadius: 999, background: bg, color, fontSize: compact ? 10.5 : 11.5, fontWeight: 900, whiteSpace: "nowrap" }}>
-        {action.label}
-      </span>
+    <div style={{ minWidth: 0, textAlign: compact ? "left" : "center" }}>
+      <CellChip tone={tone}>{action.label}</CellChip>
     </div>
   );
 }
 
 function ConditionCell({ open, flagged, total }: { open: number; flagged: number; total: number }) {
-  const { t } = useTheme();
-  const color = flagged ? t.danger : open ? t.warn : total ? t.profit : t.ink3;
-  const bg = flagged ? t.dangerBg : open ? t.warnBg : total ? t.profitBg : t.surface2;
+  const tone: ChipTone = flagged ? "bad" : open ? "warn" : total ? "ok" : "mut";
   return (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, color, fontWeight: 850, fontSize: 12 }}>
-      <span style={{ width: 8, height: 8, borderRadius: 999, background: color }} />
-      <span style={{ padding: "3px 7px", borderRadius: 999, background: bg }}>
-        {flagged ? `${flagged} flagged` : open ? `${open} open` : total ? "clear" : "none"}
-      </span>
-    </div>
+    <CellChip tone={tone}>
+      <span className="repdot" style={{ background: "currentColor" }} />
+      {flagged ? `${flagged} flagged` : open ? `${open} open` : total ? "clear" : "none"}
+    </CellChip>
   );
 }
 
@@ -1373,95 +1207,62 @@ function SortHead({
   label, k, current, dir, onClick, align,
 }: { label: string; k: SortKey; current: SortKey; dir: "asc" | "desc"; onClick: (k: SortKey) => void; align?: "left" | "right" }) {
   const active = current === k;
+  // Inherits the `.lbl` typography of the header row it sits in; only the
+  // active-state emphasis is its own. `var(--qc-ink)` was a retired token that
+  // resolved to nothing, so the active header never actually changed colour.
   return (
-    <button onClick={() => onClick(k)} style={{
-      textAlign: align ?? "left", color: active ? "var(--qc-ink)" : "inherit", fontWeight: active ? 800 : 700, fontSize: "inherit",
-      letterSpacing: "inherit", textTransform: "inherit",
-    }}>
+    <button
+      type="button"
+      onClick={() => onClick(k)}
+      aria-label={`Sort by ${label}`}
+      style={{
+        textAlign: align ?? "left",
+        color: active ? "var(--ink)" : "inherit",
+        fontWeight: active ? 800 : 700,
+        fontSize: "inherit",
+        letterSpacing: "inherit",
+        textTransform: "inherit",
+        cursor: "pointer",
+      }}
+    >
       {label} {active ? (dir === "asc" ? "↑" : "↓") : ""}
     </button>
   );
 }
 
-function segBtn(t: ReturnType<typeof useTheme>["t"], active: boolean): React.CSSProperties {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "6px 12px",
-    borderRadius: 7,
-    border: "none",
-    background: active ? t.ink : "transparent",
-    color: active ? t.inverse : t.ink2,
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: "pointer",
-    fontFamily: "inherit",
-  };
-}
-
-// Brand-tinted variant of segBtn for the top-level mode switcher. Bigger
-// hit target + brand color when active so it reads as the primary
-// view control on the page, not the same weight as the kanban/table
-// view toggle.
-function modeSegBtn(t: ReturnType<typeof useTheme>["t"], active: boolean): React.CSSProperties {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 7,
-    padding: "8px 14px",
-    borderRadius: 8,
-    border: "none",
-    background: active ? t.brand : "transparent",
-    color: active ? t.inverse : t.ink2,
-    fontSize: 12.5,
-    fontWeight: 850,
-    cursor: "pointer",
-    fontFamily: "inherit",
-    whiteSpace: "nowrap",
-  };
-}
-
 function DealSecretaryBadge({ summary }: { summary: DSPipelineSummaryItem | undefined }) {
-  const { t } = useTheme();
   if (!summary || summary.ai_task_count === 0) return null;
 
   // Map state → icon + tone.
   let icon = "ai";
-  let bg = t.brandSoft;
-  let color = t.brand;
+  let tone: ChipTone = "acc";
   let label = "";
   if (summary.state === "blocked") {
-    icon = "alert"; bg = t.warnBg; color = t.warn;
+    icon = "alert"; tone = "warn";
     label = summary.current_blocker
       ? `Blocked · ${summary.current_blocker}`
       : `Blocked · ${summary.blocked_count} task${summary.blocked_count === 1 ? "" : "s"}`;
   } else if (summary.state === "waiting_borrower") {
     label = "Waiting on borrower";
     if (summary.next_outreach_at) {
-      const t = new Date(summary.next_outreach_at);
-      label += ` · next ${t.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+      const at = new Date(summary.next_outreach_at);
+      label += ` · next ${at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
     }
   } else if (summary.state === "active_work") {
     label = `AI working · ${summary.ai_task_count} task${summary.ai_task_count === 1 ? "" : "s"}`;
   } else {
     // setup
-    icon = "pause"; bg = t.surface2; color = t.ink3;
+    icon = "pause"; tone = "mut";
     label = `Setup · ${summary.ai_task_count} assigned, outreach off`;
   }
 
   return (
     <>
       <span aria-hidden>·</span>
-      <span style={{
-        display: "inline-flex", alignItems: "center", gap: 4,
-        padding: "1px 6px", borderRadius: 4,
-        background: bg, color, fontWeight: 700,
-        fontSize: 10.5, letterSpacing: 0.2,
-      }}>
+      <CellChip tone={tone}>
         <Icon name={icon} size={11} />
         {label}
-      </span>
+      </CellChip>
     </>
   );
 }

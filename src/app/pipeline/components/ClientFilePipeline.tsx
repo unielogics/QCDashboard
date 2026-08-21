@@ -10,13 +10,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
-import { Icon } from "@/components/design-system/Icon";
+import { CellChip, PageHeader, Panel, Tag, cx, type ChipTone } from "@/components/ds";
 import { loanTypeLabel } from "@/lib/types";
 import { useMyFiles, type MyFileRow, type MyFileStatus } from "@/hooks/useApi";
 import { ClientFileModal } from "@/components/client/ClientFileModal";
-import { withAlpha } from "@/components/design-system/tokens";
 
 type FilterId = MyFileStatus | "all";
 
@@ -28,11 +25,11 @@ const FILTERS: { id: FilterId; label: string }[] = [
   { id: "lost", label: "Lost" },
 ];
 
-function statusAccent(t: ReturnType<typeof useTheme>["t"], s: MyFileStatus) {
-  if (s === "funded") return { label: "Funded", bg: t.profitBg, fg: t.profit };
-  if (s === "in_funding") return { label: "In Funding", bg: t.brandSoft, fg: t.brand };
-  if (s === "lost") return { label: "Lost", bg: t.dangerBg, fg: t.danger };
-  return { label: "RE Working", bg: t.warnBg, fg: t.warn };
+function statusAccent(s: MyFileStatus): { label: string; tone: ChipTone; stripe: string } {
+  if (s === "funded") return { label: "Funded", tone: "ok", stripe: "var(--ok)" };
+  if (s === "in_funding") return { label: "In Funding", tone: "acc", stripe: "var(--accent)" };
+  if (s === "lost") return { label: "Lost", tone: "bad", stripe: "var(--danger)" };
+  return { label: "RE Working", tone: "warn", stripe: "var(--warn)" };
 }
 
 function fmtAmount(n: number | null): string {
@@ -51,7 +48,6 @@ function fmtDate(iso: string): string {
 const GRID = "4px 116px minmax(0, 1.7fr) 130px minmax(0, 1.3fr) 96px 100px";
 
 export function ClientFilePipeline() {
-  const { t } = useTheme();
   const { data: files = [], isLoading } = useMyFiles();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -123,7 +119,9 @@ export function ClientFilePipeline() {
   // edge-to-edge: maximum size, no surrounding frame/gap.
   if (openFile) {
     return (
-      <div style={{ margin: -24 }}>
+      // Cancels the shell's `.content` padding exactly, the same way `.ckhead`
+      // does — the hard-coded -24 predated the padding becoming a clamp().
+      <div style={{ margin: "calc(var(--pad-y) * -1) calc(var(--pad-x) * -1)" }}>
         <ClientFileModal
           key={openFile.id}
           file={openFile}
@@ -135,120 +133,66 @@ export function ClientFilePipeline() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 1240, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>
-          My Files
-        </h1>
-        <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
-          Every property file you have with us — from the agent stage
-          through funding. Click a file to open it.
-        </div>
-      </div>
+    <>
+      <PageHeader
+        title="My Files"
+        lede="Every property file you have with us — from the agent stage through funding. Click a file to open it."
+      />
 
       {/* Status filter pills */}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      <div className="pagebar">
         {FILTERS.map((f) => {
           const active = filter === f.id;
           const count = f.id === "all" ? files.length : counts[f.id] ?? 0;
-          const accent =
-            f.id === "funded"
-              ? { fg: t.profit, bg: t.profitBg }
-              : f.id === "in_funding"
-                ? { fg: t.brand, bg: t.brandSoft }
-                : f.id === "lost"
-                  ? { fg: t.danger, bg: t.dangerBg }
-                  : f.id === "re_working"
-                    ? { fg: t.warn, bg: t.warnBg }
-                    : { fg: t.ink, bg: t.surface2 };
           return (
             <button
               key={f.id}
+              type="button"
+              className={cx("btn", active && "pri")}
+              aria-pressed={active}
               onClick={() => setFilter(f.id)}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                padding: "8px 14px",
-                borderRadius: 999,
-                background: active ? accent.bg : "transparent",
-                border: `1px solid ${active ? withAlpha(accent.fg, 0.19) : t.line}`,
-                color: active ? accent.fg : t.ink2,
-                fontSize: 12,
-                fontWeight: 700,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 7,
-              }}
             >
               <span>{f.label}</span>
-              <span
-                style={{
-                  fontSize: 10.5,
-                  fontWeight: 800,
-                  fontFeatureSettings: '"tnum"',
-                  padding: "1px 6px",
-                  borderRadius: 999,
-                  background: active ? withAlpha(accent.fg, 0.13) : t.surface2,
-                  color: active ? accent.fg : t.ink3,
-                  minWidth: 18,
-                  textAlign: "center",
-                }}
-              >
-                {count}
-              </span>
+              <Tag>{count}</Tag>
             </button>
           );
         })}
       </div>
 
       {isLoading ? (
-        <Card pad={28}>
-          <div style={{ fontSize: 12.5, color: t.ink3 }}>Loading your files…</div>
-        </Card>
+        <div className="card mt sub">Loading your files…</div>
       ) : visible.length === 0 ? (
-        <Card pad={28}>
-          <div style={{ fontSize: 13, color: t.ink2 }}>
-            {files.length === 0
-              ? "No files yet. Once your agent starts a file for a property, it shows up here."
-              : "No files in this status."}
-          </div>
-        </Card>
+        <div className="card mt">
+          {files.length === 0
+            ? "No files yet. Once your agent starts a file for a property, it shows up here."
+            : "No files in this status."}
+        </div>
       ) : (
-        <Card pad={0}>
-          <Header t={t} />
+        <Panel className="mt" noPad>
+          <Header />
           {visible.map((f) => (
-            <Row key={`${f.kind}-${f.id}`} file={f} t={t} onClick={() => openFromRow(f)} />
+            <Row key={`${f.kind}-${f.id}`} file={f} onClick={() => openFromRow(f)} />
           ))}
-        </Card>
+        </Panel>
       )}
-    </div>
+    </>
   );
 }
 
-function Header({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
+function Header() {
   const cell = (label: string, alignRight = false) => (
-    <div
-      style={{
-        fontSize: 11,
-        fontWeight: 700,
-        letterSpacing: 1.2,
-        textTransform: "uppercase",
-        color: t.ink3,
-        textAlign: alignRight ? "right" : "left",
-      }}
-    >
-      {label}
-    </div>
+    <div className={alignRight ? "align-r" : undefined}>{label}</div>
   );
   return (
     <div
+      className="lbl"
       style={{
         display: "grid",
         gridTemplateColumns: GRID,
         gap: 12,
         padding: "12px 16px 12px 12px",
-        borderBottom: `1px solid ${t.line}`,
-        background: t.surface2,
+        borderBottom: "1px solid var(--line2)",
+        background: "var(--sunken2)",
       }}
     >
       <div />
@@ -264,22 +208,12 @@ function Header({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
 
 function Row({
   file,
-  t,
   onClick,
 }: {
   file: MyFileRow;
-  t: ReturnType<typeof useTheme>["t"];
   onClick: () => void;
 }) {
-  const s = statusAccent(t, file.status);
-  const stripe =
-    file.status === "funded"
-      ? t.profit
-      : file.status === "in_funding"
-        ? t.brand
-        : file.status === "lost"
-          ? t.danger
-          : t.warn;
+  const s = statusAccent(file.status);
   const propLine = file.address || file.ref;
   const typeLabel = file.loan_type ? loanTypeLabel(file.loan_type) : "—";
   return (
@@ -298,59 +232,39 @@ function Row({
         gridTemplateColumns: GRID,
         gap: 12,
         padding: "14px 16px 14px 12px",
-        borderBottom: `1px solid ${t.line}`,
+        borderBottom: "1px solid var(--line)",
         alignItems: "center",
-        fontSize: 13,
-        color: t.ink,
+        color: "var(--ink)",
         cursor: "pointer",
         transition: "background .12s",
       }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLDivElement).style.background = t.surface2;
+        (e.currentTarget as HTMLDivElement).style.background = "var(--sunken2)";
       }}
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLDivElement).style.background = "transparent";
       }}
     >
-      <div style={{ alignSelf: "stretch", background: stripe, borderRadius: 2 }} />
+      <div style={{ alignSelf: "stretch", background: s.stripe, borderRadius: 2 }} />
       <div>
-        <Pill bg={s.bg} color={s.fg}>
-          {s.label}
-        </Pill>
+        <CellChip tone={s.tone}>{s.label}</CellChip>
       </div>
       <div style={{ minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 14,
-            fontWeight: 700,
-            color: t.ink,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
+        <b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {propLine}
-        </div>
+        </b>
         <div
-          style={{
-            fontSize: 11,
-            color: t.ink3,
-            marginTop: 2,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
+          className="sub"
+          style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
         >
           {file.city ? `${file.city} · ` : ""}
           {file.ref} · {file.stage_detail}
         </div>
       </div>
-      <div style={{ fontSize: 12, color: t.ink2 }}>{typeLabel}</div>
+      <div>{typeLabel}</div>
       <div
+        className={file.ai_status ? undefined : "sub"}
         style={{
-          fontSize: 12,
-          color: file.ai_status ? t.ink2 : t.ink4,
-          lineHeight: 1.4,
           display: "-webkit-box",
           WebkitLineClamp: 2,
           WebkitBoxOrient: "vertical",
@@ -359,12 +273,8 @@ function Row({
       >
         {file.ai_status || "—"}
       </div>
-      <div style={{ fontSize: 13, fontWeight: 700, textAlign: "right", fontFeatureSettings: '"tnum"' }}>
-        {fmtAmount(file.amount)}
-      </div>
-      <div style={{ fontSize: 12, color: t.ink3, textAlign: "right", fontFeatureSettings: '"tnum"' }}>
-        {fmtDate(file.updated_at)}
-      </div>
+      <div className="align-r num"><b>{fmtAmount(file.amount)}</b></div>
+      <div className="align-r num sub">{fmtDate(file.updated_at)}</div>
     </div>
   );
 }
