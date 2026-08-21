@@ -1,8 +1,16 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, KPI, Pill, SectionLabel, Sparkline } from "@/components/design-system/primitives";
+import { Sparkline } from "@/components/design-system/primitives";
+import {
+  CG,
+  CellChip,
+  KpiRow,
+  Note,
+  PageHeader,
+  Panel,
+} from "@/components/ds";
 import { useDashboardReport, useLoans } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { LoanType } from "@/lib/enums.generated";
@@ -18,7 +26,48 @@ const TYPE_LABELS: Record<string, string> = {
   [LoanType.CASH_OUT_REFI]: "Cash-Out Refi",
 };
 
+/**
+ * Stat tile on the `.kpi` class, with the caption line the shared `Kpi` wrapper
+ * does not carry. The caption is data here ("14 active loans", "9 loans w/
+ * DSCR"), not decoration, so it cannot be dropped in favour of the wrapper.
+ */
+function Stat({
+  label,
+  value,
+  delta,
+  deltaSuffix = "%",
+  sub,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  delta?: number;
+  deltaSuffix?: string;
+  sub?: ReactNode;
+}) {
+  const positive = delta != null && delta >= 0;
+  return (
+    <div className="kpi">
+      <div className="lbl">{label}</div>
+      <div className="knum num">{value}</div>
+      {(delta != null || sub) && (
+        <div className="kdelta row">
+          {delta != null && (
+            <CellChip tone={positive ? "ok" : "bad"}>
+              {(positive ? "+" : "") + delta}
+              {deltaSuffix}
+            </CellChip>
+          )}
+          {sub && <span className="sub">{sub}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ReportsPage() {
+  // Kept only for the Sparkline `color` prop: that primitive writes the value
+  // into SVG presentation attributes, where a `var(--ok)` reference is not
+  // reliably resolved. Everything else on this page is on the stylesheet.
   const { t } = useTheme();
   const { data: loans = [] } = useLoans();
   const { data: report } = useDashboardReport();
@@ -46,34 +95,27 @@ export default function ReportsPage() {
   const pullPct = report?.pull_through != null ? Math.round(report.pull_through * 100) : null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>Reports</h1>
-        <Pill>{loans.length} loans</Pill>
-      </div>
+    <>
+      <PageHeader title="Reports" lede={`${loans.length} loans`} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <KPI
+      <KpiRow className="mt">
+        <Stat
           label="Funded YTD"
           value={report ? QC_FMT.short(report.funded_ytd) : "—"}
           delta={report?.funded_ytd_delta ?? undefined}
           sub="vs prior year"
-          icon="dollar"
-          accent={t.profit}
         />
-        <KPI
+        <Stat
           label="Pipeline"
           value={report ? QC_FMT.short(report.pipeline_value) : "—"}
           sub={report ? `${report.pipeline_count} active loans` : undefined}
-          icon="layers"
         />
-        <KPI
+        <Stat
           label="Avg DSCR"
           value={avgDscr ? avgDscr.toFixed(2) : "—"}
           sub={`${loans.filter((l) => l.dscr != null).length} loans w/ DSCR`}
-          icon="audit"
         />
-        <KPI
+        <Stat
           label="Pull-through"
           value={pullPct != null ? `${pullPct}%` : "—"}
           delta={
@@ -82,30 +124,24 @@ export default function ReportsPage() {
               : undefined
           }
           sub="all time"
-          icon="trend"
         />
-      </div>
+      </KpiRow>
 
       {/* Trend charts (SVG sparklines, no recharts dep) */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Card pad={16}>
-          <SectionLabel>Funded volume · 12 months</SectionLabel>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
-            <div style={{ fontSize: 28, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"' }}>
-              {report ? QC_FMT.short(report.funded_ytd) : "—"}
-            </div>
-            <div style={{ fontSize: 12, color: t.ink3, paddingBottom: 6 }}>YTD</div>
+      <CG className="mt">
+        <Panel className="s6" title="Funded volume · 12 months">
+          <div className="row">
+            <div className="big num">{report ? QC_FMT.short(report.funded_ytd) : "—"}</div>
+            <span className="sub">YTD</span>
           </div>
-          <div style={{ marginTop: 8 }}>
+          <div className="mt">
             <Sparkline data={monthlyFunded} color={t.profit} width={520} height={80} fill />
           </div>
           <div
+            className="sub"
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(12, 1fr)",
-              marginTop: 6,
-              fontSize: 9,
-              color: t.ink3,
               textAlign: "center",
             }}
           >
@@ -113,65 +149,70 @@ export default function ReportsPage() {
               <div key={i}>{m}</div>
             ))}
           </div>
-          <div style={{ fontSize: 11, color: t.ink3, marginTop: 8 }}>
+          <Note>
             Curve reflects YTD funded distributed across 12 months (smoothed). A real
             month-by-month series will replace this once the timeseries endpoint ships.
-          </div>
-        </Card>
+          </Note>
+        </Panel>
 
-        <Card pad={16}>
-          <SectionLabel>Stage health</SectionLabel>
+        <Panel className="s6" title="Stage health">
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {byStage.length === 0 && (
-              <div style={{ fontSize: 12.5, color: t.ink3 }}>No loans to break down yet.</div>
-            )}
+            {byStage.length === 0 && <div className="sub">No loans to break down yet.</div>}
             {byStage.map((row, i) => (
-              <div key={row.stage} style={{ display: "grid", gridTemplateColumns: "140px 50px 1fr 90px", gap: 10, alignItems: "center" }}>
-                <div style={{ fontSize: 12, color: t.ink2, fontWeight: 600 }}>{STAGE_LABELS[i]}</div>
-                <div style={{ fontSize: 12, color: t.ink, fontWeight: 800, fontFeatureSettings: '"tnum"' }}>{row.count}</div>
-                <div style={{ height: 6, background: t.line, borderRadius: 999, overflow: "hidden" }}>
+              <div
+                key={row.stage}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "140px 50px 1fr 90px",
+                  gap: 10,
+                  alignItems: "center",
+                }}
+              >
+                <div className="lbl">{STAGE_LABELS[i]}</div>
+                <div className="num">
+                  <b>{row.count}</b>
+                </div>
+                <div className="track">
                   <div
                     style={{
                       width: `${(row.value / maxStage) * 100}%`,
                       height: "100%",
-                      background: i === 5 ? t.profit : i === 4 ? t.warn : t.petrol,
+                      // Stage-derived tint: funded reads as profit, closing as
+                      // in-flight risk, everything upstream as petrol.
+                      background:
+                        i === 5 ? "var(--ok)" : i === 4 ? "var(--warn)" : "var(--petrol)",
                     }}
                   />
                 </div>
-                <div style={{ fontSize: 11.5, color: t.ink2, textAlign: "right", fontWeight: 700, fontFeatureSettings: '"tnum"' }}>
-                  {QC_FMT.short(row.value)}
+                <div className="num" style={{ textAlign: "right" }}>
+                  <b>{QC_FMT.short(row.value)}</b>
                 </div>
               </div>
             ))}
           </div>
-        </Card>
-      </div>
+        </Panel>
+      </CG>
 
       {/* Type distribution */}
-      <Card pad={16}>
-        <SectionLabel>By loan type</SectionLabel>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+      <Panel className="mt" title="By loan type">
+        <CG>
           {byType.map((row) => (
-            <div key={row.type} style={{ padding: 12, borderRadius: 9, border: `1px solid ${t.line}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: t.ink2 }}>
-                  {TYPE_LABELS[row.type] ?? row.type}
-                </div>
-                <div style={{ fontSize: 11, color: t.ink3 }}>
+            <div key={row.type} className="kpi s6">
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <div className="lbl">{TYPE_LABELS[row.type] ?? row.type}</div>
+                <span className="sub">
                   {row.count} loan{row.count > 1 ? "s" : ""}
-                </div>
+                </span>
               </div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"', marginTop: 2 }}>
-                {QC_FMT.short(row.value)}
-              </div>
-              <div style={{ height: 6, background: t.line, borderRadius: 999, marginTop: 8, overflow: "hidden" }}>
-                <div style={{ width: `${(row.value / maxType) * 100}%`, height: "100%", background: t.brand }} />
+              <div className="knum num">{QC_FMT.short(row.value)}</div>
+              <div className="track mt">
+                <div className="fill" style={{ width: `${(row.value / maxType) * 100}%` }} />
               </div>
             </div>
           ))}
-          {byType.length === 0 && <div style={{ fontSize: 13, color: t.ink3 }}>No loans yet to break down.</div>}
-        </div>
-      </Card>
-    </div>
+          {byType.length === 0 && <div className="sub s12">No loans yet to break down.</div>}
+        </CG>
+      </Panel>
+    </>
   );
 }

@@ -1,11 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useBrokerLeaderboard } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
+import {
+  CG,
+  Card,
+  CellChip,
+  Panel,
+  Seg,
+  Table,
+  Tag,
+  Td,
+  Tr,
+  type ChipTone,
+  type Col,
+} from "@/components/ds";
 
 const TABS = [
   { id: "leaderboard", label: "Leaderboard" },
@@ -22,124 +33,131 @@ const TIER_THRESHOLDS = [
   { name: "Platinum", min: 35_000_000, max: Infinity, color: "#7B5BD9" },
 ];
 
+// The three-way tier distinction the old Pill carried (gold / platinum / rest),
+// expressed in the chip tones instead of hand-mixed token pairs.
+function tierTone(tier: string): ChipTone {
+  return tier === "gold" ? "gold" : tier === "platinum" ? "acc" : "mut";
+}
+
+const LB_COLS: Col[] = [
+  { label: "#", width: 72 },
+  { label: "Broker" },
+  { label: "Tier" },
+  { label: "Funded", align: "r" },
+  { label: "Points", align: "r" },
+];
+
 export default function RewardsPage() {
-  const { t } = useTheme();
   const { data: leaderboard = [] } = useBrokerLeaderboard();
   const [tab, setTab] = useState<TabId>("leaderboard");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>Rewards</h1>
-        <Pill>Admin</Pill>
+    <>
+      <div className="hd">
+        <h2>Rewards</h2>
+        <Tag>Admin</Tag>
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${t.line}` }}>
-        {TABS.map((tabDef) => (
-          <button
-            key={tabDef.id}
-            onClick={() => setTab(tabDef.id)}
-            style={{
-              padding: "10px 16px",
-              borderBottom: `2px solid ${tab === tabDef.id ? t.brand : "transparent"}`,
-              color: tab === tabDef.id ? t.ink : t.ink3,
-              fontSize: 13, fontWeight: 700,
-              background: "transparent", border: "none", cursor: "pointer",
-            }}
-          >
-            {tabDef.label}
-          </button>
-        ))}
+      <div className="pagebar">
+        <Seg<TabId>
+          value={tab}
+          onChange={setTab}
+          ariaLabel="Rewards sections"
+          options={TABS.map((tabDef) => ({ value: tabDef.id, label: tabDef.label }))}
+        />
       </div>
 
       {tab === "leaderboard" && (
         <>
-          <Card pad={0}>
-            <div style={{
-              display: "grid", gridTemplateColumns: "60px minmax(0, 2fr) 110px 130px 110px",
-              padding: "12px 16px", fontSize: 11, fontWeight: 700, color: t.ink3,
-              textTransform: "uppercase", letterSpacing: 1.2, borderBottom: `1px solid ${t.line}`,
-            }}>
-              <div>#</div><div>Broker</div><div>Tier</div><div>Funded</div><div>Points</div>
-            </div>
-            {leaderboard.map((b, i) => (
-              <div key={b.id} style={{
-                display: "grid", gridTemplateColumns: "60px minmax(0, 2fr) 110px 130px 110px",
-                padding: "12px 16px", borderBottom: `1px solid ${t.line}`, fontSize: 13, alignItems: "center",
-              }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: i < 3 ? t.gold : t.ink3 }}>#{i + 1}</div>
-                <div style={{ fontWeight: 700, color: t.ink }}>{b.display_name}</div>
-                <div><Pill bg={b.tier === "gold" ? t.goldSoft : b.tier === "platinum" ? t.brandSoft : t.chip} color={b.tier === "gold" ? t.gold : t.ink2}>{b.tier}</Pill></div>
-                <div style={{ fontFeatureSettings: '"tnum"', fontWeight: 700, color: t.ink }}>{QC_FMT.short(Number(b.funded_total))}</div>
-                <div style={{ fontFeatureSettings: '"tnum"', color: t.ink }}>{QC_FMT.num(b.lifetime_points)}</div>
-              </div>
-            ))}
-            {leaderboard.length === 0 && (
-              <div style={{ padding: 24, fontSize: 13, color: t.ink3 }}>No brokers yet.</div>
-            )}
-          </Card>
-
-          <Card pad={16}>
-            <SectionLabel>Tier benefits</SectionLabel>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-              {TIER_THRESHOLDS.map((tier) => (
-                <div key={tier.name} style={{ padding: 12, borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface2 }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: tier.color, letterSpacing: 1.2, textTransform: "uppercase" }}>{tier.name}</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, marginTop: 4 }}>
-                    {tier.max === Infinity ? `${QC_FMT.short(tier.min)}+` : `${QC_FMT.short(tier.min)} – ${QC_FMT.short(tier.max)}`}
-                  </div>
-                  <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 6, lineHeight: 1.5 }}>
-                    {tier.name === "Bronze" && "Standard pricing, monthly digest."}
-                    {tier.name === "Silver" && "+25 bps preferred pricing, priority underwriting queue."}
-                    {tier.name === "Gold" && "+50 bps, dedicated AE, quarterly co-marketing budget."}
-                    {tier.name === "Platinum" && "+75 bps, named UW, conference invites, custom rate sheet."}
-                  </div>
-                </div>
+          <Panel className="mt" noPad>
+            <Table cols={LB_COLS} caption="Broker leaderboard">
+              {leaderboard.map((b, i) => (
+                <Tr key={b.id}>
+                  <Td>
+                    <CellChip tone={i < 3 ? "gold" : "mut"}>#{i + 1}</CellChip>
+                  </Td>
+                  <Td>
+                    <b>{b.display_name}</b>
+                  </Td>
+                  <Td>
+                    <CellChip tone={tierTone(b.tier)}>{b.tier}</CellChip>
+                  </Td>
+                  <Td align="r">
+                    <b className="num">{QC_FMT.short(Number(b.funded_total))}</b>
+                  </Td>
+                  <Td align="r">
+                    <span className="num">{QC_FMT.num(b.lifetime_points)}</span>
+                  </Td>
+                </Tr>
               ))}
-            </div>
-          </Card>
+              {leaderboard.length === 0 && (
+                <Tr>
+                  <Td colSpan={5}>
+                    <span className="sub">No brokers yet.</span>
+                  </Td>
+                </Tr>
+              )}
+            </Table>
+          </Panel>
+
+          <CG className="mt">
+            <div className="lbl s12">Tier benefits</div>
+            {TIER_THRESHOLDS.map((tier) => (
+              <Card key={tier.name} className="s3" style={{ display: "grid", gap: 5, alignContent: "start" }}>
+                <div className="lbl" style={{ color: tier.color }}>{tier.name}</div>
+                <b className="num">
+                  {tier.max === Infinity ? `${QC_FMT.short(tier.min)}+` : `${QC_FMT.short(tier.min)} – ${QC_FMT.short(tier.max)}`}
+                </b>
+                <div className="sub">
+                  {tier.name === "Bronze" && "Standard pricing, monthly digest."}
+                  {tier.name === "Silver" && "+25 bps preferred pricing, priority underwriting queue."}
+                  {tier.name === "Gold" && "+50 bps, dedicated AE, quarterly co-marketing budget."}
+                  {tier.name === "Platinum" && "+75 bps, named UW, conference invites, custom rate sheet."}
+                </div>
+              </Card>
+            ))}
+          </CG>
         </>
       )}
 
-      {tab === "referrals" && <Stub t={t} icon="user" message="Referral approval queue & per-broker breakdown — coming soon." note="Backend referral model not yet finalized; the UI lands once /referrals ships." />}
+      {tab === "referrals" && <Stub icon="user" message="Referral approval queue & per-broker breakdown — coming soon." note="Backend referral model not yet finalized; the UI lands once /referrals ships." />}
 
-      {tab === "redeem" && <Stub t={t} icon="rewards" message="Points redemption catalog — coming soon." note="Catalog (rate concessions, conference passes, co-marketing credits) ships once the backend catalog API is built." />}
+      {tab === "redeem" && <Stub icon="rewards" message="Points redemption catalog — coming soon." note="Catalog (rate concessions, conference passes, co-marketing credits) ships once the backend catalog API is built." />}
 
       {tab === "rules" && (
-        <Card pad={20}>
-          <SectionLabel>Program rules</SectionLabel>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
-            <RulesBlock t={t} title="Earning" body="1 point per $1 of FUNDED loan amount. Points award when the loan transitions to FUNDED stage and the wire confirms. Cancellations/rescissions claw back the same points." />
-            <RulesBlock t={t} title="Tier review" body="Tiers reset at the start of each calendar year using lifetime points from the prior 12 months. Manual overrides require super-admin approval." />
-            <RulesBlock t={t} title="Referrals" body="Referrals received via a broker invite link auto-link to that broker. Self-signups citing a broker by name go to the super-admin queue for manual approval." />
-            <RulesBlock t={t} title="Redemption" body="Approved redemptions deduct from balance_points immediately. Lifetime_points is never reduced — that's how tier eligibility is preserved across redemptions." />
-          </div>
-        </Card>
+        <Panel className="mt" title="Program rules">
+          <CG>
+            <RulesBlock title="Earning" body="1 point per $1 of FUNDED loan amount. Points award when the loan transitions to FUNDED stage and the wire confirms. Cancellations/rescissions claw back the same points." />
+            <RulesBlock title="Tier review" body="Tiers reset at the start of each calendar year using lifetime points from the prior 12 months. Manual overrides require super-admin approval." />
+            <RulesBlock title="Referrals" body="Referrals received via a broker invite link auto-link to that broker. Self-signups citing a broker by name go to the super-admin queue for manual approval." />
+            <RulesBlock title="Redemption" body="Approved redemptions deduct from balance_points immediately. Lifetime_points is never reduced — that's how tier eligibility is preserved across redemptions." />
+          </CG>
+        </Panel>
       )}
-    </div>
+    </>
   );
 }
 
-function Stub({ t, icon, message, note }: { t: ReturnType<typeof useTheme>["t"]; icon: string; message: string; note: string }) {
+function Stub({ icon, message, note }: { icon: string; message: string; note: string }) {
   return (
-    <Card pad={32}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, textAlign: "center" }}>
-        <div style={{ width: 48, height: 48, borderRadius: 24, background: t.chip, display: "inline-flex", alignItems: "center", justifyContent: "center", color: t.ink3 }}>
+    <Card className="mt">
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, textAlign: "center", padding: "22px 0" }}>
+        <div style={{ width: 48, height: 48, borderRadius: 24, background: "var(--sunken)", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--muted)" }}>
           <Icon name={icon} size={22} />
         </div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: t.ink }}>{message}</div>
-        <div style={{ fontSize: 12, color: t.ink3, maxWidth: 540, lineHeight: 1.5 }}>{note}</div>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>{message}</div>
+        <div className="sub" style={{ maxWidth: 540 }}>{note}</div>
       </div>
     </Card>
   );
 }
 
-function RulesBlock({ t, title, body }: { t: ReturnType<typeof useTheme>["t"]; title: string; body: string }) {
+function RulesBlock({ title, body }: { title: string; body: string }) {
   return (
-    <div>
-      <div style={{ fontSize: 11, fontWeight: 800, color: t.petrol, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 6 }}>{title}</div>
-      <div style={{ fontSize: 13, color: t.ink, lineHeight: 1.55 }}>{body}</div>
+    <div className="s6">
+      <CellChip tone="pet">{title}</CellChip>
+      <div style={{ marginTop: 6 }}>{body}</div>
     </div>
   );
 }

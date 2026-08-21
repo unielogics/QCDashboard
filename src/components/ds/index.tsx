@@ -111,7 +111,11 @@ export function PageHeader({
 }) {
   return (
     <div className="hd">
-      <h2>{title}</h2>
+      {/* h1, not h2: this is the page title, and the shell renders no heading of
+          its own. Emitting h2 here left migrated pages with no top-level heading
+          at all — an outline a screen reader reads as a page without a name.
+          `.hd h1` in app-extras.css gives it the same visual weight. */}
+      <h1>{title}</h1>
       {lede && <span className="lede">{lede}</span>}
       {actions && (
         <>
@@ -132,18 +136,30 @@ export function KpiRow({ children, className }: { children: ReactNode; className
 export function Kpi({
   label,
   value,
+  sub,
   delta,
   tone = "mut",
+  className,
 }: {
   label: ReactNode;
   value: ReactNode;
+  /** Qualifier under the figure — "3 active loans", "vs. prior year".
+      Without this every route carrying a KPI caption had to hand-roll the
+      .kpi markup, which is how a shared component quietly stops being used. */
+  sub?: ReactNode;
   delta?: ReactNode;
   tone?: ChipTone;
+  className?: string;
 }) {
   return (
-    <div className="kpi">
+    <div className={cx("kpi", className)}>
       <div className="lbl">{label}</div>
       <div className="knum num">{value}</div>
+      {sub != null && (
+        <div className="sub" style={{ marginTop: 4 }}>
+          {sub}
+        </div>
+      )}
       {delta != null && (
         <div className="kdelta">
           <span className={`cellchip c-${tone}`}>{delta}</span>

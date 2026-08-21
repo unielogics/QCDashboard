@@ -10,14 +10,28 @@
 // the documents the connected borrower (or themselves) has uploaded.
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel, VerifiedBadge } from "@/components/design-system/primitives";
+import {
+  Btn,
+  CellChip,
+  Field,
+  Input,
+  PageHeader,
+  Panel,
+  Row,
+  Seg,
+  Select,
+  Table,
+  Tag,
+  Td,
+  cx,
+  type ChipTone,
+  type Col,
+} from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { useCurrentUser, useDocuments, useLoans, useRequiredDocuments, useUploadDocument } from "@/hooks/useApi";
-import type { RequiredDocument } from "@/lib/types";
 import { Role } from "@/lib/enums.generated";
 import type { Document, Loan } from "@/lib/types";
 
@@ -39,8 +53,15 @@ function tabFor(category: string | null | undefined): VaultTab {
   return "experience";
 }
 
+const DOC_COLS: Col[] = [
+  { label: "Document" },
+  { label: "Category", width: 150 },
+  { label: "Loan", width: 130 },
+  { label: "Received", width: 120 },
+  { label: "Status", width: 120 },
+];
+
 export default function VaultPage() {
-  const { t } = useTheme();
   const { data: user } = useCurrentUser();
   const { data: loans = [] } = useLoans();
   const { data: docs = [] } = useDocuments();
@@ -106,39 +127,38 @@ export default function VaultPage() {
   }, [fulfillParam, docs.length]);
 
   return (
-    <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Vault</h1>
-            {/* Per Architecture decision #6: every doc surfaced here is a
-                lender-required (Funding) document — labeled clearly so the
-                Borrower can distinguish from Agent-requested transaction docs
-                that join the unified view in P1. */}
-            <Pill bg={t.brandSoft} color={t.brand}>Funding</Pill>
-          </div>
-          <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
-            {isClient
-              ? "Your document vault — funding documents requested by Qualified Commercial / Lender. Experience = proof of past deals. Active assets = real estate you currently own. Transaction documents requested by your Agent will join here in P1."
-              : "Borrower-style document view, split by experience proof vs. active assets. Lender-required only — Agent-requested transaction docs join in P1."}
-          </div>
-        </div>
-        <button onClick={() => setUploadOpen(true)} style={qcBtnPrimary(t)}>
-          <Icon name="plus" size={14} /> Upload
-        </button>
+    <div className="grid">
+      {/* Per Architecture decision #6: every doc surfaced here is a
+          lender-required (Funding) document — labeled clearly so the
+          Borrower can distinguish from Agent-requested transaction docs
+          that join the unified view in P1. */}
+      <PageHeader
+        title="Vault"
+        lede={<CellChip tone="acc">Funding</CellChip>}
+        actions={
+          <Btn variant="pri" onClick={() => setUploadOpen(true)}>
+            <Icon name="plus" size={14} /> Upload
+          </Btn>
+        }
+      />
+      <div className="sub">
+        {isClient
+          ? "Your document vault — funding documents requested by Qualified Commercial / Lender. Experience = proof of past deals. Active assets = real estate you currently own. Transaction documents requested by your Agent will join here in P1."
+          : "Borrower-style document view, split by experience proof vs. active assets. Lender-required only — Agent-requested transaction docs join in P1."}
       </div>
 
-      <div style={{ display: "flex", gap: 4 }}>
-        <TabButton t={t} active={tab === "requested"} onClick={() => setTab("requested")}>
-          Requested <Pill>{tabCounts.requested}</Pill>
-        </TabButton>
-        <TabButton t={t} active={tab === "experience"} onClick={() => setTab("experience")}>
-          Experience <Pill>{tabCounts.experience}</Pill>
-        </TabButton>
-        <TabButton t={t} active={tab === "active_asset"} onClick={() => setTab("active_asset")}>
-          Active assets <Pill>{tabCounts.active_asset}</Pill>
-        </TabButton>
-      </div>
+      <Row>
+        <Seg<VaultTab>
+          value={tab}
+          onChange={setTab}
+          ariaLabel="Vault section"
+          options={[
+            { value: "requested", label: <>Requested <span className="tag">{tabCounts.requested}</span></> },
+            { value: "experience", label: <>Experience <span className="tag">{tabCounts.experience}</span></> },
+            { value: "active_asset", label: <>Active assets <span className="tag">{tabCounts.active_asset}</span></> },
+          ]}
+        />
+      </Row>
 
       <UploadDocumentModal
         open={uploadOpen}
@@ -152,82 +172,30 @@ export default function VaultPage() {
       />
 
       {filtered.length === 0 ? (
-        <Card pad={32}>
-          <div style={{ textAlign: "center", color: t.ink3, fontSize: 13, lineHeight: 1.55 }}>
+        <Panel>
+          <div className="sub" style={{ textAlign: "center", padding: "20px 0", lineHeight: 1.55 }}>
             {tab === "requested"
               ? "Nothing requested right now. When the AI requests a document, it'll show up here. Click a row to upload."
               : tab === "experience"
                 ? "No experience proof yet. Upload HUDs, closing statements, deeds, or prior leases from past deals to count toward your investor experience tier."
                 : "No active assets yet. Upload bank notes, leases, insurance, or tax bills for properties you currently own."}
           </div>
-        </Card>
+        </Panel>
       ) : (
-        <Card pad={0}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 2fr) 140px 120px 120px 120px",
-              gap: 10,
-              padding: "12px 16px",
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: 1.2,
-              textTransform: "uppercase",
-              color: t.ink3,
-              borderBottom: `1px solid ${t.line}`,
-              background: t.surface2,
-            }}
-          >
-            <div>Document</div>
-            <div>Category</div>
-            <div>Loan</div>
-            <div>Received</div>
-            <div>Status</div>
-          </div>
-          {filtered.map((d) => (
-            <DocRow
-              key={d.id}
-              doc={d}
-              loan={loanById[d.loan_id]}
-              onTapRequested={d.status === "requested" ? () => onTapRequestedDoc(d) : undefined}
-            />
-          ))}
-        </Card>
+        <Panel noPad>
+          <Table cols={DOC_COLS} caption="Vault documents">
+            {filtered.map((d) => (
+              <DocRow
+                key={d.id}
+                doc={d}
+                loan={loanById[d.loan_id]}
+                onTapRequested={d.status === "requested" ? () => onTapRequestedDoc(d) : undefined}
+              />
+            ))}
+          </Table>
+        </Panel>
       )}
     </div>
-  );
-}
-
-function TabButton({
-  t,
-  active,
-  onClick,
-  children,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        all: "unset",
-        cursor: "pointer",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "10px 16px",
-        borderRadius: 10,
-        background: active ? t.ink : t.surface2,
-        color: active ? t.inverse : t.ink2,
-        fontSize: 13,
-        fontWeight: 700,
-      }}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -243,15 +211,17 @@ function DocRow({
   // (the row stays as plain layout).
   onTapRequested?: () => void;
 }) {
-  const { t } = useTheme();
+  // Same three-way split VerifiedBadge carried; the chip tones hold it now.
   const kind = doc.status === "verified"
     ? "verified"
     : doc.status === "flagged"
     ? "flagged"
     : "pending";
+  const statusTone: ChipTone = kind === "verified" ? "ok" : kind === "flagged" ? "bad" : "warn";
+  const statusLabel = kind === "verified" ? "Verified" : kind === "flagged" ? "Flagged" : "Pending";
   const isRequested = !!onTapRequested;
   return (
-    <div
+    <tr
       onClick={isRequested ? onTapRequested : undefined}
       role={isRequested ? "button" : undefined}
       tabIndex={isRequested ? 0 : undefined}
@@ -265,74 +235,63 @@ function DocRow({
             }
           : undefined
       }
-      style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 2fr) 140px 120px 120px 120px",
-        gap: 10,
-        padding: "12px 16px",
-        borderBottom: `1px solid ${t.line}`,
-        alignItems: "center",
-        fontSize: 13,
-        color: t.ink,
-        cursor: isRequested ? "pointer" : "default",
-        background: isRequested ? t.warnBg : "transparent",
-      }}
+      // Status-derived tint on the row that is also the call to action; the
+      // stylesheet has no "row needs you" state to reach for.
+      style={isRequested ? { cursor: "pointer", background: "var(--warn-tint)" } : undefined}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            background: t.brandSoft,
-            color: t.brand,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          <Icon name="doc" size={14} />
-        </div>
-        <div style={{ minWidth: 0, overflow: "hidden" }}>
-          <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700 }}>
-            {doc.name}
+      <Td>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <span
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 8,
+              background: "var(--accent-100)",
+              color: "var(--accent)",
+              display: "inline-grid",
+              placeItems: "center",
+              flexShrink: 0,
+            }}
+          >
+            <Icon name="doc" size={14} />
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <b>{doc.name}</b>
+            {isRequested ? (
+              <div style={{ marginTop: 3 }}>
+                <CellChip tone="warn">Click to upload →</CellChip>
+              </div>
+            ) : null}
           </div>
-          {isRequested ? (
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: t.warn, letterSpacing: 0.4, marginTop: 2 }}>
-              CLICK TO UPLOAD →
-            </div>
-          ) : null}
         </div>
-      </div>
-      <div>
-        <Pill>{doc.category ?? "—"}</Pill>
-      </div>
-      <div>
+      </Td>
+      <Td>
+        <Tag>{doc.category ?? "—"}</Tag>
+      </Td>
+      <Td>
         {loan ? (
+          // `.linky` owns colour and weight; only the mono face is inline —
+          // the stylesheet carries no monospace utility.
           <Link
             href={`/loans/${loan.id}`}
-            style={{
-              color: t.petrol,
-              textDecoration: "none",
-              fontFamily: "ui-monospace, SF Mono, monospace",
-              fontSize: 12,
-              fontWeight: 700,
-            }}
+            className="linky"
+            style={{ fontFamily: "ui-monospace, SFMono-Regular, monospace" }}
           >
             {loan.deal_id}
           </Link>
         ) : (
-          <span style={{ color: t.ink3 }}>—</span>
+          <span className="sub">—</span>
         )}
-      </div>
-      <div style={{ color: t.ink3, fontSize: 12 }}>
-        {doc.received_on ? new Date(doc.received_on).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
-      </div>
-      <div>
-        <VerifiedBadge kind={kind} />
-      </div>
-    </div>
+      </Td>
+      <Td>
+        <span className="sub">
+          {doc.received_on ? new Date(doc.received_on).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}
+        </span>
+      </Td>
+      <Td>
+        <CellChip tone={statusTone}>{statusLabel}</CellChip>
+      </Td>
+    </tr>
   );
 }
 
@@ -356,7 +315,6 @@ function UploadDocumentModal({
   // file-pick to submit.
   prefill?: { loanId: string; fulfillDocId: string; name: string } | null;
 }) {
-  const { t } = useTheme();
   const upload = useUploadDocument();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [kind, setKind] = useState<UploadKind>(defaultKind);
@@ -461,274 +419,169 @@ function UploadDocumentModal({
     }
   };
 
+  const submitDisabled = upload.isPending || loans.length === 0 || !file;
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      width="md"
+      // The old dialog had no backdrop dismiss, and this one holds a
+      // half-filled form — losing it to a stray click is not an upgrade.
+      closeOnBackdrop={false}
+      title="Add a document"
+      sub="Upload to vault"
+      bodyClass="grid"
+      footer={
+        <>
+          <span style={{ flex: 1 }} />
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn variant="pri" onClick={submit} disabled={submitDisabled}>
+            {upload.isPending ? "Uploading…" : "Upload"}
+          </Btn>
+        </>
+      }
+    >
+      {/* Kind picker */}
+      <Field label="What are you uploading?">
+        <div>
+          <KindCard
+            title="Experience proof"
+            hint="HUDs, closing statements, prior leases"
+            icon="doc"
+            active={kind === "experience"}
+            onClick={() => setKind("experience")}
+          />
+          <KindCard
+            title="Active asset"
+            hint="Bank notes, current leases, insurance"
+            icon="home"
+            active={kind === "active_asset"}
+            onClick={() => setKind("active_asset")}
+          />
+        </div>
+      </Field>
+
+      {/* Loan picker */}
+      <Field label="Attach to property / loan">
+        {loans.length === 0 ? (
+          <span className="sub">
+            No loans yet — start one before uploading. Documents must link to a property in your portfolio.
+          </span>
+        ) : (
+          <Select value={loanId} onChange={(e) => setLoanId(e.target.value)} aria-label="Attach to property / loan">
+            {loans.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.deal_id} · {l.address ?? "(no address)"}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+
+      {/* Checklist picker — drives `fulfill_document_id` /
+          `checklist_key` / `is_other` on the upload payload.
+          Must pick exactly one row before the file input enables. */}
+      <Field label="Which document is this?">
+        {requiredLoading ? (
+          <span className="sub">Loading checklist…</span>
+        ) : required.length === 0 ? (
+          <span className="sub">
+            Couldn&apos;t resolve a checklist for this loan. Pick &quot;Other&quot; below.
+          </span>
+        ) : (
+          <div style={{ maxHeight: 240, overflowY: "auto" }}>
+            {required.map((r) => {
+              if (r.is_other) {
+                return (
+                  <ChecklistRow
+                    key="other"
+                    label="Other — not in checklist"
+                    sub="The AI will try to classify it; if it doesn't match anything specific, an underwriter will follow up."
+                    statusPill={null}
+                    active={pickedKey === "other"}
+                    disabled={false}
+                    onClick={() => setPickedKey("other")}
+                  />
+                );
+              }
+              const id = r.current_document_id
+                ? `doc:${r.current_document_id}`
+                : `checklist:${r.checklist_key}`;
+              const fulfilled = r.current_status === "verified" || r.current_status === "received";
+              const inFlight = r.current_status === "pending";
+              const requested = r.current_status === "requested";
+              let statusPill: { label: string; tone: ChipTone } | null = null;
+              if (fulfilled) statusPill = { label: r.current_status === "verified" ? "Verified" : "Received", tone: "ok" };
+              else if (inFlight) statusPill = { label: "In review", tone: "warn" };
+              else if (requested) {
+                const days = r.days_since_requested ?? 0;
+                statusPill = { label: `Requested · ${days}d`, tone: "mut" };
+              }
+              return (
+                <ChecklistRow
+                  key={id}
+                  label={r.label}
+                  sub={fulfilled ? "Already on file" : r.required ? "Required" : undefined}
+                  statusPill={statusPill}
+                  active={pickedKey === id}
+                  disabled={fulfilled}
+                  onClick={() => !fulfilled && setPickedKey(id)}
+                />
+              );
+            })}
+          </div>
+        )}
+        {pickedKey === "other" ? (
+          <Input
+            value={otherLabel}
+            onChange={(e) => setOtherLabel(e.target.value)}
+            placeholder="Briefly describe what this is (optional)"
+            aria-label="Describe this document"
+          />
+        ) : null}
+      </Field>
+
+      {/* File picker — disabled until a checklist row is picked. */}
+      <Field
+        label="File"
+        hint={file ? `${file.name} · ${(file.size / 1024).toFixed(1)} KB` : undefined}
+      >
+        <input
+          ref={fileRef}
+          type="file"
+          className="field"
+          disabled={!pickedKey}
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          style={pickedKey ? undefined : { opacity: 0.5 }}
+        />
+      </Field>
+
+      {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
+      {success ? <StatusLine tone="ok">{success}</StatusLine> : null}
+    </Drawer>
+  );
+}
+
+/**
+ * Tinted status block. `.c-bad` / `.c-ok` own the tint and the text colour;
+ * the inline values are box geometry only — the stylesheet's tone classes are
+ * pill-shaped chips (`.cellchip`, nowrap) and there is no full-width variant
+ * to reach for, and shared files are off-limits.
+ */
+function StatusLine({ tone, children }: { tone: ChipTone; children: ReactNode }) {
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Upload document"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(6, 7, 11, 0.55)",
-        backdropFilter: "blur(2px)",
-        zIndex: 200,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-      }}
+      className={`c-${tone}`}
+      style={{ borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, lineHeight: 1.45 }}
+      role={tone === "bad" ? "alert" : "status"}
     >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 520,
-          background: t.bg,
-          borderRadius: 18,
-          boxShadow: t.shadowLg,
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "16px 20px",
-            borderBottom: `1px solid ${t.line}`,
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: t.petrol }}>
-              Upload to vault
-            </div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: t.ink, marginTop: 2 }}>
-              Add a document
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              width: 32,
-              height: 32,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 8,
-              color: t.ink2,
-            }}
-          >
-            <Icon name="x" size={16} />
-          </button>
-        </div>
-
-        <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Kind picker */}
-          <div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 6 }}>
-              What are you uploading?
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <KindCard
-                t={t}
-                title="Experience proof"
-                hint="HUDs, closing statements, prior leases"
-                icon="doc"
-                accent={t.brand}
-                accentBg={t.brandSoft}
-                active={kind === "experience"}
-                onClick={() => setKind("experience")}
-              />
-              <KindCard
-                t={t}
-                title="Active asset"
-                hint="Bank notes, current leases, insurance"
-                icon="home"
-                accent={t.profit}
-                accentBg={t.profitBg}
-                active={kind === "active_asset"}
-                onClick={() => setKind("active_asset")}
-              />
-            </div>
-          </div>
-
-          {/* Loan picker */}
-          <div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
-              Attach to property / loan
-            </div>
-            {loans.length === 0 ? (
-              <div style={{ fontSize: 12, color: t.ink3 }}>
-                No loans yet — start one before uploading. Documents must link to a property in your portfolio.
-              </div>
-            ) : (
-              <select
-                value={loanId}
-                onChange={(e) => setLoanId(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: 9,
-                  background: t.surface2,
-                  border: `1px solid ${t.line}`,
-                  color: t.ink,
-                  fontSize: 13,
-                  fontFamily: "inherit",
-                  outline: "none",
-                }}
-              >
-                {loans.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.deal_id} · {l.address ?? "(no address)"}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-
-          {/* Checklist picker — drives `fulfill_document_id` /
-              `checklist_key` / `is_other` on the upload payload.
-              Must pick exactly one row before the file input enables. */}
-          <div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
-              Which document is this?
-            </div>
-            {requiredLoading ? (
-              <div style={{ fontSize: 12, color: t.ink3 }}>Loading checklist…</div>
-            ) : required.length === 0 ? (
-              <div style={{ fontSize: 12, color: t.ink3 }}>
-                Couldn&apos;t resolve a checklist for this loan. Pick &quot;Other&quot; below.
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 220, overflowY: "auto" }}>
-                {required.map((r) => {
-                  if (r.is_other) {
-                    return (
-                      <ChecklistRow
-                        key="other"
-                        t={t}
-                        label="Other — not in checklist"
-                        sub="The AI will try to classify it; if it doesn't match anything specific, an underwriter will follow up."
-                        statusPill={null}
-                        active={pickedKey === "other"}
-                        disabled={false}
-                        onClick={() => setPickedKey("other")}
-                      />
-                    );
-                  }
-                  const id = r.current_document_id
-                    ? `doc:${r.current_document_id}`
-                    : `checklist:${r.checklist_key}`;
-                  const fulfilled = r.current_status === "verified" || r.current_status === "received";
-                  const inFlight = r.current_status === "pending";
-                  const requested = r.current_status === "requested";
-                  let statusPill: { label: string; bg: string; fg: string } | null = null;
-                  if (fulfilled) statusPill = { label: r.current_status === "verified" ? "Verified" : "Received", bg: t.profitBg, fg: t.profit };
-                  else if (inFlight) statusPill = { label: "In review", bg: t.warnBg, fg: t.warn };
-                  else if (requested) {
-                    const days = r.days_since_requested ?? 0;
-                    statusPill = { label: `Requested · ${days}d`, bg: t.surface2, fg: t.ink3 };
-                  }
-                  return (
-                    <ChecklistRow
-                      key={id}
-                      t={t}
-                      label={r.label}
-                      sub={fulfilled ? "Already on file" : r.required ? "Required" : undefined}
-                      statusPill={statusPill}
-                      active={pickedKey === id}
-                      disabled={fulfilled}
-                      onClick={() => !fulfilled && setPickedKey(id)}
-                    />
-                  );
-                })}
-              </div>
-            )}
-            {pickedKey === "other" ? (
-              <input
-                value={otherLabel}
-                onChange={(e) => setOtherLabel(e.target.value)}
-                placeholder="Briefly describe what this is (optional)"
-                style={{
-                  marginTop: 8,
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: 9,
-                  background: t.surface2,
-                  border: `1px solid ${t.line}`,
-                  color: t.ink,
-                  fontSize: 13,
-                  fontFamily: "inherit",
-                  outline: "none",
-                }}
-              />
-            ) : null}
-          </div>
-
-          {/* File picker — disabled until a checklist row is picked. */}
-          <div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
-              File
-            </div>
-            <input
-              ref={fileRef}
-              type="file"
-              disabled={!pickedKey}
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 9,
-                background: t.surface2,
-                border: `1px solid ${t.line}`,
-                color: t.ink,
-                fontSize: 13,
-                fontFamily: "inherit",
-                opacity: pickedKey ? 1 : 0.5,
-              }}
-            />
-            {file ? (
-              <div style={{ fontSize: 11, color: t.ink3, marginTop: 4 }}>
-                {file.name} · {(file.size / 1024).toFixed(1)} KB
-              </div>
-            ) : null}
-          </div>
-
-          {error ? (
-            <div style={{ marginTop: -2 }}>
-              <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill>
-            </div>
-          ) : null}
-          {success ? (
-            <div style={{ marginTop: -2 }}>
-              <Pill bg={t.profitBg} color={t.profit}>{success}</Pill>
-            </div>
-          ) : null}
-
-          <div style={{ marginTop: 6, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button onClick={onClose} style={qcBtn(t)}>Cancel</button>
-            <button
-              onClick={submit}
-              disabled={upload.isPending || loans.length === 0 || !file}
-              style={{
-                ...qcBtnPrimary(t),
-                opacity: upload.isPending || loans.length === 0 || !file ? 0.5 : 1,
-                cursor: upload.isPending || loans.length === 0 || !file ? "not-allowed" : "pointer",
-              }}
-            >
-              {upload.isPending ? "Uploading…" : "Upload"}
-            </button>
-          </div>
-        </div>
-      </div>
+      {children}
     </div>
   );
 }
 
 function ChecklistRow({
-  t,
   label,
   sub,
   statusPill,
@@ -736,10 +589,9 @@ function ChecklistRow({
   disabled,
   onClick,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   sub?: string;
-  statusPill: { label: string; bg: string; fg: string } | null;
+  statusPill: { label: string; tone: ChipTone } | null;
   active: boolean;
   disabled: boolean;
   onClick: () => void;
@@ -749,88 +601,64 @@ function ChecklistRow({
       type="button"
       onClick={onClick}
       disabled={disabled}
+      className={cx("pick", active && "on")}
+      // `.pick` owns the box; a <button> still needs to be told to fill its
+      // column and read left. Cursor is only set when the class's `pointer`
+      // would be a lie.
       style={{
-        all: "unset",
-        cursor: disabled ? "not-allowed" : "pointer",
-        padding: "9px 11px",
-        borderRadius: 9,
-        border: `1px solid ${active ? t.petrol : t.line}`,
-        background: active ? t.brandSoft : "transparent",
-        opacity: disabled ? 0.55 : 1,
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
+        width: "100%",
+        textAlign: "left",
+        ...(disabled ? { opacity: 0.55, cursor: "not-allowed" } : null),
       }}
     >
-      <div
+      <span
         style={{
           width: 16,
           height: 16,
           borderRadius: 4,
-          border: `1.5px solid ${active ? t.petrol : t.line}`,
-          background: active ? t.petrol : "transparent",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
+          border: `1.5px solid ${active ? "var(--accent)" : "var(--line2)"}`,
+          background: active ? "var(--accent)" : "transparent",
+          display: "inline-grid",
+          placeItems: "center",
           flex: "0 0 auto",
         }}
       >
         {active ? <Icon name="check" size={11} color="#fff" stroke={3} /> : null}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {label}
-        </div>
-        {sub ? (
-          <div style={{ fontSize: 10.5, color: t.ink3, marginTop: 2 }}>{sub}</div>
-        ) : null}
-      </div>
-      {statusPill ? (
-        <Pill bg={statusPill.bg} color={statusPill.fg}>{statusPill.label}</Pill>
-      ) : null}
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <b style={{ display: "block", fontWeight: 600 }}>{label}</b>
+        {sub ? <span className="sub" style={{ display: "block", marginTop: 2 }}>{sub}</span> : null}
+      </span>
+      {statusPill ? <CellChip tone={statusPill.tone}>{statusPill.label}</CellChip> : null}
     </button>
   );
 }
 
 function KindCard({
-  t,
   title,
   hint,
   icon,
-  accent,
-  accentBg,
   active,
   onClick,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   title: string;
   hint: string;
   icon: "doc" | "home";
-  accent: string;
-  accentBg: string;
   active: boolean;
   onClick: () => void;
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      style={{
-        all: "unset",
-        cursor: "pointer",
-        padding: 12,
-        borderRadius: 12,
-        border: `1.5px solid ${active ? accent : t.line}`,
-        background: active ? accentBg : t.surface2,
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-      }}
+      className={cx("pick", active && "on")}
+      style={{ width: "100%", textAlign: "left" }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <Icon name={icon} size={16} color={accent} />
-        <span style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{title}</span>
-      </div>
-      <span style={{ fontSize: 11, color: t.ink2, lineHeight: 1.4 }}>{hint}</span>
+      <Icon name={icon} size={16} />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <b style={{ display: "block" }}>{title}</b>
+        <span className="sub" style={{ display: "block", marginTop: 2 }}>{hint}</span>
+      </span>
     </button>
   );
 }

@@ -1,8 +1,23 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { useMemo, useState, type ReactNode } from "react";
+import {
+  Btn,
+  CG,
+  CellChip,
+  Input,
+  PageHeader,
+  Panel,
+  Select,
+  Table,
+  Tag,
+  Td,
+  Tr,
+  cx,
+  type ChipTone,
+  type Col,
+} from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { useCreateRate, useCurrentUser, useDeleteRate, useRates, useUpdateRate } from "@/hooks/useApi";
 import { LoanTypeOptions, Role } from "@/lib/enums.generated";
 import type { LoanType } from "@/lib/enums.generated";
@@ -25,7 +40,6 @@ const EMPTY_DRAFT: RateSKUInput = {
 };
 
 export default function RatesPage() {
-  const { t } = useTheme();
   const { data: rates = [], isLoading } = useRates();
   const { data: user } = useCurrentUser();
   const createRate = useCreateRate();
@@ -43,11 +57,24 @@ export default function RatesPage() {
     [filter, rates],
   );
 
-  const deltaColor = (bps: number) => bps < 0 ? t.profit : bps > 0 ? t.danger : t.ink3;
+  // A negative move is a rate improvement, so it reads as the good tone. Was a
+  // computed colour (t.profit / t.danger / t.ink3); the chip tones carry the
+  // same three-way split on the stylesheet.
+  const deltaTone = (bps: number): ChipTone => (bps < 0 ? "ok" : bps > 0 ? "bad" : "mut");
   const deltaLabel = (bps: number) => `${bps > 0 ? "+" : ""}${bps} bps`;
-  const gridColumns = canManage
-    ? "minmax(220px, 2fr) 160px 150px 105px 80px 80px 95px 90px 90px 118px"
-    : "minmax(220px, 2fr) 160px 150px 105px 80px 80px 95px 90px 90px";
+
+  const cols: Col[] = [
+    { label: "SKU" },
+    { label: "Loan amount" },
+    { label: "Credit tier" },
+    { label: "Type" },
+    { label: "Rate", align: "r" },
+    { label: "Points", align: "r" },
+    { label: "Min FICO", align: "r" },
+    { label: "Max LTV", align: "r" },
+    { label: "Δ vs y'day", align: "r" },
+    ...(canManage ? ([{ label: "Actions", align: "r" }] as Col[]) : []),
+  ];
 
   function openCreate() {
     setError(null);
@@ -129,111 +156,118 @@ export default function RatesPage() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>Rate sheet</h1>
-        <Pill>{filtered.length} SKUs</Pill>
-        <div style={{ flex: 1 }} />
-        {canManage && (
-          <button type="button" onClick={openCreate} style={primaryBtn(t)}>
-            + Add SKU
-          </button>
-        )}
-        <select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          style={{
-            padding: "8px 10px", borderRadius: 8, background: t.surface, border: `1px solid ${t.line}`,
-            fontSize: 12.5, color: t.ink2, fontFamily: "inherit",
-          }}
-        >
-          <option value="all">All loan types</option>
-          {LoanTypeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </div>
-
-      {error && (
-        <div style={{ padding: "10px 12px", borderRadius: 10, background: t.dangerBg, color: t.danger, fontSize: 13, fontWeight: 700 }}>
-          {error}
-        </div>
-      )}
-
-      <Card pad={0}>
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: gridColumns,
-          padding: "12px 16px", fontSize: 11, fontWeight: 700, color: t.ink3,
-          textTransform: "uppercase", letterSpacing: 1.2, borderBottom: `1px solid ${t.line}`,
-        }}>
-          <div>SKU</div>
-          <div>Loan amount</div>
-          <div>Credit tier</div>
-          <div>Type</div>
-          <div style={{ textAlign: "right" }}>Rate</div>
-          <div style={{ textAlign: "right" }}>Points</div>
-          <div style={{ textAlign: "right" }}>Min FICO</div>
-          <div style={{ textAlign: "right" }}>Max LTV</div>
-          <div style={{ textAlign: "right" }}>Δ vs y&apos;day</div>
-          {canManage && <div style={{ textAlign: "right" }}>Actions</div>}
-        </div>
-        {filtered.map((r) => (
-          <div key={r.id} style={{
-            display: "grid",
-            gridTemplateColumns: gridColumns,
-            padding: "12px 16px", borderBottom: `1px solid ${t.line}`, alignItems: "center",
-            fontSize: 13, color: t.ink,
-          }}>
-            <div>
-              <div style={{ fontWeight: 700 }}>{r.label}</div>
-              <div style={{ fontSize: 11, color: t.ink3, fontFamily: "ui-monospace, SF Mono, monospace" }}>{r.id}</div>
-            </div>
-            <div style={{ color: t.ink2, fontWeight: 700 }}>{amountBand(r)}</div>
-            <div>
-              <div style={{ fontWeight: 800 }}>{r.credit_tier}</div>
-              <div style={{ fontSize: 11, color: t.ink3 }}>{ficoBand(r)}</div>
-            </div>
-            <div><Pill>{r.loan_type.replace(/_/g, " ")}</Pill></div>
-            <div style={{ textAlign: "right", fontWeight: 800, fontFeatureSettings: '"tnum"' }}>{r.rate.toFixed(3)}%</div>
-            <div style={{ textAlign: "right", fontFeatureSettings: '"tnum"' }}>{r.points.toFixed(2)}</div>
-            <div style={{ textAlign: "right", fontFeatureSettings: '"tnum"' }}>{r.min_fico}</div>
-            <div style={{ textAlign: "right", fontFeatureSettings: '"tnum"' }}>{(r.max_ltv * 100).toFixed(0)}%</div>
-            <div style={{ textAlign: "right", fontFeatureSettings: '"tnum"', color: deltaColor(r.delta_bps), fontWeight: 700 }}>
-              {deltaLabel(r.delta_bps)}
-            </div>
+    <div className="grid">
+      <PageHeader
+        title="Rate sheet"
+        lede={`${filtered.length} SKUs`}
+        actions={
+          <>
             {canManage && (
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                <button type="button" onClick={() => openEdit(r)} style={ghostBtn(t)}>Edit</button>
-                <button type="button" onClick={() => removeRate(r)} style={dangerBtn(t)} disabled={deleteRate.isPending}>Delete</button>
-              </div>
+              <Btn variant="pri" onClick={openCreate}>
+                + Add SKU
+              </Btn>
             )}
-          </div>
-        ))}
-        {!isLoading && filtered.length === 0 && (
-          <div style={{ padding: 24, fontSize: 13, color: t.ink3 }}>No rates match this filter.</div>
-        )}
-        {isLoading && (
-          <div style={{ padding: 24, fontSize: 13, color: t.ink3 }}>Loading rate sheet...</div>
-        )}
-      </Card>
+            <Select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter by loan type">
+              <option value="all">All loan types</option>
+              {LoanTypeOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          </>
+        }
+      />
 
-      <Card pad={16}>
-        <SectionLabel>How rates update</SectionLabel>
-        <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.6 }}>
-          Daily rate-sheet pull at 7:00 AM ET. Auto-publish triggers on swings under 25 bps; larger moves pause for super-admin review (configurable in Settings - Pricing).
+      {error && <ErrorLine>{error}</ErrorLine>}
+
+      <Panel noPad>
+        <Table cols={cols} caption="Published rate SKUs">
+          {filtered.map((r) => (
+            <Tr key={r.id}>
+              <Td>
+                <b>{r.label}</b>
+                {/* `.sub` owns size and colour; only the mono face is inline —
+                    the stylesheet has no monospace utility. */}
+                <div className="sub" style={{ fontFamily: "ui-monospace, SFMono-Regular, monospace" }}>
+                  {r.id}
+                </div>
+              </Td>
+              <Td>{amountBand(r)}</Td>
+              <Td>
+                <b>{r.credit_tier}</b>
+                <div className="sub">{ficoBand(r)}</div>
+              </Td>
+              <Td>
+                <Tag>{r.loan_type.replace(/_/g, " ")}</Tag>
+              </Td>
+              <Td align="r" className="num">
+                <b>{r.rate.toFixed(3)}%</b>
+              </Td>
+              <Td align="r" className="num">
+                {r.points.toFixed(2)}
+              </Td>
+              <Td align="r" className="num">
+                {r.min_fico}
+              </Td>
+              <Td align="r" className="num">
+                {(r.max_ltv * 100).toFixed(0)}%
+              </Td>
+              <Td align="r">
+                <CellChip tone={deltaTone(r.delta_bps)} className="num">
+                  {deltaLabel(r.delta_bps)}
+                </CellChip>
+              </Td>
+              {canManage && (
+                <Td align="r">
+                  <span style={{ display: "inline-flex", gap: 8 }}>
+                    <Btn size="sm" onClick={() => openEdit(r)}>
+                      Edit
+                    </Btn>
+                    {/* `.c-bad` carries the danger tint; there is no danger
+                        button variant on the stylesheet to reach for. */}
+                    <Btn size="sm" className="c-bad" onClick={() => removeRate(r)} disabled={deleteRate.isPending}>
+                      Delete
+                    </Btn>
+                  </span>
+                </Td>
+              )}
+            </Tr>
+          ))}
+          {!isLoading && filtered.length === 0 && (
+            <Tr>
+              <Td colSpan={cols.length}>
+                <span className="sub">No rates match this filter.</span>
+              </Td>
+            </Tr>
+          )}
+          {isLoading && (
+            <Tr>
+              <Td colSpan={cols.length}>
+                <span className="sub">Loading rate sheet...</span>
+              </Td>
+            </Tr>
+          )}
+        </Table>
+      </Panel>
+
+      <Panel title="How rates update">
+        <div className="sub">
+          Daily rate-sheet pull at 7:00 AM ET. Auto-publish triggers on swings under 25 bps; larger moves pause for
+          super-admin review (configurable in Settings - Pricing).
         </div>
-      </Card>
+      </Panel>
 
-      {modalOpen && (
-        <RateModal
-          draft={draft}
-          editing={editing}
-          saving={createRate.isPending || updateRate.isPending}
-          error={error}
-          onClose={closeModal}
-          onSave={saveDraft}
-          onChange={setDraft}
-        />
-      )}
+      <RateDrawer
+        open={modalOpen}
+        draft={draft}
+        editing={editing}
+        saving={createRate.isPending || updateRate.isPending}
+        error={error}
+        onClose={closeModal}
+        onSave={saveDraft}
+        onChange={setDraft}
+      />
     </div>
   );
 }
@@ -258,7 +292,25 @@ function moneyShort(value: number): string {
   return `$${value.toLocaleString("en-US")}`;
 }
 
-function RateModal({
+/**
+ * Danger banner. `.c-bad` owns the tint and the text colour; the inline values
+ * are box geometry only, because the stylesheet carries no danger-toned block
+ * (`.note` is petrol, `.warnline` is amber) and shared files are off-limits.
+ */
+function ErrorLine({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div
+      className={cx("c-bad", className)}
+      style={{ borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 650 }}
+      role="alert"
+    >
+      {children}
+    </div>
+  );
+}
+
+function RateDrawer({
+  open,
   draft,
   editing,
   saving,
@@ -267,6 +319,7 @@ function RateModal({
   onSave,
   onChange,
 }: {
+  open: boolean;
   draft: RateSKUInput;
   editing: RateSKU | null;
   saving: boolean;
@@ -275,157 +328,117 @@ function RateModal({
   onSave: () => void;
   onChange: (draft: RateSKUInput) => void;
 }) {
-  const { t } = useTheme();
   const set = <K extends keyof RateSKUInput>(key: K, value: RateSKUInput[K]) => {
     onChange({ ...draft, [key]: value });
   };
 
   return (
-    <div style={{
-      position: "fixed",
-      inset: 0,
-      zIndex: 60,
-      display: "grid",
-      placeItems: "center",
-      padding: 24,
-      background: "rgba(0,0,0,0.45)",
-    }}>
-      <div style={{
-        width: "min(720px, 100%)",
-        background: t.elevated,
-        border: `1px solid ${t.lineStrong}`,
-        borderRadius: 14,
-        boxShadow: t.shadowLg,
-        padding: 18,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-          <div>
-            <div style={{ color: t.ink, fontSize: 18, fontWeight: 800 }}>{editing ? "Edit rate SKU" : "Create rate SKU"}</div>
-            <div style={{ color: t.ink3, fontSize: 12.5 }}>Published pricing visible to eligible rate-sheet viewers.</div>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} style={ghostBtn(t)} disabled={saving}>Close</button>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <Field label="SKU">
-            <input value={draft.id} disabled={!!editing} onChange={(e) => set("id", e.target.value)} style={inputStyle(t)} placeholder="R-DSCR-30Y-75" />
-          </Field>
-          <Field label="Loan type">
-            <select value={draft.loan_type} onChange={(e) => set("loan_type", e.target.value as LoanType)} style={inputStyle(t)}>
-              {LoanTypeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </Field>
-          <Field label="Label">
-            <input value={draft.label} onChange={(e) => set("label", e.target.value)} style={inputStyle(t)} placeholder="DSCR 30Y - 75 LTV" />
-          </Field>
-          <Field label="Term">
-            <input value={draft.term} onChange={(e) => set("term", e.target.value)} style={inputStyle(t)} placeholder="30 yr" />
-          </Field>
-          <Field label="Credit tier">
-            <input value={draft.credit_tier} onChange={(e) => set("credit_tier", e.target.value)} style={inputStyle(t)} placeholder="680-719" />
-          </Field>
-          <Field label="Rate %">
-            <input type="number" step="0.001" value={draft.rate} onChange={(e) => set("rate", Number(e.target.value))} style={inputStyle(t)} />
-          </Field>
-          <Field label="Points">
-            <input type="number" step="0.01" value={draft.points} onChange={(e) => set("points", Number(e.target.value))} style={inputStyle(t)} />
-          </Field>
-          <Field label="Min FICO">
-            <input type="number" step="1" value={draft.min_fico} onChange={(e) => set("min_fico", Number(e.target.value))} style={inputStyle(t)} />
-          </Field>
-          <Field label="Max FICO optional">
-            <input type="number" step="1" value={draft.max_fico ?? ""} onChange={(e) => set("max_fico", e.target.value ? Number(e.target.value) : null)} style={inputStyle(t)} placeholder="No cap" />
-          </Field>
-          <Field label="Min loan amount">
-            <input type="number" step="1000" value={draft.min_loan_amount} onChange={(e) => set("min_loan_amount", Number(e.target.value))} style={inputStyle(t)} />
-          </Field>
-          <Field label="Max loan amount optional">
-            <input type="number" step="1000" value={draft.max_loan_amount ?? ""} onChange={(e) => set("max_loan_amount", e.target.value ? Number(e.target.value) : null)} style={inputStyle(t)} placeholder="No cap" />
-          </Field>
-          <Field label="Max LTV %">
-            <input type="number" step="1" value={Math.round(draft.max_ltv * 100)} onChange={(e) => set("max_ltv", Number(e.target.value) / 100)} style={inputStyle(t)} />
-          </Field>
-          <Field label="Delta bps">
-            <input type="number" step="1" value={draft.delta_bps} onChange={(e) => set("delta_bps", Number(e.target.value))} style={inputStyle(t)} />
-          </Field>
-        </div>
-
-        {error && (
-          <div style={{ marginTop: 12, padding: 10, borderRadius: 10, background: t.dangerBg, color: t.danger, fontSize: 13, fontWeight: 700 }}>
-            {error}
-          </div>
-        )}
-
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
-          <button type="button" onClick={onClose} style={ghostBtn(t)} disabled={saving}>Cancel</button>
-          <button type="button" onClick={onSave} style={primaryBtn(t)} disabled={saving}>
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title={editing ? "Edit rate SKU" : "Create rate SKU"}
+      sub="Published pricing visible to eligible rate-sheet viewers."
+      // The modal this replaces ignored backdrop clicks. Kept off so a stray
+      // click cannot discard a half-typed SKU.
+      closeOnBackdrop={false}
+      footer={
+        <>
+          <span style={{ flex: 1 }} />
+          <Btn onClick={onClose} disabled={saving}>
+            Cancel
+          </Btn>
+          <Btn variant="pri" onClick={onSave} disabled={saving}>
             {saving ? "Saving..." : editing ? "Save changes" : "Create SKU"}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Btn>
+        </>
+      }
+    >
+      {/* Two equal form columns — 6 + 6 of the 12-col grid. */}
+      <CG>
+        <FormField label="SKU">
+          <Input value={draft.id} disabled={!!editing} onChange={(e) => set("id", e.target.value)} placeholder="R-DSCR-30Y-75" />
+        </FormField>
+        <FormField label="Loan type">
+          <Select value={draft.loan_type} onChange={(e) => set("loan_type", e.target.value as LoanType)}>
+            {LoanTypeOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+        <FormField label="Label">
+          <Input value={draft.label} onChange={(e) => set("label", e.target.value)} placeholder="DSCR 30Y - 75 LTV" />
+        </FormField>
+        <FormField label="Term">
+          <Input value={draft.term} onChange={(e) => set("term", e.target.value)} placeholder="30 yr" />
+        </FormField>
+        <FormField label="Credit tier">
+          <Input value={draft.credit_tier} onChange={(e) => set("credit_tier", e.target.value)} placeholder="680-719" />
+        </FormField>
+        <FormField label="Rate %">
+          <Input type="number" step="0.001" value={draft.rate} onChange={(e) => set("rate", Number(e.target.value))} />
+        </FormField>
+        <FormField label="Points">
+          <Input type="number" step="0.01" value={draft.points} onChange={(e) => set("points", Number(e.target.value))} />
+        </FormField>
+        <FormField label="Min FICO">
+          <Input type="number" step="1" value={draft.min_fico} onChange={(e) => set("min_fico", Number(e.target.value))} />
+        </FormField>
+        <FormField label="Max FICO optional">
+          <Input
+            type="number"
+            step="1"
+            value={draft.max_fico ?? ""}
+            onChange={(e) => set("max_fico", e.target.value ? Number(e.target.value) : null)}
+            placeholder="No cap"
+          />
+        </FormField>
+        <FormField label="Min loan amount">
+          <Input
+            type="number"
+            step="1000"
+            value={draft.min_loan_amount}
+            onChange={(e) => set("min_loan_amount", Number(e.target.value))}
+          />
+        </FormField>
+        <FormField label="Max loan amount optional">
+          <Input
+            type="number"
+            step="1000"
+            value={draft.max_loan_amount ?? ""}
+            onChange={(e) => set("max_loan_amount", e.target.value ? Number(e.target.value) : null)}
+            placeholder="No cap"
+          />
+        </FormField>
+        <FormField label="Max LTV %">
+          <Input
+            type="number"
+            step="1"
+            value={Math.round(draft.max_ltv * 100)}
+            onChange={(e) => set("max_ltv", Number(e.target.value) / 100)}
+          />
+        </FormField>
+        <FormField label="Delta bps">
+          <Input type="number" step="1" value={draft.delta_bps} onChange={(e) => set("delta_bps", Number(e.target.value))} />
+        </FormField>
+      </CG>
+
+      {error && <ErrorLine className="mt">{error}</ErrorLine>}
+    </Drawer>
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  const { t } = useTheme();
+/**
+ * Stays a `<label>` rather than the shared `ds/Field` div: the implicit
+ * label-for-control association is what lets a click on "Max FICO optional"
+ * focus the input, and that is an affordance, not styling.
+ */
+function FormField({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 6, color: t.ink3, fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase" }}>
-      {label}
+    <label className="s6" style={{ display: "grid", gap: 5, minWidth: 0 }}>
+      <span className="lbl">{label}</span>
       {children}
     </label>
   );
-}
-
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    width: "100%",
-    minHeight: 42,
-    borderRadius: 10,
-    border: `1px solid ${t.line}`,
-    background: t.surface,
-    color: t.ink,
-    padding: "0 12px",
-    fontSize: 14,
-    fontFamily: "inherit",
-    outline: "none",
-  };
-}
-
-function primaryBtn(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    border: 0,
-    borderRadius: 10,
-    background: t.ink,
-    color: t.inverse,
-    padding: "9px 13px",
-    fontSize: 12.5,
-    fontWeight: 800,
-    fontFamily: "inherit",
-    cursor: "pointer",
-  };
-}
-
-function ghostBtn(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    border: `1px solid ${t.line}`,
-    borderRadius: 9,
-    background: t.surface,
-    color: t.ink2,
-    padding: "7px 10px",
-    fontSize: 12,
-    fontWeight: 800,
-    fontFamily: "inherit",
-    cursor: "pointer",
-  };
-}
-
-function dangerBtn(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    ...ghostBtn(t),
-    color: t.danger,
-    background: t.dangerBg,
-    border: `1px solid ${t.dangerBg}`,
-  };
 }
