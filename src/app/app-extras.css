@@ -102,3 +102,26 @@
    `.r` is scoped to `.tbl .r`, so every figure that needed right-aligning in a
    card or a stat tile fell back to an inline style. */
 .align-r { text-align: right; }
+
+/* ---------- traps found while migrating; documented so they are not rediscovered ----------
+
+   `.panel` sets overflow:hidden (to clip its own header hairline against the
+   rounded corner). Two consequences bite during migration:
+
+   1. As a FLEX child, overflow:hidden zeroes the item's automatic minimum size,
+      so a column of panels inside a flex container can shrink below its content
+      and clip the form inside it. Use grid with content-sized rows for a stack
+      of panels, not flex-column. `.cg` already does the right thing.
+
+   2. `.cellchip` is white-space:nowrap, so a long status string inside a panel
+      has no way to wrap and is clipped rather than overflowing visibly — the
+      failure is silent. Where a status is a sentence rather than a word, use
+      `.statusline` below instead of a chip. */
+
+/* Block-level status message. A chip that has become a sentence.
+   Same tone vocabulary as .cellchip (pair it with .c-ok / .c-warn / .c-bad /
+   .c-acc), but it wraps, which is the entire point. */
+.statusline {
+  display: block; padding: 9px 12px; border-radius: 10px;
+  font-size: 12.8px; font-weight: 600; line-height: 1.45;
+}

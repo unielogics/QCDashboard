@@ -1,12 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { QC_FMT } from "@/components/design-system/tokens";
+import {
+  CellChip,
+  IconBtn,
+  Input,
+  Kpi,
+  KpiRow,
+  Lbl,
+  PageHeader,
+  Panel,
+  Row,
+  Sub,
+  Td,
+} from "@/components/ds";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import { FinancialInsightPanel } from "@/components/analysis/FinancialInsightPanel";
 import { useClients } from "@/hooks/useApi";
@@ -32,6 +43,17 @@ const SOURCE_LABEL: Record<AnalysisRun["tool_source"], string> = {
   simulator: "Simulator",
   loan_recalc: "File recalc",
 };
+
+/** `r` right-aligns the figure column via `.tbl .r`. */
+const RUN_COLS: Array<{ label: string; align?: "r" }> = [
+  { label: "Run" },
+  { label: "Client" },
+  { label: "Product" },
+  { label: "Amount", align: "r" },
+  { label: "Metric" },
+  { label: "State" },
+  { label: "Updated" },
+];
 
 function dateLabel(iso: string, withTime = false) {
   const date = new Date(iso);
@@ -98,7 +120,6 @@ export function AnalysisRunsTable({
   onOpen: (runId: string) => void;
   actions?: AnalysisRunAction[];
 }) {
-  const { t } = useTheme();
   const router = useRouter();
   const { data: clients = [] } = useClients("mine");
   const rowMenu = useContextMenu<AnalysisRun>();
@@ -128,70 +149,55 @@ export function AnalysisRunsTable({
     [clients, q, runs],
   );
 
-  const th: CSSProperties = {
-    textAlign: "left",
-    padding: "11px 12px",
-    fontSize: 10.5,
-    fontWeight: 800,
-    textTransform: "uppercase",
-    letterSpacing: 0.7,
-    color: t.ink3,
-    borderBottom: `1px solid ${t.line}`,
-    whiteSpace: "nowrap",
-  };
-  const td: CSSProperties = {
-    padding: "11px 12px",
-    fontSize: 12.5,
-    color: t.ink,
-    borderBottom: `1px solid ${t.line}`,
-    verticalAlign: "middle",
-  };
-
   return (
-    <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>{title}</h1>
-          <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>{description}</div>
-        </div>
-        {actions.length ? <AnalysisActionsMenu actions={actions} /> : null}
+    <div className="grid">
+      <PageHeader
+        title={title}
+        lede={description}
+        actions={actions.length ? <AnalysisActionsMenu actions={actions} /> : undefined}
+      />
+
+      <div className="row">
+        <Icon name="search" size={15} className="sub" />
+        <Input
+          grow
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by client, property, product, or status..."
+          aria-label="Search saved runs"
+        />
       </div>
 
-      <Card pad={10}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Icon name="search" size={15} color={t.ink3} />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by client, property, product, or status..."
-            style={{
-              width: "100%",
-              border: "none",
-              outline: "none",
-              background: "transparent",
-              color: t.ink,
-              fontSize: 13,
-              fontFamily: "inherit",
-            }}
-          />
-        </div>
-      </Card>
-
-      <Card pad={0}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 960 }}>
+      <Panel noPad>
+        {/* Hand-rolled rather than the ds `Table` for one reason: the 960px
+            floor. Seven columns squeezed into a phone width wrap into mush,
+            and `.tbl` carries no min-width, so the table has to state its own
+            and let `.tblwrap` scroll it. Everything else here is class-owned. */}
+        <div className="tblwrap">
+          <table className="tbl" style={{ minWidth: 960 }}>
+            <caption className="sr-only">Saved analysis runs</caption>
             <thead>
               <tr>
-                {["Run", "Client", "Product", "Amount", "Metric", "State", "Updated"].map((h) => (
-                  <th key={h} style={th}>{h}</th>
+                {RUN_COLS.map((c) => (
+                  <th key={c.label} scope="col" className={c.align === "r" ? "r" : undefined}>
+                    {c.label}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} style={{ ...td, color: t.ink3 }}>Loading runs...</td></tr>
+                <tr>
+                  <Td colSpan={7}>
+                    <Sub>Loading runs...</Sub>
+                  </Td>
+                </tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={7} style={{ ...td, color: t.ink3 }}>{emptyText}</td></tr>
+                <tr>
+                  <Td colSpan={7}>
+                    <Sub>{emptyText}</Sub>
+                  </Td>
+                </tr>
               ) : (
                 filtered.map((run) => {
                   const amount = amountFor(run);
@@ -203,26 +209,26 @@ export function AnalysisRunsTable({
                       title="Right-click for actions"
                       style={{ cursor: "pointer" }}
                     >
-                      <td style={td}>
-                        <div style={{ fontWeight: 800, color: t.ink, maxWidth: 360, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <Td>
+                        {/* Bespoke truncation: a long property address must not push
+                            the other six columns off the table. */}
+                        <b style={{ display: "block", maxWidth: 360, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {titleFor(run)}
-                        </div>
-                        <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
-                          {SOURCE_LABEL[run.tool_source] ?? run.tool_source}
-                        </div>
-                      </td>
-                      <td style={td}>{clientNameFor(run, clients)}</td>
-                      <td style={td}>{PRODUCT_LABEL[run.product] ?? run.product}</td>
-                      <td style={td}>{amount ? QC_FMT.usd(amount, 0) : "-"}</td>
-                      <td style={td}>{metricFor(run)}</td>
-                      <td style={td}>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          <Pill bg={t.chip} color={t.ink2}>{run.status.replace(/_/g, " ")}</Pill>
-                          {run.shared_at ? <Pill bg={t.profitBg} color={t.profit}>Shared</Pill> : null}
-                          {run.prequal_request_id ? <Pill bg={t.petrolSoft} color={t.petrol}>Prequal</Pill> : null}
-                        </div>
-                      </td>
-                      <td style={{ ...td, color: t.ink3, whiteSpace: "nowrap" }}>{dateLabel(run.updated_at, true)}</td>
+                        </b>
+                        <div className="sub">{SOURCE_LABEL[run.tool_source] ?? run.tool_source}</div>
+                      </Td>
+                      <Td>{clientNameFor(run, clients)}</Td>
+                      <Td>{PRODUCT_LABEL[run.product] ?? run.product}</Td>
+                      <Td align="r" className="num">{amount ? QC_FMT.usd(amount, 0) : "-"}</Td>
+                      <Td>{metricFor(run)}</Td>
+                      <Td>
+                        <Row>
+                          <CellChip tone="mut">{run.status.replace(/_/g, " ")}</CellChip>
+                          {run.shared_at ? <CellChip tone="ok">Shared</CellChip> : null}
+                          {run.prequal_request_id ? <CellChip tone="pet">Prequal</CellChip> : null}
+                        </Row>
+                      </Td>
+                      <Td className="num">{dateLabel(run.updated_at, true)}</Td>
                     </tr>
                   );
                 })
@@ -230,7 +236,8 @@ export function AnalysisRunsTable({
             </tbody>
           </table>
         </div>
-      </Card>
+      </Panel>
+
       <ContextMenu
         state={rowMenu.state}
         onClose={rowMenu.close}
@@ -260,103 +267,116 @@ export function AnalysisRunInspect({
   loading?: boolean;
   onBack: () => void;
 }) {
-  const { t } = useTheme();
   const amount = run ? amountFor(run) : null;
   const metric = run ? metricFor(run) : "-";
 
   if (loading) {
     return (
-      <div style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
-        <Card pad={20}><div style={{ fontSize: 13, color: t.ink3 }}>Loading run...</div></Card>
+      <div className="grid">
+        <Panel>
+          <Sub>Loading run...</Sub>
+        </Panel>
       </div>
     );
   }
 
   if (!run) {
     return (
-      <div style={{ padding: 24, maxWidth: 900, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
-        <CloseButton onClose={onBack} />
-        <Card pad={20}><div style={{ fontSize: 13, color: t.ink2 }}>Run not found.</div></Card>
+      <div className="grid">
+        <div className="hd">
+          <span style={{ flex: 1 }} />
+          <CloseButton onClose={onBack} />
+        </div>
+        <Panel>
+          <div>Run not found.</div>
+        </Panel>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 1180, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 11, color: t.petrol, fontWeight: 800, letterSpacing: 1.2, textTransform: "uppercase" }}>
-            {SOURCE_LABEL[run.tool_source] ?? run.tool_source}
-          </div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, color: t.ink, margin: "3px 0 0" }}>{titleFor(run)}</h1>
-          <div style={{ fontSize: 12.5, color: t.ink3, marginTop: 4 }}>
-            {PRODUCT_LABEL[run.product] ?? run.product} - updated {dateLabel(run.updated_at, true)}
-          </div>
-        </div>
-        <CloseButton onClose={onBack} />
+    <div className="grid">
+      <div>
+        <Lbl>{SOURCE_LABEL[run.tool_source] ?? run.tool_source}</Lbl>
+        <PageHeader
+          title={titleFor(run)}
+          lede={`${PRODUCT_LABEL[run.product] ?? run.product} - updated ${dateLabel(run.updated_at, true)}`}
+          actions={<CloseButton onClose={onBack} />}
+        />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
-        <Mini t={t} label="Amount" value={amount ? QC_FMT.usd(amount, 0) : "-"} />
-        <Mini t={t} label="Metric" value={metric} />
-        <Mini t={t} label="Status" value={run.status.replace(/_/g, " ")} />
-        <Mini t={t} label="Shared" value={run.shared_at ? dateLabel(run.shared_at) : "No"} />
-      </div>
+      <KpiRow>
+        <Mini label="Amount" value={amount ? QC_FMT.usd(amount, 0) : "-"} />
+        <Mini label="Metric" value={metric} />
+        <Mini label="Status" value={run.status.replace(/_/g, " ")} />
+        <Mini label="Shared" value={run.shared_at ? dateLabel(run.shared_at) : "No"} />
+      </KpiRow>
 
       <FinancialInsightPanel product={run.product} inputs={run.inputs} output={run.calculator_output} />
 
-      <Card pad={14}>
-        <SectionLabel>Links</SectionLabel>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {run.loan_id ? <Link href={`/loans/${run.loan_id}`} style={linkButton(t)}><Icon name="layers" size={13} /> Loan file</Link> : null}
-          {run.client_id ? <Link href={`/clients/${run.client_id}/workspace`} style={linkButton(t)}><Icon name="clients" size={13} /> Client workspace</Link> : null}
-          {run.prequal_request_id ? <Link href="/admin/prequal-requests" style={linkButton(t)}><Icon name="docCheck" size={13} /> Prequalification queue</Link> : null}
-          {!run.loan_id && !run.client_id && !run.prequal_request_id ? (
-            <div style={{ fontSize: 12.5, color: t.ink3 }}>This run is not linked to a client, loan, or prequalification yet.</div>
+      <Panel title="Links">
+        <Row>
+          {run.loan_id ? (
+            <Link className="btn" href={`/loans/${run.loan_id}`}>
+              <Icon name="layers" size={13} /> Loan file
+            </Link>
           ) : null}
-        </div>
-      </Card>
+          {run.client_id ? (
+            <Link className="btn" href={`/clients/${run.client_id}/workspace`}>
+              <Icon name="clients" size={13} /> Client workspace
+            </Link>
+          ) : null}
+          {run.prequal_request_id ? (
+            <Link className="btn" href="/admin/prequal-requests">
+              <Icon name="docCheck" size={13} /> Prequalification queue
+            </Link>
+          ) : null}
+          {!run.loan_id && !run.client_id && !run.prequal_request_id ? (
+            <Sub>This run is not linked to a client, loan, or prequalification yet.</Sub>
+          ) : null}
+        </Row>
+      </Panel>
 
-      <Card pad={14}>
-        <SectionLabel>Saved report</SectionLabel>
+      <Panel title="Saved report">
         {run.ai_report ? (
           <ReportBlock report={run.ai_report} />
         ) : run.sanitized_client_report ? (
           <ReportBlock report={run.sanitized_client_report} />
         ) : (
-          <div style={{ fontSize: 13, color: t.ink3 }}>No generated report is attached to this run yet.</div>
+          <Sub>No generated report is attached to this run yet.</Sub>
         )}
-      </Card>
+      </Panel>
     </div>
   );
 }
 
 function ReportBlock({ report }: { report: Record<string, unknown> }) {
-  const { t } = useTheme();
   const narrative = String(report.narrative ?? report.summary ?? "");
   const strengths = Array.isArray(report.strengths) ? report.strengths : [];
   const risks = Array.isArray(report.weaknesses) ? report.weaknesses : Array.isArray(report.risks) ? report.risks : [];
+  const points = [...strengths.slice(0, 4), ...risks.slice(0, 4)];
   return (
-    <div style={{ display: "grid", gap: 10 }}>
-      {narrative ? <p style={{ margin: 0, color: t.ink2, fontSize: 13, lineHeight: 1.55 }}>{narrative}</p> : null}
-      {[...strengths.slice(0, 4), ...risks.slice(0, 4)].length ? (
-        <div style={{ display: "grid", gap: 5 }}>
-          {[...strengths.slice(0, 4), ...risks.slice(0, 4)].map((item, idx) => (
-            <div key={idx} style={{ display: "flex", gap: 7, fontSize: 12.5, color: t.ink2 }}>
-              <Icon name="check" size={12} color={t.petrol} />
+    <div>
+      {narrative ? <p>{narrative}</p> : null}
+      {points.length ? (
+        <div className={narrative ? "mt" : undefined}>
+          {points.map((item, idx) => (
+            <div className="req" key={idx}>
+              <span className="ic ok">
+                <Icon name="check" size={11} />
+              </span>
               <span>{String(item)}</span>
             </div>
           ))}
         </div>
       ) : !narrative ? (
-        <div style={{ fontSize: 13, color: t.ink3 }}>Report data is present, but no narrative fields were found.</div>
+        <Sub>Report data is present, but no narrative fields were found.</Sub>
       ) : null}
     </div>
   );
 }
 
 export function AnalysisActionsMenu({ actions }: { actions: AnalysisRunAction[] }) {
-  const { t } = useTheme();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -377,88 +397,34 @@ export function AnalysisActionsMenu({ actions }: { actions: AnalysisRunAction[] 
   }, [open]);
 
   return (
-    <div ref={ref} style={{ position: "relative", display: "inline-flex" }}>
+    <div ref={ref} className="popwrap">
       <button
         type="button"
+        className="btn"
         onClick={() => setOpen((v) => !v)}
         aria-label="Actions"
+        aria-haspopup="menu"
         aria-expanded={open}
-        style={{
-          all: "unset",
-          cursor: "pointer",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-          minHeight: 34,
-          padding: "0 12px",
-          borderRadius: 9,
-          border: `1px solid ${t.line}`,
-          background: t.surface,
-          color: t.ink,
-          fontSize: 12.5,
-          fontWeight: 800,
-          boxShadow: "0 1px 0 rgba(255,255,255,0.03)",
-        }}
       >
         <Icon name="plus" size={13} />
         Actions
-        <Icon name={open ? "chevU" : "chevD"} size={12} color={t.ink3} />
+        <Icon name={open ? "chevU" : "chevD"} size={12} />
       </button>
       {open ? (
-        <div
-          role="menu"
-          style={{
-            position: "absolute",
-            right: 0,
-            top: "calc(100% + 8px)",
-            zIndex: 80,
-            width: 268,
-            border: `1px solid ${t.lineStrong}`,
-            borderRadius: 10,
-            background: t.surface,
-            boxShadow: t.shadowLg,
-            padding: 5,
-            display: "grid",
-            gap: 3,
-          }}
-        >
+        // Fixed width: the descriptions wrap, so without one the menu sizes to
+        // its longest sentence.
+        <div role="menu" className="popmenu" style={{ width: 268 }}>
           {actions.map((action) => (
-            <button
+            <ActionRow
               key={action.label}
-              type="button"
+              action={action}
               disabled={action.disabled}
-              onClick={() => {
+              onSelect={() => {
                 if (action.disabled) return;
                 setOpen(false);
                 action.onClick();
               }}
-              style={{
-                all: "unset",
-                cursor: action.disabled ? "not-allowed" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "9px 10px",
-                borderRadius: 8,
-                color: action.disabled ? t.ink3 : t.ink,
-                opacity: action.disabled ? 0.55 : 1,
-              }}
-              onMouseEnter={(e) => { if (!action.disabled) e.currentTarget.style.background = t.surface2; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-            >
-              <span style={{ width: 24, color: t.petrol, display: "inline-flex", justifyContent: "center", flexShrink: 0 }}>
-                <Icon name={action.icon ?? "plus"} size={14} />
-              </span>
-              <span style={{ minWidth: 0 }}>
-                <span style={{ display: "block", fontSize: 12.5, fontWeight: 800 }}>{action.label}</span>
-                {action.description ? (
-                  <span style={{ display: "block", fontSize: 11.2, color: t.ink3, marginTop: 1 }}>{action.description}</span>
-                ) : null}
-                {action.disabled && action.disabledHint ? (
-                  <span style={{ display: "block", fontSize: 11.2, color: t.warn, marginTop: 1 }}>{action.disabledHint}</span>
-                ) : null}
-              </span>
-            </button>
+            />
           ))}
         </div>
       ) : null}
@@ -473,53 +439,21 @@ export function AnalysisFloatingAction({
   label?: string;
   actions: AnalysisRunAction[];
 }) {
-  const { t } = useTheme();
   const [open, setOpen] = useState(false);
   return (
+    // Bespoke: a viewport-anchored FAB. Nothing in the sheet floats.
     <div style={{ position: "fixed", right: 24, bottom: 24, zIndex: 90 }}>
       {open ? (
-        <div
-          style={{
-            width: 286,
-            marginBottom: 10,
-            border: `1px solid ${t.line}`,
-            borderRadius: 12,
-            background: t.surface,
-            boxShadow: t.shadowLg,
-            padding: 6,
-            display: "grid",
-            gap: 4,
-          }}
-        >
+        <div role="menu" className="panel" style={{ width: 286, marginBottom: 10 }}>
           {actions.map((action) => (
-            <button
+            <ActionRow
               key={action.label}
-              type="button"
-              onClick={() => {
+              action={action}
+              onSelect={() => {
                 setOpen(false);
                 action.onClick();
               }}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                display: "flex",
-                gap: 10,
-                alignItems: "center",
-                padding: "10px 11px",
-                borderRadius: 9,
-                color: t.ink,
-              }}
-            >
-              <span style={{ width: 28, height: 28, borderRadius: 8, background: t.petrolSoft, color: t.petrol, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <Icon name={action.icon ?? "plus"} size={14} />
-              </span>
-              <span style={{ minWidth: 0 }}>
-                <span style={{ display: "block", fontSize: 13, fontWeight: 800 }}>{action.label}</span>
-                {action.description ? (
-                  <span style={{ display: "block", fontSize: 11.5, color: t.ink3, marginTop: 1 }}>{action.description}</span>
-                ) : null}
-              </span>
-            </button>
+            />
           ))}
         </div>
       ) : null}
@@ -527,6 +461,7 @@ export function AnalysisFloatingAction({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={label}
+        aria-expanded={open}
         title={label}
         style={{
           all: "unset",
@@ -534,12 +469,12 @@ export function AnalysisFloatingAction({
           width: 56,
           height: 56,
           borderRadius: 18,
-          background: t.petrol,
+          background: "var(--petrol)",
           color: "#fff",
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          boxShadow: t.shadowLg,
+          boxShadow: "var(--sh2)",
         }}
       >
         <Icon name={open ? "x" : "plus"} size={24} stroke={2.6} />
@@ -548,53 +483,60 @@ export function AnalysisFloatingAction({
   );
 }
 
-function Mini({ t, label, value }: { t: ReturnType<typeof useTheme>["t"]; label: string; value: string }) {
-  return (
-    <Card pad={14}>
-      <div style={{ fontSize: 10.5, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 800 }}>{label}</div>
-      <div style={{ fontSize: 18, color: t.ink, fontWeight: 800, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
-    </Card>
-  );
-}
-
-function CloseButton({ onClose }: { onClose: () => void }) {
-  const { t } = useTheme();
+/**
+ * One menu row shared by the Actions popover and the floating action list.
+ *
+ * `disabled` is passed in rather than read off `action` on purpose: the
+ * floating list has never honoured `action.disabled`, and reading it here
+ * would quietly change that behaviour for every caller.
+ */
+function ActionRow({
+  action,
+  disabled,
+  onSelect,
+}: {
+  action: AnalysisRunAction;
+  disabled?: boolean;
+  onSelect: () => void;
+}) {
   return (
     <button
       type="button"
-      onClick={onClose}
-      aria-label="Close"
-      title="Close"
-      style={{
-        all: "unset",
-        cursor: "pointer",
-        width: 34,
-        height: 34,
-        borderRadius: 9,
-        border: `1px solid ${t.line}`,
-        color: t.ink2,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
+      role="menuitem"
+      className="toollink"
+      disabled={disabled}
+      onClick={onSelect}
+      style={disabled ? { opacity: 0.55, cursor: "not-allowed" } : undefined}
     >
-      <Icon name="x" size={15} />
+      <Icon name={action.icon ?? "plus"} size={14} />
+      <span style={{ minWidth: 0 }}>
+        <b style={{ display: "block" }}>{action.label}</b>
+        {action.description ? (
+          <span className="sub" style={{ display: "block" }}>{action.description}</span>
+        ) : null}
+        {disabled && action.disabledHint ? (
+          <span style={{ display: "block", fontSize: 11.2, color: "var(--warn)" }}>{action.disabledHint}</span>
+        ) : null}
+      </span>
     </button>
   );
 }
 
-function linkButton(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 7,
-    padding: "9px 12px",
-    borderRadius: 9,
-    border: `1px solid ${t.line}`,
-    color: t.ink,
-    textDecoration: "none",
-    fontSize: 12.5,
-    fontWeight: 800,
-  };
+function Mini({ label, value }: { label: string; value: string }) {
+  // `.knum` is white-space:nowrap, so a long figure needs the clamp or it
+  // escapes the tile — the one thing the Kpi wrapper cannot express.
+  return (
+    <Kpi
+      label={label}
+      value={<span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</span>}
+    />
+  );
+}
+
+function CloseButton({ onClose }: { onClose: () => void }) {
+  return (
+    <IconBtn onClick={onClose} aria-label="Close" title="Close">
+      <Icon name="x" size={15} />
+    </IconBtn>
+  );
 }

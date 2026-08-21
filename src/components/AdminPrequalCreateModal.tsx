@@ -648,13 +648,15 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
 
             {isFixFlip && step === 2 ? (
               <Panel className="s12" title="Scope of work">
-                <p className="sub" style={{ marginBottom: 14 }}>
+                <p className="sub">
                   Add a row for each major rehab category. The total drives the
                   project-viability check ({Math.round(FF_LTARV_CAP * 100)}% of ARV cap on BRV +
                   construction).
                 </p>
 
-                <PrequalSowEditor items={sowItems} onChange={setSowItems} />
+                <div className="mt">
+                  <PrequalSowEditor items={sowItems} onChange={setSowItems} />
+                </div>
 
                 {arvNum > 0 && allInBasis > 0 ? (
                   <div className="mt">

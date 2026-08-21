@@ -1,20 +1,47 @@
 "use client";
 
-// Borrower-facing pre-qualification request form. Right-side panel (mirrors
-// CreditPullModal). On submit, hits the backend; backend either attaches
-// to an existing loan at the same property or spawns a Loan stub so the
-// operator pipeline picks it up.
+// Borrower-facing pre-qualification request form. On submit, hits the
+// backend; backend either attaches to an existing loan at the same property
+// or spawns a Loan stub so the operator pipeline picks it up.
 //
 // LTV cap is shown live (informational only) — backend doesn't reject on
 // submit; the underwriter is the one bound by the matrix.
+//
+// ── Design-system migration note ──────────────────────────────────────
+// Restyled onto globals.css/app-extras.css classes, matching the admin twin
+// (AdminPrequalCreateModal) so the two sides of the same form read as one
+// object. The shell moved from a hand-rolled right-edge overlay to ds/Drawer
+// (the one centred dialog shape). Behaviour is a strict superset of what was
+// here: Escape-to-close survives, and body scroll lock + focus-into-dialog +
+// focus-restore-on-close are gained.
+//
+// One deliberate exception to Drawer's defaults: `closeOnBackdrop={false}`.
+// The old scrim was inert, and this is a long typed form — taking the default
+// would add a brand-new way for a borrower to lose everything they entered by
+// mis-clicking. Escape (which was already here) and Cancel remain the ways out.
+//
+// Every control, callback, hook, validation gate, tier conditional and
+// empty/loading/error/disabled state below is the one that was here before —
+// only the paint changed. Public props (`open`, `onClose`, `loanId`,
+// `initialAddress`, `initialLoanType`) are untouched.
 
-import { useEffect, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { useEffect, useState, type ReactNode } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { GoogleAddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import { QC_FMT } from "@/components/design-system/tokens";
+import {
+  Btn,
+  CG,
+  Card,
+  CellChip,
+  Field,
+  Input,
+  Linky,
+  Panel,
+  Textarea,
+  cx,
+} from "@/components/ds";
+import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
+import { GoogleAddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import { useMyCredit, useCreditSummary, useSubmitPrequalRequest } from "@/hooks/useApi";
 import {
   PREQUAL_LOAN_TYPE_LABELS,
@@ -27,7 +54,7 @@ import { PrequalSowEditor } from "./PrequalSowEditor";
 
 // F&F project-viability cap: BRV + total construction must be ≤ this
 // fraction of ARV. Industry standard ~75%; the borrower sees a live
-// pill when their numbers blow through it.
+// status line when their numbers blow through it.
 const FF_LTARV_CAP = 0.75;
 
 interface Props {
@@ -52,7 +79,6 @@ export function PreQualRequestModal({
   initialAddress,
   initialLoanType,
 }: Props) {
-  const { t } = useTheme();
   const submit = useSubmitPrequalRequest();
   // Pull the borrower's current credit + summary so we can derive the
   // tier_max_ltv ceiling. If they haven't run credit yet, summary stays
@@ -105,15 +131,8 @@ export function PreQualRequestModal({
     }
   }, [open, initialAddress, initialLoanType]);
 
-  // Esc closes
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  // Esc closes — now owned by Drawer, which also locks body scroll and
+  // returns focus to whatever opened the dialog.
 
   if (!open) return null;
 
@@ -194,532 +213,386 @@ export function PreQualRequestModal({
     }
   };
 
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Request pre-qualification letter"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(6, 7, 11, 0.55)",
-        backdropFilter: "blur(2px)",
-        zIndex: 200,
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: "min(580px, 95vw)",
-          background: t.bg,
-          boxShadow: t.shadowLg,
-          borderTopLeftRadius: 18,
-          borderBottomLeftRadius: 18,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <div
-          style={{
-            flex: "0 0 auto",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "18px 24px",
-            borderBottom: `1px solid ${t.line}`,
+  // `.drawer-f` is a left-aligned flex row, so Back sits first and `.sp`
+  // (flex: 1) pushes Cancel + the primary to the right edge — the same
+  // space-between arrangement the old inline footer produced.
+  const footer = doneFlash ? null : (
+    <>
+      {isFixFlip && step === 2 ? (
+        <Btn onClick={() => setStep(1)}>← Back</Btn>
+      ) : null}
+      <span className="sp" />
+      <Btn onClick={onClose}>Cancel</Btn>
+      {isFixFlip && step === 1 ? (
+        <Btn
+          variant="pri"
+          onClick={() => {
+            if (!step1Valid) {
+              setError(
+                "Please fill in address, BRV, ARV, and requested loan amount before continuing.",
+              );
+              return;
+            }
+            setError(null);
+            setStep(2);
           }}
+          disabled={!step1Valid}
         >
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: t.petrol }}>
-              Underwriter review · async
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: t.ink, marginTop: 2 }}>
-              Request Pre-Qualification
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            style={{ all: "unset", cursor: "pointer", width: 32, height: 32, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 8, color: t.ink2 }}
-          >
-            <Icon name="x" size={16} />
-          </button>
-        </div>
+          Continue → Scope of Work
+        </Btn>
+      ) : (
+        <Btn
+          variant="pri"
+          onClick={onSubmit}
+          disabled={!formValid || submit.isPending}
+        >
+          {submit.isPending ? "Submitting…" : "Submit for review"}
+        </Btn>
+      )}
+    </>
+  );
 
-        {doneFlash ? (
-          <div style={{ padding: 28, flex: 1 }}>
-            <Card pad={28}>
-              <div style={{ textAlign: "center" }}>
-                <Pill bg={t.profitBg} color={t.profit}>
-                  <Icon name="check" size={11} stroke={3} /> Submitted
-                </Pill>
-                <div style={{ marginTop: 14, fontSize: 16, fontWeight: 700, color: t.ink }}>
-                  Under review
-                </div>
-                <div style={{ marginTop: 8, fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
-                  An underwriter will review your request and either approve with a
-                  signed letter or send back notes. You'll see the status update
-                  here when they're done.
-                </div>
-              </div>
-            </Card>
-          </div>
-        ) : (
-          <div style={{ flex: "1 1 auto", overflowY: "auto", padding: "20px 24px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ fontSize: 13.5, color: t.ink2, lineHeight: 1.55 }}>
-              Pre-qualification letters are issued by an underwriter — never
-              auto-generated. Submit your request and we'll review against
-              today&apos;s matrix and your credit profile.
-            </div>
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Request Pre-Qualification"
+      sub="Underwriter review · async. Pre-qualification letters are issued by an underwriter — never auto-generated. Submit your request and we'll review against today's matrix and your credit profile."
+      width="md"
+      closeOnBackdrop={false}
+      footer={footer}
+    >
+      {doneFlash ? (
+        <Card style={{ textAlign: "center" }}>
+          <CellChip tone="ok">
+            <Icon name="check" size={11} stroke={3} /> Submitted
+          </CellChip>
+          <h3 className="mt">Under review</h3>
+          <p className="sub mt">
+            An underwriter will review your request and either approve with a
+            signed letter or send back notes. You&apos;ll see the status update
+            here when they&apos;re done.
+          </p>
+        </Card>
+      ) : (
+        <>
+          {/* F&F gets a 2-step flow: Step 1 collects the deal
+              fundamentals (BRV / ARV / loan ask). Step 2 collects
+              the scope-of-work line items so the system can run
+              LTARV math. Other products stay single-step. */}
+          {isFixFlip ? (
+            <DrawerSteps steps={["Deal fundamentals", "Scope of work"]} current={step} />
+          ) : null}
 
-            {/* F&F gets a 2-step flow: Step 1 collects the deal
-                fundamentals (BRV / ARV / loan ask). Step 2 collects
-                the scope-of-work line items so the system can run
-                LTARV math. Other products stay single-step. */}
-            {isFixFlip ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: t.ink3 }}>
-                <span style={{ color: step === 1 ? t.brand : t.ink3 }}>1 · Deal fundamentals</span>
-                <span style={{ color: t.ink4 }}>›</span>
-                <span style={{ color: step === 2 ? t.brand : t.ink4 }}>2 · Scope of work</span>
-              </div>
-            ) : null}
-
+          <CG>
             {step === 1 ? (
-            <>
+              <>
+                {/* ── Loan program ───────────────────────────────────── */}
+                <Panel className="s12" title="Loan program">
+                  <CG>
+                    {PRODUCT_OPTIONS.map((id) => {
+                      const meta = PREQUAL_LOAN_TYPE_LABELS[id];
+                      const active = loanType === id;
+                      // Per-option effective cap = min(program cap, tier cap).
+                      // When the tier is the binding constraint we annotate it
+                      // so the borrower understands why the cap is lower than
+                      // the program advertises.
+                      const progCap = LTV_CAPS[id];
+                      const optEffective = tierConstrained ? Math.min(progCap, tierMaxLtv as number) : progCap;
+                      const optTierBound = tierConstrained && (tierMaxLtv as number) < progCap;
+                      return (
+                        // Wrapped so `.pick + .pick` (a 7px stacking margin)
+                        // cannot fire between grid cells and knock the row
+                        // out of alignment.
+                        <div className="s6" key={id}>
+                          <label className={cx("pick", active && "on")}>
+                            <input
+                              type="radio"
+                              name="qc-prequal-request-loan-type"
+                              value={id}
+                              checked={active}
+                              onChange={() => setLoanType(id)}
+                            />
+                            <div>
+                              <b>{meta.title}</b>
+                              <div className="sub">{meta.sub}</div>
+                              <div className="lbl">
+                                Max LTV {Math.round(optEffective * 100)}%
+                              </div>
+                              {optTierBound ? (
+                                <CellChip tone="warn">tier-capped</CellChip>
+                              ) : null}
+                            </div>
+                          </label>
+                        </div>
+                      );
+                    })}
 
-            {/* Loan type */}
-            <Card pad={16}>
-              <SectionLabel>Loan program</SectionLabel>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                {PRODUCT_OPTIONS.map((id) => {
-                  const meta = PREQUAL_LOAN_TYPE_LABELS[id];
-                  const active = loanType === id;
-                  // Per-option effective cap = min(program cap, tier cap).
-                  // When the tier is the binding constraint we annotate it
-                  // so the borrower understands why the cap is lower than
-                  // the program advertises.
-                  const progCap = LTV_CAPS[id];
-                  const optEffective = tierConstrained ? Math.min(progCap, tierMaxLtv as number) : progCap;
-                  const optTierBound = tierConstrained && (tierMaxLtv as number) < progCap;
-                  return (
-                    <button
-                      key={id}
-                      onClick={() => setLoanType(id)}
-                      style={{
-                        all: "unset",
-                        cursor: "pointer",
-                        padding: 12,
-                        borderRadius: 12,
-                        border: `1.5px solid ${active ? t.brand : t.line}`,
-                        background: active ? t.brandSoft : t.surface2,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 4,
-                      }}
-                    >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{meta.title}</span>
-                      <span style={{ fontSize: 11, color: t.ink2, lineHeight: 1.35 }}>{meta.sub}</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: optTierBound ? t.warn : t.ink3, marginTop: 2, letterSpacing: 0.6, textTransform: "uppercase" }}>
-                        Max LTV {Math.round(optEffective * 100)}%
-                        {optTierBound ? " · tier-capped" : ""}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {tierMaxLtv != null && tierMaxLtv > 0 ? (
-                <div style={{ marginTop: 10, fontSize: 11, color: t.ink3, lineHeight: 1.45 }}>
-                  Your credit profile{creditSummary?.tier ? ` (${creditSummary.tier} tier)` : ""}{" "}
-                  caps leverage at <strong style={{ color: t.ink2 }}>{Math.round((tierMaxLtv as number) * 100)}% LTV</strong>{" "}
-                  across all programs. Programs whose ceiling is higher use the tier number.
-                </div>
-              ) : tierMaxLtv != null && tierMaxLtv === 0 ? (
-                <div style={{ marginTop: 10, fontSize: 11, color: t.danger, lineHeight: 1.45 }}>
-                  Your credit profile is currently blocked from new commercial financing.
-                  An underwriter will follow up on next steps.
-                </div>
-              ) : (
-                <div style={{ marginTop: 10, fontSize: 11, color: t.ink3, lineHeight: 1.45 }}>
-                  Caps shown are the program ceiling. Once your credit pull is on file
-                  we&apos;ll show your tier-adjusted maximum here.
-                </div>
-              )}
-            </Card>
+                    <div className="s12">
+                      {tierMaxLtv != null && tierMaxLtv > 0 ? (
+                        <p className="sub">
+                          Your credit profile{creditSummary?.tier ? ` (${creditSummary.tier} tier)` : ""}{" "}
+                          caps leverage at <b>{Math.round((tierMaxLtv as number) * 100)}% LTV</b>{" "}
+                          across all programs. Programs whose ceiling is higher use the tier number.
+                        </p>
+                      ) : tierMaxLtv != null && tierMaxLtv === 0 ? (
+                        <StatusLine tone="bad">
+                          Your credit profile is currently blocked from new commercial financing.
+                          An underwriter will follow up on next steps.
+                        </StatusLine>
+                      ) : (
+                        <p className="sub">
+                          Caps shown are the program ceiling. Once your credit pull is on file
+                          we&apos;ll show your tier-adjusted maximum here.
+                        </p>
+                      )}
+                    </div>
+                  </CG>
+                </Panel>
 
-            {/* Property + numbers */}
-            <Card pad={16}>
-              <SectionLabel>Deal details</SectionLabel>
-              <div style={{ marginBottom: 10 }}>
-                <GoogleAddressInput
-                  value={addressParts}
-                  onChange={(next) => {
-                    setAddressParts(next);
-                    setAddress(formatAddressParts(next));
-                  }}
-                  label="Target property address"
-                  helperText="Search Google and select the property, or use manual entry if the address is not listed."
-                />
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <Field
-                  t={t}
-                  label={
-                    loanType === "dscr_refi"
-                      ? "Estimated property value"
-                      : isFixFlip
-                        ? "Purchase price (BRV)"
-                        : "Estimated purchase price"
-                  }
-                  value={purchaseText}
-                  onChange={setPurchaseText}
-                  placeholder="400000"
-                  inputMode="numeric"
-                />
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-                    <span style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
-                      Requested loan amount
-                    </span>
-                    {maxLoan > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => setLoanText(String(Math.round(maxLoan)))}
-                        style={{
-                          all: "unset",
-                          cursor: "pointer",
-                          fontSize: 10.5,
-                          fontWeight: 700,
-                          color: t.petrol,
-                          letterSpacing: 0.4,
+                {/* ── Deal details ───────────────────────────────────── */}
+                <Panel className="s12" title="Deal details">
+                  <CG>
+                    <div className="s12">
+                      <GoogleAddressInput
+                        value={addressParts}
+                        onChange={(next) => {
+                          setAddressParts(next);
+                          setAddress(formatAddressParts(next));
                         }}
-                      >
-                        Max {QC_FMT.usd(maxLoan, 0)}
-                      </button>
-                    ) : null}
-                  </div>
-                  <input
-                    value={loanText}
-                    onChange={(e) => setLoanText(e.target.value)}
-                    placeholder="320000"
-                    inputMode="numeric"
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      borderRadius: 9,
-                      background: t.surface2,
-                      border: `1px solid ${t.line}`,
-                      color: t.ink,
-                      fontSize: 13,
-                      fontFamily: "inherit",
-                      outline: "none",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-              </div>
+                        label="Target property address"
+                        helperText="Search Google and select the property, or use manual entry if the address is not listed."
+                      />
+                    </div>
 
-              {/* F&F-only: Estimated ARV (After Repair Value). Lives
-                  on Step 1 alongside BRV so the borrower sees the
-                  delta before they're walked into Scope of Work. */}
-              {isFixFlip ? (
-                <>
-                  <div style={{ height: 10 }} />
-                  <Field
-                    t={t}
-                    label="Estimated ARV (After Repair Value)"
-                    value={arvText}
-                    onChange={setArvText}
-                    placeholder="600000"
-                    inputMode="numeric"
-                  />
-                </>
-              ) : null}
-
-              {/* Live LTV pill — informational. */}
-              {purchaseNum > 0 && loanNum > 0 ? (
-                <div style={{ marginTop: 8 }}>
-                  <Pill
-                    bg={ltvOverCap ? t.dangerBg : t.profitBg}
-                    color={ltvOverCap ? t.danger : t.profit}
-                  >
-                    Requested LTV {(ltv * 100).toFixed(1)}% ·{" "}
-                    {ltvOverCap
-                      ? `over ${Math.round(effectiveCap * 100)}% cap${tierConstrained ? " (tier)" : ""} — underwriter will adjust`
-                      : `within ${Math.round(effectiveCap * 100)}% cap${tierConstrained ? " (tier-adjusted)" : ""}`}
-                  </Pill>
-                </div>
-              ) : null}
-
-              <div style={{ height: 10 }} />
-              <Field
-                t={t}
-                label="Expected closing date"
-                value={closingDate}
-                onChange={setClosingDate}
-                type="date"
-              />
-
-              <div style={{ height: 10 }} />
-              {/* LLC / entity name. TBD toggle stores null — underwriter
-                  can fill it in later, or the letter falls back to the
-                  borrower's individual legal name. */}
-              <div>
-                <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 5,
-                }}>
-                  <span style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
-                    LLC / entity name
-                  </span>
-                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11.5, color: t.ink2 }}>
-                    <input
-                      type="checkbox"
-                      checked={entityTBD}
-                      onChange={(e) => setEntityTBD(e.target.checked)}
-                      style={{ accentColor: t.brand }}
+                    <TextField
+                      className="s6"
+                      label={
+                        loanType === "dscr_refi"
+                          ? "Estimated property value"
+                          : isFixFlip
+                            ? "Purchase price (BRV)"
+                            : "Estimated purchase price"
+                      }
+                      value={purchaseText}
+                      onChange={setPurchaseText}
+                      placeholder="400000"
+                      inputMode="numeric"
                     />
-                    TBD — I haven&apos;t formed the LLC yet
-                  </label>
-                </div>
-                {!entityTBD ? (
-                  <input
-                    type="text"
-                    value={entityName}
-                    onChange={(e) => setEntityName(e.target.value)}
-                    placeholder="e.g. Riverside Holdings LLC"
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      borderRadius: 9,
-                      background: t.surface2,
-                      border: `1px solid ${t.line}`,
-                      color: t.ink,
-                      fontSize: 13,
-                      fontFamily: "inherit",
-                      outline: "none",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                ) : (
-                  <div style={{
-                    fontSize: 11.5,
-                    color: t.ink3,
-                    background: t.surface2,
-                    border: `1px dashed ${t.line}`,
-                    borderRadius: 9,
-                    padding: "8px 12px",
-                    lineHeight: 1.4,
-                  }}>
-                    Letter will be issued to your individual legal name. The
-                    underwriter can re-issue under your LLC once it&apos;s formed.
-                  </div>
-                )}
-              </div>
 
-              <div style={{ height: 10 }} />
-              <Textarea
-                t={t}
-                label="Borrower notes (optional)"
-                value={notes}
-                onChange={setNotes}
-                placeholder="e.g. Need this letter by Friday EOD to submit my offer."
-              />
-            </Card>
+                    {/* The "Max …" affordance moved from the label row into
+                        the field hint. Same one-click fill of the computed
+                        ceiling, same conditional on maxLoan > 0. */}
+                    <Field
+                      className="s6"
+                      label="Requested loan amount"
+                      hint={
+                        maxLoan > 0 ? (
+                          <Linky onClick={() => setLoanText(String(Math.round(maxLoan)))}>
+                            Max {QC_FMT.usd(maxLoan, 0)}
+                          </Linky>
+                        ) : undefined
+                      }
+                    >
+                      <Input
+                        value={loanText}
+                        onChange={(e) => setLoanText(e.target.value)}
+                        placeholder="320000"
+                        inputMode="numeric"
+                      />
+                    </Field>
 
-            </>
+                    {/* F&F-only: Estimated ARV (After Repair Value). Lives
+                        on Step 1 alongside BRV so the borrower sees the
+                        delta before they're walked into Scope of Work. */}
+                    {isFixFlip ? (
+                      <TextField
+                        className="s6"
+                        label="Estimated ARV (After Repair Value)"
+                        value={arvText}
+                        onChange={setArvText}
+                        placeholder="600000"
+                        inputMode="numeric"
+                      />
+                    ) : null}
+
+                    {/* Live LTV line — informational. */}
+                    {purchaseNum > 0 && loanNum > 0 ? (
+                      <div className="s12">
+                        <StatusLine tone={ltvOverCap ? "bad" : "ok"}>
+                          Requested LTV {(ltv * 100).toFixed(1)}% ·{" "}
+                          {ltvOverCap
+                            ? `over ${Math.round(effectiveCap * 100)}% cap${tierConstrained ? " (tier)" : ""} — underwriter will adjust`
+                            : `within ${Math.round(effectiveCap * 100)}% cap${tierConstrained ? " (tier-adjusted)" : ""}`}
+                        </StatusLine>
+                      </div>
+                    ) : null}
+
+                    <TextField
+                      className="s6"
+                      label="Expected closing date"
+                      value={closingDate}
+                      onChange={setClosingDate}
+                      type="date"
+                    />
+
+                    {/* LLC / entity name. The TBD toggle stores null, and the
+                        "issues to your legal name" consequence now reads as one
+                        sentence on the checkbox instead of a separate dashed
+                        hint box below it. */}
+                    <div className="s12">
+                      <label className={cx("pick", entityTBD && "on")}>
+                        <input
+                          type="checkbox"
+                          checked={entityTBD}
+                          onChange={(e) => setEntityTBD(e.target.checked)}
+                        />
+                        <span>
+                          <b>LLC / entity TBD — I haven&apos;t formed the LLC yet.</b>{" "}
+                          <span className="sub">
+                            Letter will be issued to your individual legal name. The
+                            underwriter can re-issue under your LLC once it&apos;s formed.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+
+                    {!entityTBD ? (
+                      <TextField
+                        className="s12"
+                        label="LLC / entity name"
+                        value={entityName}
+                        onChange={setEntityName}
+                        placeholder="e.g. Riverside Holdings LLC"
+                      />
+                    ) : null}
+
+                    <Field
+                      className="s12"
+                      label="Borrower notes (optional)"
+                      hint={`${notes.length}/500 characters`}
+                    >
+                      <Textarea
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value.slice(0, 500))}
+                        placeholder="e.g. Need this letter by Friday EOD to submit my offer."
+                        rows={3}
+                        // `.field` sets no resize rule; left vertical so a
+                        // dragged textarea cannot widen the drawer column.
+                        style={{ resize: "vertical" }}
+                      />
+                    </Field>
+                  </CG>
+                </Panel>
+              </>
             ) : null}
 
             {/* Step 2 — F&F Scope of Work editor. Hidden on Step 1
                 and on non-F&F products. */}
             {isFixFlip && step === 2 ? (
-              <Card pad={16}>
-                <SectionLabel>Scope of work</SectionLabel>
-                <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
+              <Panel className="s12" title="Scope of work">
+                <p className="sub">
                   Add a row for each major rehab category. The total
                   here drives our project-viability check ({Math.round(FF_LTARV_CAP * 100)}% of ARV cap on
                   BRV + construction). The list isn&apos;t shown on the
                   printed letter — sellers continue to see only the
                   Negotiation-Shield version.
+                </p>
+
+                <div className="mt">
+                  <PrequalSowEditor items={sowItems} onChange={setSowItems} />
                 </div>
 
-                <PrequalSowEditor
-                  items={sowItems}
-                  onChange={setSowItems}
-                />
-
-                {/* Live LTARV pill — informational. */}
+                {/* Live LTARV line — informational. */}
                 {arvNum > 0 && allInBasis > 0 ? (
-                  <div style={{ marginTop: 12 }}>
-                    <Pill
-                      bg={ltarvOverCap ? t.dangerBg : t.profitBg}
-                      color={ltarvOverCap ? t.danger : t.profit}
-                    >
+                  <div className="mt">
+                    <StatusLine tone={ltarvOverCap ? "bad" : "ok"}>
                       All-in basis {QC_FMT.usd(allInBasis, 0)} ÷ ARV {QC_FMT.usd(arvNum, 0)} = {(ltarv * 100).toFixed(1)}% ·{" "}
                       {ltarvOverCap
                         ? `over ${Math.round(FF_LTARV_CAP * 100)}% project cap — underwriter will review`
                         : `within ${Math.round(FF_LTARV_CAP * 100)}% project cap`}
-                    </Pill>
+                    </StatusLine>
                   </div>
                 ) : null}
-              </Card>
+              </Panel>
             ) : null}
 
             {error ? (
-              <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill>
+              <div className="s12">
+                <StatusLine tone="bad" role="alert">
+                  {error}
+                </StatusLine>
+              </div>
             ) : null}
 
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-              <div>
-                {isFixFlip && step === 2 ? (
-                  <button onClick={() => setStep(1)} style={qcBtn(t)}>
-                    ← Back
-                  </button>
-                ) : null}
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={onClose} style={qcBtn(t)}>Cancel</button>
-                {isFixFlip && step === 1 ? (
-                  <button
-                    onClick={() => {
-                      if (!step1Valid) {
-                        setError(
-                          "Please fill in address, BRV, ARV, and requested loan amount before continuing.",
-                        );
-                        return;
-                      }
-                      setError(null);
-                      setStep(2);
-                    }}
-                    disabled={!step1Valid}
-                    style={{
-                      ...qcBtnPrimary(t),
-                      opacity: !step1Valid ? 0.5 : 1,
-                      cursor: !step1Valid ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    Continue → Scope of Work
-                  </button>
-                ) : (
-                  <button
-                    onClick={onSubmit}
-                    disabled={!formValid || submit.isPending}
-                    style={{
-                      ...qcBtnPrimary(t),
-                      opacity: !formValid || submit.isPending ? 0.5 : 1,
-                      cursor: !formValid || submit.isPending ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {submit.isPending ? "Submitting…" : "Submit for review"}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div style={{ fontSize: 11, color: t.ink3, lineHeight: 1.4 }}>
+            <p className="sub s12">
               Submitting just opens an underwriter review — no loan file is
               created yet. Once approved, you&apos;ll download the letter, present
               the offer, and report back here whether the seller accepted.
               That&apos;s when the deal moves into the pipeline.
-            </div>
-          </div>
-        )}
-      </div>
+            </p>
+          </CG>
+        </>
+      )}
+    </Drawer>
+  );
+}
+
+/**
+ * Sentence-length status block.
+ *
+ * `.c-ok` / `.c-warn` / `.c-bad` own the tint and the text colour; the inline
+ * values are box geometry only, because the sheet carries no block-level
+ * status surface and `.cellchip` is `white-space: nowrap` — these run to a
+ * sentence. Same pattern as AdminPrequalCreateModal, settings and rates.
+ */
+function StatusLine({
+  tone,
+  role,
+  children,
+}: {
+  tone: "ok" | "warn" | "bad";
+  role?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`c-${tone}`}
+      role={role}
+      style={{ borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 620, lineHeight: 1.45 }}
+    >
+      {children}
     </div>
   );
 }
 
-function Field({
-  t,
+/** Label + text input, stacked. `.lbl` + `.field` carry the paint. */
+function TextField({
   label,
   value,
   onChange,
   placeholder,
   type = "text",
   inputMode,
+  className,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
-  label: string;
+  label: ReactNode;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   type?: "text" | "date";
   inputMode?: "text" | "numeric";
+  className?: string;
 }) {
   return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
-        {label}
-      </div>
-      <input
+    <Field label={label} className={className}>
+      <Input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         inputMode={inputMode}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          borderRadius: 9,
-          background: t.surface2,
-          border: `1px solid ${t.line}`,
-          color: t.ink,
-          fontSize: 13,
-          fontFamily: "inherit",
-          outline: "none",
-          boxSizing: "border-box",
-        }}
       />
-    </div>
+    </Field>
   );
 }
-
-function Textarea({
-  t,
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
-        {label}
-      </div>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value.slice(0, 500))}
-        placeholder={placeholder}
-        rows={3}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          borderRadius: 9,
-          background: t.surface2,
-          border: `1px solid ${t.line}`,
-          color: t.ink,
-          fontSize: 13,
-          fontFamily: "inherit",
-          outline: "none",
-          boxSizing: "border-box",
-          resize: "vertical",
-          minHeight: 60,
-        }}
-      />
-      <div style={{ fontSize: 10, color: t.ink4, marginTop: 4, textAlign: "right" }}>
-        {value.length}/500
-      </div>
-    </div>
-  );
-}
-

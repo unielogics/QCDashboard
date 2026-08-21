@@ -6,12 +6,19 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
+import {
+  Btn,
+  Card,
+  CellChip,
+  Input,
+  PageHeader,
+  Panel,
+  Select,
+  type ChipTone,
+} from "@/components/ds";
 import {
   useAiAgents,
   useCreateAiAgent,
@@ -34,15 +41,17 @@ const KIND_LABELS: Record<AiAgentKind, string> = {
   custom: "Custom",
 };
 
-const STATUS_TONE: Record<AiAgentStatus, "g" | "a" | "n"> = {
-  draft: "n",
-  needs_training: "a",
-  training_in_progress: "a",
-  needs_review: "a",
-  ready_to_activate: "a",
-  active: "g",
-  paused: "a",
-  archived: "n",
+// The three-way status distinction the old Pill carried (green / amber / grey),
+// expressed as chip tones instead of hand-mixed token pairs.
+const STATUS_TONE: Record<AiAgentStatus, ChipTone> = {
+  draft: "mut",
+  needs_training: "warn",
+  training_in_progress: "warn",
+  needs_review: "warn",
+  ready_to_activate: "warn",
+  active: "ok",
+  paused: "warn",
+  archived: "mut",
 };
 
 const STEP_KEYS = [
@@ -60,23 +69,24 @@ const STEP_KEYS = [
 ];
 
 function StepDots({ steps }: { steps: StepStates }) {
-  const { t } = useTheme();
   return (
+    // Eleven 8px dots want a 4px rhythm; .row's 10px gap would run the strip
+    // past the card. Bespoke, so it stays inline.
     <div style={{ display: "flex", gap: 4 }}>
       {STEP_KEYS.map((k) => {
         const s = steps[k] ?? "missing";
         const color =
-          s === "done" ? t.profit : s === "attention" ? t.warn : t.line;
+          s === "done"
+            ? "var(--ok)"
+            : s === "attention"
+              ? "var(--warn)"
+              : "var(--line2)";
         return (
           <span
             key={k}
             title={`${k}: ${s}`}
-            style={{
-              width: 9,
-              height: 9,
-              borderRadius: 999,
-              background: color,
-            }}
+            className="repdot"
+            style={{ background: color }}
           />
         );
       })}
@@ -85,7 +95,6 @@ function StepDots({ steps }: { steps: StepStates }) {
 }
 
 export default function AiAgentsPage() {
-  const { t } = useTheme();
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const router = useRouter();
   const { data: agents = [], isLoading } = useAiAgents();
@@ -117,102 +126,66 @@ export default function AiAgentsPage() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 16,
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: t.ink }}>
-            AI Outreach Agents
-          </h1>
-          <p style={{ fontSize: 13, color: t.ink3, margin: "6px 0 0", maxWidth: 560 }}>
-            Build broker-controlled outreach agents for new-deal follow-up,
-            past-client nurture, review requests, and other internal workflows.
-            Each one is trained, tested, and pointed at a slice of your pipeline.
-          </p>
-        </div>
-        <button
-          style={qcBtnPrimary(t)}
-          onClick={() => setCreating((v) => !v)}
-        >
-          <Icon name="plus" size={15} /> New outreach agent
-        </button>
-      </div>
+    <>
+      <PageHeader
+        title="AI Outreach Agents"
+        actions={
+          <Btn variant="pri" onClick={() => setCreating((v) => !v)}>
+            <Icon name="plus" size={15} /> New outreach agent
+          </Btn>
+        }
+      />
+      <p className="sub" style={{ maxWidth: 560 }}>
+        Build broker-controlled outreach agents for new-deal follow-up,
+        past-client nurture, review requests, and other internal workflows.
+        Each one is trained, tested, and pointed at a slice of your pipeline.
+      </p>
 
       {creating && (
-        <Card pad={18}>
-          <SectionLabel>Create an outreach agent</SectionLabel>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
-            <input
+        <Panel className="mt" title="Create an outreach agent">
+          <div className="row">
+            <Input
               autoFocus
+              grow
               placeholder="Agent name — e.g. New-deal follow-up"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              style={{
-                flex: "1 1 280px",
-                padding: "9px 12px",
-                borderRadius: 10,
-                border: `1px solid ${t.lineStrong}`,
-                background: t.surface,
-                color: t.ink,
-                fontSize: 14,
-              }}
             />
-            <select
+            <Select
               value={kind}
               onChange={(e) => setKind(e.target.value as AiAgentKind)}
-              style={{
-                padding: "9px 12px",
-                borderRadius: 10,
-                border: `1px solid ${t.lineStrong}`,
-                background: t.surface,
-                color: t.ink,
-                fontSize: 14,
-              }}
             >
               {Object.entries(KIND_LABELS).map(([k, label]) => (
                 <option key={k} value={k}>
                   {label}
                 </option>
               ))}
-            </select>
-            <button
-              style={qcBtnPrimary(t)}
+            </Select>
+            <Btn
+              variant="pri"
               disabled={!name.trim() || create.isPending}
               onClick={submit}
             >
               {create.isPending ? "Creating…" : "Create & build"}
-            </button>
+            </Btn>
           </div>
-        </Card>
+        </Panel>
       )}
 
       {isLoading ? (
-        <Card pad={20}>
-          <span style={{ color: t.ink3, fontSize: 13 }}>Loading…</span>
+        <Card className="mt">
+          <span className="sub">Loading…</span>
         </Card>
       ) : agents.length === 0 ? (
-        <Card pad={26}>
-          <div style={{ textAlign: "center", color: t.ink3 }}>
+        <Card className="mt">
+          <div style={{ textAlign: "center" }}>
             <Icon name="spark" size={26} />
-            <p style={{ fontSize: 14, marginTop: 10 }}>
+            <p className="sub">
               No outreach agents yet. Start with one of the two real-estate
-              starters below — you can edit everything once it's drafted.
+              starters below — you can edit everything once it&apos;s drafted.
             </p>
           </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 14,
-              marginTop: 18,
-            }}
-          >
+          <div className="cg mt">
             {(
               [
                 {
@@ -231,15 +204,14 @@ export default function AiAgentsPage() {
                 },
               ]
             ).map((preset) => (
-              <Card key={preset.kind} pad={16} style={{ cursor: "pointer" }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: t.ink }}>
-                  {preset.title}
-                </div>
-                <div style={{ fontSize: 12.5, color: t.ink3, margin: "6px 0 14px" }}>
+              <Card key={preset.kind} className="s6">
+                <b>{preset.title}</b>
+                <div className="sub" style={{ margin: "6px 0 14px" }}>
                   {preset.desc}
                 </div>
-                <button
-                  style={{ ...qcBtnPrimary(t), width: "100%" }}
+                <Btn
+                  variant="pri"
+                  style={{ width: "100%" }}
                   disabled={create.isPending}
                   onClick={async () => {
                     const agent = await create.mutateAsync({
@@ -251,7 +223,7 @@ export default function AiAgentsPage() {
                   }}
                 >
                   <Icon name="plus" size={13} /> Start with this
-                </button>
+                </Btn>
               </Card>
             ))}
           </div>
@@ -260,99 +232,71 @@ export default function AiAgentsPage() {
         <>
           <SuggestedWorkflows
             agents={agents}
-            t={t}
             onCreate={async (preset) => {
               const agent = await create.mutateAsync(preset);
               router.push(`/ai-agents/${agent.id}`);
             }}
             disabled={create.isPending}
           />
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-              gap: 14,
-            }}
-          >
-          {agents.map((a) => (
-            <Link
-              key={a.id}
-              href={`/ai-agents/${a.id}`}
-              style={{ textDecoration: "none" }}
-              onContextMenu={(e) => {
-                if (
-                  a.kind === "new_deal_buyer" ||
-                  a.kind === "new_deal_seller"
-                ) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setAgentMenu({ agent: a, x: e.clientX, y: e.clientY });
-                }
-              }}
-            >
-              <Card pad={18} style={{ cursor: "pointer", height: "100%" }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 10,
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: t.ink, display: "flex", alignItems: "center", gap: 6 }}>
-                      {(a.is_default_new_deal_buyer ||
-                        a.is_default_new_deal_seller) && (
-                        <span
-                          title={
-                            a.is_default_new_deal_buyer
-                              ? "Default for New Deal — Buyer"
-                              : "Default for New Deal — Seller"
-                          }
-                          style={{ color: t.gold ?? t.warn, fontSize: 14, lineHeight: 1 }}
-                        >
-                          ★
-                        </span>
+          <div className="grid cols-auto mt">
+            {agents.map((a) => (
+              <Link
+                key={a.id}
+                href={`/ai-agents/${a.id}`}
+                // An <a> is accent-coloured and the card's body text has to
+                // read as body text; neither is owned by a class here.
+                style={{ textDecoration: "none", color: "var(--ink)" }}
+                onContextMenu={(e) => {
+                  if (
+                    a.kind === "new_deal_buyer" ||
+                    a.kind === "new_deal_seller"
+                  ) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setAgentMenu({ agent: a, x: e.clientX, y: e.clientY });
+                  }
+                }}
+              >
+                <Card style={{ cursor: "pointer", height: "100%" }}>
+                  <div className="row">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <b>
+                        {(a.is_default_new_deal_buyer ||
+                          a.is_default_new_deal_seller) && (
+                          <span
+                            title={
+                              a.is_default_new_deal_buyer
+                                ? "Default for New Deal — Buyer"
+                                : "Default for New Deal — Seller"
+                            }
+                            style={{ color: "var(--gold)" }}
+                          >
+                            ★{" "}
+                          </span>
+                        )}
+                        {a.name}
+                      </b>
+                      {a.ai_display_name && (
+                        <div className="sub">
+                          Introduces as {a.ai_display_name}
+                        </div>
                       )}
-                      {a.name}
                     </div>
-                    {a.ai_display_name && (
-                      <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>
-                        Introduces as {a.ai_display_name}
-                      </div>
-                    )}
+                    <CellChip tone={STATUS_TONE[a.status]}>
+                      {a.status.replace(/_/g, " ")}
+                    </CellChip>
                   </div>
-                  <Pill
-                    color={
-                      STATUS_TONE[a.status] === "g"
-                        ? t.profit
-                        : STATUS_TONE[a.status] === "a"
-                          ? t.warn
-                          : t.ink3
-                    }
-                    bg={
-                      STATUS_TONE[a.status] === "g"
-                        ? t.profitBg
-                        : STATUS_TONE[a.status] === "a"
-                          ? t.warnBg
-                          : t.chip
-                    }
-                  >
-                    {a.status.replace(/_/g, " ")}
-                  </Pill>
-                </div>
-                <div style={{ fontSize: 12, color: t.ink3, marginTop: 4 }}>
-                  {KIND_LABELS[a.kind]}
-                </div>
-                <div style={{ marginTop: 14 }}>
-                  <StepDots steps={a.steps} />
-                </div>
-                <div style={{ fontSize: 12, color: t.ink3, marginTop: 12 }}>
-                  {a.lead_count} contact{a.lead_count === 1 ? "" : "s"} enrolled
-                  {a.warmup_mode ? " · warm-up" : ""}
-                </div>
-              </Card>
-            </Link>
-          ))}
+                  <div className="sub">{KIND_LABELS[a.kind]}</div>
+                  <div className="mt">
+                    <StepDots steps={a.steps} />
+                  </div>
+                  <div className="sub mt">
+                    {a.lead_count} contact{a.lead_count === 1 ? "" : "s"} enrolled
+                    {a.warmup_mode ? " · warm-up" : ""}
+                  </div>
+                </Card>
+              </Link>
+            ))}
           </div>
         </>
       )}
@@ -368,7 +312,7 @@ export default function AiAgentsPage() {
           onClose={() => setAgentMenu(null)}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -385,7 +329,6 @@ function AgentCardContextMenu({
   onSetDefault: (slot: "new_deal_buyer" | "new_deal_seller", on: boolean) => void;
   onClose: () => void;
 }) {
-  const { t } = useTheme();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -412,6 +355,9 @@ function AgentCardContextMenu({
     slot === "new_deal_buyer" ? "New Deal — Buyer" : "New Deal — Seller";
 
   return (
+    // .popmenu anchors itself to a trigger; this one is pinned to the pointer,
+    // so the surface stays inline — but on tokens, not a theme object. The row
+    // below is .toollink, which carries its own :hover.
     <div
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
@@ -421,55 +367,28 @@ function AgentCardContextMenu({
         left: x,
         zIndex: 80,
         minWidth: 240,
-        background: t.surface,
-        border: `1px solid ${t.line}`,
-        borderRadius: 8,
-        boxShadow: "0 14px 32px rgba(0,0,0,0.32)",
-        padding: 4,
+        background: "var(--surface)",
+        border: "1px solid var(--line2)",
+        borderRadius: 12,
+        boxShadow: "var(--sh2)",
+        padding: 5,
         display: "flex",
         flexDirection: "column",
         gap: 2,
       }}
     >
-      <div
-        style={{
-          padding: "8px 10px 4px",
-          fontSize: 10,
-          fontWeight: 900,
-          color: t.ink3,
-          letterSpacing: 0.6,
-          textTransform: "uppercase",
-        }}
-      >
+      <div className="lbl" style={{ padding: "8px 10px 4px" }}>
         {agent.name}
       </div>
       <button
+        type="button"
+        className="toollink"
         onClick={(e) => {
           e.stopPropagation();
           onSetDefault(slot, !isDefault);
         }}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "8px 10px",
-          borderRadius: 4,
-          border: "none",
-          background: "transparent",
-          color: t.ink,
-          fontSize: 13,
-          cursor: "pointer",
-          textAlign: "left",
-          fontFamily: "inherit",
-        }}
-        onMouseOver={(e) =>
-          ((e.currentTarget as HTMLElement).style.background = t.surface2)
-        }
-        onMouseOut={(e) =>
-          ((e.currentTarget as HTMLElement).style.background = "transparent")
-        }
       >
-        <span style={{ color: t.gold ?? t.warn, fontSize: 14 }}>★</span>
+        <span style={{ color: "var(--gold)" }}>★</span>
         {isDefault ? `Unset as default ${slotLabel}` : `Set as default ${slotLabel}`}
       </button>
     </div>
@@ -511,12 +430,10 @@ const SUGGESTION_CATALOG: { kind: AiAgentKind; title: string; desc: string; agen
 
 function SuggestedWorkflows({
   agents,
-  t,
   onCreate,
   disabled,
 }: {
   agents: AiAgentListRow[];
-  t: ReturnType<typeof useTheme>["t"];
   onCreate: (preset: { name: string; kind: AiAgentKind; audience: string }) => void | Promise<void>;
   disabled: boolean;
 }) {
@@ -524,35 +441,26 @@ function SuggestedWorkflows({
   const missing = SUGGESTION_CATALOG.filter((s) => !haveKinds.has(s.kind));
   if (missing.length === 0) return null;
   return (
-    <div style={{ marginBottom: 18 }}>
-      <SectionLabel>Suggested workflows</SectionLabel>
-      <div style={{ fontSize: 12.5, color: t.ink3, margin: "6px 0 12px" }}>
+    <div className="mt">
+      <div className="lbl">Suggested workflows</div>
+      <div className="sub">
         Standard real-estate workflows you haven&apos;t built yet — one click to draft.
       </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-          gap: 12,
-        }}
-      >
+      <div className="grid cols-auto mt">
         {missing.map((s) => (
-          <Card key={s.kind} pad={14}>
-            <div style={{ fontSize: 13.5, fontWeight: 700, color: t.ink }}>
-              {s.title}
-            </div>
-            <div style={{ fontSize: 12, color: t.ink3, margin: "5px 0 10px" }}>
+          <Card key={s.kind}>
+            <b>{s.title}</b>
+            <div className="sub" style={{ margin: "5px 0 10px" }}>
               {s.desc}
             </div>
-            <button
-              style={qcBtn(t)}
+            <Btn
               disabled={disabled}
               onClick={() =>
                 onCreate({ name: s.agentName, kind: s.kind, audience: s.audience })
               }
             >
               <Icon name="plus" size={12} /> Create
-            </button>
+            </Btn>
           </Card>
         ))}
       </div>

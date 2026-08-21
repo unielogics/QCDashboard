@@ -23,10 +23,24 @@
 //
 // Sub-tasks (rows with parent_key set) are nested under the parent
 // card so A,B,C,D under X show as a single grouped card.
+//
+// Styling is the shared class system (globals.css + app-extras.css):
+// a section is a `.card` with a collapse header, a task is a `.rung`
+// (`.cur` = Elara owns it, `.done` = faded), and the stack spacing is
+// `.ladder`. No palette tokens live in this file.
 
 import { useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Icon } from "@/components/design-system/Icon";
+import {
+  Btn,
+  Card,
+  CellChip,
+  Input,
+  Lbl,
+  Seg,
+  Tag,
+  cx,
+  type ChipTone,
+} from "@/components/ds";
 import {
   DS_CATEGORY_META,
   type DSDealSecretaryView,
@@ -34,6 +48,19 @@ import {
   type DSTaskRow,
   type DSTimelineState,
 } from "@/lib/types";
+
+/** Section marker dot. The chip beside it carries the same tone, but a
+ *  `.cellchip` cannot be a 8px circle, so the dot reads its colour from
+ *  the same palette variable the tone class uses. */
+const TONE_DOT: Record<ChipTone, string> = {
+  ok: "var(--ok)",
+  warn: "var(--warn)",
+  bad: "var(--danger)",
+  mut: "var(--muted)",
+  acc: "var(--accent)",
+  gold: "var(--gold)",
+  pet: "var(--petrol)",
+};
 
 export interface AISecretaryTimelineProps {
   view: DSDealSecretaryView;
@@ -53,7 +80,6 @@ export interface AISecretaryTimelineProps {
 export function AISecretaryTimeline({
   view, isOperator, onAssign, onUnassign, onOpenAssignment, onCreateCustomTask,
 }: AISecretaryTimelineProps) {
-  const { t } = useTheme();
   const [adhoc, setAdhoc] = useState<{ label: string; owner: "human" | "ai"; objective: string } | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -120,119 +146,62 @@ export function AISecretaryTimeline({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div className="ladder">
       {/* "+ New task" — ad-hoc one-off work not in the playbook.
           Lands as a real CRS row so it shows on the timeline. */}
       {onCreateCustomTask ? (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          {adhoc ? (
-            <div style={{
-              flex: 1,
-              border: `1px solid ${t.line}`,
-              borderRadius: 11,
-              background: t.surface,
-              padding: 11,
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-            }}>
-              <input
-                value={adhoc.label}
-                onChange={(e) => setAdhoc({ ...adhoc, label: e.target.value })}
-                autoFocus
-                placeholder="e.g. Follow up about tenant leaving on the 1st"
-                style={{
-                  padding: "9px 11px", borderRadius: 8,
-                  background: t.surface2, color: t.ink,
-                  border: `1px solid ${t.line}`, fontSize: 13,
-                  outline: "none", fontFamily: "inherit",
-                }}
+        adhoc ? (
+          <Card className="ladder">
+            <Input
+              value={adhoc.label}
+              onChange={(e) => setAdhoc({ ...adhoc, label: e.target.value })}
+              autoFocus
+              aria-label="Task"
+              placeholder="e.g. Follow up about tenant leaving on the 1st"
+            />
+            <Input
+              value={adhoc.objective}
+              onChange={(e) => setAdhoc({ ...adhoc, objective: e.target.value })}
+              aria-label="Objective"
+              placeholder="What needs to happen (optional)"
+            />
+            <div className="row">
+              <Lbl>Owner</Lbl>
+              <Seg<"human" | "ai">
+                value={adhoc.owner}
+                onChange={(o) => setAdhoc({ ...adhoc, owner: o })}
+                ariaLabel="Task owner"
+                as="filter"
+                options={[
+                  { value: "human", label: "My Tasks" },
+                  { value: "ai", label: "Elara" },
+                ]}
               />
-              <input
-                value={adhoc.objective}
-                onChange={(e) => setAdhoc({ ...adhoc, objective: e.target.value })}
-                placeholder="What needs to happen (optional)"
-                style={{
-                  padding: "9px 11px", borderRadius: 8,
-                  background: t.surface2, color: t.ink,
-                  border: `1px solid ${t.line}`, fontSize: 12.5,
-                  outline: "none", fontFamily: "inherit",
-                }}
-              />
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>Owner:</span>
-                {(["human", "ai"] as const).map((o) => (
-                  <button
-                    key={o}
-                    type="button"
-                    onClick={() => setAdhoc({ ...adhoc, owner: o })}
-                    style={{
-                      padding: "5px 10px", borderRadius: 7,
-                      background: adhoc.owner === o ? t.brandSoft : t.surface2,
-                      border: `1px solid ${adhoc.owner === o ? t.brand : t.line}`,
-                      color: adhoc.owner === o ? t.brand : t.ink2,
-                      fontSize: 11, fontWeight: 800,
-                      cursor: "pointer", fontFamily: "inherit",
-                    }}
-                  >
-                    {o === "ai" ? "Elara" : "My Tasks"}
-                  </button>
-                ))}
-                <div style={{ flex: 1 }} />
-                <button
-                  type="button"
-                  onClick={() => setAdhoc(null)}
-                  style={{
-                    padding: "6px 11px", borderRadius: 8,
-                    background: t.surface2, color: t.ink2,
-                    border: `1px solid ${t.line}`,
-                    fontSize: 11, fontWeight: 800, cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCreate}
-                  disabled={creating || !adhoc.label.trim()}
-                  style={{
-                    padding: "6px 13px", borderRadius: 8,
-                    background: t.brand, color: t.inverse,
-                    border: "none",
-                    fontSize: 11, fontWeight: 900,
-                    cursor: creating || !adhoc.label.trim() ? "not-allowed" : "pointer",
-                    opacity: creating || !adhoc.label.trim() ? 0.55 : 1,
-                    fontFamily: "inherit",
-                  }}
-                >
-                  {creating ? "Adding…" : "Add task"}
-                </button>
-              </div>
+              <span className="sp" />
+              <Btn onClick={() => setAdhoc(null)}>Cancel</Btn>
+              <Btn
+                variant="pri"
+                onClick={handleCreate}
+                disabled={creating || !adhoc.label.trim()}
+              >
+                {creating ? "Adding…" : "Add task"}
+              </Btn>
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setAdhoc({ label: "", owner: "human", objective: "" })}
-              style={{
-                padding: "8px 14px", borderRadius: 9,
-                background: t.surface2, color: t.ink2,
-                border: `1px dashed ${t.line}`,
-                fontSize: 12, fontWeight: 800,
-                cursor: "pointer", fontFamily: "inherit",
-              }}
-            >
+          </Card>
+        ) : (
+          <div className="row">
+            <span className="sp" />
+            <Btn onClick={() => setAdhoc({ label: "", owner: "human", objective: "" })}>
               + New task
-            </button>
-          )}
-        </div>
+            </Btn>
+          </div>
+        )
       ) : null}
 
       <Section
         title="Next up"
         eyebrow={`${buckets.next_up.length} ready`}
-        accent={t.brand}
-        bg={t.brandSoft}
+        tone="acc"
         emptyHint="No tasks ready right now."
       >
         {buckets.next_up.map((row) => (
@@ -251,8 +220,7 @@ export function AISecretaryTimeline({
       <Section
         title="In progress"
         eyebrow={`${buckets.in_progress.length} active`}
-        accent={t.warn}
-        bg={t.warnBg}
+        tone="warn"
         emptyHint="Nothing actively being chased."
       >
         {buckets.in_progress.map((row) => (
@@ -271,8 +239,7 @@ export function AISecretaryTimeline({
       <Section
         title="Upcoming"
         eyebrow={`${buckets.upcoming.length} waiting`}
-        accent={t.ink3}
-        bg={t.surface2}
+        tone="mut"
         emptyHint="Everything is either done, in flight, or ready to pick up."
         collapsibleDefault={true}
       >
@@ -292,8 +259,7 @@ export function AISecretaryTimeline({
       <Section
         title="Done"
         eyebrow={`${buckets.done.length} complete`}
-        accent={t.profit}
-        bg={t.profitBg}
+        tone="ok"
         emptyHint="No tasks completed yet."
         collapsibleDefault={true}
       >
@@ -317,63 +283,43 @@ export function AISecretaryTimeline({
 // ── Section ────────────────────────────────────────────────────────
 
 function Section({
-  title, eyebrow, accent, bg, children, emptyHint, collapsibleDefault,
+  title, eyebrow, tone, children, emptyHint, collapsibleDefault,
 }: {
   title: string;
   eyebrow: string;
-  accent: string;
-  bg: string;
+  /** Replaces the old accent/bg colour pair — the tone drives the chip
+   *  class and the marker dot together, so they can no longer drift. */
+  tone: ChipTone;
   children: React.ReactNode;
   emptyHint: string;
   collapsibleDefault?: boolean;
 }) {
-  const { t } = useTheme();
   const childArr = Array.isArray(children) ? children : [children];
   const isEmpty = !childArr.some(Boolean);
   const [collapsed, setCollapsed] = useState<boolean>(!!collapsibleDefault);
   return (
-    <section style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface, padding: 12 }}>
+    <section className="card">
+      {/* A real button, so it keeps its focus ring and Enter/Space
+          activation. The old `all: unset` stripped the ring off it. */}
       <button
         type="button"
+        className="row"
+        aria-expanded={!collapsed}
         onClick={() => setCollapsed((v) => !v)}
-        style={{
-          all: "unset",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          width: "100%",
-          marginBottom: isEmpty || collapsed ? 0 : 10,
-        }}
+        style={{ width: "100%" }}
       >
-        <span style={{
-          width: 8, height: 8, borderRadius: 999,
-          background: accent,
-        }} />
-        <span style={{ fontSize: 13, fontWeight: 900, color: t.ink, letterSpacing: 0.2 }}>
-          {title}
-        </span>
-        <span style={{
-          fontSize: 10.5, fontWeight: 800,
-          padding: "2px 7px", borderRadius: 4,
-          background: bg, color: accent,
-          letterSpacing: 0.4, textTransform: "uppercase",
-        }}>
-          {eyebrow}
-        </span>
-        <span style={{ flex: 1 }} />
+        <span className="repdot" style={{ background: TONE_DOT[tone] }} />
+        <b>{title}</b>
+        <CellChip tone={tone}>{eyebrow}</CellChip>
+        <span className="sp" />
         {!isEmpty ? (
-          <span style={{ fontSize: 11, color: t.ink3 }}>
-            {collapsed ? "Show" : "Hide"}
-          </span>
+          <span className="sub">{collapsed ? "Show" : "Hide"}</span>
         ) : null}
       </button>
       {collapsed ? null : isEmpty ? (
-        <div style={{ fontSize: 12, color: t.ink3, padding: "8px 0 4px" }}>
-          {emptyHint}
-        </div>
+        <div className="sub mt">{emptyHint}</div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{children}</div>
+        <div className="ladder mt">{children}</div>
       )}
     </section>
   );
@@ -392,138 +338,87 @@ function TaskCard({
   onOpenAssignment?: (row: DSTaskRow) => void;
   faded?: boolean;
 }) {
-  const { t } = useTheme();
   const cat = DS_CATEGORY_META[row.category as DSRequirementCategory]?.short ?? row.category;
   const isAI = row.owner_type === "ai";
   const isLocked = row.owner_type === "funding_locked" && !isOperator;
   const canControl = isOperator || row.can_agent_override;
-  const ownerAccent = isAI ? t.brand : isLocked ? t.ink3 : t.ink2;
-  const ownerBg = isAI ? t.brandSoft : isLocked ? t.surface2 : t.surface;
   return (
-    <div style={{
-      border: `1px solid ${isAI ? t.brand : t.line}`,
-      borderRadius: 11,
-      background: t.surface,
-      padding: 11,
-      opacity: faded ? 0.7 : 1,
-    }}>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "start" }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            <span style={{
-              fontSize: 9.5, fontWeight: 800,
-              padding: "1px 6px", borderRadius: 4,
-              background: t.chip, color: t.ink3,
-              letterSpacing: 0.4, textTransform: "uppercase",
-            }}>
-              {cat}
-            </span>
-            {row.required_level === "required" ? (
-              <span style={{ fontSize: 9.5, fontWeight: 900, padding: "1px 5px", borderRadius: 4, background: t.dangerBg, color: t.danger }}>REQ</span>
-            ) : row.required_level === "recommended" ? (
-              <span style={{ fontSize: 9.5, fontWeight: 900, padding: "1px 5px", borderRadius: 4, background: t.warnBg, color: t.warn }}>REC</span>
-            ) : null}
-            {isLocked ? (
-              <span style={{ fontSize: 9.5, fontWeight: 900, padding: "1px 5px", borderRadius: 4, background: t.surface2, color: t.ink3 }}>🔒 LOCKED</span>
-            ) : null}
-            <span style={{ fontSize: 10, color: t.ink3 }}>{statusLabel(row.status)}</span>
-          </div>
-          <div style={{ marginTop: 5, fontSize: 13, fontWeight: 800, color: t.ink, lineHeight: 1.25 }}>
-            {row.label}
-          </div>
-          {row.objective_text ? (
-            <div style={{ marginTop: 3, fontSize: 11.5, color: t.ink3, lineHeight: 1.4 }}>
-              {row.objective_text}
-            </div>
+    <div className={cx("rung", isAI && "cur", faded && "done")}>
+      {/* `.rung` is a flex row; everything stacks inside this one column
+          so the nested sub-task block sits under the parent's content. */}
+      <div className="ladder sp" style={{ minWidth: 0 }}>
+        <div className="row">
+          <Tag>{cat}</Tag>
+          {row.required_level === "required" ? (
+            <CellChip tone="bad">REQ</CellChip>
+          ) : row.required_level === "recommended" ? (
+            <CellChip tone="warn">REC</CellChip>
           ) : null}
-          {row.link_url ? (
+          {isLocked ? <CellChip tone="mut">🔒 LOCKED</CellChip> : null}
+          <span className="sub">{statusLabel(row.status)}</span>
+          <span className="sp" />
+          {/* Owner flip. Disabled — not hidden — when the viewer cannot
+              control it, so the current owner still reads. */}
+          <Btn
+            size="sm"
+            variant={isAI ? "pri" : "default"}
+            disabled={!canControl}
+            onClick={() => isAI ? onUnassign(row.requirement_key) : onAssign(row.requirement_key)}
+          >
+            {isAI ? "Elara" : isLocked ? "🔒 Funding" : row.owner_type === "shared" ? "Shared" : "My Tasks"}
+          </Btn>
+          {isAI && row.assignment_id && onOpenAssignment ? (
+            <Btn size="sm" onClick={() => onOpenAssignment(row)}>
+              Notes
+            </Btn>
+          ) : null}
+        </div>
+
+        <b>{row.label}</b>
+
+        {row.objective_text ? (
+          <div className="sub">{row.objective_text}</div>
+        ) : null}
+
+        {row.link_url ? (
+          <div>
             <a
+              className="linky"
               href={row.link_url}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 5,
-                marginTop: 6,
-                fontSize: 11.5, fontWeight: 700, color: t.brand,
-                textDecoration: "none",
-              }}
             >
               {row.link_kind === "docusign" ? "✍ " : "🔗 "}
               {row.link_label ?? "Open link"}
             </a>
-          ) : null}
-          {row.blocked_by && row.blocked_by.length > 0 ? (
-            <div style={{ marginTop: 6, fontSize: 10.5, color: t.ink3 }}>
-              Waiting on: {row.blocked_by.join(", ")}
-            </div>
-          ) : null}
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "stretch" }}>
-          <button
-            type="button"
-            disabled={!canControl}
-            onClick={() => isAI ? onUnassign(row.requirement_key) : onAssign(row.requirement_key)}
-            style={{
-              padding: "6px 12px",
-              borderRadius: 8,
-              background: ownerBg,
-              color: ownerAccent,
-              border: `1px solid ${isAI ? t.brand : t.line}`,
-              fontSize: 11, fontWeight: 900,
-              cursor: canControl ? "pointer" : "not-allowed",
-              opacity: canControl ? 1 : 0.5,
-              fontFamily: "inherit",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {isAI ? "Elara" : isLocked ? "🔒 Funding" : row.owner_type === "shared" ? "Shared" : "My Tasks"}
-          </button>
-          {isAI && row.assignment_id && onOpenAssignment ? (
-            <button
-              type="button"
-              onClick={() => onOpenAssignment(row)}
-              style={{
-                padding: "5px 10px",
-                borderRadius: 7,
-                background: t.surface2,
-                color: t.ink2,
-                border: `1px solid ${t.line}`,
-                fontSize: 10.5, fontWeight: 700,
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              Notes
-            </button>
-          ) : null}
-        </div>
-      </div>
-
-      {/* Nested sub-tasks if this card is a parent */}
-      {children.length > 0 ? (
-        <div style={{
-          marginTop: 10, paddingTop: 10,
-          borderTop: `1px dashed ${t.line}`,
-          display: "flex", flexDirection: "column", gap: 6,
-        }}>
-          <div style={{ fontSize: 10, fontWeight: 800, color: t.ink3, letterSpacing: 0.6, textTransform: "uppercase" }}>
-            Sub-tasks
           </div>
-          {children.map((child) => (
-            <div key={child.requirement_key} style={{ marginLeft: 10 }}>
-              <TaskCard
-                row={child}
-                children={[]}
-                isOperator={isOperator}
-                onAssign={onAssign}
-                onUnassign={onUnassign}
-                onOpenAssignment={onOpenAssignment}
-              />
+        ) : null}
+
+        {row.blocked_by && row.blocked_by.length > 0 ? (
+          <div className="sub">Waiting on: {row.blocked_by.join(", ")}</div>
+        ) : null}
+
+        {/* Nested sub-tasks if this card is a parent */}
+        {children.length > 0 ? (
+          <div className="mt">
+            <Lbl>Sub-tasks</Lbl>
+            <div className="ladder mt">
+              {children.map((child) => (
+                <TaskCard
+                  key={child.requirement_key}
+                  row={child}
+                  children={[]}
+                  isOperator={isOperator}
+                  onAssign={onAssign}
+                  onUnassign={onUnassign}
+                  onOpenAssignment={onOpenAssignment}
+                />
+              ))}
             </div>
-          ))}
-        </div>
-      ) : null}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

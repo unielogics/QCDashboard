@@ -217,6 +217,26 @@ export function Chip({
   );
 }
 
+/**
+ * A status that is a sentence rather than a word.
+ *
+ * `CellChip` is `white-space: nowrap` and usually sits inside a `.panel`, which
+ * is `overflow: hidden` — so a long status string is clipped rather than
+ * wrapping, and the failure is silent. Three separate routes hand-rolled the
+ * same block-level replacement before this existed.
+ */
+export function StatusLine({
+  tone = "mut",
+  children,
+  className,
+}: {
+  tone?: ChipTone;
+  children: ReactNode;
+  className?: string;
+}) {
+  return <div className={cx("statusline", `c-${tone}`, className)}>{children}</div>;
+}
+
 export function Tag({ children, className }: { children: ReactNode; className?: string }) {
   return <span className={cx("tag", className)}>{children}</span>;
 }

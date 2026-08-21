@@ -463,7 +463,7 @@ export default function FixAndFlipAnalyzerPage() {
               <CellChip tone="mut">Not on file</CellChip>
             )}
             {derivedCredit == null ? (
-              <Field label="Analyzer FICO override" className="grow">
+              <Field label="Analyzer FICO override">
                 <Input
                   value={overrideFicoText}
                   onChange={(e) => setOverrideFicoText(e.target.value)}
@@ -621,12 +621,16 @@ export default function FixAndFlipAnalyzerPage() {
                   ) : null}
                 </div>
               ) : null}
-              <Seg
-                ariaLabel="Analysis view"
-                value={tab}
-                onChange={setTab}
-                options={TABS.map((x) => ({ value: x, label: x }))}
-              />
+              {/* `.seg` does not wrap, so the six-tab strip scrolls inside its
+                  own box rather than widening the card on a narrow viewport. */}
+              <div style={{ overflowX: "auto" }}>
+                <Seg
+                  ariaLabel="Analysis view"
+                  value={tab}
+                  onChange={setTab}
+                  options={TABS.map((x) => ({ value: x, label: x }))}
+                />
+              </div>
               <div>
                 {tab === "Summary" ? (
                   <div className="grid">
@@ -646,8 +650,14 @@ export default function FixAndFlipAnalyzerPage() {
                     <div>
                       <Lbl>Construction coverage · click to switch the whole view</Lbl>
                       <div className="cg mt">
-                        <ScenarioCard className="s6" title="Construction financed (draws)" sub="Lender draws rehab (≤75% ARV)" s={result.constructionScenarios.financed} active={coverage === "financed"} onClick={() => setCoverage("financed")} />
-                        <ScenarioCard className="s6" title="You fund construction" sub="Construction stays outside the loan" s={result.constructionScenarios.selfFunded} active={coverage === "self"} onClick={() => setCoverage("self")} />
+                        {/* Wrapped so the two cards are not `.pick + .pick`
+                            siblings, which would offset the second by 7px. */}
+                        <div className="s6">
+                          <ScenarioCard title="Construction financed (draws)" sub="Lender draws rehab (≤75% ARV)" s={result.constructionScenarios.financed} active={coverage === "financed"} onClick={() => setCoverage("financed")} />
+                        </div>
+                        <div className="s6">
+                          <ScenarioCard title="You fund construction" sub="Construction stays outside the loan" s={result.constructionScenarios.selfFunded} active={coverage === "self"} onClick={() => setCoverage("self")} />
+                        </div>
                       </div>
                     </div>
                     <div>
@@ -694,7 +704,7 @@ export default function FixAndFlipAnalyzerPage() {
                         <div key={f.program.id} className="filerow">
                           <div style={{ minWidth: 0 }}>
                             <div style={{ fontWeight: 700 }}>{f.program.name}</div>
-                            <div className="sub" style={{ color: "var(--danger)" }}>{(f.reasons ?? []).join(" · ")}</div>
+                            <div style={{ fontSize: 12, color: "var(--danger)" }}>{(f.reasons ?? []).join(" · ")}</div>
                           </div>
                         </div>
                       ))}
@@ -791,10 +801,10 @@ function ScenarioCard({
   onClick?: () => void;
   className?: string;
 }) {
-  const row = (k: string, v: string, color?: string, strong?: boolean) => (
+  const row = (k: string, v: string, color?: string) => (
     <div className="kv">
       <span>{k}</span>
-      <b style={color || !strong ? { color, fontWeight: strong ? 800 : 600 } : { fontWeight: 800 }}>{v}</b>
+      <b style={color ? { color } : undefined}>{v}</b>
     </div>
   );
   return (
@@ -808,7 +818,7 @@ function ScenarioCard({
           {active ? <CellChip tone="acc">● selected</CellChip> : null}
         </div>
         <Sub>{sub}</Sub>
-        {row("Cash to close", `$${Math.round(s.estimatedCashToClose).toLocaleString()}`, undefined, true)}
+        {row("Cash to close", `$${Math.round(s.estimatedCashToClose).toLocaleString()}`)}
         {row("Construction you fund (outside loan)", `$${Math.round(s.constructionOutsideLoan).toLocaleString()}`)}
         {row("Loan amount", `$${Math.round(s.loanAmount).toLocaleString()}`)}
         {row("Net profit", `$${Math.round(s.projectedNetProfit).toLocaleString()}`, s.projectedNetProfit > 0 ? "var(--ok)" : "var(--danger)")}
@@ -834,7 +844,7 @@ function Legend({ items }: { items: { color: string; label: string; value: strin
       {items.map((it) => (
         <div key={it.label} className="kv">
           <span className="row">
-            <i className="repdot" style={{ background: it.color, borderRadius: 3 }} />
+            <i style={{ width: 10, height: 10, borderRadius: 3, background: it.color, flex: "0 0 auto" }} />
             {it.label}
           </span>
           <b>{it.value}</b>
@@ -945,7 +955,7 @@ function PriceMeter({ grade }: { grade: Grade }) {
           return (
             <div key={b} style={{ flex: 1, textAlign: "center" }}>
               <div style={{ height: 8, borderRadius: 4, background: active ? c : "var(--sunken)" }} />
-              <div className="sub" style={{ marginTop: 4, fontWeight: active ? 800 : 600, color: active ? c : undefined }}>{b}</div>
+              <div style={{ fontSize: 10.5, marginTop: 4, fontWeight: active ? 800 : 600, color: active ? c : "var(--muted)" }}>{b}</div>
             </div>
           );
         })}

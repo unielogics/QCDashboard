@@ -5,36 +5,28 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { useAiAgent, type StepState } from "@/hooks/useAiAgents";
+import { Card, CellChip, cx } from "@/components/ds";
 import { Btn, BuilderStepProvider } from "./ui";
 import { STEP_DEFS, StepPanel } from "./steps";
 
 type SaveFn = () => Promise<void>;
 
 function StateDot({ state }: { state: StepState }) {
-  const { t } = useTheme();
   const color =
-    state === "done" ? t.profit : state === "attention" ? t.warn : t.lineStrong;
-  return (
-    <span
-      style={{
-        width: 10,
-        height: 10,
-        borderRadius: 999,
-        background: color,
-        flexShrink: 0,
-      }}
-    />
-  );
+    state === "done"
+      ? "var(--ok)"
+      : state === "attention"
+        ? "var(--warn)"
+        : "var(--line2)";
+  // Data-derived colour on a class that owns the geometry.
+  return <span className="repdot" style={{ background: color }} />;
 }
 
 export default function AiAgentBuilderPage() {
-  const { t } = useTheme();
   const params = useParams();
   const router = useRouter();
   const { data: me, isLoading: meLoading } = useCurrentUser();
@@ -88,8 +80,8 @@ export default function AiAgentBuilderPage() {
 
   if (meLoading) {
     return (
-      <Card pad={20}>
-        <span style={{ color: t.ink3, fontSize: 13 }}>Loading…</span>
+      <Card>
+        <span className="sub">Loading…</span>
       </Card>
     );
   }
@@ -97,30 +89,28 @@ export default function AiAgentBuilderPage() {
 
   if (!id) {
     return (
-      <Card pad={20}>
-        <span style={{ color: t.ink3, fontSize: 13 }}>Invalid AI Agent link.</span>
+      <Card>
+        <span className="sub">Invalid AI Agent link.</span>
       </Card>
     );
   }
 
   if (isLoading) {
     return (
-      <Card pad={20}>
-        <span style={{ color: t.ink3, fontSize: 13 }}>Loading AI Agent…</span>
+      <Card>
+        <span className="sub">Loading AI Agent…</span>
       </Card>
     );
   }
 
   if (isError || !agent) {
     return (
-      <Card pad={22}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: t.ink }}>
-          Couldn&apos;t load this AI Agent.
-        </div>
-        <p style={{ fontSize: 13, color: t.ink3, margin: "6px 0 14px" }}>
+      <Card>
+        <b>Couldn&apos;t load this AI Agent.</b>
+        <p className="sub">
           It may have been removed, or the connection dropped.
         </p>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div className="row mt">
           <Btn variant="primary" onClick={() => refetch()}>
             Retry
           </Btn>
@@ -133,59 +123,47 @@ export default function AiAgentBuilderPage() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+    <>
+      <div className="hd">
         <Link
           href="/ai-agents"
-          style={{ color: t.ink3, display: "inline-flex", alignItems: "center" }}
+          aria-label="Back to AI Agents"
+          // A bare back-chevron on the title baseline — no class owns it.
+          style={{ color: "var(--muted)", display: "inline-flex", alignItems: "center" }}
         >
           <Icon name="arrowL" size={16} />
         </Link>
-        <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, color: t.ink }}>
-          {agent.name}
-        </h1>
-        <Pill
-          color={agent.status === "active" ? t.profit : t.ink3}
-          bg={agent.status === "active" ? t.profitBg : t.chip}
-        >
+        <h1>{agent.name}</h1>
+        <CellChip tone={agent.status === "active" ? "ok" : "mut"}>
           {agent.status.replace(/_/g, " ")}
-        </Pill>
+        </CellChip>
       </div>
 
-      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+      <div className="cg mt">
         {/* Step rail */}
-        <Card pad={10} style={{ width: 240, flexShrink: 0 }}>
+        <Card className="s3">
           {STEP_DEFS.map((step, i) => {
             const state = (agent.steps?.[step.key] ?? "missing") as StepState;
             const selected = active === step.key;
             return (
               <button
                 key={step.key}
+                type="button"
                 onClick={() => void goTo(step.key, { save: true })}
                 disabled={advancing}
+                className={cx("pick", selected && "on")}
+                // .pick is authored for a <div>; a <button> needs these three
+                // back. `cursor` is only claimed while a save is in flight —
+                // otherwise .pick owns it.
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
                   width: "100%",
-                  padding: "9px 10px",
-                  borderRadius: 9,
-                  border: "none",
-                  cursor: advancing ? "wait" : "pointer",
                   fontFamily: "inherit",
                   textAlign: "left",
-                  background: selected ? t.surface2 : "transparent",
-                  color: t.ink,
+                  ...(advancing ? { cursor: "wait" } : {}),
                 }}
               >
                 <StateDot state={state} />
-                <span
-                  style={{
-                    fontSize: 12.5,
-                    fontWeight: selected ? 800 : 600,
-                    color: selected ? t.ink : t.ink2,
-                  }}
-                >
+                <span>
                   {i + 1}. {step.label}
                 </span>
               </button>
@@ -194,46 +172,37 @@ export default function AiAgentBuilderPage() {
         </Card>
 
         {/* Active panel + step footer */}
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-          <Card pad={22}>
+        <div className="s9 grid">
+          <Card>
             <BuilderStepProvider saveHandlerRef={saveHandlerRef}>
               <StepPanel stepKey={active} agent={agent} />
             </BuilderStepProvider>
           </Card>
 
           {/* Wizard footer — present on every step */}
-          <Card pad={14}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 10,
-                flexWrap: "wrap",
-              }}
-            >
-              <div style={{ fontSize: 12.5, color: t.ink3, fontWeight: 600 }}>
+          <Card>
+            <div className="pagebar">
+              <span className="sub">
                 Step {activeIdx + 1} of {STEP_DEFS.length}
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <Btn onClick={onPrev} disabled={isFirst || advancing}>
-                  <Icon name="arrowL" size={13} /> Previous
+              </span>
+              <span className="spacer" />
+              <Btn onClick={onPrev} disabled={isFirst || advancing}>
+                <Icon name="arrowL" size={13} /> Previous
+              </Btn>
+              {!isLast && (
+                <Btn
+                  variant="primary"
+                  onClick={onSaveNext}
+                  disabled={advancing}
+                >
+                  {advancing ? "Saving…" : "Save & next"}{" "}
+                  <Icon name="arrowR" size={13} />
                 </Btn>
-                {!isLast && (
-                  <Btn
-                    variant="primary"
-                    onClick={onSaveNext}
-                    disabled={advancing}
-                  >
-                    {advancing ? "Saving…" : "Save & next"}{" "}
-                    <Icon name="arrowR" size={13} />
-                  </Btn>
-                )}
-              </div>
+              )}
             </div>
           </Card>
         </div>
       </div>
-    </div>
+    </>
   );
 }

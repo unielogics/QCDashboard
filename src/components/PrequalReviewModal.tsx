@@ -6,25 +6,47 @@
 //
 // Layout:
 //   ┌──── Header (property, borrower, status) ────────────┐
-//   │  Left column           │   Right column            │
-//   │  - Borrower submission │  - Approval fields        │
-//   │  - Calculator scenario │    (purchase, loan, LTV,  │
-//   │    (product-aware)     │     LLC, expiration days, │
-//   │                        │     underwriter notes)    │
-//   │                        │  - Approve / Reject       │
+//   │  Form column           │   Preview column          │
+//   │  - Offer numbers       │  - Live letter preview    │
+//   │  - Calculator scenario │    (mirrors the PDF)      │
+//   │  - SOW / ARV (F&F)     │                           │
+//   │  - Letter terms        │                           │
+//   │  - Borrower submission │                           │
 //   └─────────────────────────────────────────────────────┘
 //
 // Calculator output is saved to approved_scenario (JSONB on the request)
 // so the PDF and the spawned-on-acceptance Loan can both read from it
 // without the underwriter retyping.
+//
+// ── Why this is NOT a ds/Drawer ────────────────────────────────────────
+// Drawer is a centred dialog: min(1040px, 92vw) wide, capped at 86vh, with
+// a scrim over the whole viewport. This surface is deliberately none of
+// those things — it is a full-height panel whose LEFT inset tracks the live
+// sidebar width (68 / 232) so the operator keeps their navigation context
+// while reviewing, per #facelift, and it carries no scrim at all. Drawer
+// cannot express that geometry, so the overlay stays bespoke and is only
+// restyled. Escape-to-close is kept here explicitly; there was never a
+// backdrop, a scroll lock or a focus restore on this surface to lose.
 
 import { useEffect, useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { useUI } from "@/store/ui";
-import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { qcBtn, qcBtnDanger } from "@/components/design-system/buttons";
 import { QC_FMT } from "@/components/design-system/tokens";
+import {
+  Btn,
+  CellChip,
+  CG,
+  Field,
+  IconBtn,
+  Input,
+  Linky,
+  Note,
+  Panel,
+  Textarea,
+  WarnLine,
+  type ChipTone,
+} from "@/components/ds";
 import {
   useApprovePrequalRequest,
   useRejectPrequalRequest,
@@ -98,7 +120,6 @@ function computeBridge(loan: number, i: BridgeInputs): BridgeOutputs {
 }
 
 export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Props) {
-  const { t } = useTheme();
   // Read sidebar state so the panel can start just to the right of it
   // instead of covering the global nav (per #facelift — the modal is a
   // "full experience" but the operator should still see their context).
@@ -384,580 +405,414 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
       role="dialog"
       aria-modal="true"
       aria-label="Review pre-qualification request"
+      // Bespoke geometry, kept inline on purpose: the left inset is bound to
+      // the live sidebar width so the operator keeps their nav context, and
+      // no class in the sheet describes a sidebar-anchored full-height panel.
       style={{
         position: "fixed",
-        // Leave the global sidebar visible — the operator should keep
-        // their navigation context. Below the topbar we still cover
-        // (the topbar lives in a separate column above main content).
         top: 0,
         right: 0,
         bottom: 0,
         left: sidebarOffset,
-        background: t.bg,
+        background: "var(--bg)",
         zIndex: 200,
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
-        boxShadow: `-12px 0 32px ${t.shadowLg ? "" : ""}rgba(6,7,11,0.18)`,
+        boxShadow: "-12px 0 32px rgba(6,7,11,0.18)",
       }}
     >
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          background: t.bg,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
-        {/* Header — full-bleed title row with prominent X */}
-        <div style={{
-          flex: "0 0 auto",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 16,
-          padding: "20px 32px",
-          borderBottom: `1px solid ${t.line}`,
-          background: t.surface,
-        }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{
-                fontSize: 10.5,
-                fontWeight: 800,
-                letterSpacing: 1.6,
-                textTransform: "uppercase",
-                color: t.petrol,
-                padding: "3px 8px",
-                background: t.petrolSoft,
-                borderRadius: 6,
-              }}>
-                {programLabel}
-              </span>
-              {request.quote_number ? (
-                <span style={{
-                  fontSize: 12,
-                  fontWeight: 800,
-                  color: t.ink2,
-                  fontFeatureSettings: '"tnum"',
-                  letterSpacing: 0.3,
-                }}>
-                  {request.quote_number}
-                </span>
-              ) : null}
-              {(request.version_num ?? 1) > 1 ? (
-                <span style={{
-                  fontSize: 10.5,
-                  fontWeight: 800,
-                  color: t.petrol,
-                  background: t.petrolSoft,
-                  padding: "3px 8px",
-                  borderRadius: 6,
-                  letterSpacing: 0.4,
-                }}>
-                  Updated · v{request.version_num}
-                </span>
-              ) : null}
-              {isSuperseded ? (
-                <span style={{
-                  fontSize: 10.5,
-                  fontWeight: 800,
-                  color: t.warn,
-                  background: t.warnBg,
-                  padding: "3px 8px",
-                  borderRadius: 6,
-                  letterSpacing: 0.4,
-                }}>
-                  Superseded
-                </span>
-              ) : null}
-            </div>
-            <div style={{
-              fontSize: 22,
-              fontWeight: 800,
-              color: t.ink,
-              marginTop: 6,
-              letterSpacing: -0.3,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}>
-              {request.target_property_address}
-            </div>
-            <div style={{ fontSize: 12, color: t.ink3, marginTop: 4 }}>
-              {request.borrower_entity ? <span>Issued to <strong style={{ color: t.ink2 }}>{request.borrower_entity}</strong></span> : <span style={{ fontStyle: "italic" }}>Entity TBD</span>}
-              {borrowerFico ? <span>{" · "}FICO <strong style={{ color: t.ink2 }}>{borrowerFico}</strong></span> : null}
-              {request.expected_closing_date ? <span>{" · "}Closing <strong style={{ color: t.ink2 }}>{new Date(request.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</strong></span> : null}
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            title="Close (Esc)"
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              width: 44,
-              height: 44,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 10,
-              color: t.ink2,
-              border: `1px solid ${t.line}`,
-              flexShrink: 0,
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = t.surface2; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
-          >
-            <Icon name="x" size={20} />
-          </button>
-        </div>
-
-        {/* Body — form stack on the left, live letter preview on the right.
-            Single-column form per #facelift (the previous 2-col internal
-            split made fields feel cramped); preview pane mirrors the actual
-            PDF and updates as the operator types. */}
-        <div style={{
-          flex: "1 1 auto",
-          overflow: "hidden",
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 0.9fr)",
-          alignItems: "stretch",
-        }}>
-          {/* ── FORM COLUMN: offer numbers → calculator → SOW (F&F) → letter terms → context ── */}
-          <div style={{
-            overflowY: "auto",
-            padding: "22px 28px 22px 32px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 14,
-            minWidth: 0,
-          }}>
-            {/* Offer numbers — primary action; previously "Approval values" */}
-            <Card pad={16}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 10 }}>
-                Offer numbers
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <Field
-                  t={t}
-                  label={isFixFlip ? "Approved BRV (purchase price)" : "Approved purchase price"}
-                  value={purchaseText}
-                  onChange={setPurchaseText}
-                />
-                <Field t={t} label="Approved loan amount" value={loanText} onChange={setLoanText} />
-              </div>
-              <div style={{ marginTop: 10 }}>
-                <Pill bg={ltvOverCap ? t.dangerBg : t.profitBg} color={ltvOverCap ? t.danger : t.profit}>
-                  {isFixFlip ? (
-                    arvNumLive > 0
-                      ? <>
-                          LTARV {(ltv * 100).toFixed(1)}% (loan ÷ ARV) ·{" "}
-                          {ltvOverCap
-                            ? `over ${Math.round(cap * 100)}% cap — lower the loan amount`
-                            : `within ${Math.round(cap * 100)}% cap — OK to approve`}
-                        </>
-                      : <>Add an ARV in the Scope of Work card to compute LTARV</>
-                  ) : (
-                    <>
-                      LTV {(ltv * 100).toFixed(1)}% ·{" "}
-                      {ltvOverCap
-                        ? `over ${Math.round(cap * 100)}% cap — lower the loan amount`
-                        : `within ${Math.round(cap * 100)}% cap — OK to approve`}
-                    </>
-                  )}
-                </Pill>
-              </div>
-            </Card>
-
-            {/* Calculator scenario — product-aware */}
-            <Card pad={16}>
-              <div style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 8,
-              }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
-                  Calculator scenario
-                </div>
-                <Pill bg={t.brandSoft} color={t.brand}>
-                  Saves to letter & loan
-                </Pill>
-              </div>
-              <div style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.45, marginBottom: 10 }}>
-                These numbers ride along with the approval. The borrower never
-                sees them on the PDF, but they pre-fill the Loan when the seller
-                accepts the offer.
-              </div>
-
-              {isDscrLike(request.loan_type) ? (
-                <DscrCalc
-                  t={t}
-                  loanNum={loanNum}
-                  rate={calcRate} setRate={setCalcRate}
-                  term={calcTerm} setTerm={setCalcTerm}
-                  rent={calcRent} setRent={setCalcRent}
-                  taxes={calcTaxes} setTaxes={setCalcTaxes}
-                  insurance={calcInsurance} setInsurance={setCalcInsurance}
-                  hoa={calcHoa} setHoa={setCalcHoa}
-                />
-              ) : (
-                <BridgeCalc
-                  t={t}
-                  loanNum={loanNum}
-                  rate={calcRate} setRate={setCalcRate}
-                  term={calcTerm} setTerm={setCalcTerm}
-                  points={calcPoints} setPoints={setCalcPoints}
-                />
-              )}
-            </Card>
-
-            {/* F&F-specific — Scope of Work + ARV admin overrides */}
-            {request.loan_type === "fix_flip" ? (
-              <Card pad={16}>
-                <div style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  marginBottom: 8,
-                }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
-                    Scope of work · ARV
-                  </div>
-                  <Pill bg={t.brandSoft} color={t.brand}>
-                    Hidden from PDF
-                  </Pill>
-                </div>
-                <div style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.45, marginBottom: 12 }}>
-                  Borrower-submitted SOW + ARV. Edit any field; the saved
-                  approval row updates accordingly. Total construction is
-                  re-derived from the line items unless you override it
-                  explicitly via the standalone field below.
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8, marginBottom: 14 }}>
-                  <Field
-                    t={t}
-                    label="Estimated ARV (After Repair Value)"
-                    value={arvText}
-                    onChange={setArvText}
-                  />
-                </div>
-                <PrequalSowEditor items={sowItems} onChange={setSowItems} />
-                {(() => {
-                  const arvNum = Number(arvText.replace(/[^0-9.]/g, "")) || 0;
-                  const total = sowItems.reduce(
-                    (s, it) => s + (Number(it.total_usd) || 0), 0
-                  );
-                  const allInBasis = purchaseNum + total;
-                  const ltarv = arvNum > 0 ? allInBasis / arvNum : 0;
-                  const overCap = ltarv > FF_LTARV_CAP + 1e-6;
-                  if (arvNum <= 0 || allInBasis <= 0) return null;
-                  return (
-                    <div style={{ marginTop: 12 }}>
-                      <Pill
-                        bg={overCap ? t.dangerBg : t.profitBg}
-                        color={overCap ? t.danger : t.profit}
-                      >
-                        All-in {QC_FMT.usd(allInBasis, 0)} ÷ ARV {QC_FMT.usd(arvNum, 0)} = {(ltarv * 100).toFixed(1)}% ·{" "}
-                        {overCap
-                          ? `over ${Math.round(FF_LTARV_CAP * 100)}% project cap`
-                          : `within ${Math.round(FF_LTARV_CAP * 100)}% project cap`}
-                      </Pill>
-                    </div>
-                  );
-                })()}
-              </Card>
+      {/* Header — full-bleed title row with prominent X */}
+      <div style={{
+        flex: "0 0 auto",
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        padding: "20px 32px",
+        borderBottom: "1px solid var(--line)",
+        background: "var(--surface)",
+      }}>
+        <div style={{ minWidth: 0, flex: 1, display: "grid", gap: 4 }}>
+          <div className="row">
+            <CellChip tone="pet">{programLabel}</CellChip>
+            {request.quote_number ? <b className="num">{request.quote_number}</b> : null}
+            {(request.version_num ?? 1) > 1 ? (
+              <CellChip tone="pet">Updated · v{request.version_num}</CellChip>
             ) : null}
+            {isSuperseded ? <CellChip tone="warn">Superseded</CellChip> : null}
+          </div>
+          <h2 style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {request.target_property_address}
+          </h2>
+          <div className="sub">
+            {request.borrower_entity ? <span>Issued to <strong>{request.borrower_entity}</strong></span> : <em>Entity TBD</em>}
+            {borrowerFico ? <span>{" · "}FICO <strong>{borrowerFico}</strong></span> : null}
+            {request.expected_closing_date ? <span>{" · "}Closing <strong>{new Date(request.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</strong></span> : null}
+          </div>
+        </div>
+        <IconBtn onClick={onClose} aria-label="Close" title="Close (Esc)">
+          <Icon name="x" size={20} />
+        </IconBtn>
+      </div>
 
-            {/* Letter terms — LLC, validity, underwriter notes. Renamed
-                from "Letter details" per #facelift section grouping. */}
-            <Card pad={16}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 10 }}>
-                Letter terms
+      {/* Body — form stack on the left, live letter preview on the right.
+          Single-column form per #facelift (the previous 2-col internal
+          split made fields feel cramped); preview pane mirrors the actual
+          PDF and updates as the operator types. */}
+      <div style={{
+        flex: "1 1 auto",
+        overflow: "hidden",
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 0.9fr)",
+        alignItems: "stretch",
+      }}>
+        {/* ── FORM COLUMN: offer numbers → calculator → SOW (F&F) → letter terms → context ──
+            Grid rather than flex-column: `.panel` sets overflow:hidden, which
+            zeroes a flex item's automatic minimum size — as flex children the
+            panels would shrink and CLIP their own forms inside this scroller. */}
+        <div style={{
+          overflowY: "auto",
+          padding: "22px 28px 22px 32px",
+          display: "grid",
+          gap: 14,
+          alignContent: "start",
+          minWidth: 0,
+        }}>
+          {/* Offer numbers — primary action; previously "Approval values" */}
+          <Panel title="Offer numbers">
+            <CG>
+              <NumField
+                className="s6"
+                label={isFixFlip ? "Approved BRV (purchase price)" : "Approved purchase price"}
+                value={purchaseText}
+                onChange={setPurchaseText}
+              />
+              <NumField className="s6" label="Approved loan amount" value={loanText} onChange={setLoanText} />
+            </CG>
+            <div className="mt">
+              <CellChip tone={ltvOverCap ? "bad" : "ok"}>
+                {isFixFlip ? (
+                  arvNumLive > 0
+                    ? <>
+                        LTARV {(ltv * 100).toFixed(1)}% (loan ÷ ARV) ·{" "}
+                        {ltvOverCap
+                          ? `over ${Math.round(cap * 100)}% cap — lower the loan amount`
+                          : `within ${Math.round(cap * 100)}% cap — OK to approve`}
+                      </>
+                    : <>Add an ARV in the Scope of Work card to compute LTARV</>
+                ) : (
+                  <>
+                    LTV {(ltv * 100).toFixed(1)}% ·{" "}
+                    {ltvOverCap
+                      ? `over ${Math.round(cap * 100)}% cap — lower the loan amount`
+                      : `within ${Math.round(cap * 100)}% cap — OK to approve`}
+                  </>
+                )}
+              </CellChip>
+            </div>
+          </Panel>
+
+          {/* Calculator scenario — product-aware */}
+          <Panel
+            title="Calculator scenario"
+            actions={<CellChip tone="acc">Saves to letter &amp; loan</CellChip>}
+          >
+            <div className="sub">
+              These numbers ride along with the approval. The borrower never
+              sees them on the PDF, but they pre-fill the Loan when the seller
+              accepts the offer.
+            </div>
+
+            {isDscrLike(request.loan_type) ? (
+              <DscrCalc
+                loanNum={loanNum}
+                rate={calcRate} setRate={setCalcRate}
+                term={calcTerm} setTerm={setCalcTerm}
+                rent={calcRent} setRent={setCalcRent}
+                taxes={calcTaxes} setTaxes={setCalcTaxes}
+                insurance={calcInsurance} setInsurance={setCalcInsurance}
+                hoa={calcHoa} setHoa={setCalcHoa}
+              />
+            ) : (
+              <BridgeCalc
+                loanNum={loanNum}
+                rate={calcRate} setRate={setCalcRate}
+                term={calcTerm} setTerm={setCalcTerm}
+                points={calcPoints} setPoints={setCalcPoints}
+              />
+            )}
+          </Panel>
+
+          {/* F&F-specific — Scope of Work + ARV admin overrides */}
+          {request.loan_type === "fix_flip" ? (
+            <Panel
+              title="Scope of work · ARV"
+              actions={<CellChip tone="acc">Hidden from PDF</CellChip>}
+            >
+              <div className="sub">
+                Borrower-submitted SOW + ARV. Edit any field; the saved
+                approval row updates accordingly. Total construction is
+                re-derived from the line items unless you override it
+                explicitly via the standalone field below.
               </div>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-                  <span style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
-                    LLC / entity name
-                  </span>
-                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11.5, color: t.ink2 }}>
-                    <input
-                      type="checkbox"
-                      checked={entityTBD}
-                      onChange={(e) => setEntityTBD(e.target.checked)}
-                      style={{ accentColor: t.brand }}
-                    />
-                    TBD — issue to individual name
-                  </label>
-                </div>
-                {!entityTBD ? (
+              <NumField
+                className="mt"
+                label="Estimated ARV (After Repair Value)"
+                value={arvText}
+                onChange={setArvText}
+              />
+              <div className="mt">
+                <PrequalSowEditor items={sowItems} onChange={setSowItems} />
+              </div>
+              {(() => {
+                const arvNum = Number(arvText.replace(/[^0-9.]/g, "")) || 0;
+                const total = sowItems.reduce(
+                  (s, it) => s + (Number(it.total_usd) || 0), 0
+                );
+                const allInBasis = purchaseNum + total;
+                const ltarv = arvNum > 0 ? allInBasis / arvNum : 0;
+                const overCap = ltarv > FF_LTARV_CAP + 1e-6;
+                if (arvNum <= 0 || allInBasis <= 0) return null;
+                return (
+                  <div className="mt">
+                    <CellChip tone={overCap ? "bad" : "ok"}>
+                      All-in {QC_FMT.usd(allInBasis, 0)} ÷ ARV {QC_FMT.usd(arvNum, 0)} = {(ltarv * 100).toFixed(1)}% ·{" "}
+                      {overCap
+                        ? `over ${Math.round(FF_LTARV_CAP * 100)}% project cap`
+                        : `within ${Math.round(FF_LTARV_CAP * 100)}% project cap`}
+                    </CellChip>
+                  </div>
+                );
+              })()}
+            </Panel>
+          ) : null}
+
+          {/* Letter terms — LLC, validity, underwriter notes. Renamed
+              from "Letter details" per #facelift section grouping. */}
+          <Panel title="Letter terms">
+            <div>
+              <div className="row">
+                <span className="lbl">LLC / entity name</span>
+                <span className="sp" />
+                <label className="row sub">
                   <input
+                    type="checkbox"
+                    checked={entityTBD}
+                    onChange={(e) => setEntityTBD(e.target.checked)}
+                    style={{ accentColor: "var(--accent)" }}
+                  />
+                  TBD — issue to individual name
+                </label>
+              </div>
+              {!entityTBD ? (
+                <Field className="mt">
+                  <Input
                     type="text"
                     value={entityName}
                     onChange={(e) => setEntityName(e.target.value)}
                     placeholder="e.g. Riverside Holdings LLC"
-                    style={fieldInputStyle(t)}
                   />
-                ) : (
-                  <div style={{
-                    fontSize: 11.5, color: t.ink3, background: t.surface2,
-                    border: `1px dashed ${t.line}`, borderRadius: 9,
-                    padding: "8px 12px", lineHeight: 1.4,
-                  }}>
-                    Letter will be issued to the borrower&apos;s individual legal name.
-                  </div>
-                )}
+                </Field>
+              ) : (
+                <Note>
+                  <span>Letter will be issued to the borrower&apos;s individual legal name.</span>
+                </Note>
+              )}
+            </div>
+
+            <div className="mt">
+              <div className="lbl">Letter validity</div>
+              <div className="row">
+                <Input
+                  value={expirationText}
+                  onChange={(e) => setExpirationText(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
+                  inputMode="numeric"
+                  aria-label="Letter validity in days"
+                  style={{ width: 80 }}
+                />
+                <span className="sub">days from today</span>
+                {num(expirationText) !== DEFAULT_EXPIRATION_DAYS ? (
+                  <Linky onClick={() => setExpirationText(String(DEFAULT_EXPIRATION_DAYS))}>
+                    Reset to 90
+                  </Linky>
+                ) : null}
               </div>
+              <div className="sub">Default 90 days. Capped at 365.</div>
+            </div>
 
-              <div style={{ height: 14 }} />
-
-              <div>
-                <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
-                  Letter validity
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input
-                    value={expirationText}
-                    onChange={(e) => setExpirationText(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
-                    inputMode="numeric"
-                    style={{ ...fieldInputStyle(t), width: 80 }}
-                  />
-                  <span style={{ fontSize: 12, color: t.ink2 }}>days from today</span>
-                  {num(expirationText) !== DEFAULT_EXPIRATION_DAYS ? (
-                    <button
-                      onClick={() => setExpirationText(String(DEFAULT_EXPIRATION_DAYS))}
-                      style={{ all: "unset", cursor: "pointer", fontSize: 11, color: t.petrol, fontWeight: 700 }}
-                    >
-                      Reset to 90
-                    </button>
-                  ) : null}
-                </div>
-                <div style={{ fontSize: 10.5, color: t.ink3, marginTop: 4 }}>
-                  Default 90 days. Capped at 365.
-                </div>
-              </div>
-
-              <div style={{ height: 14 }} />
-
-              <Textarea
-                t={t}
+            <div className="mt">
+              <NotesField
                 label="Underwriter notes (visible to borrower in-app · NEVER on the PDF)"
                 value={notes}
                 onChange={setNotes}
                 placeholder="e.g. Capped at 75% LTV per today's matrix. Call me if you need to discuss."
               />
-            </Card>
-
-            {/* Borrower's submission — context, moved to bottom as reference */}
-            <Card pad={16} style={{ background: t.surface2 }}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 8 }}>
-                Borrower&apos;s submission
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 12.5, color: t.ink2, fontFeatureSettings: '"tnum"' }}>
-                <ReadRow t={t} label="Requested purchase" value={QC_FMT.usd(Number(request.purchase_price), 0)} />
-                <ReadRow t={t} label="Requested loan" value={QC_FMT.usd(Number(request.requested_loan_amount), 0)} />
-                <ReadRow t={t} label="Requested LTV" value={
-                  Number(request.purchase_price) > 0
-                    ? `${((Number(request.requested_loan_amount) / Number(request.purchase_price)) * 100).toFixed(1)}%`
-                    : "—"
-                } />
-                <ReadRow t={t} label="Matrix cap" value={`${Math.round(cap * 100)}% LTV`} />
-                <ReadRow t={t} label="Expected closing" value={
-                  request.expected_closing_date
-                    ? new Date(request.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                    : "—"
-                } />
-                <ReadRow t={t} label="LLC / entity" value={request.borrower_entity ?? "TBD"} />
-                {borrowerFico != null ? (
-                  <ReadRow t={t} label="Borrower FICO" value={String(borrowerFico)} accent={borrowerFico >= 680 ? t.profit : t.warn} />
-                ) : null}
-                <ReadRow t={t} label="Submitted" value={new Date(request.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} />
-              </div>
-              {request.borrower_notes ? (
-                <div style={{ marginTop: 12, padding: "10px 12px", borderLeft: `3px solid ${t.brand}`, background: t.bg, fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
-                  <strong style={{ color: t.ink }}>Borrower notes:</strong> {request.borrower_notes}
-                </div>
-              ) : null}
-            </Card>
-
-          </div>
-
-          {/* ── PREVIEW COLUMN: live letter mock that mirrors the PDF and
-              updates as the operator types. Sits to the right of the form
-              column, scrolls independently, and shows what the borrower
-              will actually receive. */}
-          <div style={{
-            overflowY: "auto",
-            padding: "22px 28px 22px 16px",
-            borderLeft: `1px solid ${t.line}`,
-            background: t.surface2,
-            minWidth: 0,
-          }}>
-            <div style={{
-              fontSize: 10.5,
-              fontWeight: 700,
-              color: t.ink3,
-              letterSpacing: 1.2,
-              textTransform: "uppercase",
-              marginBottom: 10,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}>
-              <span>Live letter preview</span>
-              <span style={{ fontSize: 10, color: t.ink4, textTransform: "none", letterSpacing: 0, fontWeight: 600 }}>
-                Updates as you type
-              </span>
             </div>
-            <LetterPreview
-              t={t}
-              request={request}
-              isFixFlip={isFixFlip}
-              purchase={purchaseNum}
-              loan={loanNum}
-              ltv={ltv}
-              cap={cap}
-              scenario={scenario}
-              entityName={entityTBD ? null : entityName}
-              expirationDays={expirationNum}
-              borrowerFico={borrowerFico ?? null}
-              arvOverride={Number(arvText.replace(/[^0-9.]/g, "")) || null}
-            />
-          </div>
+          </Panel>
+
+          {/* Borrower's submission — context, moved to bottom as reference */}
+          <Panel title={"Borrower’s submission"}>
+            <CG className="num">
+              <ReadRow className="s6" label="Requested purchase" value={QC_FMT.usd(Number(request.purchase_price), 0)} />
+              <ReadRow className="s6" label="Requested loan" value={QC_FMT.usd(Number(request.requested_loan_amount), 0)} />
+              <ReadRow className="s6" label="Requested LTV" value={
+                Number(request.purchase_price) > 0
+                  ? `${((Number(request.requested_loan_amount) / Number(request.purchase_price)) * 100).toFixed(1)}%`
+                  : "—"
+              } />
+              <ReadRow className="s6" label="Matrix cap" value={`${Math.round(cap * 100)}% LTV`} />
+              <ReadRow className="s6" label="Expected closing" value={
+                request.expected_closing_date
+                  ? new Date(request.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                  : "—"
+              } />
+              <ReadRow className="s6" label="LLC / entity" value={request.borrower_entity ?? "TBD"} />
+              {borrowerFico != null ? (
+                <ReadRow className="s6" label="Borrower FICO" value={String(borrowerFico)} tone={borrowerFico >= 680 ? "ok" : "warn"} />
+              ) : null}
+              <ReadRow className="s6" label="Submitted" value={new Date(request.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} />
+            </CG>
+            {request.borrower_notes ? (
+              <Note>
+                <span><b>Borrower notes:</b> {request.borrower_notes}</span>
+              </Note>
+            ) : null}
+          </Panel>
+
         </div>
 
-        {/* ── FOOTER: action bar + status banners. Pinned below the body
-            grid so the primary CTA stays visible no matter how long the
-            form column scrolls. ── */}
+        {/* ── PREVIEW COLUMN: live letter mock that mirrors the PDF and
+            updates as the operator types. Sits to the right of the form
+            column, scrolls independently, and shows what the borrower
+            will actually receive. */}
         <div style={{
-          flex: "0 0 auto",
-          padding: "14px 28px 16px 32px",
-          borderTop: `1px solid ${t.line}`,
-          background: t.surface,
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
+          overflowY: "auto",
+          padding: "22px 28px 22px 16px",
+          borderLeft: "1px solid var(--line)",
+          background: "var(--sunken2)",
+          minWidth: 0,
         }}>
-          {error ? <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill> : null}
+          <div className="row" style={{ marginBottom: 10 }}>
+            <span className="lbl">Live letter preview</span>
+            <span className="sp" />
+            <span className="sub">Updates as you type</span>
+          </div>
+          <LetterPreview
+            request={request}
+            isFixFlip={isFixFlip}
+            purchase={purchaseNum}
+            loan={loanNum}
+            ltv={ltv}
+            cap={cap}
+            scenario={scenario}
+            entityName={entityTBD ? null : entityName}
+            expirationDays={expirationNum}
+            borrowerFico={borrowerFico ?? null}
+            arvOverride={Number(arvText.replace(/[^0-9.]/g, "")) || null}
+          />
+        </div>
+      </div>
 
-          {isSuperseded ? (
-            <div style={{
-              fontSize: 12,
-              color: t.ink2,
-              background: t.warnBg,
-              border: `1px solid ${t.warn}40`,
-              padding: "8px 12px",
-              borderRadius: 8,
-              lineHeight: 1.5,
-            }}>
-              <strong style={{ color: t.warn }}>
-                This version has been superseded.
-              </strong>{" "}
-              A newer Updated Version has been created. Open the latest
-              version from the queue to make further changes — editing
-              this row is disabled to keep the revision chain consistent.
-            </div>
-          ) : null}
+      {/* ── FOOTER: action bar + status banners. Pinned below the body
+          grid so the primary CTA stays visible no matter how long the
+          form column scrolls. ── */}
+      <div style={{
+        flex: "0 0 auto",
+        padding: "14px 28px 16px 32px",
+        borderTop: "1px solid var(--line)",
+        background: "var(--surface)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}>
+        {error ? <WarnLine>{error}</WarnLine> : null}
 
-          {request.status === "approved" && request.pdf_url ? (
-            <div style={{ fontSize: 12, color: t.ink3 }}>
-              Letter already issued.{" "}
-              <a href={request.pdf_url} target="_blank" rel="noopener noreferrer" style={{ color: t.petrol, fontWeight: 700 }}>
-                Open the current PDF →
-              </a>
-              {"  "}Edit any field above and click <em>Save changes &amp; regenerate PDF</em>{" "}
-              to re-issue.
-            </div>
-          ) : null}
-          {request.status === "offer_accepted" ? (
-            <div style={{
-              fontSize: 12,
-              color: t.ink2,
-              background: t.brandSoft,
-              border: `1px solid ${t.brand}30`,
-              padding: "8px 12px",
-              borderRadius: 8,
-              lineHeight: 1.5,
-            }}>
-              <strong style={{ color: t.brand }}>Loan {request.quote_number ?? ""} is already opened.</strong>{" "}
+        {isSuperseded ? (
+          <WarnLine>
+            <strong>This version has been superseded.</strong>{" "}
+            A newer Updated Version has been created. Open the latest
+            version from the queue to make further changes — editing
+            this row is disabled to keep the revision chain consistent.
+          </WarnLine>
+        ) : null}
+
+        {request.status === "approved" && request.pdf_url ? (
+          <div className="sub">
+            Letter already issued.{" "}
+            <a href={request.pdf_url} target="_blank" rel="noopener noreferrer">
+              Open the current PDF →
+            </a>
+            {"  "}Edit any field above and click <em>Save changes &amp; regenerate PDF</em>{" "}
+            to re-issue.
+          </div>
+        ) : null}
+        {request.status === "offer_accepted" ? (
+          <Note>
+            <span>
+              <b>Loan {request.quote_number ?? ""} is already opened.</b>{" "}
               Editing fields here will regenerate the printed letter only — the
               spawned loan record is left untouched. Update the loan file from
               the loans page if you also need to change the underlying deal.
-            </div>
-          ) : null}
-          {request.status === "offer_declined" ? (
-            <div style={{ fontSize: 12, color: t.ink3 }}>
-              Borrower walked away — request is closed and no longer editable.
-              If they come back with the same property, ask them to submit a
-              new pre-qualification.
-            </div>
-          ) : null}
-          {request.status === "rejected" ? (
-            <div style={{ fontSize: 12, color: t.ink3 }}>
-              This request was rejected. Editing isn&apos;t supported — the
-              borrower can submit a new request whenever they&apos;re ready.
-            </div>
-          ) : null}
-
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-            {confirmReject ? (
-              <button
-                onClick={onReject}
-                disabled={reject.isPending}
-                style={{ ...qcBtnPrimary(t), background: t.danger, opacity: reject.isPending ? 0.5 : 1 }}
-              >
-                {reject.isPending ? "Rejecting…" : "Confirm reject"}
-              </button>
-            ) : (
-              <button
-                onClick={() => setConfirmReject(true)}
-                disabled={isSuperseded}
-                style={{
-                  ...qcBtn(t),
-                  color: t.danger,
-                  borderColor: `${t.danger}40`,
-                  opacity: isSuperseded ? 0.4 : 1,
-                  cursor: isSuperseded ? "not-allowed" : "pointer",
-                }}
-              >
-                Reject
-              </button>
-            )}
-
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <button onClick={onClose} style={qcBtn(t)}>Cancel</button>
-              {request.status === "approved" && !isSuperseded ? (
-                <button
-                  onClick={onRevise}
-                  disabled={!canRevise}
-                  title="Spawn a new versioned letter (v2, v3, …) linked to this one. The original PDF is preserved."
-                  style={{
-                    ...qcBtn(t),
-                    borderColor: `${t.petrol}50`,
-                    color: t.petrol,
-                    fontWeight: 700,
-                    opacity: canRevise ? 1 : 0.5,
-                    cursor: canRevise ? "pointer" : "not-allowed",
-                  }}
-                >
-                  {reviseLabel}
-                </button>
-              ) : null}
-              <button
-                onClick={onApprove}
-                disabled={!canApprove}
-                style={{
-                  ...qcBtnPrimary(t),
-                  opacity: canApprove ? 1 : 0.5,
-                  cursor: canApprove ? "pointer" : "not-allowed",
-                }}
-              >
-                {approveLabel}
-              </button>
-            </div>
+            </span>
+          </Note>
+        ) : null}
+        {request.status === "offer_declined" ? (
+          <div className="sub">
+            Borrower walked away — request is closed and no longer editable.
+            If they come back with the same property, ask them to submit a
+            new pre-qualification.
           </div>
+        ) : null}
+        {request.status === "rejected" ? (
+          <div className="sub">
+            This request was rejected. Editing isn&apos;t supported — the
+            borrower can submit a new request whenever they&apos;re ready.
+          </div>
+        ) : null}
+
+        <div className="row">
+          {confirmReject ? (
+            // No danger class exists in the sheet, so the destructive pair
+            // below stays on the inline bridge helpers rather than setting a
+            // colour on top of `.btn` (which would own the same property).
+            <button
+              onClick={onReject}
+              disabled={reject.isPending}
+              style={{ ...qcBtnDanger(), opacity: reject.isPending ? 0.5 : 1 }}
+            >
+              {reject.isPending ? "Rejecting…" : "Confirm reject"}
+            </button>
+          ) : (
+            <button
+              onClick={() => setConfirmReject(true)}
+              disabled={isSuperseded}
+              style={{
+                ...qcBtn(),
+                color: "var(--danger)",
+                borderColor: "rgba(180, 35, 24, 0.28)",
+                opacity: isSuperseded ? 0.4 : 1,
+                cursor: isSuperseded ? "not-allowed" : "pointer",
+              }}
+            >
+              Reject
+            </button>
+          )}
+
+          <span className="sp" />
+
+          <Btn onClick={onClose}>Cancel</Btn>
+          {request.status === "approved" && !isSuperseded ? (
+            <Btn
+              onClick={onRevise}
+              disabled={!canRevise}
+              title="Spawn a new versioned letter (v2, v3, …) linked to this one. The original PDF is preserved."
+            >
+              {reviseLabel}
+            </Btn>
+          ) : null}
+          <Btn variant="pri" onClick={onApprove} disabled={!canApprove}>
+            {approveLabel}
+          </Btn>
         </div>
       </div>
     </div>
@@ -967,10 +822,9 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
 // ── DSCR calculator card ───────────────────────────────────────────────
 
 function DscrCalc({
-  t, loanNum, rate, setRate, term, setTerm, rent, setRent,
+  loanNum, rate, setRate, term, setTerm, rent, setRent,
   taxes, setTaxes, insurance, setInsurance, hoa, setHoa,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   loanNum: number;
   rate: string; setRate: (v: string) => void;
   term: string; setTerm: (v: string) => void;
@@ -992,26 +846,23 @@ function DscrCalc({
 
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-        <Field t={t} label="Note rate %" value={rate} onChange={setRate} />
-        <Field t={t} label="Term (months)" value={term} onChange={setTerm} />
-        <Field t={t} label="Monthly rent" value={rent} onChange={setRent} />
-        <Field t={t} label="Annual taxes" value={taxes} onChange={setTaxes} />
-        <Field t={t} label="Annual insurance" value={insurance} onChange={setInsurance} />
-        <Field t={t} label="Monthly HOA" value={hoa} onChange={setHoa} />
-      </div>
-      <div style={{
-        marginTop: 12, padding: 12, borderRadius: 10, background: t.surface2,
-        display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8,
-      }}>
-        <Output t={t} label="Monthly P&I" value={QC_FMT.usd(out.monthlyPI, 0)} />
-        <Output t={t} label="Monthly NOI" value={QC_FMT.usd(out.noi, 0)} />
-        <Output t={t} label="Monthly OpEx" value={QC_FMT.usd(out.monthlyExpenses, 0)} />
+      {/* .s4 × 6 is a genuine 3-across, and collapses on narrow viewports. */}
+      <CG className="mt">
+        <NumField className="s4" label="Note rate %" value={rate} onChange={setRate} />
+        <NumField className="s4" label="Term (months)" value={term} onChange={setTerm} />
+        <NumField className="s4" label="Monthly rent" value={rent} onChange={setRent} />
+        <NumField className="s4" label="Annual taxes" value={taxes} onChange={setTaxes} />
+        <NumField className="s4" label="Annual insurance" value={insurance} onChange={setInsurance} />
+        <NumField className="s4" label="Monthly HOA" value={hoa} onChange={setHoa} />
+      </CG>
+      <div className="kpis mt">
+        <Output label="Monthly P&I" value={QC_FMT.usd(out.monthlyPI, 0)} />
+        <Output label="Monthly NOI" value={QC_FMT.usd(out.noi, 0)} />
+        <Output label="Monthly OpEx" value={QC_FMT.usd(out.monthlyExpenses, 0)} />
         <Output
-          t={t}
           label="DSCR"
           value={out.dscr ? out.dscr.toFixed(2) : "—"}
-          accent={dscrOk ? t.profit : t.danger}
+          tone={dscrOk ? "ok" : "bad"}
         />
       </div>
     </>
@@ -1021,9 +872,8 @@ function DscrCalc({
 // ── Bridge calculator card ─────────────────────────────────────────────
 
 function BridgeCalc({
-  t, loanNum, rate, setRate, term, setTerm, points, setPoints,
+  loanNum, rate, setRate, term, setTerm, points, setPoints,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   loanNum: number;
   rate: string; setRate: (v: string) => void;
   term: string; setTerm: (v: string) => void;
@@ -1037,18 +887,15 @@ function BridgeCalc({
   });
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-        <Field t={t} label="Note rate %" value={rate} onChange={setRate} />
-        <Field t={t} label="Term (months)" value={term} onChange={setTerm} />
-        <Field t={t} label="Origination points %" value={points} onChange={setPoints} />
-      </div>
-      <div style={{
-        marginTop: 12, padding: 12, borderRadius: 10, background: t.surface2,
-        display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8,
-      }}>
-        <Output t={t} label="Monthly interest" value={QC_FMT.usd(out.monthlyInterest, 0)} />
-        <Output t={t} label="Origination fee" value={QC_FMT.usd(out.totalPoints, 0)} />
-        <Output t={t} label="Interest reserve" value={QC_FMT.usd(out.interestReserve, 0)} />
+      <CG className="mt">
+        <NumField className="s4" label="Note rate %" value={rate} onChange={setRate} />
+        <NumField className="s4" label="Term (months)" value={term} onChange={setTerm} />
+        <NumField className="s4" label="Origination points %" value={points} onChange={setPoints} />
+      </CG>
+      <div className="kpis mt">
+        <Output label="Monthly interest" value={QC_FMT.usd(out.monthlyInterest, 0)} />
+        <Output label="Origination fee" value={QC_FMT.usd(out.totalPoints, 0)} />
+        <Output label="Interest reserve" value={QC_FMT.usd(out.interestReserve, 0)} />
       </div>
     </>
   );
@@ -1056,65 +903,45 @@ function BridgeCalc({
 
 // ── Reusable cells ─────────────────────────────────────────────────────
 
-function ReadRow({ t, label, value, accent }: { t: ReturnType<typeof useTheme>["t"]; label: string; value: string; accent?: string; }) {
+function ReadRow({ label, value, tone, className }: { label: string; value: string; tone?: ChipTone; className?: string; }) {
   return (
-    <div>
-      <div style={{ fontSize: 10, fontWeight: 700, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase" }}>{label}</div>
-      <div style={{ fontSize: 13, fontWeight: 700, color: accent ?? t.ink, marginTop: 3 }}>{value}</div>
+    <div className={className}>
+      <div className="lbl">{label}</div>
+      {tone ? <CellChip tone={tone}>{value}</CellChip> : <b>{value}</b>}
     </div>
   );
 }
 
-function fieldInputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 9,
-    background: t.surface2,
-    border: `1px solid ${t.line}`,
-    color: t.ink,
-    fontSize: 13,
-    fontFamily: "inherit",
-    fontFeatureSettings: '"tnum"',
-    outline: "none",
-    boxSizing: "border-box",
-  };
+/** Numeric text field — `.lbl` + `.field`, stacked by the ds Field grid. */
+function NumField({ label, value, onChange, className }: { label: string; value: string; onChange: (v: string) => void; className?: string; }) {
+  return (
+    <Field label={label} className={className}>
+      <Input value={value} onChange={(e) => onChange(e.target.value)} inputMode="decimal" />
+    </Field>
+  );
 }
 
-function Field({ t, label, value, onChange }: { t: ReturnType<typeof useTheme>["t"]; label: string; value: string; onChange: (v: string) => void; }) {
+function Output({ label, value, tone }: { label: string; value: string; tone?: ChipTone; }) {
   return (
-    <div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
-        {label}
-      </div>
-      <input value={value} onChange={(e) => onChange(e.target.value)} inputMode="decimal" style={fieldInputStyle(t)} />
+    <div className="kpi">
+      <div className="lbl">{label}</div>
+      {tone ? <CellChip tone={tone}>{value}</CellChip> : <b className="num">{value}</b>}
     </div>
   );
 }
 
-function Output({ t, label, value, accent }: { t: ReturnType<typeof useTheme>["t"]; label: string; value: string; accent?: string; }) {
+function NotesField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; }) {
   return (
-    <div>
-      <div style={{ fontSize: 10, fontWeight: 700, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase" }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 800, color: accent ?? t.ink, marginTop: 3, fontFeatureSettings: '"tnum"' }}>{value}</div>
-    </div>
-  );
-}
-
-function Textarea({ t, label, value, onChange, placeholder }: { t: ReturnType<typeof useTheme>["t"]; label: string; value: string; onChange: (v: string) => void; placeholder?: string; }) {
-  return (
-    <div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
-        {label}
-      </div>
-      <textarea
+    <Field label={label}>
+      <Textarea
         value={value}
         onChange={(e) => onChange(e.target.value.slice(0, 1000))}
         placeholder={placeholder}
         rows={3}
-        style={{ ...fieldInputStyle(t), resize: "vertical", minHeight: 70 }}
+        // `.field` owns padding/border/type; resize + floor are unowned.
+        style={{ resize: "vertical", minHeight: 70 }}
       />
-    </div>
+    </Field>
   );
 }
 
@@ -1126,8 +953,15 @@ function Textarea({ t, label, value, onChange, placeholder }: { t: ReturnType<ty
 // goal is "looks like the letter", not "byte-identical." On save the
 // server-side WeasyPrint render still produces the canonical PDF and
 // replaces what's shown here on the next refetch.
+//
+// NOTE ON STYLING: everything below stays on inline styles deliberately.
+// This block is a mock of a PRINTED DOCUMENT, not a piece of the app UI —
+// its palette (#0B1F3A navy, #FAF7F1 paper, #fdfbf7 disclaimer) is the
+// WeasyPrint template's, and putting design-system classes on it would
+// make the preview stop looking like the letter it is previewing. The
+// only tokens it borrows are the frame (border/shadow) where it meets the
+// app surface.
 function LetterPreview({
-  t,
   request,
   isFixFlip,
   purchase,
@@ -1140,7 +974,6 @@ function LetterPreview({
   borrowerFico,
   arvOverride,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   request: PrequalRequest;
   isFixFlip: boolean;
   purchase: number;
@@ -1177,12 +1010,12 @@ function LetterPreview({
       background: "#FFFFFF",
       color: "#0B1629",
       borderRadius: 8,
-      border: `1px solid ${t.line}`,
+      border: "1px solid var(--line)",
       padding: 24,
       fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
       fontSize: 11,
       lineHeight: 1.45,
-      boxShadow: t.shadowLg,
+      boxShadow: "var(--sh2)",
     }}>
       {/* Header */}
       <div style={{
@@ -1244,15 +1077,13 @@ function LetterPreview({
       </div>
 
       {/* Section: Transaction summary */}
-      <div style={{ fontSize: 10.5, fontWeight: 800, color: "#0B1F3A", marginBottom: 4, borderBottom: "1px solid rgba(11, 22, 41, 0.10)", paddingBottom: 2 }}>
-        TRANSACTION SUMMARY
-      </div>
+      <PreviewSection>TRANSACTION SUMMARY</PreviewSection>
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12, fontSize: 9.5 }}>
         <tbody>
           <PreviewRow label="Borrower / Entity Name" value={issuedTo} />
           <PreviewRow label="Subject Property Address" value={request.target_property_address} />
-          <PreviewRow label={isRefi ? "Property Value" : isFixFlip ? "Acquisition Price (BRV)" : "Purchase Price"} value={purchase > 0 ? fmtUsd(purchase) : <em style={{ color: "#A2ABBD" }}>—</em>} />
-          <PreviewRow label="Maximum Loan Amount" value={loan > 0 ? fmtUsd(loan) : <em style={{ color: "#A2ABBD" }}>—</em>} />
+          <PreviewRow label={isRefi ? "Property Value" : isFixFlip ? "Acquisition Price (BRV)" : "Purchase Price"} value={purchase > 0 ? fmtUsd(purchase) : <em>—</em>} />
+          <PreviewRow label="Maximum Loan Amount" value={loan > 0 ? fmtUsd(loan) : <em>—</em>} />
           {isFixFlip && arv && arv > 0 ? (
             <PreviewRow label="After-Repair Value (ARV)" value={fmtUsd(arv)} />
           ) : null}
@@ -1275,14 +1106,12 @@ function LetterPreview({
       </table>
 
       {/* Section: Status & conditions */}
-      <div style={{ fontSize: 10.5, fontWeight: 800, color: "#0B1F3A", marginBottom: 4, borderBottom: "1px solid rgba(11, 22, 41, 0.10)", paddingBottom: 2 }}>
-        STATUS &amp; CONDITIONS OF ISSUANCE
-      </div>
+      <PreviewSection>STATUS &amp; CONDITIONS OF ISSUANCE</PreviewSection>
       <ul style={{ paddingLeft: 18, marginTop: 4, marginBottom: 10, fontSize: 9.5 }}>
-        <li style={{ marginBottom: 3 }}>
+        <PreviewLi>
           <strong>Credit Review:</strong> Soft credit inquiry completed{borrowerFico ? <> at FICO <strong>{borrowerFico}</strong></> : null}; meets minimum FICO requirements.
-        </li>
-        <li style={{ marginBottom: 3 }}>
+        </PreviewLi>
+        <PreviewLi>
           {isDscr ? (
             <>
               <strong>Preliminary Cash Flow:</strong> Subject property projected rents meet the minimum
@@ -1301,11 +1130,11 @@ function LetterPreview({
               interest reserve structured to cover the bridge term.
             </>
           )}
-        </li>
-        <li style={{ marginBottom: 3 }}>
+        </PreviewLi>
+        <PreviewLi>
           <strong>Next Steps for Final Approval:</strong> Clear title, acceptable third-party appraisal,
           verification of liquid reserves, entity document review, and final underwriter sign-off.
-        </li>
+        </PreviewLi>
       </ul>
 
       {/* Signature + disclaimer block — compressed for preview */}
@@ -1352,6 +1181,18 @@ function LetterPreview({
       </div>
     </div>
   );
+}
+
+function PreviewSection({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 10.5, fontWeight: 800, color: "#0B1F3A", marginBottom: 4, borderBottom: "1px solid rgba(11, 22, 41, 0.10)", paddingBottom: 2 }}>
+      {children}
+    </div>
+  );
+}
+
+function PreviewLi({ children }: { children: React.ReactNode }) {
+  return <li style={{ marginBottom: 3 }}>{children}</li>;
 }
 
 function PreviewRow({ label, value }: { label: string; value: React.ReactNode }) {

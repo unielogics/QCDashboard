@@ -3,8 +3,21 @@
 // The 11 builder-step panels for an AI Agent.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
+import {
+  Card,
+  CellChip,
+  Input,
+  Note,
+  Panel,
+  Select,
+  StatusLine,
+  Table,
+  Td,
+  Tr,
+  WarnLine,
+  cx,
+  type Col,
+} from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import {
   useAddPastedKnowledge,
@@ -230,7 +243,6 @@ export function GoalPanel({ agent }: PanelProps) {
 // ── Step 3: Knowledge ───────────────────────────────────────────────
 
 export function KnowledgePanel({ agent }: PanelProps) {
-  const { t } = useTheme();
   const { data: links = [] } = useAiAgentKnowledgeLinks(agent.id);
   const { data: library = [] } = useAgentKnowledge();
   const upload = useUploadAgentKnowledge();
@@ -290,45 +302,37 @@ export function KnowledgePanel({ agent }: PanelProps) {
       </Btn>
 
       {/* Paste a note inline — no file needed */}
-      <Card pad={14} style={{ marginTop: 14 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, marginBottom: 8 }}>
-          Or paste a note
-        </div>
-        <div style={{ marginBottom: 8 }}>
+      <Panel className="mt" title="Or paste a note">
+        <div className="grid">
           <TextField
             value={pasteTitle}
             onChange={setPasteTitle}
             placeholder="Title — e.g. My bio, Common objections, Neighbourhood overview"
           />
+          <TextAreaField
+            value={pasteBody}
+            onChange={setPasteBody}
+            rows={5}
+            placeholder="Paste anything the AI should know. The AI will summarize it like an uploaded file."
+          />
+          <div>
+            <Btn
+              onClick={onPaste}
+              disabled={!pasteBody.trim() || pasteKnowledge.isPending || addLink.isPending}
+            >
+              {pasteKnowledge.isPending ? "Adding…" : "Add as knowledge"}
+            </Btn>
+          </div>
         </div>
-        <TextAreaField
-          value={pasteBody}
-          onChange={setPasteBody}
-          rows={5}
-          placeholder="Paste anything the AI should know. The AI will summarize it like an uploaded file."
-        />
-        <div style={{ marginTop: 8 }}>
-          <Btn
-            onClick={onPaste}
-            disabled={!pasteBody.trim() || pasteKnowledge.isPending || addLink.isPending}
-          >
-            {pasteKnowledge.isPending ? "Adding…" : "Add as knowledge"}
-          </Btn>
-        </div>
-      </Card>
+      </Panel>
 
-      <div style={{ fontSize: 12, fontWeight: 800, color: t.ink3, margin: "20px 0 8px", textTransform: "uppercase", letterSpacing: 0.6 }}>
-        Attached to this agent ({links.length})
-      </div>
-      {links.length === 0 && (
-        <div style={{ fontSize: 13, color: t.ink3 }}>Nothing attached yet.</div>
-      )}
-      {links.map((l) => (
-        <Card key={l.id} pad={12} style={{ marginBottom: 8 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: t.ink }}>{l.filename}</div>
-              <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>
+      <Panel className="mt" title={`Attached to this agent (${links.length})`}>
+        {links.length === 0 && <span className="sub">Nothing attached yet.</span>}
+        {links.map((l) => (
+          <div key={l.id} className="filerow">
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <b>{l.filename}</b>
+              <div className="sub">
                 {l.doc_type ?? "document"} · {l.status}
                 {l.summary ? ` — ${l.summary.slice(0, 90)}` : ""}
               </div>
@@ -337,33 +341,28 @@ export function KnowledgePanel({ agent }: PanelProps) {
               Remove
             </Btn>
           </div>
-        </Card>
-      ))}
+        ))}
+      </Panel>
 
       {reusable.length > 0 && (
-        <>
-          <div style={{ fontSize: 12, fontWeight: 800, color: t.ink3, margin: "20px 0 8px", textTransform: "uppercase", letterSpacing: 0.6 }}>
-            Reuse a file you already uploaded
-          </div>
+        <Panel className="mt" title="Reuse a file you already uploaded">
           {reusable.map((d) => (
-            <Card key={d.id} pad={12} style={{ marginBottom: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                <div style={{ fontSize: 13.5, color: t.ink }}>{d.filename}</div>
-                <Btn
-                  onClick={() =>
-                    addLink.mutate({
-                      id: agent.id,
-                      knowledge_document_id: d.id,
-                      attach_to_emails: false,
-                    })
-                  }
-                >
-                  Attach
-                </Btn>
-              </div>
-            </Card>
+            <div key={d.id} className="filerow">
+              <div style={{ flex: 1, minWidth: 0 }}>{d.filename}</div>
+              <Btn
+                onClick={() =>
+                  addLink.mutate({
+                    id: agent.id,
+                    knowledge_document_id: d.id,
+                    attach_to_emails: false,
+                  })
+                }
+              >
+                Attach
+              </Btn>
+            </div>
           ))}
-        </>
+        </Panel>
       )}
     </div>
   );
@@ -377,7 +376,6 @@ const LANGUAGES = ["English", "Spanish", "Portuguese", "Mandarin", "French", "Ot
 const DEAL_TYPES = ["buyer", "seller", "investor", "borrower"];
 
 export function TargetingPanel({ agent }: PanelProps) {
-  const { t } = useTheme();
   const { data: targeting } = useAiAgentTargeting(agent.id);
   const save = useSaveAiAgentTargeting();
   const preview = useAiAgentTargetingPreview();
@@ -490,7 +488,7 @@ export function TargetingPanel({ agent }: PanelProps) {
       {showPipeline && (
         <>
           <FieldRow label="Pipeline — deal type">
-            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+            <div className="row">
               {DEAL_TYPES.map((s) => (
                 <ChipToggle
                   key={s}
@@ -505,8 +503,8 @@ export function TargetingPanel({ agent }: PanelProps) {
             label="Pipeline — operational signals"
             hint="Pick what kind of file this AI agent should pick up."
           >
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: t.ink2 }}>
+            <div>
+              <label className="filerow">
                 <input
                   type="checkbox"
                   checked={newlyAdded}
@@ -514,7 +512,7 @@ export function TargetingPanel({ agent }: PanelProps) {
                 />
                 Newly added (created in the last 14 days)
               </label>
-              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: t.ink2 }}>
+              <label className="filerow">
                 <input
                   type="checkbox"
                   checked={didNotClose}
@@ -522,7 +520,7 @@ export function TargetingPanel({ agent }: PanelProps) {
                 />
                 Did not close (lost / fell through)
               </label>
-              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: t.ink2 }}>
+              <label className="filerow">
                 <input
                   type="checkbox"
                   checked={noAiAssigned}
@@ -536,12 +534,12 @@ export function TargetingPanel({ agent }: PanelProps) {
             label="Pipeline — days in pipeline"
             hint="Only files that have been open at least this long."
           >
-            <input
+            <Input
               type="number"
               min={0}
               value={minDaysInPipeline}
               onChange={(e) => setMinDaysInPipeline(Math.max(0, +e.target.value || 0))}
-              style={{ ...numStyle(t), width: 120 }}
+              style={{ width: 120 }}
             />
           </FieldRow>
         </>
@@ -549,7 +547,7 @@ export function TargetingPanel({ agent }: PanelProps) {
       {showClients && (
         <>
           <FieldRow label="Clients — pipeline stage">
-            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+            <div className="row">
               {STAGES.map((s) => (
                 <ChipToggle
                   key={s}
@@ -561,7 +559,7 @@ export function TargetingPanel({ agent }: PanelProps) {
             </div>
           </FieldRow>
           <FieldRow label="Clients — lead temperature">
-            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+            <div className="row">
               {TEMPS.map((s) => (
                 <ChipToggle
                   key={s}
@@ -573,7 +571,7 @@ export function TargetingPanel({ agent }: PanelProps) {
             </div>
           </FieldRow>
           <FieldRow label="Clients — preferred language">
-            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+            <div className="row">
               {LANGUAGES.map((s) => (
                 <ChipToggle
                   key={s}
@@ -588,18 +586,18 @@ export function TargetingPanel({ agent }: PanelProps) {
             label="Clients — closed deals (proxy for relationship depth)"
             hint="e.g. 1+ for past clients, 0 for never-closed."
           >
-            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: t.ink2 }}>
-                Minimum&nbsp;
-                <input
+            <div className="row">
+              <label className="row">
+                Minimum
+                <Input
                   type="number"
                   min={0}
                   value={minFunded}
                   onChange={(e) => setMinFunded(Math.max(0, +e.target.value || 0))}
-                  style={{ ...numStyle(t), width: 80 }}
+                  style={{ width: 80 }}
                 />
               </label>
-              <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: t.ink2 }}>
+              <label className="row">
                 <input
                   type="checkbox"
                   checked={neverClosed}
@@ -612,12 +610,12 @@ export function TargetingPanel({ agent }: PanelProps) {
         </>
       )}
       <FieldRow label="Avoid overlap with higher-priority work">
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: t.ink2 }}>
+        <div>
+          <label className="filerow">
             <input type="checkbox" checked={skipLoan} onChange={(e) => setSkipLoan(e.target.checked)} />
             Skip anyone with a file in the loan process
           </label>
-          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: t.ink2 }}>
+          <label className="filerow">
             <input type="checkbox" checked={skipOwned} onChange={(e) => setSkipOwned(e.target.checked)} />
             Skip anyone already worked by another AI Agent
           </label>
@@ -633,7 +631,7 @@ export function TargetingPanel({ agent }: PanelProps) {
           ]}
         />
       </FieldRow>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <div className="row mt">
         <Btn onClick={() => preview.mutate(agent.id)} disabled={preview.isPending}>
           Preview matches
         </Btn>
@@ -642,10 +640,10 @@ export function TargetingPanel({ agent }: PanelProps) {
         </Btn>
       </div>
       {preview.data && (
-        <div style={{ marginTop: 14, fontSize: 13, color: t.ink2 }}>
+        <div className="mt">
           <strong>{preview.data.count}</strong> contact(s) match right now
           {preview.data.sample.length > 0 && (
-            <span style={{ color: t.ink3 }}>
+            <span className="sub">
               {" "}
               — {preview.data.sample.map((s) => s.name).slice(0, 6).join(", ")}
               {preview.data.count > 6 ? "…" : ""}
@@ -654,38 +652,41 @@ export function TargetingPanel({ agent }: PanelProps) {
         </div>
       )}
       {runNow.data && (
-        <div style={{ marginTop: 10, fontSize: 13, color: t.profit }}>
+        <StatusLine tone="ok" className="mt">
           Enrolled {runNow.data.enrolled}, retired {runNow.data.retired}.
-        </div>
+        </StatusLine>
       )}
       <AgentLeadList agentId={agent.id} />
     </div>
   );
 }
 
+const LEAD_COLS: Col[] = [{ label: "Contact" }, { label: "Status", align: "r" }];
+
 function AgentLeadList({ agentId }: { agentId: string }) {
-  const { t } = useTheme();
   const { data: leads = [] } = useAiAgentLeads(agentId);
   if (leads.length === 0) return null;
   return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 12, fontWeight: 800, color: t.ink3, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.6 }}>
-        Enrolled contacts ({leads.length})
-      </div>
-      {leads.slice(0, 25).map((l) => (
-        <div key={l.id} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: `1px solid ${t.line}`, fontSize: 13 }}>
-          <span style={{ color: t.ink }}>{l.name}</span>
-          <span style={{ color: t.ink3 }}>{l.status} · {l.attempts_made} sent</span>
-        </div>
-      ))}
-    </div>
+    <Panel className="mt" title={`Enrolled contacts (${leads.length})`} noPad>
+      <Table cols={LEAD_COLS} caption="Contacts enrolled with this agent">
+        {leads.slice(0, 25).map((l) => (
+          <Tr key={l.id}>
+            <Td>{l.name}</Td>
+            <Td align="r">
+              <span className="sub">
+                {l.status} · {l.attempts_made} sent
+              </span>
+            </Td>
+          </Tr>
+        ))}
+      </Table>
+    </Panel>
   );
 }
 
 // ── Step 5: Training Studio ─────────────────────────────────────────
 
 export function TrainingPanel({ agent }: PanelProps) {
-  const { t } = useTheme();
   const trainingQuery = useAiAgentTraining(agent.id);
   const training = trainingQuery.data;
   const turn = usePostTrainingTurn();
@@ -732,64 +733,46 @@ export function TrainingPanel({ agent }: PanelProps) {
         title="Training Studio"
         desc="The AI coach reads everything from the earlier steps and challenges you with 5–10 targeted questions to fill the gaps."
       />
-      <Card pad={14} style={{ maxHeight: 380, overflowY: "auto", marginBottom: 12 }}>
-        {messages.length === 0 && (
-          <div style={{ fontSize: 13, color: t.ink3 }}>
-            {start.isPending
-              ? "Getting your AI coach ready…"
-              : "The coach is about to ask its first question…"}
-          </div>
-        )}
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            style={{
-              marginBottom: 10,
-              display: "flex",
-              justifyContent: m.role === "user" ? "flex-end" : "flex-start",
-            }}
-          >
-            <div
-              style={{
-                maxWidth: "82%",
-                padding: "9px 12px",
-                borderRadius: 12,
-                fontSize: 13.5,
-                lineHeight: 1.5,
-                background: m.role === "user" ? t.ink : t.surface2,
-                color: m.role === "user" ? t.inverse : t.ink,
-                border: m.role === "user" ? "none" : `1px solid ${t.line}`,
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {m.content}
+      <Card>
+        <div className="thr">
+          {messages.length === 0 && (
+            <div className="thr-empty">
+              {start.isPending
+                ? "Getting your AI coach ready…"
+                : "The coach is about to ask its first question…"}
             </div>
-          </div>
-        ))}
+          )}
+          {messages.map((m, i) => (
+            <div
+              key={i}
+              // .msg.mine tints the broker's turn; the coach's turn keeps the
+              // default sunken bubble, which is the contrast the old dark/light
+              // pair carried.
+              className={cx("msg", m.role === "user" && "mine")}
+              // .msg stacks; which side the bubble hangs on is the one thing
+              // the thread sheet leaves to the caller.
+              style={m.role === "user" ? { alignItems: "flex-end" } : undefined}
+            >
+              <div className="msg-b">{m.content}</div>
+            </div>
+          ))}
+        </div>
       </Card>
       {!training?.completed ? (
         <>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
+          <div className="row mt">
+            <Input
+              grow
               value={msg}
               onChange={(e) => setMsg(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
               placeholder="Type your answer…"
-              style={{
-                flex: 1,
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: `1px solid ${t.lineStrong}`,
-                background: t.surface,
-                color: t.ink,
-                fontSize: 14,
-              }}
             />
             <Btn variant="primary" onClick={send} disabled={turn.isPending}>
               {turn.isPending ? "…" : "Send"}
             </Btn>
           </div>
-          <div style={{ marginTop: 12 }}>
+          <div className="mt">
             <Btn
               onClick={() => complete.mutate({ id: agent.id })}
               disabled={complete.isPending || messages.length < 2}
@@ -800,14 +783,16 @@ export function TrainingPanel({ agent }: PanelProps) {
         </>
       ) : (
         <>
-          <Pill color={t.profit} bg={t.profitBg}>Training complete</Pill>
+          <div className="mt">
+            <CellChip tone="ok">Training complete</CellChip>
+          </div>
           {/* Once the chat is done, the broker generates + approves the
               two synthesized artifacts inline — these used to be their
               own Steps 6 & 7 in the rail. */}
-          <div style={{ marginTop: 22, paddingTop: 18, borderTop: `1px solid ${t.line}` }}>
+          <div className="mt" style={{ borderTop: "1px solid var(--line)", paddingTop: 18 }}>
             <PlaybookPanel agent={agent} />
           </div>
-          <div style={{ marginTop: 24, paddingTop: 18, borderTop: `1px solid ${t.line}` }}>
+          <div className="mt" style={{ borderTop: "1px solid var(--line)", paddingTop: 18 }}>
             <ShowingGuidePanel agent={agent} />
           </div>
         </>
@@ -819,17 +804,14 @@ export function TrainingPanel({ agent }: PanelProps) {
 // ── Steps 6 & 7 (now embedded in Training): Playbook + Showing Guide ─
 
 function RenderSynth({ content }: { content: Record<string, unknown> }) {
-  const { t } = useTheme();
   const entries = Object.entries(content ?? {});
   if (entries.length === 0) return null;
   return (
-    <div style={{ marginTop: 14 }}>
+    <div className="grid mt">
       {entries.map(([k, v]) => (
-        <div key={k} style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 800, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>
-            {k.replace(/_/g, " ")}
-          </div>
-          <div style={{ fontSize: 13, color: t.ink2, marginTop: 3, whiteSpace: "pre-wrap" }}>
+        <div key={k}>
+          <div className="lbl">{k.replace(/_/g, " ")}</div>
+          <div style={{ whiteSpace: "pre-wrap" }}>
             {typeof v === "string"
               ? v
               : Array.isArray(v)
@@ -861,7 +843,6 @@ function SynthPanel({
   generating: boolean;
   approving: boolean;
 }) {
-  const { t } = useTheme();
   const synth: AiAgentSynth | undefined = query.data;
   const status = synth?.generation_status ?? "idle";
 
@@ -880,7 +861,7 @@ function SynthPanel({
   return (
     <div>
       <PanelHeader title={title} desc={desc} />
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      <div className="row">
         <Btn variant="primary" onClick={onGenerate} disabled={generating || status === "generating"}>
           {status === "generating" ? "Generating…" : status === "ready" || status === "failed" ? "Regenerate" : "Generate"}
         </Btn>
@@ -890,17 +871,19 @@ function SynthPanel({
           </Btn>
         )}
         {synth?.approval_status === "approved" && (
-          <Pill color={t.profit} bg={t.profitBg}>Approved</Pill>
+          <CellChip tone="ok">Approved</CellChip>
         )}
         {status === "generating" && (
-          <span style={{ fontSize: 12.5, color: t.ink3 }}>
+          <span className="sub">
             The AI is synthesizing this — usually under a minute.
           </span>
         )}
         {status === "failed" && (
-          <span style={{ fontSize: 12.5, color: t.danger }}>
+          // A sentence, and one carrying a server error string of unknown
+          // length — .cellchip would clip it silently inside the panel.
+          <StatusLine tone="bad">
             Generation failed — {synth?.generation_error ?? "try again"}.
-          </span>
+          </StatusLine>
         )}
       </div>
       {synth?.content && <RenderSynth content={synth.content} />}
@@ -957,7 +940,6 @@ export function ShowingGuidePanel({ agent }: PanelProps) {
 //   (2) Set the exit rules — when the AI should give up.
 
 export function FollowupsPanel({ agent }: PanelProps) {
-  const { t } = useTheme();
   const rulesQuery = useAiAgentExitRules(agent.id);
   const saveRules = useSaveExitRules();
   const profilesQuery = useVoiceProfiles();
@@ -1054,33 +1036,13 @@ export function FollowupsPanel({ agent }: PanelProps) {
       />
 
       {/* Voice profile picker */}
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 800,
-          color: t.ink3,
-          margin: "4px 0 8px",
-          textTransform: "uppercase",
-          letterSpacing: 0.6,
-        }}
-      >
-        Voice profile
-      </div>
+      <div className="lbl mt">Voice profile</div>
       {linked ? (
-        <Card pad={14} style={{ marginBottom: 10 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
+        <Card className="mt">
+          <div className="pagebar">
             <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: t.ink }}>
-                {linked.name}
-              </div>
-              <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>
+              <b>{linked.name}</b>
+              <div className="sub">
                 {Object.keys(linked.templates ?? {}).length} template
                 {Object.keys(linked.templates ?? {}).length === 1 ? "" : "s"} ·
                 {" "}
@@ -1088,51 +1050,40 @@ export function FollowupsPanel({ agent }: PanelProps) {
                 {(linked.used_by ?? 1) === 1 ? "" : "s"}
               </div>
             </div>
+            <span className="spacer" />
             <Btn onClick={() => startEdit(linked)}>Edit</Btn>
           </div>
         </Card>
       ) : (
-        <div style={{ fontSize: 13, color: t.ink3, marginBottom: 10 }}>
+        <div className="sub">
           No voice profile linked yet — pick one below, or create your first.
         </div>
       )}
 
       {profiles.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: t.ink3, marginBottom: 6 }}>
-            Use one of your saved profiles:
-          </div>
-          <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+        <div className="mt">
+          <div className="sub">Use one of your saved profiles:</div>
+          <div className="row mt">
             {profiles.map((p) => (
-              <button
+              <ChipToggle
                 key={p.id}
+                label={`${p.name}${p.id === linkedId ? " ✓" : ""}`}
+                active={p.id === linkedId}
                 onClick={() => linkExisting(p.id)}
-                style={{
-                  padding: "7px 12px",
-                  borderRadius: 999,
-                  fontSize: 12.5,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  border: `1px solid ${p.id === linkedId ? t.ink : t.lineStrong}`,
-                  background: p.id === linkedId ? t.ink : t.surface,
-                  color: p.id === linkedId ? t.inverse : t.ink2,
-                }}
-              >
-                {p.name}
-                {p.id === linkedId ? " ✓" : ""}
-              </button>
+              />
             ))}
           </div>
         </div>
       )}
-      <Btn onClick={startCreate}>
-        <Icon name="plus" size={13} /> Create a new voice profile
-      </Btn>
+      <div className="mt">
+        <Btn onClick={startCreate}>
+          <Icon name="plus" size={13} /> Create a new voice profile
+        </Btn>
+      </div>
 
       {/* Editor (create / edit) */}
       {editingId && (
-        <Card pad={16} style={{ marginTop: 14 }}>
+        <Card className="mt">
           <FieldRow
             label="Profile name"
             hint="Name this set so you can reuse it on other AI agents."
@@ -1143,12 +1094,12 @@ export function FollowupsPanel({ agent }: PanelProps) {
               placeholder="e.g. My friendly buyer voice"
             />
           </FieldRow>
-          <div style={{ fontSize: 13, color: t.ink2, margin: "4px 0 12px" }}>
+          <p className="sub mt">
             Fill in <strong>at least 3</strong> of the situations below the way
             you&apos;d actually write them. The AI reads these as your style
             guide — it won&apos;t copy them word-for-word, but it&apos;ll match
             your tone.
-          </div>
+          </p>
           {situations.map((s) => (
             <FieldRow key={s.key} label={s.label} hint={s.hint}>
               <TextAreaField
@@ -1161,7 +1112,7 @@ export function FollowupsPanel({ agent }: PanelProps) {
               />
             </FieldRow>
           ))}
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="row mt">
             <Btn
               variant="primary"
               onClick={saveDraft}
@@ -1201,66 +1152,39 @@ export function FollowupsPanel({ agent }: PanelProps) {
       )}
 
       {/* Exit rules */}
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 800,
-          color: t.ink3,
-          margin: "26px 0 10px",
-          textTransform: "uppercase",
-          letterSpacing: 0.6,
-        }}
-      >
-        When to stop
-      </div>
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-        <label style={{ fontSize: 13, color: t.ink2 }}>
-          <div style={{ marginBottom: 5 }}>Stop after this many messages</div>
-          <input
+      <div className="lbl mt">When to stop</div>
+      <div className="row">
+        <FieldRow label="Stop after this many messages">
+          <Input
             type="number"
             min={1}
             value={maxMessages}
             onChange={(e) => setMaxMessages(+e.target.value)}
-            style={{ ...numStyle(t), width: 120 }}
+            style={{ width: 120 }}
           />
-        </label>
-        <label style={{ fontSize: 13, color: t.ink2 }}>
-          <div style={{ marginBottom: 5 }}>…or after this many days</div>
-          <input
+        </FieldRow>
+        <FieldRow label="…or after this many days">
+          <Input
             type="number"
             min={1}
             value={maxDays}
             onChange={(e) => setMaxDays(+e.target.value)}
-            style={{ ...numStyle(t), width: 120 }}
+            style={{ width: 120 }}
           />
-        </label>
+        </FieldRow>
       </div>
       {savedHint && (
-        <div style={{ marginTop: 12, fontSize: 13, color: t.profit, fontWeight: 600 }}>
-          Saved
+        <div className="mt">
+          <CellChip tone="ok">Saved</CellChip>
         </div>
       )}
     </div>
   );
 }
 
-function numStyle(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    width: "100%",
-    padding: "9px 12px",
-    borderRadius: 10,
-    border: `1px solid ${t.lineStrong}`,
-    background: t.surface,
-    color: t.ink,
-    fontSize: 14,
-    boxSizing: "border-box" as const,
-  };
-}
-
 // ── Step 9: Test Scenarios ──────────────────────────────────────────
 
 export function TestPanel({ agent }: PanelProps) {
-  const { t } = useTheme();
   const { data: scenarios = [] } = useAiAgentTestScenarios(agent.id);
   const runTest = useRunTest();
   const review = useReviewTestScenario();
@@ -1274,7 +1198,7 @@ export function TestPanel({ agent }: PanelProps) {
         desc="Send the AI a sample lead message and see exactly how it would reply. Review the ones that look right."
       />
       <TextAreaField value={prompt} onChange={setPrompt} rows={3} placeholder="e.g. Hi, is that property on Oak St still available?" />
-      <div style={{ marginTop: 8 }}>
+      <div className="mt">
         <Btn
           variant="primary"
           onClick={async () => {
@@ -1287,18 +1211,16 @@ export function TestPanel({ agent }: PanelProps) {
           {runTest.isPending ? "Running…" : "Run test"}
         </Btn>
       </div>
-      <div style={{ marginTop: 16 }}>
+      <div className="grid mt">
         {scenarios.map((s) => (
-          <Card key={s.id} pad={14} style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 12.5, color: t.ink3 }}>Lead said:</div>
-            <div style={{ fontSize: 13.5, color: t.ink, marginTop: 2 }}>{s.prompt}</div>
-            <div style={{ fontSize: 12.5, color: t.ink3, marginTop: 10 }}>AI replied:</div>
-            <div style={{ fontSize: 13.5, color: t.ink2, marginTop: 2, whiteSpace: "pre-wrap" }}>
-              {s.ai_response}
-            </div>
-            <div style={{ marginTop: 10 }}>
+          <Card key={s.id}>
+            <div className="lbl">Lead said</div>
+            <div>{s.prompt}</div>
+            <div className="lbl mt">AI replied</div>
+            <div style={{ whiteSpace: "pre-wrap" }}>{s.ai_response}</div>
+            <div className="mt">
               {s.reviewed ? (
-                <Pill color={t.profit} bg={t.profitBg}>Reviewed</Pill>
+                <CellChip tone="ok">Reviewed</CellChip>
               ) : (
                 <Btn onClick={() => review.mutate({ id: agent.id, scenarioId: s.id })}>
                   Mark reviewed
@@ -1315,7 +1237,6 @@ export function TestPanel({ agent }: PanelProps) {
 // ── Step 10: Launch Controls ────────────────────────────────────────
 
 export function LaunchPanel({ agent }: PanelProps) {
-  const { t } = useTheme();
   const blockers = agent.gate_blockers ?? [];
   useRegisterSave(async () => {});
   return (
@@ -1325,24 +1246,24 @@ export function LaunchPanel({ agent }: PanelProps) {
         desc="A review of everything that must be in place before this AI Agent can go live."
       />
       {blockers.length === 0 ? (
-        <Card pad={18} style={{ borderColor: t.profit }}>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", color: t.profit }}>
-            <Icon name="check" size={18} />
-            <span style={{ fontSize: 14, fontWeight: 700 }}>
-              All checks passed — ready to launch.
-            </span>
-          </div>
-        </Card>
+        <Note>
+          <Icon name="check" size={18} />
+          <span>
+            <b>All checks passed</b> — ready to launch.
+          </span>
+        </Note>
       ) : (
-        <Card pad={18}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: t.warn, marginBottom: 10 }}>
+        <Card>
+          <WarnLine>
             {blockers.length} item{blockers.length === 1 ? "" : "s"} still need attention:
+          </WarnLine>
+          <div className="mt">
+            {blockers.map((b, i) => (
+              <div key={i} className="filerow">
+                <Icon name="alert" size={14} /> {b}
+              </div>
+            ))}
           </div>
-          {blockers.map((b, i) => (
-            <div key={i} style={{ display: "flex", gap: 8, fontSize: 13, color: t.ink2, padding: "5px 0" }}>
-              <Icon name="alert" size={14} /> {b}
-            </div>
-          ))}
         </Card>
       )}
     </div>
@@ -1356,8 +1277,13 @@ export function LaunchPanel({ agent }: PanelProps) {
 // contacts on its own (drafting, not sending). The broker can leave
 // and come back to review the drafts, then activate for good.
 
+const WARMUP_COLS: Col[] = [
+  { label: "Contact" },
+  { label: "Progress" },
+  { label: "", align: "r" },
+];
+
 export function WarmupPanel({ agent }: PanelProps) {
-  const { t } = useTheme();
   const { data: leads = [] } = useAiAgentLeads(agent.id);
   const { data: messages = [] } = useAiAgentMessages(agent.id);
   const { data: clients = [] } = useClients();
@@ -1417,106 +1343,72 @@ export function WarmupPanel({ agent }: PanelProps) {
 
       {/* Status banner */}
       {agent.status === "active" ? (
-        <Card
-          pad={14}
-          style={{
-            marginBottom: 16,
-            borderColor: inWarmup ? t.warn : t.profit,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 13.5,
-              fontWeight: 700,
-              color: inWarmup ? t.warn : t.profit,
-            }}
-          >
-            {inWarmup
-              ? `Warm-up active — the AI is working ${leads.length} contact${
-                  leads.length === 1 ? "" : "s"
-                }.`
-              : "This AI Agent is fully active."}
-          </div>
-          {inWarmup && (
-            <div style={{ fontSize: 12.5, color: t.ink3, marginTop: 4 }}>
-              It drafts messages on its own every cycle. You can leave and come
-              back any time — review the drafts below, then activate.
+        inWarmup ? (
+          <WarnLine>
+            <div>
+              <b>
+                Warm-up active — the AI is working {leads.length} contact
+                {leads.length === 1 ? "" : "s"}.
+              </b>
+              <div className="sub">
+                It drafts messages on its own every cycle. You can leave and come
+                back any time — review the drafts below, then activate.
+              </div>
             </div>
-          )}
-        </Card>
+          </WarnLine>
+        ) : (
+          <Note>
+            <span>This AI Agent is fully active.</span>
+          </Note>
+        )
       ) : null}
 
       {/* Warm-up contacts */}
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 800,
-          color: t.ink3,
-          margin: "4px 0 8px",
-          textTransform: "uppercase",
-          letterSpacing: 0.6,
-        }}
-      >
-        Warm-up contacts ({leads.length})
-      </div>
-      {leads.length === 0 && (
-        <div style={{ fontSize: 13, color: t.ink3, marginBottom: 6 }}>
-          No contacts yet — add one below to start warming up.
-        </div>
-      )}
-      {leads.map((l) => (
-        <Card key={l.id} pad={12} style={{ marginBottom: 8 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: t.ink }}>
-                {l.name}
-              </div>
-              <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>
-                {l.email ?? "no email"} · {l.status} · {l.attempts_made} sent
-              </div>
-            </div>
-            <Btn
-              onClick={() =>
-                warmup.mutate({
-                  id: agent.id,
-                  client_id: l.client_id,
-                  touchpoint_key: "intro",
-                })
-              }
-              disabled={warmup.isPending}
-            >
-              Draft a message now
-            </Btn>
-          </div>
-        </Card>
-      ))}
+      <Panel className="mt" title={`Warm-up contacts (${leads.length})`} noPad>
+        <Table cols={WARMUP_COLS} caption="Contacts this agent is warming up with">
+          {leads.length === 0 && (
+            <Tr>
+              <Td colSpan={3}>
+                <span className="sub">
+                  No contacts yet — add one below to start warming up.
+                </span>
+              </Td>
+            </Tr>
+          )}
+          {leads.map((l) => (
+            <Tr key={l.id}>
+              <Td>
+                <b>{l.name}</b>
+                <div className="sub">{l.email ?? "no email"}</div>
+              </Td>
+              <Td>
+                <span className="sub">
+                  {l.status} · {l.attempts_made} sent
+                </span>
+              </Td>
+              <Td align="r">
+                <Btn
+                  onClick={() =>
+                    warmup.mutate({
+                      id: agent.id,
+                      client_id: l.client_id,
+                      touchpoint_key: "intro",
+                    })
+                  }
+                  disabled={warmup.isPending}
+                >
+                  Draft a message now
+                </Btn>
+              </Td>
+            </Tr>
+          ))}
+        </Table>
+      </Panel>
 
       {/* Add a contact */}
-      <Card pad={14} style={{ marginTop: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, marginBottom: 10 }}>
-          Add a contact to warm up with
-        </div>
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-            alignItems: "center",
-            marginBottom: 14,
-          }}
-        >
-          <select
-            value={pick}
-            onChange={(e) => setPick(e.target.value)}
-            style={{ ...numStyle(t), width: 260 }}
-          >
+      <Panel className="mt" title="Add a contact to warm up with">
+        <div className="row">
+          <Select grow value={pick} onChange={(e) => setPick(e.target.value)}>
             <option value="">Select an existing contact…</option>
             {available.map((c) => (
               <option key={c.id} value={c.id}>
@@ -1524,27 +1416,25 @@ export function WarmupPanel({ agent }: PanelProps) {
                 {c.email ? ` — ${c.email}` : ""}
               </option>
             ))}
-          </select>
+          </Select>
           <Btn onClick={addExisting} disabled={!pick || assign.isPending}>
             Add
           </Btn>
         </div>
-        <div style={{ fontSize: 12, color: t.ink3, marginBottom: 8 }}>
-          …or create a brand-new contact:
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input
+        <div className="sub mt">…or create a brand-new contact:</div>
+        <div className="row mt">
+          <Input
+            grow
             placeholder="Name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            style={{ ...numStyle(t), width: 180 }}
           />
-          <input
+          <Input
+            grow
             placeholder="Email"
             type="email"
             value={newEmail}
             onChange={(e) => setNewEmail(e.target.value)}
-            style={{ ...numStyle(t), width: 220 }}
           />
           <Btn
             onClick={createAndAdd}
@@ -1553,10 +1443,10 @@ export function WarmupPanel({ agent }: PanelProps) {
             Create &amp; add
           </Btn>
         </div>
-      </Card>
+      </Panel>
 
       {/* Launch controls */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
+      <div className="row mt">
         <Btn variant="primary" onClick={doActivate} disabled={activate.isPending}>
           {inWarmup ? "Activate (graduate from warm-up)" : "Activate AI Agent"}
         </Btn>
@@ -1565,56 +1455,37 @@ export function WarmupPanel({ agent }: PanelProps) {
         )}
       </div>
       {err.length > 0 && (
-        <Card pad={14} style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: t.warn, marginBottom: 6 }}>
-            Activation blocked:
+        <Card className="mt">
+          <WarnLine>Activation blocked:</WarnLine>
+          <div className="mt">
+            {err.map((b, i) => (
+              <div key={i} className="filerow">
+                • {b}
+              </div>
+            ))}
           </div>
-          {err.map((b, i) => (
-            <div key={i} style={{ fontSize: 13, color: t.ink2, padding: "3px 0" }}>
-              • {b}
-            </div>
-          ))}
         </Card>
       )}
 
       {/* Outbox */}
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 800,
-          color: t.ink3,
-          margin: "22px 0 8px",
-          textTransform: "uppercase",
-          letterSpacing: 0.6,
-        }}
-      >
-        Drafts &amp; sent ({messages.length})
-      </div>
+      <div className="lbl mt">Drafts &amp; sent ({messages.length})</div>
       {messages.length === 0 && (
-        <div style={{ fontSize: 13, color: t.ink3 }}>
+        <div className="sub">
           Nothing yet. Drafts appear here as the AI works your warm-up contacts.
         </div>
       )}
-      {messages.map((m) => (
-        <Card key={m.id} pad={14} style={{ marginBottom: 8 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>
-              {m.subject || "(no subject)"}
+      <div className="grid mt">
+        {messages.map((m) => (
+          <Card key={m.id}>
+            <div className="pagebar">
+              <b>{m.subject || "(no subject)"}</b>
+              <span className="spacer" />
+              <CellChip tone="mut">{m.is_warmup ? "warm-up" : m.status}</CellChip>
             </div>
-            <Pill>{m.is_warmup ? "warm-up" : m.status}</Pill>
-          </div>
-          <div
-            style={{
-              fontSize: 13,
-              color: t.ink2,
-              marginTop: 6,
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {m.body}
-          </div>
-        </Card>
-      ))}
+            <div style={{ whiteSpace: "pre-wrap" }}>{m.body}</div>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,33 +1,21 @@
 "use client";
 
 // Shared form primitives for the AI Agent builder panels.
+//
+// These are thin adapters over the class vocabulary in globals.css /
+// app-extras.css. The 11 step panels call FieldRow / TextField / Btn by name in
+// ~90 places, so the whole builder reskins from this file without a single
+// panel changing what it does.
 
 import {
   createContext,
   useContext,
   useEffect,
   useRef,
-  type CSSProperties,
   type MutableRefObject,
   type ReactNode,
 } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-
-export function useUi() {
-  const { t } = useTheme();
-  const input: CSSProperties = {
-    width: "100%",
-    padding: "9px 12px",
-    borderRadius: 10,
-    border: `1px solid ${t.lineStrong}`,
-    background: t.surface,
-    color: t.ink,
-    fontSize: 14,
-    fontFamily: "inherit",
-    boxSizing: "border-box",
-  };
-  return { t, input };
-}
+import { Input, Select, Textarea, cx } from "@/components/ds";
 
 export function FieldRow({
   label,
@@ -38,25 +26,15 @@ export function FieldRow({
   hint?: string;
   children: ReactNode;
 }) {
-  const { t } = useTheme();
   return (
-    <label style={{ display: "block", marginBottom: 14 }}>
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 800,
-          letterSpacing: 0.6,
-          textTransform: "uppercase",
-          color: t.ink3,
-          marginBottom: 6,
-        }}
-      >
-        {label}
-      </div>
+    // Still a <label>, deliberately: the implicit association is what lets a
+    // click on the caption focus the control and gives the control its
+    // accessible name. `display:grid` is what stretches the control to the
+    // caption's width — .field carries no width of its own.
+    <label className="mt" style={{ display: "grid", gap: 6 }}>
+      <span className="lbl">{label}</span>
       {children}
-      {hint && (
-        <div style={{ fontSize: 12, color: t.ink3, marginTop: 5 }}>{hint}</div>
-      )}
+      {hint && <span className="sub">{hint}</span>}
     </label>
   );
 }
@@ -70,13 +48,12 @@ export function TextField({
   onChange: (v: string) => void;
   placeholder?: string;
 }) {
-  const { input } = useUi();
   return (
-    <input
-      style={input}
+    <Input
       value={value}
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
+      style={{ width: "100%" }}
     />
   );
 }
@@ -92,14 +69,14 @@ export function TextAreaField({
   placeholder?: string;
   rows?: number;
 }) {
-  const { input } = useUi();
   return (
-    <textarea
-      style={{ ...input, resize: "vertical", minHeight: rows * 22 }}
+    <Textarea
       rows={rows}
       value={value}
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
+      // Computed from `rows`, so it stays inline: .field owns no height.
+      style={{ width: "100%", resize: "vertical", minHeight: rows * 22 }}
     />
   );
 }
@@ -113,15 +90,18 @@ export function SelectField({
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
 }) {
-  const { input } = useUi();
   return (
-    <select style={input} value={value} onChange={(e) => onChange(e.target.value)}>
+    <Select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{ width: "100%" }}
+    >
       {options.map((o) => (
         <option key={o.value} value={o.value}>
           {o.label}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }
 
@@ -136,32 +116,17 @@ export function Btn({
   variant?: "primary" | "secondary" | "danger";
   disabled?: boolean;
 }) {
-  const { t } = useTheme();
-  const base: CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 7,
-    padding: "9px 16px",
-    borderRadius: 10,
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: disabled ? "not-allowed" : "pointer",
-    fontFamily: "inherit",
-    opacity: disabled ? 0.5 : 1,
-    border: "none",
-  };
-  const styles: Record<string, CSSProperties> = {
-    primary: { ...base, background: t.ink, color: t.inverse },
-    secondary: {
-      ...base,
-      background: t.surface,
-      color: t.ink2,
-      border: `1px solid ${t.lineStrong}`,
-    },
-    danger: { ...base, background: t.dangerBg, color: t.danger },
-  };
+  // `.btn` carries geometry, hover and :disabled. Danger has no class of its
+  // own in the sheet, so it is `.btn` plus the one token that differs — the
+  // same shape migrated routes use for destructive row actions.
   return (
-    <button style={styles[variant]} onClick={onClick} disabled={disabled}>
+    <button
+      type="button"
+      className={cx("btn", variant === "primary" && "pri")}
+      style={variant === "danger" ? { color: "var(--danger)" } : undefined}
+      onClick={onClick}
+      disabled={disabled}
+    >
       {children}
     </button>
   );
@@ -174,14 +139,13 @@ export function PanelHeader({
   title: string;
   desc: string;
 }) {
-  const { t } = useTheme();
   return (
-    <div style={{ marginBottom: 18 }}>
-      <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: t.ink }}>
-        {title}
-      </h2>
-      <p style={{ fontSize: 13, color: t.ink3, margin: "6px 0 0" }}>{desc}</p>
-    </div>
+    // h2, one level under the page's h1 (the agent name). `h2 + .sub` in
+    // globals.css gives the description its margin and measure.
+    <header style={{ marginBottom: 18 }}>
+      <h2 style={{ fontSize: 18 }}>{title}</h2>
+      <p className="sub">{desc}</p>
+    </header>
   );
 }
 
@@ -243,21 +207,12 @@ export function ChipToggle({
   active: boolean;
   onClick: () => void;
 }) {
-  const { t } = useTheme();
   return (
     <button
+      type="button"
+      className={cx("btn", "sm", active && "pri")}
+      aria-pressed={active}
       onClick={onClick}
-      style={{
-        padding: "6px 12px",
-        borderRadius: 999,
-        fontSize: 12.5,
-        fontWeight: 600,
-        cursor: "pointer",
-        fontFamily: "inherit",
-        border: `1px solid ${active ? t.ink : t.lineStrong}`,
-        background: active ? t.ink : t.surface,
-        color: active ? t.inverse : t.ink2,
-      }}
     >
       {label}
     </button>

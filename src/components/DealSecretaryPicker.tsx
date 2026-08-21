@@ -19,6 +19,12 @@
 //   • Per-task instruction editing — that lives in AssignmentDrawer,
 //     opened by clicking a TaskCard.
 //   • Network — parent component owns the mutation hooks.
+//
+// Styling: migrated to the plain-CSS design system (globals.css +
+// app-extras.css). The inline styles that remain are the ones a class
+// cannot own — the drag-over column highlight, the dragging card state,
+// and two bespoke grids (the 1fr/1fr drop-zone pair and the 5-up mode
+// ladder), both of which are deliberate layout, not spacing defaults.
 
 import { useMemo, useState } from "react";
 import {
@@ -32,8 +38,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useDroppable, useDraggable } from "@dnd-kit/core";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Icon } from "@/components/design-system/Icon";
+import { Btn, Row, cx } from "@/components/ds";
 import {
   DS_CATEGORY_META,
   DS_OUTREACH_MODE_LABELS,
@@ -73,7 +78,6 @@ export function DealSecretaryPicker({
   onChangeOutreachMode,
   onOpenAssignment,
 }: DealSecretaryPickerProps) {
-  const { t } = useTheme();
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -131,7 +135,7 @@ export function DealSecretaryPicker({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div className="cg">
       {onChangeOutreachMode ? (
         <OutreachModeStrip
           mode={view.file_settings.outreach_mode}
@@ -140,15 +144,18 @@ export function DealSecretaryPicker({
       ) : null}
 
       {/* Presets bar */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        <PresetButton t={t} onClick={presetAssignCommon}>Assign common collection</PresetButton>
-        <PresetButton t={t} onClick={presetAssignBorrowerFacing}>Assign all borrower-facing</PresetButton>
-        <PresetButton t={t} onClick={presetPullSensitive}>Keep sensitive items human-owned</PresetButton>
-        <PresetButton t={t} onClick={presetReset} tone="danger">Reset all to human</PresetButton>
-      </div>
+      <Row className="s12">
+        <PresetButton onClick={presetAssignCommon}>Assign common collection</PresetButton>
+        <PresetButton onClick={presetAssignBorrowerFacing}>Assign all borrower-facing</PresetButton>
+        <PresetButton onClick={presetPullSensitive}>Keep sensitive items human-owned</PresetButton>
+        <PresetButton onClick={presetReset} tone="danger">Reset all to human</PresetButton>
+      </Row>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, alignItems: "stretch" }}>
+        {/* Bespoke: the two drop zones are a matched pair and must stay the
+            same height, so this keeps its own 1fr/1fr grid rather than .cg,
+            whose `align-items: start` would let one bin outgrow the other. */}
+        <div className="s12" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, alignItems: "stretch" }}>
           <Column id="human-column" title="My Tasks" subtitle={`${view.left.length} task${view.left.length === 1 ? "" : "s"} on your side`}>
             {view.left.map((r) => (
               <DraggableTaskCard
@@ -180,7 +187,7 @@ export function DealSecretaryPicker({
       </DndContext>
 
       {view.funding_locked_count > 0 ? (
-        <div style={{ fontSize: 11.5, color: t.ink3 }}>
+        <div className="sub s12">
           🔒 {view.funding_locked_count} item{view.funding_locked_count === 1 ? "" : "s"} locked by funding — only an underwriter can reassign.
         </div>
       ) : null}
@@ -191,52 +198,37 @@ export function DealSecretaryPicker({
 // ── OutreachModeStrip — the sticky kill-switch at the top ─────────
 
 function OutreachModeStrip({ mode, onChange }: { mode: DSOutreachMode; onChange: (m: DSOutreachMode) => void }) {
-  const { t } = useTheme();
   const modes: DSOutreachMode[] = ["off", "draft_first", "portal_auto", "portal_email", "portal_email_sms"];
   return (
-    <div style={{
-      border: `1px solid ${t.lineStrong}`,
-      borderRadius: 14,
-      background: t.surface,
-      padding: "12px 14px",
-      boxShadow: t.shadow,
-    }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+    <div className="card s12">
+      <Row>
         <div>
-          <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
-            AI Outreach
-          </div>
-          <div style={{ marginTop: 2, fontSize: 13, fontWeight: 800, color: t.ink }}>
-            {DS_OUTREACH_MODE_LABELS[mode].title}
+          <div className="lbl">AI Outreach</div>
+          <div>
+            <b>{DS_OUTREACH_MODE_LABELS[mode].title}</b>
           </div>
         </div>
-        <div style={{ fontSize: 11, color: t.ink3, maxWidth: "60%", textAlign: "right" }}>
+        <span className="sp" />
+        <div className="sub align-r">
           AI can only work tasks assigned on the right column. Off = nothing sends, the AI just tracks.
         </div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
+      </Row>
+      {/* Bespoke: five modes on one escalating ladder, equal width. */}
+      <div className="mt" style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 6 }}>
         {modes.map((m) => {
           const active = m === mode;
           const meta = DS_OUTREACH_MODE_LABELS[m];
           return (
-            <button
+            <Btn
               key={m}
-              type="button"
+              variant={active ? "pri" : "default"}
+              aria-pressed={active}
               onClick={() => onChange(m)}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                padding: "9px 8px",
-                borderRadius: 10,
-                background: active ? t.brandSoft : t.surface2,
-                border: `1px solid ${active ? t.brand : t.line}`,
-                color: active ? t.brand : t.ink2,
-                textAlign: "center",
-              }}
+              style={{ flexDirection: "column" }}
             >
-              <div style={{ fontSize: 11.5, fontWeight: 900 }}>{meta.title}</div>
-              <div style={{ fontSize: 10, color: active ? t.brand : t.ink3, marginTop: 2 }}>{meta.sub}</div>
-            </button>
+              <span>{meta.title}</span>
+              <small style={{ fontWeight: 500, lineHeight: 1.3 }}>{meta.sub}</small>
+            </Btn>
           );
         })}
       </div>
@@ -247,39 +239,36 @@ function OutreachModeStrip({ mode, onChange }: { mode: DSOutreachMode; onChange:
 // ── Column droppable ───────────────────────────────────────────────
 
 function Column({ id, title, subtitle, children }: { id: string; title: string; subtitle: string; children: React.ReactNode }) {
-  const { t } = useTheme();
   const { isOver, setNodeRef } = useDroppable({ id });
   return (
     <div
       ref={setNodeRef}
+      // Dynamic: the drop-zone highlight is drag state, and no class in the
+      // sheet carries a dashed bin with an `is-over` variant.
       style={{
-        background: isOver ? t.brandSoft : t.surface2,
-        border: `1.5px dashed ${isOver ? t.brand : t.line}`,
-        borderRadius: 14,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        background: isOver ? "var(--accent-100)" : "var(--sunken2)",
+        border: `1.5px dashed ${isOver ? "var(--accent-400)" : "var(--line)"}`,
+        borderRadius: "var(--r)",
         padding: 12,
         minHeight: 240,
         transition: "background 0.12s, border-color 0.12s",
       }}
     >
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>{title}</div>
-        <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>{subtitle}</div>
+      <div>
+        <div className="lbl">{title}</div>
+        <div className="sub">{subtitle}</div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{children}</div>
+      <div className="ladder">{children}</div>
     </div>
   );
 }
 
 function EmptyHint({ side }: { side: "left" | "right" }) {
-  const { t } = useTheme();
   return (
-    <div style={{
-      padding: "16px 12px",
-      fontSize: 12, color: t.ink3,
-      background: t.surface, borderRadius: 10,
-      border: `1px dashed ${t.line}`,
-      textAlign: "center",
-    }}>
+    <div className="card sub" style={{ textAlign: "center" }}>
       {side === "left"
         ? "All tasks handed to AI. Drag any card back to keep it on your side."
         : "No tasks assigned to AI yet. Drag a card here or use a preset above."}
@@ -302,6 +291,7 @@ function DraggableTaskCard({ row, isOperator, onOpen }: { row: DSTaskRow; isOper
     <div
       ref={setNodeRef}
       {...(disabled ? {} : { ...attributes, ...listeners })}
+      // Dynamic: drag state + the disabled affordance.
       style={{
         opacity: isDragging ? 0.4 : 1,
         cursor: disabled ? "not-allowed" : "grab",
@@ -315,66 +305,59 @@ function DraggableTaskCard({ row, isOperator, onOpen }: { row: DSTaskRow; isOper
 }
 
 function TaskCardBody({ row, isOperator: _io, dragging = false }: { row: DSTaskRow; isOperator: boolean; dragging?: boolean }) {
-  const { t } = useTheme();
   const catMeta = DS_CATEGORY_META[row.category];
   const isFundingLocked = row.owner_type === "funding_locked";
   const isAI = row.owner_type === "ai";
   return (
+    // Dynamic: the accent border marks an AI-owned card, and the lifted
+    // shadow only exists while the card is under the cursor in DragOverlay.
     <div style={{
-      background: t.surface,
-      border: `1px solid ${isAI ? t.brand : t.line}`,
+      display: "flex",
+      flexDirection: "column",
+      gap: 6,
+      background: "var(--surface)",
+      border: `1px solid ${isAI ? "var(--accent)" : "var(--line)"}`,
       borderRadius: 12,
       padding: 11,
-      boxShadow: dragging ? "0 8px 20px rgba(0,0,0,0.2)" : t.shadow,
+      boxShadow: dragging ? "0 8px 20px rgba(15, 23, 32, 0.2)" : "var(--sh1)",
       minWidth: 0,
     }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-        <span style={{
-          fontSize: 9.5, fontWeight: 800,
-          padding: "2px 6px", borderRadius: 4,
-          background: t.chip, color: t.ink2,
-          letterSpacing: 0.6, textTransform: "uppercase",
-        }}>
-          {catMeta?.short ?? row.category}
-        </span>
-        <div style={{ display: "flex", gap: 4 }}>
-          {row.required_level === "required" ? (
-            <span style={{ fontSize: 9.5, fontWeight: 900, padding: "2px 5px", borderRadius: 4, background: t.dangerBg, color: t.danger }}>REQ</span>
-          ) : null}
-          {row.required_level === "recommended" ? (
-            <span style={{ fontSize: 9.5, fontWeight: 900, padding: "2px 5px", borderRadius: 4, background: t.warnBg, color: t.warn }}>REC</span>
-          ) : null}
-          {isFundingLocked ? (
-            <span style={{ fontSize: 9.5, fontWeight: 900, padding: "2px 5px", borderRadius: 4, background: t.surface2, color: t.ink3 }}>🔒 LOCKED</span>
-          ) : null}
-        </div>
-      </div>
-      <div style={{ marginTop: 8, fontSize: 13, fontWeight: 800, color: t.ink, lineHeight: 1.25 }}>
-        {row.label}
+      <Row>
+        <span className="cellchip c-mut">{catMeta?.short ?? row.category}</span>
+        <span className="sp" />
+        {row.required_level === "required" ? (
+          <span className="cellchip c-bad">REQ</span>
+        ) : null}
+        {row.required_level === "recommended" ? (
+          <span className="cellchip c-warn">REC</span>
+        ) : null}
+        {isFundingLocked ? (
+          <span className="cellchip c-mut">🔒 LOCKED</span>
+        ) : null}
+      </Row>
+      <div>
+        <b>{row.label}</b>
       </div>
       {row.objective_text ? (
-        <div style={{ marginTop: 4, fontSize: 11.5, color: t.ink3, lineHeight: 1.4 }}>
-          {row.objective_text}
-        </div>
+        <div className="sub">{row.objective_text}</div>
       ) : null}
-      <div style={{ marginTop: 9, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
-        <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700, textTransform: "capitalize" }}>
-          {row.status.replace(/_/g, " ")}
-        </span>
+      <Row>
+        <span className="lbl">{row.status.replace(/_/g, " ")}</span>
+        <span className="sp" />
         {row.link_url ? (
           <a
+            className="linky"
             href={row.link_url}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            style={{ fontSize: 11, color: t.brand, textDecoration: "none", fontWeight: 700 }}
           >
             {row.link_kind === "docusign" ? "✍ " : "🔗 "}{row.link_label ?? "Open link"}
           </a>
         ) : null}
-      </div>
+      </Row>
       {isAI && (row.attempts_made ?? 0) > 0 ? (
-        <div style={{ marginTop: 6, fontSize: 10, color: t.ink3 }}>
+        <div className="sub">
           {row.attempts_made} attempt{row.attempts_made === 1 ? "" : "s"} so far
         </div>
       ) : null}
@@ -384,24 +367,10 @@ function TaskCardBody({ row, isOperator: _io, dragging = false }: { row: DSTaskR
 
 // ── Preset button ──────────────────────────────────────────────────
 
-function PresetButton({ t, onClick, children, tone }: { t: ReturnType<typeof useTheme>["t"]; onClick: () => void; children: React.ReactNode; tone?: "danger" }) {
+function PresetButton({ onClick, children, tone }: { onClick: () => void; children: React.ReactNode; tone?: "danger" }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        all: "unset",
-        cursor: "pointer",
-        fontSize: 11.5,
-        fontWeight: 700,
-        padding: "7px 11px",
-        borderRadius: 9,
-        background: tone === "danger" ? t.dangerBg : t.surface2,
-        color: tone === "danger" ? t.danger : t.ink2,
-        border: `1px solid ${tone === "danger" ? t.danger : t.line}`,
-      }}
-    >
+    <Btn size="sm" className={cx(tone === "danger" && "c-bad")} onClick={onClick}>
       {children}
-    </button>
+    </Btn>
   );
 }

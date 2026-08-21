@@ -487,6 +487,9 @@ function ClientSimulator() {
 
         {/* Product selector — directly under the credit pill. */}
         <Card>
+          {/* The rail is 380px; four product pills are wider than that, so the
+              strip scrolls inside the card instead of widening the column. */}
+          <div style={{ overflowX: "auto" }}>
           <Seg<SimulatorInputs["productKey"]>
             value={productKey}
             onChange={setProductKey}
@@ -510,6 +513,7 @@ function ClientSimulator() {
                 ),
               }))}
           />
+          </div>
         </Card>
 
         {/* Merged Property + Rent + Loan amount + LTV card. Loan amount
@@ -694,7 +698,7 @@ function DesktopMyLoansList({
     return (
       <Card>
         <h3>No started loans yet</h3>
-        <p className="sub">
+        <p className="sub mt">
           Once a loan is started, you'll see it here with a locked-terms view. Until then, use Free
           Simulate to model what a deal could look like.
         </p>
@@ -719,7 +723,7 @@ function DesktopMyLoansList({
             onClick={() => onPick(loan.id)}
             style={{ display: "block", width: "100%", textAlign: "left", font: "inherit", cursor: "pointer" }}
           >
-            <div className="row" style={{ flexWrap: "nowrap" }}>
+            <div className="row">
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div><strong>{loan.address || "Unnamed loan"}</strong></div>
                 <div className="sub">
@@ -1767,8 +1771,8 @@ function SlimTermsHeader({
       </div>
 
       {/* Line 2: DP slider + binding pill inline. */}
-      <div className="scen row" style={{ padding: "10px 18px 12px", flexWrap: "nowrap" }}>
-        <div className="row" style={{ minWidth: 140, flexWrap: "nowrap" }}>
+      <div className="scen row" style={{ padding: "10px 18px 12px" }}>
+        <div className="row" style={{ minWidth: 140 }}>
           <span className="lbl">DP</span>
           <span className="num" style={{ fontSize: 14, fontWeight: 700 }}>
             {points.toFixed(2)}
@@ -1936,7 +1940,6 @@ function CollapsibleCreditSummary({
           cursor: "pointer",
           width: "100%",
           padding: "12px 14px",
-          flexWrap: "nowrap",
         }}
       >
         <div

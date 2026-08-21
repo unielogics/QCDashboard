@@ -16,14 +16,35 @@
 //      dropped (those are funding-stage, super-admin territory). Two zones:
 //      starter buyer/seller docs (toggle to disable on the agent's leads),
 //      and "Your additions" (custom rows).
+//
+// Design system: this route renders the plain-CSS classes in globals.css /
+// app-extras.css through the wrappers in components/ds. The section rail, the
+// cadence presets and the "enable" toggles are all the same object — a
+// selectable row (`.pick` / `.pick.on`) — which is why they now look alike.
+// Inline styles that survive are the ones no class owns: the 240px rail split,
+// the fixed-size headshot well, and the booking preview, whose colours are the
+// data being edited.
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import {
+  Btn,
+  CG,
+  CellChip,
+  IconBtn,
+  Input,
+  Linky,
+  Note,
+  Panel,
+  Row,
+  Seg,
+  Select,
+  Textarea,
+  WarnLine,
+  cx,
+} from "@/components/ds";
 import {
   useBrokerSettings,
   useCurrentUser,
@@ -134,7 +155,6 @@ function detectPreset(c: AgentCadenceOverride | null | undefined): CadencePreset
 }
 
 export default function AgentSettingsPage() {
-  const { t } = useTheme();
   const router = useRouter();
   const { data: user } = useCurrentUser();
   const brokerQ = useBrokerSettings();
@@ -186,127 +206,80 @@ export default function AgentSettingsPage() {
 
   if (user?.role === Role.CLIENT) return null;
   if (brokerQ.isLoading) {
-    return (
-      <div style={{ padding: 24, color: t.ink3, fontSize: 13 }}>Loading…</div>
-    );
+    return <div className="sub">Loading…</div>;
   }
   if (brokerQ.isError) {
     return (
-      <div style={{ padding: 24 }}>
-        <Pill bg={t.dangerBg} color={t.danger}>
-          {brokerQ.error instanceof Error ? brokerQ.error.message : "Couldn't load broker settings."}
-        </Pill>
-      </div>
+      <StatusLine tone="bad">
+        {brokerQ.error instanceof Error ? brokerQ.error.message : "Couldn't load broker settings."}
+      </StatusLine>
     );
   }
 
   return (
+    // Rail + body. Not the 12-col grid: 240px is a fixed rail width, not a
+    // proportion of the page, and it must not reflow with the content.
     <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 18, height: "100%", minHeight: 0 }}>
       {/* Sidebar */}
-      <Card pad={0} style={{ overflow: "hidden" }}>
-        <div style={{ padding: 16, borderBottom: `1px solid ${t.line}` }}>
-          <SectionLabel>Agent Settings</SectionLabel>
-          <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 6, lineHeight: 1.5 }}>
-            Your personal branding, follow-up cadence, and lead-stage doc list.
-            Per-lead overrides happen when you add a lead.
-          </div>
+      <Panel title="Agent Settings" bodyClass="grid">
+        <div className="sub">
+          Your personal branding, follow-up cadence, and lead-stage doc list.
+          Per-lead overrides happen when you add a lead.
         </div>
-        <div style={{ display: "flex", flexDirection: "column", padding: 6, gap: 2 }}>
+        <div>
           {/* Elara — routes to the new page; the four other items
               still use the existing in-page section state. */}
-          <Link
-            href="/agent-settings/ai"
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 9,
-              padding: "10px 12px",
-              borderRadius: 8,
-              background: t.petrolSoft,
-              color: t.petrol,
-              fontSize: 13,
-              fontWeight: 700,
-              border: `1px solid ${t.petrol}33`,
-            }}
-          >
+          <Link href="/agent-settings/ai" className="pick">
             <Icon name="spark" size={14} />
             Elara
-            <span style={{ marginLeft: "auto", fontSize: 11, opacity: 0.7 }}>→</span>
+            <span className="sp" />
+            <span className="sub">→</span>
           </Link>
-          <div style={{ height: 1, background: t.line, margin: "6px 8px" }} />
           {SECTIONS.map((s) => {
             const active = section === s.id;
             return (
               <button
                 key={s.id}
+                type="button"
+                aria-pressed={active}
                 onClick={() => setSection(s.id)}
-                style={{
-                  all: "unset",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 9,
-                  padding: "10px 12px",
-                  borderRadius: 8,
-                  background: active ? t.brandSoft : "transparent",
-                  color: active ? t.brand : (s.legacy ? t.ink3 : t.ink2),
-                  fontSize: 13,
-                  fontWeight: active ? 700 : 600,
-                }}
+                className={cx("pick", active && "on")}
               >
                 <Icon name={s.icon} size={14} />
-                <span style={{ flex: 1 }}>{s.label}</span>
-                {s.legacy ? (
-                  <span style={{
-                    fontSize: 9, fontWeight: 800, padding: "1px 5px",
-                    borderRadius: 3, background: t.warnBg, color: t.warn,
-                    letterSpacing: 0.5,
-                  }}>
-                    LEGACY
-                  </span>
-                ) : null}
+                <span>{s.label}</span>
+                <span className="sp" />
+                {s.legacy ? <CellChip tone="warn">Legacy</CellChip> : null}
               </button>
             );
           })}
         </div>
-      </Card>
+      </Panel>
 
       {/* Body — banner removed; Elara sidebar entry above
           is the canonical entry point. */}
-      <div style={{ minHeight: 0, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="grid">
 
         {/* Legacy banner — shows when a deprecated section is open. The
             old AI Cadence + Doc Checklist sections still write to the
             old broker-settings JSON, but Elara itself reads from
             client_ai_plan (Lending AI). */}
-        {SECTIONS.find(s => s.id === section)?.legacy ? (
-          <Card pad={14} style={{ borderLeft: `3px solid ${t.warn}`, background: t.warnBg }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
-                  ⚠ Legacy section — superseded by Elara
-                </div>
-                <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
+        {SECTIONS.find((s) => s.id === section)?.legacy ? (
+          <WarnLine>
+            <Row>
+              <div className="sp">
+                <div><b>⚠ Legacy section — superseded by Elara</b></div>
+                <div>
                   {section === "cadence"
                     ? "Elara now follows the conditional rules in Elara → Follow-Up. This preset only feeds the older non-AI doc-reminder pipeline."
                     : "Elara now reads requirements from Elara → Buyer / Seller Rules. This list only pre-populates the legacy loans.required_docs field at loan creation."}
                   {" "}Edits here keep working but Elara ignores them.
                 </div>
               </div>
-              <Link href="/agent-settings/ai" style={{ textDecoration: "none" }}>
-                <span style={{
-                  fontSize: 12, fontWeight: 700, color: t.petrol,
-                  padding: "6px 12px", borderRadius: 6,
-                  border: `1px solid ${t.petrol}`, background: t.surface,
-                  whiteSpace: "nowrap",
-                }}>
-                  Open Elara →
-                </span>
+              <Link href="/agent-settings/ai" className="btn">
+                Open Elara →
               </Link>
-            </div>
-          </Card>
+            </Row>
+          </WarnLine>
         ) : null}
 
         {section === "identity" && (
@@ -348,9 +321,7 @@ export default function AgentSettingsPage() {
           />
         )}
         {feedback && (
-          <Pill bg={feedback === "Saved." ? t.profitBg : t.warnBg} color={feedback === "Saved." ? t.profit : t.warn}>
-            {feedback}
-          </Pill>
+          <StatusLine tone={feedback === "Saved." ? "ok" : "warn"}>{feedback}</StatusLine>
         )}
       </div>
     </div>
@@ -370,7 +341,6 @@ interface IdentityProps {
 }
 
 function IdentitySection({ draft, setDraft, user, dirty, saving, onSave }: IdentityProps) {
-  const { t } = useTheme();
   const lh = draft.letterhead ?? emptyLetterhead();
   const upload = useUploadHeadshot();
   const [uploadErr, setUploadErr] = useState<string | null>(null);
@@ -399,114 +369,94 @@ function IdentitySection({ draft, setDraft, user, dirty, saving, onSave }: Ident
   const headshotPreview = lh.headshot_data_url || null;
   const hasS3Key = !!lh.headshot_s3_key;
   return (
-    <Card>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <SectionLabel>Identity & Letterhead</SectionLabel>
-        <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />
-      </div>
-      <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
+    <Panel
+      title="Identity & Letterhead"
+      actions={<SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}
+      bodyClass="grid"
+    >
+      <div className="sub">
         Your headshot, brokerage, and license number appear on every prequal we
         generate for your clients alongside the Qualified Commercial firm logo.
       </div>
 
       {/* Zone 1: From your account (read-only) */}
-      <div style={{
-        padding: 12, borderRadius: 9,
-        background: t.surface2, border: `1px solid ${t.line}`,
-        marginBottom: 16,
-      }}>
-        <div style={{
-          fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
-          textTransform: "uppercase", color: t.ink3, marginBottom: 8,
-        }}>
-          From your account
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <ReadOnlyField label="Name" value={user?.name ?? "—"} />
-          <ReadOnlyField label="Email" value={user?.email ?? "—"} />
-        </div>
-        <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 10, lineHeight: 1.5 }}>
+      <div className="card">
+        <div className="lbl">From your account</div>
+        {/* 1fr 1fr — a genuine 6 + 6 of the cockpit grid. */}
+        <CG className="mt">
+          <ReadOnlyField className="s6" label="Name" value={user?.name ?? "—"} />
+          <ReadOnlyField className="s6" label="Email" value={user?.email ?? "—"} />
+        </CG>
+        <div className="sub mt">
           Synced from your profile. Edit your name or email in your account settings.
         </div>
       </div>
 
       {/* Zone 2: Your branding */}
-      <div style={{
-        fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
-        textTransform: "uppercase", color: t.ink3, marginBottom: 8,
-      }}>
-        Your branding
+      <div>
+        <div className="lbl">Your branding</div>
+        {/* Three fields on a two-up grid: the third wraps, exactly as the
+            original 1fr 1fr did. */}
+        <CG className="mt">
+          <Field className="s6" label="Title">
+            <TextInput value={lh.title ?? ""} onChange={(v) => update({ title: v || null })} placeholder="Real Estate Agent" />
+          </Field>
+          <Field className="s6" label="License #">
+            <TextInput value={lh.license_number ?? ""} onChange={(v) => update({ license_number: v || null })} />
+          </Field>
+          <Field className="s6" label="Brokerage">
+            <TextInput value={lh.brokerage_name ?? ""} onChange={(v) => update({ brokerage_name: v || null })} />
+          </Field>
+        </CG>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <Field label="Title">
-          <TextInput value={lh.title ?? ""} onChange={(v) => update({ title: v || null })} placeholder="Real Estate Agent" />
-        </Field>
-        <Field label="License #">
-          <TextInput value={lh.license_number ?? ""} onChange={(v) => update({ license_number: v || null })} />
-        </Field>
-        <Field label="Brokerage">
-          <TextInput value={lh.brokerage_name ?? ""} onChange={(v) => update({ brokerage_name: v || null })} />
-        </Field>
-      </div>
-      <div style={{ marginTop: 14 }}>
-        <Field label="Headshot">
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            {hasS3Key || headshotPreview ? (
-              headshotPreview ? (
-                <img
-                  src={headshotPreview}
-                  alt="Headshot"
-                  style={{ width: 96, height: 96, objectFit: "cover", borderRadius: 8, border: `1px solid ${t.line}` }}
-                />
-              ) : (
-                <div style={{
-                  width: 96, height: 96, borderRadius: 8, border: `1px solid ${t.line}`,
-                  background: t.surface2, display: "flex", alignItems: "center", justifyContent: "center",
-                  color: t.ink3, fontSize: 10.5, padding: 6, textAlign: "center",
-                }}>
-                  Stored on S3
-                </div>
-              )
-            ) : (
-              <div style={{
-                width: 96, height: 96, borderRadius: 8, border: `1px dashed ${t.line}`,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                color: t.ink4, fontSize: 11,
-              }}>
-                No image
-              </div>
-            )}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
-              <input
-                type="file"
-                accept="image/png,image/jpeg"
-                onChange={(e) => void onPickHeadshot(e.target.files?.[0] ?? null)}
-                disabled={upload.isPending}
-                style={inputStyle(t)}
+
+      <Field label="Headshot">
+        <Row>
+          {hasS3Key || headshotPreview ? (
+            headshotPreview ? (
+              <img
+                src={headshotPreview}
+                alt="Headshot"
+                style={{ width: 96, height: 96, objectFit: "cover", borderRadius: 8, border: "1px solid var(--line)" }}
               />
-              {upload.isPending && (
-                <div style={{ fontSize: 11, color: t.ink3 }}>Uploading…</div>
-              )}
-              {uploadErr && (
-                <div style={{ fontSize: 11, color: t.danger }}>{uploadErr}</div>
-              )}
-              {(hasS3Key || headshotPreview) && !upload.isPending && (
-                <button
-                  onClick={() => update({ headshot_s3_key: null, headshot_data_url: null })}
-                  style={{
-                    all: "unset", cursor: "pointer",
-                    fontSize: 11, color: t.danger, fontWeight: 600,
-                    padding: "4px 8px", alignSelf: "flex-start",
-                  }}
-                >
-                  Remove
-                </button>
-              )}
+            ) : (
+              // Fixed 96px well — no class owns a square image slot.
+              <div style={{
+                width: 96, height: 96, borderRadius: 8, border: "1px solid var(--line)",
+                background: "var(--sunken2)", display: "grid", placeItems: "center",
+                color: "var(--muted)", fontSize: 10.5, padding: 6, textAlign: "center",
+              }}>
+                Stored on S3
+              </div>
+            )
+          ) : (
+            <div style={{
+              width: 96, height: 96, borderRadius: 8, border: "1px dashed var(--line2)",
+              display: "grid", placeItems: "center", color: "var(--faint)", fontSize: 11,
+            }}>
+              No image
             </div>
+          )}
+          <div style={{ display: "grid", gap: 6, flex: 1, minWidth: 200 }}>
+            <Input
+              type="file"
+              accept="image/png,image/jpeg"
+              onChange={(e) => void onPickHeadshot(e.target.files?.[0] ?? null)}
+              disabled={upload.isPending}
+            />
+            {upload.isPending && <div className="sub">Uploading…</div>}
+            {uploadErr && <StatusLine tone="bad">{uploadErr}</StatusLine>}
+            {(hasS3Key || headshotPreview) && !upload.isPending && (
+              <Row>
+                <Btn size="sm" onClick={() => update({ headshot_s3_key: null, headshot_data_url: null })}>
+                  Remove
+                </Btn>
+              </Row>
+            )}
           </div>
-        </Field>
-      </div>
-    </Card>
+        </Row>
+      </Field>
+    </Panel>
   );
 }
 
@@ -533,7 +483,6 @@ const WEEKDAYS = [
 ];
 
 function BookingSection({ draft, setDraft, user, dirty, saving, onSave }: BookingProps) {
-  const { t } = useTheme();
   const booking = draft.booking ?? emptyBooking();
   const slug = booking.slug || defaultBookingSlug(user?.name || user?.email || "agent");
   const bookingPath = `/book/${slug}`;
@@ -551,23 +500,25 @@ function BookingSection({ draft, setDraft, user, dirty, saving, onSave }: Bookin
   };
 
   return (
-    <Card>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <SectionLabel>Booking Page</SectionLabel>
-        <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />
-      </div>
-      <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
+    <Panel
+      title="Booking Page"
+      actions={<SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}
+      bodyClass="grid"
+    >
+      <div className="sub">
         Booking pages are now configured from the universal booking settings screen.
         Use that page to upload your logo, profile photo, and manage your public scheduling link.
       </div>
-      <Link href="/booking-settings" style={{ textDecoration: "none" }}>
-        <span style={{ ...qcBtnPrimary(t), display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 14 }}>
+      <Row>
+        <Link href="/booking-settings" className="btn pri">
           <Icon name="external" size={13} /> Open Booking Page Settings
-        </span>
-      </Link>
+        </Link>
+      </Row>
 
+      {/* Editor beside a fixed 340px preview of the public page — pinned so the
+          preview stays true to size however wide the console gets. */}
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: 16, alignItems: "start" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div className="grid">
           <Toggle
             label="Enable public booking page"
             value={booking.enabled}
@@ -583,17 +534,16 @@ function BookingSection({ draft, setDraft, user, dirty, saving, onSave }: Bookin
               />
             </Field>
             <Field label="Meeting length">
-              <select
+              <Select
                 value={booking.duration_min}
                 onChange={(e) => update({ duration_min: Number(e.target.value) })}
-                style={inputStyle(t)}
               >
                 <option value={15}>15 minutes</option>
                 <option value={30}>30 minutes</option>
                 <option value={45}>45 minutes</option>
                 <option value={60}>60 minutes</option>
                 <option value={90}>90 minutes</option>
-              </select>
+              </Select>
             </Field>
           </div>
 
@@ -606,91 +556,91 @@ function BookingSection({ draft, setDraft, user, dirty, saving, onSave }: Bookin
           </Field>
 
           <Field label="Intro text">
-            <textarea
+            {/* `resize` is not on `.field`, and holding it to vertical is the
+                affordance the original shipped. */}
+            <Textarea
               value={booking.intro ?? ""}
               onChange={(e) => update({ intro: e.target.value || null })}
               placeholder="Choose a time to discuss your file, prequalification, or next steps."
               rows={3}
-              style={{ ...inputStyle(t), resize: "vertical", lineHeight: 1.45 }}
+              style={{ resize: "vertical" }}
             />
           </Field>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-            <Field label="Timezone">
+          <CG>
+            <Field className="s4" label="Timezone">
               <TextInput
                 value={booking.timezone}
                 onChange={(v) => update({ timezone: v || "America/New_York" })}
                 placeholder="America/New_York"
               />
             </Field>
-            <Field label="Start time">
-              <input
+            <Field className="s4" label="Start time">
+              <Input
                 type="time"
                 value={booking.start_time}
                 onChange={(e) => update({ start_time: e.target.value || "09:00" })}
-                style={inputStyle(t)}
               />
             </Field>
-            <Field label="End time">
-              <input
+            <Field className="s4" label="End time">
+              <Input
                 type="time"
                 value={booking.end_time}
                 onChange={(e) => update({ end_time: e.target.value || "17:00" })}
-                style={inputStyle(t)}
               />
             </Field>
-          </div>
+          </CG>
 
           <div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3, marginBottom: 6 }}>
-              Available days
-            </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {WEEKDAYS.map((day) => {
-                const active = booking.available_days.includes(day.id);
-                return (
-                  <button
-                    key={day.id}
-                    onClick={() => toggleDay(day.id)}
-                    style={{
-                      ...dayChipStyle(t),
-                      background: active ? t.brandSoft : t.surface2,
-                      color: active ? t.brand : t.ink3,
-                      borderColor: active ? t.brand : t.line,
-                    }}
-                  >
-                    {day.label}
-                  </button>
-                );
-              })}
-            </div>
+            <div className="lbl">Available days</div>
+            {/* `.seg` shrink-wraps only inside a flex parent. */}
+            <Row className="mt">
+              <div className="seg" role="group" aria-label="Available days">
+                {WEEKDAYS.map((day) => {
+                  const active = booking.available_days.includes(day.id);
+                  return (
+                    <button
+                      key={day.id}
+                      type="button"
+                      aria-pressed={active}
+                      className={active ? "on" : ""}
+                      onClick={() => toggleDay(day.id)}
+                    >
+                      {day.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </Row>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Accent color">
+          <CG>
+            <Field className="s6" label="Accent color">
               <ColorInput value={booking.primary_color} onChange={(v) => update({ primary_color: v })} />
             </Field>
-            <Field label="Background color">
+            <Field className="s6" label="Background color">
               <ColorInput value={booking.background_color} onChange={(v) => update({ background_color: v })} />
             </Field>
-          </div>
+          </CG>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <Link href={bookingPath} target="_blank" style={{ textDecoration: "none" }}>
-              <span style={{ ...qcBtn(t), display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <Icon name="external" size={13} /> Preview page
-              </span>
+          <Row>
+            <Link href={bookingPath} target="_blank" className="btn">
+              <Icon name="external" size={13} /> Preview page
             </Link>
-            <div style={{ fontSize: 12, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div className="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
               {publicUrl}
             </div>
-          </div>
+          </Row>
         </div>
 
+        {/* DELIBERATELY NOT MIGRATED. This mirrors the public /book/[slug] page,
+            whose surface and accent are the two colours being edited here.
+            Restyling it to `.card` / `.panel` would make the preview show the
+            operator console instead of the page it previews. */}
         <div
           style={{
             borderRadius: 14,
-            border: `1px solid ${t.line}`,
+            border: "1px solid var(--line)",
             padding: 18,
             background: booking.background_color,
             color: "#ffffff",
@@ -716,7 +666,7 @@ function BookingSection({ draft, setDraft, user, dirty, saving, onSave }: Bookin
           </div>
         </div>
       </div>
-    </Card>
+    </Panel>
   );
 }
 
@@ -732,7 +682,6 @@ interface CadenceProps {
 }
 
 function CadenceSection({ draft, setDraft, dirty, saving, onSave }: CadenceProps) {
-  const { t } = useTheme();
   const preset = detectPreset(draft.cadence);
   const cadence = draft.cadence;
   const [showAdvanced, setShowAdvanced] = useState(
@@ -773,84 +722,74 @@ function CadenceSection({ draft, setDraft, dirty, saving, onSave }: CadenceProps
   };
 
   return (
-    <Card>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <SectionLabel>AI Cadence</SectionLabel>
-        <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />
-      </div>
-      <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
+    <Panel
+      title="AI Cadence"
+      actions={<SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}
+      bodyClass="grid"
+    >
+      <div className="sub">
         How aggressively Elara nudges your leads to send in the docs they owe.
         Pick a preset; you can override per-lead when you add a lead.
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+      {/* Stacked pick rows rather than three side-by-side tiles: one preset is
+          chosen at a time, which is what `.pick.on` says. */}
+      <div>
         {(Object.keys(CADENCE_PRESETS) as CadencePreset[]).map((id) => {
           const p = CADENCE_PRESETS[id];
           const active = preset === id;
           return (
             <button
               key={id}
+              type="button"
+              aria-pressed={active}
               onClick={() => setPreset(id)}
-              style={{
-                all: "unset", cursor: "pointer",
-                padding: 14, borderRadius: 11,
-                border: `2px solid ${active ? t.brand : t.line}`,
-                background: active ? t.brandSoft : t.surface,
-                display: "flex", flexDirection: "column", gap: 6,
-              }}
+              className={cx("pick", active && "on")}
             >
-              <div style={{ fontSize: 13, fontWeight: 700, color: active ? t.brand : t.ink }}>
-                {p.label}
-              </div>
-              <div style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.4 }}>
-                {p.sub}
-              </div>
+              <b>{p.label}</b>
+              <span className="sub">{p.sub}</span>
             </button>
           );
         })}
       </div>
 
       {/* Advanced disclosure */}
-      <div style={{ marginTop: 18 }}>
-        <button
+      <div>
+        <Linky
           onClick={() => setShowAdvanced((v) => !v)}
-          style={{
-            all: "unset", cursor: "pointer",
-            fontSize: 11.5, fontWeight: 700, color: t.ink3,
-            display: "inline-flex", alignItems: "center", gap: 4,
-            padding: "4px 0",
-          }}
+          aria-expanded={showAdvanced}
+          style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
         >
           <Icon name={showAdvanced ? "chevD" : "chevR"} size={11} />
           Advanced — set exact day counts
-        </button>
+        </Linky>
         {showAdvanced && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 10 }}>
-            <Field label="First reminder (days)">
+          <CG className="mt">
+            <Field className="s4" label="First reminder (days)">
               <NullableNumInput
                 value={cadence?.first_reminder_days ?? null}
                 onChange={(n) => updateAdvanced({ first_reminder_days: n })}
                 placeholder="3"
               />
             </Field>
-            <Field label="Second reminder (days)">
+            <Field className="s4" label="Second reminder (days)">
               <NullableNumInput
                 value={cadence?.second_reminder_days ?? null}
                 onChange={(n) => updateAdvanced({ second_reminder_days: n })}
                 placeholder="7"
               />
             </Field>
-            <Field label="Escalate after (days)">
+            <Field className="s4" label="Escalate after (days)">
               <NullableNumInput
                 value={cadence?.escalate_after_days ?? null}
                 onChange={(n) => updateAdvanced({ escalate_after_days: n })}
                 placeholder="14"
               />
             </Field>
-          </div>
+          </CG>
         )}
       </div>
-    </Card>
+    </Panel>
   );
 }
 
@@ -866,7 +805,6 @@ interface ChecklistsProps {
 }
 
 function ChecklistsSection({ draft, setDraft, dirty, saving, onSave }: ChecklistsProps) {
-  const { t } = useTheme();
   const [activeSide, setActiveSide] = useState<LoanSide>("buyer");
   // Click-to-expand state. Starter rows use string id "starter:<name>";
   // extra rows use "extra:<idx>". One row open at a time.
@@ -926,52 +864,41 @@ function ChecklistsSection({ draft, setDraft, dirty, saving, onSave }: Checklist
   };
 
   return (
-    <Card>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <SectionLabel>Doc Checklist — your leads</SectionLabel>
-        <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />
-      </div>
-      <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
+    <Panel
+      title="Doc Checklist — your leads"
+      actions={<SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}
+      bodyClass="grid"
+    >
+      <div className="sub">
         What Elara will collect from your buyer-side and seller-side leads.
         Click any row to see its full detail. Disable starter items you don&apos;t
         want, and add your own. You can further override per-lead when you add a lead.
       </div>
 
-      <Tabs t={t} value={activeSide} onChange={(v) => onSideChange(v as LoanSide)}
-        options={SIDES.map((s) => ({ id: s.id, label: s.label }))} />
+      <Row>
+        <Seg
+          value={activeSide}
+          onChange={onSideChange}
+          ariaLabel="Transaction side"
+          options={SIDES.map((s) => ({ value: s.id, label: s.label }))}
+        />
+      </Row>
 
       {/* Starter (firm-default) zone — read-only details, toggle to disable */}
-      <div style={{ marginTop: 16 }}>
-        <div style={{
-          fontSize: 11, fontWeight: 700, letterSpacing: 1.6,
-          textTransform: "uppercase", color: t.ink3, marginBottom: 6,
-        }}>
-          Starter docs — uncheck to disable on your leads
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div>
+        <div className="lbl">Starter docs — uncheck to disable on your leads</div>
+        <div className="mt">
           {starter.map((name) => {
             const disabled = overlay.disabled_firm_items.includes(name);
             const key = `starter:${name}`;
             const isExpanded = expandedKey === key;
             return (
-              <div
-                key={name}
-                style={{
-                  borderRadius: 9,
-                  border: `1px solid ${isExpanded ? t.brand : t.line}`,
-                  overflow: "hidden",
-                  background: disabled ? t.surface2 : "transparent",
-                  opacity: disabled ? 0.65 : 1,
-                }}
-              >
+              <Fragment key={name}>
                 {/* Collapsed row */}
                 <div
+                  className="filerow"
                   onClick={() => setExpandedKey(isExpanded ? null : key)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 10,
-                    padding: "9px 12px", cursor: "pointer",
-                    background: isExpanded ? t.brandSoft : "transparent",
-                  }}
+                  style={{ cursor: "pointer", opacity: disabled ? 0.65 : 1 }}
                 >
                   <Icon name={isExpanded ? "chevD" : "chevR"} size={11} />
                   <input
@@ -979,190 +906,142 @@ function ChecklistsSection({ draft, setDraft, dirty, saving, onSave }: Checklist
                     checked={!disabled}
                     onChange={(e) => { e.stopPropagation(); toggleDisable(name); }}
                     onClick={(e) => e.stopPropagation()}
-                    style={{ width: 16, height: 16, cursor: "pointer" }}
+                    aria-label={`Collect ${name}`}
                   />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontSize: 13, fontWeight: 700, color: t.ink,
-                      textDecoration: disabled ? "line-through" : "none",
-                    }}>
-                      {name}
-                    </div>
-                  </div>
-                  <Pill bg={t.surface2} color={t.ink3}>
-                    {activeSide}
-                  </Pill>
+                  <span className="sp" style={{ fontWeight: 700, textDecoration: disabled ? "line-through" : "none" }}>
+                    {name}
+                  </span>
+                  <CellChip tone="mut">{activeSide}</CellChip>
                 </div>
 
                 {/* Expanded details (read-only — firm defaults can't be
                     edited from the agent surface; only disabled). */}
                 {isExpanded && (
-                  <div style={{
-                    padding: 14, borderTop: `1px solid ${t.line}`,
-                    background: t.surface2, fontSize: 12.5, color: t.ink2,
-                    lineHeight: 1.5,
-                  }}>
-                    <div>
-                      <strong style={{ color: t.ink }}>What Elara collects:</strong> {name}
+                  <Note>
+                    <div style={{ display: "grid", gap: 4 }}>
+                      <div><b>What Elara collects:</b> {name}</div>
+                      <div><b>Side:</b> {activeSide}</div>
+                      <div>
+                        <b>Status:</b>{" "}
+                        {disabled
+                          ? "Disabled on your leads — Elara won't request this."
+                          : "Active — Elara will request this from each new lead."}
+                      </div>
+                      <div className="sub">
+                        Starter docs are firm-managed. To edit due dates or wording,
+                        add your own version under &quot;Your additions&quot; below and
+                        disable this one.
+                      </div>
                     </div>
-                    <div style={{ marginTop: 4 }}>
-                      <strong style={{ color: t.ink }}>Side:</strong> {activeSide}
-                    </div>
-                    <div style={{ marginTop: 4 }}>
-                      <strong style={{ color: t.ink }}>Status:</strong>{" "}
-                      {disabled
-                        ? "Disabled on your leads — Elara won't request this."
-                        : "Active — Elara will request this from each new lead."}
-                    </div>
-                    <div style={{ marginTop: 8, fontSize: 11.5, color: t.ink3, fontStyle: "italic" }}>
-                      Starter docs are firm-managed. To edit due dates or wording,
-                      add your own version under &quot;Your additions&quot; below and
-                      disable this one.
-                    </div>
-                  </div>
+                  </Note>
                 )}
-              </div>
+              </Fragment>
             );
           })}
         </div>
       </div>
 
       {/* Your additions — fully editable */}
-      <div style={{ marginTop: 22 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-          <div style={{
-            fontSize: 11, fontWeight: 700, letterSpacing: 1.6,
-            textTransform: "uppercase", color: t.ink3,
-          }}>
-            Your additions — extras only you collect
-          </div>
-          <button
-            onClick={addExtra}
-            style={{
-              padding: "5px 10px", borderRadius: 7,
-              border: `1px solid ${t.line}`, background: t.surface2,
-              color: t.ink, fontSize: 12, fontWeight: 600, cursor: "pointer",
-              display: "inline-flex", alignItems: "center", gap: 5,
-            }}
-          >
+      <div>
+        <Row>
+          <div className="lbl">Your additions — extras only you collect</div>
+          <span className="sp" />
+          <Btn size="sm" onClick={addExtra}>
             <Icon name="plus" size={11} /> Add row
-          </button>
-        </div>
+          </Btn>
+        </Row>
         {overlay.extra_items.length === 0 ? (
-          <div style={{ fontSize: 12, color: t.ink3, fontStyle: "italic", padding: "8px 0" }}>
+          <div className="sub mt">
             No additions yet. Click &quot;Add row&quot; to extend your {activeSide}-side checklist.
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div className="mt">
             {overlay.extra_items.map((it, idx) => {
               const key = `extra:${idx}`;
               const isExpanded = expandedKey === key;
               const offset = it.due_offset_days ?? 7;
               return (
-                <div
-                  key={idx}
-                  style={{
-                    borderRadius: 9,
-                    border: `1px solid ${isExpanded ? t.brand : t.line}`,
-                    overflow: "hidden",
-                  }}
-                >
+                <Fragment key={idx}>
                   {/* Collapsed row */}
                   <div
+                    className="filerow"
                     onClick={() => setExpandedKey(isExpanded ? null : key)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 10,
-                      padding: "9px 12px", cursor: "pointer",
-                      background: isExpanded ? t.brandSoft : "transparent",
-                    }}
+                    style={{ cursor: "pointer" }}
                   >
                     <Icon name={isExpanded ? "chevD" : "chevR"} size={11} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {it.display_name || it.name}
-                      </div>
-                    </div>
-                    {it.required ? <Pill>Required</Pill> : null}
-                    <span style={{ fontSize: 11, color: t.ink3, whiteSpace: "nowrap" }}>
-                      due +{offset}d
+                    <span className="sp" style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {it.display_name || it.name}
                     </span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); removeExtra(idx); }}
+                    {it.required ? <CellChip tone="acc">Required</CellChip> : null}
+                    <span className="sub">due +{offset}d</span>
+                    <IconBtn
                       aria-label="Remove row"
-                      style={{
-                        width: 28, height: 28, borderRadius: 6,
-                        border: `1px solid ${t.line}`, background: "transparent",
-                        color: t.ink3, cursor: "pointer",
-                        display: "inline-flex", alignItems: "center", justifyContent: "center",
-                      }}
+                      onClick={(e) => { e.stopPropagation(); removeExtra(idx); }}
                     >
                       <Icon name="x" size={11} />
-                    </button>
+                    </IconBtn>
                   </div>
 
                   {/* Expanded editor — agent-relevant fields only.
                       Drops type/anchor/per_unit/internal_action since
                       those are funding-stage internal concerns. */}
                   {isExpanded && (
-                    <div
-                      style={{
-                        display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
-                        padding: 14, borderTop: `1px solid ${t.line}`,
-                        background: t.surface2,
-                      }}
-                    >
-                      <Field label="Internal key">
-                        <input
-                          value={it.name}
-                          onChange={(e) => updateExtra(idx, { name: e.target.value })}
-                          placeholder="e.g. closing_disclosure"
-                          style={inputStyle(t)}
-                        />
-                      </Field>
-                      <Field label="What the borrower sees">
-                        <input
-                          value={it.display_name ?? ""}
-                          onChange={(e) => updateExtra(idx, { display_name: e.target.value || null })}
-                          placeholder={it.name}
-                          style={inputStyle(t)}
-                        />
-                      </Field>
-                      <Field label="Due offset (days)">
-                        <NumInput
-                          value={it.due_offset_days ?? 7}
-                          onChange={(n) => updateExtra(idx, { due_offset_days: n })}
-                        />
-                      </Field>
-                      <Field label="Side">
-                        <select
-                          value={it.side ?? activeSide}
-                          onChange={(e) => updateExtra(idx, { side: e.target.value as DocChecklistItem["side"] })}
-                          style={inputStyle(t)}
-                        >
-                          <option value="buyer">Buyer</option>
-                          <option value="seller">Seller</option>
-                          <option value="both">Both</option>
-                        </select>
-                      </Field>
-                      <Toggle
-                        label="Required"
-                        value={!!it.required}
-                        onChange={(v) => updateExtra(idx, { required: v })}
-                      />
-                      <Toggle
-                        label="Auto-request from borrower"
-                        value={it.auto_request !== false}
-                        onChange={(v) => updateExtra(idx, { auto_request: v })}
-                      />
+                    <div className="card">
+                      <CG>
+                        <Field className="s6" label="Internal key">
+                          <Input
+                            value={it.name}
+                            onChange={(e) => updateExtra(idx, { name: e.target.value })}
+                            placeholder="e.g. closing_disclosure"
+                          />
+                        </Field>
+                        <Field className="s6" label="What the borrower sees">
+                          <Input
+                            value={it.display_name ?? ""}
+                            onChange={(e) => updateExtra(idx, { display_name: e.target.value || null })}
+                            placeholder={it.name}
+                          />
+                        </Field>
+                        <Field className="s6" label="Due offset (days)">
+                          <NumInput
+                            value={it.due_offset_days ?? 7}
+                            onChange={(n) => updateExtra(idx, { due_offset_days: n })}
+                          />
+                        </Field>
+                        <Field className="s6" label="Side">
+                          <Select
+                            value={it.side ?? activeSide}
+                            onChange={(e) => updateExtra(idx, { side: e.target.value as DocChecklistItem["side"] })}
+                          >
+                            <option value="buyer">Buyer</option>
+                            <option value="seller">Seller</option>
+                            <option value="both">Both</option>
+                          </Select>
+                        </Field>
+                        <div className="s6">
+                          <Toggle
+                            label="Required"
+                            value={!!it.required}
+                            onChange={(v) => updateExtra(idx, { required: v })}
+                          />
+                        </div>
+                        <div className="s6">
+                          <Toggle
+                            label="Auto-request from borrower"
+                            value={it.auto_request !== false}
+                            onChange={(v) => updateExtra(idx, { auto_request: v })}
+                          />
+                        </div>
+                      </CG>
                     </div>
                   )}
-                </div>
+                </Fragment>
               );
             })}
           </div>
         )}
       </div>
-    </Card>
+    </Panel>
   );
 }
 
@@ -1182,143 +1061,93 @@ function normalizeBookingSlug(value: string): string {
     .slice(0, 64);
 }
 
-function Tabs<T extends string>({ t, value, onChange, options }: {
-  t: ReturnType<typeof useTheme>["t"];
-  value: T;
-  onChange: (v: T) => void;
-  options: { id: T; label: string }[];
-}) {
+/**
+ * Two-tone status line. `.c-ok` / `.c-warn` / `.c-bad` own the tint and the
+ * text colour; the inline values are box geometry only — the stylesheet has no
+ * block-level status surface, and `.cellchip` is `white-space: nowrap`, which
+ * a full-sentence save error is not.
+ */
+function StatusLine({ tone, children }: { tone: "ok" | "warn" | "bad"; children: ReactNode }) {
   return (
-    <div style={{ display: "flex", gap: 4, padding: 3, background: t.surface2, borderRadius: 9, width: "fit-content" }}>
-      {options.map((o) => {
-        const active = value === o.id;
-        return (
-          <button
-            key={o.id}
-            onClick={() => onChange(o.id)}
-            style={{
-              all: "unset", cursor: "pointer",
-              padding: "6px 11px", borderRadius: 7,
-              fontSize: 12, fontWeight: 600,
-              background: active ? t.surface : "transparent",
-              color: active ? t.ink : t.ink3,
-              boxShadow: active ? `0 1px 2px ${t.line}` : "none",
-            }}
-          >
-            {o.label}
-          </button>
-        );
-      })}
+    <div className={`c-${tone}`} style={{ borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 650 }}>
+      {children}
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  const { t } = useTheme();
+/** Label above a control, still a real `<label>` so clicking it focuses. */
+function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>
-        {label}
-      </span>
+    <label className={className} style={{ display: "grid", gap: 5, minWidth: 0 }}>
+      <span className="lbl">{label}</span>
       {children}
     </label>
   );
 }
 
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
-  const { t } = useTheme();
+function ReadOnlyField({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>
-        {label}
-      </span>
-      <div style={{ fontSize: 13, color: t.ink, padding: "8px 10px" }}>
-        {value}
-      </div>
+    <div className={className} style={{ display: "grid", gap: 5, minWidth: 0 }}>
+      <span className="lbl">{label}</span>
+      <div>{value}</div>
     </div>
   );
 }
 
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "8px 10px",
-    borderRadius: 7,
-    border: `1px solid ${t.line}`,
-    background: t.surface2,
-    color: t.ink,
-    fontSize: 13,
-    outline: "none",
-    boxSizing: "border-box",
-  };
-}
-
 function TextInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
-  const { t } = useTheme();
   return (
-    <input
+    <Input
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      style={inputStyle(t)}
     />
   );
 }
 
 function ColorInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const { t } = useTheme();
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    <Row>
+      {/* `.field` owns the frame; only the swatch box size is inline. */}
       <input
         type="color"
+        className="field"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={{ width: 42, height: 36, padding: 2, borderRadius: 7, border: `1px solid ${t.line}`, background: t.surface2 }}
+        style={{ width: 52, height: 36 }}
       />
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={inputStyle(t)}
-      />
-    </div>
+      <Input grow value={value} onChange={(e) => onChange(e.target.value)} />
+    </Row>
   );
 }
 
+/** Checkbox row — the same selectable-row object as the section rail. */
 function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
-  const { t } = useTheme();
   return (
-    <label style={{
-      display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
-      padding: "8px 10px", borderRadius: 7,
-      border: `1px solid ${t.line}`,
-    }}>
+    <label className={cx("pick", value && "on")}>
       <input
         type="checkbox"
         checked={value}
         onChange={(e) => onChange(e.target.checked)}
         style={{ width: 16, height: 16, cursor: "pointer" }}
       />
-      <span style={{ fontSize: 12.5, color: t.ink2, fontWeight: 600 }}>{label}</span>
+      <span>{label}</span>
     </label>
   );
 }
 
 function NumInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
-  const { t } = useTheme();
   return (
-    <input
+    <Input
       type="number"
       value={value}
       onChange={(e) => onChange(Number(e.target.value) || 0)}
-      style={inputStyle(t)}
     />
   );
 }
 
 function NullableNumInput({ value, onChange, placeholder }: { value: number | null; onChange: (n: number | null) => void; placeholder?: string }) {
-  const { t } = useTheme();
   return (
-    <input
+    <Input
       type="number"
       value={value ?? ""}
       onChange={(e) => {
@@ -1326,38 +1155,16 @@ function NullableNumInput({ value, onChange, placeholder }: { value: number | nu
         onChange(v === "" ? null : Number(v));
       }}
       placeholder={placeholder}
-      style={inputStyle(t)}
     />
   );
 }
 
 function SaveBtn({ dirty, saving, onClick }: { dirty: boolean; saving: boolean; onClick: () => void }) {
-  const { t } = useTheme();
+  // `.btn:disabled` carries the dimmed, not-allowed state the inline
+  // background/colour swap used to.
   return (
-    <button
-      onClick={onClick}
-      disabled={!dirty || saving}
-      style={{
-        padding: "7px 14px", borderRadius: 8,
-        border: "none",
-        background: dirty && !saving ? t.brand : t.chip,
-        color: dirty && !saving ? t.inverse : t.ink4,
-        fontSize: 12, fontWeight: 700,
-        cursor: dirty && !saving ? "pointer" : "not-allowed",
-      }}
-    >
+    <Btn variant="pri" onClick={onClick} disabled={!dirty || saving}>
       {saving ? "Saving…" : "Save"}
-    </button>
+    </Btn>
   );
-}
-
-function dayChipStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    border: `1px solid ${t.line}`,
-    borderRadius: 999,
-    padding: "6px 11px",
-    cursor: "pointer",
-    fontSize: 12,
-    fontWeight: 800,
-  };
 }

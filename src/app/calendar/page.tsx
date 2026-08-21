@@ -2,9 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import {
+  Btn,
+  CellChip,
+  IconBtn,
+  Input,
+  Kpi,
+  PageHeader,
+  Panel,
+  Seg,
+  Tag,
+  Textarea,
+  type ChipTone,
+} from "@/components/ds";
 import {
   useAITasks,
   useBookingSettings,
@@ -17,7 +28,6 @@ import {
   useUpdateCalendarEvent,
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import type { AITask, CalendarActivityItem, CalendarEvent, Document, Loan, UserBookingSettings } from "@/lib/types";
 import { EventModal } from "./components/EventModal";
 
@@ -36,7 +46,6 @@ const DEFAULT_DAY_START_MINUTE = 8 * 60;
 const DEFAULT_DAY_END_MINUTE = 20 * 60;
 
 export default function CalendarPage() {
-  const { t } = useTheme();
   const [windowDays, setWindowDays] = useState<Window>(7);
   const [createOpen, setCreateOpen] = useState(false);
   const [nowTs, setNowTs] = useState(() => Date.now());
@@ -114,48 +123,34 @@ export default function CalendarPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>Calendar</h1>
-        <Pill>{visibleEvents.length} events · next {windowDays}d</Pill>
-        <div style={{ display: "inline-flex", gap: 4, marginLeft: 6 }}>
-          {WINDOWS.map((w) => {
-            const active = w.id === windowDays;
-            return (
-              <button
-                key={w.id}
-                onClick={() => setWindowDays(w.id)}
-                style={{
-                  ...qcBtn(t),
-                  padding: "6px 12px",
-                  fontSize: 12,
-                  background: active ? t.ink : t.surface,
-                  color: active ? t.inverse : t.ink2,
-                  border: active ? "none" : `1px solid ${t.lineStrong}`,
-                }}
-              >
-                {w.label}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ flex: 1 }} />
-        {!isClient && (
-          <button onClick={() => setCreateOpen(true)} style={qcBtnPrimary(t)}>
-            <Icon name="plus" size={14} /> New event
-          </button>
-        )}
-      </div>
+      {/* The window switch is a filter, not a tab strip: it narrows the same
+          agenda rather than swapping views, so it announces with aria-pressed.
+          Seg is generic over a string union, so the numeric Window values are
+          carried across the boundary as strings and coerced back. */}
+      <PageHeader
+        title="Calendar"
+        lede={`${visibleEvents.length} events · next ${windowDays}d`}
+        actions={
+          <>
+            <Seg<string>
+              value={String(windowDays)}
+              onChange={(v) => setWindowDays(Number(v) as Window)}
+              ariaLabel="Agenda window"
+              as="filter"
+              options={WINDOWS.map((w) => ({ value: String(w.id), label: w.label }))}
+            />
+            {!isClient && (
+              <Btn variant="pri" onClick={() => setCreateOpen(true)}>
+                <Icon name="plus" size={14} /> New event
+              </Btn>
+            )}
+          </>
+        }
+      />
       {!isClient && <EventModal open={createOpen} onClose={() => setCreateOpen(false)} />}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1.55fr) minmax(320px, 0.75fr)",
-          gap: 14,
-          alignItems: "flex-start",
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+      <div className="cg">
+        <div className="s8" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <TodayTimeline
             events={todayEvents}
             nowTs={nowTs}
@@ -165,19 +160,8 @@ export default function CalendarPage() {
 
           {upcomingDays.length > 0 ? (
             upcomingDays.map((day) => (
-              <Card key={day} pad={16}>
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    letterSpacing: 1.4,
-                    color: t.ink3,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {formatDayHeader(day)}
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+              <Panel key={day} title={formatDayHeader(day)}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {byUpcomingDay[day].map((ev) => (
                     <CompactEventRow
                       key={ev.id}
@@ -187,18 +171,18 @@ export default function CalendarPage() {
                     />
                   ))}
                 </div>
-              </Card>
+              </Panel>
             ))
           ) : (
-            <Card pad={16}>
-              <div style={{ fontSize: 13, color: t.ink3, textAlign: "center" }}>
+            <Panel>
+              <div className="sub" style={{ textAlign: "center" }}>
                 No upcoming events after today in the next {windowDays} days.
               </div>
-            </Card>
+            </Panel>
           )}
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+        <div className="s4" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {isClient ? (
             <ClientActivityFeed rows={activity} />
           ) : (
@@ -214,7 +198,6 @@ export default function CalendarPage() {
 }
 
 function CalendarShareCard({ booking }: { booking: UserBookingSettings | null }) {
-  const { t } = useTheme();
   const [copied, setCopied] = useState<"url" | "message" | null>(null);
   const bookingPath = booking?.enabled && booking.slug ? `/book/${booking.slug}` : null;
   const bookingUrl = bookingPath && typeof window !== "undefined" ? `${window.location.origin}${bookingPath}` : bookingPath;
@@ -230,108 +213,76 @@ function CalendarShareCard({ booking }: { booking: UserBookingSettings | null })
   };
 
   return (
-    <Card pad={14}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <SectionLabel>Booking link</SectionLabel>
-        {bookingUrl ? (
-          <button
+    <Panel
+      title="Booking link"
+      actions={
+        bookingUrl ? (
+          <IconBtn
             onClick={() => copyText(bookingUrl, "url")}
             title="Copy booking link"
             aria-label="Copy booking link"
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: 10,
-              border: `1px solid ${t.lineStrong}`,
-              background: t.surface2,
-              color: copied === "url" ? t.profit : t.ink2,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-            }}
+            // Dynamic, state-derived: the button turns green for the ~1.6s the
+            // "copied" flag is up. `.btn` owns the resting colour.
+            style={copied === "url" ? { color: "var(--ok)" } : undefined}
           >
             <Icon name={copied === "url" ? "check" : "link"} size={13} />
-          </button>
-        ) : null}
-      </div>
+          </IconBtn>
+        ) : null
+      }
+    >
       {bookingUrl ? (
         <>
-          <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, margin: "8px 0 10px" }}>
+          <div className="sub">
             Copy this page into email, SMS, or chat. Booked calls land on this calendar.
           </div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
-            <input
+          <div className="row mt">
+            <Input
+              grow
               readOnly
               value={bookingUrl}
               onFocus={(event) => event.currentTarget.select()}
               onClick={(event) => event.currentTarget.select()}
-              style={{
-                minWidth: 0,
-                flex: 1,
-                border: `1px solid ${t.line}`,
-                background: t.surface2,
-                color: t.ink2,
-                borderRadius: 8,
-                padding: "8px 9px",
-                fontSize: 12,
-              }}
             />
-            <button onClick={() => copyText(bookingUrl, "url")} style={{ ...qcBtn(t), padding: "8px 10px" }}>
+            <Btn onClick={() => copyText(bookingUrl, "url")}>
               <Icon name={copied === "url" ? "check" : "link"} size={12} />
               {copied === "url" ? "Copied" : "Copy URL"}
-            </button>
+            </Btn>
           </div>
-          <textarea
+          <Textarea
+            className="mt"
             readOnly
             value={inviteText}
             onFocus={(event) => event.currentTarget.select()}
             onClick={(event) => event.currentTarget.select()}
             rows={3}
-            style={{
-              width: "100%",
-              boxSizing: "border-box",
-              border: `1px solid ${t.line}`,
-              background: t.bg,
-              color: t.ink2,
-              borderRadius: 10,
-              padding: "9px 10px",
-              fontSize: 12,
-              lineHeight: 1.45,
-              resize: "none",
-              outline: "none",
-            }}
+            style={{ width: "100%", resize: "none" }}
           />
-          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-            <button onClick={() => copyText(inviteText, "message")} style={{ ...qcBtn(t), display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12 }}>
+          <div className="row mt">
+            <Btn onClick={() => copyText(inviteText, "message")}>
               <Icon name={copied === "message" ? "check" : "send"} size={12} />
               {copied === "message" ? "Copied message" : "Copy message"}
-            </button>
-            <Link href={bookingPath ?? "/calendar"} target="_blank" style={{ textDecoration: "none" }}>
-              <span style={{ ...qcBtn(t), display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12 }}>
-                <Icon name="external" size={12} /> Open
-              </span>
+            </Btn>
+            <Link href={bookingPath ?? "/calendar"} target="_blank" className="btn">
+              <Icon name="external" size={12} /> Open
             </Link>
-            <Link href="/booking-settings" style={{ textDecoration: "none" }}>
-              <span style={{ ...qcBtn(t), display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12 }}>
-                <Icon name="gear" size={12} /> Configure
-              </span>
+            <Link href="/booking-settings" className="btn">
+              <Icon name="gear" size={12} /> Configure
             </Link>
           </div>
         </>
       ) : (
         <>
-          <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, margin: "8px 0 10px" }}>
+          <div className="sub">
             Your public booking page is not enabled yet. Configure it once, then the share link will appear here.
           </div>
-          <Link href="/booking-settings" style={{ textDecoration: "none" }}>
-            <span style={{ ...qcBtnPrimary(t), display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+          <div className="row mt">
+            <Link href="/booking-settings" className="btn pri">
               <Icon name="cal" size={12} /> Configure booking page
-            </span>
-          </Link>
+            </Link>
+          </div>
         </>
       )}
-    </Card>
+    </Panel>
   );
 }
 
@@ -346,7 +297,6 @@ function TodayTimeline({
   canCancel: boolean;
   canDelete: boolean;
 }) {
-  const { t } = useTheme();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const layout = useMemo(() => buildTimelineLayout(events, new Date(nowTs)), [events, nowTs]);
 
@@ -364,24 +314,20 @@ function TodayTimeline({
   }, [layout.currentOffset, layout.rangeStart, layout.rangeEnd, events.length]);
 
   return (
-    <Card pad={0}>
-      <div style={{ padding: "14px 16px 10px", borderBottom: `1px solid ${t.line}`, display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <SectionLabel>Today</SectionLabel>
-          <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>
-            Real-time agenda · current line fixed at {formatClock(new Date(nowTs))}
-          </div>
-        </div>
-        <Pill>{events.length} item{events.length === 1 ? "" : "s"}</Pill>
-      </div>
-
+    <Panel
+      title="Today"
+      sub={`Real-time agenda · current line fixed at ${formatClock(new Date(nowTs))}`}
+      actions={<Tag>{events.length} item{events.length === 1 ? "" : "s"}</Tag>}
+      // The body is an absolutely-positioned time canvas, not a padded card
+      // body: every child is placed by computed pixel offsets.
+      noPad
+    >
       <div
         style={{
           height: "min(680px, calc(100vh - 230px))",
           minHeight: 420,
           position: "relative",
           overflow: "hidden",
-          background: t.surface,
         }}
       >
         <div
@@ -397,22 +343,10 @@ function TodayTimeline({
             alignItems: "center",
           }}
         >
-          <div
-            style={{
-              marginLeft: 12,
-              padding: "2px 8px",
-              borderRadius: 999,
-              background: "rgba(239,68,68,0.16)",
-              color: "#ef4444",
-              fontSize: 11,
-              fontWeight: 900,
-              letterSpacing: 0.3,
-              border: "1px solid rgba(239,68,68,0.35)",
-            }}
-          >
+          <span className="cellchip c-bad" style={{ marginLeft: 12 }}>
             {formatClock(new Date(nowTs))}
-          </div>
-          <div style={{ height: 2, flex: 1, background: "#ef4444", boxShadow: "0 0 0 1px rgba(239,68,68,0.12)" }} />
+          </span>
+          <div style={{ height: 2, flex: 1, background: "var(--danger)" }} />
         </div>
 
         <div ref={scrollRef} style={{ height: "100%", overflowY: "auto", overflowX: "hidden" }}>
@@ -426,21 +360,10 @@ function TodayTimeline({
                   left: 0,
                   right: 0,
                   height: 1,
-                  background: t.line,
+                  background: "var(--line)",
                 }}
               >
-                <div
-                  style={{
-                    position: "absolute",
-                    top: -8,
-                    left: 16,
-                    width: 48,
-                    fontSize: 11,
-                    color: t.ink4,
-                    fontWeight: 700,
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
+                <div className="lbl num" style={{ position: "absolute", top: -8, left: 16, width: 48 }}>
                   {formatHour(hour.minute)}
                 </div>
               </div>
@@ -449,16 +372,15 @@ function TodayTimeline({
             <div style={{ position: "absolute", left: 76, right: 14, top: 0, bottom: 0 }}>
               {layout.items.length === 0 ? (
                 <div
+                  className="sub"
                   style={{
                     position: "absolute",
                     top: Math.max(24, layout.currentOffset + 28),
                     left: 0,
                     right: 0,
-                    border: `1px dashed ${t.lineStrong}`,
+                    border: "1px dashed var(--line2)",
                     borderRadius: 12,
                     padding: 14,
-                    color: t.ink3,
-                    fontSize: 13,
                     textAlign: "center",
                   }}
                 >
@@ -478,7 +400,7 @@ function TodayTimeline({
           </div>
         </div>
       </div>
-    </Card>
+    </Panel>
   );
 }
 
@@ -491,11 +413,10 @@ function TimelineEventBlock({
   canCancel: boolean;
   canDelete: boolean;
 }) {
-  const { t } = useTheme();
   const event = item.event;
   const update = useUpdateCalendarEvent();
   const remove = useDeleteCalendarEvent();
-  const state = eventTone(event, t);
+  const state = eventTone(event);
   const isDone = event.status === "done";
   const isCancelled = event.status === "cancelled";
   const href = eventHref(event);
@@ -543,38 +464,59 @@ function TimelineEventBlock({
         background: state.bg,
         color: "inherit",
         textDecoration: "none",
-        boxShadow: "0 10px 24px rgba(0,0,0,0.12)",
+        boxShadow: "var(--sh2)",
         opacity: isCancelled ? 0.58 : 1,
         overflow: "hidden",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-        <span style={{ color: state.fg, fontSize: 11, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>
+        <span className="num" style={{ color: state.fg, fontSize: 11, fontWeight: 800 }}>
           {formatClock(new Date(event.starts_at))}
         </span>
-        {event.duration_min ? <span style={{ color: t.ink3, fontSize: 10 }}>{event.duration_min}m</span> : null}
-        <span style={{ flex: 1 }} />
-        {event.priority === "high" && !isDone && !isCancelled ? <span style={{ width: 7, height: 7, borderRadius: 99, background: t.danger }} /> : null}
+        {event.duration_min ? <span className="sub">{event.duration_min}m</span> : null}
+        <span className="sp" />
+        {event.priority === "high" && !isDone && !isCancelled ? (
+          <span className="repdot" style={{ background: "var(--danger)" }} />
+        ) : null}
       </div>
-      <div style={{ color: t.ink, fontWeight: 850, fontSize: 13, lineHeight: 1.2, textDecoration: isDone || isCancelled ? "line-through" : "none" }}>
+      <div
+        style={{
+          color: "var(--ink)",
+          fontWeight: 750,
+          fontSize: 13,
+          lineHeight: 1.2,
+          textDecoration: isDone || isCancelled ? "line-through" : "none",
+        }}
+      >
         {event.title}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, marginTop: "auto" }}>
-        <Pill bg={t.surface} color={state.fg}>{event.kind}</Pill>
-        {event.source === "ai" ? <Pill bg={t.brandSoft} color={t.brand}>AI</Pill> : null}
+        {/* `.cellchip` owns the pill shape only; the tone is data-derived, so
+            the two colours stay inline rather than picking a `.c-*` that would
+            vanish against the same-tone block behind it. */}
+        <span className="cellchip" style={{ background: "var(--surface)", color: state.fg }}>
+          {event.kind}
+        </span>
+        {event.source === "ai" ? <CellChip tone="acc">AI</CellChip> : null}
         {event.who ? (
-          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, color: t.ink3 }}>
+          <span
+            className="sub"
+            style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
             {event.who}
           </span>
         ) : null}
-        <span style={{ flex: 1 }} />
+        <span className="sp" />
+        {/* Deliberately NOT `.btn.sm` / IconBtn: a block can be as short as
+            MIN_EVENT_HEIGHT (56px) with `overflow: hidden`, and a 30px control
+            pushes these actions out of the box entirely. */}
         {canCancel && !isCancelled ? (
-          <button onClick={cancelEvent} style={miniAction(t)} title="Cancel event" aria-label="Cancel event">
+          <button onClick={cancelEvent} style={miniAction()} title="Cancel event" aria-label="Cancel event">
             Cancel
           </button>
         ) : null}
         {canDelete ? (
-          <button onClick={deleteEvent} style={{ ...miniIconAction(t), color: t.ink4 }} title="Delete event" aria-label="Delete event">
+          <button onClick={deleteEvent} style={miniIconAction()} title="Delete event" aria-label="Delete event">
             <Icon name="x" size={11} />
           </button>
         ) : null}
@@ -584,10 +526,9 @@ function TimelineEventBlock({
 }
 
 function CompactEventRow({ ev, canCancel, canDelete }: { ev: CalendarEvent; canCancel: boolean; canDelete: boolean }) {
-  const { t } = useTheme();
   const update = useUpdateCalendarEvent();
   const remove = useDeleteCalendarEvent();
-  const state = eventTone(ev, t);
+  const state = eventTone(ev);
   const isDone = ev.status === "done";
   const isCancelled = ev.status === "cancelled";
 
@@ -615,95 +556,96 @@ function CompactEventRow({ ev, canCancel, canDelete }: { ev: CalendarEvent; canC
         if (isDocumentDue(ev) && !isDone && !isCancelled) return;
         onToggleDone(e);
       }}
+      className="row"
       style={{
-        display: "flex",
-        gap: 12,
         padding: 10,
         borderRadius: 12,
         border: `1px solid ${state.fg}`,
         background: state.bg,
-        alignItems: "center",
         textDecoration: "none",
         color: "inherit",
         opacity: isCancelled ? 0.6 : 1,
       }}
     >
-      <div style={{ minWidth: 70, fontSize: 12, fontWeight: 800, color: state.fg, fontFeatureSettings: '"tnum"', letterSpacing: 0.3 }}>
+      <div className="num" style={{ minWidth: 70, fontSize: 12, fontWeight: 800, color: state.fg }}>
         {formatClock(new Date(ev.starts_at))}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 800, color: t.ink, textDecoration: isDone || isCancelled ? "line-through" : "none" }}>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 750,
+            color: "var(--ink)",
+            textDecoration: isDone || isCancelled ? "line-through" : "none",
+          }}
+        >
           {ev.title}
         </div>
-        <div style={{ fontSize: 11.5, color: t.ink3, display: "flex", gap: 6, alignItems: "center" }}>
-          {state.label ? <span style={{ fontWeight: 800, color: state.fg, letterSpacing: 0.4 }}>{state.label}</span> : null}
+        <div className="sub" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {state.label ? <span style={{ fontWeight: 800, color: state.fg }}>{state.label}</span> : null}
           {state.label && ev.who ? <span>·</span> : null}
           {ev.who ?? (state.label ? "" : "-")}
           {ev.duration_min ? <> · {ev.duration_min}m</> : null}
         </div>
       </div>
-      <Pill>{ev.kind}</Pill>
+      <CellChip tone="mut">{ev.kind}</CellChip>
       {canCancel && !isCancelled ? (
-        <button onClick={onCancel} style={miniAction(t)} title="Cancel event" aria-label="Cancel event">
+        <Btn size="sm" onClick={onCancel} title="Cancel event" aria-label="Cancel event">
           Cancel
-        </button>
+        </Btn>
       ) : null}
       {canDelete ? (
-        <button onClick={onDelete} title="Delete event" aria-label="Delete event" style={miniIconAction(t)}>
+        <IconBtn onClick={onDelete} title="Delete event" aria-label="Delete event">
           <Icon name="x" size={12} />
-        </button>
+        </IconBtn>
       ) : null}
     </Link>
   );
 }
 
 function ClientActivityFeed({ rows }: { rows: CalendarActivityItem[] }) {
-  const { t } = useTheme();
   return (
-    <Card pad={14}>
-      <SectionLabel>Account activity</SectionLabel>
+    <Panel title="Account activity">
       {rows.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: t.ink3, padding: "8px 0" }}>
-          No recent borrower-visible activity.
-        </div>
+        <div className="sub">No recent borrower-visible activity.</div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+        // `.pick + .pick` supplies the row spacing, so no wrapper gap here.
+        <div>
           {rows.slice(0, 18).map((row) => (
-            <Link
-              key={row.id}
-              href={row.loan_id ? `/loans/${row.loan_id}` : "/calendar"}
-              style={{
-                display: "flex",
-                gap: 10,
-                padding: "9px 10px",
-                borderRadius: 9,
-                background: t.surface2,
-                border: `1px solid ${t.line}`,
-                color: "inherit",
-                textDecoration: "none",
-              }}
-            >
-              <div style={{ width: 26, height: 26, borderRadius: 8, background: t.brandSoft, color: t.brand, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Link key={row.id} href={row.loan_id ? `/loans/${row.loan_id}` : "/calendar"} className="pick">
+              <span
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: 8,
+                  background: "var(--accent-100)",
+                  color: "var(--accent)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
                 <Icon name={activityIcon(row.kind)} size={13} />
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 12.5, color: t.ink, fontWeight: 750, lineHeight: 1.25 }}>
+              </span>
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <span style={{ display: "block", fontSize: 12.5, fontWeight: 650, lineHeight: 1.25 }}>
                   {row.summary || humanize(row.kind)}
-                </div>
-                <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
-                  {humanize(row.kind)} · {new Date(row.occurred_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                </div>
-              </div>
+                </span>
+                <span className="sub" style={{ display: "block", marginTop: 2 }}>
+                  {humanize(row.kind)} ·{" "}
+                  {new Date(row.occurred_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                </span>
+              </span>
             </Link>
           ))}
         </div>
       )}
-    </Card>
+    </Panel>
   );
 }
 
 function TodosRail({ todos, windowDays }: { todos: Todo[]; windowDays: Window }) {
-  const { t } = useTheme();
   const groups = groupTodos(todos, windowDays);
   const counts = useMemo(
     () => ({
@@ -715,111 +657,72 @@ function TodosRail({ todos, windowDays }: { todos: Todo[]; windowDays: Window })
   );
 
   return (
-    <Card pad={14}>
-      <SectionLabel
-        action={
-          <Link
-            href="/ai-inbox"
-            style={{
-              color: t.petrol,
-              fontWeight: 700,
-              fontSize: 12,
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            AI inbox <Icon name="arrowR" size={11} />
-          </Link>
-        }
-      >
-        Todos · next {windowDays}d
-      </SectionLabel>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, margin: "10px 0" }}>
+    <Panel
+      title={`Todos · next ${windowDays}d`}
+      actions={
+        <Link href="/ai-inbox" className="linky">
+          AI inbox <Icon name="arrowR" size={11} />
+        </Link>
+      }
+    >
+      {/* Three equal tiles, held at three across even in the narrow rail —
+          `.kpis` auto-fit would break them to 2 + 1. */}
+      <div className="grid" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
         <TodoMetric label="Overdue" value={counts.overdue} tone="overdue" />
         <TodoMetric label="Today" value={counts.today} tone="today" />
         <TodoMetric label="Upcoming" value={counts.upcoming} tone="soon" />
       </div>
 
       {todos.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: t.ink3, padding: "8px 0" }}>
-          Nothing pending in this window.
-        </div>
+        <div className="sub mt">Nothing pending in this window.</div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {groups.map((group) => (
-            <div key={group.key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 2px" }}>
-                <span style={{ width: 7, height: 7, borderRadius: 99, background: todoAccent(t, group.tone) }} />
-                <span style={{ fontSize: 10.5, fontWeight: 850, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
-                  {group.label}
-                </span>
-                <span style={{ flex: 1, height: 1, background: t.line }} />
-                <span style={{ fontSize: 11, color: t.ink4, fontVariantNumeric: "tabular-nums" }}>{group.items.length}</span>
-              </div>
-              {group.items.map((todo) => (
-                <Link
-                  key={todo.key}
-                  href={todo.href}
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 10,
-                    padding: "9px 10px",
-                    borderRadius: 9,
-                    background: t.surface2,
-                    border: `1px solid ${t.line}`,
-                    borderLeft: `3px solid ${todoAccent(t, todo.urgency)}`,
-                    textDecoration: "none",
-                    color: "inherit",
-                  }}
-                >
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {todo.title}
-                    </div>
-                    <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
-                      {todo.sub}
-                    </div>
-                  </div>
-                  <Pill
-                    bg={todo.urgency === "overdue" ? t.dangerBg : todo.urgency === "today" ? t.warnBg : t.chip}
-                    color={todo.urgency === "overdue" ? t.danger : todo.urgency === "today" ? t.warn : t.ink2}
-                  >
-                    {todo.urgency}
-                  </Pill>
-                </Link>
-              ))}
+        groups.map((group) => (
+          <div key={group.key} className="mt">
+            <div className="row" style={{ marginBottom: 7 }}>
+              <span className="repdot" style={{ background: todoAccent(group.tone) }} />
+              <span className="lbl">{group.label}</span>
+              <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
+              <span className="sub num">{group.items.length}</span>
             </div>
-          ))}
-        </div>
+            {group.items.map((todo) => (
+              <Link
+                key={todo.key}
+                href={todo.href}
+                className="pick"
+                // Urgency is carried by the left edge as well as the chip, so
+                // the rail scans by colour. Data-derived, hence inline.
+                style={{ borderLeft: `3px solid ${todoAccent(todo.urgency)}` }}
+              >
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: 12.5,
+                      fontWeight: 650,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {todo.title}
+                  </span>
+                  <span className="sub" style={{ display: "block", marginTop: 2 }}>
+                    {todo.sub}
+                  </span>
+                </span>
+                <CellChip tone={urgencyTone(todo.urgency)}>{todo.urgency}</CellChip>
+              </Link>
+            ))}
+          </div>
+        ))
       )}
-    </Card>
+    </Panel>
   );
 }
 
 function TodoMetric({ label, value, tone }: { label: string; value: number; tone: Todo["urgency"] }) {
-  const { t } = useTheme();
-  return (
-    <div
-      style={{
-        border: `1px solid ${t.line}`,
-        background: t.surface2,
-        borderRadius: 8,
-        padding: "8px 9px",
-        minWidth: 0,
-      }}
-    >
-      <div style={{ fontSize: 17, fontWeight: 900, color: todoAccent(t, tone), lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
-        {value}
-      </div>
-      <div style={{ fontSize: 10, color: t.ink3, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase", marginTop: 5 }}>
-        {label}
-      </div>
-    </div>
-  );
+  // The figure keeps its urgency colour — it is the fastest read in the rail.
+  return <Kpi label={label} value={<span style={{ color: todoAccent(tone) }}>{value}</span>} />;
 }
 
 interface TimelineItem {
@@ -910,14 +813,16 @@ function clusterOverlaps<T extends { startMinute: number; endMinute: number }>(i
   return clusters;
 }
 
-function eventTone(ev: CalendarEvent, t: ReturnType<typeof useTheme>["t"]) {
+/** Tone of an event block. The colours are the same values the theme shim
+ *  returned, read straight off globals.css instead. */
+function eventTone(ev: CalendarEvent): { fg: string; bg: string; label: string } {
   const isDone = ev.status === "done";
   const isCancelled = ev.status === "cancelled";
   const isOverdue = !isDone && !isCancelled && new Date(ev.starts_at).getTime() < Date.now();
-  if (isCancelled) return { fg: t.ink3, bg: t.surface2, label: "CANCELLED" };
-  if (isDone) return { fg: t.profit, bg: t.profitBg, label: "DONE" };
-  if (isOverdue) return { fg: t.danger, bg: t.dangerBg, label: "OVERDUE" };
-  return { fg: t.warn, bg: t.warnBg, label: "" };
+  if (isCancelled) return { fg: "var(--muted)", bg: "var(--sunken)", label: "CANCELLED" };
+  if (isDone) return { fg: "var(--ok)", bg: "var(--ok-tint)", label: "DONE" };
+  if (isOverdue) return { fg: "var(--danger)", bg: "var(--danger-tint)", label: "OVERDUE" };
+  return { fg: "var(--warn)", bg: "var(--warn-tint)", label: "" };
 }
 
 function eventHref(ev: CalendarEvent): string {
@@ -929,11 +834,13 @@ function isDocumentDue(ev: CalendarEvent): boolean {
   return ev.external_ref_kind === "document_due" && !!ev.external_ref_id;
 }
 
-function miniAction(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+/** Compact action inside a timeline block — see the note at the call site for
+ *  why these are not `.btn.sm`. */
+function miniAction(): CSSProperties {
   return {
-    border: `1px solid ${t.line}`,
-    background: t.surface,
-    color: t.ink2,
+    border: "1px solid var(--line)",
+    background: "var(--surface)",
+    color: "var(--ink2)",
     borderRadius: 6,
     padding: "2px 6px",
     fontSize: 10,
@@ -943,14 +850,14 @@ function miniAction(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
   };
 }
 
-function miniIconAction(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+function miniIconAction(): CSSProperties {
   return {
     width: 22,
     height: 22,
     borderRadius: 6,
-    border: `1px solid ${t.line}`,
-    background: t.surface,
-    color: t.ink4,
+    border: "1px solid var(--line)",
+    background: "var(--surface)",
+    color: "var(--faint)",
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
@@ -1087,8 +994,18 @@ function buildTodos(
     .slice(0, 12);
 }
 
-function todoAccent(t: ReturnType<typeof useTheme>["t"], urgency: Todo["urgency"]): string {
-  return urgency === "overdue" ? t.danger : urgency === "today" ? t.warn : urgency === "soon" ? t.petrol : t.line;
+function todoAccent(urgency: Todo["urgency"]): string {
+  return urgency === "overdue"
+    ? "var(--danger)"
+    : urgency === "today"
+      ? "var(--warn)"
+      : urgency === "soon"
+        ? "var(--petrol)"
+        : "var(--line)";
+}
+
+function urgencyTone(urgency: Todo["urgency"]): ChipTone {
+  return urgency === "overdue" ? "bad" : urgency === "today" ? "warn" : "mut";
 }
 
 function clampNumber(value: number, min: number, max: number): number {

@@ -10,13 +10,30 @@
 // Adding a row uses an inline form: label + Required/Recommended/Optional
 // + an optional plain-English condition picker (renders applies_when as
 // 1-2 toggles, never raw JSON).
+//
+// Styling is the design system in globals.css / app-extras.css: each stage is
+// a `.panel`, each requirement a `.filerow` (which already owns the checkbox
+// sizing), and the metadata chips are `.cellchip`. No palette tokens here.
 
 import { useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
+import {
+  Btn,
+  CellChip,
+  Chip,
+  Field,
+  Input,
+  Linky,
+  Panel,
+  Row,
+  Seg,
+  Select,
+  Textarea,
+} from "@/components/ds";
 import type { PlaybookRequirement } from "@/hooks/useApi";
 
 type Stage = "prequalification" | "term_sheet" | "underwriting" | "closing";
+type Level = PlaybookRequirement["required_level"];
 
 const STAGE_ORDER: { id: Stage; label: string }[] = [
   { id: "prequalification", label: "Before Prequalification" },
@@ -38,6 +55,12 @@ const CATEGORY_OPTIONS = [
   { value: "compliance", label: "Compliance" },
   { value: "communication", label: "Communication" },
   { value: "ai_internal", label: "AI internal" },
+];
+
+const LEVEL_OPTIONS: { value: Level; label: string }[] = [
+  { value: "required", label: "Required" },
+  { value: "recommended", label: "Recommended" },
+  { value: "optional", label: "Optional" },
 ];
 
 
@@ -68,7 +91,7 @@ export function StageChecklist({ requirements, onUpsert, onDelete, readOnly }: P
   }, [requirements]);
 
   return (
-    <div>
+    <div className="cg">
       {STAGE_ORDER.map(stage => (
         <StageBucket
           key={stage.id}
@@ -105,7 +128,6 @@ function StageBucket({
   onDelete: Props["onDelete"];
   readOnly?: boolean;
 }) {
-  const { t } = useTheme();
   const [draft, setDraft] = useState<Partial<PlaybookRequirement> | null>(null);
 
   async function save() {
@@ -128,66 +150,48 @@ function StageBucket({
   }
 
   return (
-    <div style={{ marginBottom: 24 }}>
-      <div style={{
-        fontSize: 13, fontWeight: 700, color: t.ink, marginBottom: 8,
-      }}>
-        {stage.label}:
-      </div>
-
+    <Panel className="s12" title={stage.label}>
       {requirements.length === 0 && !draft ? (
-        <div style={{ fontSize: 13, color: t.ink3, padding: "4px 0" }}>—</div>
+        <div className="sub">—</div>
       ) : null}
 
       {requirements.map(r => (
-        <div key={r.id} style={{
-          display: "flex", alignItems: "center", gap: 10,
-          padding: "8px 0", borderBottom: `1px solid ${t.line}`,
-        }}>
-          <input type="checkbox" checked readOnly disabled={readOnly} style={{ width: 18, height: 18 }} />
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: "block", fontSize: 13, color: t.ink, fontWeight: 700 }}>{r.label}</span>
-            <span style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-              <SmallChip t={t}>{categoryLabel(r.category)}</SmallChip>
-              <SmallChip t={t}>{ownerLabel(r.default_owner_type)}</SmallChip>
-              <SmallChip t={t}>{r.default_cadence_hours ?? 48}h cadence</SmallChip>
-              {r.objective_text || r.completion_criteria ? <SmallChip t={t}>AI brief set</SmallChip> : null}
+        <div key={r.id} className="filerow">
+          <input type="checkbox" checked readOnly disabled={readOnly} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <b>{r.label}</b>
+            <div className="row" style={{ marginTop: 4 }}>
+              <CellChip>{categoryLabel(r.category)}</CellChip>
+              <CellChip>{ownerLabel(r.default_owner_type)}</CellChip>
+              <CellChip>{r.default_cadence_hours ?? 48}h cadence</CellChip>
+              {r.objective_text || r.completion_criteria ? <CellChip>AI brief set</CellChip> : null}
               {r.parent_key ? (
-                <SmallChip t={t}>↳ under {labelFor(r.parent_key, allRequirements)}</SmallChip>
+                <CellChip>↳ under {labelFor(r.parent_key, allRequirements)}</CellChip>
               ) : null}
               {(r.depends_on || []).length > 0 ? (
-                <SmallChip t={t}>after {(r.depends_on || []).map(k => labelFor(k, allRequirements)).join(", ")}</SmallChip>
+                <CellChip>after {(r.depends_on || []).map(k => labelFor(k, allRequirements)).join(", ")}</CellChip>
               ) : null}
               {(r.inferred_depends_on || []).length > 0 && !r.deps_confirmed ? (
-                <span style={{
-                  fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
-                  background: "#fff5cc", color: "#85661a",
-                }}>
+                <CellChip tone="gold">
                   AI suggested: after {(r.inferred_depends_on || []).map(k => labelFor(k, allRequirements)).join(", ")}
-                </span>
+                </CellChip>
               ) : null}
-            </span>
-          </span>
-          <ConditionChips applies_when={r.applies_when} t={t} />
+            </div>
+          </div>
+          <ConditionChips applies_when={r.applies_when} />
           {!r.can_agent_override ? (
-            <span style={{ color: "#a06000", display: "inline-flex" }} title="Agents cannot waive">
+            <span className="cellchip c-warn" title="Agents cannot waive">
               <Icon name="lock" size={12} stroke={2.5} />
             </span>
           ) : null}
           {!readOnly ? (
             <>
-              <button
-                onClick={() => setDraft({ ...r })}
-                style={rowBtn(t)}
-              >
+              <Btn size="sm" onClick={() => setDraft({ ...r })}>
                 Configure
-              </button>
-              <button
-                onClick={() => onDelete(r.id)}
-                style={{ ...rowBtn(t), color: "#c14444" }}
-              >
+              </Btn>
+              <Btn size="sm" onClick={() => onDelete(r.id)} style={{ color: "var(--danger)" }}>
                 Remove
-              </button>
+              </Btn>
             </>
           ) : null}
         </div>
@@ -200,48 +204,25 @@ function StageBucket({
           onSave={save}
           onCancel={() => setDraft(null)}
           allRequirements={allRequirements}
-          t={t}
         />
       ) : !readOnly ? (
-        <button
+        <Btn
+          className="mt"
+          size="sm"
           onClick={() => setDraft({ required_level: "required", category: "borrower_info", label: "", default_owner_type: "human", default_channels: ["portal"], default_cadence_hours: 48 })}
-          style={{
-            marginTop: 8,
-            padding: "6px 12px", fontSize: 12, fontWeight: 600,
-            borderRadius: 6, border: `1px dashed ${t.line}`,
-            background: "transparent", color: t.ink3, cursor: "pointer",
-          }}
         >
           + Add
-        </button>
+        </Btn>
       ) : null}
-    </div>
-  );
-}
-
-
-function SmallChip({ children, t }: { children: React.ReactNode; t: ReturnType<typeof useTheme>["t"] }) {
-  return (
-    <span style={{
-      fontSize: 10,
-      fontWeight: 700,
-      padding: "2px 6px",
-      borderRadius: 4,
-      background: t.surface2,
-      color: t.ink3,
-      whiteSpace: "nowrap",
-    }}>
-      {children}
-    </span>
+    </Panel>
   );
 }
 
 
 function ConditionChips({
-  applies_when, t,
+  applies_when,
 }: {
   applies_when: Record<string, unknown> | null;
-  t: ReturnType<typeof useTheme>["t"];
 }) {
   if (!applies_when || Object.keys(applies_when).length === 0) return null;
   const chips: string[] = [];
@@ -252,26 +233,18 @@ function ConditionChips({
     // Generic fallback for any conditions we haven't mapped.
     chips.push("conditional");
   }
-  return (
-    <span style={{
-      fontSize: 10, fontWeight: 600, padding: "2px 6px", borderRadius: 4,
-      background: "#e0e8fd", color: "#3a55b8",
-    }}>
-      {chips.join(" · ")}
-    </span>
-  );
+  return <CellChip tone="acc">{chips.join(" · ")}</CellChip>;
 }
 
 
 function InlineAddForm({
-  draft, setDraft, onSave, onCancel, allRequirements, t,
+  draft, setDraft, onSave, onCancel, allRequirements,
 }: {
   draft: Partial<PlaybookRequirement>;
   setDraft: (d: Partial<PlaybookRequirement>) => void;
   onSave: () => void;
   onCancel: () => void;
   allRequirements: PlaybookRequirement[];
-  t: ReturnType<typeof useTheme>["t"];
 }) {
   const aw = (draft.applies_when || {}) as Record<string, unknown>;
   function toggleCondition(key: string, value: unknown) {
@@ -288,87 +261,71 @@ function InlineAddForm({
   }
 
   return (
-    <div style={{
-      marginTop: 10, padding: 14,
-      borderRadius: 8, border: `1px dashed ${t.line}`,
-      background: t.surface2, display: "grid", gap: 8,
-    }}>
-      <input
+    <div className="card mt" style={{ display: "grid", gap: 10 }}>
+      <Input
         autoFocus
         placeholder="Item label (e.g. Bank statements last 2 months)"
         value={draft.label || ""}
         onChange={e => setDraft({ ...draft, label: e.target.value })}
-        style={inputStyle(t)}
       />
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <label style={radio(t)}>
-          <input type="radio" checked={draft.required_level === "required"} onChange={() => setDraft({ ...draft, required_level: "required" })} /> Required
-        </label>
-        <label style={radio(t)}>
-          <input type="radio" checked={draft.required_level === "recommended"} onChange={() => setDraft({ ...draft, required_level: "recommended" })} /> Recommended
-        </label>
-        <label style={radio(t)}>
-          <input type="radio" checked={draft.required_level === "optional"} onChange={() => setDraft({ ...draft, required_level: "optional" })} /> Optional
-        </label>
-        <select
+      <div className="row">
+        <Seg<Level>
+          as="filter"
+          ariaLabel="Requirement level"
+          value={(draft.required_level || "required") as Level}
+          onChange={v => setDraft({ ...draft, required_level: v })}
+          options={LEVEL_OPTIONS}
+        />
+        <Select
           value={normalizeCategory(draft.category)}
           onChange={e => setDraft({ ...draft, category: e.target.value as PlaybookRequirement["category"] })}
-          style={inputStyle(t)}
         >
           {CATEGORY_OPTIONS.map(x => (
             <option key={x.value} value={x.value}>{x.label}</option>
           ))}
-        </select>
+        </Select>
       </div>
 
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-        gap: 8,
-        paddingTop: 6,
-      }}>
-        <FieldBlock label="Default owner" t={t}>
-          <select
+      <div className="cg">
+        <Field className="s4" label="Default owner">
+          <Select
             value={draft.default_owner_type || "human"}
             onChange={e => setDraft({ ...draft, default_owner_type: e.target.value })}
-            style={inputStyle(t)}
           >
             <option value="human">Human</option>
             <option value="ai">AI secretary</option>
             <option value="shared">Shared</option>
             <option value="funding_locked">Funding locked</option>
-          </select>
-        </FieldBlock>
-        <FieldBlock label="Cadence" t={t}>
-          <input
+          </Select>
+        </Field>
+        <Field className="s4" label="Cadence">
+          <Input
             type="number"
             min={1}
             value={draft.default_cadence_hours ?? 48}
             onChange={e => setDraft({ ...draft, default_cadence_hours: parseInt(e.target.value || "48", 10) })}
-            style={inputStyle(t)}
           />
-        </FieldBlock>
-        <FieldBlock label="Completion" t={t}>
-          <select
+        </Field>
+        <Field className="s4" label="Completion">
+          <Select
             value={draft.completion_mode || "ai_can_complete"}
             onChange={e => setDraft({ ...draft, completion_mode: e.target.value })}
-            style={inputStyle(t)}
           >
             <option value="ai_can_complete">AI can complete</option>
             <option value="requires_human_verify">Human verifies</option>
             <option value="borrower_self_attest">Borrower attests</option>
-          </select>
-        </FieldBlock>
+          </Select>
+        </Field>
       </div>
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      <div className="row">
         {["portal", "email", "sms"].map(ch => (
-          <label key={ch} style={radio(t)}>
+          <label key={ch} className="row" style={{ cursor: "pointer" }}>
             <input type="checkbox" checked={channels.includes(ch)} onChange={() => toggleChannel(ch)} />
             {ch.toUpperCase()}
           </label>
         ))}
-        <label style={{ ...radio(t), marginLeft: "auto" }}>
+        <label className="row" style={{ marginLeft: "auto", cursor: "pointer" }}>
           <input
             type="checkbox"
             checked={draft.can_agent_override !== false}
@@ -378,45 +335,46 @@ function InlineAddForm({
         </label>
       </div>
 
-      <FieldBlock label="AI objective" t={t}>
-        <textarea
+      <Field label="AI objective">
+        <Textarea
           placeholder="What the AI is trying to collect or resolve."
           value={draft.objective_text || ""}
           onChange={e => setDraft({ ...draft, objective_text: e.target.value })}
           rows={2}
-          style={{ ...inputStyle(t), resize: "vertical", width: "100%" }}
+          style={{ resize: "vertical" }}
         />
-      </FieldBlock>
-      <FieldBlock label="Completion criteria" t={t}>
-        <textarea
+      </Field>
+      <Field label="Completion criteria">
+        <Textarea
           placeholder="How the AI knows this item is complete enough for underwriting."
           value={draft.completion_criteria || ""}
           onChange={e => setDraft({ ...draft, completion_criteria: e.target.value })}
           rows={2}
-          style={{ ...inputStyle(t), resize: "vertical", width: "100%" }}
+          style={{ resize: "vertical" }}
         />
-      </FieldBlock>
+      </Field>
 
-      <div style={{ display: "grid", gridTemplateColumns: "160px minmax(0, 1fr)", gap: 8 }}>
-        <input
+      <div className="row">
+        <Input
           placeholder="Link label"
           value={draft.link_label || ""}
           onChange={e => setDraft({ ...draft, link_label: e.target.value || null })}
-          style={inputStyle(t)}
         />
-        <input
+        <Input
+          grow
           placeholder="Link URL"
           value={draft.link_url || ""}
           onChange={e => setDraft({ ...draft, link_url: e.target.value || null })}
-          style={inputStyle(t)}
         />
       </div>
 
-      <FieldBlock label="Group under (parent task)" t={t}>
-        <select
+      <Field
+        label="Group under (parent task)"
+        hint={'Sub-tasks roll up under their parent in the timeline (e.g. all entity docs under "Entity formation").'}
+      >
+        <Select
           value={draft.parent_key || ""}
           onChange={e => setDraft({ ...draft, parent_key: e.target.value || null })}
-          style={{ ...inputStyle(t), width: "100%" }}
         >
           <option value="">— No parent (top-level) —</option>
           {allRequirements
@@ -424,94 +382,77 @@ function InlineAddForm({
             .map(r => (
               <option key={r.id} value={r.requirement_key}>{r.label}</option>
             ))}
-        </select>
-        <div style={{ fontSize: 11, color: t.ink3, marginTop: 4 }}>
-          Sub-tasks roll up under their parent in the timeline (e.g. all entity docs under "Entity formation").
-        </div>
-      </FieldBlock>
+        </Select>
+      </Field>
 
-      <FieldBlock label="Depends on (do these first)" t={t}>
+      <Field
+        label="Depends on (do these first)"
+        hint={'Timeline shows this task as "Upcoming" until every dependency is verified. Empty = "Next up" immediately.'}
+      >
         <DependsOnChipPicker
           value={draft.depends_on || []}
           onChange={(next) => setDraft({ ...draft, depends_on: next })}
           options={allRequirements.filter(r => r.requirement_key !== draft.requirement_key)}
-          t={t}
         />
-        <div style={{ fontSize: 11, color: t.ink3, marginTop: 4 }}>
-          Timeline shows this task as "Upcoming" until every dependency is verified. Empty = "Next up" immediately.
-        </div>
-      </FieldBlock>
+      </Field>
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <label style={radio(t)}>
+      <div className="row">
+        <label className="row" style={{ cursor: "pointer" }}>
           <input type="checkbox" checked={aw.under_contract === true} onChange={() => toggleCondition("under_contract", true)} />
           Only if under contract
         </label>
-        <label style={radio(t)}>
+        <label className="row" style={{ cursor: "pointer" }}>
           <input type="checkbox" checked={aw.borrower_type === "entity"} onChange={() => toggleCondition("borrower_type", "entity")} />
           Only if borrower is an entity
         </label>
-        <label style={radio(t)}>
+        <label className="row" style={{ cursor: "pointer" }}>
           <input type="checkbox" checked={aw.financing_needed === false} onChange={() => toggleCondition("financing_needed", false)} />
           Only if cash buyer
         </label>
       </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-        <button onClick={onSave} style={btnPrimary(t)}>Save</button>
-        <button onClick={onCancel} style={btnSecondary(t)}>Cancel</button>
-      </div>
+      <Row>
+        <Btn variant="pri" onClick={onSave}>Save</Btn>
+        <Btn onClick={onCancel}>Cancel</Btn>
+      </Row>
     </div>
   );
 }
 
 
 function DependsOnChipPicker({
-  value, onChange, options, t,
+  value, onChange, options,
 }: {
   value: string[];
   onChange: (next: string[]) => void;
   options: PlaybookRequirement[];
-  t: ReturnType<typeof useTheme>["t"];
 }) {
   const selected = new Set(value);
   const remaining = options.filter(r => !selected.has(r.requirement_key));
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+    <div className="row">
       {value.map(key => {
         const lbl = options.find(r => r.requirement_key === key)?.label || key;
         return (
-          <span
-            key={key}
-            style={{
-              fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 12,
-              background: t.surface, border: `1px solid ${t.line}`, color: t.ink,
-              display: "inline-flex", alignItems: "center", gap: 6,
-            }}
-          >
+          <Chip key={key}>
             {lbl}
-            <button
+            <Linky
               onClick={() => onChange(value.filter(v => v !== key))}
-              style={{
-                border: 0, background: "transparent", cursor: "pointer",
-                color: t.ink3, fontSize: 14, lineHeight: 1, padding: 0,
-              }}
               aria-label={`Remove ${lbl}`}
-            >×</button>
-          </span>
+            >×</Linky>
+          </Chip>
         );
       })}
-      <select
+      <Select
         value=""
         onChange={e => {
           if (e.target.value) onChange([...value, e.target.value]);
         }}
-        style={{ ...inputStyle(t), fontSize: 12, padding: "4px 6px" }}
       >
         <option value="">+ Add dependency</option>
         {remaining.map(r => (
           <option key={r.id} value={r.requirement_key}>{r.label}</option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 }
@@ -521,55 +462,6 @@ function labelFor(key: string, requirements: PlaybookRequirement[]): string {
   return requirements.find(r => r.requirement_key === key)?.label || key;
 }
 
-
-function FieldBlock({
-  label,
-  children,
-  t,
-}: {
-  label: string;
-  children: React.ReactNode;
-  t: ReturnType<typeof useTheme>["t"];
-}) {
-  return (
-    <div>
-      <div style={{ fontSize: 10, fontWeight: 800, color: t.ink3, textTransform: "uppercase", marginBottom: 4 }}>
-        {label}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-
-function inputStyle(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    padding: 8, fontSize: 13, fontFamily: "inherit",
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.surface, color: t.ink,
-  } as const;
-}
-
-
-function radio(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    fontSize: 13, color: t.ink, display: "flex",
-    alignItems: "center", gap: 6, cursor: "pointer",
-  } as const;
-}
-
-function rowBtn(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    background: "transparent",
-    border: `1px solid ${t.line}`,
-    padding: "4px 8px",
-    borderRadius: 4,
-    color: t.ink3,
-    cursor: "pointer",
-    fontSize: 11,
-    fontWeight: 700,
-  } as const;
-}
 
 function categoryLabel(value?: string) {
   return CATEGORY_OPTIONS.find(x => x.value === normalizeCategory(value))?.label || "Borrower info";
@@ -588,22 +480,4 @@ function ownerLabel(value?: string) {
   if (value === "shared") return "Shared";
   if (value === "funding_locked") return "Funding locked";
   return "Human";
-}
-
-
-function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    padding: "6px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.petrol, color: "#fff", cursor: "pointer",
-  } as const;
-}
-
-
-function btnSecondary(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    padding: "6px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.surface, color: t.ink, cursor: "pointer",
-  } as const;
 }
