@@ -22,6 +22,7 @@ import {
   type SignableDoc,
   type SignRequestedDocumentPayload,
 } from "@/components/intake/SignRequestedDocument";
+import { ContractSigner, type RoomContract } from "@/components/room/ContractSigner";
 
 type Signable = {
   id: string;
@@ -37,6 +38,7 @@ type Features = {
   bank_connect_available: boolean;
   plaid_environment: string;
   signable: Signable[];
+  contracts: RoomContract[];
 };
 
 const section: React.CSSProperties = {
@@ -197,6 +199,7 @@ export function RoomActions({
 }) {
   const [features, setFeatures] = useState<Features | null>(null);
   const [signing, setSigning] = useState<Signable | null>(null);
+  const [signingContract, setSigningContract] = useState<RoomContract | null>(null);
   const [signBusy, setSignBusy] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
 
@@ -247,9 +250,53 @@ export function RoomActions({
 
   const pending = features.signable.filter((d) => !d.signed && d.signable);
   const signed = features.signable.filter((d) => d.signed);
+  const contractsPending = (features.contracts ?? []).filter((c) => c.status === "out_for_signature");
+  const contractsSigned = (features.contracts ?? []).filter((c) => c.status === "executed");
 
   return (
     <>
+      {signingContract ? (
+        <ContractSigner
+          token={token}
+          passcode={passcode}
+          contract={signingContract}
+          onClose={() => setSigningContract(null)}
+          onDone={() => {
+            void load();
+            onChanged();
+          }}
+        />
+      ) : null}
+
+      {!signingContract && (contractsPending.length > 0 || contractsSigned.length > 0) ? (
+        <section style={section}>
+          <h2 style={title}>Agreements to sign</h2>
+          <p style={{ ...sub, marginTop: 6 }}>
+            Prepared for you by your representative. Review the full agreement, then sign on
+            this device — a copy is emailed to you the moment it executes.
+          </p>
+          {contractsPending.map((c) => (
+            <div
+              key={c.id}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderTop: "1px solid #eef1f6" }}
+            >
+              <span style={{ fontWeight: 650, fontSize: 13.5, flex: 1 }}>{c.title}</span>
+              <button type="button" style={btn} onClick={() => setSigningContract(c)}>
+                Review and sign
+              </button>
+            </div>
+          ))}
+          {contractsSigned.map((c) => (
+            <div
+              key={c.id}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderTop: "1px solid #eef1f6" }}
+            >
+              <span style={{ fontWeight: 650, fontSize: 13.5, flex: 1 }}>{c.title}</span>
+              <span style={okBadge}>Signed</span>
+            </div>
+          ))}
+        </section>
+      ) : null}
       {features.bank_connect_available ? (
         <BankConnect
           token={token}
