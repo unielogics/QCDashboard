@@ -37,6 +37,9 @@ type Features = {
   business_name: string;
   bank_connect_available: boolean;
   plaid_environment: string;
+  bank_consent_granted: boolean;
+  /** Server-owned wording. Shown verbatim; never edited or echoed back. */
+  bank_consent_disclosure: string;
   signable: Signable[];
   contracts: RoomContract[];
 };
@@ -73,17 +76,28 @@ function BankConnect({
   token,
   passcode,
   environment,
+  consentGranted: initialConsent,
+  disclosure,
   onConnected,
 }: {
   token: string;
   passcode: string;
   environment: string;
+  /** Whether a consent is already on file for this case. */
+  consentGranted: boolean;
+  /** The exact wording the server will store against the grant. */
+  disclosure: string;
   onConnected: () => void;
 }) {
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  // Seeded from the server, then flipped locally once recorded, so the client
+  // moves straight on to the bank rather than waiting for a room refetch.
+  const [consentGranted, setConsentGranted] = useState(initialConsent);
+  const [agreed, setAgreed] = useState(false);
+  const [signer, setSigner] = useState("");
 
   const onSuccess = useCallback(
     async (publicToken: string | null, metadata: { institution?: { name?: string } | null }) => {
@@ -131,6 +145,29 @@ function BankConnect({
     if (linkToken && ready) open();
   }, [linkToken, ready, open]);
 
+  async function authorize() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`${apiBase}/api/v1/dealer-os/public/room/${token}/bank-consent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // The disclosure text is deliberately not sent — the server records the
+        // wording it served, which is what makes the stored proof meaningful.
+        body: JSON.stringify({ passcode, consenter_name: signer.trim(), method: "self_web" }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+        throw new Error(body?.detail || "That authorization could not be recorded.");
+      }
+      setConsentGranted(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That authorization could not be recorded.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function start() {
     setBusy(true);
     setError(null);
@@ -177,11 +214,61 @@ function BankConnect({
           Test mode: this connection currently reaches Plaid&apos;s test institutions only.
         </p>
       ) : null}
-      <div style={{ marginTop: 10 }}>
-        <button type="button" style={{ ...btn, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={start}>
-          {busy ? "Opening…" : "Connect bank securely"}
-        </button>
-      </div>
+      {!consentGranted ? (
+        <div style={{ marginTop: 10 }}>
+          <p
+            style={{
+              ...sub,
+              whiteSpace: "pre-line",
+              lineHeight: 1.55,
+              background: "#f7f9fc",
+              border: "1px solid #e3e8ef",
+              borderRadius: 10,
+              padding: 12,
+            }}
+          >
+            {disclosure}
+          </p>
+          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8 }}>
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+            />
+            <span style={{ fontSize: 13 }}>I have read and agree to the above.</span>
+          </label>
+          <input
+            value={signer}
+            onChange={(e) => setSigner(e.target.value)}
+            placeholder="Your full name"
+            style={{
+              marginTop: 8,
+              padding: "8px 10px",
+              border: "1px solid #d8dee9",
+              borderRadius: 8,
+              width: "100%",
+              maxWidth: 320,
+              fontSize: 14,
+            }}
+          />
+          <div style={{ marginTop: 10 }}>
+            <button
+              type="button"
+              style={{ ...btn, opacity: !agreed || !signer.trim() || busy ? 0.6 : 1 }}
+              disabled={!agreed || !signer.trim() || busy}
+              onClick={authorize}
+            >
+              {busy ? "Recording…" : "Authorize and continue"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ marginTop: 10 }}>
+          <button type="button" style={{ ...btn, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={start}>
+            {busy ? "Opening…" : "Connect bank securely"}
+          </button>
+        </div>
+      )}
       {error ? <p style={{ ...sub, color: "#b42318", marginTop: 8 }}>{error}</p> : null}
     </section>
   );
@@ -302,6 +389,8 @@ export function RoomActions({
           token={token}
           passcode={passcode}
           environment={features.plaid_environment}
+          consentGranted={features.bank_consent_granted}
+          disclosure={features.bank_consent_disclosure}
           onConnected={onChanged}
         />
       ) : null}
