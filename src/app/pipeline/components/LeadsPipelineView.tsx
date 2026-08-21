@@ -3,11 +3,18 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { QC_FMT } from "@/components/design-system/tokens";
+import {
+  Btn,
+  CellChip,
+  Panel,
+  Seg,
+  Tag,
+  WarnLine,
+  type ChipTone,
+} from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { useClients, useCreateDeal, useLoans, usePipelineClientSummary, type DealCreateBody } from "@/hooks/useApi";
 import { useActiveProfile } from "@/store/role";
 import type { Client, ClientStage, ClientType, DealType, Loan, PipelineClientSummary } from "@/lib/types";
@@ -213,30 +220,24 @@ export function LeadsPipelineView({ view, search }: Props) {
   ).length;
 
   const header = (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 10, flexWrap: "wrap" }}>
-      <div style={{ fontSize: 12, color: t.ink3, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <span>
-          {visible.length} {visible.length === 1 ? "relationship" : "relationships"}
-          {search ? ` matching "${search}"` : ""}
-          {sideFilter !== "all" ? ` · ${sideFilter}s only` : ""}
-        </span>
-        {fundingActiveCount > 0 ? (
-          <LegendChip color={t.brand} bg={t.brandSoft}>
-            {fundingActiveCount} in funding
-          </LegendChip>
-        ) : null}
-        {readyCount > 0 ? (
-          <LegendChip color={t.warn} bg={t.warnBg}>
-            {readyCount} ready for funding
-          </LegendChip>
-        ) : null}
-      </div>
+    <div className="pagebar">
+      <span className="sub">
+        {visible.length} {visible.length === 1 ? "relationship" : "relationships"}
+        {search ? ` matching "${search}"` : ""}
+        {sideFilter !== "all" ? ` · ${sideFilter}s only` : ""}
+      </span>
+      {fundingActiveCount > 0 ? (
+        <CellChip tone="acc">{fundingActiveCount} in funding</CellChip>
+      ) : null}
+      {readyCount > 0 ? (
+        <CellChip tone="warn">{readyCount} ready for funding</CellChip>
+      ) : null}
+      <span className="spacer" />
       <SideFilter
         value={sideFilter}
         onChange={setSideFilter}
         buyerCount={sideCounts.buyer}
         sellerCount={sideCounts.seller}
-        t={t}
       />
     </div>
   );
@@ -248,29 +249,22 @@ export function LeadsPipelineView({ view, search }: Props) {
     const gridCols = "minmax(0, 1.35fr) 130px minmax(0, 1.1fr) 140px 140px minmax(200px, 1fr)";
     return (
       <>
-        <RelationshipSummaryRow clients={visible} t={t} />
+        <RelationshipSummaryRow clients={visible} />
         {header}
-        <Card pad={0}>
-          <div style={{ padding: 16, borderBottom: `1px solid ${t.line}`, background: t.surface2 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.4, color: t.ink3, textTransform: "uppercase" }}>
-              Agent Relationship Pipeline
-            </div>
-            <div style={{ marginTop: 4, fontSize: 13, color: t.ink2 }}>
-              Buyer and seller work stays agent-owned here. Funding files open only after handoff.
-            </div>
-          </div>
+        <Panel
+          noPad
+          title="Agent Relationship Pipeline"
+          sub="Buyer and seller work stays agent-owned here. Funding files open only after handoff."
+        >
           <div
+            className="lbl"
             style={{
               display: "grid",
               gridTemplateColumns: gridCols,
               gap: 12,
               padding: "12px 16px",
-              fontSize: 11,
-              fontWeight: 700,
-              color: t.ink3,
-              textTransform: "uppercase",
-              letterSpacing: 1.2,
-              borderBottom: `1px solid ${t.line}`,
+              background: "var(--sunken2)",
+              borderBottom: "1px solid var(--line2)",
             }}
           >
             <div>Relationship</div>
@@ -282,7 +276,7 @@ export function LeadsPipelineView({ view, search }: Props) {
           </div>
           {visible.map((client) => {
             const summary = summariesByClient.get(client.id);
-            const tint = fundingTint(summary, t);
+            const tint = fundingTint(summary);
             return (
             <button
               key={client.id}
@@ -292,20 +286,18 @@ export function LeadsPipelineView({ view, search }: Props) {
                 e.stopPropagation();
                 setAssignAiFor({ clientId: client.id, x: e.clientX, y: e.clientY });
               }}
+              // The funding tint + left stripe are data-derived — a row already
+              // in funding has to be spottable without reading it.
               style={{
                 display: "grid",
                 gridTemplateColumns: gridCols,
                 gap: 12,
                 padding: "14px 16px",
-                borderBottom: `1px solid ${t.line}`,
-                borderLeft: tint ? `3px solid ${tint.border}` : "3px solid transparent",
+                borderBottom: "1px solid var(--line)",
+                borderLeft: `3px solid ${tint ? tint.border : "transparent"}`,
                 alignItems: "center",
-                fontSize: 13,
-                color: t.ink,
-                textDecoration: "none",
+                color: "var(--ink)",
                 background: tint ? tint.bg : "transparent",
-                borderTop: "none",
-                borderRight: "none",
                 cursor: "pointer",
                 textAlign: "left",
                 width: "100%",
@@ -313,12 +305,12 @@ export function LeadsPipelineView({ view, search }: Props) {
             >
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <b style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {client.name}
-                  </div>
+                  </b>
                   <SidePill type={clientSide(client)} />
                 </div>
-                <div style={{ marginTop: 3, fontSize: 11.5, color: t.ink3, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <div className="sub row">
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {client.email ?? "No email"}{client.city ? ` · ${client.city}` : ""}
                   </span>
@@ -327,46 +319,37 @@ export function LeadsPipelineView({ view, search }: Props) {
                       drilling in. Agents see only their own clients so
                       this is implicit for them. */}
                   {isInternal && client.broker_name ? (
-                    <span style={{
-                      display: "inline-flex", alignItems: "center", gap: 4,
-                      padding: "1px 6px", borderRadius: 4,
-                      background: t.brandSoft, color: t.brand,
-                      fontSize: 10.5, fontWeight: 700, letterSpacing: 0.3,
-                    }}>
-                      Agent: {client.broker_name}
-                    </span>
+                    <CellChip tone="acc">Agent: {client.broker_name}</CellChip>
                   ) : null}
                 </div>
               </div>
               <StagePill stage={client._stage} />
-              <PropertyCell client={client} t={t} />
+              <PropertyCell client={client} />
               <div>
-                <div style={{ fontWeight: 700, color: t.ink2 }}>{readinessLabel(client, client._stage)}</div>
-                <div style={{ marginTop: 2, color: t.ink3, fontSize: 11.5 }}>
-                  FICO {client.fico ?? "not pulled"}
-                </div>
+                <b>{readinessLabel(client, client._stage)}</b>
+                <div className="sub">FICO {client.fico ?? "not pulled"}</div>
               </div>
               <div>
-                <div style={{ fontWeight: 800, color: client._activeLoanCount > 0 ? t.ink : t.ink3 }}>
-                  {client._activeLoanCount > 0 ? `${client._activeLoanCount} active` : "No file"}
+                <div className={client._activeLoanCount > 0 ? undefined : "sub"}>
+                  <b>{client._activeLoanCount > 0 ? `${client._activeLoanCount} active` : "No file"}</b>
                 </div>
-                <div style={{ marginTop: 2, color: t.ink3, fontSize: 11.5 }}>
+                <div className="sub">
                   {client._activeLoanValue > 0 ? QC_FMT.short(client._activeLoanValue) : "Agent owned"}
                 </div>
               </div>
-              <div style={{ color: t.ink2, lineHeight: 1.35 }}>
+              <div>
                 {nextMove(client, client._stage)}
-                <PipelineSignals summary={summariesByClient.get(client.id)} t={t} />
+                <PipelineSignals summary={summariesByClient.get(client.id)} />
               </div>
             </button>
             );
           })}
           {visible.length === 0 && (
-            <div style={{ padding: 24, textAlign: "center", fontSize: 13, color: t.ink3 }}>
+            <div className="sub" style={{ padding: 24, textAlign: "center" }}>
               {search ? `No relationships match "${search}".` : "No active relationships in the pipeline right now."}
             </div>
           )}
-        </Card>
+        </Panel>
         {createFor ? <CreateFileModal client={createFor} onClose={() => setCreateFor(null)} /> : null}
         {assignAiFor ? (
           <AIAgentAssignPicker
@@ -383,31 +366,22 @@ export function LeadsPipelineView({ view, search }: Props) {
   return (
     <>
       {header}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(150px, 1fr))", gap: 12 }}>
+      <div className="kanban">
         {RELATIONSHIP_STAGES.map((stage) => {
           const stageClients = visible.filter((client) => client._stage === stage);
           return (
-            <div
-              key={stage}
-              style={{
-                background: t.surface2,
-                padding: 12,
-                borderRadius: 12,
-                border: `1px solid ${t.line}`,
-                minWidth: 0,
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 10 }}>
+            <div key={stage} className="kcol">
+              <div className="lbl">
                 <div>
                   <StagePill stage={stage} />
-                  <div style={{ marginTop: 5, fontSize: 11.5, color: t.ink3 }}>{STAGE_SUBTITLES[stage]}</div>
+                  <div className="sub">{STAGE_SUBTITLES[stage]}</div>
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: t.ink3 }}>{stageClients.length}</div>
+                <span className="num">{stageClients.length}</span>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div>
                 {stageClients.map((client) => {
                   const summary = summariesByClient.get(client.id);
-                  const tint = fundingTint(summary, t);
+                  const tint = fundingTint(summary);
                   return (
                   <button
                     key={client.id}
@@ -421,55 +395,41 @@ export function LeadsPipelineView({ view, search }: Props) {
                         y: e.clientY,
                       });
                     }}
+                    className="kcard"
+                    // Funding tint + left stripe are data-derived.
                     style={{
-                      background: tint ? tint.bg : t.surface,
-                      padding: 11,
-                      borderRadius: 10,
-                      border: `1px solid ${tint ? tint.border : t.line}`,
-                      borderLeft: tint ? `3px solid ${tint.border}` : `1px solid ${t.line}`,
-                      textDecoration: "none",
-                      color: t.ink,
+                      background: tint ? tint.bg : undefined,
+                      borderLeft: `3px solid ${tint ? tint.border : "transparent"}`,
+                      color: "var(--ink)",
                       display: "block",
                       width: "100%",
                       textAlign: "left",
-                      cursor: "pointer",
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 800, color: t.ink, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <b style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {client.name}
-                      </div>
+                      </b>
                       <SidePill type={clientSide(client)} />
                     </div>
                     {/* Owner reference — operator-only. */}
                     {isInternal && client.broker_name ? (
-                      <div style={{ marginTop: 4 }}>
-                        <span style={{
-                          display: "inline-flex", alignItems: "center", gap: 4,
-                          padding: "1px 6px", borderRadius: 4,
-                          background: t.brandSoft, color: t.brand,
-                          fontSize: 10, fontWeight: 700, letterSpacing: 0.3,
-                        }}>
-                          {client.broker_name}
-                        </span>
+                      <div className="mt">
+                        <CellChip tone="acc">{client.broker_name}</CellChip>
                       </div>
                     ) : null}
-                    <div style={{ marginTop: 7, fontSize: 11.5, color: t.ink3, lineHeight: 1.35 }}>
-                      {workflowLabel(clientSide(client))}
-                    </div>
-                    <div style={{ marginTop: 5, fontSize: 11.5, color: t.ink2, lineHeight: 1.35 }}>
-                      {nextMove(client, client._stage)}
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 9, fontSize: 11, color: t.ink3 }}>
+                    <div className="sub">{workflowLabel(clientSide(client))}</div>
+                    <div>{nextMove(client, client._stage)}</div>
+                    <div className="sub" style={{ display: "flex", justifyContent: "space-between" }}>
                       <span>FICO {client.fico ?? "new"}</span>
                       <span>{client._activeLoanCount > 0 ? QC_FMT.short(client._activeLoanValue) : "agent file"}</span>
                     </div>
-                    <PipelineSignals summary={summariesByClient.get(client.id)} t={t} compact />
+                    <PipelineSignals summary={summariesByClient.get(client.id)} compact />
                   </button>
                   );
                 })}
                 {stageClients.length === 0 && (
-                  <div style={{ fontSize: 12, color: t.ink3, padding: "8px 0", textAlign: "center" }}>
+                  <div className="sub" style={{ padding: "8px 0", textAlign: "center" }}>
                     Empty
                   </div>
                 )}
@@ -525,85 +485,46 @@ function destForClient(client: EnrichedClient): string {
 
 
 function SideFilter({
-  value, onChange, buyerCount, sellerCount, t,
+  value, onChange, buyerCount, sellerCount,
 }: {
   value: "all" | "buyer" | "seller";
   onChange: (next: "all" | "buyer" | "seller") => void;
   buyerCount: number;
   sellerCount: number;
-  t: ReturnType<typeof useTheme>["t"];
 }) {
-  const opts: Array<{ k: "all" | "buyer" | "seller"; label: string; count?: number }> = [
-    { k: "all", label: "All" },
-    { k: "buyer", label: "Buyers", count: buyerCount },
-    { k: "seller", label: "Sellers", count: sellerCount },
-  ];
   return (
-    <div style={{
-      display: "inline-flex", padding: 3, gap: 2,
-      borderRadius: 9,
-      background: t.surface2,
-      border: `1px solid ${t.line}`,
-    }}>
-      {opts.map((o) => {
-        const active = o.k === value;
-        return (
-          <button
-            key={o.k}
-            type="button"
-            onClick={() => onChange(o.k)}
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              padding: "5px 11px",
-              borderRadius: 7,
-              background: active ? t.surface : "transparent",
-              color: active ? t.ink : t.ink3,
-              fontSize: 11.5, fontWeight: 850,
-              display: "inline-flex", alignItems: "center", gap: 6,
-              boxShadow: active ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-            }}
-          >
-            {o.label}
-            {o.count !== undefined ? (
-              <span style={{
-                fontSize: 10, fontWeight: 800,
-                padding: "1px 5px", borderRadius: 999,
-                background: active ? t.brandSoft : t.surface,
-                color: active ? t.brand : t.ink3,
-              }}>
-                {o.count}
-              </span>
-            ) : null}
-          </button>
-        );
-      })}
-    </div>
+    <Seg<"all" | "buyer" | "seller">
+      ariaLabel="Relationship side"
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: "all", label: "All" },
+        { value: "buyer", label: <>Buyers <Tag>{buyerCount}</Tag></> },
+        { value: "seller", label: <>Sellers <Tag>{sellerCount}</Tag></> },
+      ]}
+    />
   );
 }
 
 
 function SidePill({ type }: { type: ClientType }) {
-  const { t } = useTheme();
   return (
-    <Pill bg={type === "buyer" ? t.brandSoft : t.warnBg} color={type === "buyer" ? t.brand : t.warn}>
+    <CellChip tone={type === "buyer" ? "acc" : "warn"}>
       {type === "buyer" ? "Buyer" : "Seller"}
-    </Pill>
+    </CellChip>
   );
 }
 
 function StagePill({ stage }: { stage: (typeof RELATIONSHIP_STAGES)[number] }) {
-  const { t } = useTheme();
-  const palette: Record<(typeof RELATIONSHIP_STAGES)[number], { bg: string; fg: string }> = {
-    lead: { bg: t.chip, fg: t.ink2 },
-    contacted: { bg: t.warnBg, fg: t.warn },
-    verified: { bg: t.petrolSoft, fg: t.petrol },
-    ready_for_lending: { bg: t.brandSoft, fg: t.brand },
-    processing: { bg: t.warnBg, fg: t.warn },
-    funded: { bg: t.profitBg, fg: t.profit },
+  const tones: Record<(typeof RELATIONSHIP_STAGES)[number], ChipTone> = {
+    lead: "mut",
+    contacted: "warn",
+    verified: "pet",
+    ready_for_lending: "acc",
+    processing: "warn",
+    funded: "ok",
   };
-  const { bg, fg } = palette[stage];
-  return <Pill bg={bg} color={fg}>{STAGE_LABELS[stage]}</Pill>;
+  return <CellChip tone={tones[stage]}>{STAGE_LABELS[stage]}</CellChip>;
 }
 
 
@@ -611,36 +532,23 @@ function StagePill({ stage }: { stage: (typeof RELATIONSHIP_STAGES)[number] }) {
 // on (for buyers, the target property if known; for sellers, the
 // listing). Falls back gracefully through city → "—" so the column
 // never looks broken on empty rows.
-function PropertyCell({
-  client, t,
-}: {
-  client: Client;
-  t: ReturnType<typeof useTheme>["t"];
-}) {
+function PropertyCell({ client }: { client: Client }) {
   const addr = (client.address || "").trim() || null;
   const line2 = [client.city, client.client_type === "seller" ? "Listing" : "Target"].filter(Boolean).join(" · ");
   if (!addr) {
     return (
-      <div style={{ minWidth: 0, color: t.ink3, fontSize: 12 }}>
-        <div style={{ fontWeight: 700, color: t.ink3 }}>{client.city || "No address"}</div>
-        <div style={{ marginTop: 2, fontSize: 11, color: t.ink3 }}>
-          {client.client_type === "seller" ? "Seller relationship" : "Buyer relationship"}
-        </div>
+      <div className="sub" style={{ minWidth: 0 }}>
+        <b>{client.city || "No address"}</b>
+        <div>{client.client_type === "seller" ? "Seller relationship" : "Buyer relationship"}</div>
       </div>
     );
   }
   return (
     <div style={{ minWidth: 0 }}>
-      <div style={{
-        fontWeight: 800, color: t.ink, fontSize: 12.5,
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
+      <b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {addr}
-      </div>
-      <div style={{
-        marginTop: 2, fontSize: 11, color: t.ink3,
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
+      </b>
+      <div className="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {line2 || "—"}
       </div>
     </div>
@@ -656,12 +564,7 @@ function PropertyCell({
 //            (proxy for "AI is being told to do something non-default")
 // All four read from the same `visible` list the table consumes so the
 // counts and the rows stay in lockstep.
-function RelationshipSummaryRow({
-  clients, t,
-}: {
-  clients: Client[];
-  t: ReturnType<typeof useTheme>["t"];
-}) {
+function RelationshipSummaryRow({ clients }: { clients: Client[] }) {
   const buyers = clients.filter((c) => (c.client_type ?? "buyer") === "buyer").length;
   const sellers = clients.filter((c) => c.client_type === "seller").length;
   // Alerts — relationships that need a human touch right now.
@@ -681,62 +584,35 @@ function RelationshipSummaryRow({
     c.lead_promotion_status === "agent_requested_review",
   ).length;
   return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-      gap: 8,
-      marginBottom: 10,
-    }}>
-      <SummaryTile icon="user" label="Buyers" value={buyers} tone="brand" t={t} />
-      <SummaryTile icon="user" label="Sellers" value={sellers} tone="warn" t={t} />
-      <SummaryTile icon="alert" label="Alerts" value={alerts} tone={alerts ? "danger" : "neutral"} t={t} />
-      <SummaryTile icon="ai" label="AI overrides" value={aiIssues} tone={aiIssues ? "watch" : "neutral"} t={t} />
+    <div className="kpis">
+      <SummaryTile icon="user" label="Buyers" value={buyers} tone="brand" />
+      <SummaryTile icon="user" label="Sellers" value={sellers} tone="warn" />
+      <SummaryTile icon="alert" label="Alerts" value={alerts} tone={alerts ? "danger" : "neutral"} />
+      <SummaryTile icon="ai" label="AI overrides" value={aiIssues} tone={aiIssues ? "watch" : "neutral"} />
     </div>
   );
 }
 
 function SummaryTile({
-  icon, label, value, tone, t,
+  icon, label, value, tone,
 }: {
   icon: string;
   label: string;
   value: number;
   tone: "brand" | "warn" | "danger" | "watch" | "neutral";
-  t: ReturnType<typeof useTheme>["t"];
 }) {
+  // The figure's colour IS the signal here, so it stays an inline value.
   const color =
-    tone === "brand" ? t.brand
-    : tone === "warn" ? t.warn
-    : tone === "danger" ? t.danger
-    : tone === "watch" ? t.warn
-    : t.ink2;
-  const bg =
-    tone === "brand" ? t.brandSoft
-    : tone === "warn" ? t.warnBg
-    : tone === "danger" ? t.dangerBg
-    : tone === "watch" ? t.warnBg
-    : t.surface2;
+    tone === "brand" ? "var(--accent)"
+    : tone === "warn" || tone === "watch" ? "var(--warn)"
+    : tone === "danger" ? "var(--danger)"
+    : "var(--ink2)";
   return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 10,
-      padding: "8px 12px",
-      borderRadius: 10,
-      background: t.surface,
-      border: `1px solid ${t.line}`,
-      minWidth: 0,
-    }}>
-      <span style={{
-        width: 30, height: 30, borderRadius: 8,
-        display: "grid", placeItems: "center",
-        background: bg, color,
-        flex: "0 0 auto",
-      }}>
-        <Icon name={icon} size={14} stroke={2.2} />
-      </span>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 9.5, fontWeight: 900, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase" }}>{label}</div>
-        <div style={{ fontSize: 18, fontWeight: 950, color, lineHeight: 1.1, fontFeatureSettings: '"tnum"' }}>{value}</div>
+    <div className="kpi">
+      <div className="lbl">
+        <Icon name={icon} size={12} stroke={2.2} /> {label}
       </div>
+      <div className="knum num" style={{ color }}>{value}</div>
     </div>
   );
 }
@@ -747,11 +623,9 @@ function SummaryTile({
 // Ready-for-Lending eligibility. Backed by /pipeline/client-summary.
 function PipelineSignals({
   summary,
-  t,
   compact = false,
 }: {
   summary: PipelineClientSummary | undefined;
-  t: ReturnType<typeof useTheme>["t"];
   compact?: boolean;
 }) {
   if (!summary) return null;
@@ -766,78 +640,23 @@ function PipelineSignals({
   };
   const next = fmt(summary.next_follow_up_at);
   return (
-    <div
-      style={{
-        marginTop: compact ? 6 : 6,
-        display: "flex",
-        gap: 6,
-        flexWrap: "wrap",
-        alignItems: "center",
-      }}
-    >
+    <div className="row" style={{ marginTop: 6 }}>
       <AiStatusBadge state={summary.ai_state} size={compact ? "sm" : "sm"} />
       {summary.missing_items_count > 0 ? (
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            padding: "1px 6px",
-            borderRadius: 4,
-            background: t.warnBg,
-            color: t.warn,
-            textTransform: "uppercase",
-          }}
-        >
-          {summary.missing_items_count} missing
-        </span>
+        <CellChip tone="warn">{summary.missing_items_count} missing</CellChip>
       ) : null}
-      {next ? (
-        <span style={{ fontSize: 10.5, color: t.ink3 }}>Next: {next}</span>
-      ) : null}
+      {next ? <span className="sub">Next: {next}</span> : null}
       {summary.human_needed ? (
-        <span
-          title="No AI follow-up scheduled — human attention needed"
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            padding: "1px 6px",
-            borderRadius: 4,
-            background: t.warnBg,
-            color: t.warn,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 3,
-          }}
-        >
-          <Icon name="bolt" size={9} /> Needs human
+        <span title="No AI follow-up scheduled — human attention needed">
+          <CellChip tone="warn">
+            <Icon name="bolt" size={9} /> Needs human
+          </CellChip>
         </span>
       ) : null}
       {summary.handoff_status === "promoted" ? (
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            padding: "1px 6px",
-            borderRadius: 4,
-            background: t.brandSoft,
-            color: t.brand,
-          }}
-        >
-          Funding live
-        </span>
+        <CellChip tone="acc">Funding live</CellChip>
       ) : summary.ready_for_lending_eligible ? (
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            padding: "1px 6px",
-            borderRadius: 4,
-            background: t.brandSoft,
-            color: t.brand,
-          }}
-        >
-          Ready for Lending
-        </span>
+        <CellChip tone="acc">Ready for Lending</CellChip>
       ) : null}
     </div>
   );
@@ -950,59 +769,30 @@ function CreateFileModal({ client, onClose }: { client: EnrichedClient; onClose:
   }
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.4)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 100,
-      }}
+    <Drawer
+      open
+      onClose={onClose}
+      width="md"
+      title={`New file for ${client.name}`}
+      sub="Each file is a transaction path you're working — buyer search, seller listing, investor purchase. A client can carry multiple files at once."
+      footer={
+        <>
+          <span style={{ flex: 1 }} />
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn variant="pri" onClick={save} disabled={create.isPending}>
+            {create.isPending ? "Creating…" : "Open file"}
+          </Btn>
+        </>
+      }
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: t.surface,
-          border: `1px solid ${t.line}`,
-          borderRadius: 10,
-          padding: 20,
-          minWidth: 420,
-          maxWidth: 520,
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>
-            New file for {client.name}
-          </div>
-          <ModalCloseButton onClick={onClose} />
-        </div>
-        <div style={{ fontSize: 12, color: t.ink3 }}>
-          Each file is a transaction path you're working — buyer search, seller listing,
-          investor purchase. A client can carry multiple files at once.
-        </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <label style={{ display: "block" }}>
-          <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" }}>
-            Type
-          </span>
+          <span className="lbl">Type</span>
           <select
+            className="field"
             value={body.deal_type}
             onChange={(e) => setBody({ ...body, deal_type: e.target.value as DealType })}
-            style={{
-              marginTop: 4,
-              width: "100%",
-              padding: 8,
-              fontSize: 13,
-              borderRadius: 6,
-              border: `1px solid ${t.line}`,
-              background: t.surface,
-              color: t.ink,
-            }}
+            style={{ marginTop: 4, width: "100%" }}
           >
             <option value="buyer">Buyer</option>
             <option value="seller">Seller</option>
@@ -1011,41 +801,21 @@ function CreateFileModal({ client, onClose }: { client: EnrichedClient; onClose:
           </select>
         </label>
         <label style={{ display: "block" }}>
-          <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" }}>
-            Title
-          </span>
+          <span className="lbl">Title</span>
           <input
+            className="field"
             value={body.title}
             onChange={(e) => setBody({ ...body, title: e.target.value })}
-            style={{
-              marginTop: 4,
-              width: "100%",
-              padding: 8,
-              fontSize: 13,
-              borderRadius: 6,
-              border: `1px solid ${t.line}`,
-              background: t.surface,
-              color: t.ink,
-            }}
+            style={{ marginTop: 4, width: "100%" }}
           />
         </label>
         <label style={{ display: "block" }}>
-          <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" }}>
-            Assign AI agent (optional)
-          </span>
+          <span className="lbl">Assign AI agent (optional)</span>
           <select
+            className="field"
             value={aiAgentId}
             onChange={(e) => setAiAgentId(e.target.value)}
-            style={{
-              marginTop: 4,
-              width: "100%",
-              padding: 8,
-              fontSize: 13,
-              borderRadius: 6,
-              border: `1px solid ${t.line}`,
-              background: t.surface,
-              color: t.ink,
-            }}
+            style={{ marginTop: 4, width: "100%" }}
           >
             <option value="">— None for now —</option>
             {eligibleAgents.map((a) => (
@@ -1055,48 +825,14 @@ function CreateFileModal({ client, onClose }: { client: EnrichedClient; onClose:
               </option>
             ))}
           </select>
-          <div style={{ fontSize: 11, color: t.ink3, marginTop: 4 }}>
+          <div className="sub">
             The AI will start drafting outreach for this lead the moment
             the file is created.
           </div>
         </label>
-        {err ? <div style={{ fontSize: 12, color: t.danger }}>{err}</div> : null}
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: "8px 14px",
-              fontSize: 13,
-              fontWeight: 600,
-              borderRadius: 6,
-              border: `1px solid ${t.line}`,
-              background: t.surface,
-              color: t.ink,
-              cursor: "pointer",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={save}
-            disabled={create.isPending}
-            style={{
-              padding: "8px 14px",
-              fontSize: 13,
-              fontWeight: 700,
-              borderRadius: 6,
-              border: "none",
-              background: t.brand,
-              color: t.inverse,
-              cursor: "pointer",
-              opacity: create.isPending ? 0.6 : 1,
-            }}
-          >
-            {create.isPending ? "Creating…" : "Open file"}
-          </button>
-        </div>
+        {err ? <WarnLine>{err}</WarnLine> : null}
       </div>
-    </div>
+    </Drawer>
   );
 }
 
@@ -1108,38 +844,13 @@ function CreateFileModal({ client, onClose }: { client: EnrichedClient; onClose:
 //   default (active relationship, no funding)                  → no tint
 function fundingTint(
   summary: PipelineClientSummary | undefined,
-  t: ReturnType<typeof useTheme>["t"],
 ): { bg: string; border: string } | null {
   if (!summary) return null;
   if (summary.handoff_status === "promoted" || summary.loans_count > 0) {
-    return { bg: t.brandSoft, border: t.brand };
+    return { bg: "var(--accent-100)", border: "var(--accent)" };
   }
   if (summary.ready_for_lending_eligible) {
-    return { bg: t.warnBg, border: t.warn };
+    return { bg: "var(--warn-tint)", border: "var(--warn)" };
   }
   return null;
-}
-
-
-function LegendChip({ children, color, bg }: { children: React.ReactNode; color: string; bg: string }) {
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        padding: "1px 8px",
-        borderRadius: 999,
-        background: bg,
-        color,
-        fontSize: 11,
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: 0.4,
-      }}
-    >
-      <span style={{ width: 6, height: 6, borderRadius: 999, background: color }} />
-      {children}
-    </span>
-  );
 }

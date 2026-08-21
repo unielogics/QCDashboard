@@ -32,7 +32,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
-import { Btn, CellChip, IconBtn, WarnLine, cx } from "@/components/ds";
+import { Btn, CellChip, IconBtn, Linky, Note as DSNote, Seg, WarnLine, cx } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { GoogleAddressInput } from "@/components/property/GoogleAddressInput";
 import {
@@ -613,7 +613,6 @@ export function SmartIntakeModal({
       )}
       {step === 1 && (
         <AssetStepView
-          t={t}
           form={form}
           update={update}
           onAddAsset={handleAddAsset}
@@ -622,10 +621,9 @@ export function SmartIntakeModal({
           pickedClientId={pickedClient?.id ?? null}
         />
       )}
-      {step === 2 && <NumbersStepView t={t} form={form} update={update} />}
+      {step === 2 && <NumbersStepView form={form} update={update} />}
       {step === 3 && (
         <CommunicationStepView
-          t={t}
           form={form}
           update={update}
           docOverrides={docOverrides}
@@ -782,12 +780,13 @@ function isBuyerWithAssets(form: FormState): boolean {
 // ── Step views ────────────────────────────────────────────────────────────
 
 interface StepProps {
-  t: QCTokens;
   form: FormState;
   update: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
 }
 
 interface BorrowerStepProps extends StepProps {
+  /** Only still here for <ClientSearchBlock>, which has not been migrated. */
+  t: QCTokens;
   showSideToggle: boolean;
   pickedClient: IntakePrefillClient | null;
   onPickClient: (c: IntakePrefillClient) => void;
@@ -815,7 +814,7 @@ function BorrowerStepView({
       {showSideToggle && (
         <div>
           <Label>Buyer or Seller</Label>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div className="cg">
             <SideButton active={form.dealSide === "buyer"} onClick={() => update("dealSide", "buyer")}>
               Buyer
             </SideButton>
@@ -823,11 +822,11 @@ function BorrowerStepView({
               Seller
             </SideButton>
           </div>
-          <div style={{ fontSize: 11, color: t.ink3, marginTop: 6 }}>
+          <Note>
             {form.dealSide === "buyer"
               ? "We'll capture purchase capacity and any properties they currently own."
               : "We'll capture the listing — the property they're selling, plus the sale price."}
-          </div>
+          </Note>
         </div>
       )}
 
@@ -836,7 +835,7 @@ function BorrowerStepView({
           (the conservative LTV cap; rate-term refi is a v2 follow-up). */}
       <div className="cg">
         <Field label="Purpose" required>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+          <div className="cg">
             <SideButton active={form.loanPurpose === "purchase"} onClick={() => update("loanPurpose", "purchase")}>
               Purchase
             </SideButton>
@@ -873,37 +872,16 @@ function BorrowerStepView({
       )}
 
       {locked && pickedClient && (
-        <div
-          style={{
-            padding: "10px 12px",
-            borderRadius: 9,
-            background: t.brandSoft,
-            border: `1px solid ${t.brand}40`,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
+        <div className="card row">
           <Icon name="check" size={14} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: t.brand }}>
-              Existing client: {pickedClient.name}
-            </div>
-            <div style={{ fontSize: 11, color: t.ink3 }}>
+            <b>Existing client: {pickedClient.name}</b>
+            <div className="sub">
               {pickedClient.email ?? "—"}
               {pickedClient.phone ? ` · ${pickedClient.phone}` : ""}
             </div>
           </div>
-          <button
-            onClick={clearPickedClient}
-            style={{
-              all: "unset", cursor: "pointer",
-              fontSize: 11, fontWeight: 700, color: t.brand,
-              padding: "4px 8px",
-            }}
-          >
-            Choose different client
-          </button>
+          <Linky onClick={clearPickedClient}>Choose different client</Linky>
         </div>
       )}
 
@@ -1060,7 +1038,6 @@ function ClientContextCard({
 }
 
 function AssetStepView({
-  t,
   form,
   update,
   onAddAsset,
@@ -1204,7 +1181,7 @@ function loanTypeToProductKey(
   return "dscr";
 }
 
-function NumbersStepView({ t, form, update }: StepProps) {
+function NumbersStepView({ form, update }: StepProps) {
   const isSeller = form.dealSide === "seller";
   const isDscr =
     form.loanType === LoanType.DSCR ||
@@ -1347,77 +1324,49 @@ function NumbersStepView({ t, form, update }: StepProps) {
           block + LTV — the simulator sizes off purchase price × LTV. */}
 
       {/* Live readout — mirrors the simulator's eligibility chip */}
-      <div
-        style={{
-          padding: "12px 14px",
-          borderRadius: 10,
-          background: t.brandSoft,
-          border: `1px solid ${t.brand}30`,
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-        }}
-      >
-        <div style={{
-          fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
-          textTransform: "uppercase", color: t.brand,
-        }}>
+      <div className="card hi">
+        <div className="lbl">
           Live calc · {isRefi ? "Refinance" : "Purchase"} · {LOAN_PROGRAM_LABELS[String(form.loanType)] ?? "—"}
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "baseline" }}>
+        <div className="row" style={{ gap: 18, alignItems: "baseline", marginTop: 8 }}>
           <div>
-            <div style={{ fontSize: 11, color: t.ink3, fontWeight: 600 }}>Max loan</div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"' }}>
+            <div className="lbl">Max loan</div>
+            <div className="big num">
               {sim.maxLoan > 0 ? `$${Math.round(sim.maxLoan).toLocaleString("en-US")}` : "—"}
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 11, color: t.ink3, fontWeight: 600 }}>Binding cap</div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: t.ink2 }}>
-              {bindingConstraintLabel(sim.bindingConstraint)}
-            </div>
+            <div className="lbl">Binding cap</div>
+            <b>{bindingConstraintLabel(sim.bindingConstraint)}</b>
           </div>
           {isDscr && sim.dscr != null && (
             <div>
-              <div style={{ fontSize: 11, color: t.ink3, fontWeight: 600 }}>DSCR</div>
-              <div style={{
-                fontSize: 13, fontWeight: 700,
-                color: sim.dscr >= 1.20 ? t.profit : sim.dscr >= 1.0 ? t.warn : t.danger,
-              }}>
+              <div className="lbl">DSCR</div>
+              <CellChip tone={sim.dscr >= 1.20 ? "ok" : sim.dscr >= 1.0 ? "warn" : "bad"}>
                 {sim.dscr.toFixed(2)}x
-              </div>
+              </CellChip>
             </div>
           )}
           {isDscr && sim.cashFlow != null && (
             <div>
-              <div style={{ fontSize: 11, color: t.ink3, fontWeight: 600 }}>Cash flow / mo</div>
-              <div style={{
-                fontSize: 13, fontWeight: 700,
-                color: sim.cashFlow >= 0 ? t.profit : t.danger,
-                fontFeatureSettings: '"tnum"',
-              }}>
+              <div className="lbl">Cash flow / mo</div>
+              <CellChip tone={sim.cashFlow >= 0 ? "ok" : "bad"}>
                 ${Math.round(sim.cashFlow).toLocaleString("en-US")}
-              </div>
+              </CellChip>
             </div>
           )}
           {isDscr && isRefi && sim.cashToBorrower != null && (
             <div>
-              <div style={{ fontSize: 11, color: t.ink3, fontWeight: 600 }}>Cash to borrower</div>
-              <div style={{
-                fontSize: 13, fontWeight: 700,
-                color: sim.cashToBorrower >= 0 ? t.profit : t.warn,
-                fontFeatureSettings: '"tnum"',
-              }}>
+              <div className="lbl">Cash to borrower</div>
+              <CellChip tone={sim.cashToBorrower >= 0 ? "ok" : "warn"}>
                 ${Math.round(sim.cashToBorrower).toLocaleString("en-US")}
-              </div>
+              </CellChip>
             </div>
           )}
-          <div style={{ flex: 1 }} />
+          <span className="sp" style={{ flex: 1 }} />
           <div>
-            <div style={{ fontSize: 11, color: t.ink3, fontWeight: 600 }}>Rate</div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: t.ink2 }}>
-              {sim.rate.toFixed(3)}%
-            </div>
+            <div className="lbl">Rate</div>
+            <b className="num">{sim.rate.toFixed(3)}%</b>
           </div>
         </div>
       </div>
@@ -1431,7 +1380,6 @@ function NumbersStepView({ t, form, update }: StepProps) {
 }
 
 function CommunicationStepView({
-  t,
   form,
   update,
   docOverrides,
@@ -1458,27 +1406,17 @@ function CommunicationStepView({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div
-        style={{
-          padding: 12,
-          borderRadius: 10,
-          background: t.petrolSoft,
-          border: `1px solid ${t.petrol}30`,
-          display: "flex",
-          alignItems: "flex-start",
-          gap: 10,
-        }}
-      >
-        <Icon name="bolt" size={14} style={{ color: t.petrol, marginTop: 1 }} />
+      <DSNote>
+        <Icon name="bolt" size={14} />
         <div>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink }}>How the AI should speak with this client</div>
-          <div style={{ fontSize: 11.5, color: t.ink2, marginTop: 3, lineHeight: 1.5 }}>
+          <b>How the AI should speak with this client</b>
+          <div>
             These instructions guide your client-side AI only — the early-funnel relationship
             work. Once the client moves to <strong>Ready for Lending</strong>, the firm-wide
             Funding Team AI takes over for the lender packaging side.
           </div>
         </div>
-      </div>
+      </DSNote>
 
       <div className="cg">
         <Field label="Preferred language">
@@ -1497,18 +1435,7 @@ function CommunicationStepView({
         </Field>
         <Field label="Preferred channel">
           {isBroker ? (
-            <div
-              style={{
-                padding: "9px 11px",
-                borderRadius: 8,
-                border: `1px solid ${t.line}`,
-                background: t.surface2,
-                color: t.ink,
-                fontSize: 13,
-              }}
-            >
-              App push only
-            </div>
+            <div className="field">App push only</div>
           ) : (
             <Select
               value={form.preferredChannel}
@@ -1585,62 +1512,41 @@ function CommunicationStepView({
       </div>
 
       {isBroker && (
-        <div style={{ marginBottom: 14 }}>
+        <div>
           <Label>Start collecting</Label>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div className="row">
             <input
+              className="field"
               type="number"
               min={0}
+              aria-label="Delay before the AI starts collecting"
               value={collectionStartValue}
               onChange={(e) => setCollectionStartValue(Math.max(0, Number(e.target.value) || 0))}
-              style={{
-                width: 80,
-                padding: "9px 11px",
-                borderRadius: 8,
-                border: `1px solid ${t.line}`,
-                background: t.surface,
-                color: t.ink,
-                fontSize: 13,
-                outline: "none",
-                fontFamily: "inherit",
-              }}
+              style={{ width: 80 }}
             />
-            <div style={{ display: "inline-flex", border: `1px solid ${t.line}`, borderRadius: 8, overflow: "hidden" }}>
-              {(["hours", "days"] as const).map((u) => (
-                <button
-                  key={u}
-                  type="button"
-                  onClick={() => setCollectionStartUnit(u)}
-                  style={{
-                    all: "unset",
-                    cursor: "pointer",
-                    padding: "8px 14px",
-                    fontSize: 12.5,
-                    fontWeight: 700,
-                    textTransform: "capitalize",
-                    background: collectionStartUnit === u ? t.petrol : "transparent",
-                    color: collectionStartUnit === u ? "#fff" : t.ink3,
-                  }}
-                >
-                  {u}
-                </button>
-              ))}
-            </div>
-            <span style={{ fontSize: 12, color: t.ink3 }}>
+            <Seg<"hours" | "days">
+              ariaLabel="Delay unit"
+              value={collectionStartUnit}
+              onChange={setCollectionStartUnit}
+              options={[
+                { value: "hours", label: "Hours" },
+                { value: "days", label: "Days" },
+              ]}
+            />
+            <span className="sub">
               {collectionStartValue <= 0
                 ? "Immediately when you create the file."
                 : `Outreach starts ${collectionStartValue} ${collectionStartUnit} after file creation.`}
             </span>
           </div>
-          <div style={{ fontSize: 11, color: t.ink4, marginTop: 6 }}>
+          <Note>
             Documents are still created now; the AI just waits to begin
             chasing them. Hours are converted to whole days.
-          </div>
+          </Note>
         </div>
       )}
 
       <DocPreviewSection
-        t={t}
         items={previewItems}
         docOverrides={docOverrides}
         setDocOverrides={setDocOverrides}
@@ -1654,14 +1560,12 @@ function CommunicationStepView({
 // Step 4 doc-collection preview — renders the resolved checklist with
 // per-item skip / due-offset edit, plus an "+ Add custom doc" appender.
 function DocPreviewSection({
-  t,
   items,
   docOverrides,
   setDocOverrides,
   customDocs,
   setCustomDocs,
 }: {
-  t: QCTokens;
   items: DocChecklistItem[];
   docOverrides: DocOverridesState;
   setDocOverrides: React.Dispatch<React.SetStateAction<DocOverridesState>>;
@@ -1702,92 +1606,56 @@ function DocPreviewSection({
   const visibleCount = items.length - docOverrides.skipNames.size + customDocs.length;
 
   return (
-    <div
-      style={{
-        marginTop: 8,
-        padding: "12px 14px",
-        borderRadius: 10,
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-      }}
-    >
-      <div>
-        <div style={{
-          fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
-          textTransform: "uppercase", color: t.ink3,
-        }}>
-          Doc collection — preview
-        </div>
-        <div style={{ fontSize: 11.5, color: t.ink2, lineHeight: 1.5, marginTop: 2 }}>
-          The AI will request these {visibleCount} files from the borrower
-          starting at deal kickoff. Toggle off anything you don&apos;t need
-          for this deal. Edit due offsets if you want a tighter / looser
-          cadence. Add custom rows for one-off items unique to this deal.
-        </div>
+    <div className="card mt">
+      <div className="lbl">Doc collection — preview</div>
+      <div className="sub">
+        The AI will request these {visibleCount} files from the borrower
+        starting at deal kickoff. Toggle off anything you don&apos;t need
+        for this deal. Edit due offsets if you want a tighter / looser
+        cadence. Add custom rows for one-off items unique to this deal.
       </div>
 
       {items.length === 0 ? (
-        <div style={{ fontSize: 12, color: t.ink3, fontStyle: "italic", padding: "8px 0" }}>
+        <div className="sub mt">
           No checklist configured for this loan type yet — the AI will start with no
           default file list. Add custom rows below if you want to seed it.
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        <div className="mt">
           {items.map((item) => {
             const isSkipped = docOverrides.skipNames.has(item.name);
             const defaultOffset = item.due_offset_days ?? 3;
             const overrideValue = docOverrides.dueOverrides[item.name];
             const offsetValue = overrideValue ?? defaultOffset;
             return (
-              <div
-                key={item.name}
-                style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "8px 10px", borderRadius: 8,
-                  background: isSkipped ? "transparent" : t.surface,
-                  border: `1px solid ${t.line}`,
-                  opacity: isSkipped ? 0.55 : 1,
-                }}
-              >
+              // Dimming a skipped row is state, not decoration — it stays inline.
+              <div key={item.name} className="filerow" style={{ opacity: isSkipped ? 0.55 : 1 }}>
                 <input
                   type="checkbox"
                   checked={!isSkipped}
+                  aria-label={`Collect ${item.display_name || item.name}`}
                   onChange={() => toggleSkip(item.name)}
-                  style={{ width: 15, height: 15, cursor: "pointer" }}
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{
-                    fontSize: 12.5, fontWeight: 700, color: t.ink,
-                    textDecoration: isSkipped ? "line-through" : "none",
-                  }}>
+                  <b style={{ textDecoration: isSkipped ? "line-through" : "none" }}>
                     {item.display_name || item.name}
-                  </div>
+                  </b>
                   {item.type === "internal" && (
-                    <div style={{ fontSize: 10.5, color: t.ink3 }}>internal · operator-ordered</div>
+                    <div className="sub">internal · operator-ordered</div>
                   )}
                 </div>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600 }}>+</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={offsetValue}
-                    onChange={(e) => setDueOverride(item.name, Number(e.target.value))}
-                    disabled={isSkipped}
-                    style={{
-                      width: 44, padding: "4px 6px",
-                      fontSize: 12, borderRadius: 6,
-                      border: `1px solid ${t.line}`,
-                      background: t.surface2, color: t.ink,
-                      textAlign: "center", outline: "none",
-                      fontFamily: "inherit",
-                    }}
-                  />
-                  <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600 }}>d</span>
-                </div>
+                <span className="sub">+</span>
+                <input
+                  className="field"
+                  type="number"
+                  min={0}
+                  aria-label={`Due offset in days for ${item.display_name || item.name}`}
+                  value={offsetValue}
+                  onChange={(e) => setDueOverride(item.name, Number(e.target.value))}
+                  disabled={isSkipped}
+                  style={{ width: 56, textAlign: "center" }}
+                />
+                <span className="sub">d</span>
               </div>
             );
           })}
@@ -1795,70 +1663,38 @@ function DocPreviewSection({
       )}
 
       {customDocs.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          <div style={{
-            fontSize: 10, fontWeight: 700, letterSpacing: 1.2,
-            textTransform: "uppercase", color: t.ink3, marginTop: 6,
-          }}>
-            Custom — this deal only
-          </div>
+        <div className="mt">
+          <div className="lbl">Custom — this deal only</div>
           {customDocs.map((c, idx) => (
-            <div
-              key={idx}
-              style={{
-                display: "grid", gridTemplateColumns: "1fr 90px 32px", gap: 8,
-                padding: "8px 10px", borderRadius: 8,
-                background: t.surface, border: `1px solid ${t.line}`,
-                alignItems: "center",
-              }}
-            >
+            <div key={idx} className="filerow">
               <input
+                className="field"
                 value={c.name}
+                aria-label="Custom document name"
                 onChange={(e) => updateCustom(idx, { name: e.target.value })}
                 placeholder="e.g. Notarized power of attorney"
-                style={{
-                  padding: "6px 8px", fontSize: 12, borderRadius: 6,
-                  border: `1px solid ${t.line}`, background: t.surface2,
-                  color: t.ink, outline: "none", fontFamily: "inherit",
-                }}
+                style={{ flex: 1 }}
               />
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600 }}>+</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={c.dueOffsetDays}
-                  onChange={(e) => updateCustom(idx, { dueOffsetDays: Number(e.target.value) || 7 })}
-                  style={{
-                    width: 44, padding: "4px 6px",
-                    fontSize: 12, borderRadius: 6,
-                    border: `1px solid ${t.line}`,
-                    background: t.surface2, color: t.ink,
-                    textAlign: "center", outline: "none",
-                    fontFamily: "inherit",
-                  }}
-                />
-                <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600 }}>d</span>
-              </div>
-              <button
-                onClick={() => removeCustom(idx)}
-                aria-label="Remove custom doc"
-                style={{
-                  all: "unset", cursor: "pointer",
-                  width: 28, height: 28, borderRadius: 6,
-                  border: `1px solid ${t.line}`, background: "transparent",
-                  color: t.ink3,
-                  display: "inline-flex", alignItems: "center", justifyContent: "center",
-                }}
-              >
+              <span className="sub">+</span>
+              <input
+                className="field"
+                type="number"
+                min={1}
+                aria-label="Due offset in days"
+                value={c.dueOffsetDays}
+                onChange={(e) => updateCustom(idx, { dueOffsetDays: Number(e.target.value) || 7 })}
+                style={{ width: 56, textAlign: "center" }}
+              />
+              <span className="sub">d</span>
+              <IconBtn onClick={() => removeCustom(idx)} aria-label="Remove custom doc">
                 <Icon name="x" size={11} />
-              </button>
+              </IconBtn>
             </div>
           ))}
         </div>
       )}
 
-      <Btn onClick={addCustom} style={{ alignSelf: "flex-start", marginTop: 4 }}>
+      <Btn className="mt" onClick={addCustom}>
         <Icon name="plus" size={11} /> Add custom doc
       </Btn>
     </div>
@@ -1916,7 +1752,7 @@ function SideButton({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={cx("btn", active && "pri")}
+      className={cx("btn", active && "pri", "s6")}
       style={{ justifyContent: "center" }}
     >
       {children}

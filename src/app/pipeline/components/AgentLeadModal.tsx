@@ -30,12 +30,11 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPetrol } from "@/components/design-system/buttons";
-import { RightPanel } from "@/components/design-system/RightPanel";
+import { Btn, WarnLine, cx } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { useCreateClient, useBufferWizardIntent, useSendIntakeLink } from "@/hooks/useApi";
 import { ClientSearchBlock } from "@/components/ClientSearchBlock";
 import { GoogleAddressInput } from "@/components/property/GoogleAddressInput";
-import type { QCTokens } from "@/components/design-system/tokens";
 
 type Side = "buyer" | "seller";
 type AssetUse = "primary" | "rental" | "second_home" | "investment" | "other";
@@ -81,6 +80,7 @@ const INITIAL: FormState = {
 };
 
 export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  // Kept only for <ClientSearchBlock>, which still takes a token bag.
   const { t } = useTheme();
   const router = useRouter();
   const create = useCreateClient();
@@ -164,72 +164,54 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
   };
 
   return (
-    <RightPanel
+    <Drawer
       open={open}
       onClose={onClose}
-      width="min(560px, max(40vw, 460px))"
-      eyebrow={`New Client · ${form.side === "seller" ? "Seller" : "Buyer"}`}
+      width="md"
+      sub={`New Client · ${form.side === "seller" ? "Seller" : "Buyer"}`}
       title="Capture lead"
-      ariaLabel="New client capture"
       footer={
         <>
-          <button onClick={onClose} style={qcBtn(t)} disabled={isSubmitting}>
+          <Btn onClick={onClose} disabled={isSubmitting}>
             Cancel
-          </button>
-          <div
-            style={{
-              flex: 1,
-              textAlign: "center",
-              fontSize: 11,
-              color: submitErr ? t.danger : t.ink3,
-              fontWeight: 600,
-            }}
-          >
-            {submitErr ?? (canSubmit ? "Ready to save" : "Fill in name + email or phone")}
-          </div>
-          <div style={{ display: "inline-flex", gap: 6 }}>
-            <button
-              onClick={() => void submit("save")}
-              disabled={!canSubmit}
-              style={{ ...qcBtn(t), opacity: canSubmit ? 1 : 0.5 }}
-            >
-              {isSubmitting ? "Saving…" : "Save"}
-            </button>
-            <button
-              onClick={() => void submit("save_and_invite")}
-              disabled={!canSubmit}
-              style={{ ...qcBtnPetrol(t), opacity: canSubmit ? 1 : 0.5 }}
-            >
-              {isSubmitting ? "Sending…" : "Save + Send Intake Link"}
-            </button>
-          </div>
+          </Btn>
+          {submitErr ? (
+            <WarnLine className="sp">{submitErr}</WarnLine>
+          ) : (
+            <div className="sub" style={{ flex: 1, textAlign: "center" }}>
+              {canSubmit ? "Ready to save" : "Fill in name + email or phone"}
+            </div>
+          )}
+          <Btn onClick={() => void submit("save")} disabled={!canSubmit}>
+            {isSubmitting ? "Saving…" : "Save"}
+          </Btn>
+          <Btn variant="pri" onClick={() => void submit("save_and_invite")} disabled={!canSubmit}>
+            {isSubmitting ? "Sending…" : "Save + Send Intake Link"}
+          </Btn>
         </>
       }
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <section style={sectionStyle(t)}>
-          <SectionLabel t={t}>Contact</SectionLabel>
-          <Field t={t} label="Name" required>
+        <section className="card" style={SECTION_STYLE}>
+          <SectionLabel>Contact</SectionLabel>
+          <Field label="Name" required>
             <Input
-              t={t}
               value={form.name}
               onChange={(v) => update("name", v)}
               placeholder="Marcus Holloway"
             />
           </Field>
-          <Row t={t}>
-            <Field t={t} label="Email">
+          <Row>
+            <Field label="Email">
               <Input
-                t={t}
                 value={form.email}
                 onChange={(v) => update("email", v)}
                 placeholder="marcus@holloway.cap"
                 type="email"
               />
             </Field>
-            <Field t={t} label="Phone">
+            <Field label="Phone">
               <Input
-                t={t}
                 value={form.phone}
                 onChange={(v) => update("phone", v)}
                 placeholder="(917) 555-0148"
@@ -237,15 +219,11 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
               />
             </Field>
           </Row>
-          <div
-            style={{
-              fontSize: 11,
-              color: hasContact ? t.ink3 : t.warn,
-              lineHeight: 1.4,
-            }}
-          >
-            {hasContact ? "Either email or phone is fine. Both works too." : "Provide at least an email or a phone."}
-          </div>
+          {hasContact ? (
+            <div className="sub">Either email or phone is fine. Both works too.</div>
+          ) : (
+            <WarnLine>Provide at least an email or a phone.</WarnLine>
+          )}
           {/* Existing-client check — desktop ClientSearchBlock has its
               own search input + dropdown. Picking a match exits the
               wizard and routes to that client's detail page. */}
@@ -262,10 +240,9 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
           />
         </section>
 
-        <section style={sectionStyle(t)}>
-          <SectionLabel t={t}>Side</SectionLabel>
+        <section className="card" style={SECTION_STYLE}>
+          <SectionLabel>Side</SectionLabel>
           <Segmented
-            t={t}
             options={[
               { value: "buyer", label: "Buyer" },
               { value: "seller", label: "Seller" },
@@ -279,15 +256,14 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
           />
         </section>
 
-        <section style={sectionStyle(t)}>
-          <SectionLabel t={t}>Properties owned</SectionLabel>
-          <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.5 }}>
+        <section className="card" style={SECTION_STYLE}>
+          <SectionLabel>Properties owned</SectionLabel>
+          <div className="sub">
             {form.side === "seller"
               ? "Add the property they're listing (and any others they own)."
               : "Any properties they already own. Optional for buyers."}
           </div>
           <OwnedAssetsEditor
-            t={t}
             assets={form.ownedAssets}
             onChange={(next) => {
               update("ownedAssets", next);
@@ -299,30 +275,17 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
         </section>
 
         {form.side === "seller" && (
-          <section style={sectionStyle(t)}>
-            <SectionLabel t={t}>Listing property</SectionLabel>
+          <section className="card" style={SECTION_STYLE}>
+            <SectionLabel>Listing property</SectionLabel>
             {form.ownedAssets.length === 0 ? (
-              <button
+              <Btn
                 onClick={() => update("ownedAssets", [{ ...NEW_ASSET }])}
-                style={{
-                  all: "unset",
-                  cursor: "pointer",
-                  padding: "10px 12px",
-                  borderRadius: 9,
-                  border: `1px dashed ${t.warn}`,
-                  color: t.warn,
-                  fontSize: 12.5,
-                  fontWeight: 700,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  alignSelf: "flex-start",
-                }}
+                style={{ alignSelf: "flex-start" }}
               >
-                <Icon name="plus" size={12} /> Add the property they're listing
-              </button>
+                <Icon name="plus" size={12} /> Add the property they&apos;re listing
+              </Btn>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div>
                 {form.ownedAssets.map((a, idx) => {
                   const active = form.listingIndex === idx;
                   const disabled = a.address.trim().length === 0;
@@ -333,49 +296,22 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
                   return (
                     <button
                       key={idx}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
                       onClick={() => !disabled && update("listingIndex", idx)}
                       disabled={disabled}
-                      style={{
-                        all: "unset",
-                        cursor: disabled ? "not-allowed" : "pointer",
-                        padding: "10px 12px",
-                        borderRadius: 10,
-                        border: `1px solid ${active ? t.brand : t.line}`,
-                        background: active ? t.brandSoft : "transparent",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        opacity: disabled ? 0.5 : 1,
-                      }}
+                      className={cx("pick", active && "on")}
+                      // A row with no address yet cannot be picked — dimming it
+                      // is state, not decoration, so it stays inline.
+                      style={{ width: "100%", textAlign: "left", opacity: disabled ? 0.5 : 1 }}
                     >
                       <span
-                        style={{
-                          width: 16,
-                          height: 16,
-                          borderRadius: 999,
-                          border: `2px solid ${active ? t.brand : t.lineStrong}`,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                        }}
-                      >
-                        {active && (
-                          <span
-                            style={{
-                              width: 8,
-                              height: 8,
-                              borderRadius: 999,
-                              background: t.brand,
-                            }}
-                          />
-                        )}
-                      </span>
+                        className="repdot"
+                        style={{ background: active ? "var(--accent)" : "var(--line2)" }}
+                      />
                       <span
                         style={{
-                          fontSize: 13,
-                          color: active ? t.brand : t.ink,
-                          fontWeight: active ? 800 : 600,
                           flex: 1,
                           minWidth: 0,
                           overflow: "hidden",
@@ -389,27 +325,23 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
                   );
                 })}
                 {!sellerListingValid && (
-                  <div style={{ fontSize: 11, color: t.warn, marginTop: 4 }}>
-                    Pick which property they're listing.
-                  </div>
+                  <WarnLine className="mt">Pick which property they&apos;re listing.</WarnLine>
                 )}
               </div>
             )}
           </section>
         )}
       </div>
-    </RightPanel>
+    </Drawer>
   );
 }
 
 // ── Inline OwnedAssetsEditor (desktop) ─────────────────────────────────
 
 function OwnedAssetsEditor({
-  t,
   assets,
   onChange,
 }: {
-  t: QCTokens;
   assets: OwnedAsset[];
   onChange: (next: OwnedAsset[]) => void;
 }) {
@@ -434,35 +366,26 @@ function OwnedAssetsEditor({
           ? `${a.address}${a.city ? ", " + a.city : ""}${a.state ? " " + a.state : ""}`
           : "New property — click to fill in";
         return (
-          <div
-            key={idx}
-            style={{
-              borderRadius: 10,
-              border: `1px solid ${open ? t.brand : t.line}`,
-              background: t.surface,
-              overflow: "hidden",
-            }}
-          >
+          <div key={idx} className="card" style={{ padding: 0, overflow: "hidden" }}>
             <button
+              type="button"
+              aria-expanded={open}
               onClick={() => setExpanded(open ? null : idx)}
               style={{
-                all: "unset",
                 cursor: "pointer",
                 width: "100%",
                 padding: "10px 12px",
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
-                boxSizing: "border-box",
+                textAlign: "left",
               }}
             >
-              <Icon name="building" size={13} color={t.ink2} />
+              <Icon name="building" size={13} />
               <span
                 style={{
                   flex: 1,
                   minWidth: 0,
-                  fontSize: 13,
-                  color: t.ink,
                   fontWeight: 600,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -471,7 +394,7 @@ function OwnedAssetsEditor({
               >
                 {summary}
               </span>
-              <Icon name={open ? "chevU" : "chevD"} size={12} color={t.ink3} />
+              <Icon name={open ? "chevU" : "chevD"} size={12} />
             </button>
             {open && (
               <div
@@ -480,7 +403,7 @@ function OwnedAssetsEditor({
                   display: "flex",
                   flexDirection: "column",
                   gap: 8,
-                  borderTop: `1px solid ${t.line}`,
+                  borderTop: "1px solid var(--line)",
                 }}
               >
                 <GoogleAddressInput
@@ -495,7 +418,7 @@ function OwnedAssetsEditor({
                   showZip={false}
                   helperText="Search Google and select the property, or use manual entry if the address is not listed."
                 />
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                <div className="row">
                   {([
                     ["primary", "Primary"],
                     ["rental", "Rental"],
@@ -507,79 +430,45 @@ function OwnedAssetsEditor({
                     return (
                       <button
                         key={v}
+                        type="button"
+                        aria-pressed={active}
                         onClick={() => updateRow(idx, { use: v })}
-                        style={{
-                          all: "unset",
-                          cursor: "pointer",
-                          padding: "5px 10px",
-                          borderRadius: 999,
-                          border: `1px solid ${active ? t.brand : t.line}`,
-                          background: active ? t.brand : t.surface2,
-                          color: active ? "#fff" : t.ink2,
-                          fontSize: 11.5,
-                          fontWeight: 700,
-                        }}
+                        className={cx("btn", "sm", active && "pri")}
                       >
                         {l}
                       </button>
                     );
                   })}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <Input
-                    t={t}
-                    value={a.value}
-                    onChange={(v) => updateRow(idx, { value: v })}
-                    placeholder="Est. value"
-                    type="text"
-                  />
-                  <Input
-                    t={t}
-                    value={a.balanceOwed}
-                    onChange={(v) => updateRow(idx, { balanceOwed: v })}
-                    placeholder="Balance owed"
-                    type="text"
-                  />
+                <div className="cg">
+                  <div className="s6">
+                    <Input
+                      value={a.value}
+                      onChange={(v) => updateRow(idx, { value: v })}
+                      placeholder="Est. value"
+                      type="text"
+                    />
+                  </div>
+                  <div className="s6">
+                    <Input
+                      value={a.balanceOwed}
+                      onChange={(v) => updateRow(idx, { balanceOwed: v })}
+                      placeholder="Balance owed"
+                      type="text"
+                    />
+                  </div>
                 </div>
-                <button
-                  onClick={() => removeRow(idx)}
-                  style={{
-                    all: "unset",
-                    cursor: "pointer",
-                    alignSelf: "flex-start",
-                    padding: "5px 10px",
-                    borderRadius: 8,
-                    color: t.danger,
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                  }}
-                >
+                <Btn className="sm" onClick={() => removeRow(idx)} style={{ alignSelf: "flex-start" }}>
                   Remove
-                </button>
+                </Btn>
               </div>
             )}
           </div>
         );
       })}
-      <button
-        onClick={addRow}
-        style={{
-          all: "unset",
-          cursor: "pointer",
-          padding: "10px 12px",
-          borderRadius: 10,
-          border: `1px dashed ${t.line}`,
-          color: t.ink2,
-          fontSize: 12.5,
-          fontWeight: 700,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          alignSelf: "flex-start",
-        }}
-      >
+      <Btn onClick={addRow} style={{ alignSelf: "flex-start" }}>
         <Icon name="plus" size={12} /> Add another property
-      </button>
+      </Btn>
     </div>
   );
 }
@@ -619,57 +508,27 @@ function parseDollars(s: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// ── Primitives ──────────────────────────────────────────────────────────
+// ── Primitives ──────────────────────────────────────────────────────
+//
+// On the shared classes now (`.lbl`, `.field`, `.seg`), so none of them carry
+// a palette or take a `t`.
 
-function SectionLabel({ t, children }: { t: QCTokens; children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        fontSize: 10.5,
-        fontWeight: 800,
-        color: t.ink3,
-        letterSpacing: 1.2,
-        textTransform: "uppercase",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function sectionStyle(t: QCTokens): React.CSSProperties {
-  return {
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    padding: 14,
-    borderRadius: 12,
-    border: `1px solid ${t.line}`,
-    background: t.surface,
-  };
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <div className="lbl">{children}</div>;
 }
 
 function Field({
-  t,
   label,
   required,
   children,
 }: {
-  t: QCTokens;
   label: string;
   required?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 0 }}>
-      <label
-        style={{
-          fontSize: 10.5,
-          fontWeight: 700,
-          color: t.ink3,
-          letterSpacing: 0.5,
-        }}
-      >
+      <label className="lbl">
         {label.toUpperCase()}
         {required ? " *" : ""}
       </label>
@@ -678,32 +537,16 @@ function Field({
   );
 }
 
-function Row({ children }: { t: QCTokens; children: React.ReactNode }) {
+function Row({ children }: { children: React.ReactNode }) {
   return <div style={{ display: "flex", gap: 10 }}>{children}</div>;
 }
 
-function inputBaseStyle(t: QCTokens): React.CSSProperties {
-  return {
-    boxSizing: "border-box",
-    width: "100%",
-    background: t.surface2,
-    border: `1px solid ${t.line}`,
-    borderRadius: 9,
-    padding: "9px 11px",
-    fontSize: 13,
-    color: t.ink,
-    outline: "none",
-  };
-}
-
 function Input({
-  t,
   value,
   onChange,
   placeholder,
   type = "text",
 }: {
-  t: QCTokens;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
@@ -711,57 +554,47 @@ function Input({
 }) {
   return (
     <input
+      className="field"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       type={type}
-      style={inputBaseStyle(t)}
+      style={{ width: "100%" }}
     />
   );
 }
 
+/** Exclusive choice on `.seg`. */
 function Segmented({
-  t,
   options,
   value,
   onChange,
 }: {
-  t: QCTokens;
   options: { value: string; label: string }[];
   value: string;
   onChange: (v: string) => void;
 }) {
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: `repeat(${options.length}, 1fr)`,
-        gap: 6,
-      }}
-    >
-      {options.map((o) => {
-        const active = value === o.value;
-        return (
-          <button
-            key={o.value}
-            onClick={() => onChange(o.value)}
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              padding: "10px 12px",
-              borderRadius: 9,
-              border: `1px solid ${active ? t.brand : t.line}`,
-              background: active ? t.brand : t.surface2,
-              color: active ? "#fff" : t.ink,
-              fontSize: 12.5,
-              fontWeight: 700,
-              textAlign: "center",
-            }}
-          >
-            {o.label}
-          </button>
-        );
-      })}
+    <div className="seg" role="tablist" aria-label="Deal side">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="tab"
+          aria-selected={value === o.value}
+          className={value === o.value ? "on" : ""}
+          onClick={() => onChange(o.value)}
+        >
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }
+
+/** The section stack: `.card` owns the surface, this owns the rhythm. */
+const SECTION_STYLE: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+};
