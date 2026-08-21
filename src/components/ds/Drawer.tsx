@@ -12,7 +12,7 @@
 // closes unless suppressed, body scroll is locked while open, and focus moves
 // into the dialog on open and returns to whatever opened it on close.
 
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, type ReactNode } from "react";
 import { cx } from "./index";
 
 export type DrawerWidth = "md" | "lg" | "xl";
@@ -33,6 +33,7 @@ export function Drawer({
   width = "lg",
   closeOnBackdrop = true,
   bodyClass,
+  ariaLabel,
 }: {
   open: boolean;
   onClose: () => void;
@@ -43,7 +44,17 @@ export function Drawer({
   width?: DrawerWidth;
   closeOnBackdrop?: boolean;
   bodyClass?: string;
+  /**
+   * Overrides the announced name of the dialog.
+   *
+   * Needed where the visible title is not the name of the thing. A stepped
+   * flow retitles itself per step ("Borrower" → "Asset" → "Numbers"), so a
+   * screen-reader user hears the step and never the dialog — they lose track
+   * of what they opened. Pass the stable name here and let the title move.
+   */
+  ariaLabel?: string;
 }) {
+  const titleId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
   const restoreTo = useRef<HTMLElement | null>(null);
 
@@ -90,7 +101,11 @@ export function Drawer({
         style={{ width: WIDTHS[width] }}
         role="dialog"
         aria-modal="true"
-        aria-label={typeof title === "string" ? title : undefined}
+        // Prefer pointing at the rendered heading: it stays correct when the
+        // title is an element rather than a string, and it survives the title
+        // changing. `ariaLabel` wins when the visible title is not the name.
+        aria-labelledby={!ariaLabel && title ? titleId : undefined}
+        aria-label={ariaLabel}
         ref={panelRef}
         tabIndex={-1}
       >
@@ -101,12 +116,8 @@ export function Drawer({
         </button>
         {(title || sub) && (
           <div className="drawer-h">
-            {title && <h2 style={{ fontSize: 19 }}>{title}</h2>}
-            {sub && (
-              <p className="sub" style={{ margin: "5px 0 0", maxWidth: 640 }}>
-                {sub}
-              </p>
-            )}
+            {title && <h2 id={titleId}>{title}</h2>}
+            {sub && <p className="drawer-sub sub">{sub}</p>}
           </div>
         )}
         <div className={cx("drawer-b", bodyClass)}>{children}</div>

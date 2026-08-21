@@ -96,7 +96,8 @@
    navigate by heading level, and "no h1" reads as a page with no title. This
    gives h1 the same visual weight .hd h2 had, so nothing looks different. */
 .hd h1 { font-size: 23px; }
-.drawer-h h1 { font-size: 19px; }
+.drawer-h h1, .drawer-h h2 { font-size: 19px; }
+.drawer-sub { margin: 5px 0 0; max-width: 640px; }
 
 /* Right-align outside a table.
    `.r` is scoped to `.tbl .r`, so every figure that needed right-aligning in a

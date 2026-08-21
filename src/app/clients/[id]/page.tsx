@@ -1370,6 +1370,7 @@ function LendingHandoffModal({
       onClose={onClose}
       width="md"
       title={succeeded ? `${client.name} moved to Lending Intake` : `Ready to send ${client.name} to lending?`}
+      ariaLabel="Send to lending"
       sub={
         succeeded
           ? "Funding team has been notified. The Lending AI started a fresh thread and already knows the context."

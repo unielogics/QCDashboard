@@ -549,6 +549,9 @@ export function SmartIntakeModal({
         return `New File · ${purposeLabel}${programLabel ? ` · ${programLabel}` : ""}${sideLabel}`;
       })()}
       title={STEPS[step].label}
+      // The visible title is the STEP. Without this a screen-reader user hears
+      // "Borrower" and never learns which dialog they are in.
+      ariaLabel="Smart Intake — new file"
       footer={
         <>
           <Btn

@@ -113,6 +113,9 @@ export function NewThreadDialog({ open, onClose, onThreadReady }: Props) {
       onClose={onClose}
       width="md"
       title={step === "client" ? "Pick a client" : pickedClient?.name ?? "Loan"}
+      // Step two retitles to the client's name, which announces as a person
+      // rather than as the dialog. Keep the stable name here.
+      ariaLabel="New message"
       footer={
         step === "loan" ? (
           <>
