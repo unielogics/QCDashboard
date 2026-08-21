@@ -1,11 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn } from "@/components/design-system/buttons";
+import {
+  CellChip,
+  Btn,
+  Field,
+  IconBtn,
+  Input,
+  Kpi,
+  KpiRow,
+  Lbl,
+  Note,
+  PageHeader,
+  Panel,
+  Select,
+  Sub,
+  WarnLine,
+} from "@/components/ds";
 import { ClientSearchBlock, type ClientPickResult } from "@/components/ClientSearchBlock";
 import { AnalysisActionsMenu, AnalysisFloatingAction, AnalysisRunInspect, AnalysisRunsTable } from "@/components/analysis/AnalysisRunsWorkspace";
 import { FinancialInsightPanel } from "@/components/analysis/FinancialInsightPanel";
@@ -29,6 +43,9 @@ const money = (n: number | null | undefined) =>
   typeof n === "number" && Number.isFinite(n) ? `$${Math.round(n).toLocaleString()}` : "-";
 const pct = (n: number | null | undefined) =>
   typeof n === "number" && Number.isFinite(n) ? `${(n * 100).toFixed(1)}%` : "-";
+
+/** Data-derived tint on a KPI figure — the pass/fail read that `accent` used to carry. */
+const tinted = (value: ReactNode, color: string) => <span style={{ color }}>{value}</span>;
 
 function numFrom(...values: unknown[]): number | null {
   for (const value of values) {
@@ -57,6 +74,8 @@ function canLookupAddress(parts: AddressParts | null): parts is AddressParts {
 }
 
 export default function DealAnalyzerPage() {
+  // Still read for ClientSearchBlock, which takes `t` and is shared with routes
+  // that have not migrated yet.
   const { t } = useTheme();
   const router = useRouter();
   const sp = useSearchParams();
@@ -258,26 +277,33 @@ export default function DealAnalyzerPage() {
     setMessage("Pending prequalification created for funding review.");
   };
 
-  const input = {
-    width: "100%",
-    marginTop: 4,
-    padding: "9px 11px",
-    borderRadius: 8,
-    border: `1px solid ${t.line}`,
-    background: t.surface,
-    color: t.ink,
-    fontSize: 13,
-    fontFamily: "inherit",
-  } as const;
-
+  // JSX-returning helper (NOT a component) so the inputs keep focus across
+  // re-renders.
   const field = (label: string, value: string | number, onChange: (s: string) => void, opts?: { type?: string; suffix?: string }) => (
-    <label style={{ display: "block" }}>
-      <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.7 }}>{label}</span>
-      <div style={{ position: "relative" }}>
-        <input value={value === 0 ? "" : String(value)} onChange={(e) => onChange(e.target.value)} inputMode={opts?.type === "number" ? "decimal" : undefined} style={input} />
-        {opts?.suffix ? <span style={{ position: "absolute", right: 10, top: 14, fontSize: 12, color: t.ink3 }}>{opts.suffix}</span> : null}
-      </div>
-    </label>
+    <Field label={label} className="s6">
+      {opts?.suffix ? (
+        <div style={{ position: "relative" }}>
+          <Input
+            value={value === 0 ? "" : String(value)}
+            onChange={(e) => onChange(e.target.value)}
+            inputMode={opts?.type === "number" ? "decimal" : undefined}
+            style={{ width: "100%" }}
+          />
+          <span
+            className="sub"
+            style={{ position: "absolute", right: 11, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+          >
+            {opts.suffix}
+          </span>
+        </div>
+      ) : (
+        <Input
+          value={value === 0 ? "" : String(value)}
+          onChange={(e) => onChange(e.target.value)}
+          inputMode={opts?.type === "number" ? "decimal" : undefined}
+        />
+      )}
+    </Field>
   );
 
   const busy =
@@ -389,41 +415,40 @@ export default function DealAnalyzerPage() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 1120, margin: "0 auto" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: 11, color: t.petrol, fontWeight: 800, letterSpacing: 1.4, textTransform: "uppercase" }}>Deal Analyzer</div>
-          <h1 style={{ margin: "4px 0 0", color: t.ink, fontSize: 25, lineHeight: 1.1 }}>DSCR Deal Screen</h1>
-        </div>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-          <AnalysisActionsMenu actions={workflowActions} />
-          {isListFirstRole ? (
-            <button
-              type="button"
-              onClick={() => router.push("/deal-analyzer")}
-              aria-label="Close"
-              title="Close"
-              style={{ all: "unset", cursor: "pointer", width: 34, height: 34, borderRadius: 9, border: `1px solid ${t.line}`, color: t.ink2, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-            >
-              <Icon name="x" size={15} />
-            </button>
-          ) : null}
-        </div>
+    <div className="grid">
+      <div>
+        <Lbl>Deal Analyzer</Lbl>
+        <PageHeader
+          title="DSCR Deal Screen"
+          actions={
+            <>
+              <AnalysisActionsMenu actions={workflowActions} />
+              {isListFirstRole ? (
+                <IconBtn
+                  onClick={() => router.push("/deal-analyzer")}
+                  aria-label="Close"
+                  title="Close"
+                >
+                  <Icon name="x" size={15} />
+                </IconBtn>
+              ) : null}
+            </>
+          }
+        />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.05fr) minmax(320px, .95fr)", gap: 14, alignItems: "start" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-          <Card pad={14}>
-            <SectionLabel>Client link</SectionLabel>
+        <div className="grid" style={{ minWidth: 0 }}>
+          <Panel title="Client link">
             {selectedClient ? (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                <div>
-                  <div style={{ color: t.ink, fontWeight: 800, fontSize: 14 }}>{selectedClient.name}</div>
-                  <div style={{ color: t.ink3, fontSize: 12 }}>{selectedClient.email ?? selectedClient.phone ?? "Client record linked"}</div>
+              <div className="row">
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700 }}>{selectedClient.name}</div>
+                  <Sub>{selectedClient.email ?? selectedClient.phone ?? "Client record linked"}</Sub>
                 </div>
-                <button onClick={() => setSelectedClient(null)} style={qcBtn(t)}>
+                <Btn onClick={() => setSelectedClient(null)}>
                   <Icon name="x" size={13} /> Clear
-                </button>
+                </Btn>
               </div>
             ) : (
               <ClientSearchBlock
@@ -433,28 +458,27 @@ export default function DealAnalyzerPage() {
                 helperText="Required before sharing to client or creating a pending prequalification."
               />
             )}
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
+            <div className="row mt">
               {borrowerFico ? (
-                <Pill bg={t.petrolSoft} color={t.petrol}>Borrower FICO {borrowerFico}</Pill>
+                <CellChip tone="pet">Borrower FICO {borrowerFico}</CellChip>
               ) : effectiveFico ? (
-                <Pill bg={t.warnBg} color={t.warn}>Override FICO {effectiveFico}</Pill>
+                <CellChip tone="warn">Override FICO {effectiveFico}</CellChip>
               ) : (
-                <Pill bg={t.chip} color={t.ink3}>No borrower FICO</Pill>
+                <CellChip tone="mut">No borrower FICO</CellChip>
               )}
               {!borrowerFico ? (
-                <input
+                <Input
                   value={overrideFicoText}
                   onChange={(e) => setOverrideFicoText(e.target.value)}
                   placeholder="FICO override"
                   inputMode="numeric"
-                  style={{ ...input, marginTop: 0, width: 150 }}
+                  style={{ width: 150 }}
                 />
               ) : null}
             </div>
-          </Card>
+          </Panel>
 
-          <Card pad={14}>
-            <SectionLabel>Property intelligence</SectionLabel>
+          <Panel title="Property intelligence">
             <GoogleAddressInput
               value={addressParts}
               onChange={(next) => {
@@ -463,36 +487,34 @@ export default function DealAnalyzerPage() {
               }}
               helperText="RentCast, Google, and FEMA checks run automatically once a complete address is selected or entered."
             />
-            <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div className="row mt">
               {propertyLookup.isPending ? (
-                <Pill bg={t.petrolSoft} color={t.petrol}>Checking RentCast / FEMA</Pill>
+                <CellChip tone="pet">Checking RentCast / FEMA</CellChip>
               ) : snapshot ? (
-                <Pill bg={t.profitBg} color={t.profit}>Snapshot attached</Pill>
+                <CellChip tone="ok">Snapshot attached</CellChip>
               ) : canLookupAddress(addressParts) ? (
-                <Pill bg={t.chip} color={t.ink3}>Property intelligence queued</Pill>
+                <CellChip tone="mut">Property intelligence queued</CellChip>
               ) : (
-                <Pill bg={t.chip} color={t.ink3}>Waiting for complete address</Pill>
+                <CellChip tone="mut">Waiting for complete address</CellChip>
               )}
             </div>
             {snapshot ? (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginTop: 12 }}>
-                <MiniStat label="Value" value={valueRange?.estimate ? money(valueRange.estimate) : "-"} sub={valueRange?.low || valueRange?.high ? `${money(valueRange.low)} - ${money(valueRange.high)}` : undefined} />
-                <MiniStat label="Rent" value={rentRange?.estimate ? money(rentRange.estimate) : "-"} sub={rentRange?.low || rentRange?.high ? `${money(rentRange.low)} - ${money(rentRange.high)}` : undefined} />
-                <MiniStat label="Flood" value={String((snapshot.fema_flood?.primary as Record<string, unknown> | undefined)?.FLD_ZONE ?? "Checked")} sub={String(snapshot.source_status?.fema_flood ?? "")} />
-              </div>
+              <KpiRow className="mt">
+                <Kpi label="Value" value={valueRange?.estimate ? money(valueRange.estimate) : "-"} sub={valueRange?.low || valueRange?.high ? `${money(valueRange.low)} - ${money(valueRange.high)}` : undefined} />
+                <Kpi label="Rent" value={rentRange?.estimate ? money(rentRange.estimate) : "-"} sub={rentRange?.low || rentRange?.high ? `${money(rentRange.low)} - ${money(rentRange.high)}` : undefined} />
+                <Kpi label="Flood" value={String((snapshot.fema_flood?.primary as Record<string, unknown> | undefined)?.FLD_ZONE ?? "Checked")} sub={String(snapshot.source_status?.fema_flood ?? "")} />
+              </KpiRow>
             ) : null}
-          </Card>
+          </Panel>
 
-          <Card pad={14}>
-            <SectionLabel>Loan request</SectionLabel>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-              <label style={{ display: "block" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.7 }}>Product</span>
-                <select value={product} onChange={(e) => setProduct(e.target.value as AnalysisProduct)} style={input}>
+          <Panel title="Loan request">
+            <div className="cg">
+              <Field label="Product" className="s6">
+                <Select value={product} onChange={(e) => setProduct(e.target.value as AnalysisProduct)}>
                   <option value="dscr_purchase">DSCR purchase</option>
                   <option value="dscr_refi">DSCR refinance</option>
-                </select>
-              </label>
+                </Select>
+              </Field>
               {field(product === "dscr_refi" ? "Estimated value" : "Purchase price", purchasePrice, setCurrency(setPurchasePrice))}
               {field("Loan amount", loanAmount, setCurrency(setLoanAmount))}
               {field("Monthly rent", monthlyRent, setCurrency(setMonthlyRent))}
@@ -502,26 +524,31 @@ export default function DealAnalyzerPage() {
               {field("Rate", ratePct, (s) => setRatePct(Number(s.replace(/[^0-9.]/g, "")) || 0), { suffix: "%" })}
               {field("Points", points, (s) => setPoints(Number(s.replace(/[^0-9.]/g, "")) || 0), { suffix: "%" })}
             </div>
-          </Card>
+          </Panel>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-          <Card pad={14}>
-            <SectionLabel>Results</SectionLabel>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-              <KPI label="LTV" value={pct(ltv)} accent={ltv && ltv > 0.8 ? t.warn : t.profit} />
-              <KPI label="DSCR" value={calc.data?.dscr != null ? `${calc.data.dscr.toFixed(2)}x` : "-"} accent={calc.data?.dscr != null && calc.data.dscr >= 1.1 ? t.profit : t.warn} />
-              <KPI label="PITIA" value={money(calc.data?.effective_pitia ?? calc.data?.monthly_pi)} />
-              <KPI label="Cash to close" value={money(calc.data?.total_cash_to_close ?? calc.data?.cash_to_close_pricing)} />
-            </div>
+        <div className="grid" style={{ minWidth: 0 }}>
+          <Panel title="Results">
+            <KpiRow>
+              <Kpi label="LTV" value={tinted(pct(ltv), ltv && ltv > 0.8 ? "var(--warn)" : "var(--ok)")} />
+              <Kpi
+                label="DSCR"
+                value={tinted(
+                  calc.data?.dscr != null ? `${calc.data.dscr.toFixed(2)}x` : "-",
+                  calc.data?.dscr != null && calc.data.dscr >= 1.1 ? "var(--ok)" : "var(--warn)",
+                )}
+              />
+              <Kpi label="PITIA" value={money(calc.data?.effective_pitia ?? calc.data?.monthly_pi)} />
+              <Kpi label="Cash to close" value={money(calc.data?.total_cash_to_close ?? calc.data?.cash_to_close_pricing)} />
+            </KpiRow>
             {calc.data?.warnings?.length ? (
-              <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+              <div className="mt" style={{ display: "grid", gap: 6 }}>
                 {calc.data.warnings.slice(0, 3).map((w) => (
-                  <Pill key={w.code} bg={w.severity === "error" ? t.dangerBg : t.warnBg} color={w.severity === "error" ? t.danger : t.warn}>{w.message}</Pill>
+                  <CellChip key={w.code} tone={w.severity === "error" ? "bad" : "warn"}>{w.message}</CellChip>
                 ))}
               </div>
             ) : null}
-          </Card>
+          </Panel>
 
           {calc.data ? (
             <FinancialInsightPanel
@@ -542,68 +569,56 @@ export default function DealAnalyzerPage() {
             />
           ) : null}
 
-          <Card pad={14}>
-            <SectionLabel>Report</SectionLabel>
+          <Panel title="Report">
             {report ? (
               <div style={{ display: "grid", gap: 10 }}>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Pill bg={t.petrolSoft} color={t.petrol}>{String(report.status ?? "Analysis saved")}</Pill>
-                  <Pill bg={t.chip} color={t.ink2}>Confidence {String(report.confidence ?? "Medium")}</Pill>
+                <div className="row">
+                  <CellChip tone="pet">{String(report.status ?? "Analysis saved")}</CellChip>
+                  <CellChip tone="mut">Confidence {String(report.confidence ?? "Medium")}</CellChip>
                 </div>
-                <p style={{ color: t.ink2, fontSize: 13, lineHeight: 1.55, margin: 0 }}>{String(report.narrative ?? "")}</p>
+                <p style={{ margin: 0 }}>{String(report.narrative ?? "")}</p>
                 <ReportBullets title="Strengths" items={Array.isArray(report.strengths) ? report.strengths : []} />
                 <ReportBullets title="Risks" items={Array.isArray(report.weaknesses) ? report.weaknesses : []} />
               </div>
             ) : (
-              <div style={{ color: t.ink3, fontSize: 13 }}>Save the analysis to generate the internal and sanitized client reports.</div>
+              <Sub>Save the analysis to generate the internal and sanitized client reports.</Sub>
             )}
-          </Card>
+          </Panel>
 
-          <Card pad={14}>
-            <SectionLabel>Status</SectionLabel>
-            <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5 }}>
+          <Panel title="Status">
+            <Sub>
               Runs auto-save after calculation. Use the top-right Actions menu to refresh, share, or create a pending prequalification.
-            </div>
+            </Sub>
             {message ? (
-              <div style={{ marginTop: 10, fontSize: 12.5, color: /created|saved|shared|refreshed|attached/i.test(message) ? t.profit : t.warn, fontWeight: 700 }}>
-                {message}
-              </div>
+              /created|saved|shared|refreshed|attached/i.test(message) ? (
+                <Note>{message}</Note>
+              ) : (
+                <WarnLine className="mt">{message}</WarnLine>
+              )
             ) : null}
             {savedRun ? (
-              <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <Pill bg={t.chip} color={t.ink2}>Status {savedRun.status.replace(/_/g, " ")}</Pill>
-                {savedRun.shared_at ? <Pill bg={t.profitBg} color={t.profit}>Shared</Pill> : null}
-                {savedRun.prequal_request_id ? <Pill bg={t.petrolSoft} color={t.petrol}>Prequal queued</Pill> : null}
+              <div className="row mt">
+                <CellChip tone="mut">Status {savedRun.status.replace(/_/g, " ")}</CellChip>
+                {savedRun.shared_at ? <CellChip tone="ok">Shared</CellChip> : null}
+                {savedRun.prequal_request_id ? <CellChip tone="pet">Prequal queued</CellChip> : null}
               </div>
             ) : null}
-          </Card>
+          </Panel>
         </div>
       </div>
     </div>
   );
 }
 
-function MiniStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  const { t } = useTheme();
-  return (
-    <div style={{ border: `1px solid ${t.line}`, borderRadius: 8, padding: 10, minWidth: 0 }}>
-      <div style={{ fontSize: 10.5, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 800 }}>{label}</div>
-      <div style={{ color: t.ink, fontSize: 16, fontWeight: 800, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
-      {sub ? <div style={{ color: t.ink3, fontSize: 11, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div> : null}
-    </div>
-  );
-}
-
 function ReportBullets({ title, items }: { title: string; items: unknown[] }) {
-  const { t } = useTheme();
   if (!items.length) return null;
   return (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 800, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 5 }}>{title}</div>
-      <div style={{ display: "grid", gap: 5 }}>
+      <Lbl>{title}</Lbl>
+      <div style={{ display: "grid", gap: 5, marginTop: 5 }}>
         {items.slice(0, 4).map((item, idx) => (
-          <div key={idx} style={{ display: "flex", gap: 7, alignItems: "flex-start", color: t.ink2, fontSize: 12.5, lineHeight: 1.4 }}>
-            <Icon name="check" size={12} style={{ marginTop: 2, color: t.petrol }} />
+          <div key={idx} style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
+            <Icon name="check" size={12} style={{ marginTop: 4, color: "var(--petrol)", flexShrink: 0 }} />
             <span>{String(item)}</span>
           </div>
         ))}

@@ -10,7 +10,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CellChip, PageHeader, Panel, Tag, cx, type ChipTone } from "@/components/ds";
+import { CellChip, PageHeader, Panel, cx, type ChipTone } from "@/components/ds";
 import { loanTypeLabel } from "@/lib/types";
 import { useMyFiles, type MyFileRow, type MyFileStatus } from "@/hooks/useApi";
 import { ClientFileModal } from "@/components/client/ClientFileModal";
@@ -24,6 +24,16 @@ const FILTERS: { id: FilterId; label: string }[] = [
   { id: "funded", label: "Funded" },
   { id: "lost", label: "Lost" },
 ];
+
+/** Status → chip tone. The colour is doing real work on this screen: the
+ *  borrower scans the strip and the stripe by tone, not by reading labels. */
+function statusTone(s: FilterId): ChipTone {
+  if (s === "funded") return "ok";
+  if (s === "in_funding") return "acc";
+  if (s === "lost") return "bad";
+  if (s === "re_working") return "warn";
+  return "mut";
+}
 
 function statusAccent(s: MyFileStatus): { label: string; tone: ChipTone; stripe: string } {
   if (s === "funded") return { label: "Funded", tone: "ok", stripe: "var(--ok)" };
@@ -153,7 +163,7 @@ export function ClientFilePipeline() {
               onClick={() => setFilter(f.id)}
             >
               <span>{f.label}</span>
-              <Tag>{count}</Tag>
+              <CellChip tone={statusTone(f.id)}>{count}</CellChip>
             </button>
           );
         })}

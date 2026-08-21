@@ -19,14 +19,34 @@
 // On submit, the new request lands as `pending` and is picked up by
 // the existing admin queue + PrequalReviewModal — approve / regenerate
 // PDF / accept-decline are unchanged from the borrower flow.
+//
+// ── Design-system migration note ──────────────────────────────────────
+// Restyled onto globals.css/app-extras.css classes. The shell moved from
+// RightPanel (a right-edge slide-in) to ds/Drawer (the one centred dialog
+// shape), which is a strict superset of the behaviour: Escape-to-close and
+// backdrop-click survive, and body scroll lock + focus-into-dialog +
+// focus-restore-on-close are gained. Every control, callback, endpoint,
+// validation gate and empty/loading/error/disabled state below is the same
+// one that was here before — only the paint changed. Public props
+// (`open`, `onClose`) are untouched.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { QC_FMT } from "@/components/design-system/tokens";
-import { RightPanel } from "@/components/design-system/RightPanel";
+import {
+  Btn,
+  CG,
+  Card,
+  CellChip,
+  Field,
+  Input,
+  Linky,
+  Panel,
+  Textarea,
+  cx,
+} from "@/components/ds";
+import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
 import { GoogleAddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import {
   useAdminCreateManualPrequal,
@@ -61,6 +81,8 @@ interface Props {
 }
 
 export function AdminPrequalCreateModal({ open, onClose }: Props) {
+  // Still read: ClientSearchBlock takes `t` as a prop and is not this
+  // agent's file to change. Nothing else in here reads a token.
   const { t } = useTheme();
   const submit = useAdminCreateManualPrequal();
   const createClient = useCreateClient();
@@ -126,7 +148,7 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
   const arvNum = Number(arvText.replace(/[^0-9.]/g, "")) || 0;
   // Standard LTV (loan / purchase) — used for DSCR purchase / refi /
   // bridge. For fix-and-flip we display loan/ARV instead since ARV is
-  // the regulating value (see maxLoan + the LTV pill below).
+  // the regulating value (see maxLoan + the LTV line below).
   const ltv = purchaseNum > 0 ? loanNum / purchaseNum : 0;
 
   const overrideFico = (() => {
@@ -155,7 +177,7 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
   const programCap = PREQUAL_LTV_CAPS[loanType];
   const tierCap = eligibility.maxLTV;
   // tierCap of 0 means blocked. We still let the admin enter numbers
-  // (so they see the LTV pill), but submit is gated on a non-zero cap.
+  // (so they see the LTV line), but submit is gated on a non-zero cap.
   const tierConstrained = tierCap > 0 && tierCap < programCap;
   const effectiveCap = tierCap > 0 ? Math.min(programCap, tierCap) : programCap;
   const isFixFlip = loanType === "fix_flip";
@@ -183,7 +205,7 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
       })()
     : purchaseNum > 0 ? purchaseNum * effectiveCap : 0;
 
-  // The "loan / regulating value" ratio shown in the LTV pill. For
+  // The "loan / regulating value" ratio shown in the LTV line. For
   // fix-and-flip this is loan/ARV (the binding constraint); for
   // everything else it's the standard loan/purchase LTV.
   const displayLtvRatio = isFixFlip
@@ -283,16 +305,19 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
     }
   };
 
+  // `.drawer-f` is a left-aligned flex row, so Back sits first and `.sp`
+  // (flex: 1) pushes Cancel + the primary to the right edge — the same
+  // arrangement `marginRight: auto` produced in the old footer.
   const footer = doneFlash ? null : (
     <>
       {isFixFlip && step === 2 ? (
-        <button onClick={() => setStep(1)} style={{ ...qcBtn(t), marginRight: "auto" }}>
-          ← Back
-        </button>
+        <Btn onClick={() => setStep(1)}>← Back</Btn>
       ) : null}
-      <button onClick={onClose} style={qcBtn(t)}>Cancel</button>
+      <span className="sp" />
+      <Btn onClick={onClose}>Cancel</Btn>
       {isFixFlip && step === 1 ? (
-        <button
+        <Btn
+          variant="pri"
           onClick={() => {
             if (!step1Valid) {
               setError("Complete client linkage, FICO override, address, BRV, ARV, and requested loan before continuing.");
@@ -302,471 +327,417 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
             setStep(2);
           }}
           disabled={!step1Valid}
-          style={{
-            ...qcBtnPrimary(t),
-            opacity: !step1Valid ? 0.5 : 1,
-            cursor: !step1Valid ? "not-allowed" : "pointer",
-          }}
         >
           Continue → Scope of Work
-        </button>
+        </Btn>
       ) : (
-        <button
+        <Btn
+          variant="pri"
           onClick={onSubmit}
           disabled={!formValid || submit.isPending}
-          style={{
-            ...qcBtnPrimary(t),
-            opacity: !formValid || submit.isPending ? 0.5 : 1,
-            cursor: !formValid || submit.isPending ? "not-allowed" : "pointer",
-          }}
         >
           {submit.isPending ? "Submitting…" : "Submit prequalification"}
-        </button>
+        </Btn>
       )}
     </>
   );
 
   return (
-    <RightPanel
+    <Drawer
       open={open}
       onClose={onClose}
-      eyebrow="Manual prequalification"
       title="Create prequalification"
-      ariaLabel="Create manual prequalification"
+      sub="Manual prequalification — the request lands in the funding queue as pending."
+      width="md"
       footer={footer}
     >
       {doneFlash ? (
-        <Card pad={28}>
-          <div style={{ textAlign: "center" }}>
-            <Pill bg={t.profitBg} color={t.profit}>
-              <Icon name="check" size={11} stroke={3} /> Created
-            </Pill>
-            <div style={{ marginTop: 14, fontSize: 16, fontWeight: 700, color: t.ink }}>
-              Pending review
-            </div>
-            <div style={{ marginTop: 8, fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
-              The new prequalification is in the queue. The funding team can
-              approve it and generate the letter PDF.
-            </div>
-          </div>
+        <Card style={{ textAlign: "center" }}>
+          <CellChip tone="ok">
+            <Icon name="check" size={11} stroke={3} /> Created
+          </CellChip>
+          <h3 className="mt">Pending review</h3>
+          <p className="sub mt">
+            The new prequalification is in the queue. The funding team can
+            approve it and generate the letter PDF.
+          </p>
         </Card>
       ) : (
         <>
           {/* Step indicator (F&F only, since non-F&F is a single page). */}
           {isFixFlip ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: t.ink3 }}>
-              <span style={{ color: step === 1 ? t.brand : t.ink3 }}>1 · Client + deal</span>
-              <span style={{ color: t.ink4 }}>›</span>
-              <span style={{ color: step === 2 ? t.brand : t.ink4 }}>2 · Scope of work</span>
-            </div>
+            <DrawerSteps steps={["Client + deal", "Scope of work"]} current={step} />
           ) : null}
 
-          {step === 1 ? (
-            <>
-              {/* ── Client linkage ─────────────────────────────────────── */}
-              <Card pad={16}>
-                <SectionLabel>Client (required)</SectionLabel>
-                {pickedClient ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "10px 12px",
-                      background: t.brandSoft,
-                      border: `1px solid ${t.brand}`,
-                      borderRadius: 9,
-                    }}
-                  >
-                    <Icon name="check" size={12} stroke={3} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {pickedClient.name}
+          <CG>
+            {step === 1 ? (
+              <>
+                {/* ── Client linkage ─────────────────────────────────── */}
+                <Panel className="s12" title="Client (required)">
+                  {pickedClient ? (
+                    <div className="pick on">
+                      <Icon name="check" size={12} stroke={3} />
+                      <div>
+                        <b>{pickedClient.name}</b>
+                        <div className="sub">
+                          {pickedClient.email ?? "—"}
+                          {pickedClient.phone ? ` · ${pickedClient.phone}` : ""}
+                        </div>
                       </div>
-                      <div style={{ fontSize: 11, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {pickedClient.email ?? "—"}
-                        {pickedClient.phone ? ` · ${pickedClient.phone}` : ""}
+                      <span className="sp" />
+                      <Btn size="sm" onClick={() => setPickedClient(null)}>
+                        Change
+                      </Btn>
+                    </div>
+                  ) : createMode ? (
+                    <CG>
+                      <div className="row s12">
+                        <span className="sub">New client</span>
+                        <span className="sp" />
+                        <Btn size="sm" onClick={() => setCreateMode(false)}>
+                          ← Search instead
+                        </Btn>
                       </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setPickedClient(null)}
-                      style={{ ...qcBtn(t), padding: "6px 10px", fontSize: 11 }}
-                    >
-                      Change
-                    </button>
-                  </div>
-                ) : createMode ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: 11.5, color: t.ink3 }}>New client</span>
-                      <button
-                        type="button"
-                        onClick={() => setCreateMode(false)}
-                        style={{ ...qcBtn(t), padding: "4px 8px", fontSize: 11 }}
-                      >
-                        ← Search instead
-                      </button>
-                    </div>
-                    <Input t={t} label="Name" value={newName} onChange={setNewName} placeholder="Marcus Holloway" />
-                    <Input t={t} label="Email" value={newEmail} onChange={setNewEmail} placeholder="marcus@holloway.cap" type="email" />
-                    <Input t={t} label="Phone" value={newPhone} onChange={setNewPhone} placeholder="(917) 555-0148" />
-                    <button
-                      type="button"
-                      onClick={onLinkNewClient}
-                      disabled={createClient.isPending || newName.trim().length < 2}
-                      style={{
-                        ...qcBtnPrimary(t),
-                        alignSelf: "flex-start",
-                        opacity: createClient.isPending || newName.trim().length < 2 ? 0.5 : 1,
-                      }}
-                    >
-                      {createClient.isPending ? "Creating…" : "Save & link"}
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <ClientSearchBlock
-                      t={t}
-                      label="Search by name or email"
-                      onPick={(c) => setPickedClient(c)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setCreateMode(true)}
-                      style={{ ...qcBtn(t), alignSelf: "flex-start" }}
-                    >
-                      + Create new client
-                    </button>
-                  </div>
-                )}
-              </Card>
-
-              {/* ── Credit override ────────────────────────────────────── */}
-              <Card pad={16}>
-                <SectionLabel>Credit override</SectionLabel>
-                <div style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.45, marginBottom: 12 }}>
-                  Manually-created prequals usually don&apos;t have a soft pull on file.
-                  Set the FICO + portfolio context here so the LTV math unlocks. The
-                  override persists on this prequal only.
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <Input
-                    t={t}
-                    label="FICO (300–850)"
-                    value={overrideFicoText}
-                    onChange={setOverrideFicoText}
-                    placeholder="720"
-                    inputMode="numeric"
-                  />
-                  <Input
-                    t={t}
-                    label="Property count"
-                    value={overridePropertyCountText}
-                    onChange={setOverridePropertyCountText}
-                    placeholder="0"
-                    inputMode="numeric"
-                  />
-                </div>
-                <label style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: t.ink2 }}>
-                  <input
-                    type="checkbox"
-                    checked={overrideOwnership}
-                    onChange={(e) => setOverrideOwnership(e.target.checked)}
-                    style={{ accentColor: t.brand }}
-                  />
-                  Has 1+ year of property ownership
-                </label>
-
-                {eligibility.banner ? (
-                  <div style={{ marginTop: 10 }}>
-                    <Pill
-                      bg={eligibility.tier === "blocked" ? t.dangerBg : t.warnBg}
-                      color={eligibility.tier === "blocked" ? t.danger : t.warn}
-                    >
-                      {eligibility.banner.title}
-                    </Pill>
-                    <div style={{ fontSize: 11, color: t.ink3, marginTop: 6, lineHeight: 1.4 }}>
-                      {eligibility.banner.body}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ marginTop: 10 }}>
-                    <Pill bg={t.profitBg} color={t.profit}>
-                      Tier {eligibility.tier} · max LTV {Math.round(tierCap * 100)}%
-                    </Pill>
-                  </div>
-                )}
-              </Card>
-
-              {/* ── Loan program ───────────────────────────────────────── */}
-              <Card pad={16}>
-                <SectionLabel>Loan program</SectionLabel>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  {PRODUCT_OPTIONS.map((id) => {
-                    const meta = PREQUAL_LOAN_TYPE_LABELS[id];
-                    const active = loanType === id;
-                    const progCap = PREQUAL_LTV_CAPS[id];
-                    const optEffective = tierCap > 0 ? Math.min(progCap, tierCap) : progCap;
-                    const optTierBound = tierCap > 0 && tierCap < progCap;
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => setLoanType(id)}
-                        style={{
-                          all: "unset",
-                          cursor: "pointer",
-                          padding: 12,
-                          borderRadius: 12,
-                          border: `1.5px solid ${active ? t.brand : t.line}`,
-                          background: active ? t.brandSoft : t.surface2,
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 4,
-                        }}
-                      >
-                        <span style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{meta.title}</span>
-                        <span style={{ fontSize: 11, color: t.ink2, lineHeight: 1.35 }}>{meta.sub}</span>
-                        <span style={{ fontSize: 10, fontWeight: 700, color: optTierBound ? t.warn : t.ink3, marginTop: 2, letterSpacing: 0.6, textTransform: "uppercase" }}>
-                          Max LTV {Math.round(optEffective * 100)}%
-                          {optTierBound ? " · tier-capped" : ""}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </Card>
-
-              {/* ── Deal details ───────────────────────────────────────── */}
-              <Card pad={16}>
-                <SectionLabel>Deal details</SectionLabel>
-                <div style={{ marginBottom: 10 }}>
-                  <GoogleAddressInput
-                    value={addressParts}
-                    onChange={(next) => {
-                      setAddressParts(next);
-                      setAddress(formatAddressParts(next));
-                    }}
-                    label="Target property address"
-                    helperText="Search Google and select the property, or use manual entry if the address is not listed."
-                  />
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <Input
-                    t={t}
-                    label={
-                      loanType === "dscr_refi"
-                        ? "Estimated property value"
-                        : isFixFlip
-                          ? "Purchase price (BRV)"
-                          : "Estimated purchase price"
-                    }
-                    value={purchaseText}
-                    onChange={setPurchaseText}
-                    placeholder="400000"
-                    inputMode="numeric"
-                  />
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-                      <span style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
-                        Requested loan amount
-                      </span>
-                      {maxLoan > 0 ? (
-                        <button
-                          type="button"
-                          onClick={() => setLoanText(String(Math.round(maxLoan)))}
-                          style={{ all: "unset", cursor: "pointer", fontSize: 10.5, fontWeight: 700, color: t.petrol, letterSpacing: 0.4 }}
+                      <TextField className="s12" label="Name" value={newName} onChange={setNewName} placeholder="Marcus Holloway" />
+                      <TextField className="s6" label="Email" value={newEmail} onChange={setNewEmail} placeholder="marcus@holloway.cap" type="email" />
+                      <TextField className="s6" label="Phone" value={newPhone} onChange={setNewPhone} placeholder="(917) 555-0148" />
+                      <div className="s12">
+                        <Btn
+                          variant="pri"
+                          onClick={onLinkNewClient}
+                          disabled={createClient.isPending || newName.trim().length < 2}
                         >
-                          Max {QC_FMT.usd(maxLoan, 0)}
-                        </button>
-                      ) : null}
-                    </div>
-                    <input
-                      value={loanText}
-                      onChange={(e) => setLoanText(e.target.value)}
-                      placeholder="320000"
-                      inputMode="numeric"
-                      style={inputStyle(t)}
-                    />
-                  </div>
-                </div>
-
-                {isFixFlip ? (
-                  <>
-                    <div style={{ height: 10 }} />
-                    <Input
-                      t={t}
-                      label="Estimated ARV (After Repair Value)"
-                      value={arvText}
-                      onChange={setArvText}
-                      placeholder="600000"
-                      inputMode="numeric"
-                    />
-                  </>
-                ) : null}
-
-                {((isFixFlip ? arvNum : purchaseNum) > 0 && loanNum > 0) ? (
-                  <div style={{ marginTop: 8 }}>
-                    <Pill
-                      bg={ltvOverCap ? t.dangerBg : t.profitBg}
-                      color={ltvOverCap ? t.danger : t.profit}
-                    >
-                      {isFixFlip ? "Requested LTARV" : "Requested LTV"} {(displayLtvRatio * 100).toFixed(1)}% ·{" "}
-                      {ltvOverCap
-                        ? `over ${Math.round(displayLtvCap * 100)}% cap${!isFixFlip && tierConstrained ? " (tier)" : ""} — adjust loan${isFixFlip ? " or ARV" : " or override"}`
-                        : `within ${Math.round(displayLtvCap * 100)}% cap${!isFixFlip && tierConstrained ? " (tier-adjusted)" : ""}`}
-                    </Pill>
-                  </div>
-                ) : null}
-
-                <div style={{ height: 10 }} />
-                <Input
-                  t={t}
-                  label="Expected closing date"
-                  value={closingDate}
-                  onChange={setClosingDate}
-                  type="date"
-                />
-
-                <div style={{ height: 10 }} />
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-                    <span style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
-                      LLC / entity name
-                    </span>
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11.5, color: t.ink2 }}>
-                      <input
-                        type="checkbox"
-                        checked={entityTBD}
-                        onChange={(e) => setEntityTBD(e.target.checked)}
-                        style={{ accentColor: t.brand }}
-                      />
-                      TBD — not formed yet
-                    </label>
-                  </div>
-                  {!entityTBD ? (
-                    <input
-                      type="text"
-                      value={entityName}
-                      onChange={(e) => setEntityName(e.target.value)}
-                      placeholder="e.g. Riverside Holdings LLC"
-                      style={inputStyle(t)}
-                    />
+                          {createClient.isPending ? "Creating…" : "Save & link"}
+                        </Btn>
+                      </div>
+                    </CG>
                   ) : (
-                    <div style={{
-                      fontSize: 11.5,
-                      color: t.ink3,
-                      background: t.surface2,
-                      border: `1px dashed ${t.line}`,
-                      borderRadius: 9,
-                      padding: "8px 12px",
-                      lineHeight: 1.4,
-                    }}>
-                      Letter will issue to the client&apos;s individual legal name.
-                    </div>
+                    <CG>
+                      <div className="s12">
+                        <ClientSearchBlock
+                          t={t}
+                          label="Search by name or email"
+                          onPick={(c) => setPickedClient(c)}
+                        />
+                      </div>
+                      <div className="s12">
+                        <Btn onClick={() => setCreateMode(true)}>+ Create new client</Btn>
+                      </div>
+                    </CG>
                   )}
-                </div>
+                </Panel>
 
-                <div style={{ height: 10 }} />
-                <div>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
-                    Borrower notes (optional)
-                  </div>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value.slice(0, 500))}
-                    placeholder="Captured during phone intake, reference docs, special instructions for the underwriter…"
-                    rows={3}
-                    style={{ ...inputStyle(t), resize: "vertical", minHeight: 60 }}
-                  />
-                  <div style={{ fontSize: 10, color: t.ink4, marginTop: 4, textAlign: "right" }}>
-                    {notes.length}/500
-                  </div>
-                </div>
-              </Card>
-            </>
-          ) : null}
+                {/* ── Credit override ────────────────────────────────── */}
+                <Panel className="s12" title="Credit override">
+                  <CG>
+                    <p className="sub s12">
+                      Manually-created prequals usually don&apos;t have a soft pull on file.
+                      Set the FICO + portfolio context here so the LTV math unlocks. The
+                      override persists on this prequal only.
+                    </p>
+                    <TextField
+                      className="s6"
+                      label="FICO (300–850)"
+                      value={overrideFicoText}
+                      onChange={setOverrideFicoText}
+                      placeholder="720"
+                      inputMode="numeric"
+                    />
+                    <TextField
+                      className="s6"
+                      label="Property count"
+                      value={overridePropertyCountText}
+                      onChange={setOverridePropertyCountText}
+                      placeholder="0"
+                      inputMode="numeric"
+                    />
+                    <div className="s12">
+                      <label className={cx("pick", overrideOwnership && "on")}>
+                        <input
+                          type="checkbox"
+                          checked={overrideOwnership}
+                          onChange={(e) => setOverrideOwnership(e.target.checked)}
+                        />
+                        Has 1+ year of property ownership
+                      </label>
+                    </div>
 
-          {isFixFlip && step === 2 ? (
-            <Card pad={16}>
-              <SectionLabel>Scope of work</SectionLabel>
-              <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
-                Add a row for each major rehab category. The total drives the
-                project-viability check ({Math.round(FF_LTARV_CAP * 100)}% of ARV cap on BRV +
-                construction).
+                    <div className="s12">
+                      {eligibility.banner ? (
+                        <StatusLine tone={eligibility.tier === "blocked" ? "bad" : "warn"}>
+                          <b>{eligibility.banner.title}</b> — {eligibility.banner.body}
+                        </StatusLine>
+                      ) : (
+                        <CellChip tone="ok">
+                          Tier {eligibility.tier} · max LTV {Math.round(tierCap * 100)}%
+                        </CellChip>
+                      )}
+                    </div>
+                  </CG>
+                </Panel>
+
+                {/* ── Loan program ───────────────────────────────────── */}
+                <Panel className="s12" title="Loan program">
+                  <CG>
+                    {PRODUCT_OPTIONS.map((id) => {
+                      const meta = PREQUAL_LOAN_TYPE_LABELS[id];
+                      const active = loanType === id;
+                      const progCap = PREQUAL_LTV_CAPS[id];
+                      const optEffective = tierCap > 0 ? Math.min(progCap, tierCap) : progCap;
+                      const optTierBound = tierCap > 0 && tierCap < progCap;
+                      return (
+                        // Wrapped so `.pick + .pick` (a 7px stacking margin)
+                        // cannot fire between grid cells and knock the row
+                        // out of alignment.
+                        <div className="s6" key={id}>
+                          <label className={cx("pick", active && "on")}>
+                            <input
+                              type="radio"
+                              name="qc-manual-prequal-loan-type"
+                              value={id}
+                              checked={active}
+                              onChange={() => setLoanType(id)}
+                            />
+                            <div>
+                              <b>{meta.title}</b>
+                              <div className="sub">{meta.sub}</div>
+                              <div className="lbl">
+                                Max LTV {Math.round(optEffective * 100)}%
+                              </div>
+                              {optTierBound ? (
+                                <CellChip tone="warn">tier-capped</CellChip>
+                              ) : null}
+                            </div>
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </CG>
+                </Panel>
+
+                {/* ── Deal details ───────────────────────────────────── */}
+                <Panel className="s12" title="Deal details">
+                  <CG>
+                    <div className="s12">
+                      <GoogleAddressInput
+                        value={addressParts}
+                        onChange={(next) => {
+                          setAddressParts(next);
+                          setAddress(formatAddressParts(next));
+                        }}
+                        label="Target property address"
+                        helperText="Search Google and select the property, or use manual entry if the address is not listed."
+                      />
+                    </div>
+
+                    <TextField
+                      className="s6"
+                      label={
+                        loanType === "dscr_refi"
+                          ? "Estimated property value"
+                          : isFixFlip
+                            ? "Purchase price (BRV)"
+                            : "Estimated purchase price"
+                      }
+                      value={purchaseText}
+                      onChange={setPurchaseText}
+                      placeholder="400000"
+                      inputMode="numeric"
+                    />
+
+                    {/* The "Max …" affordance moved from the label row into
+                        the field hint. Same one-click fill of the computed
+                        ceiling, same conditional on maxLoan > 0. */}
+                    <Field
+                      className="s6"
+                      label="Requested loan amount"
+                      hint={
+                        maxLoan > 0 ? (
+                          <Linky onClick={() => setLoanText(String(Math.round(maxLoan)))}>
+                            Max {QC_FMT.usd(maxLoan, 0)}
+                          </Linky>
+                        ) : undefined
+                      }
+                    >
+                      <Input
+                        value={loanText}
+                        onChange={(e) => setLoanText(e.target.value)}
+                        placeholder="320000"
+                        inputMode="numeric"
+                      />
+                    </Field>
+
+                    {isFixFlip ? (
+                      <TextField
+                        className="s6"
+                        label="Estimated ARV (After Repair Value)"
+                        value={arvText}
+                        onChange={setArvText}
+                        placeholder="600000"
+                        inputMode="numeric"
+                      />
+                    ) : null}
+
+                    {((isFixFlip ? arvNum : purchaseNum) > 0 && loanNum > 0) ? (
+                      <div className="s12">
+                        <StatusLine tone={ltvOverCap ? "bad" : "ok"}>
+                          {isFixFlip ? "Requested LTARV" : "Requested LTV"} {(displayLtvRatio * 100).toFixed(1)}% ·{" "}
+                          {ltvOverCap
+                            ? `over ${Math.round(displayLtvCap * 100)}% cap${!isFixFlip && tierConstrained ? " (tier)" : ""} — adjust loan${isFixFlip ? " or ARV" : " or override"}`
+                            : `within ${Math.round(displayLtvCap * 100)}% cap${!isFixFlip && tierConstrained ? " (tier-adjusted)" : ""}`}
+                        </StatusLine>
+                      </div>
+                    ) : null}
+
+                    <TextField
+                      className="s6"
+                      label="Expected closing date"
+                      value={closingDate}
+                      onChange={setClosingDate}
+                      type="date"
+                    />
+
+                    {/* Entity: the TBD toggle and the "issues to the legal
+                        name" consequence now read as one sentence on the
+                        checkbox instead of a separate dashed hint box. */}
+                    <div className="s12">
+                      <label className={cx("pick", entityTBD && "on")}>
+                        <input
+                          type="checkbox"
+                          checked={entityTBD}
+                          onChange={(e) => setEntityTBD(e.target.checked)}
+                        />
+                        <span>
+                          <b>LLC / entity TBD — not formed yet.</b>{" "}
+                          <span className="sub">
+                            Letter will issue to the client&apos;s individual legal name.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+
+                    {!entityTBD ? (
+                      <TextField
+                        className="s12"
+                        label="LLC / entity name"
+                        value={entityName}
+                        onChange={setEntityName}
+                        placeholder="e.g. Riverside Holdings LLC"
+                      />
+                    ) : null}
+
+                    <Field
+                      className="s12"
+                      label="Borrower notes (optional)"
+                      hint={`${notes.length}/500 characters`}
+                    >
+                      <Textarea
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value.slice(0, 500))}
+                        placeholder="Captured during phone intake, reference docs, special instructions for the underwriter…"
+                        rows={3}
+                        // `.field` sets no resize rule; left vertical so a
+                        // dragged textarea cannot widen the drawer column.
+                        style={{ resize: "vertical" }}
+                      />
+                    </Field>
+                  </CG>
+                </Panel>
+              </>
+            ) : null}
+
+            {isFixFlip && step === 2 ? (
+              <Panel className="s12" title="Scope of work">
+                <p className="sub" style={{ marginBottom: 14 }}>
+                  Add a row for each major rehab category. The total drives the
+                  project-viability check ({Math.round(FF_LTARV_CAP * 100)}% of ARV cap on BRV +
+                  construction).
+                </p>
+
+                <PrequalSowEditor items={sowItems} onChange={setSowItems} />
+
+                {arvNum > 0 && allInBasis > 0 ? (
+                  <div className="mt">
+                    <StatusLine tone={ltarvOverCap ? "bad" : "ok"}>
+                      All-in basis {QC_FMT.usd(allInBasis, 0)} ÷ ARV {QC_FMT.usd(arvNum, 0)} = {(ltarv * 100).toFixed(1)}% ·{" "}
+                      {ltarvOverCap
+                        ? `over ${Math.round(FF_LTARV_CAP * 100)}% project cap`
+                        : `within ${Math.round(FF_LTARV_CAP * 100)}% project cap`}
+                    </StatusLine>
+                  </div>
+                ) : null}
+              </Panel>
+            ) : null}
+
+            {error ? (
+              <div className="s12">
+                <StatusLine tone="bad" role="alert">
+                  {error}
+                </StatusLine>
               </div>
-
-              <PrequalSowEditor items={sowItems} onChange={setSowItems} />
-
-              {arvNum > 0 && allInBasis > 0 ? (
-                <div style={{ marginTop: 12 }}>
-                  <Pill
-                    bg={ltarvOverCap ? t.dangerBg : t.profitBg}
-                    color={ltarvOverCap ? t.danger : t.profit}
-                  >
-                    All-in basis {QC_FMT.usd(allInBasis, 0)} ÷ ARV {QC_FMT.usd(arvNum, 0)} = {(ltarv * 100).toFixed(1)}% ·{" "}
-                    {ltarvOverCap
-                      ? `over ${Math.round(FF_LTARV_CAP * 100)}% project cap`
-                      : `within ${Math.round(FF_LTARV_CAP * 100)}% project cap`}
-                  </Pill>
-                </div>
-              ) : null}
-            </Card>
-          ) : null}
-
-          {error ? <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill> : null}
+            ) : null}
+          </CG>
         </>
       )}
-    </RightPanel>
+    </Drawer>
   );
 }
 
-function inputStyle(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 9,
-    background: t.surface2,
-    border: `1px solid ${t.line}`,
-    color: t.ink,
-    fontSize: 13,
-    fontFamily: "inherit",
-    outline: "none",
-    boxSizing: "border-box" as const,
-  };
+/**
+ * Sentence-length status block.
+ *
+ * `.c-ok` / `.c-warn` / `.c-bad` own the tint and the text colour; the inline
+ * values are box geometry only, because the sheet carries no block-level
+ * status surface and `.cellchip` is `white-space: nowrap` — these run to a
+ * sentence. Same pattern as settings/page.tsx and rates/page.tsx.
+ */
+function StatusLine({
+  tone,
+  role,
+  children,
+}: {
+  tone: "ok" | "warn" | "bad";
+  role?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`c-${tone}`}
+      role={role}
+      style={{ borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 620, lineHeight: 1.45 }}
+    >
+      {children}
+    </div>
+  );
 }
 
-function Input({
-  t,
+/** Label + text input, stacked. `.lbl` + `.field` carry the paint. */
+function TextField({
   label,
   value,
   onChange,
   placeholder,
   type = "text",
   inputMode,
+  className,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
-  label: string;
+  label: ReactNode;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   type?: "text" | "email" | "date";
   inputMode?: "text" | "numeric";
+  className?: string;
 }) {
   return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
-        {label}
-      </div>
-      <input
+    <Field label={label} className={className}>
+      <Input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         inputMode={inputMode}
-        style={inputStyle(t)}
       />
-    </div>
+    </Field>
   );
 }

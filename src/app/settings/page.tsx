@@ -4,11 +4,27 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { QC_FMT } from "@/components/design-system/tokens";
+import {
+  Btn,
+  CellChip,
+  Field,
+  IconBtn,
+  Input,
+  Kpi,
+  KpiRow,
+  Lbl,
+  PageHeader,
+  Panel,
+  Select,
+  Table,
+  Td,
+  Textarea,
+  Tr,
+  WarnLine,
+  cx,
+} from "@/components/ds";
 import {
   useCurrentUser,
   useDeleteUser,
@@ -92,7 +108,6 @@ function defaultChecklist(loanType: string): LoanTypeChecklist {
 }
 
 export default function SettingsPage() {
-  const { t } = useTheme();
   const profile = useActiveProfile();
   const searchParams = useSearchParams();
   // Deep-link: /settings?section=cadence opens that section directly.
@@ -210,133 +225,101 @@ export default function SettingsPage() {
   };
 
   if (isLoading && !draft) {
-    return <div style={{ color: t.ink3, padding: 16, fontSize: 13 }}>Loading settings…</div>;
+    return <div className="sub">Loading settings…</div>;
   }
 
   if (!draft) {
     // Final fallback — should be unreachable since useEffect seeds defaults
     // on either success or error.
     return (
-      <div style={{ padding: 16 }}>
-        <Pill bg={t.dangerBg} color={t.danger}>Could not load settings</Pill>
+      <div className="row">
+        <CellChip tone="bad">Could not load settings</CellChip>
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>Settings</h1>
-        {canEdit ? <Pill bg={t.brandSoft} color={t.brand}>Editing as super-admin</Pill> : <Pill bg={t.warnBg} color={t.warn}>Read-only — super-admin required</Pill>}
-        {error && (
-          <Pill bg={t.warnBg} color={t.warn}>
-            Backend /settings not deployed yet — preview mode (saves disabled)
-          </Pill>
-        )}
-        {savedFlash && <Pill bg={t.profitBg} color={t.profit}>✓ {savedFlash}</Pill>}
-        {errFlash && <Pill bg={t.dangerBg} color={t.danger}>{errFlash}</Pill>}
-      </div>
+    <div className="grid">
+      <PageHeader
+        title="Settings"
+        actions={
+          <>
+            {canEdit
+              ? <CellChip tone="acc">Editing as super-admin</CellChip>
+              : <CellChip tone="warn">Read-only — super-admin required</CellChip>}
+            {error && (
+              <CellChip tone="warn">Backend /settings not deployed yet — preview mode (saves disabled)</CellChip>
+            )}
+            {savedFlash && <CellChip tone="ok">✓ {savedFlash}</CellChip>}
+            {errFlash && <CellChip tone="bad">{errFlash}</CellChip>}
+          </>
+        }
+      />
 
       {/* Lending AI breadcrumb — shown when an admin arrives via a
           legacy tile in the Lending AI portal. Lets them step back. */}
       {fromLendingAI ? (
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8,
-          fontSize: 12, color: t.ink3,
-        }}>
-          <Link
-            href="/admin/lending-ai"
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              fontSize: 12, fontWeight: 600, color: t.ink3,
-              textDecoration: "none",
-              padding: "4px 8px", borderRadius: 6,
-              border: `1px solid ${t.line}`, background: t.surface,
-            }}
-          >
+        <div className="row">
+          <Link href="/admin/lending-ai" className="btn sm">
             <Icon name="chevL" size={11} /> Lending AI
           </Link>
-          <span>·</span>
-          <span>Legacy section</span>
+          <span className="sub">· Legacy section</span>
         </div>
       ) : null}
 
+      {/* A 220px rail beside a fluid body — a bespoke split, not two of the
+          twelve cockpit columns, so this grid stays inline. */}
       <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 16, alignItems: "flex-start" }}>
-        <Card pad={6}>
+        <div className="card">
           {/* Lending AI — the canonical home for AI configuration.
               Routes away (not an in-page section). Sits at the top of
-              the sidebar so it's the first thing admins reach for. */}
-          <Link
-            href="/admin/lending-ai"
-            style={{
-              width: "100%", display: "flex", alignItems: "center", gap: 10,
-              padding: "10px 12px", borderRadius: 9, border: "none",
-              background: t.petrolSoft, color: t.petrol,
-              fontSize: 13, fontWeight: 800, cursor: "pointer",
-              textDecoration: "none",
-              borderLeft: `3px solid ${t.petrol}`,
-            }}
-          >
+              the sidebar so it's the first thing admins reach for.
+              `.toollink` is the shell's own nav-row class. */}
+          <Link href="/admin/lending-ai" className="toollink">
             <Icon name="spark" size={14} />
-            <span style={{ flex: 1 }}>Lending AI</span>
-            <span style={{ fontSize: 11, opacity: 0.7 }}>→</span>
+            <b className="sp">Lending AI</b>
+            <span className="sub">→</span>
           </Link>
-          <Link
-            href="/admin/token-usage"
-            style={{
-              width: "100%", display: "flex", alignItems: "center", gap: 10,
-              padding: "10px 12px", borderRadius: 9, border: "none",
-              background: "transparent", color: t.ink2,
-              fontSize: 13, fontWeight: 700, cursor: "pointer",
-              textDecoration: "none", marginTop: 4,
-            }}
-          >
+          <Link href="/admin/token-usage" className="toollink">
             <Icon name="trend" size={14} />
-            <span style={{ flex: 1 }}>Elara AI Usage & Controls</span>
-            <span style={{ fontSize: 11, opacity: 0.7 }}>→</span>
+            <span className="sp">Elara AI Usage & Controls</span>
+            <span className="sub">→</span>
           </Link>
-          <div style={{ height: 1, background: t.line, margin: "6px 4px" }} />
+          <hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: "6px 4px" }} />
 
           {SECTIONS.filter(s => !s.hidden).map((s) => (
             <button
               key={s.id}
               onClick={() => setSection(s.id)}
-              style={{
-                width: "100%", display: "flex", alignItems: "center", gap: 10,
-                padding: "10px 12px", borderRadius: 9, border: "none",
-                background: section === s.id ? t.brandSoft : "transparent",
-                color: section === s.id ? t.ink : t.ink2,
-                fontSize: 13, fontWeight: section === s.id ? 800 : 600,
-                cursor: "pointer", textAlign: "left",
-              }}
+              // `.pick` (+ `.on`) is the sheet's selectable row: it owns the
+              // frame, the hover and the selected tint. A <button> inherits
+              // none of width, alignment or font from it.
+              className={cx("pick", section === s.id && "on")}
+              style={{ width: "100%", textAlign: "left", font: "inherit" }}
             >
               <Icon name={s.icon} size={14} />
-              <span style={{ flex: 1 }}>{s.label}</span>
+              <span className="sp">{s.label}</span>
             </button>
           ))}
-        </Card>
+        </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div className="grid">
           {/* Legacy banner — shown when a deprecated section is active.
               Doc Checklists + AI Cadence still write to the legacy
               app_settings JSON, but the AI itself reads from
               client_ai_plan (see /admin/lending-ai). */}
           {(section === "checklists" || section === "cadence") ? (
-            <Card pad={14} style={{ borderLeft: `3px solid ${t.warn}`, background: t.warnBg }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
-                    ⚠ Legacy section — kept for the non-AI loan plumbing
-                  </div>
-                  <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
-                    {section === "cadence"
-                      ? "Borrower follow-up now runs through Lending AI → Borrower Follow-Up. This preset only feeds the older non-AI doc-reminder pipeline (job_doc_reminders)."
-                      : "Loan-product requirements now live in Lending AI → Lending Playbooks (organized by stage). This list only pre-populates loans.required_docs at loan creation."}
-                    {" "}Edits here keep working but the AI ignores them.
-                  </div>
+            <WarnLine>
+              <div>
+                <div><b>⚠ Legacy section — kept for the non-AI loan plumbing</b></div>
+                <div style={{ marginTop: 4 }}>
+                  {section === "cadence"
+                    ? "Borrower follow-up now runs through Lending AI → Borrower Follow-Up. This preset only feeds the older non-AI doc-reminder pipeline (job_doc_reminders)."
+                    : "Loan-product requirements now live in Lending AI → Lending Playbooks (organized by stage). This list only pre-populates loans.required_docs at loan creation."}
+                  {" "}Edits here keep working but the AI ignores them.
                 </div>
               </div>
-            </Card>
+            </WarnLine>
           ) : null}
 
           {section === "checklists" && (
@@ -441,7 +424,6 @@ const INTERNAL_ACTION_OPTIONS = [
 ];
 
 function ChecklistsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: SectionProps) {
-  const { t } = useTheme();
   const [loanType, setLoanType] = useState<string>(LOAN_TYPES[0].v);
   const checklist: LoanTypeChecklist = draft.checklists[loanType] ?? defaultChecklist(loanType);
   const [newDoc, setNewDoc] = useState("");
@@ -492,32 +474,23 @@ function ChecklistsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
   };
 
   return (
-    <Card pad={20}>
-      <SectionLabel
-        action={canEdit && (
-          <button onClick={onSave} disabled={!dirty || saving} style={{ ...qcBtnPrimary(t), opacity: dirty && !saving ? 1 : 0.5, cursor: dirty && !saving ? "pointer" : "not-allowed" }}>
-            <Icon name="check" size={13} /> {saving ? "Saving…" : "Save section"}
-          </button>
-        )}
-      >
-        Per loan-type doc checklist
-      </SectionLabel>
-
-      <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
+    <Panel
+      title="Per loan-type doc checklist"
+      actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}
+    >
+      {/* `.seg` is the sheet's tab strip; `.on` marks the selected loan type. */}
+      <div className="seg" style={{ marginBottom: 14 }}>
         {LOAN_TYPES.map((tp) => (
           <button
             key={tp.v}
+            type="button"
+            className={loanType === tp.v ? "on" : ""}
             onClick={() => { setLoanType(tp.v); setExpandedIdx(null); }}
-            style={{
-              padding: "8px 14px", borderRadius: 9, border: "none",
-              background: loanType === tp.v ? t.ink : t.surface2,
-              color: loanType === tp.v ? t.inverse : t.ink2,
-              fontSize: 12.5, fontWeight: 700, cursor: "pointer",
-            }}
           >{tp.l}</button>
         ))}
       </div>
 
+      {/* 6px between accordion rows — tighter than `.grid`'s 14, so it stays. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {checklist.docs.map((doc, i) => {
           const isExpanded = expandedIdx === i;
@@ -530,7 +503,8 @@ function ChecklistsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
           return (
             <div
               key={i}
-              style={{ borderRadius: 9, border: `1px solid ${isExpanded ? t.petrol : t.line}`, overflow: "hidden" }}
+              // The open row keeps its petrol edge; the colour is state-derived.
+              style={{ borderRadius: 9, border: `1px solid ${isExpanded ? "var(--petrol)" : "var(--line)"}`, overflow: "hidden" }}
             >
               {/* Collapsed header row */}
               <div
@@ -538,62 +512,51 @@ function ChecklistsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
                 style={{
                   display: "flex", alignItems: "center", gap: 12,
                   padding: "10px 12px", cursor: "pointer",
-                  background: isExpanded ? t.brandSoft : "transparent",
+                  background: isExpanded ? "var(--accent-100)" : "transparent",
                 }}
               >
                 <Icon name={isExpanded ? "chevD" : "chevR"} size={12} stroke={3} />
-                <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: t.ink, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <b style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {doc.display_name || doc.name}
-                </div>
-                <Pill bg={docType === "internal" ? t.petrolSoft : t.brandSoft} color={docType === "internal" ? t.petrol : t.brand}>
-                  {docType}
-                </Pill>
-                {doc.required ? <Pill>Required</Pill> : null}
-                {doc.per_unit ? <Pill bg={t.warnBg} color={t.warn}>Per unit</Pill> : null}
-                <span style={{ fontSize: 11, color: t.ink3, whiteSpace: "nowrap" }}>{offsetLabel}</span>
+                </b>
+                <CellChip tone={docType === "internal" ? "pet" : "acc"}>{docType}</CellChip>
+                {doc.required ? <CellChip>Required</CellChip> : null}
+                {doc.per_unit ? <CellChip tone="warn">Per unit</CellChip> : null}
+                <span className="sub" style={{ whiteSpace: "nowrap" }}>{offsetLabel}</span>
                 {canEdit && (
-                  <button
+                  <IconBtn
                     onClick={(e) => { e.stopPropagation(); removeDoc(i); }}
-                    style={{ padding: 4, color: t.ink3, background: "transparent", border: "none", cursor: "pointer" }}
                     aria-label={`Remove ${doc.name}`}
                   >
                     <Icon name="x" size={13} />
-                  </button>
+                  </IconBtn>
                 )}
               </div>
 
-              {/* Expanded editor */}
+              {/* Expanded editor — 1fr 1fr, a genuine 6 + 6 of the cockpit grid. */}
               {isExpanded && (
                 <div
-                  style={{
-                    display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
-                    padding: 14, borderTop: `1px solid ${t.line}`, background: t.surface2,
-                  }}
+                  className="cg"
+                  style={{ padding: 14, borderTop: "1px solid var(--line)", background: "var(--sunken2)" }}
                 >
-                  <Field t={t} label="Display name">
-                    <input
+                  <Field className="s6" label="Display name">
+                    <Input
                       value={doc.display_name ?? ""}
                       onChange={(e) => updateDoc(i, { display_name: e.target.value || null })}
                       placeholder={doc.name}
                       disabled={!canEdit}
-                      style={inputStyle(t)}
                     />
                   </Field>
-                  <Field t={t} label="Type">
-                    <div style={{ display: "flex", gap: 6 }}>
+                  <Field className="s6" label="Type">
+                    <div className="seg">
                       {(["external", "internal"] as const).map((opt) => (
                         <button
                           key={opt}
+                          type="button"
+                          className={docType === opt ? "on" : ""}
                           onClick={() => canEdit && updateDoc(i, { type: opt })}
                           disabled={!canEdit}
-                          style={{
-                            flex: 1, padding: "8px 10px", borderRadius: 8,
-                            border: `1px solid ${docType === opt ? t.petrol : t.line}`,
-                            background: docType === opt ? t.brandSoft : "transparent",
-                            color: docType === opt ? t.brand : t.ink2,
-                            fontSize: 12, fontWeight: 700, cursor: canEdit ? "pointer" : "not-allowed",
-                            textTransform: "capitalize",
-                          }}
+                          style={{ textTransform: "capitalize" }}
                         >
                           {opt}
                         </button>
@@ -601,77 +564,74 @@ function ChecklistsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
                     </div>
                   </Field>
 
-                  <Field t={t} label="Anchor (when this fires)">
-                    <select
+                  <Field className="s6" label="Anchor (when this fires)">
+                    <Select
                       value={anchor}
                       onChange={(e) => canEdit && updateDoc(i, { anchor: e.target.value })}
                       disabled={!canEdit}
-                      style={inputStyle(t)}
                     >
                       {anchorOptionsFor(i).map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
-                    </select>
+                    </Select>
                   </Field>
-                  <Field t={t} label="Due offset (days from anchor)">
+                  <Field className="s6" label="Due offset (days from anchor)">
                     <NumInput
-                      t={t}
                       value={offset}
                       onChange={(n) => canEdit && updateDoc(i, { due_offset_days: n })}
                       disabled={!canEdit}
                     />
                   </Field>
 
-                  <Field t={t} label="Required">
+                  <Field className="s6" label="Required">
                     <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                       <input
                         type="checkbox"
                         checked={doc.required}
                         onChange={(e) => canEdit && updateDoc(i, { required: e.target.checked })}
                         disabled={!canEdit}
-                        style={{ accentColor: t.petrol }}
+                        style={{ accentColor: "var(--accent)" }}
                       />
-                      <span style={{ fontSize: 12, color: t.ink2 }}>Item is required for this loan type</span>
+                      <span className="sub">Item is required for this loan type</span>
                     </label>
                   </Field>
-                  <Field t={t} label="Auto-request at intake">
+                  <Field className="s6" label="Auto-request at intake">
                     <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                       <input
                         type="checkbox"
                         checked={doc.auto_request}
                         onChange={(e) => canEdit && updateDoc(i, { auto_request: e.target.checked })}
                         disabled={!canEdit}
-                        style={{ accentColor: t.petrol }}
+                        style={{ accentColor: "var(--accent)" }}
                       />
-                      <span style={{ fontSize: 12, color: t.ink2 }}>Spawn this on loan kickoff</span>
+                      <span className="sub">Spawn this on loan kickoff</span>
                     </label>
                   </Field>
 
                   {docType === "external" ? (
-                    <Field t={t} label="Per-unit fan-out">
+                    <Field className="s6" label="Per-unit fan-out">
                       <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                         <input
                           type="checkbox"
                           checked={!!doc.per_unit}
                           onChange={(e) => canEdit && updateDoc(i, { per_unit: e.target.checked })}
                           disabled={!canEdit}
-                          style={{ accentColor: t.petrol }}
+                          style={{ accentColor: "var(--accent)" }}
                         />
-                        <span style={{ fontSize: 12, color: t.ink2 }}>One row per unit (e.g. 4-plex → 4 leases)</span>
+                        <span className="sub">One row per unit (e.g. 4-plex → 4 leases)</span>
                       </label>
                     </Field>
                   ) : (
-                    <Field t={t} label="Internal action (operator CTA)">
-                      <select
+                    <Field className="s6" label="Internal action (operator CTA)">
+                      <Select
                         value={doc.internal_action ?? ""}
                         onChange={(e) => canEdit && updateDoc(i, { internal_action: e.target.value || null })}
                         disabled={!canEdit}
-                        style={inputStyle(t)}
                       >
                         {INTERNAL_ACTION_OPTIONS.map((opt) => (
                           <option key={opt.value} value={opt.value}>{opt.label}</option>
                         ))}
-                      </select>
+                      </Select>
                     </Field>
                   )}
                 </div>
@@ -681,141 +641,132 @@ function ChecklistsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
         })}
       </div>
       {canEdit && (
-        <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-          <input
+        <div className="row mt">
+          <Input
+            grow
             value={newDoc}
             onChange={(e) => setNewDoc(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") addDoc(); }}
             placeholder="Add a new document type and press Enter"
-            style={inputStyle(t)}
           />
-          <button onClick={addDoc} disabled={!newDoc.trim()} style={qcBtn(t)}>
+          <Btn onClick={addDoc} disabled={!newDoc.trim()}>
             <Icon name="plus" size={13} /> Add
-          </button>
+          </Btn>
         </div>
       )}
 
-      <div style={{ height: 18 }} />
-      <SectionLabel>Reminder cadence (days)</SectionLabel>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <Field t={t} label="First nudge">
-          <NumInput t={t} value={checklist.first_reminder_days} onChange={(n) => updateChecklist({ first_reminder_days: n })} disabled={!canEdit} />
+      <Lbl className="mt">Reminder cadence (days)</Lbl>
+      {/* Four equal columns — a genuine 3 + 3 + 3 + 3 of the cockpit grid. */}
+      <div className="cg mt">
+        <Field className="s3" label="First nudge">
+          <NumInput value={checklist.first_reminder_days} onChange={(n) => updateChecklist({ first_reminder_days: n })} disabled={!canEdit} />
         </Field>
-        <Field t={t} label="Second nudge">
-          <NumInput t={t} value={checklist.second_reminder_days} onChange={(n) => updateChecklist({ second_reminder_days: n })} disabled={!canEdit} />
+        <Field className="s3" label="Second nudge">
+          <NumInput value={checklist.second_reminder_days} onChange={(n) => updateChecklist({ second_reminder_days: n })} disabled={!canEdit} />
         </Field>
-        <Field t={t} label="Escalate after">
-          <NumInput t={t} value={checklist.escalate_after_days} onChange={(n) => updateChecklist({ escalate_after_days: n })} disabled={!canEdit} />
+        <Field className="s3" label="Escalate after">
+          <NumInput value={checklist.escalate_after_days} onChange={(n) => updateChecklist({ escalate_after_days: n })} disabled={!canEdit} />
         </Field>
-        <Field t={t} label="Auto-approve risk ≥">
-          <NumInput t={t} value={checklist.auto_approve_risk_score} onChange={(n) => updateChecklist({ auto_approve_risk_score: n })} disabled={!canEdit} />
+        <Field className="s3" label="Auto-approve risk ≥">
+          <NumInput value={checklist.auto_approve_risk_score} onChange={(n) => updateChecklist({ auto_approve_risk_score: n })} disabled={!canEdit} />
         </Field>
       </div>
-    </Card>
+    </Panel>
   );
 }
 
 // ── Section: AI cadence ─────────────────────────────────────────────────
 
 function CadenceSection({ draft, setDraft, canEdit, dirty, onSave, saving }: SectionProps) {
-  const { t } = useTheme();
   const ac = draft.ai_cadence;
   const set = (patch: Partial<AICadenceSettings>) => setDraft((d) => d && ({ ...d, ai_cadence: { ...ac, ...patch } }));
 
   return (
-    <Card pad={20}>
-      <SectionLabel
-        action={canEdit && <SaveBtn t={t} dirty={dirty} saving={saving} onClick={onSave} />}
-      >
-        AI cadence & autonomy
-      </SectionLabel>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field t={t} label="Morning digest">
-          <input type="time" value={ac.morning_digest} onChange={(e) => set({ morning_digest: e.target.value })} disabled={!canEdit} style={inputStyle(t)} />
+    <Panel title="AI cadence & autonomy" actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}>
+      <div className="cg">
+        <Field className="s6" label="Morning digest">
+          <Input type="time" value={ac.morning_digest} onChange={(e) => set({ morning_digest: e.target.value })} disabled={!canEdit} />
         </Field>
-        <Field t={t} label="Evening summary">
-          <input type="time" value={ac.evening_summary} onChange={(e) => set({ evening_summary: e.target.value })} disabled={!canEdit} style={inputStyle(t)} />
+        <Field className="s6" label="Evening summary">
+          <Input type="time" value={ac.evening_summary} onChange={(e) => set({ evening_summary: e.target.value })} disabled={!canEdit} />
         </Field>
       </div>
-      <div style={{ height: 14 }} />
-      <Toggle t={t} label="Auto-nudge borrowers when a doc is overdue" value={ac.auto_nudge_borrower} onChange={(v) => set({ auto_nudge_borrower: v })} disabled={!canEdit} />
-      <Toggle t={t} label="Auto-escalate to UW when SLA breached" value={ac.auto_escalate_overdue} onChange={(v) => set({ auto_escalate_overdue: v })} disabled={!canEdit} />
-      <Toggle t={t} label="Auto-draft replies (broker still approves)" value={ac.auto_draft_replies} onChange={(v) => set({ auto_draft_replies: v })} disabled={!canEdit} />
-      <Toggle t={t} label="Anomaly alerts" value={ac.anomaly_alerts} onChange={(v) => set({ anomaly_alerts: v })} disabled={!canEdit} />
-      <Toggle t={t} label="Weekend ops (AI runs on Sat/Sun)" value={ac.weekend_ops} onChange={(v) => set({ weekend_ops: v })} disabled={!canEdit} />
-      <div style={{ height: 14 }} />
-      <Field t={t} label={`Default confidence floor — ${(ac.confidence_floor_default * 100).toFixed(0)}%`}>
+      <div className="mt">
+        <Toggle label="Auto-nudge borrowers when a doc is overdue" value={ac.auto_nudge_borrower} onChange={(v) => set({ auto_nudge_borrower: v })} disabled={!canEdit} />
+        <Toggle label="Auto-escalate to UW when SLA breached" value={ac.auto_escalate_overdue} onChange={(v) => set({ auto_escalate_overdue: v })} disabled={!canEdit} />
+        <Toggle label="Auto-draft replies (broker still approves)" value={ac.auto_draft_replies} onChange={(v) => set({ auto_draft_replies: v })} disabled={!canEdit} />
+        <Toggle label="Anomaly alerts" value={ac.anomaly_alerts} onChange={(v) => set({ anomaly_alerts: v })} disabled={!canEdit} />
+        <Toggle label="Weekend ops (AI runs on Sat/Sun)" value={ac.weekend_ops} onChange={(v) => set({ weekend_ops: v })} disabled={!canEdit} />
+      </div>
+      <Field className="mt" label={`Default confidence floor — ${(ac.confidence_floor_default * 100).toFixed(0)}%`}>
+        {/* A range track has no class in the sheet; width and accent stay inline. */}
         <input
           type="range" min={0.5} max={1.0} step={0.01}
           value={ac.confidence_floor_default}
           onChange={(e) => set({ confidence_floor_default: Number(e.target.value) })}
           disabled={!canEdit}
-          style={{ width: "100%", accentColor: t.petrol }}
+          style={{ width: "100%", accentColor: "var(--accent)" }}
         />
       </Field>
-    </Card>
+    </Panel>
   );
 }
 
 // ── Section: Referrals ──────────────────────────────────────────────────
 
 function ReferralsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: SectionProps) {
-  const { t } = useTheme();
   const r = draft.referrals;
   const set = (patch: Partial<ReferralSettings>) => setDraft((d) => d && ({ ...d, referrals: { ...r, ...patch } }));
 
   return (
-    <Card pad={20}>
-      <SectionLabel action={canEdit && <SaveBtn t={t} dirty={dirty} saving={saving} onClick={onSave} />}>Referral workflow</SectionLabel>
-      <Toggle t={t} label="Require super-admin approval for self-claimed referrals" value={r.require_approval} onChange={(v) => set({ require_approval: v })} disabled={!canEdit} />
-      <Toggle t={t} label="Auto-link from broker invite URL" value={r.auto_link_from_url} onChange={(v) => set({ auto_link_from_url: v })} disabled={!canEdit} />
-      <Toggle t={t} label="Block re-attribution after first funded loan" value={r.block_re_attribution} onChange={(v) => set({ block_re_attribution: v })} disabled={!canEdit} />
-      <Toggle t={t} label="Notify broker when their referral signs up" value={r.notify_broker_on_signup} onChange={(v) => set({ notify_broker_on_signup: v })} disabled={!canEdit} />
+    <Panel title="Referral workflow" actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}>
+      <Toggle label="Require super-admin approval for self-claimed referrals" value={r.require_approval} onChange={(v) => set({ require_approval: v })} disabled={!canEdit} />
+      <Toggle label="Auto-link from broker invite URL" value={r.auto_link_from_url} onChange={(v) => set({ auto_link_from_url: v })} disabled={!canEdit} />
+      <Toggle label="Block re-attribution after first funded loan" value={r.block_re_attribution} onChange={(v) => set({ block_re_attribution: v })} disabled={!canEdit} />
+      <Toggle label="Notify broker when their referral signs up" value={r.notify_broker_on_signup} onChange={(v) => set({ notify_broker_on_signup: v })} disabled={!canEdit} />
 
-      <div style={{ height: 14 }} />
-      <SectionLabel>Points</SectionLabel>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-        <Field t={t} label="Per $1 funded">
-          <FloatInput t={t} value={r.points_per_dollar} onChange={(n) => set({ points_per_dollar: n })} disabled={!canEdit} step={0.05} />
+      <Lbl className="mt">Points</Lbl>
+      <div className="cg mt">
+        <Field className="s4" label="Per $1 funded">
+          <FloatInput value={r.points_per_dollar} onChange={(n) => set({ points_per_dollar: n })} disabled={!canEdit} step={0.05} />
         </Field>
-        <Field t={t} label="Cash-out refi multiplier">
-          <FloatInput t={t} value={r.refi_multiplier} onChange={(n) => set({ refi_multiplier: n })} disabled={!canEdit} step={0.05} />
+        <Field className="s4" label="Cash-out refi multiplier">
+          <FloatInput value={r.refi_multiplier} onChange={(n) => set({ refi_multiplier: n })} disabled={!canEdit} step={0.05} />
         </Field>
-        <Field t={t} label="Expiry (days)">
-          <NumInput t={t} value={r.expiry_days} onChange={(n) => set({ expiry_days: n })} disabled={!canEdit} />
+        <Field className="s4" label="Expiry (days)">
+          <NumInput value={r.expiry_days} onChange={(n) => set({ expiry_days: n })} disabled={!canEdit} />
         </Field>
       </div>
-      <Field t={t} label="Dispute SLA (business days)">
-        <NumInput t={t} value={r.dispute_sla_business_days} onChange={(n) => set({ dispute_sla_business_days: n })} disabled={!canEdit} />
+      <Field className="mt" label="Dispute SLA (business days)">
+        <NumInput value={r.dispute_sla_business_days} onChange={(n) => set({ dispute_sla_business_days: n })} disabled={!canEdit} />
       </Field>
-    </Card>
+    </Panel>
   );
 }
 
 // ── Section: Pricing ────────────────────────────────────────────────────
 
 function PricingSection({ draft, setDraft, canEdit, dirty, onSave, saving }: SectionProps) {
-  const { t } = useTheme();
   const p = draft.pricing;
   const set = (patch: Partial<PricingSettings>) => setDraft((d) => d && ({ ...d, pricing: { ...p, ...patch } }));
 
   return (
-    <Card pad={20}>
-      <SectionLabel action={canEdit && <SaveBtn t={t} dirty={dirty} saving={saving} onClick={onSave} />}>Pricing & rate-sheet automation</SectionLabel>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field t={t} label="Daily rate-sheet pull">
-          <input type="time" value={p.daily_pull_time} onChange={(e) => set({ daily_pull_time: e.target.value })} disabled={!canEdit} style={inputStyle(t)} />
+    <Panel title="Pricing & rate-sheet automation" actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}>
+      <div className="cg">
+        <Field className="s6" label="Daily rate-sheet pull">
+          <Input type="time" value={p.daily_pull_time} onChange={(e) => set({ daily_pull_time: e.target.value })} disabled={!canEdit} />
         </Field>
-        <Field t={t} label="Auto-publish threshold (bps)">
-          <NumInput t={t} value={p.auto_publish_threshold_bps} onChange={(n) => set({ auto_publish_threshold_bps: n })} disabled={!canEdit} />
+        <Field className="s6" label="Auto-publish threshold (bps)">
+          <NumInput value={p.auto_publish_threshold_bps} onChange={(n) => set({ auto_publish_threshold_bps: n })} disabled={!canEdit} />
         </Field>
-        <Field t={t} label="Lock window (business days)">
-          <NumInput t={t} value={p.lock_window_business_days} onChange={(n) => set({ lock_window_business_days: n })} disabled={!canEdit} />
+        <Field className="s6" label="Lock window (business days)">
+          <NumInput value={p.lock_window_business_days} onChange={(n) => set({ lock_window_business_days: n })} disabled={!canEdit} />
         </Field>
       </div>
-      <div style={{ height: 10 }} />
-      <Toggle t={t} label="Notify clients automatically when rates change" value={p.notify_clients_on_change} onChange={(v) => set({ notify_clients_on_change: v })} disabled={!canEdit} />
-    </Card>
+      <div className="mt">
+        <Toggle label="Notify clients automatically when rates change" value={p.notify_clients_on_change} onChange={(v) => set({ notify_clients_on_change: v })} disabled={!canEdit} />
+      </div>
+    </Panel>
   );
 }
 
@@ -829,31 +780,25 @@ function PricingSection({ draft, setDraft, canEdit, dirty, onSave, saving }: Sec
  * a Clerk dashboard setting; we deliberately do not mirror it here, because a
  * mirrored copy is exactly what went stale last time.
  */
-function MfaPanel({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
+function MfaPanel() {
   const { isLoaded, user } = useUser();
   const enrolled = !!user && (user.twoFactorEnabled || (user.passkeys?.length ?? 0) > 0);
 
   return (
-    <div style={{ border: `1px solid ${t.line}`, borderRadius: 10, padding: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <span style={{ fontWeight: 600, color: t.ink }}>Two-step verification</span>
+    <div className="card">
+      <div className="row">
+        <b>Two-step verification</b>
         {isLoaded && (
-          <span
-            style={{
-              fontSize: 11.5, fontWeight: 700, padding: "2px 9px", borderRadius: 20,
-              background: enrolled ? t.profitBg : t.dangerBg,
-              color: enrolled ? t.profit : t.danger,
-            }}
-          >
+          <CellChip tone={enrolled ? "ok" : "bad"}>
             {enrolled ? "Active on your account" : "Not set up"}
-          </span>
+          </CellChip>
         )}
       </div>
-      <div style={{ fontSize: 13, color: t.ink3, marginTop: 6, lineHeight: 1.55 }}>
+      <div className="sub" style={{ margin: "6px 0 10px" }}>
         Required for every operator login. Enrolment and instance-wide enforcement are
         managed in Clerk, so this page reports the state rather than setting it.
       </div>
-      <Link href="/account/security" style={{ ...qcBtn(t), marginTop: 10, display: "inline-flex" }}>
+      <Link href="/account/security" className="btn">
         {enrolled ? "Review" : "Set it up"}
       </Link>
     </div>
@@ -861,14 +806,12 @@ function MfaPanel({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
 }
 
 function SecuritySection({ draft, setDraft, canEdit, dirty, onSave, saving }: SectionProps) {
-  const { t } = useTheme();
   const s = draft.security;
   const set = (patch: Partial<SecuritySettings>) => setDraft((d) => d && ({ ...d, security: { ...s, ...patch } }));
 
   return (
-    <Card pad={20}>
-      <SectionLabel action={canEdit && <SaveBtn t={t} dirty={dirty} saving={saving} onClick={onSave} />}>Security</SectionLabel>
-      <Toggle t={t} label="SSO (Okta)" sub="Enforce single sign-on for the operator console." value={s.sso_enabled} onChange={(v) => set({ sso_enabled: v })} disabled={!canEdit} />
+    <Panel title="Security" actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}>
+      <Toggle label="SSO (Okta)" sub="Enforce single sign-on for the operator console." value={s.sso_enabled} onChange={(v) => set({ sso_enabled: v })} disabled={!canEdit} />
 
       {/* Two-step verification is owned by Clerk, not by these settings.
           This panel used to render toggles for "MFA enforcement", "Borrower
@@ -877,33 +820,31 @@ function SecuritySection({ draft, setDraft, canEdit, dirty, onSave, saving }: Se
           enforce authentication and does not is worse than no control: it
           tells an auditor, and us, that something is on when it is off.
           Enforcement now lives in the Clerk dashboard, and this links there. */}
-      <div style={{ height: 14 }} />
-      <MfaPanel t={t} />
-
-      <div style={{ height: 14 }} />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field t={t} label="Session timeout (minutes)">
-          <NumInput t={t} value={s.session_timeout_minutes} onChange={(n) => set({ session_timeout_minutes: n })} disabled={!canEdit} />
-        </Field>
-        <div />
+      <div className="mt">
+        <MfaPanel />
       </div>
-      <Field t={t} label="IP allowlist (one CIDR per line)">
-        <textarea
+
+      <div className="cg mt">
+        <Field className="s6" label="Session timeout (minutes)">
+          <NumInput value={s.session_timeout_minutes} onChange={(n) => set({ session_timeout_minutes: n })} disabled={!canEdit} />
+        </Field>
+      </div>
+      <Field className="mt" label="IP allowlist (one CIDR per line)">
+        <Textarea
           value={s.ip_allowlist.join("\n")}
           onChange={(e) => set({ ip_allowlist: e.target.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean) })}
           disabled={!canEdit}
           rows={3}
-          style={{ ...inputStyle(t), resize: "vertical" }}
+          style={{ resize: "vertical" }}
         />
       </Field>
-    </Card>
+    </Panel>
   );
 }
 
 // ── Section: Property Intelligence ──────────────────────────────────────
 
 function ConnectionsSection() {
-  const { t } = useTheme();
   const searchParams = useSearchParams();
   const { data, isLoading, error, refetch } = useGoogleConnection();
   const startOAuth = useStartGoogleOAuth();
@@ -940,57 +881,57 @@ function ConnectionsSection() {
   ];
 
   return (
-    <Card pad={20}>
-      <SectionLabel>Google connections</SectionLabel>
-      <div style={{ fontSize: 12.5, color: t.ink3, marginTop: 6, lineHeight: 1.5 }}>
+    <Panel title="Google connections">
+      <div className="sub">
         Connect your own Google account so the platform can send email as you, sync your calendar, and use your Drive.
         Your credentials are encrypted and never shared.
       </div>
 
-      {flash ? (
-        <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: 8, background: t.brandSoft, color: t.ink, fontSize: 12.5 }}>{flash}</div>
-      ) : null}
+      {flash ? <div className="note">{flash}</div> : null}
 
       {isLoading ? (
-        <div style={{ marginTop: 14, color: t.ink3, fontSize: 13 }}>Loading connection status…</div>
+        <div className="sub mt">Loading connection status…</div>
       ) : error ? (
-        <div style={{ marginTop: 14, color: t.danger, fontSize: 13 }}>Connection status unavailable.</div>
+        <div className="mt">
+          <StatusLine kind="err">Connection status unavailable.</StatusLine>
+        </div>
       ) : (
         <>
-          <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
-            <Pill bg={connected ? t.profitBg : t.surface2} color={connected ? t.profit : t.ink3}>
+          <div className="row mt">
+            <CellChip tone={connected ? "ok" : "mut"}>
               {connected ? `Connected${data?.google_email ? ` · ${data.google_email}` : ""}` : "Not connected"}
-            </Pill>
+            </CellChip>
             {connected ? (
-              <button style={qcBtn(t)} onClick={() => disconnect.mutate(undefined, { onSuccess: () => { setFlash("Disconnected."); refetch(); } })} disabled={disconnect.isPending}>
+              <Btn onClick={() => disconnect.mutate(undefined, { onSuccess: () => { setFlash("Disconnected."); refetch(); } })} disabled={disconnect.isPending}>
                 {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
-              </button>
+              </Btn>
             ) : (
-              <button style={qcBtnPrimary(t)} onClick={() => connect("gmail")} disabled={startOAuth.isPending}>
+              <Btn variant="pri" onClick={() => connect("gmail")} disabled={startOAuth.isPending}>
                 {startOAuth.isPending ? "Opening Google…" : "Connect Google"}
-              </button>
+              </Btn>
             )}
           </div>
 
-          <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
+          {/* `.filerow` — the sheet's hairline-separated list row. */}
+          <div className="mt">
             {services.map((s) => (
-              <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", border: `1px solid ${t.line}`, borderRadius: 10, background: t.surface2 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{s.label}</div>
-                  <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>{s.desc}</div>
+              <div key={s.key} className="filerow">
+                <div className="sp">
+                  <b>{s.label}</b>
+                  <div className="sub">{s.desc}</div>
                 </div>
-                <Pill bg={s.on ? t.profitBg : t.surface} color={s.on ? t.profit : t.ink3}>{s.on ? "On" : "Off"}</Pill>
+                <CellChip tone={s.on ? "ok" : "mut"}>{s.on ? "On" : "Off"}</CellChip>
                 {connected && !s.on ? (
-                  <button style={qcBtn(t)} onClick={() => connect(s.key)} disabled={startOAuth.isPending}>Enable</button>
+                  <Btn size="sm" onClick={() => connect(s.key)} disabled={startOAuth.isPending}>Enable</Btn>
                 ) : null}
               </div>
             ))}
           </div>
 
           {connected ? (
-            <div style={{ marginTop: 18, borderTop: `1px solid ${t.line}`, paddingTop: 14 }}>
-              <SectionLabel>Automated emails</SectionLabel>
-              <div style={{ fontSize: 12, color: t.ink3, marginTop: 4, marginBottom: 10 }}>
+            <div className="mt" style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
+              <Lbl>Automated emails</Lbl>
+              <div className="sub" style={{ margin: "4px 0 10px" }}>
                 Sent from your connected Gmail. Each also requires the firm master switch (Settings → AI cadence).
               </div>
               {([
@@ -1000,18 +941,21 @@ function ConnectionsSection() {
               ] as const).map(([key, label, desc]) => {
                 const on = Boolean(automation?.[key]);
                 return (
-                  <div key={key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0" }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: t.ink }}>{label}</div>
-                      <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>{desc}</div>
+                  <div key={key} className="filerow">
+                    <div className="sp">
+                      <b>{label}</b>
+                      <div className="sub">{desc}</div>
                     </div>
+                    {/* No switch exists in the stylesheet, so the track and
+                        knob stay inline — the one thing on this row that is
+                        not already a class. */}
                     <button
                       type="button"
                       onClick={() => automation && updateAutomation.mutate({ ...automation, [key]: !on })}
                       disabled={updateAutomation.isPending}
                       style={{
-                        width: 44, height: 24, borderRadius: 999, border: "none", cursor: "pointer", position: "relative",
-                        background: on ? t.brand : t.surface2, transition: "background .15s",
+                        width: 44, height: 24, borderRadius: 999, border: "none", cursor: "pointer", position: "relative", flexShrink: 0,
+                        background: on ? "var(--accent)" : "var(--sunken)", transition: "background .15s",
                       }}
                       aria-pressed={on}
                     >
@@ -1024,16 +968,17 @@ function ConnectionsSection() {
           ) : null}
 
           {data?.last_error ? (
-            <div style={{ marginTop: 12, fontSize: 12, color: t.warn }}>Last error: {data.last_error} — reconnect to resolve.</div>
+            <div className="mt">
+              <StatusLine kind="warn">Last error: {data.last_error} — reconnect to resolve.</StatusLine>
+            </div>
           ) : null}
         </>
       )}
-    </Card>
+    </Panel>
   );
 }
 
 function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
-  const { t } = useTheme();
   const { data, isLoading, error } = useProviderSettings();
   const update = useUpdateProviderSettings();
   const [rentcastKey, setRentcastKey] = useState("");
@@ -1085,28 +1030,21 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
   };
 
   return (
-    <Card pad={20}>
-      <SectionLabel
-        action={canEdit && (
-          <button
-            onClick={save}
-            disabled={!dirty || update.isPending}
-            style={{ ...qcBtnPrimary(t), opacity: dirty && !update.isPending ? 1 : 0.5, cursor: dirty && !update.isPending ? "pointer" : "not-allowed" }}
-          >
-            <Icon name="check" size={13} /> {update.isPending ? "Saving..." : "Save providers"}
-          </button>
-        )}
-      >
-        Property intelligence
-      </SectionLabel>
-
+    <Panel
+      title="Property intelligence"
+      actions={canEdit && (
+        <Btn variant="pri" onClick={save} disabled={!dirty || update.isPending}>
+          <Icon name="check" size={13} /> {update.isPending ? "Saving..." : "Save providers"}
+        </Btn>
+      )}
+    >
       {isLoading ? (
-        <div style={{ fontSize: 13, color: t.ink3 }}>Loading provider settings...</div>
+        <div className="sub">Loading provider settings...</div>
       ) : error ? (
-        <Pill bg={t.dangerBg} color={t.danger}>{error instanceof Error ? error.message : "Provider settings unavailable"}</Pill>
+        <StatusLine kind="err">{error instanceof Error ? error.message : "Provider settings unavailable"}</StatusLine>
       ) : (
         <>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+          <div className="row">
             <StatusPill label="RentCast" ok={!!data?.rentcast_configured} />
             <StatusPill label="Google Places/Geocoding" ok={!!data?.google_server_configured} />
             <StatusPill label="Google Maps web" ok={!!data?.google_maps_browser_key_configured} />
@@ -1114,13 +1052,14 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
             <StatusPill label="Google Maps Android" ok={!!data?.google_maps_android_key_configured} />
           </div>
 
-          <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.55, marginBottom: 14 }}>
+          <div className="sub mt">
             Keys are stored encrypted. Leave a field blank to keep the existing saved key.
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          {/* 1fr 1fr — a genuine 6 + 6 of the cockpit grid. */}
+          <div className="cg mt">
             <SecretField
-              t={t}
+              className="s6"
               label="RentCast property data key"
               helper="Used for property details, value estimates, rent estimates, and market data."
               configured={!!data?.rentcast_configured}
@@ -1130,7 +1069,7 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
               disabled={!canEdit}
             />
             <SecretField
-              t={t}
+              className="s6"
               label="Google Places and Geocoding key"
               helper="Used by the API for address autocomplete, place lookup, and geocoding."
               configured={!!data?.google_server_configured}
@@ -1140,7 +1079,7 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
               disabled={!canEdit}
             />
             <SecretField
-              t={t}
+              className="s6"
               label="Google Maps web key"
               helper="Used by the desktop web app for browser-based map and address features."
               configured={!!data?.google_maps_browser_key_configured}
@@ -1150,7 +1089,7 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
               disabled={!canEdit}
             />
             <SecretField
-              t={t}
+              className="s6"
               label="Google Maps iOS key"
               helper="Use an iOS apps restriction with bundle ID com.qualifiedcommercial.mobile. Restrict APIs to Maps SDK for iOS and Places SDK for iOS if used."
               configured={!!data?.google_maps_ios_key_configured}
@@ -1160,7 +1099,7 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
               disabled={!canEdit}
             />
             <SecretField
-              t={t}
+              className="s6"
               label="Google Maps Android key"
               helper="Use an Android apps restriction with package com.qualifiedcommercial.mobile and the app signing SHA-1 fingerprint. Restrict APIs to Maps SDK for Android and Places SDK for Android if used."
               configured={!!data?.google_maps_android_key_configured}
@@ -1171,47 +1110,42 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
             />
           </div>
 
-          <div style={{ height: 14 }} />
-          <Toggle
-            t={t}
-            label="Generate AI property reports"
-            sub="Uses the tracked light AI model and reuses cached reports when inputs do not materially change."
-            value={aiEnabled}
-            onChange={setAiEnabled}
-            disabled={!canEdit}
-          />
-          <Field t={t} label="Property cache TTL (hours)">
-            <input
+          <div className="mt">
+            <Toggle
+              label="Generate AI property reports"
+              sub="Uses the tracked light AI model and reuses cached reports when inputs do not materially change."
+              value={aiEnabled}
+              onChange={setAiEnabled}
+              disabled={!canEdit}
+            />
+          </div>
+          <Field label="Property cache TTL (hours)">
+            <Input
               type="number"
               min={1}
               max={720}
               value={ttlHours}
               onChange={(e) => setTtlHours(Math.max(1, Math.min(720, Number(e.target.value) || 24)))}
               disabled={!canEdit}
-              style={inputStyle(t)}
             />
           </Field>
 
           {flash ? (
-            <div style={{ marginTop: 10 }}>
-              <Pill bg={flash.kind === "ok" ? t.profitBg : t.dangerBg} color={flash.kind === "ok" ? t.profit : t.danger}>
-                {flash.msg}
-              </Pill>
+            <div className="mt">
+              <StatusLine kind={flash.kind}>{flash.msg}</StatusLine>
             </div>
           ) : null}
         </>
       )}
-    </Card>
+    </Panel>
   );
 }
 
 function StatusPill({ label, ok }: { label: string; ok: boolean }) {
-  const { t } = useTheme();
-  return <Pill bg={ok ? t.profitBg : t.warnBg} color={ok ? t.profit : t.warn}>{label}: {ok ? "configured" : "missing"}</Pill>;
+  return <CellChip tone={ok ? "ok" : "warn"}>{label}: {ok ? "configured" : "missing"}</CellChip>;
 }
 
 function SecretField({
-  t,
   label,
   helper,
   configured,
@@ -1219,8 +1153,8 @@ function SecretField({
   value,
   onChange,
   disabled,
+  className,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   helper: string;
   configured: boolean;
@@ -1228,6 +1162,7 @@ function SecretField({
   value: string;
   onChange: (value: string) => void;
   disabled: boolean;
+  className?: string;
 }) {
   const [revealed, setRevealed] = useState(false);
   const maskedValue = "************";
@@ -1241,9 +1176,13 @@ function SecretField({
     : value;
 
   return (
-    <Field t={t} label={label}>
-      <div style={{ position: "relative" }}>
-        <input
+    <Field className={className} label={label}>
+      {/* The reveal control sits beside the input rather than floating inside
+          it: the overlay needed the input's own padding rewritten, and `.field`
+          owns padding. Same affordance, one owner. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <Input
+          grow
           type={revealed && canReveal ? "text" : "password"}
           value={displayValue}
           onFocus={(e) => {
@@ -1256,37 +1195,27 @@ function SecretField({
           placeholder={configured ? "" : "Paste key"}
           disabled={disabled}
           autoComplete="off"
-          style={{ ...inputStyle(t), paddingRight: 44 }}
         />
-        <button
-          type="button"
+        <IconBtn
           aria-label={revealed ? "Hide key" : "Show key"}
           title={revealed ? "Hide key" : "Show key"}
           onClick={() => setRevealed((v) => !v)}
           disabled={!canReveal}
-          style={{
-            position: "absolute",
-            right: 6,
-            top: "50%",
-            transform: "translateY(-50%)",
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            border: "none",
-            background: "transparent",
-            color: canReveal ? t.ink3 : `${t.ink3}66`,
-            display: "grid",
-            placeItems: "center",
-            cursor: canReveal ? "pointer" : "not-allowed",
-          }}
         >
           <Icon name={revealed ? "eyeOff" : "eye"} size={16} />
-        </button>
+        </IconBtn>
       </div>
-      <div style={{ marginTop: 6, fontSize: 11.5, color: configured ? t.profit : t.ink3, lineHeight: 1.45, fontWeight: configured ? 700 : 500 }}>
-        {configured ? "Saved key is configured. Type a new key to replace it." : "No key saved yet."}
+      <div className="sub">
+        {configured ? (
+          <>
+            {/* Unclassed <b>, so the state colour has exactly one owner. */}
+            <b style={{ color: "var(--ok)" }}>Saved key is configured.</b> Type a new key to replace it.
+          </>
+        ) : (
+          "No key saved yet."
+        )}
       </div>
-      <div style={{ marginTop: 6, fontSize: 11.5, color: t.ink3, lineHeight: 1.45 }}>{helper}</div>
+      <div className="sub">{helper}</div>
     </Field>
   );
 }
@@ -1302,7 +1231,6 @@ const ASSIGNABLE_ROLES: { value: Role; label: string }[] = [
 ];
 
 function RegionalManagersSection({ canEdit }: { canEdit: boolean }) {
-  const { t } = useTheme();
   const { data: managers = [], isLoading, error } = useRegionalManagers();
   const { data: brokers = [] } = useBrokers();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1321,9 +1249,9 @@ function RegionalManagersSection({ canEdit }: { canEdit: boolean }) {
 
   if (!canEdit) {
     return (
-      <Card pad={20}>
-        <div style={{ fontSize: 12.5, color: t.ink3 }}>Regional manager management is super-admin only.</div>
-      </Card>
+      <Panel>
+        <div className="sub">Regional manager management is super-admin only.</div>
+      </Panel>
     );
   }
 
@@ -1344,103 +1272,111 @@ function RegionalManagersSection({ canEdit }: { canEdit: boolean }) {
   const availableAgents = brokers.filter((b) => !linkedUserIds.has(b.user_id));
 
   return (
+    // Fixed 360px roster beside a fluid detail pane — a bespoke split, not two
+    // of the twelve cockpit columns, so the grid stays inline.
     <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: 14, alignItems: "flex-start" }}>
-      <Card pad={16}>
-        <SectionLabel>Invite regional manager</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" style={inputStyle(t)} />
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@company.com" style={inputStyle(t)} />
-          <button
+      <Panel title="Invite regional manager">
+        <div className="grid">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
+          <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@company.com" />
+          <Btn
+            variant="pri"
             onClick={createManager}
             disabled={!name.trim() || !email.trim() || inviteManager.isPending}
-            style={{ ...qcBtnPrimary(t), justifyContent: "center", opacity: name.trim() && email.trim() ? 1 : 0.5 }}
+            style={{ justifyContent: "center" }}
           >
             <Icon name="plus" size={13} /> Invite manager
-          </button>
+          </Btn>
         </div>
-        <div style={{ height: 18 }} />
-        <SectionLabel>Managers</SectionLabel>
-        {isLoading && <div style={{ fontSize: 13, color: t.ink3 }}>Loading...</div>}
-        {error && <Pill bg={t.dangerBg} color={t.danger}>Failed to load managers</Pill>}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+
+        <Lbl className="mt">Managers</Lbl>
+        {isLoading && <div className="sub">Loading...</div>}
+        {error && <CellChip tone="bad">Failed to load managers</CellChip>}
+        <div className="mt">
           {managers.map((m) => (
             <button
               key={m.id}
+              type="button"
               onClick={() => setSelectedId(m.id)}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                border: `1px solid ${selected === m.id ? t.petrol : t.line}`,
-                background: selected === m.id ? t.petrolSoft : t.surface2,
-                borderRadius: 9,
-                padding: "10px 12px",
-              }}
+              className={cx("pick", selected === m.id && "on")}
+              style={{ width: "100%", textAlign: "left", font: "inherit" }}
             >
-              <div style={{ fontSize: 13, color: t.ink, fontWeight: 800 }}>{m.name}</div>
-              <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>{m.email}</div>
-              <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 4 }}>
-                {m.metrics.agent_count} agents · {QC_FMT.short(m.metrics.pipeline_value)} pipeline
+              <div className="sp">
+                <b>{m.name}</b>
+                <div className="sub">{m.email}</div>
+                <div className="sub">
+                  {m.metrics.agent_count} agents · {QC_FMT.short(m.metrics.pipeline_value)} pipeline
+                </div>
               </div>
             </button>
           ))}
         </div>
-      </Card>
+      </Panel>
 
-      <Card pad={16}>
-        {detail.data ? (
-          <>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-              <div>
-                <SectionLabel>{detail.data.name}</SectionLabel>
-                <div style={{ fontSize: 12, color: t.ink3 }}>{detail.data.email}</div>
-              </div>
-              <Pill bg={t.brandSoft} color={t.brand}>Regional Manager</Pill>
-            </div>
-            <RegionalMetrics metrics={detail.data.metrics} />
-            <div style={{ display: "flex", gap: 8, alignItems: "center", margin: "16px 0" }}>
-              <select value={agentUserId} onChange={(e) => setAgentUserId(e.target.value)} style={{ ...inputStyle(t), flex: 1 }}>
-                <option value="">Assign existing agent...</option>
-                {availableAgents.map((b) => (
-                  <option key={b.user_id} value={b.user_id}>{b.display_name}</option>
-                ))}
-              </select>
-              <button onClick={assignAgent} disabled={!agentUserId || addAgent.isPending} style={qcBtnPrimary(t)}>
-                <Icon name="plus" size={13} /> Assign
-              </button>
-            </div>
-            <SectionLabel>Portfolio agents</SectionLabel>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {detail.data.agents.map((agent) => (
-                <div key={agent.user_id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 90px 110px 32px", gap: 10, alignItems: "center", padding: 10, border: `1px solid ${t.line}`, borderRadius: 9 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>{agent.display_name ?? agent.name}</div>
-                    <div style={{ fontSize: 11.5, color: t.ink3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{agent.email}</div>
-                  </div>
-                  <div style={{ fontSize: 12, color: t.ink2 }}>{agent.metrics.client_count} clients</div>
-                  <div style={{ fontSize: 12, color: t.ink2 }}>{QC_FMT.short(agent.metrics.pipeline_value)}</div>
-                  <button
-                    aria-label={`Remove ${agent.name}`}
-                    onClick={() => removeAgent.mutate(agent.user_id)}
-                    style={{ all: "unset", cursor: "pointer", width: 28, height: 28, display: "grid", placeItems: "center", color: t.ink3 }}
-                  >
-                    <Icon name="x" size={13} />
-                  </button>
-                </div>
+      {detail.data ? (
+        <Panel
+          title={detail.data.name}
+          sub={detail.data.email}
+          actions={<CellChip tone="acc">Regional Manager</CellChip>}
+        >
+          <RegionalMetrics metrics={detail.data.metrics} />
+          <div className="row mt">
+            <Select grow value={agentUserId} onChange={(e) => setAgentUserId(e.target.value)}>
+              <option value="">Assign existing agent...</option>
+              {availableAgents.map((b) => (
+                <option key={b.user_id} value={b.user_id}>{b.display_name}</option>
               ))}
-              {detail.data.agents.length === 0 && <div style={{ fontSize: 13, color: t.ink3 }}>No assigned agents yet.</div>}
-            </div>
-          </>
-        ) : (
-          <div style={{ fontSize: 13, color: t.ink3 }}>Select or invite a regional manager.</div>
-        )}
-      </Card>
+            </Select>
+            <Btn variant="pri" onClick={assignAgent} disabled={!agentUserId || addAgent.isPending}>
+              <Icon name="plus" size={13} /> Assign
+            </Btn>
+          </div>
+          <Lbl className="mt">Portfolio agents</Lbl>
+          {detail.data.agents.length === 0 ? (
+            <div className="sub mt">No assigned agents yet.</div>
+          ) : (
+            <Table
+              className="mt"
+              caption="Agents assigned to this regional manager"
+              cols={[
+                { label: "Agent" },
+                { label: "Clients", align: "r" },
+                { label: "Pipeline", align: "r" },
+                { label: "" },
+              ]}
+            >
+              {detail.data.agents.map((agent) => (
+                <Tr key={agent.user_id}>
+                  <Td>
+                    <b>{agent.display_name ?? agent.name}</b>
+                    <div className="sub">{agent.email}</div>
+                  </Td>
+                  <Td align="r">{agent.metrics.client_count}</Td>
+                  <Td align="r">{QC_FMT.short(agent.metrics.pipeline_value)}</Td>
+                  <Td align="r">
+                    <IconBtn
+                      aria-label={`Remove ${agent.name}`}
+                      onClick={() => removeAgent.mutate(agent.user_id)}
+                    >
+                      <Icon name="x" size={13} />
+                    </IconBtn>
+                  </Td>
+                </Tr>
+              ))}
+            </Table>
+          )}
+        </Panel>
+      ) : (
+        <Panel>
+          <div className="sub">Select or invite a regional manager.</div>
+        </Panel>
+      )}
     </div>
   );
 }
 
 function RegionalMetrics({ metrics }: { metrics: import("@/lib/types").PortfolioMetrics }) {
-  const { t } = useTheme();
-  const items = [
+  const items: Array<[string, string | number]> = [
     ["Agents", metrics.agent_count],
     ["Clients", metrics.client_count],
     ["Active loans", metrics.active_loans],
@@ -1450,20 +1386,18 @@ function RegionalMetrics({ metrics }: { metrics: import("@/lib/types").Portfolio
     ["High priority", metrics.high_priority_tasks],
     ["Overdue", metrics.overdue_items],
   ];
+  // `.kpis` auto-fits the tiles instead of forcing four to a row, so the eight
+  // figures reflow rather than squeezing on a narrow console.
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginTop: 14 }}>
+    <KpiRow className="mt">
       {items.map(([label, value]) => (
-        <div key={label} style={{ border: `1px solid ${t.line}`, borderRadius: 8, padding: 10, background: t.surface2 }}>
-          <div style={{ fontSize: 10.5, color: t.ink3, textTransform: "uppercase", fontWeight: 800, letterSpacing: 0.8 }}>{label}</div>
-          <div style={{ fontSize: 18, color: t.ink, fontWeight: 800, marginTop: 4 }}>{value}</div>
-        </div>
+        <Kpi key={label} label={label} value={value} />
       ))}
-    </div>
+    </KpiRow>
   );
 }
 
 function TeamSection({ canEdit }: { canEdit: boolean }) {
-  const { t } = useTheme();
   const { data: users, isLoading, error } = useUsers();
   const { data: me } = useCurrentUser();
   const updateRole = useUpdateUserRole();
@@ -1473,9 +1407,9 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
 
   if (!canEdit) {
     return (
-      <Card pad={20}>
-        <div style={{ fontSize: 12.5, color: t.ink3 }}>Team management is super-admin only.</div>
-      </Card>
+      <Panel>
+        <div className="sub">Team management is super-admin only.</div>
+      </Panel>
     );
   }
 
@@ -1503,124 +1437,108 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
 
   return (
     <>
-      <Card pad={0}>
-        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.line}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <SectionLabel>Operator team</SectionLabel>
-            <Pill>{users?.length ?? 0} members</Pill>
-          </div>
-          <button onClick={() => setInviteOpen(true)} style={qcBtnPrimary(t)}>
+      {/* Was a six-column div grid pretending to be a table, with the header
+          row hand-built. It is a real <table class="tbl"> now: same columns,
+          same cells, and a scroll container so a wide row cannot widen the
+          page. `noPad` lets the table sit flush to the panel edge. */}
+      <Panel
+        title="Operator team"
+        sub={`${users?.length ?? 0} members`}
+        actions={
+          <Btn variant="pri" onClick={() => setInviteOpen(true)}>
             <Icon name="plus" size={13} stroke={2.4} /> Invite member
-          </button>
-        </div>
-        {isLoading && <div style={{ padding: 16, fontSize: 13, color: t.ink3 }}>Loading…</div>}
-        {error && <div style={{ padding: 16, fontSize: 13, color: t.danger }}>Failed to load: {error instanceof Error ? error.message : String(error)}</div>}
+          </Btn>
+        }
+        noPad
+      >
+        {isLoading && <div className="panel-b sub">Loading…</div>}
+        {error && (
+          <div className="panel-b">
+            <StatusLine kind="err">Failed to load: {error instanceof Error ? error.message : String(error)}</StatusLine>
+          </div>
+        )}
         {users && users.length > 0 && (
-          <div>
-            <div style={{
-              display: "grid", gridTemplateColumns: "minmax(0, 1.6fr) minmax(0, 1.6fr) 150px minmax(0, 1.4fr) 110px 50px",
-              padding: "10px 16px", fontSize: 11, fontWeight: 700, color: t.ink3,
-              textTransform: "uppercase", letterSpacing: 1.2, borderBottom: `1px solid ${t.line}`,
-            }}>
-              <div>Name</div><div>Email</div><div>Role</div><div>Company / Agreement</div><div>Joined</div><div></div>
-            </div>
+          <Table
+            caption="Operator team members"
+            cols={[
+              { label: "Name" },
+              { label: "Email" },
+              { label: "Role", width: 160 },
+              { label: "Company / Agreement" },
+              { label: "Joined", width: 110 },
+              { label: "" },
+            ]}
+          >
             {users.map((u) => {
               const isSelf = me?.id === u.id;
               return (
-                <div key={u.id} style={{
-                  display: "grid", gridTemplateColumns: "minmax(0, 1.6fr) minmax(0, 1.6fr) 150px minmax(0, 1.4fr) 110px 50px",
-                  padding: "10px 16px", borderBottom: `1px solid ${t.line}`, alignItems: "center", fontSize: 13,
-                  gap: 8,
-                }}>
-                  <div style={{ fontWeight: 700, color: t.ink }}>{u.name} {isSelf && <Pill>You</Pill>}</div>
-                  <div style={{ color: t.ink2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
-                  <div>
-                    <select
+                <Tr key={u.id}>
+                  <Td>
+                    <b>{u.name}</b> {isSelf && <CellChip>You</CellChip>}
+                  </Td>
+                  <Td>{u.email}</Td>
+                  <Td>
+                    <Select
                       value={u.role}
                       onChange={(e) => onChangeRole(u.id, e.target.value as Role)}
                       disabled={isSelf || updateRole.isPending}
-                      style={{
-                        width: "100%",
-                        padding: "6px 8px",
-                        borderRadius: 7,
-                        border: `1px solid ${t.line}`,
-                        background: t.surface2,
-                        color: t.ink2,
-                        fontFamily: "inherit",
-                        fontSize: 12.5,
-                        fontWeight: 600,
-                      }}
+                      style={{ width: "100%" }}
                     >
                       {ASSIGNABLE_ROLES.map((r) => (
                         <option key={r.value} value={r.value}>{r.label}</option>
                       ))}
-                    </select>
-                  </div>
-                  <div style={{ overflow: "hidden" }}>
+                    </Select>
+                  </Td>
+                  <Td>
                     {u.referral_partner_company_name ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                        <span style={{ color: t.ink2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {u.referral_partner_company_name}
-                        </span>
+                      <>
+                        {u.referral_partner_company_name}{" "}
                         {u.company_agreement_signed ? (
-                          <Pill bg={t.profitBg} color={t.profit}>Signed</Pill>
+                          <CellChip tone="ok">Signed</CellChip>
                         ) : (
-                          <Pill bg={t.dangerBg} color={t.danger}>No agreement</Pill>
+                          <CellChip tone="bad">No agreement</CellChip>
                         )}
-                      </div>
+                      </>
                     ) : (
-                      <span style={{ color: t.ink3 }}>—</span>
+                      <span className="sub">—</span>
                     )}
-                  </div>
-                  <div style={{ color: t.ink3 }}>
+                  </Td>
+                  <Td>
                     {u.created_at ? new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  </Td>
+                  <Td align="r">
                     {!isSelf && (
                       confirmRevoke === u.id ? (
-                        <div style={{ display: "flex", gap: 4 }}>
-                          <button
+                        <span style={{ display: "inline-flex", gap: 4 }}>
+                          <Btn
+                            size="sm"
+                            className="c-bad"
                             onClick={() => onRevoke(u.id)}
-                            style={{ ...qcBtn(t), padding: "4px 8px", color: t.danger, borderColor: t.danger, fontSize: 11 }}
                             disabled={deleteUser.isPending}
                           >
                             Revoke
-                          </button>
-                          <button
-                            onClick={() => setConfirmRevoke(null)}
-                            style={{ ...qcBtn(t), padding: "4px 8px", fontSize: 11 }}
-                          >
+                          </Btn>
+                          <Btn size="sm" onClick={() => setConfirmRevoke(null)}>
                             Cancel
-                          </button>
-                        </div>
+                          </Btn>
+                        </span>
                       ) : (
-                        <button
+                        <IconBtn
                           aria-label={`Remove ${u.name}`}
                           onClick={() => setConfirmRevoke(u.id)}
-                          style={{
-                            all: "unset",
-                            cursor: "pointer",
-                            width: 28,
-                            height: 28,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            borderRadius: 6,
-                            color: t.ink3,
-                          }}
                         >
                           <Icon name="x" size={13} />
-                        </button>
+                        </IconBtn>
                       )
                     )}
-                  </div>
-                </div>
+                  </Td>
+                </Tr>
               );
             })}
-          </div>
+          </Table>
         )}
-        {users && users.length === 0 && <div style={{ padding: 16, fontSize: 13, color: t.ink3 }}>No team members yet.</div>}
-      </Card>
+        {users && users.length === 0 && <div className="panel-b sub">No team members yet.</div>}
+      </Panel>
       <InviteMemberDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
     </>
   );
@@ -1629,77 +1547,74 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
 // ── Section: Simulator ──────────────────────────────────────────────────
 
 function SimulatorSection({ draft, setDraft, canEdit, dirty, onSave, saving }: SectionProps) {
-  const { t } = useTheme();
   const s = draft.simulator;
   const set = (patch: Partial<SimulatorSettings>) =>
     setDraft((d) => d && ({ ...d, simulator: { ...s, ...patch } }));
 
   return (
-    <Card pad={20}>
-      <SectionLabel action={canEdit && <SaveBtn t={t} dirty={dirty} saving={saving} onClick={onSave} />}>
-        Borrower simulator
-      </SectionLabel>
-      <div style={{ fontSize: 12.5, color: t.ink3, marginBottom: 12, lineHeight: 1.5 }}>
+    <Panel
+      title="Borrower simulator"
+      actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}
+    >
+      <div className="sub">
         Defines the bounds the Simulate screen exposes to borrowers. Changes apply immediately to every borrower&apos;s
         scenario builder.
       </div>
 
-      <SectionLabel>Discount points</SectionLabel>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-        <Field t={t} label="Min">
-          <FloatInput t={t} value={s.points_min} onChange={(n) => set({ points_min: n })} disabled={!canEdit} step={0.25} />
+      <Lbl className="mt">Discount points</Lbl>
+      <div className="cg mt">
+        <Field className="s4" label="Min">
+          <FloatInput value={s.points_min} onChange={(n) => set({ points_min: n })} disabled={!canEdit} step={0.25} />
         </Field>
-        <Field t={t} label="Max">
-          <FloatInput t={t} value={s.points_max} onChange={(n) => set({ points_max: n })} disabled={!canEdit} step={0.25} />
+        <Field className="s4" label="Max">
+          <FloatInput value={s.points_max} onChange={(n) => set({ points_max: n })} disabled={!canEdit} step={0.25} />
         </Field>
-        <Field t={t} label="Step">
-          <FloatInput t={t} value={s.points_step} onChange={(n) => set({ points_step: n })} disabled={!canEdit} step={0.25} />
-        </Field>
-      </div>
-
-      <div style={{ height: 12 }} />
-      <SectionLabel>Loan amount</SectionLabel>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-        <Field t={t} label="Min ($)">
-          <NumInput t={t} value={s.amount_min} onChange={(n) => set({ amount_min: n })} disabled={!canEdit} />
-        </Field>
-        <Field t={t} label="Max ($)">
-          <NumInput t={t} value={s.amount_max} onChange={(n) => set({ amount_max: n })} disabled={!canEdit} />
-        </Field>
-        <Field t={t} label="Step ($)">
-          <NumInput t={t} value={s.amount_step} onChange={(n) => set({ amount_step: n })} disabled={!canEdit} />
+        <Field className="s4" label="Step">
+          <FloatInput value={s.points_step} onChange={(n) => set({ points_step: n })} disabled={!canEdit} step={0.25} />
         </Field>
       </div>
 
-      <div style={{ height: 12 }} />
-      <SectionLabel>LTV (decimal, e.g. 0.75 = 75%)</SectionLabel>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-        <Field t={t} label="Min">
-          <FloatInput t={t} value={s.ltv_min} onChange={(n) => set({ ltv_min: n })} disabled={!canEdit} step={0.05} />
+      <Lbl className="mt">Loan amount</Lbl>
+      <div className="cg mt">
+        <Field className="s4" label="Min ($)">
+          <NumInput value={s.amount_min} onChange={(n) => set({ amount_min: n })} disabled={!canEdit} />
         </Field>
-        <Field t={t} label="Max">
-          <FloatInput t={t} value={s.ltv_max} onChange={(n) => set({ ltv_max: n })} disabled={!canEdit} step={0.05} />
+        <Field className="s4" label="Max ($)">
+          <NumInput value={s.amount_max} onChange={(n) => set({ amount_max: n })} disabled={!canEdit} />
         </Field>
-        <Field t={t} label="Step">
-          <FloatInput t={t} value={s.ltv_step} onChange={(n) => set({ ltv_step: n })} disabled={!canEdit} step={0.05} />
+        <Field className="s4" label="Step ($)">
+          <NumInput value={s.amount_step} onChange={(n) => set({ amount_step: n })} disabled={!canEdit} />
         </Field>
       </div>
 
-      <div style={{ height: 14 }} />
-      <SectionLabel>Advanced mode</SectionLabel>
-      <Toggle
-        t={t}
-        label="Enable advanced mode"
-        sub="Show the taxes / insurance / HOA / LTV inputs in the borrower simulator."
-        value={s.advanced_mode_enabled}
-        onChange={(v) => set({ advanced_mode_enabled: v })}
-        disabled={!canEdit}
-      />
-      <Toggle t={t} label="Show LTV toggle" value={s.show_ltv_toggle} onChange={(v) => set({ show_ltv_toggle: v })} disabled={!canEdit || !s.advanced_mode_enabled} />
-      <Toggle t={t} label="Show annual taxes input" value={s.show_taxes} onChange={(v) => set({ show_taxes: v })} disabled={!canEdit || !s.advanced_mode_enabled} />
-      <Toggle t={t} label="Show annual insurance input" value={s.show_insurance} onChange={(v) => set({ show_insurance: v })} disabled={!canEdit || !s.advanced_mode_enabled} />
-      <Toggle t={t} label="Show monthly HOA input" value={s.show_hoa} onChange={(v) => set({ show_hoa: v })} disabled={!canEdit || !s.advanced_mode_enabled} />
-    </Card>
+      <Lbl className="mt">LTV (decimal, e.g. 0.75 = 75%)</Lbl>
+      <div className="cg mt">
+        <Field className="s4" label="Min">
+          <FloatInput value={s.ltv_min} onChange={(n) => set({ ltv_min: n })} disabled={!canEdit} step={0.05} />
+        </Field>
+        <Field className="s4" label="Max">
+          <FloatInput value={s.ltv_max} onChange={(n) => set({ ltv_max: n })} disabled={!canEdit} step={0.05} />
+        </Field>
+        <Field className="s4" label="Step">
+          <FloatInput value={s.ltv_step} onChange={(n) => set({ ltv_step: n })} disabled={!canEdit} step={0.05} />
+        </Field>
+      </div>
+
+      <Lbl className="mt">Advanced mode</Lbl>
+      <div className="mt">
+        <Toggle
+          label="Enable advanced mode"
+          sub="Show the taxes / insurance / HOA / LTV inputs in the borrower simulator."
+          value={s.advanced_mode_enabled}
+          onChange={(v) => set({ advanced_mode_enabled: v })}
+          disabled={!canEdit}
+        />
+        <Toggle label="Show LTV toggle" value={s.show_ltv_toggle} onChange={(v) => set({ show_ltv_toggle: v })} disabled={!canEdit || !s.advanced_mode_enabled} />
+        <Toggle label="Show annual taxes input" value={s.show_taxes} onChange={(v) => set({ show_taxes: v })} disabled={!canEdit || !s.advanced_mode_enabled} />
+        <Toggle label="Show annual insurance input" value={s.show_insurance} onChange={(v) => set({ show_insurance: v })} disabled={!canEdit || !s.advanced_mode_enabled} />
+        <Toggle label="Show monthly HOA input" value={s.show_hoa} onChange={(v) => set({ show_hoa: v })} disabled={!canEdit || !s.advanced_mode_enabled} />
+      </div>
+    </Panel>
   );
 }
 
@@ -1717,7 +1632,6 @@ function SimulatorSection({ draft, setDraft, canEdit, dirty, onSave, saving }: S
 //      saved signature remains the active one.
 
 function LetterheadSection({ draft, setDraft, canEdit, dirty, onSave, saving }: SectionProps) {
-  const { t } = useTheme();
   const lh = draft.letterhead;
   const set = (patch: Partial<LetterheadSettings>) => setDraft((d) => d && ({ ...d, letterhead: { ...lh, ...patch } }));
   const initUpload = useInitSignatureUpload();
@@ -1768,94 +1682,84 @@ function LetterheadSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
   };
 
   return (
-    <Card pad={20}>
-      <SectionLabel action={canEdit && <SaveBtn t={t} dirty={dirty} saving={saving} onClick={onSave} />}>
-        Firm letterhead — prequal PDF header & signature
-      </SectionLabel>
-
-      <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5, marginBottom: 14 }}>
+    <Panel
+      title="Firm letterhead — prequal PDF header & signature"
+      actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}
+    >
+      <div className="sub">
         Edits here change every pre-qualification letter generated from the next
         approval forward. Existing already-issued PDFs aren&apos;t retroactively
         rewritten — re-approve a request from the queue if you need to refresh
         an outstanding letter against new values.
       </div>
 
-      {/* Officer identity */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <Field t={t} label="Signing officer — full name">
-          <input
+      {/* Officer identity — a genuine 6 + 6 of the cockpit grid. */}
+      <div className="cg mt">
+        <Field className="s6" label="Signing officer — full name">
+          <Input
             type="text"
             value={lh.officer_name}
             onChange={(e) => set({ officer_name: e.target.value })}
             disabled={!canEdit}
-            style={inputStyle(t)}
             placeholder="Franco Pellegrino"
           />
         </Field>
-        <Field t={t} label="Officer title line">
-          <input
+        <Field className="s6" label="Officer title line">
+          <Input
             type="text"
             value={lh.officer_title}
             onChange={(e) => set({ officer_title: e.target.value })}
             disabled={!canEdit}
-            style={inputStyle(t)}
             placeholder="Managing Director | Qualified Commercial LLC"
           />
         </Field>
       </div>
 
-      <div style={{ height: 14 }} />
-
       {/* Office address (3 lines, top-right block on the letter) */}
-      <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 8 }}>
-        Office address (top-right of the letterhead)
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
-        <input
+      <Lbl className="mt">Office address (top-right of the letterhead)</Lbl>
+      <div className="grid mt">
+        <Input
           type="text"
           value={lh.office_address_line_1}
           onChange={(e) => set({ office_address_line_1: e.target.value })}
           disabled={!canEdit}
-          style={inputStyle(t)}
           placeholder="123 Financial Way, Suite 400"
         />
-        <input
+        <Input
           type="text"
           value={lh.office_address_line_2}
           onChange={(e) => set({ office_address_line_2: e.target.value })}
           disabled={!canEdit}
-          style={inputStyle(t)}
           placeholder="Garfield, NJ 07026"
         />
-        <input
+        <Input
           type="text"
           value={lh.office_address_line_3}
           onChange={(e) => set({ office_address_line_3: e.target.value })}
           disabled={!canEdit}
-          style={inputStyle(t)}
           placeholder="www.qualifiedcommercial.com"
         />
       </div>
 
-      <div style={{ height: 18 }} />
-
       {/* Signature image */}
-      <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 8 }}>
-        Saved signature image
-      </div>
-      <div style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.5, marginBottom: 12 }}>
+      <Lbl className="mt">Saved signature image</Lbl>
+      <div className="sub" style={{ margin: "6px 0 12px" }}>
         Upload a PNG of your signature (transparent background ideal). The image
         renders above your name on every prequal PDF. To create one, sign a
         white sheet with a black pen, photograph it, then remove the background
         with any free tool (e.g. remove.bg) and export as PNG.
       </div>
 
+      {/* Preview beside the controls — a fixed 280px well, not two of the
+          twelve cockpit columns, so the split stays inline. */}
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 280px) 1fr", gap: 16, alignItems: "flex-start" }}>
-        {/* Preview */}
+        {/* Dashed well. `.dropzone` is the sheet's dashed surface but it is a
+            click target (cursor:pointer, hover tint) and this is not one, so
+            the frame stays inline rather than promising an interaction. */}
         <div style={{
-          border: `1px dashed ${t.line}`,
+          border: "1px dashed var(--line2)",
           borderRadius: 12,
-          background: t.surface2,
+          background: "var(--sunken2)",
           padding: 16,
           minHeight: 120,
           display: "flex",
@@ -1866,146 +1770,148 @@ function LetterheadSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
             // eslint-disable-next-line @next/next/no-img-element
             <img src={previewUrl} alt="Signature preview" style={{ maxWidth: 240, maxHeight: 90 }} />
           ) : lh.signature_s3_key ? (
-            <div style={{ textAlign: "center", color: t.ink2, fontSize: 12 }}>
-              <Pill bg={t.profitBg} color={t.profit}>
+            <div style={{ textAlign: "center" }}>
+              <CellChip tone="ok">
                 <Icon name="check" size={11} stroke={3} /> Signature on file
-              </Pill>
-              <div style={{ marginTop: 8, fontSize: 10.5, color: t.ink3 }}>
+              </CellChip>
+              <div className="sub" style={{ marginTop: 8 }}>
                 Upload a new file below to replace it.
               </div>
             </div>
           ) : (
-            <div style={{ textAlign: "center", color: t.ink3, fontSize: 12 }}>
+            <div className="sub" style={{ textAlign: "center" }}>
               No signature uploaded yet.
-              <div style={{ fontSize: 10.5, color: t.ink4, marginTop: 4 }}>
-                Letters fall back to a plain underline + typed name.
-              </div>
+              <div>Letters fall back to a plain underline + typed name.</div>
             </div>
           )}
         </div>
 
         {/* Upload controls */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="grid">
           <input
             type="file"
             accept="image/png,image/jpeg"
+            className="field"
             disabled={!canEdit || initUpload.isPending}
             onChange={(e) => handleFile(e.currentTarget.files?.[0] ?? null)}
-            style={{
-              padding: 10,
-              border: `1px solid ${t.line}`,
-              borderRadius: 9,
-              background: t.surface2,
-              color: t.ink2,
-              fontSize: 12,
-            }}
           />
           {uploadStatus ? (
-            <Pill
-              bg={uploadStatus.kind === "ok" ? t.profitBg : uploadStatus.kind === "err" ? t.dangerBg : t.warnBg}
-              color={uploadStatus.kind === "ok" ? t.profit : uploadStatus.kind === "err" ? t.danger : t.warn}
-            >
-              {uploadStatus.msg}
-            </Pill>
+            <StatusLine kind={uploadStatus.kind === "uploading" ? "warn" : uploadStatus.kind}>{uploadStatus.msg}</StatusLine>
           ) : null}
           {lh.signature_s3_key ? (
-            <button
-              onClick={() => { set({ signature_s3_key: null }); setPreviewUrl(null); setUploadStatus({ kind: "ok", msg: "Will revert to underline on save." }); }}
-              disabled={!canEdit}
-              style={{ ...qcBtn(t), color: t.danger, borderColor: `${t.danger}40`, alignSelf: "flex-start" }}
-            >
-              Remove saved signature
-            </button>
+            <div>
+              {/* `.c-bad` is declared after `.btn` in the sheet, so it wins the
+                  tint and the text colour without an inline override. */}
+              <Btn
+                className="c-bad"
+                onClick={() => { set({ signature_s3_key: null }); setPreviewUrl(null); setUploadStatus({ kind: "ok", msg: "Will revert to underline on save." }); }}
+                disabled={!canEdit}
+              >
+                Remove saved signature
+              </Btn>
+            </div>
           ) : null}
-          <div style={{ fontSize: 11, color: t.ink3, lineHeight: 1.5 }}>
-            <strong style={{ color: t.ink2 }}>Heads up:</strong> uploading replaces the
+          <div className="sub">
+            <strong>Heads up:</strong> uploading replaces the
             file in S3 immediately, but the new key only becomes the active
             signature on PDFs after you click <em>Save section</em> at the top.
           </div>
         </div>
       </div>
-    </Card>
+    </Panel>
   );
 }
 
-// ── Form primitives ─────────────────────────────────────────────────────
-
-function Field({ t, label, children }: { t: ReturnType<typeof useTheme>["t"]; label: string; children: React.ReactNode }) {
+/**
+ * Sentence-length status line.
+ *
+ * `.c-ok` / `.c-warn` / `.c-bad` own the tint and the text colour; the inline
+ * values are box geometry only, because the sheet has no block-level status
+ * surface and `.cellchip` is `white-space: nowrap` — these run to a sentence.
+ */
+function StatusLine({ kind, children }: { kind: "ok" | "err" | "warn"; children: React.ReactNode }) {
   return (
-    <div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 6 }}>{label}</div>
+    <div
+      className={kind === "ok" ? "c-ok" : kind === "err" ? "c-bad" : "c-warn"}
+      style={{ borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 650, lineHeight: 1.45 }}
+    >
       {children}
     </div>
   );
 }
 
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    width: "100%", padding: "10px 12px", borderRadius: 9, background: t.surface2,
-    border: `1px solid ${t.line}`, color: t.ink, fontSize: 13, fontFamily: "inherit", outline: "none",
-  };
-}
+// ── Form primitives ─────────────────────────────────────────────────────
 
-function NumInput({ t, value, onChange, disabled }: { t: ReturnType<typeof useTheme>["t"]; value: number; onChange: (n: number) => void; disabled?: boolean }) {
+// `Field`, `Input`, `Select` and `Textarea` now come from `@/components/ds`.
+// What survives here is the pair of numeric wrappers (they own the parsing)
+// and the switch, which has no equivalent in the stylesheet.
+
+function NumInput({ value, onChange, disabled }: { value: number; onChange: (n: number) => void; disabled?: boolean }) {
   return (
-    <input
+    <Input
       value={String(value)}
       onChange={(e) => onChange(parseIntStrict(e.target.value))}
       disabled={disabled}
-      style={inputStyle(t)}
     />
   );
 }
 
-function FloatInput({ t, value, onChange, disabled, step = 0.01 }: { t: ReturnType<typeof useTheme>["t"]; value: number; onChange: (n: number) => void; disabled?: boolean; step?: number }) {
+function FloatInput({ value, onChange, disabled, step = 0.01 }: { value: number; onChange: (n: number) => void; disabled?: boolean; step?: number }) {
   return (
-    <input
+    <Input
       type="number"
       step={step}
       value={String(value)}
       onChange={(e) => onChange(Number(e.target.value) || 0)}
       disabled={disabled}
-      style={inputStyle(t)}
     />
   );
 }
 
-function Toggle({ t, label, sub, value, onChange, disabled }: { t: ReturnType<typeof useTheme>["t"]; label: string; sub?: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+/**
+ * Switch row.
+ *
+ * `.pick` — the stylesheet's "selectable row" — owns the frame, the hover and
+ * the `.on` tint, which is exactly what this control is. Only the sliding knob
+ * stays inline: there is no switch anywhere in globals.css to borrow.
+ */
+function Toggle({ label, sub, value, onChange, disabled }: { label: string; sub?: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <button
       type="button"
       onClick={() => !disabled && onChange(!value)}
       disabled={disabled}
-      style={{
-        width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
-        padding: "12px 14px", borderRadius: 9, border: `1px solid ${t.line}`, background: t.surface2, color: t.ink,
-        fontFamily: "inherit", cursor: disabled ? "not-allowed" : "pointer", textAlign: "left", marginBottom: 8,
-        opacity: disabled ? 0.7 : 1,
-      }}
+      aria-pressed={value}
+      className={cx("pick", value && "on")}
+      // A <button> inherits none of width, alignment or font from `.pick`.
+      style={{ width: "100%", textAlign: "left", font: "inherit", opacity: disabled ? 0.7 : undefined, marginBottom: 8 }}
     >
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 700 }}>{label}</div>
-        {sub && <div style={{ fontSize: 11, color: t.ink3, marginTop: 2, fontWeight: 500 }}>{sub}</div>}
+      <div className="sp">
+        <b>{label}</b>
+        {sub && <div className="sub">{sub}</div>}
       </div>
-      <div style={{
-        width: 34, height: 20, borderRadius: 999, padding: 2,
-        background: value ? t.petrol : t.line, transition: "background 120ms", flexShrink: 0,
-      }}>
-        <div style={{
-          width: 16, height: 16, borderRadius: 999, background: "#fff",
+      <span
+        style={{
+          width: 34, height: 20, borderRadius: 999, padding: 2, flexShrink: 0, display: "block",
+          background: value ? "var(--petrol)" : "var(--line2)", transition: "background 120ms",
+        }}
+      >
+        <span style={{
+          width: 16, height: 16, borderRadius: 999, background: "#fff", display: "block",
           transform: value ? "translateX(14px)" : "translateX(0)", transition: "transform 120ms",
         }} />
-      </div>
+      </span>
     </button>
   );
 }
 
-function SaveBtn({ t, dirty, saving, onClick }: { t: ReturnType<typeof useTheme>["t"]; dirty: boolean; saving: boolean; onClick: () => void }) {
-  const enabled = dirty && !saving;
+function SaveBtn({ dirty, saving, onClick }: { dirty: boolean; saving: boolean; onClick: () => void }) {
+  // `.btn:disabled` carries the dimmed, non-interactive state that the inline
+  // opacity/cursor pair used to hand-roll.
   return (
-    <button onClick={onClick} disabled={!enabled} style={{ ...qcBtnPrimary(t), opacity: enabled ? 1 : 0.5, cursor: enabled ? "pointer" : "not-allowed" }}>
+    <Btn variant="pri" onClick={onClick} disabled={!dirty || saving}>
       <Icon name="check" size={13} /> {saving ? "Saving…" : "Save section"}
-    </button>
+    </Btn>
   );
 }
 

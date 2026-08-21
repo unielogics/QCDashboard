@@ -14,9 +14,26 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primitives";
+import {
+  Btn,
+  CG,
+  Card,
+  CellChip,
+  Field,
+  IconBtn,
+  Input,
+  Kpi,
+  KpiRow,
+  Linky,
+  PageHeader,
+  Panel,
+  Seg,
+  Select,
+  Table,
+  Td,
+  Tr,
+} from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { ClientSearchBlock, type ClientPickResult } from "@/components/ClientSearchBlock";
 import { AnalysisActionsMenu, AnalysisFloatingAction, AnalysisRunInspect, AnalysisRunsTable } from "@/components/analysis/AnalysisRunsWorkspace";
 import { FinancialInsightPanel } from "@/components/analysis/FinancialInsightPanel";
@@ -160,7 +177,6 @@ export default function SimulatorPage() {
   if (isOperator && runId) {
     return (
       <SimInspect
-        t={t}
         row={(adminRuns.data ?? []).find((r) => r.id === runId)}
         loading={adminRuns.isLoading}
         onBack={() => router.push("/simulator")}
@@ -207,37 +223,31 @@ export default function SimulatorPage() {
 
   // OPERATOR view — full advanced flow against the backend.
   return (
-    <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Simulate</h1>
-          <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
-            Run pricing math from scratch or against any loan in your pipeline. Operators set the
-            allowed ranges in Settings → Simulator.
-          </div>
-        </div>
-        <div style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
-          <ModeButton t={t} active={mode === "free"} onClick={() => setMode("free")}>
-            <Icon name="calc" size={12} /> Free calculation
-          </ModeButton>
-          <ModeButton t={t} active={mode === "loan"} onClick={() => setMode("loan")}>
-            <Icon name="layers" size={12} /> From a loan
-          </ModeButton>
-          {isListFirstRole ? (
-            <button
-              type="button"
-              onClick={() => router.push("/simulator")}
-              aria-label="Close"
-              title="Close"
-              style={{ all: "unset", cursor: "pointer", width: 34, height: 34, borderRadius: 9, border: `1px solid ${t.line}`, color: t.ink2, display: "inline-flex", alignItems: "center", justifyContent: "center", marginLeft: 4 }}
-            >
-              <Icon name="x" size={15} />
-            </button>
-          ) : null}
-        </div>
-      </div>
+    <div className="grid">
+      <PageHeader
+        title="Simulate"
+        lede="Run pricing math from scratch or against any loan in your pipeline. Operators set the allowed ranges in Settings → Simulator."
+        actions={
+          <>
+            <Seg<Mode>
+              value={mode}
+              onChange={setMode}
+              ariaLabel="Simulator mode"
+              options={[
+                { value: "free", label: <><Icon name="calc" size={12} /> Free calculation</> },
+                { value: "loan", label: <><Icon name="layers" size={12} /> From a loan</> },
+              ]}
+            />
+            {isListFirstRole ? (
+              <IconBtn onClick={() => router.push("/simulator")} aria-label="Close" title="Close">
+                <Icon name="x" size={15} />
+              </IconBtn>
+            ) : null}
+          </>
+        }
+      />
 
-      {mode === "free" ? <FreeCalcMode t={t} sim={sim} /> : <FromLoanMode t={t} sim={sim} loans={loans} />}
+      {mode === "free" ? <FreeCalcMode t={t} sim={sim} /> : <FromLoanMode sim={sim} loans={loans} />}
     </div>
   );
 }
@@ -250,22 +260,18 @@ export default function SimulatorPage() {
 // the button hoist works without prop-drilling through ClientSimulator.
 
 function ClientSimulatorPage() {
-  const { t } = useTheme();
   const [prequalOpen, setPrequalOpen] = useState(false);
   return (
-    <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Simulate</h1>
-          <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
-            Model what a deal looks like at different points and LTV tiers. Higher LTVs unlock as you
-            verify credit and add experience to your investor profile.
-          </div>
-        </div>
-        <button onClick={() => setPrequalOpen(true)} style={qcBtnPrimary(t)}>
-          <Icon name="plus" size={13} /> Request Pre-Qualification
-        </button>
-      </div>
+    <div className="grid">
+      <PageHeader
+        title="Simulate"
+        lede="Model what a deal looks like at different points and LTV tiers. Higher LTVs unlock as you verify credit and add experience to your investor profile."
+        actions={
+          <Btn variant="pri" onClick={() => setPrequalOpen(true)}>
+            <Icon name="plus" size={13} /> Request Pre-Qualification
+          </Btn>
+        }
+      />
       <ClientSimulator />
       <PreQualRequestModal open={prequalOpen} onClose={() => setPrequalOpen(false)} />
     </div>
@@ -275,7 +281,6 @@ function ClientSimulatorPage() {
 // ── Client simulator — ARV + DP slider + LTV slider (gated) ────────────────
 
 function ClientSimulator() {
-  const { t } = useTheme();
   const { data: credit } = useMyCredit();
   const { data: creditSummary } = useCreditSummary(credit?.id);
   const { data: loans = [] } = useLoans();
@@ -396,74 +401,33 @@ function ClientSimulator() {
   }, [result?.loanAmount, requestedLoanText, arvNum]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="grid">
       {/* Segmented control — Free Simulate | My Loans */}
-      <div
-        style={{
-          display: "flex",
-          gap: 4,
-          background: t.chip,
-          borderRadius: 12,
-          padding: 3,
-          alignSelf: "stretch",
-        }}
-      >
-        {(
-          [
-            { id: "free" as const, label: "Free Simulate" },
-            {
-              id: "started" as const,
-              label: `My Loans${loans.length ? ` (${loans.length})` : ""}`,
-            },
-          ]
-        ).map((opt) => {
-          const active = simTab === opt.id;
-          return (
-            <button
-              key={opt.id}
-              onClick={() => {
-                setSimTab(opt.id);
-                setPickedLoanId(null);
-              }}
-              style={{
-                all: "unset",
-                flex: 1,
-                padding: "9px 0",
-                borderRadius: 9,
-                background: active ? t.surface : "transparent",
-                color: active ? t.ink : t.ink3,
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: "pointer",
-                textAlign: "center",
-              }}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
+      <div>
+        <Seg<"free" | "started">
+          value={simTab}
+          ariaLabel="Simulator tab"
+          onChange={(next) => {
+            setSimTab(next);
+            setPickedLoanId(null);
+          }}
+          options={[
+            { value: "free", label: "Free Simulate" },
+            { value: "started", label: `My Loans${loans.length ? ` (${loans.length})` : ""}` },
+          ]}
+        />
       </div>
 
       {simTab === "started" ? (
         pickedLoan ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <button
-              onClick={() => setPickedLoanId(null)}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                color: t.brand,
-                fontSize: 13,
-                fontWeight: 700,
-                alignSelf: "flex-start",
-              }}
-            >
-              ‹ My Loans
-            </button>
+          <div className="grid">
+            <div>
+              <Linky onClick={() => setPickedLoanId(null)}>‹ My Loans</Linky>
+            </div>
             <LoanSimulator loan={pickedLoan} />
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="grid">
             <PrequalRequestsSection />
             <DesktopMyLoansList
               loans={loans}
@@ -475,10 +439,9 @@ function ClientSimulator() {
       ) : (
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 380px", gap: 20 }}>
       {/* LEFT — calculator, controls, results, amortization. The focal area. */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+      <div className="grid" style={{ minWidth: 0 }}>
         {/* Slim 2-line results header with DP slider attached, cash-to-close clickable. */}
         <SlimTermsHeader
-          t={t}
           result={result}
           isBlocked={isBlocked}
           productKey={productKey}
@@ -502,24 +465,18 @@ function ClientSimulator() {
         {/* AI / projections disclaimer — Disclosure §5 + Terms §4 require
             preliminary projections to be labeled as not a rate lock or
             commitment to lend. */}
-        <div
-          style={{
-            fontSize: 11,
-            color: t.ink4,
-            fontStyle: "italic",
-            lineHeight: 1.5,
-            padding: "4px 2px",
-          }}
-        >
-          Preliminary estimate. Not a rate lock or commitment to lend — final
-          terms, pricing, and approval are set by the lender at underwriting.
+        <div className="sub">
+          <em>
+            Preliminary estimate. Not a rate lock or commitment to lend — final
+            terms, pricing, and approval are set by the lender at underwriting.
+          </em>
         </div>
       </div>
 
       {/* RIGHT — controls panel: credit (compact) → product → property+sizing.
           Stacked vertically so the borrower reads identity → product →
           deal inputs in one column. */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+      <div className="grid" style={{ minWidth: 0 }}>
         <CollapsibleCreditSummary
           summary={creditSummary ?? null}
           fico={credit?.fico ?? null}
@@ -529,85 +486,60 @@ function ClientSimulator() {
         />
 
         {/* Product selector — directly under the credit pill. */}
-        <Card pad={14}>
-          <div style={{ display: "flex", gap: 4, background: t.chip, borderRadius: 11, padding: 3 }}>
-            {(
+        <Card>
+          <Seg<SimulatorInputs["productKey"]>
+            value={productKey}
+            onChange={setProductKey}
+            as="filter"
+            ariaLabel="Loan product"
+            options={(
               [
                 { id: "dscr", label: "DSCR Rental",   sub: "30 yr" },
                 { id: "ff",   label: "Fix & Flip",    sub: "12 mo" },
                 { id: "gu",   label: "Ground Up",     sub: "18 mo" },
                 { id: "br",   label: "Bridge",        sub: "24 mo" },
               ] as const
-            ).filter((p) => isProductKeyEnabled(p.id)).map((p) => {
-              const active = productKey === p.id;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => setProductKey(p.id)}
-                  style={{
-                    all: "unset",
-                    flex: 1,
-                    padding: "8px 0",
-                    borderRadius: 9,
-                    background: active ? t.surface : "transparent",
-                    color: active ? t.ink : t.ink3,
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    textAlign: "center",
-                  }}
-                >
-                  {p.label}
-                  <div style={{ fontSize: 9.5, fontWeight: 600, color: active ? t.ink3 : t.ink4, marginTop: 2 }}>{p.sub}</div>
-                </button>
-              );
-            })}
-          </div>
+            )
+              .filter((p) => isProductKeyEnabled(p.id))
+              .map((p) => ({
+                value: p.id,
+                label: (
+                  <>
+                    {p.label} <span className="sub">{p.sub}</span>
+                  </>
+                ),
+              }))}
+          />
         </Card>
 
         {/* Merged Property + Rent + Loan amount + LTV card. Loan amount
             sits directly under the property values so the borrower reads
             "property worth → loan" as one unit. */}
-        <Card pad={18}>
-          <SectionLabel>{reno ? "Property values & loan sizing" : "Property & loan sizing"}</SectionLabel>
-
+        <Panel title={reno ? "Property values & loan sizing" : "Property & loan sizing"}>
           {productKey === "dscr" ? (
-            <div style={{ marginBottom: 12, display: "flex", gap: 4, background: t.chip, borderRadius: 11, padding: 3 }}>
-              {(["purchase", "refi"] as const).map((tx) => {
-                const active = transactionType === tx;
-                return (
-                  <button
-                    key={tx}
-                    onClick={() => setTransactionType(tx)}
-                    style={{
-                      all: "unset",
-                      flex: 1,
-                      padding: "7px 0",
-                      borderRadius: 9,
-                      background: active ? t.surface : "transparent",
-                      color: active ? t.ink : t.ink3,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      textAlign: "center",
-                    }}
-                  >
-                    {tx === "purchase" ? "Purchase" : "Refinance"}
-                  </button>
-                );
-              })}
+            <div style={{ marginBottom: 12 }}>
+              <Seg<TransactionType>
+                value={transactionType}
+                onChange={setTransactionType}
+                as="filter"
+                ariaLabel="Transaction type"
+                options={[
+                  { value: "purchase", label: "Purchase" },
+                  { value: "refi", label: "Refinance" },
+                ]}
+              />
             </div>
           ) : null}
 
           {/* Property values — single column in the narrow right rail. */}
           {reno ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="grid">
               <ArvField label="Purchase price (BRV)" value={brvText} onChange={setBrvText} hint="As-is purchase" />
               <ArvField label="Rehab budget" value={rehabText} onChange={setRehabText} hint="Repair cost" />
               <ArvField label={propertyLabel} value={arvText} onChange={setArvText} hint="After repair value" />
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="grid">
               <ArvField label={propertyLabel} value={arvText} onChange={setArvText} hint={isRefi ? "Today's appraised value" : "Loan = Market Value × LTV"} />
               {/* Loan amount sits directly beneath Market Value. */}
               <ArvField
@@ -644,7 +576,7 @@ function ClientSimulator() {
           {reno ? (
             // For reno, loan-amount lives under the renovation grid for
             // the same "property → loan" reading order.
-            <div style={{ marginTop: 12 }}>
+            <div className="mt">
               <ArvField
                 label={`Loan amount${result ? ` · max ${QC_FMT.usd(result.maxLoan, 0)}` : ""}`}
                 value={
@@ -662,28 +594,26 @@ function ClientSimulator() {
           ) : null}
 
           {liveRate?.estimated_rate != null ? (
-            <div style={{ fontSize: 11, color: t.ink3, marginTop: 10 }}>
+            <div className="sub mt">
               Today's base rate · {liveRate.label} +{liveRate.spread_bps} bps · <strong>{liveRate.estimated_rate.toFixed(3)}%</strong>
             </div>
           ) : null}
 
           {/* LTV section. */}
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 16, marginBottom: 8 }}>
+          <div className="mt" style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
             <div>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
-                {reno ? "Loan sizing" : "Loan-to-value"}
-              </div>
-              <div style={{ fontSize: 11, color: t.ink4, marginTop: 1 }}>
+              <div className="lbl">{reno ? "Loan sizing" : "Loan-to-value"}</div>
+              <div className="sub">
                 {result ? bindingConstraintLabel(result.bindingConstraint) : ltvLabel(ltvPct / 100)}
               </div>
             </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"', letterSpacing: -0.4 }}>
+            <div className="num" style={{ fontSize: 20, fontWeight: 800 }}>
               {result ? `${(result.effectiveLtv * 100).toFixed(0)}%` : `${ltvPct}%`}
             </div>
           </div>
 
           {result && arvNum > 0 ? (
-            <div style={{ marginBottom: 10 }}>
+            <div className="mt">
               <RangeGauge
                 current={result.effectiveLtv}
                 max={reno ? Math.max(0.001, result.maxLoan / Math.max(arvNum, 1)) : result.effectiveLtvCap ?? eligibility.maxLTV}
@@ -705,7 +635,7 @@ function ClientSimulator() {
           ) : null}
 
           {!reno ? (
-            <>
+            <div className="scen">
               <input
                 type="range"
                 min={60}
@@ -717,9 +647,9 @@ function ClientSimulator() {
                   setLtvPct(Number(e.target.value));
                   setRequestedLoanText(null);
                 }}
-                style={{ width: "100%", accentColor: t.petrol, opacity: isBlocked ? 0.4 : 1 }}
+                style={{ opacity: isBlocked ? 0.4 : 1 }}
               />
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+              <div className="row" style={{ justifyContent: "space-between" }}>
                 {[60, 65, 70, 75].map((tick) => {
                   const locked = !isBlocked && tick > maxLtvPct;
                   return (
@@ -729,7 +659,7 @@ function ClientSimulator() {
                         fontSize: 10,
                         fontWeight: 700,
                         letterSpacing: 0.4,
-                        color: locked ? t.ink4 : ltvPct === tick ? t.ink : t.ink3,
+                        color: locked ? "var(--faint)" : ltvPct === tick ? "var(--ink)" : "var(--muted)",
                       }}
                     >
                       {tick}%{locked ? " 🔒" : ""}
@@ -737,15 +667,13 @@ function ClientSimulator() {
                   );
                 })}
               </div>
-            </>
+            </div>
           ) : null}
 
           {!isBlocked && eligibility.maxLTV < 0.75 && !reno ? (
-            <div style={{ fontSize: 11, color: t.ink3, marginTop: 8 }}>
-              70% and 75% locked at this tier.
-            </div>
+            <div className="sub mt">70% and 75% locked at this tier.</div>
           ) : null}
-        </Card>
+        </Panel>
       </div>
     </div>
       )}
@@ -762,85 +690,47 @@ function DesktopMyLoansList({
   onPick: (loanId: string) => void;
   onSwitchToFree: () => void;
 }) {
-  const { t } = useTheme();
   if (loans.length === 0) {
     return (
-      <Card pad={24}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: t.ink, letterSpacing: -0.3 }}>
-          No started loans yet
-        </div>
-        <div style={{ fontSize: 13, color: t.ink3, marginTop: 6, lineHeight: 1.5 }}>
+      <Card>
+        <h3>No started loans yet</h3>
+        <p className="sub">
           Once a loan is started, you'll see it here with a locked-terms view. Until then, use Free
           Simulate to model what a deal could look like.
+        </p>
+        <div className="mt">
+          <Btn variant="pri" onClick={onSwitchToFree}>
+            Open Free Simulate
+          </Btn>
         </div>
-        <button
-          onClick={onSwitchToFree}
-          style={{
-            all: "unset",
-            marginTop: 14,
-            padding: "11px 16px",
-            borderRadius: 10,
-            background: t.brand,
-            color: "#fff",
-            fontSize: 13,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          Open Free Simulate
-        </button>
       </Card>
     );
   }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div className="grid">
       {loans.map((loan) => {
         const arvNum = loan.arv != null ? Number(loan.arv) : 0;
         const ltvPct = loan.ltv != null ? Math.round(Number(loan.ltv) * 100) : null;
         return (
           <button
             key={loan.id}
+            type="button"
+            className="card"
             onClick={() => onPick(loan.id)}
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              display: "block",
-            }}
+            style={{ display: "block", width: "100%", textAlign: "left", font: "inherit", cursor: "pointer" }}
           >
-            <Card pad={16}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 800,
-                      color: t.ink,
-                      letterSpacing: -0.3,
-                    }}
-                  >
-                    {loan.address || "Unnamed loan"}
-                  </div>
-                  <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
-                    {loan.type.replace(/_/g, " ")} · {loan.stage.replace(/_/g, " ")}
-                  </div>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 800,
-                      color: t.ink,
-                      fontFeatureSettings: '"tnum"',
-                    }}
-                  >
-                    {arvNum > 0 ? QC_FMT.short(arvNum) : "—"}
-                  </div>
-                  <div style={{ fontSize: 10.5, color: t.ink3, marginTop: 1 }}>
-                    {ltvPct != null ? `${ltvPct}% LTV` : "—"}
-                  </div>
+            <div className="row" style={{ flexWrap: "nowrap" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div><strong>{loan.address || "Unnamed loan"}</strong></div>
+                <div className="sub">
+                  {loan.type.replace(/_/g, " ")} · {loan.stage.replace(/_/g, " ")}
                 </div>
               </div>
-            </Card>
+              <div className="align-r">
+                <div className="num"><strong>{arvNum > 0 ? QC_FMT.short(arvNum) : "—"}</strong></div>
+                <div className="sub num">{ltvPct != null ? `${ltvPct}% LTV` : "—"}</div>
+              </div>
+            </div>
           </button>
         );
       })}
@@ -859,60 +749,38 @@ function ArvField({
   label?: string;
   hint?: string;
 }) {
-  const { t } = useTheme();
   const num = Number(value.replace(/[^0-9.]/g, "")) || 0;
   return (
-    <div>
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: 1.2,
-          textTransform: "uppercase",
-          color: t.ink3,
-          marginBottom: 6,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          border: `1px solid ${t.lineStrong}`,
-          borderRadius: 11,
-          background: t.surface2,
-          padding: "0 12px",
-        }}
-      >
-        <span style={{ fontSize: 18, fontWeight: 700, color: t.ink3, marginRight: 4 }}>$</span>
+    <Field label={label} hint={hint}>
+      <div className="field" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 18, fontWeight: 700, color: "var(--muted)" }}>$</span>
         <input
           type="text"
           inputMode="numeric"
           value={value}
           onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, ""))}
           placeholder="500000"
+          className="num"
           style={{
             flex: 1,
-            padding: "12px 0",
+            minWidth: 0,
+            padding: 0,
             background: "transparent",
             border: "none",
             outline: "none",
             fontSize: 18,
             fontWeight: 700,
-            color: t.ink,
+            color: "var(--ink)",
             fontFamily: "inherit",
-            fontFeatureSettings: '"tnum"',
           }}
         />
         {num >= 1000 ? (
-          <span style={{ fontSize: 12, color: t.ink3, marginLeft: 8, whiteSpace: "nowrap" }}>
+          <span className="sub num" style={{ whiteSpace: "nowrap" }}>
             {QC_FMT.short(num)}
           </span>
         ) : null}
       </div>
-      <div style={{ fontSize: 11, color: t.ink3, marginTop: 6 }}>{hint}</div>
-    </div>
+    </Field>
   );
 }
 
@@ -1016,6 +884,8 @@ function analysisProductFor(type: LoanType): AnalysisProduct | null {
   return null;
 }
 
+// `t` survives here for exactly one reason: <ClientSearchBlock> still takes a
+// token object as a required prop. Nothing else in this component reads it.
 function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: SimulatorSettings }) {
   const calc = useFreeCalc();
   const { data: fred } = useFredSeries();
@@ -1260,33 +1130,32 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+      <div className="pagebar">
+        <span className="spacer" />
         <AnalysisActionsMenu actions={workflowActions} />
       </div>
 
-      <Card pad={16}>
-        <SectionLabel>Client and property</SectionLabel>
+      <Panel title="Client and property">
         {selectedClient ? (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+          <div className="row">
             <div>
-              <div style={{ color: t.ink, fontSize: 14, fontWeight: 800 }}>{selectedClient.name}</div>
-              <div style={{ color: t.ink3, fontSize: 12 }}>{selectedClient.email ?? selectedClient.phone ?? "Client linked"}</div>
+              <div><strong>{selectedClient.name}</strong></div>
+              <div className="sub">{selectedClient.email ?? selectedClient.phone ?? "Client linked"}</div>
             </div>
-            <button onClick={() => setSelectedClient(null)} style={qcBtn(t)}>
+            <span className="sp" />
+            <Btn onClick={() => setSelectedClient(null)}>
               <Icon name="x" size={13} /> Clear
-            </button>
+            </Btn>
           </div>
         ) : (
-          <div style={{ marginBottom: 12 }}>
-            <ClientSearchBlock
-              t={t}
-              onPick={setSelectedClient}
-              label="Search client"
-              helperText="Required before sharing to client or creating a pending prequalification."
-            />
-          </div>
+          <ClientSearchBlock
+            t={t}
+            onPick={setSelectedClient}
+            label="Search client"
+            helperText="Required before sharing to client or creating a pending prequalification."
+          />
         )}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 180px", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 180px", gap: 12, marginTop: 12 }}>
           <GoogleAddressInput
             value={addressParts}
             onChange={(next) => {
@@ -1295,60 +1164,56 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
             }}
             helperText="Select a Google suggestion to split the address automatically, or enter the address manually if it is not listed."
           />
-          <Field t={t} label="Borrower FICO">
+          <Field label="Borrower FICO">
             {borrowerFico ? (
-              <Pill bg={t.petrolSoft} color={t.petrol} style={{ marginTop: 7 }}>FICO {borrowerFico}</Pill>
+              <div><CellChip tone="pet">FICO {borrowerFico}</CellChip></div>
             ) : (
-              <input
+              <Input
                 value={overrideFicoText}
                 onChange={(e) => setOverrideFicoText(e.target.value)}
                 inputMode="numeric"
                 placeholder="720"
-                style={inputStyle(t)}
               />
             )}
           </Field>
         </div>
-      </Card>
+      </Panel>
 
-      <Card pad={16}>
-        <SectionLabel>Loan parameters</SectionLabel>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
-          <Field t={t} label="Loan type">
-            <select value={type} onChange={(e) => setType(e.target.value as LoanType)} style={inputStyle(t)}>
+      <Panel title="Loan parameters">
+        <CG>
+          <Field className="s6" label="Loan type">
+            <Select value={type} onChange={(e) => setType(e.target.value as LoanType)}>
               {LOAN_TYPE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
-            </select>
+            </Select>
           </Field>
-          <Field t={t} label="Property type">
-            <select
+          <Field className="s6" label="Property type">
+            <Select
               value={propertyType}
               onChange={(e) => setPropertyType(e.target.value as PropertyType)}
-              style={inputStyle(t)}
             >
               <option value={PropertyType.SFR}>Single family</option>
               <option value={PropertyType.UNITS_2_4}>2-4 units</option>
               <option value={PropertyType.UNITS_5_8}>5-8 units</option>
               <option value={PropertyType.MIXED_USE}>Mixed use</option>
               <option value={PropertyType.COMMERCIAL}>Commercial</option>
-            </select>
+            </Select>
           </Field>
-        </div>
+        </CG>
 
-        <div style={{ height: 14 }} />
-        <SectionLabel>{reno ? "Property values" : "Property"}</SectionLabel>
-        <div style={{ display: "grid", gridTemplateColumns: reno ? "1fr 1fr" : "1fr 1fr", gap: 12 }}>
+        <div className="lbl mt">{reno ? "Property values" : "Property"}</div>
+        <CG className="mt">
           {reno ? (
             <>
-              <CurrencyField t={t} label="Before Repair Value (BRV)" value={brv} onChange={setBrv} />
-              <CurrencyField t={t} label="After Repair Value (ARV)" value={arv} onChange={setArv} />
+              <CurrencyField className="s6" label="Before Repair Value (BRV)" value={brv} onChange={setBrv} />
+              <CurrencyField className="s6" label="After Repair Value (ARV)" value={arv} onChange={setArv} />
             </>
           ) : (
-            <CurrencyField t={t} label="Market Value" value={marketValue} onChange={setMarketValue} />
+            <CurrencyField className="s6" label="Market Value" value={marketValue} onChange={setMarketValue} />
           )}
           <CurrencyField
-            t={t}
+            className="s6"
             label="Loan amount"
             value={amount}
             onChange={(next) => setAmount(loanAmountCap.max > 0 ? Math.min(next, loanAmountCap.max) : next)}
@@ -1363,42 +1228,36 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
                   : loanCapHint
             }
           />
-        </div>
+        </CG>
         <div
+          className="scen mt"
           style={{
-            marginTop: 10,
             padding: "12px 14px",
             borderRadius: 11,
-            border: `1px solid ${loanAmountWasCapped ? t.warn : t.line}`,
-            background: loanAmountWasCapped ? t.warnBg : t.surface2,
+            border: `1px solid ${loanAmountWasCapped ? "var(--warn)" : "var(--line)"}`,
+            background: loanAmountWasCapped ? "var(--warn-tint)" : "var(--sunken2)",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="row" style={{ justifyContent: "space-between" }}>
             <div>
-              <div style={{ fontSize: 11, color: t.ink3, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase" }}>
-                Maximum loan available
-              </div>
-              <div style={{ marginTop: 3, color: t.ink, fontSize: 18, fontWeight: 900, fontFeatureSettings: '"tnum"' }}>
+              <div className="lbl">Maximum loan available</div>
+              <div className="num" style={{ fontSize: 18, fontWeight: 800 }}>
                 {loanAmountCap.max > 0 ? QC_FMT.usd(loanAmountCap.max, 0) : "Enter property value"}
               </div>
-              <div style={{ marginTop: 3, color: loanAmountWasCapped ? t.warn : t.ink3, fontSize: 12, fontWeight: loanAmountWasCapped ? 800 : 600 }}>
-                {loanAmountWasCapped
-                  ? `Requested amount was capped to ${QC_FMT.usd(cappedLoanAmount, 0)}.`
-                  : `${loanAmountCap.capLabel} based on ${loanAmountCap.basisLabel}.`}
-              </div>
+              {loanAmountWasCapped ? (
+                <div>
+                  <CellChip tone="warn">{`Requested amount was capped to ${QC_FMT.usd(cappedLoanAmount, 0)}.`}</CellChip>
+                </div>
+              ) : (
+                <div className="sub">{`${loanAmountCap.capLabel} based on ${loanAmountCap.basisLabel}.`}</div>
+              )}
             </div>
-            <button
-              type="button"
+            <Btn
               onClick={() => setAmount(loanAmountCap.max)}
               disabled={loanAmountCap.max <= 0}
-              style={{
-                ...qcBtn(t),
-                opacity: loanAmountCap.max <= 0 ? 0.55 : 1,
-                pointerEvents: loanAmountCap.max <= 0 ? "none" : "auto",
-              }}
             >
               Use max
-            </button>
+            </Btn>
           </div>
           <input
             type="range"
@@ -1408,18 +1267,15 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
             value={loanAmountCap.max > 0 ? Math.min(amount, loanAmountCap.max) : 0}
             onChange={(e) => setAmount(Number(e.target.value))}
             disabled={loanAmountCap.max <= 0}
-            style={{ width: "100%", marginTop: 12, accentColor: t.petrol }}
           />
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: t.ink3, fontFeatureSettings: '"tnum"' }}>
+          <div className="row sub num" style={{ justifyContent: "space-between" }}>
             <span>$0</span>
             <span>{loanAmountCap.max > 0 ? QC_FMT.usd(loanAmountCap.max, 0) : "$0"}</span>
           </div>
         </div>
 
-        <div style={{ height: 14 }} />
-        <SectionLabel>Today's rate</SectionLabel>
+        <div className="lbl mt">Today's rate</div>
         <RateCard
-          t={t}
           baseRate={baseRate}
           finalRate={finalRate}
           points={points}
@@ -1427,10 +1283,8 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
           series={rateSeries}
         />
 
-        <div style={{ height: 14 }} />
-        <SectionLabel>Discount points (alters HUD)</SectionLabel>
+        <div className="lbl mt">Discount points (alters HUD)</div>
         <PointsSlider
-          t={t}
           value={points}
           onChange={setPoints}
           min={sim.points_min}
@@ -1440,30 +1294,29 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
           pointsCost={pointsCost}
         />
 
-        <div style={{ height: 14 }} />
-        <SectionLabel>Carrying costs (monthly P&I and DSCR)</SectionLabel>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+        <div className="lbl mt">Carrying costs (monthly P&I and DSCR)</div>
+        <CG className="mt">
           {sim.show_taxes && (
-            <NumberField t={t} label="Annual taxes ($)" value={annualTaxes} onChange={setAnnualTaxes} step={100} />
+            <NumberField className="s3" label="Annual taxes ($)" value={annualTaxes} onChange={setAnnualTaxes} step={100} />
           )}
           {sim.show_insurance && (
-            <NumberField t={t} label="Annual insurance ($)" value={annualInsurance} onChange={setAnnualInsurance} step={100} />
+            <NumberField className="s3" label="Annual insurance ($)" value={annualInsurance} onChange={setAnnualInsurance} step={100} />
           )}
           {sim.show_hoa && (
-            <NumberField t={t} label="Monthly HOA ($)" value={monthlyHoa} onChange={setMonthlyHoa} step={25} />
+            <NumberField className="s3" label="Monthly HOA ($)" value={monthlyHoa} onChange={setMonthlyHoa} step={25} />
           )}
           {isDscr && (
-            <NumberField t={t} label="Monthly rent ($)" value={monthlyRent} onChange={setMonthlyRent} step={50} />
+            <NumberField className="s3" label="Monthly rent ($)" value={monthlyRent} onChange={setMonthlyRent} step={50} />
           )}
-        </div>
-      </Card>
+        </CG>
+      </Panel>
 
       {calc.error && (
-        <Pill bg={t.dangerBg} color={t.danger}>
-          {calcErrorMessage(calc.error)}
-        </Pill>
+        <div>
+          <CellChip tone="bad">{calcErrorMessage(calc.error)}</CellChip>
+        </div>
       )}
-      {calc.data && <ResultsCard t={t} result={calc.data} />}
+      {calc.data && <ResultsCard result={calc.data} />}
       {calc.data && (
         <FinancialInsightPanel
           product={analysisProduct}
@@ -1472,24 +1325,25 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
         />
       )}
       {calc.data && (
-        <Card pad={14}>
-          <SectionLabel>Status</SectionLabel>
-          <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5 }}>
+        <Panel title="Status">
+          <div className="sub">
             Simulations auto-save after calculation. Use the top-right Actions menu to refresh, share, or create a pending prequalification.
           </div>
           {actionMessage ? (
-            <div style={{ marginTop: 10, color: /saved|shared|created/i.test(actionMessage) ? t.profit : t.warn, fontSize: 12.5, fontWeight: 700 }}>
-              {actionMessage}
+            <div className="mt">
+              <CellChip tone={/saved|shared|created/i.test(actionMessage) ? "ok" : "warn"}>
+                {actionMessage}
+              </CellChip>
             </div>
           ) : null}
           {savedRun ? (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-              <Pill bg={t.chip} color={t.ink2}>Status {savedRun.status.replace(/_/g, " ")}</Pill>
-              {savedRun.shared_at ? <Pill bg={t.profitBg} color={t.profit}>Shared</Pill> : null}
-              {savedRun.prequal_request_id ? <Pill bg={t.petrolSoft} color={t.petrol}>Prequal queued</Pill> : null}
+            <div className="row mt">
+              <CellChip tone="mut">Status {savedRun.status.replace(/_/g, " ")}</CellChip>
+              {savedRun.shared_at ? <CellChip tone="ok">Shared</CellChip> : null}
+              {savedRun.prequal_request_id ? <CellChip tone="pet">Prequal queued</CellChip> : null}
             </div>
           ) : null}
-        </Card>
+        </Panel>
       )}
     </>
   );
@@ -1508,11 +1362,9 @@ function calcErrorMessage(err: unknown): string {
 // ── From-loan mode (existing pipeline loan) ────────────────────────────────
 
 function FromLoanMode({
-  t,
   sim,
   loans,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   sim: SimulatorSettings;
   loans: ReturnType<typeof useLoans>["data"];
 }) {
@@ -1541,11 +1393,10 @@ function FromLoanMode({
 
   return (
     <>
-      <Card pad={16}>
-        <SectionLabel>Pick a loan</SectionLabel>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      <Panel title="Pick a loan">
+        <div className="row">
           {(loans ?? []).length === 0 && (
-            <div style={{ fontSize: 13, color: t.ink3 }}>
+            <div className="sub">
               No loans yet. Switch to <strong>Free calculation</strong> above, or create one from
               the <strong>Pipeline</strong> page.
             </div>
@@ -1553,208 +1404,108 @@ function FromLoanMode({
           {(loans ?? []).map((l) => {
             const active = activeLoanId === l.id;
             return (
-              <button
+              <Btn
                 key={l.id}
+                variant={active ? "pri" : "default"}
+                aria-pressed={active}
                 onClick={() => setActiveLoanId(l.id)}
-                style={{
-                  ...qcBtn(t),
-                  background: active ? t.ink : t.surface,
-                  color: active ? t.inverse : t.ink2,
-                  border: active ? "none" : `1px solid ${t.lineStrong}`,
-                }}
               >
                 {l.deal_id} · {l.type.replace("_", " ")}
-              </button>
+              </Btn>
             );
           })}
         </div>
-      </Card>
+      </Panel>
 
       {activeLoan && (
-        <Card pad={16}>
-          <SectionLabel>Discount points</SectionLabel>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <Panel title="Discount points">
+          <div className="row">
             {pointsOptions.map((p) => {
               const active = points === p;
               return (
-                <button
+                <Btn
                   key={p}
+                  size="sm"
+                  className="num"
+                  variant={active ? "pri" : "default"}
+                  aria-pressed={active}
                   onClick={() => setPoints(p)}
-                  style={{
-                    ...qcBtn(t),
-                    minWidth: 60,
-                    justifyContent: "center",
-                    padding: "5px 10px",
-                    fontSize: 12,
-                    background: active ? t.petrol : t.surface,
-                    color: active ? "#fff" : t.ink2,
-                    border: active ? "none" : `1px solid ${t.lineStrong}`,
-                    fontFeatureSettings: '"tnum"',
-                  }}
                 >
                   {p.toFixed(2)}
-                </button>
+                </Btn>
               );
             })}
           </div>
-        </Card>
+        </Panel>
       )}
 
       {activeLoan && (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button onClick={submit} disabled={recalc.isPending} style={qcBtnPrimary(t)}>
+        <div className="pagebar">
+          <span className="spacer" />
+          <Btn variant="pri" onClick={submit} disabled={recalc.isPending}>
             <Icon name="refresh" size={13} /> {recalc.isPending ? "Recalculating…" : "Recalculate"}
-          </button>
+          </Btn>
         </div>
       )}
 
       {recalc.error && (
-        <Pill bg={t.dangerBg} color={t.danger}>
-          {recalc.error instanceof Error ? recalc.error.message : "Recalc failed"}
-        </Pill>
+        <div>
+          <CellChip tone="bad">
+            {recalc.error instanceof Error ? recalc.error.message : "Recalc failed"}
+          </CellChip>
+        </div>
       )}
-      {recalc.data && <ResultsCard t={t} result={recalc.data} />}
+      {recalc.data && <ResultsCard result={recalc.data} />}
     </>
   );
 }
 
 // ── Shared bits ────────────────────────────────────────────────────────────
 
-function ResultsCard({ t, result }: { t: ReturnType<typeof useTheme>["t"]; result: RecalcResponse }) {
+function ResultsCard({ result }: { result: RecalcResponse }) {
   const fullCashToClose = result.total_cash_to_close ?? result.cash_to_close_pricing;
   return (
-    <Card pad={20}>
-      <SectionLabel>Results</SectionLabel>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-        <ResultStat t={t} label="Final rate" value={`${(result.final_rate * 100).toFixed(3)}%`} />
-        <ResultStat t={t} label="Monthly P&I" value={QC_FMT.usd(result.monthly_pi)} />
-        {result.dscr != null ? (
-          <ResultStat t={t} label="DSCR" value={result.dscr.toFixed(2)} />
-        ) : (
-          <div />
-        )}
-        <ResultStat t={t} label="Cash to close" value={QC_FMT.usd(fullCashToClose)} />
-        <ResultStat t={t} label="Pricing cash" value={QC_FMT.usd(result.cash_to_close_pricing)} />
-        <ResultStat t={t} label="HUD-1 total" value={QC_FMT.usd(result.hud_total)} />
-      </div>
+    <Panel title="Results">
+      <KpiRow>
+        <Kpi label="Final rate" value={`${(result.final_rate * 100).toFixed(3)}%`} />
+        <Kpi label="Monthly P&I" value={QC_FMT.usd(result.monthly_pi)} />
+        {result.dscr != null ? <Kpi label="DSCR" value={result.dscr.toFixed(2)} /> : null}
+        <Kpi label="Cash to close" value={QC_FMT.usd(fullCashToClose)} />
+        <Kpi label="Pricing cash" value={QC_FMT.usd(result.cash_to_close_pricing)} />
+        <Kpi label="HUD-1 total" value={QC_FMT.usd(result.hud_total)} />
+      </KpiRow>
       {result.warnings && result.warnings.length > 0 && (
-        <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div className="grid mt">
           {result.warnings.map((w, i) => {
             const isBlock = w.severity === "block";
             return (
-              <Pill
-                key={(w.code ?? `w-${i}`) as string}
-                bg={isBlock ? t.dangerBg : t.warnBg}
-                color={isBlock ? t.danger : t.warn}
-              >
-                {w.message}
-              </Pill>
+              <div key={(w.code ?? `w-${i}`) as string}>
+                <CellChip tone={isBlock ? "bad" : "warn"}>{w.message}</CellChip>
+              </div>
             );
           })}
         </div>
       )}
-    </Card>
-  );
-}
-
-function ModeButton({
-  t,
-  active,
-  onClick,
-  children,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        all: "unset",
-        cursor: "pointer",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "8px 14px",
-        borderRadius: 9,
-        background: active ? t.ink : t.surface,
-        color: active ? t.inverse : t.ink2,
-        border: active ? "none" : `1px solid ${t.lineStrong}`,
-        fontSize: 12.5,
-        fontWeight: 700,
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function ResultStat({ t, label, value }: { t: ReturnType<typeof useTheme>["t"]; label: string; value: string }) {
-  return (
-    <div
-      style={{
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        borderRadius: 10,
-        padding: 14,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10.5,
-          fontWeight: 700,
-          color: t.ink3,
-          letterSpacing: 1.2,
-          textTransform: "uppercase",
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ fontSize: 22, fontWeight: 800, color: t.ink, marginTop: 4, fontFeatureSettings: '"tnum"' }}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function Field({ t, label, children }: { t: ReturnType<typeof useTheme>["t"]; label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 10.5,
-          fontWeight: 700,
-          color: t.ink3,
-          letterSpacing: 1.0,
-          textTransform: "uppercase",
-          marginBottom: 6,
-        }}
-      >
-        {label}
-      </div>
-      {children}
-    </div>
+    </Panel>
   );
 }
 
 function NumberField({
-  t,
+  className,
   label,
   value,
   onChange,
   step,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
+  className?: string;
   label: string;
   value: number;
   onChange: (n: number) => void;
   step: number;
 }) {
   return (
-    <Field t={t} label={label}>
-      <input
+    <Field className={className} label={label}>
+      <Input
         type="number"
         value={value}
         step={step}
@@ -1763,36 +1514,20 @@ function NumberField({
           const n = Number(e.target.value);
           if (Number.isFinite(n)) onChange(n);
         }}
-        style={inputStyle(t)}
       />
     </Field>
   );
 }
 
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 9,
-    background: t.surface2,
-    border: `1px solid ${t.line}`,
-    color: t.ink,
-    fontSize: 13,
-    fontFamily: "inherit",
-    outline: "none",
-    fontFeatureSettings: '"tnum"',
-  };
-}
-
 function CurrencyField({
-  t,
+  className,
   label,
   value,
   onChange,
   hint,
   max,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
+  className?: string;
   label: string;
   value: number;
   onChange: (n: number) => void;
@@ -1804,22 +1539,14 @@ function CurrencyField({
   // to scan.
   const display = Number.isFinite(value) ? value.toLocaleString("en-US") : "";
   return (
-    <Field t={t} label={label}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          border: `1px solid ${t.lineStrong}`,
-          borderRadius: 11,
-          background: t.surface2,
-          padding: "0 12px",
-        }}
-      >
-        <span style={{ fontSize: 16, fontWeight: 700, color: t.ink3, marginRight: 4 }}>$</span>
+    <Field className={className} label={label} hint={hint}>
+      <div className="field" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 16, fontWeight: 700, color: "var(--muted)" }}>$</span>
         <input
           type="text"
           inputMode="numeric"
           value={display}
+          className="num"
           onChange={(e) => {
             const raw = e.target.value.replace(/[^0-9]/g, "");
             const next = raw === "" ? 0 : Number(raw);
@@ -1827,39 +1554,34 @@ function CurrencyField({
           }}
           style={{
             flex: 1,
-            padding: "11px 0",
+            minWidth: 0,
+            padding: 0,
             background: "transparent",
             border: "none",
             outline: "none",
             fontSize: 16,
             fontWeight: 700,
-            color: t.ink,
+            color: "var(--ink)",
             fontFamily: "inherit",
-            fontFeatureSettings: '"tnum"',
           }}
         />
         {value >= 1000 ? (
-          <span style={{ fontSize: 11, color: t.ink3, marginLeft: 8, whiteSpace: "nowrap" }}>
+          <span className="sub num" style={{ whiteSpace: "nowrap" }}>
             {QC_FMT.short(value)}
           </span>
         ) : null}
       </div>
-      {hint ? (
-        <div style={{ fontSize: 11, color: t.ink3, marginTop: 6, fontFeatureSettings: '"tnum"' }}>{hint}</div>
-      ) : null}
     </Field>
   );
 }
 
 function RateCard({
-  t,
   baseRate,
   finalRate,
   points,
   source,
   series,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   baseRate: number;
   finalRate: number;
   points: number;
@@ -1868,33 +1590,22 @@ function RateCard({
 }) {
   const isLive = source === "live";
   return (
-    <div
-      style={{
-        border: `1px solid ${t.lineStrong}`,
-        borderRadius: 12,
-        padding: "14px 16px",
-        background: t.surface2,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 16,
-      }}
-    >
+    <div className="kpi row" style={{ justifyContent: "space-between" }}>
       <div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
+        <div className="lbl">
           {isLive && series ? `${series.label} + ${series.spread_bps} bps` : "Fallback (FRED unavailable)"}
         </div>
-        <div style={{ fontSize: 11, color: t.ink3, marginTop: 3 }}>
+        <div className="sub">
           {isLive && series?.current_date
             ? `As of ${new Date(series.current_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · index ${series.current_value?.toFixed(3)}%`
             : "Backend isn't returning today's rate yet — using a sensible default."}
         </div>
       </div>
-      <div style={{ textAlign: "right" }}>
-        <div style={{ fontSize: 22, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"', letterSpacing: -0.4 }}>
+      <div className="align-r">
+        <div className="num" style={{ fontSize: 22, fontWeight: 800 }}>
           {(finalRate * 100).toFixed(3)}%
         </div>
-        <div style={{ fontSize: 11, color: t.ink3, marginTop: 2, fontFeatureSettings: '"tnum"' }}>
+        <div className="sub num">
           {points > 0
             ? `Base ${(baseRate * 100).toFixed(3)}% · −${Math.round(points * 25)} bps`
             : `Base rate · no buy-down`}
@@ -1905,7 +1616,6 @@ function RateCard({
 }
 
 function PointsSlider({
-  t,
   value,
   onChange,
   min,
@@ -1914,7 +1624,6 @@ function PointsSlider({
   loanAmount,
   pointsCost,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   value: number;
   onChange: (n: number) => void;
   min: number;
@@ -1924,19 +1633,19 @@ function PointsSlider({
   pointsCost: number;
 }) {
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
+    <div className="scen">
+      <div className="row" style={{ justifyContent: "space-between" }}>
         <div>
-          <div style={{ fontSize: 12, color: t.ink2, fontWeight: 600 }}>
+          <div className="sub">
             {min}–{max} pts · step {step}
           </div>
-          <div style={{ fontSize: 10.5, color: t.ink4, marginTop: 1 }}>
+          <div className="sub">
             {value > 0
               ? `−${Math.round(value * 25)} bps off base · adds ${QC_FMT.usd(pointsCost, 0)} to HUD line 802`
               : "No buy-down · base rate · no HUD impact"}
           </div>
         </div>
-        <div style={{ fontSize: 22, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"', letterSpacing: -0.4 }}>
+        <div className="num" style={{ fontSize: 22, fontWeight: 800 }}>
           {value.toFixed(2)} pts
         </div>
       </div>
@@ -1947,9 +1656,8 @@ function PointsSlider({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        style={{ width: "100%", accentColor: t.petrol }}
       />
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+      <div className="row num" style={{ justifyContent: "space-between" }}>
         {Array.from({ length: Math.floor((max - min) / step) + 1 }).map((_, i) => {
           const tick = +(min + i * step).toFixed(2);
           const active = Math.abs(value - tick) < step / 2;
@@ -1960,8 +1668,7 @@ function PointsSlider({
                 fontSize: 10,
                 fontWeight: 700,
                 letterSpacing: 0.4,
-                color: active ? t.ink : t.ink3,
-                fontFeatureSettings: '"tnum"',
+                color: active ? "var(--ink)" : "var(--muted)",
               }}
             >
               {tick}
@@ -1969,7 +1676,7 @@ function PointsSlider({
           );
         })}
       </div>
-      <div style={{ fontSize: 11, color: t.ink3, marginTop: 8 }}>
+      <div className="sub mt">
         Loan amount × points% = HUD line 802. {QC_FMT.usd(loanAmount, 0)} × {value.toFixed(2)}% = {QC_FMT.usd(pointsCost, 0)}.
       </div>
     </div>
@@ -1982,7 +1689,6 @@ function PointsSlider({
 // Line 2: discount-points slider inline. Cash-to-close is a button that
 // reveals the full HUD-style breakdown beneath the card.
 function SlimTermsHeader({
-  t,
   result,
   isBlocked,
   productKey,
@@ -1991,7 +1697,6 @@ function SlimTermsHeader({
   showHud,
   setShowHud,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   result: import("@/lib/eligibility").SimulatorOutputs | null;
   isBlocked: boolean;
   productKey: "dscr" | "ff" | "gu" | "br";
@@ -2002,8 +1707,8 @@ function SlimTermsHeader({
 }) {
   if (!result) {
     return (
-      <Card pad={16}>
-        <div style={{ fontSize: 12.5, color: t.ink3 }}>
+      <Card>
+        <div className="sub">
           {isBlocked
             ? "Resolve the eligibility issue in the right panel to run a simulation."
             : "Enter ARV to see simulated terms."}
@@ -2012,76 +1717,63 @@ function SlimTermsHeader({
     );
   }
   const isDscr = productKey === "dscr";
-  const dscrAccent = result.dscr == null ? t.ink2 : result.dscr > 1.25 ? t.profit : result.dscr > 1 ? t.warn : t.danger;
+  const dscrAccent =
+    result.dscr == null
+      ? "var(--ink2)"
+      : result.dscr > 1.25
+        ? "var(--ok)"
+        : result.dscr > 1
+          ? "var(--warn)"
+          : "var(--danger)";
   return (
-    <Card pad={0} style={{ overflow: "hidden" }}>
+    <Panel noPad>
       {/* Line 1: 4 headline KPIs in a single row. */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns: isDscr ? "1.1fr 0.9fr 0.9fr 0.9fr 0.9fr" : "1.1fr 0.9fr 0.9fr 0.9fr",
-          gap: 0,
-          padding: "14px 18px",
-          borderBottom: `1px solid ${t.line}`,
           alignItems: "stretch",
+          padding: "14px 18px",
+          borderBottom: "1px solid var(--line)",
         }}
       >
-        <SlimStat t={t} label="Loan amount" value={QC_FMT.usd(result.loanAmount, 0)} />
-        <SlimStat t={t} label="Final rate" value={`${(result.rate * 100).toFixed(3)}%`} accent={t.brand} />
-        <SlimStat t={t} label="Monthly P&I" value={QC_FMT.usd(result.monthlyPI, 0)} />
+        <SlimStat label="Loan amount" value={QC_FMT.usd(result.loanAmount, 0)} />
+        <SlimStat label="Final rate" value={`${(result.rate * 100).toFixed(3)}%`} accent="var(--accent)" />
+        <SlimStat label="Monthly P&I" value={QC_FMT.usd(result.monthlyPI, 0)} />
         {isDscr && result.dscr != null ? (
-          <SlimStat t={t} label="DSCR" value={result.dscr.toFixed(2)} accent={dscrAccent} />
+          <SlimStat label="DSCR" value={result.dscr.toFixed(2)} accent={dscrAccent} />
         ) : null}
         <button
+          type="button"
           onClick={() => setShowHud(!showHud)}
           aria-expanded={showHud}
           style={{
             all: "unset",
             cursor: "pointer",
             padding: "0 10px",
-            borderLeft: `1px solid ${t.line}`,
+            borderLeft: "1px solid var(--line)",
             display: "flex",
             flexDirection: "column",
             justifyContent: "center",
           }}
         >
-          <div
-            style={{
-              fontSize: 9.5,
-              fontWeight: 700,
-              color: t.ink3,
-              letterSpacing: 0.8,
-              textTransform: "uppercase",
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
+          <div className="lbl">
             Cash to close <Icon name={showHud ? "chevU" : "chevD"} size={10} />
           </div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: t.ink, marginTop: 2, fontFeatureSettings: '"tnum"' }}>
+          <div className="num" style={{ fontSize: 18, fontWeight: 800 }}>
             {QC_FMT.usd(result.totalToClose, 0)}
           </div>
         </button>
       </div>
 
       {/* Line 2: DP slider + binding pill inline. */}
-      <div
-        style={{
-          padding: "10px 18px 12px",
-          display: "flex",
-          alignItems: "center",
-          gap: 14,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 140 }}>
-          <span style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase" }}>
-            DP
-          </span>
-          <span style={{ fontSize: 14, fontWeight: 700, color: t.ink, fontFeatureSettings: '"tnum"' }}>
+      <div className="scen row" style={{ padding: "10px 18px 12px", flexWrap: "nowrap" }}>
+        <div className="row" style={{ minWidth: 140, flexWrap: "nowrap" }}>
+          <span className="lbl">DP</span>
+          <span className="num" style={{ fontSize: 14, fontWeight: 700 }}>
             {points.toFixed(2)}
           </span>
-          <span style={{ fontSize: 10.5, color: t.ink3 }}>
+          <span className="sub">
             {points > 0 ? `−${Math.round(points * 25)} bps` : "no buy-down"}
           </span>
         </div>
@@ -2093,45 +1785,38 @@ function SlimTermsHeader({
           value={points}
           disabled={isBlocked}
           onChange={(e) => setPoints(Number(e.target.value))}
-          style={{ flex: 1, accentColor: t.petrol, opacity: isBlocked ? 0.4 : 1 }}
+          style={{ flex: 1, opacity: isBlocked ? 0.4 : 1 }}
         />
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <Pill bg={t.surface2} color={t.ink2}>
-            {bindingConstraintLabel(result.bindingConstraint)}
-          </Pill>
-          {result.clamped ? <Pill bg={t.warnBg} color={t.warn}>capped</Pill> : null}
+        <div className="row">
+          <CellChip tone="mut">{bindingConstraintLabel(result.bindingConstraint)}</CellChip>
+          {result.clamped ? <CellChip tone="warn">capped</CellChip> : null}
         </div>
       </div>
 
       {/* Inline HUD breakdown — expands below when cash-to-close is clicked. */}
-      {showHud ? <HudBreakdown t={t} result={result} /> : null}
-    </Card>
+      {showHud ? <HudBreakdown result={result} /> : null}
+    </Panel>
   );
 }
 
 function SlimStat({
-  t,
   label,
   value,
   accent,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   value: string;
   accent?: string;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", paddingRight: 14, minWidth: 0 }}>
-      <div style={{ fontSize: 9.5, fontWeight: 700, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase", whiteSpace: "nowrap" }}>
-        {label}
-      </div>
+      <div className="lbl">{label}</div>
       <div
+        className="num"
         style={{
           fontSize: 18,
           fontWeight: 800,
-          color: accent ?? t.ink,
-          marginTop: 2,
-          fontFeatureSettings: '"tnum"',
+          color: accent ?? "var(--ink)",
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -2146,10 +1831,8 @@ function SlimStat({
 // HUD-1 style breakdown — the line items rolled up into Cash to Close.
 // Hidden by default; revealed when the user clicks the Cash-to-close stat.
 function HudBreakdown({
-  t,
   result,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   result: import("@/lib/eligibility").SimulatorOutputs;
 }) {
   const rows: Array<{ label: string; value: number; muted?: boolean }> = [
@@ -2162,61 +1845,23 @@ function HudBreakdown({
   ];
   const sum = rows.reduce((s, r) => s + r.value, 0);
   return (
-    <div style={{ borderTop: `1px solid ${t.line}`, padding: "12px 18px", background: t.surface2 }}>
-      <div
-        style={{
-          fontSize: 10.5,
-          fontWeight: 700,
-          color: t.ink3,
-          letterSpacing: 0.8,
-          textTransform: "uppercase",
-          marginBottom: 8,
-        }}
-      >
-        Cash-to-close breakdown
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+    <div style={{ borderTop: "1px solid var(--line)", background: "var(--sunken2)", padding: "12px 18px" }}>
+      <div className="lbl">Cash-to-close breakdown</div>
+      <div className="num">
         {rows.map((r) => (
-          <div
-            key={r.label}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              fontSize: 12.5,
-              color: t.ink2,
-              fontFeatureSettings: '"tnum"',
-            }}
-          >
+          <div key={r.label} className="kv">
             <span>{r.label}</span>
             <span>{QC_FMT.usd(r.value, 0)}</span>
           </div>
         ))}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            fontSize: 13,
-            fontWeight: 800,
-            color: t.ink,
-            borderTop: `1px solid ${t.line}`,
-            paddingTop: 6,
-            marginTop: 4,
-            fontFeatureSettings: '"tnum"',
-          }}
-        >
-          <span>Estimated cash to close</span>
-          <span>{QC_FMT.usd(sum, 0)}</span>
+        <div className="kv">
+          <span><strong>Estimated cash to close</strong></span>
+          <span><strong>{QC_FMT.usd(sum, 0)}</strong></span>
         </div>
         {result.cashToBorrower != null ? (
           <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              fontSize: 12,
-              color: result.cashToBorrower >= 0 ? t.profit : t.danger,
-              marginTop: 6,
-              fontFeatureSettings: '"tnum"',
-            }}
+            className="kv"
+            style={{ color: result.cashToBorrower >= 0 ? "var(--ok)" : "var(--danger)" }}
           >
             <span>{result.cashToBorrower >= 0 ? "Cash to borrower (refi)" : "Cash to close (refi gap)"}</span>
             <span>
@@ -2226,13 +1871,13 @@ function HudBreakdown({
           </div>
         ) : null}
         {result.cashToClose != null ? (
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: t.ink2, marginTop: 4, fontFeatureSettings: '"tnum"' }}>
+          <div className="kv">
             <span>Borrower equity into deal</span>
             <span>{QC_FMT.usd(result.cashToClose, 0)}</span>
           </div>
         ) : null}
         {result.totalCost != null ? (
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: t.ink2, marginTop: 4, fontFeatureSettings: '"tnum"' }}>
+          <div className="kv">
             <span>Total project cost</span>
             <span>{QC_FMT.usd(result.totalCost, 0)}</span>
           </div>
@@ -2260,7 +1905,6 @@ function CollapsibleCreditSummary({
   hasYearOfOwnership: boolean;
   banner: import("@/lib/eligibility").EligibilityBanner | null;
 }) {
-  const { t } = useTheme();
   const [open, setOpen] = useState(false);
 
   // Compact experience label: "5 properties" / "2 properties · 1+ yr held"
@@ -2278,80 +1922,56 @@ function CollapsibleCreditSummary({
   // The whole header row is the toggle target — chevron sits inside the
   // same Card so it never visually escapes the container.
   return (
-    <Card pad={0} style={{ overflow: "hidden" }}>
+    <Panel noPad>
       <button
+        type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
+        className="row"
         style={{
-          all: "unset",
+          border: 0,
+          background: "transparent",
+          font: "inherit",
+          textAlign: "left",
           cursor: "pointer",
           width: "100%",
           padding: "12px 14px",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          boxSizing: "border-box",
+          flexWrap: "nowrap",
         }}
       >
         <div
+          className="num"
           style={{
             fontSize: 20,
-            fontWeight: 800,
-            color: fico == null ? t.ink3 : t.ink,
-            fontFeatureSettings: '"tnum"',
-            minWidth: 36,
             textAlign: "center",
+            fontWeight: 800,
+            color: fico == null ? "var(--muted)" : "var(--ink)",
+            minWidth: 36,
           }}
         >
           {fico ?? "—"}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="lbl">Credit · {tierLabel}</div>
           <div
-            style={{
-              fontSize: 10.5,
-              fontWeight: 700,
-              color: t.ink3,
-              letterSpacing: 0.8,
-              textTransform: "uppercase",
-            }}
-          >
-            Credit · {tierLabel}
-          </div>
-          <div
-            style={{
-              fontSize: 11.5,
-              color: t.ink2,
-              marginTop: 2,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
+            className="sub"
+            style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
           >
             {expLabel}
-            {hasBanner ? <span style={{ color: t.warn, fontWeight: 700 }}>  ·  ⚠ action</span> : null}
+            {hasBanner ? <strong style={{ color: "var(--warn)" }}>  ·  ⚠ action</strong> : null}
           </div>
         </div>
-        <Icon name={open ? "chevU" : "chevD"} size={14} color={t.ink3} />
+        <Icon name={open ? "chevU" : "chevD"} size={14} color="var(--muted)" />
       </button>
       {open ? (
-        <div
-          style={{
-            borderTop: `1px solid ${t.line}`,
-            padding: 14,
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-          }}
-        >
+        <div className="panel-b grid" style={{ borderTop: "1px solid var(--line)" }}>
           {hasBanner ? <EligibilityBanner banner={banner} /> : null}
           {summary ? <CreditSummaryCard summary={summary} /> : (
-            <div style={{ fontSize: 12, color: t.ink3 }}>
-              No credit summary yet. Run a soft pull to see your file.
-            </div>
+            <div className="sub">No credit summary yet. Run a soft pull to see your file.</div>
           )}
         </div>
       ) : null}
-    </Card>
+    </Panel>
   );
 }
 
@@ -2360,22 +1980,18 @@ function CollapsibleCreditSummary({
 // can render the same table inline. Imported above as AmortizationTable.
 
 function Stat({
-  t,
   label,
   value,
   accent,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   value: string;
   accent?: string;
 }) {
   return (
-    <div style={{ background: t.surface2, padding: "10px 12px", borderRadius: 9 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase" }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 16, fontWeight: 800, color: accent ?? t.ink, marginTop: 4, fontFeatureSettings: '"tnum"' }}>
+    <div className="kpi">
+      <div className="lbl">{label}</div>
+      <div className="knum num" style={accent ? { color: accent } : undefined}>
         {value}
       </div>
     </div>
@@ -2389,15 +2005,12 @@ function Stat({
 // hoisted it up to the page header (top-right of the Simulate row) so
 // it's always accessible regardless of which tab the borrower is on.
 function PrequalRequestsSection() {
-  const { t } = useTheme();
   const { data: requests = [], isLoading } = useMyPrequalRequests();
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div className="grid">
       <div>
-        <div style={{ fontSize: 13, fontWeight: 800, color: t.ink, letterSpacing: -0.2 }}>
-          Pre-qualification letters
-        </div>
-        <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>
+        <h3>Pre-qualification letters</h3>
+        <div className="sub">
           Submit a target property → an underwriter reviews → letter PDF arrives here.
         </div>
       </div>
@@ -2412,147 +2025,122 @@ function PrequalRequestsSection() {
 
 // ── Operator: system-wide simulator runs ──────────────────────────────
 
-type ThS = ReturnType<typeof useTheme>["t"];
 const rate3 = (v: number | null | undefined) =>
   typeof v === "number" ? `${(v * 100).toFixed(3)}%` : "—";
 const usd0 = (v: number | null | undefined) =>
   typeof v === "number" ? QC_FMT.usd(v, 0) : "—";
 
 function SimRunsTable({
-  t,
   rows,
   loading,
   onNew,
   onOpen,
 }: {
-  t: ThS;
   rows: AdminLoanScenarioRow[];
   loading: boolean;
   onNew: () => void;
   onOpen: (id: string) => void;
 }) {
-  const th = {
-    textAlign: "left" as const, padding: "12px 14px", fontSize: 11,
-    fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: 0.6,
-    color: t.ink3, borderBottom: `1px solid ${t.line}`,
-  };
-  const td = { padding: "11px 14px", fontSize: 13, color: t.ink, borderBottom: `1px solid ${t.line}` };
   return (
-    <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Simulate — all runs</h1>
-          <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
-            Every saved simulator scenario across all users. Click a run to inspect it read-only.
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={onNew}
-          style={{
-            all: "unset", cursor: "pointer", padding: "10px 16px", borderRadius: 10,
-            background: t.petrol, color: "#fff", fontSize: 13, fontWeight: 700,
-            display: "inline-flex", alignItems: "center", gap: 6,
-          }}
+    <div className="grid">
+      <PageHeader
+        title="Simulate — all runs"
+        lede="Every saved simulator scenario across all users. Click a run to inspect it read-only."
+        actions={
+          <Btn variant="pri" onClick={onNew}>
+            <Icon name="plus" size={12} stroke={3} /> New simulation
+          </Btn>
+        }
+      />
+      <Panel noPad>
+        <Table
+          cols={[
+            { label: "User" },
+            { label: "Created" },
+            { label: "Scenario" },
+            { label: "Loan" },
+            { label: "Loan amount", align: "r" },
+            { label: "Points", align: "r" },
+            { label: "Rate", align: "r" },
+            { label: "Monthly P&I", align: "r" },
+          ]}
         >
-          <Icon name="plus" size={12} stroke={3} /> New simulation
-        </button>
-      </div>
-      <Card pad={0}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 920 }}>
-            <thead>
-              <tr>
-                {["User", "Created", "Scenario", "Loan", "Loan amount", "Points", "Rate", "Monthly P&I"].map((h) => (
-                  <th key={h} style={th}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={8} style={{ ...td, color: t.ink3 }}>Loading…</td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={8} style={{ ...td, color: t.ink3 }}>No runs yet.</td></tr>
-              ) : (
-                rows.map((r) => (
-                  <tr key={r.id} onClick={() => onOpen(r.id)} style={{ cursor: "pointer" }}>
-                    <td style={td}>{r.created_by_name || r.created_by_email || "—"}</td>
-                    <td style={{ ...td, color: t.ink3 }}>{new Date(r.created_at).toLocaleDateString()}</td>
-                    <td style={td}>{r.name}</td>
-                    <td style={td}>{r.loan_deal_id ?? "—"}{r.loan_address ? ` · ${r.loan_address}` : ""}</td>
-                    <td style={td}>{usd0(r.loan_amount)}</td>
-                    <td style={td}>{r.discount_points}</td>
-                    <td style={td}>{rate3(r.recalc_snapshot?.final_rate)}</td>
-                    <td style={td}>{usd0(r.recalc_snapshot?.monthly_pi)}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+          {loading ? (
+            <Tr><Td colSpan={8}><span className="sub">Loading…</span></Td></Tr>
+          ) : rows.length === 0 ? (
+            <Tr><Td colSpan={8}><span className="sub">No runs yet.</span></Td></Tr>
+          ) : (
+            rows.map((r) => (
+              <Tr key={r.id} onClick={() => onOpen(r.id)}>
+                <Td>{r.created_by_name || r.created_by_email || "—"}</Td>
+                <Td><span className="sub">{new Date(r.created_at).toLocaleDateString()}</span></Td>
+                <Td>{r.name}</Td>
+                <Td>{r.loan_deal_id ?? "—"}{r.loan_address ? ` · ${r.loan_address}` : ""}</Td>
+                <Td align="r" className="num">{usd0(r.loan_amount)}</Td>
+                <Td align="r" className="num">{r.discount_points}</Td>
+                <Td align="r" className="num">{rate3(r.recalc_snapshot?.final_rate)}</Td>
+                <Td align="r" className="num">{usd0(r.recalc_snapshot?.monthly_pi)}</Td>
+              </Tr>
+            ))
+          )}
+        </Table>
+      </Panel>
     </div>
   );
 }
 
 function SimInspect({
-  t,
   row,
   loading,
   onBack,
 }: {
-  t: ThS;
   row: AdminLoanScenarioRow | undefined;
   loading: boolean;
   onBack: () => void;
 }) {
   const close = (
-    <button
-      type="button"
-      onClick={onBack}
-      aria-label="Close"
-      title="Close"
-      style={{ all: "unset", cursor: "pointer", width: 34, height: 34, borderRadius: 9, border: `1px solid ${t.line}`, color: t.ink2, display: "inline-flex", alignItems: "center", justifyContent: "center", alignSelf: "flex-end" }}
-    >
+    <IconBtn onClick={onBack} aria-label="Close" title="Close">
       <Icon name="x" size={15} />
-    </button>
+    </IconBtn>
   );
   if (loading) {
-    return <div style={{ padding: 24, maxWidth: 860, margin: "0 auto" }}><Card pad={20}><div style={{ fontSize: 13, color: t.ink3 }}>Loading…</div></Card></div>;
+    return (
+      <Card>
+        <div className="sub">Loading…</div>
+      </Card>
+    );
   }
   if (!row) {
     return (
-      <div style={{ padding: 24, maxWidth: 860, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
-        {close}
-        <Card pad={20}><div style={{ fontSize: 13, color: t.ink2 }}>Run not found.</div></Card>
+      <div className="grid">
+        <div className="pagebar">
+          <span className="spacer" />
+          {close}
+        </div>
+        <Card>
+          <div className="sub">Run not found.</div>
+        </Card>
       </div>
     );
   }
   const s = row.recalc_snapshot ?? {};
   return (
-    <div style={{ padding: 24, maxWidth: 860, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>
-            {row.name} · {row.created_by_name || row.created_by_email || "—"}
-          </h1>
-          <p style={{ fontSize: 12.5, color: t.ink3, margin: "4px 0 0" }}>
-            {new Date(row.created_at).toLocaleString()} ·{" "}
-            {row.loan_deal_id ?? "—"}{row.loan_address ? ` · ${row.loan_address}` : ""} · read-only
-          </p>
-        </div>
-        {close}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-        <Card pad={14}><KPI label="Loan amount" value={usd0(row.loan_amount)} /></Card>
-        <Card pad={14}><KPI label="Discount points" value={String(row.discount_points)} /></Card>
-        <Card pad={14}><KPI label="Base rate" value={rate3(row.base_rate)} /></Card>
-        <Card pad={14}><KPI label="Final rate" value={rate3(s.final_rate)} /></Card>
-        <Card pad={14}><KPI label="Monthly P&I" value={usd0(s.monthly_pi)} /></Card>
-        <Card pad={14}><KPI label="Cash to close" value={usd0(s.total_cash_to_close ?? s.cash_to_close_pricing)} /></Card>
-        <Card pad={14}><KPI label="DSCR" value={typeof s.dscr === "number" ? s.dscr.toFixed(2) : "—"} /></Card>
-        <Card pad={14}><KPI label="LTV" value={typeof row.ltv === "number" ? `${(row.ltv * 100).toFixed(1)}%` : "—"} /></Card>
-      </div>
+    <div className="grid">
+      <PageHeader
+        title={`${row.name} · ${row.created_by_name || row.created_by_email || "—"}`}
+        lede={`${new Date(row.created_at).toLocaleString()} · ${row.loan_deal_id ?? "—"}${row.loan_address ? ` · ${row.loan_address}` : ""} · read-only`}
+        actions={close}
+      />
+      <KpiRow>
+        <Kpi label="Loan amount" value={usd0(row.loan_amount)} />
+        <Kpi label="Discount points" value={String(row.discount_points)} />
+        <Kpi label="Base rate" value={rate3(row.base_rate)} />
+        <Kpi label="Final rate" value={rate3(s.final_rate)} />
+        <Kpi label="Monthly P&I" value={usd0(s.monthly_pi)} />
+        <Kpi label="Cash to close" value={usd0(s.total_cash_to_close ?? s.cash_to_close_pricing)} />
+        <Kpi label="DSCR" value={typeof s.dscr === "number" ? s.dscr.toFixed(2) : "—"} />
+        <Kpi label="LTV" value={typeof row.ltv === "number" ? `${(row.ltv * 100).toFixed(1)}%` : "—"} />
+      </KpiRow>
     </div>
   );
 }

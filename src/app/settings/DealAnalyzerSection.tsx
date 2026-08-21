@@ -8,9 +8,8 @@
 // One Save does a bulk replace.
 
 import { useEffect, useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import { Btn, IconBtn, Input, Panel } from "@/components/ds";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
 import { useClosingCostTiers, useReplaceClosingCostTiers } from "@/hooks/useApi";
@@ -42,7 +41,6 @@ const num0 = (s: string): number => {
 };
 
 export function DealAnalyzerSection() {
-  const { t } = useTheme();
   const profile = useActiveProfile();
   const { data: tiers, isLoading } = useClosingCostTiers();
   const replace = useReplaceClosingCostTiers();
@@ -61,22 +59,16 @@ export function DealAnalyzerSection() {
     onChange: (v: string) => void,
     prefix?: string,
   ) => (
+    // Prefix glyph beside the field. Bespoke row geometry — `.row`'s 10px gap
+    // is far too wide inside a table cell.
     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-      {prefix ? <span style={{ fontSize: 12, color: t.ink3 }}>{prefix}</span> : null}
+      {prefix ? <span className="sub">{prefix}</span> : null}
       <input
+        className="field"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={!canEdit}
-        style={{
-          width: "100%",
-          padding: "8px 8px",
-          background: t.surface2,
-          border: `1px solid ${t.line}`,
-          borderRadius: 8,
-          color: t.ink,
-          fontSize: 13,
-          outline: "none",
-        }}
+        style={{ flex: 1 }}
       />
     </div>
   );
@@ -126,34 +118,18 @@ export function DealAnalyzerSection() {
   }, [rows, sample, withConstruction]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <Card pad={20}>
-        <SectionLabel
-          action={
-            canEdit ? (
-              <button
-                type="button"
-                onClick={onSave}
-                disabled={replace.isPending}
-                style={{
-                  all: "unset",
-                  cursor: replace.isPending ? "default" : "pointer",
-                  padding: "7px 16px",
-                  borderRadius: 9,
-                  background: replace.isPending ? t.chip : t.petrol,
-                  color: replace.isPending ? t.ink4 : "#fff",
-                  fontSize: 12.5,
-                  fontWeight: 700,
-                }}
-              >
-                {replace.isPending ? "Saving…" : "Save"}
-              </button>
-            ) : undefined
-          }
-        >
-          Closing-cost tiers
-        </SectionLabel>
-        <div style={{ fontSize: 12.5, color: t.ink3, marginBottom: 12, lineHeight: 1.5 }}>
+    <div className="grid">
+      <Panel
+        title="Closing-cost tiers"
+        actions={
+          canEdit ? (
+            <Btn variant="pri" onClick={onSave} disabled={replace.isPending}>
+              {replace.isPending ? "Saving…" : "Save"}
+            </Btn>
+          ) : undefined
+        }
+      >
+        <div className="sub">
           Loan-amount tiers used by the Deal Analyzer. For a deal the effective
           closing % is <strong>max(tier %, minimum $ ÷ loan amount)</strong>,
           applied to the loan amount. Leave <em>From</em> or <em>To</em> blank
@@ -161,72 +137,58 @@ export function DealAnalyzerSection() {
         </div>
 
         {flash ? (
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: flash.includes("Couldn") ? t.danger : t.petrol }}>
+          // `.c-ok` / `.c-bad` own the tint and the text colour; the inline
+          // values are box geometry only.
+          <div
+            className={flash.includes("Couldn") ? "c-bad" : "c-ok"}
+            style={{ borderRadius: 8, padding: "8px 11px", fontSize: 12.5, fontWeight: 650, margin: "10px 0" }}
+          >
             {flash}
           </div>
         ) : null}
 
-        <div style={{ overflowX: "auto", border: `1px solid ${t.line}`, borderRadius: 10 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
+        {/* A real `.tbl` in its own scroll container, so a wide grid scrolls
+            inside the panel instead of widening the page. */}
+        <div className="tblwrap mt">
+          <table className="tbl" style={{ minWidth: 560 }}>
             <thead>
               <tr>
                 {["From $", "To $", "% with construction", "% without construction", ""].map((h) => (
-                  <th
-                    key={h}
-                    style={{
-                      textAlign: "left",
-                      padding: "12px 14px",
-                      fontSize: 11,
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: 0.6,
-                      color: t.ink3,
-                      borderBottom: `1px solid ${t.line}`,
-                    }}
-                  >
-                    {h}
-                  </th>
+                  <th key={h} scope="col">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: 18, fontSize: 13, color: t.ink3 }}>
-                    Loading…
-                  </td>
+                  <td colSpan={5} className="sub">Loading…</td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: 18, fontSize: 13, color: t.ink3 }}>
-                    No tiers yet — add a row.
-                  </td>
+                  <td colSpan={5} className="sub">No tiers yet — add a row.</td>
                 </tr>
               ) : (
                 rows.map((r, idx) => (
                   <tr key={idx}>
-                    <td style={{ padding: "8px 14px", width: "24%" }}>
+                    <td style={{ width: "24%" }}>
                       {cellInput(r.from, (v) => setCell(idx, "from", v), "$")}
                     </td>
-                    <td style={{ padding: "8px 14px", width: "24%" }}>
+                    <td style={{ width: "24%" }}>
                       {cellInput(r.to, (v) => setCell(idx, "to", v), "$")}
                     </td>
-                    <td style={{ padding: "8px 14px", width: "22%" }}>
+                    <td style={{ width: "22%" }}>
                       {cellInput(r.pctWith, (v) => setCell(idx, "pctWith", v), "%")}
                     </td>
-                    <td style={{ padding: "8px 14px", width: "22%" }}>
+                    <td style={{ width: "22%" }}>
                       {cellInput(r.pctWithout, (v) => setCell(idx, "pctWithout", v), "%")}
                     </td>
-                    <td style={{ padding: "8px 14px", textAlign: "right" }}>
+                    <td className="r">
                       {canEdit ? (
-                        <button
-                          type="button"
-                          onClick={() => delRow(idx)}
-                          style={{ all: "unset", cursor: "pointer", color: t.danger, padding: 6 }}
-                          aria-label="Remove tier"
-                        >
+                        // `.c-bad` is declared after `.btn` in the sheet, so it
+                        // wins the tint without an inline override.
+                        <IconBtn className="c-bad" onClick={() => delRow(idx)} aria-label="Remove tier">
                           <Icon name="x" size={14} />
-                        </button>
+                        </IconBtn>
                       ) : null}
                     </td>
                   </tr>
@@ -236,78 +198,35 @@ export function DealAnalyzerSection() {
           </table>
         </div>
         {canEdit ? (
-          <div style={{ marginTop: 12 }}>
-            <button
-              type="button"
-              onClick={addRow}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                padding: "9px 14px",
-                borderRadius: 9,
-                border: `1px solid ${t.line}`,
-                color: t.ink2,
-                fontSize: 13,
-                fontWeight: 700,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
+          <div className="mt">
+            <Btn onClick={addRow}>
               <Icon name="plus" size={12} stroke={3} /> Add tier
-            </button>
+            </Btn>
           </div>
         ) : null}
-      </Card>
+      </Panel>
 
-      <Card pad={20}>
-        <SectionLabel>Preview</SectionLabel>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, color: t.ink3 }}>Base $ (BRV, or BRV + construction)</span>
-          <input
-            value={sample}
-            onChange={(e) => setSample(e.target.value)}
-            style={{
-              width: 140,
-              padding: "8px 10px",
-              background: t.surface2,
-              border: `1px solid ${t.line}`,
-              borderRadius: 8,
-              color: t.ink,
-              fontSize: 13,
-              outline: "none",
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => setWithConstruction((v) => !v)}
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              padding: "7px 12px",
-              borderRadius: 8,
-              border: `1px solid ${t.line}`,
-              color: t.ink2,
-              fontSize: 12.5,
-              fontWeight: 700,
-            }}
-          >
+      <Panel title="Preview">
+        <div className="row">
+          <span className="sub">Base $ (BRV, or BRV + construction)</span>
+          <Input value={sample} onChange={(e) => setSample(e.target.value)} style={{ width: 140 }} />
+          <Btn onClick={() => setWithConstruction((v) => !v)}>
             {withConstruction ? "With construction" : "Without construction"}
-          </button>
+          </Btn>
           {preview ? (
-            <span style={{ fontSize: 13, color: t.ink2 }}>
+            <span className="sub">
               → closing{" "}
-              <strong style={{ color: t.ink }}>
+              <b style={{ color: "var(--ink)" }}>
                 ${Math.round(preview.dollars).toLocaleString()}
-              </strong>{" "}
+              </b>{" "}
               ({(preview.pct * 100).toFixed(2)}% · {preview.src})
             </span>
           ) : null}
         </div>
-        <div style={{ fontSize: 11.5, color: t.ink4, marginTop: 8 }}>
+        <div className="sub mt">
           Reflects the unsaved grid above. Save to make it live for the analyzer.
         </div>
-      </Card>
+      </Panel>
     </div>
   );
 }

@@ -4,12 +4,32 @@
 // experience are DERIVED from the profile (read-only), never typed.
 // All math is client-side (src/lib/fixFlip). Hedged language only.
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import {
+  Btn,
+  Card,
+  CellChip,
+  Field,
+  IconBtn,
+  Input,
+  Kpi,
+  KpiRow,
+  Lbl,
+  Note,
+  PageHeader,
+  Panel,
+  Seg,
+  Select,
+  Sub,
+  Table,
+  Td,
+  Tr,
+  WarnLine,
+  type ChipTone,
+} from "@/components/ds";
 import { ClientSearchBlock } from "@/components/ClientSearchBlock";
 import { RecentAnalysisRunsCard } from "@/components/analysis/RecentAnalysisRunsCard";
 import { GoogleAddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
@@ -43,6 +63,9 @@ const DISCLAIMER =
   "Estimates only. Final terms, cash to close, and eligibility depend on lender review, credit, title, appraisal, insurance, and the final settlement statement.";
 const $ = (x: number) => `$${Math.round(x).toLocaleString()}`;
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
+
+/** Data-derived tint on a figure — what the retired `accent` prop used to carry. */
+const tinted = (value: ReactNode, color: string) => <span style={{ color }}>{value}</span>;
 
 const PROPERTY_TYPES: { v: PropertyType; l: string }[] = [
   { v: "single_family", l: "Single Family" },
@@ -94,13 +117,22 @@ const DEFAULTS: FixFlipInputs = {
   experience: "1_2_flips",
 };
 
-function gradeColor(t: ReturnType<typeof useTheme>["t"], g: string): string {
-  if (g === "Excellent" || g === "Good") return t.profit;
-  if (g === "Fair" || g === "Thin") return t.warn;
-  return t.danger;
+/** Grade → the palette variable it reads as. */
+function gradeColor(g: string): string {
+  if (g === "Excellent" || g === "Good") return "var(--ok)";
+  if (g === "Fair" || g === "Thin") return "var(--warn)";
+  return "var(--danger)";
+}
+/** Same scale, as a chip tone. */
+function gradeTone(g: string): ChipTone {
+  if (g === "Excellent" || g === "Good") return "ok";
+  if (g === "Fair" || g === "Thin") return "warn";
+  return "bad";
 }
 
 export default function FixAndFlipAnalyzerPage() {
+  // Still read for ClientSearchBlock, which takes `t` and is shared with routes
+  // that have not migrated yet.
   const { t } = useTheme();
   const sp = useSearchParams();
   const queryClientId = sp?.get("clientId") ?? null;
@@ -336,23 +368,17 @@ export default function FixAndFlipAnalyzerPage() {
     }
   };
 
-  const inputStyle = {
-    width: "100%", marginTop: 4, padding: "9px 11px", borderRadius: 8,
-    border: `1px solid ${t.line}`, background: t.surface, color: t.ink, fontSize: 13,
-  } as const;
   // JSX-returning helper (NOT a component) so inputs keep focus across
   // re-renders.
   const fld = (label: string, value: string | number, onChange: (s: string) => void, placeholder?: string) => (
-    <label style={{ display: "block", marginBottom: 12 }}>
-      <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>{label}</span>
-      <input value={value === 0 ? "" : String(value)} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} style={inputStyle} />
-    </label>
+    <Field label={label}>
+      <Input value={value === 0 ? "" : String(value)} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+    </Field>
   );
 
   if (runId) {
     return (
       <RunInspect
-        t={t}
         row={inspected.data}
         loading={inspected.isLoading}
         onBack={() => router.push("/deal-analyzer/fix-and-flip")}
@@ -362,7 +388,6 @@ export default function FixAndFlipAnalyzerPage() {
   if (isOperator && !wantNew) {
     return (
       <RunsTable
-        t={t}
         rows={allRuns.data ?? []}
         loading={allRuns.isLoading}
         onNew={() => router.push("/deal-analyzer/fix-and-flip?new=1")}
@@ -371,14 +396,15 @@ export default function FixAndFlipAnalyzerPage() {
     );
   }
 
+  const busyPrequal = convertAnalysis.isPending || createAnalysis.isPending || updateAnalysis.isPending;
+  const busyShare = shareAnalysis.isPending || createAnalysis.isPending || updateAnalysis.isPending;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 860, margin: "0 auto" }}>
-      <div>
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: t.ink, margin: 0 }}>Fix &amp; Flip Deal Analyzer</h1>
-        <p style={{ fontSize: 13, color: t.ink3, margin: "4px 0 0" }}>
-          See if the deal works before you make the offer — profit, cash to close, financing options, and downside risk.
-        </p>
-      </div>
+    <div className="grid" style={{ maxWidth: 860, margin: "0 auto" }}>
+      <PageHeader
+        title="Fix & Flip Deal Analyzer"
+        lede="See if the deal works before you make the offer — profit, cash to close, financing options, and downside risk."
+      />
 
       <RecentAnalysisRunsCard
         runs={recentRuns}
@@ -387,35 +413,37 @@ export default function FixAndFlipAnalyzerPage() {
       />
 
       {/* Stepper */}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      <div className="row">
         {STEPS.map((s, idx) => {
           const active = idx === stepIdx;
           const done = idx < stepIdx;
           return (
-            <div key={s} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 11px", borderRadius: 999, background: active ? t.petrolSoft : done ? t.profitBg : t.chip, color: active ? t.petrol : done ? t.profit : t.ink3, fontSize: 12, fontWeight: 700 }}>
-                <span>{idx + 1}</span><span>{s}</span>
-              </div>
-              {idx < STEPS.length - 1 ? <span style={{ color: t.ink4 }}>→</span> : null}
-            </div>
+            <Fragment key={s}>
+              <CellChip tone={active ? "pet" : done ? "ok" : "mut"}>
+                <span>{idx + 1}</span>
+                <span>{s}</span>
+              </CellChip>
+              {idx < STEPS.length - 1 ? <Sub>→</Sub> : null}
+            </Fragment>
           );
         })}
       </div>
 
-      {flash ? <div style={{ fontSize: 12.5, color: flash.includes("Couldn") ? t.danger : t.profit, fontWeight: 600 }}>{flash}</div> : null}
+      {flash ? (
+        flash.includes("Couldn") ? <WarnLine>{flash}</WarnLine> : <Note>{flash}</Note>
+      ) : null}
 
       {canLinkClient ? (
-        <Card pad={14}>
-          <SectionLabel>Borrower link</SectionLabel>
+        <Panel title="Borrower link">
           {selectedClientId ? (
-            <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", marginTop: 8 }}>
-              <div>
-                <div style={{ color: t.ink, fontWeight: 800, fontSize: 14 }}>{profileClient?.name ?? "Linked client"}</div>
-                <div style={{ color: t.ink3, fontSize: 12 }}>{profileClient?.email ?? profileClient?.phone ?? "Borrower profile linked"}</div>
+            <div className="row">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700 }}>{profileClient?.name ?? "Linked client"}</div>
+                <Sub>{profileClient?.email ?? profileClient?.phone ?? "Borrower profile linked"}</Sub>
               </div>
-              <button onClick={() => setSelectedClientId(null)} style={qcBtn(t)}>
+              <Btn onClick={() => setSelectedClientId(null)}>
                 <Icon name="x" size={13} /> Clear
-              </button>
+              </Btn>
             </div>
           ) : (
             <ClientSearchBlock
@@ -425,342 +453,331 @@ export default function FixAndFlipAnalyzerPage() {
               helperText="Credit and experience come from the linked borrower profile."
             />
           )}
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
-            <span style={{ fontSize: 12, color: t.ink3 }}>Credit</span>
+          <div className="row mt">
+            <Sub>Credit</Sub>
             {derivedCredit != null ? (
-              <Pill bg={t.petrolSoft} color={t.petrol}>FICO {derivedCredit}</Pill>
+              <CellChip tone="pet">FICO {derivedCredit}</CellChip>
             ) : overrideFico != null ? (
-              <Pill bg={t.warnBg} color={t.warn}>FICO {overrideFico} override</Pill>
+              <CellChip tone="warn">FICO {overrideFico} override</CellChip>
             ) : (
-              <Pill bg={t.chip} color={t.ink3}>Not on file</Pill>
+              <CellChip tone="mut">Not on file</CellChip>
             )}
             {derivedCredit == null ? (
-              <label style={{ display: "block", minWidth: 180 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>Analyzer FICO override</span>
-                <input
+              <Field label="Analyzer FICO override" className="grow">
+                <Input
                   value={overrideFicoText}
                   onChange={(e) => setOverrideFicoText(e.target.value)}
                   placeholder="720"
                   inputMode="numeric"
-                  style={{ ...inputStyle, marginTop: 4 }}
                 />
-              </label>
+              </Field>
             ) : null}
-            <span style={{ fontSize: 12, color: t.ink3 }}>
-              Override is used only for this analyzer/prequal request.
-            </span>
+            <Sub>Override is used only for this analyzer/prequal request.</Sub>
           </div>
-        </Card>
+        </Panel>
       ) : null}
 
-      <Card pad={20}>
+      <Card>
         {step === "Property" ? (
-          <div>
-            <SectionLabel>Property</SectionLabel>
-            <div style={{ marginBottom: 12 }}>
-              <GoogleAddressInput
-                value={inputs.address}
-                onChange={(next) =>
-                  setI((p) => ({
-                    ...p,
-                    address: {
-                      ...p.address,
-                      street: next.street ?? "",
-                      city: next.city ?? "",
-                      state: next.state ?? "",
-                      zip: next.zip ?? "",
-                    },
-                  }))
-                }
-                helperText="Select a Google suggestion to split the address automatically, or use manual entry when the property is not listed."
-              />
-            </div>
-            <label style={{ display: "block" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>Property type</span>
-              <select value={inputs.propertyType} onChange={(e) => set("propertyType", e.target.value as PropertyType)} style={inputStyle}>
+          <div className="grid">
+            <Lbl>Property</Lbl>
+            <GoogleAddressInput
+              value={inputs.address}
+              onChange={(next) =>
+                setI((p) => ({
+                  ...p,
+                  address: {
+                    ...p.address,
+                    street: next.street ?? "",
+                    city: next.city ?? "",
+                    state: next.state ?? "",
+                    zip: next.zip ?? "",
+                  },
+                }))
+              }
+              helperText="Select a Google suggestion to split the address automatically, or use manual entry when the property is not listed."
+            />
+            <Field label="Property type">
+              <Select value={inputs.propertyType} onChange={(e) => set("propertyType", e.target.value as PropertyType)}>
                 {PROPERTY_TYPES.map((p) => <option key={p.v} value={p.v}>{p.l}</option>)}
-              </select>
-            </label>
+              </Select>
+            </Field>
           </div>
         ) : null}
 
         {step === "Deal Numbers" ? (
-          <div>
-            <SectionLabel>Deal numbers</SectionLabel>
+          <div className="grid">
+            <Lbl>Deal numbers</Lbl>
             {fld('Purchase price / BRV', inputs.purchasePrice, (s) => set("purchasePrice", num(s)))}
             {fld('After repair value (ARV)', inputs.arv, (s) => set("arv", num(s)))}
             {fld('Rehab / construction budget', inputs.rehabCost, (s) => set("rehabCost", num(s)))}
             {fld('Rehab contingency %', inputs.rehabContingencyPct * 100, (s) => set("rehabContingencyPct", num(s) / 100), '10')}
             {fld('Selling cost %', inputs.sellingCostPct * 100, (s) => set("sellingCostPct", num(s) / 100), '6')}
-            <div style={{ fontSize: 11.5, color: t.ink3 }}>
+            <Sub>
               Closing % is derived from the firm&apos;s closing-cost tier table; monthly
               carry (interest + taxes + insurance) is system-generated. Neither is entered here.
-            </div>
+            </Sub>
           </div>
         ) : null}
 
         {step === "Timeline & Cash" ? (
-          <div>
-            <SectionLabel>Timeline &amp; cash</SectionLabel>
+          <div className="grid">
+            <Lbl>Timeline &amp; cash</Lbl>
             {fld('Construction months', inputs.constructionMonths, (s) => set("constructionMonths", num(s)))}
             {fld('Months to sell after construction', inputs.monthsToSell, (s) => set("monthsToSell", num(s)))}
             {fld('Cash to work available', inputs.liquidity ?? 0, (s) => set("liquidity", num(s) || undefined))}
-            <div style={{ fontSize: 12, color: t.ink3 }}>Total hold: <b style={{ color: t.ink }}>{result.holdMonths} months</b></div>
-            <div style={{ fontSize: 12, color: t.ink3, marginTop: 4 }}>Est. monthly carry: <b style={{ color: t.ink }}>{$(result.estimatedMonthlyCarry)}/mo</b> <span style={{ color: t.ink4 }}>(interest + taxes + insurance, system-generated)</span></div>
+            <div>
+              <Sub>Total hold: <b style={{ color: "var(--ink)" }}>{result.holdMonths} months</b></Sub>
+              <div>
+                <Sub>Est. monthly carry: <b style={{ color: "var(--ink)" }}>{$(result.estimatedMonthlyCarry)}/mo</b> (interest + taxes + insurance, system-generated)</Sub>
+              </div>
+            </div>
           </div>
         ) : null}
 
         {step === "Review" ? (
-          <div>
-            <SectionLabel>Borrower profile</SectionLabel>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-              <span style={{ fontSize: 12, color: t.ink3 }}>Credit score</span>
-              {effectiveCredit != null ? (
-                <Pill bg={derivedCredit != null ? t.petrolSoft : t.warnBg} color={derivedCredit != null ? t.petrol : t.warn}>
-                  {effectiveCredit}{derivedCredit == null ? " override" : ""}
-                </Pill>
-              ) : (
-                <Pill bg={t.chip} color={t.ink3}>Not on file</Pill>
-              )}
-              <span style={{ fontSize: 12, color: t.ink3, marginLeft: 12 }}>Experience</span>
-              <Pill bg={t.chip} color={t.ink2}>{EXP_LABEL[derivedExperience]}</Pill>
+          <div className="grid">
+            <div>
+              <Lbl>Borrower profile</Lbl>
+              <div className="row mt">
+                <Sub>Credit score</Sub>
+                {effectiveCredit != null ? (
+                  <CellChip tone={derivedCredit != null ? "pet" : "warn"}>
+                    {effectiveCredit}{derivedCredit == null ? " override" : ""}
+                  </CellChip>
+                ) : (
+                  <CellChip tone="mut">Not on file</CellChip>
+                )}
+                <Sub>Experience</Sub>
+                <CellChip tone="mut">{EXP_LABEL[derivedExperience]}</CellChip>
+              </div>
             </div>
-            <div style={{ fontSize: 11.5, color: t.ink3, marginBottom: 14 }}>
+            <Sub>
               Credit &amp; experience are pulled from the borrower&apos;s profile. Broker/operator FICO override applies only to this analysis and pending prequal request.
-            </div>
-            <SectionLabel>Recap</SectionLabel>
-            <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.7 }}>
-              {inputs.address.street}, {inputs.address.city} {inputs.address.state} {inputs.address.zip}<br />
-              Purchase {$(inputs.purchasePrice)} · ARV {$(inputs.arv)} · Rehab {$(inputs.rehabCost)}<br />
-              Hold {result.holdMonths} months · Cash to work {$(inputs.liquidity ?? 0)}
+            </Sub>
+            <div>
+              <Lbl>Recap</Lbl>
+              <div className="mt">
+                {inputs.address.street}, {inputs.address.city} {inputs.address.state} {inputs.address.zip}<br />
+                Purchase {$(inputs.purchasePrice)} · ARV {$(inputs.arv)} · Rehab {$(inputs.rehabCost)}<br />
+                Hold {result.holdMonths} months · Cash to work {$(inputs.liquidity ?? 0)}
+              </div>
             </div>
           </div>
         ) : null}
 
         {step === "Results" ? (
           result.validationErrors.length ? (
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: t.ink }}>Missing information</div>
-              <ul style={{ fontSize: 12.5, color: t.warn, marginTop: 10 }}>
+            <WarnLine>
+              <b>Missing information</b>
+              <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
                 {result.validationErrors.map((e) => <li key={e}>{e}</li>)}
               </ul>
-            </div>
+            </WarnLine>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-                <Card pad={14}><KPI label="Deal Grade" value={result.dealGrade} sub={`Score ${result.dealScore}/100`} accent={gradeColor(t, result.dealGrade)} /></Card>
-                <Card pad={14}><KPI label="Projected Net Profit" value={$(result.projectedNetProfit)} sub={pct(result.profitMargin)} accent={result.projectedNetProfit > 0 ? t.profit : t.danger} /></Card>
-                <Card pad={14}><KPI label="Est. Cash to Close" value={$(result.estimatedCashToClose)} sub={`Cash-on-cash ${pct(result.cashOnCashReturn)}`} /></Card>
-                <Card pad={14}><KPI label="Best Program" value={result.bestProgram?.name ?? "Needs review"} sub={result.bestProgram ? "Potential fit" : "Adjust the deal"} /></Card>
-                <Card pad={14}><KPI label="Loan Amount" value={$(result.loanAmount)} /></Card>
-                <Card pad={14}><KPI label="Max Safe Purchase" value={$(result.maxSafePurchasePrice)} sub={`Purchase: ${result.purchasePriceGrade}`} accent={gradeColor(t, result.purchasePriceGrade)} /></Card>
-              </div>
+            <div className="grid">
+              <KpiRow>
+                <Kpi label="Deal Grade" value={tinted(result.dealGrade, gradeColor(result.dealGrade))} sub={`Score ${result.dealScore}/100`} />
+                <Kpi label="Projected Net Profit" value={tinted($(result.projectedNetProfit), result.projectedNetProfit > 0 ? "var(--ok)" : "var(--danger)")} sub={pct(result.profitMargin)} />
+                <Kpi label="Est. Cash to Close" value={$(result.estimatedCashToClose)} sub={`Cash-on-cash ${pct(result.cashOnCashReturn)}`} />
+                <Kpi label="Best Program" value={result.bestProgram?.name ?? "Needs review"} sub={result.bestProgram ? "Potential fit" : "Adjust the deal"} />
+                <Kpi label="Loan Amount" value={$(result.loanAmount)} />
+                <Kpi label="Max Safe Purchase" value={tinted($(result.maxSafePurchasePrice), gradeColor(result.purchasePriceGrade))} sub={`Purchase: ${result.purchasePriceGrade}`} />
+              </KpiRow>
               {/* Coverage toggle — switches EVERY tab/figure below
                   between the two construction scenarios. */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>Construction</span>
-                <div style={{ display: "inline-flex", border: `1px solid ${t.line}`, borderRadius: 999, overflow: "hidden" }}>
-                  {(["financed", "self"] as const).map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => setCoverage(c)}
-                      style={{
-                        all: "unset",
-                        cursor: "pointer",
-                        padding: "6px 14px",
-                        fontSize: 12.5,
-                        fontWeight: 700,
-                        background: coverage === c ? t.petrol : "transparent",
-                        color: coverage === c ? "#fff" : t.ink3,
-                      }}
-                    >
-                      {c === "financed" ? "Construction financed" : "You fund construction"}
-                    </button>
-                  ))}
-                </div>
+              <div className="row">
+                <Lbl>Construction</Lbl>
+                <Seg
+                  as="filter"
+                  ariaLabel="Construction coverage"
+                  value={coverage}
+                  onChange={setCoverage}
+                  options={[
+                    { value: "financed", label: "Construction financed" },
+                    { value: "self", label: "You fund construction" },
+                  ]}
+                />
               </div>
               {canCreatePrequal ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: 12, borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface }}>
-                  <button
-                    onClick={shareToClient}
-                    disabled={shareAnalysis.isPending || createAnalysis.isPending || updateAnalysis.isPending}
-                    style={{
-                      ...qcBtn(t),
-                      opacity: shareAnalysis.isPending || createAnalysis.isPending || updateAnalysis.isPending ? 0.6 : 1,
-                      cursor: shareAnalysis.isPending || createAnalysis.isPending || updateAnalysis.isPending ? "not-allowed" : "pointer",
-                    }}
-                  >
+                <div className="card row">
+                  <Btn onClick={shareToClient} disabled={busyShare}>
                     {shareAnalysis.isPending ? "Sharing..." : "Share to client"}
-                  </button>
-                  <button
-                    onClick={createPrequalification}
-                    disabled={convertAnalysis.isPending || createAnalysis.isPending || updateAnalysis.isPending}
-                    style={{
-                      ...qcBtnPrimary(t),
-                      opacity: convertAnalysis.isPending || createAnalysis.isPending || updateAnalysis.isPending ? 0.6 : 1,
-                      cursor: convertAnalysis.isPending || createAnalysis.isPending || updateAnalysis.isPending ? "not-allowed" : "pointer",
-                    }}
-                  >
+                  </Btn>
+                  <Btn variant="pri" onClick={createPrequalification} disabled={busyPrequal}>
                     {convertAnalysis.isPending ? "Creating..." : "Create pending prequalification"}
-                  </button>
-                  <span style={{ flex: 1, minWidth: 220, fontSize: 12, color: t.ink3 }}>
+                  </Btn>
+                  <span className="sub" style={{ flex: 1, minWidth: 220 }}>
                     Requires a linked client and borrower FICO. Funding team approval is still required.
                   </span>
                   {prequalFlash ? (
-                    <span
-                      style={{
-                        width: "100%",
-                        fontSize: 12.5,
-                        fontWeight: 700,
-                        color: prequalFlash.includes("created") ? t.profit : t.danger,
-                      }}
-                    >
-                      {prequalFlash}
-                    </span>
+                    <div style={{ width: "100%" }}>
+                      {prequalFlash.includes("created") ? (
+                        <Note>{prequalFlash}</Note>
+                      ) : (
+                        <WarnLine>{prequalFlash}</WarnLine>
+                      )}
+                    </div>
                   ) : null}
                 </div>
               ) : null}
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {TABS.map((x) => (
-                  <button key={x} onClick={() => setTab(x)} style={{ all: "unset", cursor: "pointer", padding: "6px 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 700, border: `1px solid ${tab === x ? t.petrol : t.line}`, background: tab === x ? t.petrolSoft : "transparent", color: tab === x ? t.petrol : t.ink3 }}>{x}</button>
-                ))}
-              </div>
+              <Seg
+                ariaLabel="Analysis view"
+                value={tab}
+                onChange={setTab}
+                options={TABS.map((x) => ({ value: x, label: x }))}
+              />
               <div>
                 {tab === "Summary" ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                    <div style={{ borderRadius: 10, padding: 12, background: result.withinArvEnvelope ? t.profitBg : t.chip }}>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: result.withinArvEnvelope ? t.profit : t.danger }}>
-                        At {(result.arvUsedPct * 100).toFixed(1)}% of ARV{" "}
-                        <span style={{ fontWeight: 600 }}>(lenders cap at 75%)</span>
-                      </div>
-                      <div style={{ fontSize: 12.5, color: result.withinArvEnvelope ? t.profit : t.danger, marginTop: 3 }}>
-                        {result.withinArvEnvelope
-                          ? `Borrower protected — up to ${$(result.arvHeadroom)} more can still be pulled before hitting the 75% ceiling.`
-                          : `Over the 75% ceiling by ${$(result.arvEnvelopeOverflow)} — that amount is the borrower's liability outside the loan.`}
+                  <div className="grid">
+                    {result.withinArvEnvelope ? (
+                      <Note>
+                        <div style={{ minWidth: 0 }}>
+                          <b>At {(result.arvUsedPct * 100).toFixed(1)}% of ARV</b> <span>(lenders cap at 75%)</span>
+                          <div>{`Borrower protected — up to ${$(result.arvHeadroom)} more can still be pulled before hitting the 75% ceiling.`}</div>
+                        </div>
+                      </Note>
+                    ) : (
+                      <WarnLine>
+                        <b>At {(result.arvUsedPct * 100).toFixed(1)}% of ARV</b> <span>(lenders cap at 75%)</span>
+                        <div>{`Over the 75% ceiling by ${$(result.arvEnvelopeOverflow)} — that amount is the borrower's liability outside the loan.`}</div>
+                      </WarnLine>
+                    )}
+                    <div>
+                      <Lbl>Construction coverage · click to switch the whole view</Lbl>
+                      <div className="cg mt">
+                        <ScenarioCard className="s6" title="Construction financed (draws)" sub="Lender draws rehab (≤75% ARV)" s={result.constructionScenarios.financed} active={coverage === "financed"} onClick={() => setCoverage("financed")} />
+                        <ScenarioCard className="s6" title="You fund construction" sub="Construction stays outside the loan" s={result.constructionScenarios.selfFunded} active={coverage === "self"} onClick={() => setCoverage("self")} />
                       </div>
                     </div>
                     <div>
-                      <SectionLabel>Construction coverage · click to switch the whole view</SectionLabel>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 6 }}>
-                        <ScenarioCard t={t} title="Construction financed (draws)" sub="Lender draws rehab (≤75% ARV)" s={result.constructionScenarios.financed} accent={t.profit} active={coverage === "financed"} onClick={() => setCoverage("financed")} />
-                        <ScenarioCard t={t} title="You fund construction" sub="Construction stays outside the loan" s={result.constructionScenarios.selfFunded} accent={t.ink2} active={coverage === "self"} onClick={() => setCoverage("self")} />
-                      </div>
+                      <Lbl>Where the money comes from</Lbl>
+                      <CapitalStack result={result} />
                     </div>
                     <div>
-                      <SectionLabel>Where the money comes from</SectionLabel>
-                      <CapitalStack t={t} result={result} />
+                      <Lbl>From sale price to net profit</Lbl>
+                      <ProfitWaterfall inputs={inputs} result={result} />
                     </div>
-                    <div>
-                      <SectionLabel>From sale price to net profit</SectionLabel>
-                      <ProfitWaterfall t={t} inputs={inputs} result={result} />
-                    </div>
-                    <PriceMeter t={t} grade={result.purchasePriceGrade} />
-                    <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.55 }}>{result.explanation}</div>
-                    {result.warnings.map((w) => <div key={w} style={{ fontSize: 12.5, color: t.warn }}>⚠ {w}</div>)}
+                    <PriceMeter grade={result.purchasePriceGrade} />
+                    <div>{result.explanation}</div>
+                    {result.warnings.map((w) => <WarnLine key={w}>⚠ {w}</WarnLine>)}
                   </div>
                 ) : null}
                 {tab === "Loan Programs" ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div className="grid">
                     <div>
-                      <SectionLabel>Potential fits</SectionLabel>
-                      {result.eligiblePrograms.length === 0 ? <div style={{ fontSize: 13, color: t.ink3 }}>No program is a clear fit under current rules.</div> : result.eligiblePrograms.map((f) => (
-                        <div key={f.program.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${t.line}` }}>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 13.5, fontWeight: 700, color: t.ink }}>{f.program.name}{result.bestProgram?.id === f.program.id ? <Pill bg={t.profitBg} color={t.profit}>Best overall</Pill> : null}</div>
-                            <div style={{ fontSize: 12, color: t.ink3 }}>{(f.program.interestRate * 100).toFixed(2)}% · {f.program.points} pts · {f.program.termMonths}mo</div>
+                      <Lbl>Potential fits</Lbl>
+                      {result.eligiblePrograms.length === 0 ? <div className="mt"><Sub>No program is a clear fit under current rules.</Sub></div> : result.eligiblePrograms.map((f) => (
+                        <div key={f.program.id} className="filerow">
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 700 }}>
+                              {f.program.name}{result.bestProgram?.id === f.program.id ? <> <CellChip tone="ok">Best overall</CellChip></> : null}
+                            </div>
+                            <Sub>{(f.program.interestRate * 100).toFixed(2)}% · {f.program.points} pts · {f.program.termMonths}mo</Sub>
                           </div>
-                          <div style={{ textAlign: "right", fontSize: 12 }}><div style={{ color: t.ink, fontWeight: 700 }}>Cash to close: {$(f.estimatedCashToClose)}</div><div style={{ color: t.ink3 }}>{$(f.loanAmount)} loan</div></div>
+                          <div className="align-r">
+                            <div style={{ fontWeight: 700 }}>Cash to close: {$(f.estimatedCashToClose)}</div>
+                            <Sub>{$(f.loanAmount)} loan</Sub>
+                          </div>
                         </div>
                       ))}
                     </div>
                     {result.eligiblePrograms.length > 1 ? (
                       <div>
-                        <SectionLabel>Compare all</SectionLabel>
-                        <CompareTable t={t} result={result} />
+                        <Lbl>Compare all</Lbl>
+                        <CompareTable result={result} />
                       </div>
                     ) : null}
                     <div>
-                      <SectionLabel>Not eligible based on current rules</SectionLabel>
+                      <Lbl>Not eligible based on current rules</Lbl>
                       {result.ineligiblePrograms.map((f) => (
-                        <div key={f.program.id} style={{ padding: "6px 0", borderBottom: `1px solid ${t.line}` }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: t.ink2 }}>{f.program.name}</div>
-                          <div style={{ fontSize: 12, color: t.danger }}>{(f.reasons ?? []).join(" · ")}</div>
+                        <div key={f.program.id} className="filerow">
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 700 }}>{f.program.name}</div>
+                            <div className="sub" style={{ color: "var(--danger)" }}>{(f.reasons ?? []).join(" · ")}</div>
+                          </div>
                         </div>
                       ))}
                     </div>
                   </div>
                 ) : null}
                 {tab === "HUD Forecast" ? (
-                  <HudForecast t={t} result={result} arv={inputs.arv} />
+                  <HudForecast result={result} arv={inputs.arv} />
                 ) : null}
                 {tab === "Profit Breakdown" ? (
-                  <div style={{ fontSize: 13 }}>
-                    {[["ARV", inputs.arv], ["− Purchase price", -inputs.purchasePrice], ["− Rehab + contingency", -(inputs.rehabCost + result.rehabContingencyAmount)], ["− Financing (interest + points)", -(result.estimatedInterestPaid + result.lenderPointsCost)], ["− Holding", -result.estimatedHoldingCosts], ["− Closing", -result.estimatedClosingCosts], ["− Selling", -result.estimatedSellingCosts]].map(([k, v]) => (
-                      <div key={k as string} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: `1px solid ${t.line}` }}>
-                        <span style={{ color: t.ink2 }}>{k}</span><span style={{ color: (v as number) < 0 ? t.danger : t.ink, fontWeight: 700 }}>{$(v as number)}</span>
+                  <div>
+                    {([["ARV", inputs.arv], ["− Purchase price", -inputs.purchasePrice], ["− Rehab + contingency", -(inputs.rehabCost + result.rehabContingencyAmount)], ["− Financing (interest + points)", -(result.estimatedInterestPaid + result.lenderPointsCost)], ["− Holding", -result.estimatedHoldingCosts], ["− Closing", -result.estimatedClosingCosts], ["− Selling", -result.estimatedSellingCosts]] as [string, number][]).map(([k, v]) => (
+                      <div key={k} className="kv">
+                        <span>{k}</span>
+                        <b style={v < 0 ? { color: "var(--danger)" } : undefined}>{$(v)}</b>
                       </div>
                     ))}
-                    <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 10, fontWeight: 800 }}><span style={{ color: t.ink }}>= Net profit</span><span style={{ color: result.projectedNetProfit > 0 ? t.profit : t.danger }}>{$(result.projectedNetProfit)}</span></div>
+                    <div className="kv mt">
+                      <span><b>= Net profit</b></span>
+                      <b style={{ color: result.projectedNetProfit > 0 ? "var(--ok)" : "var(--danger)" }}>{$(result.projectedNetProfit)}</b>
+                    </div>
                   </div>
                 ) : null}
                 {tab === "Sensitivity" ? (
-                  <div style={{ fontSize: 13 }}>
+                  <Table
+                    caption="Sensitivity scenarios"
+                    cols={[{ label: "Scenario" }, { label: "Net profit", align: "r" }, { label: "Margin", align: "r" }, { label: "Grade" }]}
+                  >
                     {result.sensitivity.map((s) => (
-                      <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: `1px solid ${t.line}` }}>
-                        <span style={{ flex: 1, color: t.ink2 }}>{s.label}</span>
-                        <span style={{ color: s.netProfit > 0 ? t.ink : t.danger, fontWeight: 700, width: 110, textAlign: "right" }}>{$(s.netProfit)}</span>
-                        <span style={{ width: 70, textAlign: "right", color: t.ink3 }}>{pct(s.profitMargin)}</span>
-                        <Pill bg={t.chip} color={gradeColor(t, s.grade)}>{s.grade}</Pill>
-                      </div>
+                      <Tr key={s.key}>
+                        <Td>{s.label}</Td>
+                        <Td align="r">
+                          <b style={s.netProfit > 0 ? undefined : { color: "var(--danger)" }}>{$(s.netProfit)}</b>
+                        </Td>
+                        <Td align="r">{pct(s.profitMargin)}</Td>
+                        <Td><CellChip tone={gradeTone(s.grade)}>{s.grade}</CellChip></Td>
+                      </Tr>
                     ))}
-                  </div>
+                  </Table>
                 ) : null}
                 {tab === "Make This Deal Work" ? (
-                  <ul style={{ fontSize: 13.5, color: t.ink2, lineHeight: 1.7, margin: 0, paddingLeft: 18 }}>
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
                     {result.recommendations.map((r) => <li key={r}>{r}</li>)}
                   </ul>
                 ) : null}
               </div>
-              <div style={{ fontSize: 11, color: t.ink3 }}>{DISCLAIMER}</div>
+              <Sub>{DISCLAIMER}</Sub>
             </div>
           )
         ) : null}
       </Card>
 
       {/* Wizard nav */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <button onClick={() => setStepIdx((x) => Math.max(0, x - 1))} disabled={stepIdx === 0} style={{ ...qcBtn(t), opacity: stepIdx === 0 ? 0.4 : 1 }}>Back</button>
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <Btn onClick={() => setStepIdx((x) => Math.max(0, x - 1))} disabled={stepIdx === 0}>Back</Btn>
         {step !== "Results" ? (
-          <button
+          <Btn
+            variant="pri"
             onClick={() => {
               if (!stepValid(step)) return;
               if (step === "Review") autoSave();
               setStepIdx((x) => Math.min(STEPS.length - 1, x + 1));
             }}
             disabled={!stepValid(step)}
-            style={{ ...qcBtnPrimary(t), opacity: stepValid(step) ? 1 : 0.5 }}
           >
             {step === "Review" ? "Analyze Deal" : "Next"}
-          </button>
+          </Btn>
         ) : null}
       </div>
     </div>
   );
 }
 
-type Th = ReturnType<typeof useTheme>["t"];
 type Analysis = ReturnType<typeof analyzeFixFlip>;
 
 function ScenarioCard({
-  t,
   title,
   sub,
   s,
-  accent,
   active,
   onClick,
+  className,
 }: {
-  t: Th;
   title: string;
   sub: string;
   s: {
@@ -770,38 +787,33 @@ function ScenarioCard({
     projectedNetProfit: number;
     holdMonths: number;
   };
-  accent: string;
   active?: boolean;
   onClick?: () => void;
+  className?: string;
 }) {
-  const row = (k: string, v: string, c?: string, strong?: boolean) => (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "3px 0" }}>
-      <span style={{ flex: 1, fontSize: 12, color: t.ink3 }}>{k}</span>
-      <span style={{ flexShrink: 0, textAlign: "right", fontSize: 12.5, fontWeight: strong ? 800 : 600, color: c ?? t.ink }}>{v}</span>
+  const row = (k: string, v: string, color?: string, strong?: boolean) => (
+    <div className="kv">
+      <span>{k}</span>
+      <b style={color || !strong ? { color, fontWeight: strong ? 800 : 600 } : { fontWeight: 800 }}>{v}</b>
     </div>
   );
   return (
-    <Card
-      pad={12}
+    <div
+      className={["pick", active ? "on" : "", className].filter(Boolean).join(" ")}
       onClick={onClick}
-      style={{
-        borderTop: `3px solid ${accent}`,
-        border: active ? `2px solid ${accent}` : undefined,
-        borderTopWidth: 3,
-        cursor: onClick ? "pointer" : undefined,
-        opacity: onClick && !active ? 0.7 : 1,
-      }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <div style={{ flex: 1, fontSize: 13, fontWeight: 800, color: t.ink }}>{title}</div>
-        {active ? <span style={{ fontSize: 11, fontWeight: 800, color: accent }}>● selected</span> : null}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="row">
+          <div style={{ flex: 1, minWidth: 0, fontWeight: 800 }}>{title}</div>
+          {active ? <CellChip tone="acc">● selected</CellChip> : null}
+        </div>
+        <Sub>{sub}</Sub>
+        {row("Cash to close", `$${Math.round(s.estimatedCashToClose).toLocaleString()}`, undefined, true)}
+        {row("Construction you fund (outside loan)", `$${Math.round(s.constructionOutsideLoan).toLocaleString()}`)}
+        {row("Loan amount", `$${Math.round(s.loanAmount).toLocaleString()}`)}
+        {row("Net profit", `$${Math.round(s.projectedNetProfit).toLocaleString()}`, s.projectedNetProfit > 0 ? "var(--ok)" : "var(--danger)")}
       </div>
-      <div style={{ fontSize: 11.5, color: t.ink3, marginBottom: 8 }}>{sub}</div>
-      {row("Cash to close", `$${Math.round(s.estimatedCashToClose).toLocaleString()}`, t.ink, true)}
-      {row("Construction you fund (outside loan)", `$${Math.round(s.constructionOutsideLoan).toLocaleString()}`)}
-      {row("Loan amount", `$${Math.round(s.loanAmount).toLocaleString()}`)}
-      {row("Net profit", `$${Math.round(s.projectedNetProfit).toLocaleString()}`, s.projectedNetProfit > 0 ? t.profit : t.danger)}
-    </Card>
+    </div>
   );
 }
 
@@ -816,44 +828,45 @@ function StackBar({ segs }: { segs: { w: number; color: string }[] }) {
   );
 }
 
-function Legend({ t, items }: { t: Th; items: { color: string; label: string; value: string }[] }) {
+function Legend({ items }: { items: { color: string; label: string; value: string }[] }) {
   return (
-    <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+    <div className="mt">
       {items.map((it) => (
-        <div key={it.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ width: 10, height: 10, borderRadius: 3, background: it.color }} />
-          <span style={{ flex: 1, fontSize: 12, color: t.ink3 }}>{it.label}</span>
-          <span style={{ fontSize: 12, fontWeight: 700, color: t.ink }}>{it.value}</span>
+        <div key={it.label} className="kv">
+          <span className="row">
+            <i className="repdot" style={{ background: it.color, borderRadius: 3 }} />
+            {it.label}
+          </span>
+          <b>{it.value}</b>
         </div>
       ))}
     </div>
   );
 }
 
-function CapitalStack({ t, result }: { t: Th; result: Analysis }) {
+function CapitalStack({ result }: { result: Analysis }) {
   const m = (x: number) => `$${Math.round(x).toLocaleString()}`;
   return (
     <div>
       <StackBar
         segs={[
-          { w: result.loanAmount, color: t.profit },
-          { w: result.estimatedCashToClose, color: t.ink2 },
-          { w: result.rehabContingencyAmount, color: t.warn },
+          { w: result.loanAmount, color: "var(--ok)" },
+          { w: result.estimatedCashToClose, color: "var(--ink2)" },
+          { w: result.rehabContingencyAmount, color: "var(--warn)" },
         ]}
       />
       <Legend
-        t={t}
         items={[
-          { color: t.profit, label: "Lender funds", value: m(result.loanAmount) },
-          { color: t.ink2, label: "Cash to close", value: m(result.estimatedCashToClose) },
-          { color: t.warn, label: "Rehab contingency reserve", value: m(result.rehabContingencyAmount) },
+          { color: "var(--ok)", label: "Lender funds", value: m(result.loanAmount) },
+          { color: "var(--ink2)", label: "Cash to close", value: m(result.estimatedCashToClose) },
+          { color: "var(--warn)", label: "Rehab contingency reserve", value: m(result.rehabContingencyAmount) },
         ]}
       />
     </div>
   );
 }
 
-function ProfitWaterfall({ t, inputs, result }: { t: Th; inputs: FixFlipInputs; result: Analysis }) {
+function ProfitWaterfall({ inputs, result }: { inputs: FixFlipInputs; result: Analysis }) {
   const m = (x: number) => `$${Math.round(x).toLocaleString()}`;
   const costs =
     inputs.purchasePrice +
@@ -867,23 +880,22 @@ function ProfitWaterfall({ t, inputs, result }: { t: Th; inputs: FixFlipInputs; 
     <div>
       <StackBar
         segs={[
-          { w: costs, color: t.danger },
-          { w: Math.max(0, result.projectedNetProfit), color: t.profit },
+          { w: costs, color: "var(--danger)" },
+          { w: Math.max(0, result.projectedNetProfit), color: "var(--ok)" },
         ]}
       />
       <Legend
-        t={t}
         items={[
-          { color: t.ink3, label: "Sale price (ARV)", value: m(inputs.arv) },
-          { color: t.danger, label: "All-in costs", value: m(costs) },
-          { color: t.profit, label: "Net profit", value: m(result.projectedNetProfit) },
+          { color: "var(--muted)", label: "Sale price (ARV)", value: m(inputs.arv) },
+          { color: "var(--danger)", label: "All-in costs", value: m(costs) },
+          { color: "var(--ok)", label: "Net profit", value: m(result.projectedNetProfit) },
         ]}
       />
     </div>
   );
 }
 
-function CompareTable({ t, result }: { t: Th; result: Analysis }) {
+function CompareTable({ result }: { result: Analysis }) {
   const m = (x: number) => `$${Math.round(x).toLocaleString()}`;
   const progs = result.eligiblePrograms;
   const rows: { label: string; cell: (f: (typeof progs)[number]) => string }[] = [
@@ -895,48 +907,45 @@ function CompareTable({ t, result }: { t: Th; result: Analysis }) {
     { label: "Term", cell: (f) => `${f.program.termMonths}mo` },
     { label: "Net profit", cell: (f) => m(f.projectedNetProfit) },
   ];
-  const cell = { padding: "7px 10px", fontSize: 12.5, borderBottom: `1px solid ${t.line}` } as const;
   return (
-    <div style={{ overflowX: "auto", marginTop: 6 }}>
-      <table style={{ borderCollapse: "collapse", minWidth: 480 }}>
-        <thead>
-          <tr>
-            <th style={{ ...cell, textAlign: "left", color: t.ink3 }} />
-            {progs.map((f) => (
-              <th key={f.program.id} style={{ ...cell, textAlign: "left", color: result.bestProgram?.id === f.program.id ? t.profit : t.ink, fontWeight: 800 }}>
-                {f.program.name}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.label}>
-              <td style={{ ...cell, color: t.ink3 }}>{r.label}</td>
-              {progs.map((f) => (
-                <td key={f.program.id} style={{ ...cell, color: t.ink, fontWeight: 600 }}>{r.cell(f)}</td>
-              ))}
-            </tr>
+    <Table
+      className="mt"
+      caption="Eligible loan programs compared"
+      cols={[
+        { label: "" },
+        ...progs.map((f) => ({
+          label:
+            result.bestProgram?.id === f.program.id
+              ? <span style={{ color: "var(--ok)" }}>{f.program.name}</span>
+              : f.program.name,
+        })),
+      ]}
+    >
+      {rows.map((r) => (
+        <Tr key={r.label}>
+          <Td>{r.label}</Td>
+          {progs.map((f) => (
+            <Td key={f.program.id}>{r.cell(f)}</Td>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </Tr>
+      ))}
+    </Table>
   );
 }
 
-function PriceMeter({ t, grade }: { t: ReturnType<typeof useTheme>["t"]; grade: Grade }) {
+function PriceMeter({ grade }: { grade: Grade }) {
   const bands: Grade[] = ["Excellent", "Good", "Fair", "Risky", "Poor"];
   return (
     <div>
-      <SectionLabel>Purchase price quality</SectionLabel>
+      <Lbl>Purchase price quality</Lbl>
       <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
         {bands.map((b) => {
           const active = b === grade;
-          const c = b === "Excellent" || b === "Good" ? t.profit : b === "Fair" ? t.warn : t.danger;
+          const c = b === "Excellent" || b === "Good" ? "var(--ok)" : b === "Fair" ? "var(--warn)" : "var(--danger)";
           return (
             <div key={b} style={{ flex: 1, textAlign: "center" }}>
-              <div style={{ height: 8, borderRadius: 4, background: active ? c : t.chip }} />
-              <div style={{ fontSize: 10.5, marginTop: 4, fontWeight: active ? 800 : 600, color: active ? c : t.ink3 }}>{b}</div>
+              <div style={{ height: 8, borderRadius: 4, background: active ? c : "var(--sunken)" }} />
+              <div className="sub" style={{ marginTop: 4, fontWeight: active ? 800 : 600, color: active ? c : undefined }}>{b}</div>
             </div>
           );
         })}
@@ -966,123 +975,92 @@ function runCreator(row: FixFlipScenarioRow): string {
 }
 
 function RunsTable({
-  t,
   rows,
   loading,
   onNew,
   onOpen,
 }: {
-  t: Th;
   rows: FixFlipScenarioRow[];
   loading: boolean;
   onNew: () => void;
   onOpen: (id: string) => void;
 }) {
-  const th = {
-    textAlign: "left" as const,
-    padding: "12px 14px",
-    fontSize: 11,
-    fontWeight: 700,
-    textTransform: "uppercase" as const,
-    letterSpacing: 0.6,
-    color: t.ink3,
-    borderBottom: `1px solid ${t.line}`,
-  };
-  const td = { padding: "11px 14px", fontSize: 13, color: t.ink, borderBottom: `1px solid ${t.line}` };
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 1100, margin: "0 auto" }}>
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, color: t.ink, margin: 0 }}>Deal Analyzer — all runs</h1>
-          <p style={{ fontSize: 13, color: t.ink3, margin: "4px 0 0" }}>
-            Every Fix &amp; Flip analysis across all users. Click a run to inspect it read-only.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onNew}
-          style={{
-            all: "unset", cursor: "pointer", padding: "10px 16px", borderRadius: 10,
-            background: t.petrol, color: "#fff", fontSize: 13, fontWeight: 700,
-            display: "inline-flex", alignItems: "center", gap: 6,
-          }}
+    <div className="grid" style={{ maxWidth: 1100, margin: "0 auto" }}>
+      <PageHeader
+        title="Deal Analyzer — all runs"
+        lede="Every Fix & Flip analysis across all users. Click a run to inspect it read-only."
+        actions={
+          <Btn variant="pri" onClick={onNew}>
+            <Icon name="plus" size={12} stroke={3} /> New analysis
+          </Btn>
+        }
+      />
+      <Panel noPad>
+        <Table
+          caption="All Fix & Flip runs"
+          cols={[
+            { label: "User" },
+            { label: "Created" },
+            { label: "Address" },
+            { label: "Grade" },
+            { label: "Score" },
+            { label: "Cash to close" },
+            { label: "Status" },
+          ]}
         >
-          <Icon name="plus" size={12} stroke={3} /> New analysis
-        </button>
-      </div>
-      <Card pad={0}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
-            <thead>
-              <tr>
-                {["User", "Created", "Address", "Grade", "Score", "Cash to close", "Status"].map((h) => (
-                  <th key={h} style={th}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={7} style={{ ...td, color: t.ink3 }}>Loading…</td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={7} style={{ ...td, color: t.ink3 }}>No runs yet.</td></tr>
-              ) : (
-                rows.map((r) => {
-                  const ctc = runCashToClose(r);
-                  return (
-                    <tr
-                      key={r.id}
-                      onClick={() => onOpen(r.id)}
-                      style={{ cursor: "pointer" }}
-                    >
-                      <td style={td}>{runCreator(r)}</td>
-                      <td style={{ ...td, color: t.ink3 }}>{new Date(r.created_at).toLocaleDateString()}</td>
-                      <td style={td}>{runAddress(r)}</td>
-                      <td style={td}>{r.deal_grade ?? "—"}</td>
-                      <td style={td}>{r.deal_score ?? "—"}</td>
-                      <td style={td}>{ctc != null ? $(ctc) : "—"}</td>
-                      <td style={{ ...td, color: t.ink3 }}>{r.status}</td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+          {loading ? (
+            <Tr><Td colSpan={7}><Sub>Loading…</Sub></Td></Tr>
+          ) : rows.length === 0 ? (
+            <Tr><Td colSpan={7}><Sub>No runs yet.</Sub></Td></Tr>
+          ) : (
+            rows.map((r) => {
+              const ctc = runCashToClose(r);
+              return (
+                <Tr key={r.id} onClick={() => onOpen(r.id)}>
+                  <Td>{runCreator(r)}</Td>
+                  <Td><Sub>{new Date(r.created_at).toLocaleDateString()}</Sub></Td>
+                  <Td>{runAddress(r)}</Td>
+                  <Td>{r.deal_grade ?? "—"}</Td>
+                  <Td>{r.deal_score ?? "—"}</Td>
+                  <Td>{ctc != null ? $(ctc) : "—"}</Td>
+                  <Td><Sub>{r.status}</Sub></Td>
+                </Tr>
+              );
+            })
+          )}
+        </Table>
+      </Panel>
     </div>
   );
 }
 
 function RunInspect({
-  t,
   row,
   loading,
   onBack,
 }: {
-  t: Th;
   row: FixFlipScenarioRow | undefined;
   loading: boolean;
   onBack: () => void;
 }) {
   const close = (
-    <button
-      type="button"
-      onClick={onBack}
-      aria-label="Close"
-      title="Close"
-      style={{ all: "unset", cursor: "pointer", width: 34, height: 34, borderRadius: 9, border: `1px solid ${t.line}`, color: t.ink2, display: "inline-flex", alignItems: "center", justifyContent: "center", alignSelf: "flex-end" }}
-    >
+    <IconBtn onClick={onBack} aria-label="Close" title="Close">
       <Icon name="x" size={15} />
-    </button>
+    </IconBtn>
   );
   if (loading) {
-    return <div style={{ maxWidth: 860, margin: "0 auto" }}><Card pad={20}><div style={{ fontSize: 13, color: t.ink3 }}>Loading…</div></Card></div>;
+    return (
+      <div style={{ maxWidth: 860, margin: "0 auto" }}>
+        <Card><Sub>Loading…</Sub></Card>
+      </div>
+    );
   }
   if (!row) {
     return (
-      <div style={{ maxWidth: 860, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
-        {close}
-        <Card pad={20}><div style={{ fontSize: 13, color: t.ink2 }}>Run not found.</div></Card>
+      <div className="grid" style={{ maxWidth: 860, margin: "0 auto" }}>
+        <div className="row" style={{ justifyContent: "flex-end" }}>{close}</div>
+        <Card>Run not found.</Card>
       </div>
     );
   }
@@ -1092,52 +1070,39 @@ function RunInspect({
   const num = (v: unknown): string =>
     typeof v === "number" ? $(v) : "—";
   return (
-    <div style={{ maxWidth: 860, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: 0 }}>
-            Viewing {runCreator(row)}&apos;s run
-          </h1>
-          <p style={{ fontSize: 12.5, color: t.ink3, margin: "4px 0 0" }}>
-            {new Date(row.created_at).toLocaleString()} · {runAddress(row)} · read-only
-          </p>
-        </div>
-        {close}
-      </div>
+    <div className="grid" style={{ maxWidth: 860, margin: "0 auto" }}>
+      <PageHeader
+        title={`Viewing ${runCreator(row)}'s run`}
+        lede={`${new Date(row.created_at).toLocaleString()} · ${runAddress(row)} · read-only`}
+        actions={close}
+      />
       {!result ? (
-        <Card pad={20}>
-          <div style={{ fontSize: 13, color: t.ink2 }}>
-            This run has no saved result snapshot to display.
-          </div>
-        </Card>
+        <Card>This run has no saved result snapshot to display.</Card>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-          <Card pad={14}><KPI label="Deal Grade" value={String(row.deal_grade ?? "—")} sub={`Score ${row.deal_score ?? "—"}/100`} /></Card>
-          <Card pad={14}><KPI label="Net Profit" value={num(result["projectedNetProfit"])} /></Card>
-          <Card pad={14}><KPI label="Cash to Close" value={num(result["estimatedCashToClose"])} /></Card>
-          <Card pad={14}><KPI label="Loan Amount" value={num(result["loanAmount"])} /></Card>
-          <Card pad={14}><KPI label="Construction outside loan" value={num(result["constructionOutsideLoan"])} /></Card>
-          <Card pad={14}><KPI label="Within 75% ARV" value={result["withinArvEnvelope"] ? "Yes" : "No"} /></Card>
-        </div>
+        <KpiRow>
+          <Kpi label="Deal Grade" value={String(row.deal_grade ?? "—")} sub={`Score ${row.deal_score ?? "—"}/100`} />
+          <Kpi label="Net Profit" value={num(result["projectedNetProfit"])} />
+          <Kpi label="Cash to Close" value={num(result["estimatedCashToClose"])} />
+          <Kpi label="Loan Amount" value={num(result["loanAmount"])} />
+          <Kpi label="Construction outside loan" value={num(result["constructionOutsideLoan"])} />
+          <Kpi label="Within 75% ARV" value={result["withinArvEnvelope"] ? "Yes" : "No"} />
+        </KpiRow>
       )}
       {inputs ? (
-        <Card pad={16}>
-          <SectionLabel>Saved inputs</SectionLabel>
-          <pre style={{ fontSize: 11.5, color: t.ink2, whiteSpace: "pre-wrap", margin: 0 }}>
+        <Panel title="Saved inputs">
+          <pre className="sub" style={{ whiteSpace: "pre-wrap", margin: 0 }}>
             {JSON.stringify(inputs, null, 2)}
           </pre>
-        </Card>
+        </Panel>
       ) : null}
     </div>
   );
 }
 
 function HudForecast({
-  t,
   result,
   arv,
 }: {
-  t: Th;
   result: Analysis;
   arv: number;
 }) {
@@ -1154,41 +1119,34 @@ function HudForecast({
     { k: "Loan amount (credit)", v: -result.loanAmount, kind: "credit" },
     { k: "Estimated cash to close", v: result.estimatedCashToClose, kind: "final" },
   ];
-  const head = { fontSize: 10.5, fontWeight: 700, color: t.ink4, textTransform: "uppercase" as const, letterSpacing: 0.6 };
   return (
-    <div style={{ fontSize: 13 }}>
-      <div style={{ display: "flex", padding: "0 0 6px" }}>
-        <span style={{ flex: 1, ...head }}>Item</span>
-        <span style={{ width: 130, textAlign: "right", ...head }}>Amount</span>
-        <span style={{ width: 70, textAlign: "right", ...head }}>% ARV</span>
-      </div>
-      {lines.map((l) => {
-        const isTotal = l.kind === "total" || l.kind === "final";
-        const credit = l.kind === "credit";
-        const pct = arv > 0 ? (Math.abs(l.v) / arv) * 100 : 0;
-        return (
-          <div
-            key={l.k}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              padding: l.kind === "final" ? "10px 0 0" : "6px 0",
-              borderTop: l.kind === "final" ? `1px solid ${t.line}` : "none",
-              borderBottom: l.kind === "final" ? "none" : `1px solid ${t.line}`,
-            }}
-          >
-            <span style={{ flex: 1, color: isTotal ? t.ink : t.ink2, fontWeight: isTotal ? 800 : 400 }}>{l.k}</span>
-            <span style={{ width: 130, textAlign: "right", fontWeight: isTotal ? 800 : 700, color: credit ? t.profit : isTotal ? t.ink : t.ink2 }}>
-              {credit ? `(${$(Math.abs(l.v))})` : $(l.v)}
-            </span>
-            <span style={{ width: 70, textAlign: "right", color: t.ink3 }}>({pct.toFixed(1)}%)</span>
-          </div>
-        );
-      })}
-      <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 8 }}>
-        Cash to close is only the money due at the table — not the total project cost.
-        Forecast only; final figures depend on lender approval, title, taxes, insurance,
-        draw schedule, and the final settlement statement.
+    <div>
+      <Table
+        caption="HUD forecast"
+        cols={[{ label: "Item" }, { label: "Amount", align: "r" }, { label: "% ARV", align: "r" }]}
+      >
+        {lines.map((l) => {
+          const isTotal = l.kind === "total" || l.kind === "final";
+          const credit = l.kind === "credit";
+          const share = arv > 0 ? (Math.abs(l.v) / arv) * 100 : 0;
+          const amount = credit ? `(${$(Math.abs(l.v))})` : $(l.v);
+          return (
+            <Tr key={l.k}>
+              <Td>{isTotal ? <b>{l.k}</b> : l.k}</Td>
+              <Td align="r">
+                <b style={credit ? { color: "var(--ok)" } : undefined}>{amount}</b>
+              </Td>
+              <Td align="r"><Sub>({share.toFixed(1)}%)</Sub></Td>
+            </Tr>
+          );
+        })}
+      </Table>
+      <div className="mt">
+        <Sub>
+          Cash to close is only the money due at the table — not the total project cost.
+          Forecast only; final figures depend on lender approval, title, taxes, insurance,
+          draw schedule, and the final settlement statement.
+        </Sub>
       </div>
     </div>
   );
