@@ -1,0 +1,48 @@
+// What a client-room bank connection has to carry across an OAuth round trip.
+//
+// An OAuth bank navigates the browser away from the room entirely and returns
+// it to /plaid/oauth. The room's identity lives in ITS url — a token and a
+// passcode — and that url is gone by the time the bank sends the user back, so
+// everything needed to finish the exchange is stashed before Link opens.
+//
+// These names live here rather than in the page because a Next.js page module
+// may only export a default component and a fixed set of framework fields; an
+// extra export is a build error. Two files read these keys, so one owner is
+// right regardless.
+//
+// sessionStorage, not localStorage: this is scoped to the tab doing the
+// connecting and should not outlive it. A passcode has no business persisting
+// after the tab closes.
+
+export const ROOM_LINK_TOKEN_KEY = "qc.room.plaid.link_token";
+export const ROOM_TOKEN_KEY = "qc.room.plaid.token";
+export const ROOM_PASSCODE_KEY = "qc.room.plaid.passcode";
+export const ROOM_RETURN_KEY = "qc.room.plaid.return";
+
+export function stashRoomHandoff(args: {
+  linkToken: string;
+  token: string;
+  passcode: string;
+  returnTo: string;
+}) {
+  sessionStorage.setItem(ROOM_LINK_TOKEN_KEY, args.linkToken);
+  sessionStorage.setItem(ROOM_TOKEN_KEY, args.token);
+  sessionStorage.setItem(ROOM_PASSCODE_KEY, args.passcode);
+  sessionStorage.setItem(ROOM_RETURN_KEY, args.returnTo);
+}
+
+export function readRoomHandoff() {
+  const linkToken = sessionStorage.getItem(ROOM_LINK_TOKEN_KEY);
+  const token = sessionStorage.getItem(ROOM_TOKEN_KEY);
+  const passcode = sessionStorage.getItem(ROOM_PASSCODE_KEY);
+  const returnTo = sessionStorage.getItem(ROOM_RETURN_KEY);
+  if (!linkToken || !token || !passcode) return null;
+  return { linkToken, token, passcode, returnTo };
+}
+
+/** Clear the handoff, including the passcode. Call on every terminal outcome. */
+export function clearRoomHandoff() {
+  [ROOM_LINK_TOKEN_KEY, ROOM_TOKEN_KEY, ROOM_PASSCODE_KEY, ROOM_RETURN_KEY].forEach((k) =>
+    sessionStorage.removeItem(k),
+  );
+}

@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePlaidLink } from "react-plaid-link";
+import { stashRoomHandoff } from "@/lib/roomPlaidHandoff";
 import { apiBase } from "@/lib/api";
 import {
   SignRequestedDocument,
@@ -182,6 +183,14 @@ function BankConnect({
         throw new Error(body?.detail || "Bank connection is not available right now.");
       }
       const out = (await res.json()) as { link_token: string };
+      // An OAuth bank navigates away from this page entirely, so everything
+      // needed to finish the connection has to outlive the room's URL.
+      stashRoomHandoff({
+        linkToken: out.link_token,
+        token,
+        passcode,
+        returnTo: window.location.href,
+      });
       setLinkToken(out.link_token);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bank connection is not available right now.");

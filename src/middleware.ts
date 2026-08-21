@@ -25,6 +25,11 @@ const isPublicPage = createRouteMatcher([
   // need to not bounce them off the edge.
   "/hud/share(.*)",
   "/buckets/request(.*)",
+  // Plaid OAuth return for the client room. The room user has no account —
+  // bouncing them to sign-in the moment they come back from their bank loses
+  // the connection. Must match DEALER_OS_PLAID_ROOM_REDIRECT_URI and the
+  // Plaid Dashboard's Allowed redirect URIs exactly.
+  "/plaid/oauth(.*)",
   "/buckets/share(.*)",
   "/buckets/public-share(.*)",
   // agreement.qualifiedcommercial.com portal -- public, unauthenticated,
