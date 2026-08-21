@@ -110,7 +110,6 @@ interface Props {
 }
 
 export function LeadsPipelineView({ view, search }: Props) {
-  const { t } = useTheme();
   const profile = useActiveProfile();
   const isAgent = profile.role === "broker";
   const isInternal = profile.role === "super_admin" || profile.role === "loan_exec";
@@ -668,7 +667,6 @@ function PipelineSignals({
 // (deal type + title) and we POST /clients/{id}/deals, then route
 // to /deals/{new_deal_id} so they land directly on their file.
 function CreateFileModal({ client, onClose }: { client: EnrichedClient; onClose: () => void }) {
-  const { t } = useTheme();
   const router = useRouter();
   const create = useCreateDeal(client.id);
   const { data: aiAgents = [] } = useAiAgents();
