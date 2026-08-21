@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { QCMark } from "@/components/QCMark";
 import { apiBase } from "@/lib/api";
+import { RoomActions } from "@/components/room/RoomActions";
 
 type RequestedDoc = {
   id: string;
@@ -479,6 +480,11 @@ export default function BucketRequestPage() {
 
               {activeTab === "todo" ? (
                 <section style={sideSection}>
+                  <RoomActions
+                    token={token}
+                    passcode={passcode.trim()}
+                    onChanged={() => { refreshRoom().catch(() => undefined); }}
+                  />
                   <h2 style={sectionTitle}>What needs attention</h2>
                   {visibleTasks.filter((task) => task.status !== "completed").length ? (
                     <div style={docList}>
