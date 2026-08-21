@@ -6,6 +6,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, Pill, useToast, Toast } from "@/components/design-system/primitives";
+import { LENDING_INTENTS, MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
 import { Modal } from "@/components/design-system/Modal";
 import { Icon } from "@/components/design-system/Icon";
 import { TypingDots } from "@/components/design-system/TypingDots";
@@ -1881,8 +1882,10 @@ function ClientConversation({ adapter, clientName }: { adapter: LeadCockpitAdapt
   );
 }
 
+type LeadVariant = "dealer" | "real_estate" | "main_street" | "mca_refinance";
+
 type CreateLeadPayload = {
-  variant: "dealer" | "real_estate";
+  variant: LeadVariant;
   full_name: string;
   email: string;
   phone?: string;
@@ -1894,6 +1897,11 @@ type CreateLeadPayload = {
   estimated_value_or_purchase_price?: number;
   monthly_rent?: number;
   estimated_credit_tier?: string;
+  // Main Street only. Both are required for the file to be screened correctly:
+  // industry gates the sector-restricted programs, and intent decides which
+  // documents get requested at all.
+  industry?: string;
+  intent?: string;
   notify_client: boolean;
   preferred_language: "en" | "es";
 };
@@ -1908,7 +1916,9 @@ function CreateLeadModal({
   creating: boolean;
 }) {
   const { t } = useTheme();
-  const [variant, setVariant] = useState<"dealer" | "real_estate">("dealer");
+  const [variant, setVariant] = useState<LeadVariant>("dealer");
+  const [industry, setIndustry] = useState<string>("other");
+  const [intent, setIntent] = useState<string>("working_capital");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -1925,6 +1935,7 @@ function CreateLeadModal({
   const [error, setError] = useState("");
 
   const isRE = variant === "real_estate";
+  const isMS = variant === "main_street";
   const label = (text: string) => ({ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: 1, marginBottom: 4, display: "block" });
   const num = (s: string) => (s.trim() === "" ? undefined : Number(s));
 
@@ -1945,6 +1956,8 @@ function CreateLeadModal({
       estimated_value_or_purchase_price: isRE ? num(propertyValue) : undefined,
       monthly_rent: isRE ? num(monthlyRent) : undefined,
       estimated_credit_tier: isRE ? (creditTier.trim() || undefined) : undefined,
+      industry: isMS ? industry : undefined,
+      intent: isMS ? intent : undefined,
       notify_client: notifyClient,
       preferred_language: preferredLanguage,
     });
@@ -1960,9 +1973,11 @@ function CreateLeadModal({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div>
             <label style={label("Type")}>Lead type</label>
-            <select value={variant} onChange={(e) => setVariant(e.target.value as "dealer" | "real_estate")} style={{ ...inputStyle(t), width: "100%" }}>
+            <select value={variant} onChange={(e) => setVariant(e.target.value as LeadVariant)} style={{ ...inputStyle(t), width: "100%" }}>
               <option value="dealer">Dealer</option>
               <option value="real_estate">Real estate</option>
+              <option value="main_street">Main Street (operating business)</option>
+              <option value="mca_refinance">MCA refinance</option>
             </select>
           </div>
           <div>
@@ -1999,6 +2014,35 @@ function CreateLeadModal({
             </div>
           )}
         </div>
+
+        {isMS ? (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={label("Industry")}>Industry *</label>
+              <select value={industry} onChange={(e) => setIndustry(e.target.value)} style={{ ...inputStyle(t), width: "100%" }}>
+                {MAIN_STREET_INDUSTRIES.map((i) => (
+                  <option key={i.slug} value={i.slug}>{i.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={label("Looking for")}>What they need *</label>
+              <select value={intent} onChange={(e) => setIntent(e.target.value)} style={{ ...inputStyle(t), width: "100%" }}>
+                {MAIN_STREET_INTENTS.map((i) => (
+                  <option key={i.slug} value={i.slug}>{i.label}</option>
+                ))}
+              </select>
+            </div>
+            <p style={{ gridColumn: "1 / -1", margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
+              {LENDING_INTENTS.has(intent)
+                ? "These decide the document checklist and which programs get screened, so they are worth getting right at creation."
+                : "This is a qualification conversation, not a loan file — no documents will be requested and no fundability verdict is computed."}
+            </p>
+            <p style={{ gridColumn: "1 / -1", margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
+              Operating-business leads have no client-facing room yet, so no login link is sent. Work the file from here.
+            </p>
+          </div>
+        ) : null}
 
         {isRE ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>

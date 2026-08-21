@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEven
 import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
+import { MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
 import { Modal } from "@/components/design-system/Modal";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill, SectionLabel } from "@/components/design-system/primitives";
@@ -3482,12 +3483,18 @@ export default function BucketsAdminPage() {
   );
 }
 
+type ConvertLeadVariant = "dealer" | "real_estate" | "main_street" | "mca_refinance";
+
 type ConvertLeadPayload = {
-  variant: "dealer" | "real_estate";
+  variant: ConvertLeadVariant;
   full_name: string;
   email: string;
   phone?: string;
   business_name?: string;
+  // Main Street only. The bucket's documents stay as they are on this path, so
+  // these steer the AI framing and the program screen rather than a checklist.
+  industry?: string;
+  intent?: string;
   notify_client: boolean;
 };
 
@@ -3506,8 +3513,19 @@ function ConvertToLeadModal({
 }) {
   const { t } = useTheme();
   const field = inputStyle(t);
-  const guessedVariant: "dealer" | "real_estate" = (bucket.bucket_type || "").toLowerCase().includes("real_estate") ? "real_estate" : "dealer";
-  const [variant, setVariant] = useState<"dealer" | "real_estate">(guessedVariant);
+  // Guess from the bucket's own type before making the operator choose. Each
+  // variant has its own bucket_type, so this is usually right.
+  const bucketType = (bucket.bucket_type || "").toLowerCase();
+  const guessedVariant: ConvertLeadVariant = bucketType.includes("real_estate")
+    ? "real_estate"
+    : bucketType.includes("main_street")
+      ? "main_street"
+      : bucketType.includes("mca")
+        ? "mca_refinance"
+        : "dealer";
+  const [variant, setVariant] = useState<ConvertLeadVariant>(guessedVariant);
+  const [industry, setIndustry] = useState<string>("other");
+  const [intent, setIntent] = useState<string>("working_capital");
   const [fullName, setFullName] = useState(bucket.client_name || "");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -3527,6 +3545,8 @@ function ConvertToLeadModal({
       email: email.trim(),
       phone: phone.trim() || undefined,
       business_name: businessName.trim() || undefined,
+      industry: variant === "main_street" ? industry : undefined,
+      intent: variant === "main_street" ? intent : undefined,
       notify_client: notifyClient,
     });
   }
@@ -3542,11 +3562,37 @@ function ConvertToLeadModal({
 
         <div>
           <label style={label("Type")}>Lead type</label>
-          <select value={variant} onChange={(e) => setVariant(e.target.value as "dealer" | "real_estate")} style={{ ...field, width: "100%" }}>
+          <select value={variant} onChange={(e) => setVariant(e.target.value as ConvertLeadVariant)} style={{ ...field, width: "100%" }}>
             <option value="dealer">Dealer</option>
             <option value="real_estate">Real estate</option>
+            <option value="main_street">Main Street (operating business)</option>
+            <option value="mca_refinance">MCA refinance</option>
           </select>
         </div>
+
+        {variant === "main_street" ? (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={label("Industry")}>Industry *</label>
+              <select value={industry} onChange={(e) => setIndustry(e.target.value)} style={{ ...field, width: "100%" }}>
+                {MAIN_STREET_INDUSTRIES.map((i) => (
+                  <option key={i.slug} value={i.slug}>{i.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={label("Looking for")}>What they need *</label>
+              <select value={intent} onChange={(e) => setIntent(e.target.value)} style={{ ...field, width: "100%" }}>
+                {MAIN_STREET_INTENTS.map((i) => (
+                  <option key={i.slug} value={i.slug}>{i.label}</option>
+                ))}
+              </select>
+            </div>
+            <p style={{ gridColumn: "1 / -1", margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
+              These decide how the AI reads the file and which programs it is screened against.
+            </p>
+          </div>
+        ) : null}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div>
