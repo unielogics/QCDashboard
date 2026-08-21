@@ -1,598 +1,268 @@
 "use client";
 
+// The sidebar: brand, grouped nav, all-tools, identity.
+//
+// It used to hold six flat per-role arrays inline — the operator's ran to twenty
+// items — plus its own inline styling for every element. The lists now live in
+// nav.config.ts as data, and everything here is `.side` / `.nav` / `.grp` /
+// `.foot` from globals.css.
+//
+// Capability parity with the version this replaces, item for item: collapse with
+// localStorage persistence, per-role item filtering, the Gmail-gated Inbox item,
+// unread badges, the identity menu (profile, settings for super admin, sign
+// out), and the Terms / Privacy / Disclosures links — which moved INTO the
+// identity menu rather than being dropped. They must stay reachable for app
+// store review.
+
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { SignedIn, SignedOut, UserButton, useClerk } from "@clerk/nextjs";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Avatar } from "@/components/design-system/primitives";
+import { useClerk } from "@clerk/nextjs";
 import { Icon } from "@/components/design-system/Icon";
+import { QCMark } from "@/components/QCMark";
 import { useUI } from "@/store/ui";
 import { SIGN_IN_URL } from "@/lib/appUrl";
-import { useCurrentUser, useGoogleConnection, useDealerChannelInbox } from "@/hooks/useApi";
+import { useCurrentUser, useGoogleConnection } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
-import { QCMark } from "@/components/QCMark";
+import { isActive, navForRole, type NavItem } from "./nav.config";
+import { useNavBadges } from "./useNavBadges";
+import { ToolsDrawer } from "./ToolsDrawer";
 
-interface NavItem {
-  href: string;
-  label: string;
-  icon: string;
-  // role-gating: nav item only shows when current user role matches one of these
-  // (omit to show for everyone)
-  roles?: Role[];
-}
-
-// Icons match design (icons.jsx) — `bolt` for AI, `doc` for Documents,
-// `trend` for Reports — not the previously-used aliases.
-//
-// Two NAV variants exist:
-//
-//   AGENT_NAV — the Funding Command Center IA for BROKER (Agent) users.
-//   Broker daily work starts with file/client communication and calendar,
-//   then secondary analysis, AI, reporting, and settings tools.
-//
-//   OPERATOR_NAV — the existing firm-wide operator nav for Super Admin /
-//   Underwriter / Borrower. Preserved per Architecture Rule #5: do not break
-//   current operator workflows when reorganizing for Agents.
-const AGENT_NAV: NavItem[] = [
-  { href: "/", label: "Dashboard", icon: "home" },
-  { href: "/pipeline", label: "My Pipeline", icon: "layers" },
-  { href: "/clients", label: "Clients", icon: "clients" },
-  { href: "/messages", label: "Messages", icon: "chat" },
-  { href: "/calendar", label: "Calendar", icon: "cal" },
-  { href: "/booking-settings", label: "Booking Page", icon: "link" },
-  { href: "/admin/prequal-requests", label: "Prequalifications", icon: "docCheck" },
-  { href: "/deal-analyzer", label: "Deal Analyzer", icon: "hammer" },
-  { href: "/simulator", label: "Simulation", icon: "calc" },
-  { href: "/ai-inbox", label: "Elara Inbox", icon: "bolt" },
-  { href: "/ai-agents", label: "AI Outreach", icon: "spark" },
-  // /vault intentionally omitted for agents — they collect docs from
-  // INSIDE a deal (Documents tab on the loan/client detail page) rather
-  // than from a global firm-wide vault. Operators keep their /vault
-  // entry below.
-  { href: "/reports", label: "Performance", icon: "trend" },
-  { href: "/agent-settings", label: "Settings", icon: "gear" },
-];
-
-const REGIONAL_MANAGER_NAV: NavItem[] = [
-  { href: "/", label: "Dashboard", icon: "home" },
-  { href: "/pipeline", label: "Portfolio Pipeline", icon: "layers" },
-  { href: "/clients", label: "Clients", icon: "clients" },
-  { href: "/messages", label: "Messages", icon: "chat" },
-  { href: "/calendar", label: "Calendar", icon: "cal" },
-  { href: "/booking-settings", label: "Booking Page", icon: "link" },
-  { href: "/reports", label: "Reports", icon: "trend" },
-  { href: "/regional-agents", label: "Agents", icon: "clients" },
-  { href: "/profile", label: "Profile", icon: "user" },
-];
-
-const VENDOR_NAV: NavItem[] = [
-  { href: "/vendor/buckets", label: "Buckets", icon: "lock" },
-  { href: "/profile", label: "Profile", icon: "user" },
-];
-
-// DEALER_PARTNER_NAV — explicit allow-list for external loan-referral
-// partners, scoped to the dealer AI-intake tool only (no book-of-business
-// like Role.BROKER's AGENT_NAV has). Same deny-by-default philosophy as
-// CLIENT_NAV above.
-const DEALER_PARTNER_NAV: NavItem[] = [
-  { href: "/broker/ai-underwriter-leads", label: "My Leads", icon: "spark" },
-  { href: "/broker/messages", label: "Messages", icon: "chat" },
-  { href: "/broker/programs", label: "Programs & Resources", icon: "docCheck" },
-  { href: "/profile", label: "Profile", icon: "user" },
-];
-
-// CLIENT_NAV — explicit allow-list for borrowers. Previously CLIENT fell
-// through to OPERATOR_NAV below and was excluded only from items that
-// declared a `roles` array — meaning a future operator-only nav item added
-// without that array would be client-visible by default. This flips the
-// default to deny, matching the scoping.py philosophy already used for
-// backend queries: a client sees only what's explicitly listed here.
-// /pipeline is safe to include as-is — it self-branches to
-// ClientFilePipeline for CLIENT role (see app/pipeline/page.tsx).
-const CLIENT_NAV: NavItem[] = [
-  { href: "/", label: "Dashboard", icon: "home" },
-  { href: "/pipeline", label: "My File", icon: "layers" },
-  { href: "/vault", label: "Vault", icon: "vault" },
-  { href: "/messages", label: "Messages", icon: "chat" },
-  { href: "/calendar", label: "Calendar", icon: "cal" },
-  { href: "/profile", label: "Profile", icon: "user" },
-];
-
-const OPERATOR_NAV: NavItem[] = [
-  { href: "/", label: "Dashboard", icon: "home" },
-  { href: "/pipeline", label: "Pipeline", icon: "layers" },
-  { href: "/ai-inbox", label: "Elara Inbox", icon: "bolt", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
-  { href: "/clients", label: "Clients", icon: "clients", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
-  { href: "/vault", label: "Vault", icon: "vault" },
-  { href: "/admin/buckets", label: "Buckets", icon: "lock", roles: [Role.SUPER_ADMIN] },
-  { href: "/admin/ai-underwriter-leads", label: "AI Underwriter Leads", icon: "spark", roles: [Role.SUPER_ADMIN] },
-  { href: "/admin/dealer-messages", label: "Dealer Messages", icon: "chat", roles: [Role.SUPER_ADMIN] },
-  { href: "/admin/prequal-requests", label: "Prequalifications", icon: "docCheck", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
-  { href: "/admin/lenders", label: "Lenders", icon: "building", roles: [Role.SUPER_ADMIN] },
-  { href: "/admin/agreements", label: "Agreements", icon: "docCheck", roles: [Role.SUPER_ADMIN] },
-  // Closing-cost tiers moved into Settings → "Deal Analyzer" tab.
-  // Lending AI is reached from /settings → "Open Lending AI" banner.
-  { href: "/messages", label: "Messages", icon: "chat" },
-  { href: "/calendar", label: "Calendar", icon: "cal" },
-  { href: "/booking-settings", label: "Booking Page", icon: "link" },
-  { href: "/simulator", label: "Simulate", icon: "calc" },
-  { href: "/deal-analyzer", label: "Deal Analyzer", icon: "hammer" },
-  { href: "/rates", label: "Rate Sheet", icon: "sliders", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
-  { href: "/reports", label: "Reports", icon: "trend", roles: [Role.SUPER_ADMIN, Role.LOAN_EXEC] },
-  { href: "/rewards", label: "Rewards", icon: "trophy", roles: [Role.SUPER_ADMIN] },
-  { href: "/settings", label: "Settings", icon: "gear", roles: [Role.SUPER_ADMIN] },
-];
-
-const ROLE_LABEL: Record<string, string> = {
-  super_admin: "Super Admin",
-  regional_manager: "Regional Manager",
-  broker: "Agent",
-  loan_exec: "Underwriter",
-  client: "Client",
-  vendor: "Vendor",
-  dealer_partner: "Dealer Partner",
-};
-
-export default function Sidebar() {
-  const { t } = useTheme();
-  const pathname = usePathname();
+export function Sidebar() {
+  const pathname = usePathname() || "/";
   const router = useRouter();
   const clerk = useClerk();
-  const collapsed = useUI((s) => s.sidebarCollapsed);
-  const toggleSidebar = useUI((s) => s.toggleSidebar);
   const { data: user } = useCurrentUser();
-  // Dealer-partner Messages unread → nav dot on /broker/messages. Only fetches
-  // for dealer partners (enabled flag), so no extra load for other roles.
-  const { data: dealerInbox } = useDealerChannelInbox(user?.role === Role.DEALER_PARTNER);
-  const { data: adminDealerInbox } = useDealerChannelInbox(user?.role === Role.SUPER_ADMIN, "admin");
-  const unreadForNav = (href: string): number =>
-    href === "/broker/messages"
-      ? dealerInbox?.total_unread ?? 0
-      : href === "/admin/dealer-messages"
-        ? adminDealerInbox?.total_unread ?? 0
-        : 0;
-  // Workspace inbox visibility is a RUNTIME gate (has a connected Gmail mailbox),
-  // which the static `roles` field can't express — inject the /inbox link only
-  // when the user's mailbox is connected. Clients never see it.
   const { data: googleConn } = useGoogleConnection();
+
+  const collapsed = useUI((s) => s.sidebarCollapsed);
+  const setCollapsed = useUI((s) => s.setSidebarCollapsed);
+
   const [menuOpen, setMenuOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  // Pick the IA variant by role. Agents get the Funding Command Center IA;
-  // every other role keeps the existing operator nav. Until /auth/me resolves,
-  // hide role-gated items rather than flicker.
-  const NAV =
-    user?.role === Role.BROKER ? AGENT_NAV
-    : user?.role === Role.REGIONAL_MANAGER ? REGIONAL_MANAGER_NAV
-    : user?.role === Role.VENDOR ? VENDOR_NAV
-    : user?.role === Role.CLIENT ? CLIENT_NAV
-    : user?.role === Role.DEALER_PARTNER ? DEALER_PARTNER_NAV
-    : OPERATOR_NAV;
-  const items = NAV.filter((n) => !n.roles || (user && n.roles.includes(user.role as Role)));
-  // Insert "Inbox" after Elara Inbox (or at top) for mailbox owners — never
-  // for clients or dealer partners, both thin allow-listed roles.
-  if (user && user.role !== Role.CLIENT && user.role !== Role.DEALER_PARTNER && googleConn?.gmail_connected) {
-    const inboxItem: NavItem = { href: "/inbox", label: "Inbox", icon: "mail" };
-    if (!items.some((n) => n.href === "/inbox")) {
-      const anchor = items.findIndex((n) => n.href === "/ai-inbox");
-      items.splice(anchor >= 0 ? anchor + 1 : 1, 0, inboxItem);
-    }
-  }
+  const nav = navForRole(user?.role);
+  const badges = useNavBadges(user?.role);
 
-  const initials = user?.name
-    ? user.name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()
-    : "?";
-
-  // Click-outside + Escape close the identity popover.
   useEffect(() => {
     if (!menuOpen) return;
-    const onClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
-    document.addEventListener("mousedown", onClick);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onClick);
-      document.removeEventListener("keydown", onKey);
-    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
   }, [menuOpen]);
 
-  const handleSignOut = async () => {
-    setMenuOpen(false);
+  async function handleSignOut() {
     try {
       await clerk.signOut({ redirectUrl: SIGN_IN_URL });
     } catch {
-      // If Clerk's signOut hiccups, send to the app sign-in anyway so the user lands somewhere sensible.
-      window.location.assign(SIGN_IN_URL);
+      // If Clerk's signOut hiccups, land the user somewhere sensible anyway.
+      window.location.href = SIGN_IN_URL;
     }
-  };
+  }
+
+  /** Gmail-gated items disappear until the mailbox is actually connected. */
+  const visible = (items: NavItem[]) =>
+    items.filter((n) => n.requires !== "gmail" || Boolean(googleConn?.gmail_connected));
+
+  const initials =
+    (user?.name || user?.email || "?")
+      .split(/[\s@.]+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((s) => s[0]?.toUpperCase())
+      .join("") || "?";
 
   return (
-    <aside
-      style={{
-        width: collapsed ? 68 : 232,
-        flexShrink: 0,
-        borderRight: `1px solid ${t.line}`,
-        background: t.surface,
-        display: "flex",
-        flexDirection: "column",
-        transition: "width .18s ease",
-        // overflow:visible so the identity-card popover (which renders ABOVE
-        // the footer with bottom:calc(100% + 8px)) isn't clipped by aside.
-        // Internal regions (logo, nav) hide their own overflow as needed.
-        // Height is inherited from the AppShell grid row (height:100vh) —
-        // adding sticky/100vh here fights the grid and caused page-level
-        // scroll on tall content.
-        overflow: "visible",
-      }}
-    >
-      {/* Logo + collapse toggle. The toggle persists to localStorage via the
-          ui store so the user's choice survives a refresh. When collapsed,
-          the toggle sits below the QC mark (no room beside it at 68px). */}
-      <div
-        style={{
-          padding: collapsed ? "16px 8px 8px" : "20px 14px 20px 18px",
-          display: "flex",
-          flexDirection: collapsed ? "column" : "row",
-          alignItems: "center",
-          gap: collapsed ? 8 : 10,
-          justifyContent: collapsed ? "center" : "flex-start",
-        }}
-      >
-        <QCMark size={32} />
-        {!collapsed && (
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, letterSpacing: -0.2 }}>Qualified</div>
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 600,
-                color: t.ink3,
-                letterSpacing: 1.4,
-                textTransform: "uppercase",
-              }}
-            >
-              Operator Console
-            </div>
-          </div>
-        )}
-        <button
-          onClick={toggleSidebar}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          style={{
-            all: "unset",
-            cursor: "pointer",
-            width: 26,
-            height: 26,
-            borderRadius: 7,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: t.ink3,
-            background: "transparent",
-            border: `1px solid transparent`,
-            transition: "background 120ms, border-color 120ms",
-            flexShrink: 0,
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = t.surface2;
-            (e.currentTarget as HTMLButtonElement).style.borderColor = t.line;
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "transparent";
-          }}
-        >
-          <Icon name={collapsed ? "chevR" : "chevL"} size={14} stroke={2.4} />
-        </button>
-      </div>
-
-      {/* Nav */}
-      <nav
-        style={{
-          padding: "0 8px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 2,
-          flex: 1,
-          // min-height:0 is REQUIRED for flex:1 children to actually shrink
-          // and let overflow:auto kick in. Without it the nav pushes the
-          // footer below the viewport when there are many nav items.
-          minHeight: 0,
-          overflowY: "auto",
-          overflowX: "hidden",
-        }}
-      >
-        {items.map((n) => {
-          const active =
-            n.href === "/"
-              ? pathname === "/"
-              : pathname === n.href || pathname.startsWith(n.href + "/");
-          return (
-            <Link
-              key={n.href}
-              href={n.href}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 11,
-                padding: collapsed ? "10px" : "9px 11px",
-                borderRadius: 9,
-                background: active ? t.brandSoft : "transparent",
-                color: active ? t.ink : t.ink2,
-                fontSize: 13,
-                fontWeight: active ? 700 : 500,
-                letterSpacing: -0.1,
-                justifyContent: collapsed ? "center" : "flex-start",
-                position: "relative",
-                textDecoration: "none",
-              }}
-            >
-              {/* Left-border active indicator (matches design) */}
-              {active && !collapsed && (
-                <div
-                  style={{
-                    position: "absolute",
-                    left: -8,
-                    top: 8,
-                    bottom: 8,
-                    width: 3,
-                    borderRadius: 3,
-                    background: t.brand,
-                  }}
-                />
-              )}
-              <Icon name={n.icon} size={17} stroke={active ? 2.4 : 1.8} />
-              {!collapsed && <span style={{ flex: 1, textAlign: "left" }}>{n.label}</span>}
-              {unreadForNav(n.href) > 0 && (
-                <span
-                  aria-label={`${unreadForNav(n.href)} unread`}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    minWidth: 18,
-                    height: 18,
-                    padding: "0 5px",
-                    borderRadius: 999,
-                    background: t.brand,
-                    color: t.inverse,
-                    fontSize: 10.5,
-                    fontWeight: 800,
-                    position: collapsed ? "absolute" : "static",
-                    top: collapsed ? 4 : undefined,
-                    right: collapsed ? 6 : undefined,
-                  }}
-                >
-                  {unreadForNav(n.href)}
-                </span>
-              )}
-            </Link>
-          );
-        })}
-      </nav>
-
-      {/* Footer — user identity + Clerk account menu (sign out, manage account).
-          The Clerk <UserButton> renders an avatar that opens its own menu on
-          click; we lay our name + role chips alongside it so the whole row
-          reads as the operator's identity card. */}
-      <div
-        style={{
-          padding: collapsed ? "10px 8px" : 12,
-          borderTop: `1px solid ${t.line}`,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            background: t.surface2,
-            border: `1px solid ${t.line}`,
-            borderRadius: 10,
-            padding: collapsed ? "8px" : "8px 10px",
-            justifyContent: collapsed ? "center" : "flex-start",
-          }}
-        >
-          <SignedIn>
-            <UserButton
-              afterSignOutUrl={SIGN_IN_URL}
-              appearance={{
-                elements: {
-                  avatarBox: { width: 32, height: 32 },
-                },
-              }}
-            />
-          </SignedIn>
-          <SignedOut>
-            <Link
-              href={SIGN_IN_URL}
-              aria-label="Sign in"
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 999,
-                background: t.petrol,
-                color: t.inverse,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                textDecoration: "none",
-                flexShrink: 0,
-              }}
-            >
-              <Icon name="user" size={16} />
-            </Link>
-          </SignedOut>
-
+    <>
+      <aside className="side">
+        <div className="brand">
+          <QCMark size={35} />
           {!collapsed && (
-            <div ref={menuRef} style={{ flex: 1, minWidth: 0, position: "relative" }}>
-              <button
-                onClick={() => setMenuOpen((v) => !v)}
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
-                title="Account menu"
-                style={{
-                  all: "unset",
-                  cursor: "pointer",
-                  display: "block",
-                  width: "100%",
-                  minWidth: 0,
-                }}
-              >
-                {user ? (
-                  <>
-                    <div
-                      style={{
-                        fontSize: 12.5,
-                        fontWeight: 700,
-                        color: t.ink,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {user.name}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 10.5,
-                        color: t.ink3,
-                        fontWeight: 600,
-                        letterSpacing: 0.6,
-                        textTransform: "uppercase",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {ROLE_LABEL[user.role] ?? user.role}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink2 }}>Sign in</div>
-                    <div
-                      style={{
-                        fontSize: 10.5,
-                        color: t.ink3,
-                        fontWeight: 600,
-                        letterSpacing: 0.6,
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Operator Console
-                    </div>
-                  </>
-                )}
-              </button>
-
-              {menuOpen && user && (
-                <div
-                  role="menu"
-                  // Float ABOVE the identity card since this card sits at the
-                  // bottom of the sidebar — opening downward would clip outside
-                  // the viewport.
-                  style={{
-                    position: "absolute",
-                    bottom: "calc(100% + 8px)",
-                    left: 0,
-                    right: 0,
-                    background: t.surface,
-                    border: `1px solid ${t.line}`,
-                    borderRadius: 10,
-                    boxShadow: t.shadowLg,
-                    padding: 4,
-                    zIndex: 60,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 2,
-                  }}
-                >
-                  <button
-                    onClick={() => {
-                      setMenuOpen(false);
-                      router.push("/profile");
-                    }}
-                    style={menuItemStyle(t)}
-                    role="menuitem"
-                  >
-                    <Icon name="user" size={13} /> Open profile
-                  </button>
-                  <button
-                    onClick={() => {
-                      setMenuOpen(false);
-                      router.push("/settings");
-                    }}
-                    style={{
-                      ...menuItemStyle(t),
-                      display: user.role === Role.SUPER_ADMIN ? "flex" : "none",
-                    }}
-                    role="menuitem"
-                  >
-                    <Icon name="gear" size={13} /> Settings
-                  </button>
-                  <div style={{ height: 1, background: t.line, margin: "3px 4px" }} />
-                  <button onClick={handleSignOut} style={menuItemStyle(t, t.danger)} role="menuitem">
-                    <Icon name="arrowR" size={13} /> Sign out
-                  </button>
-                </div>
-              )}
+            <div>
+              <b>Qualified</b>
+              <span>{nav.shellLabel}</span>
             </div>
           )}
         </div>
-      </div>
-      {/* Legal footer — collapsed mode hides the labels but the routes
-          stay reachable from the URL bar / from /sign-up consent links. */}
-      {!collapsed && (
-        <div
-          style={{
-            padding: "6px 16px 12px",
-            display: "flex",
-            justifyContent: "center",
-            gap: 10,
-            fontSize: 10.5,
-            color: t.ink4,
-          }}
-        >
-          <Link href="/terms" style={{ color: "inherit", textDecoration: "none" }}>
-            Terms
-          </Link>
-          <span aria-hidden>·</span>
-          <Link href="/privacy" style={{ color: "inherit", textDecoration: "none" }}>
-            Privacy
-          </Link>
-          <span aria-hidden>·</span>
-          <Link href="/disclosures" style={{ color: "inherit", textDecoration: "none" }}>
-            Disclosures
-          </Link>
-        </div>
-      )}
-      {/* Suppress unused warning for `initials` — kept for future fallback */}
-      <span style={{ display: "none" }}>{initials}</span>
-    </aside>
-  );
-}
 
-function menuItemStyle(
-  t: ReturnType<typeof useTheme>["t"],
-  color?: string,
-): React.CSSProperties {
-  return {
-    all: "unset",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "8px 10px",
-    borderRadius: 7,
-    fontSize: 12.5,
-    fontWeight: 600,
-    color: color ?? t.ink,
-  };
+        <button
+          type="button"
+          className="navtoggle"
+          onClick={() => setCollapsed(!collapsed)}
+          title={collapsed ? "Expand menu" : "Collapse menu"}
+          aria-label={collapsed ? "Expand menu" : "Collapse menu"}
+        >
+          {collapsed ? "»" : "«"}
+        </button>
+
+        <nav className="nav">
+          {nav.groups.map((g) => {
+            const items = visible(g.items);
+            if (!items.length) return null;
+            return (
+              <div key={g.id} style={{ display: "contents" }}>
+                <div className="grp">{g.label}</div>
+                {items.map((n) => {
+                  const count = n.badge ? badges[n.badge] ?? 0 : 0;
+                  return (
+                    <Link
+                      key={n.href}
+                      href={n.href}
+                      className={isActive(n, pathname) ? "on" : ""}
+                      title={collapsed ? n.label : undefined}
+                    >
+                      <Icon name={n.icon} size={17} />
+                      {!collapsed && <span className="navlbl">{n.label}</span>}
+                      {count > 0 && (
+                        <span className="bdg" aria-label={`${count} unread`}>
+                          {count > 99 ? "99+" : count}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            );
+          })}
+
+          {nav.tools.length > 0 && (
+            <>
+              <div style={{ height: 1, background: "var(--line)", margin: "12px 10px 8px" }} />
+              <button type="button" className="toollink" onClick={() => setToolsOpen(true)}>
+                <Icon name="layers" size={17} />
+                {!collapsed && <span>All tools</span>}
+              </button>
+            </>
+          )}
+
+          {nav.scopeNote && !collapsed && (
+            <div
+              style={{
+                margin: "12px 10px 0",
+                padding: "10px 11px",
+                border: "1px solid var(--line)",
+                borderRadius: 10,
+                background: "var(--sunken2)",
+              }}
+            >
+              <span className="lbl" style={{ fontSize: 9.4 }}>
+                Scoped account
+              </span>
+              <div className="sub" style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.45 }}>
+                {nav.scopeNote}
+              </div>
+            </div>
+          )}
+        </nav>
+
+        <div className="foot" ref={menuRef} style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              background: "none",
+              border: 0,
+              padding: 0,
+              cursor: "pointer",
+              width: "100%",
+              textAlign: "left",
+              minWidth: 0,
+            }}
+          >
+            <div className="avatar">{initials}</div>
+            {!collapsed && (
+              <div className="ident" style={{ minWidth: 0, flex: 1 }}>
+                <b style={{ fontSize: 12.5, display: "block", lineHeight: 1.2 }}>
+                  {user?.name || user?.email || "Signed in"}
+                </b>
+                <span
+                  className="sub"
+                  style={{
+                    fontSize: 10.5,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    fontWeight: 640,
+                  }}
+                >
+                  {nav.roleLabel}
+                </span>
+              </div>
+            )}
+          </button>
+
+          {menuOpen && (
+            <div
+              role="menu"
+              className="popmenu"
+              // Opens upward: this card sits at the bottom of the sidebar, so a
+              // downward menu would clip outside the viewport.
+              style={{ bottom: "calc(100% + 8px)", top: "auto", left: 0, right: 0 }}
+            >
+              <button
+                type="button"
+                className="mi"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  router.push("/profile");
+                }}
+              >
+                Open profile
+              </button>
+              {user?.role === Role.SUPER_ADMIN && (
+                <button
+                  type="button"
+                  className="mi"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    router.push("/settings");
+                  }}
+                >
+                  Settings
+                </button>
+              )}
+              <div style={{ height: 1, background: "var(--line)", margin: "3px 4px" }} />
+              {/* Legal links live here now rather than in a sidebar footer row.
+                  They must stay reachable — app store review checks for them. */}
+              <Link className="mi" href="/terms" role="menuitem" onClick={() => setMenuOpen(false)}>
+                Terms
+              </Link>
+              <Link className="mi" href="/privacy" role="menuitem" onClick={() => setMenuOpen(false)}>
+                Privacy
+              </Link>
+              <Link
+                className="mi"
+                href="/disclosures"
+                role="menuitem"
+                onClick={() => setMenuOpen(false)}
+              >
+                Disclosures
+              </Link>
+              <div style={{ height: 1, background: "var(--line)", margin: "3px 4px" }} />
+              <button
+                type="button"
+                className="mi"
+                role="menuitem"
+                onClick={handleSignOut}
+                style={{ color: "var(--danger)" }}
+              >
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      <ToolsDrawer open={toolsOpen} onClose={() => setToolsOpen(false)} groups={nav.tools} />
+    </>
+  );
 }

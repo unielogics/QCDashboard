@@ -6,8 +6,18 @@ interface UIStore {
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (v: boolean) => void;
   toggleSidebar: () => void;
+  /** The Elara suggestions rail. */
   aiOpen: boolean;
   setAiOpen: (v: boolean) => void;
+  /**
+   * The Elara chat slide-in — a DIFFERENT surface from the rail.
+   *
+   * These used to share `aiOpen`, so opening either one opened both: the
+   * suggestions rail and the borrower chat panel rendered on top of each other
+   * from a single button press.
+   */
+  chatOpen: boolean;
+  setChatOpen: (v: boolean) => void;
   searchOpen: boolean;
   setSearchOpen: (v: boolean) => void;
   // Floating Notes panel — opened from /deals/[id] via a fixed
@@ -48,6 +58,8 @@ export const useUI = create<UIStore>((set) => ({
     }),
   aiOpen: false, // closed by default per chat2.md final state
   setAiOpen: (v) => set({ aiOpen: v }),
+  chatOpen: false,
+  setChatOpen: (v) => set({ chatOpen: v }),
   searchOpen: false,
   setSearchOpen: (v) => set({ searchOpen: v }),
   notesOpen: false,

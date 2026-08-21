@@ -42,8 +42,10 @@ export default function TopBar() {
   // Open state lives in the UI store so other surfaces (e.g. the
   // /clients/[id]/workspace "Open AI Chat" button) can trigger it
   // without local prop drilling.
-  const aiChatOpen = useUI((s) => s.aiOpen);
-  const setAiChatOpen = useUI((s) => s.setAiOpen);
+  // The chat slide-in is its own surface. It shared `aiOpen` with the Elara
+  // suggestions rail, so one press opened both, stacked.
+  const aiChatOpen = useUI((s) => s.chatOpen);
+  const setAiChatOpen = useUI((s) => s.setChatOpen);
 
   const isClient = user?.role === Role.CLIENT;
   // Dealer partners are a thin external role with no per-loan/AI-task

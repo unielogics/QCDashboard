@@ -4,11 +4,12 @@ import { useEffect, type ReactNode } from "react";
 import { useAuth } from "@clerk/nextjs";
 import MfaBanner from "@/components/MfaBanner";
 import { usePathname, useRouter } from "next/navigation";
-import Sidebar from "./Sidebar";
+import { Sidebar } from "./Sidebar";
 import TopBar from "./TopBar";
 import AIRail from "./AIRail";
 import GlobalSearch from "./GlobalSearch";
 import { useUI, readPersistedSidebar } from "@/store/ui";
+import { isBareRoute as computeBareRoute } from "@/lib/shellRoutes";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { useCurrentUser, useContractStatus } from "@/hooks/useApi";
 import { useRecordPendingConsent } from "@/hooks/useRecordPendingConsent";
@@ -83,38 +84,10 @@ export default function AppShell({
   // Sidebar manages its own collapsed/expanded width internally now.
   // Reference sidebarCollapsed to keep the dependency tracked (drives
   // the sidebar's transition, not the grid).
-  void sidebarCollapsed;
-  const railW = aiOpen ? 360 : 0;
 
-  // Auth + public-legal pages render bare — no sidebar / topbar / AI rail.
-  // /terms and /privacy must be reachable without auth (signup consent links
-  // point to them, and Apple/Google review require public legal URLs).
-  const isBareRoute =
-    pathname.startsWith("/sign-in") ||
-    pathname.startsWith("/sign-up") ||
-    pathname.startsWith("/terms") ||
-    pathname.startsWith("/privacy") ||
-    pathname.startsWith("/book") ||
-    pathname.startsWith("/programs") ||
-    pathname.startsWith("/dealer-ai-underwriter") ||
-    pathname.startsWith("/funding-review") ||
-    pathname.startsWith("/mca-refinance-intake") ||
-    pathname.startsWith("/buckets/request") ||
-    pathname.startsWith("/buckets/share") ||
-    pathname.startsWith("/buckets/public-share") ||
-    // Direct-path access to /agreement (e.g. app.qualifiedcommercial.com/agreement
-    // during local dev/testing) -- separate from the isAgreementPortal host
-    // check below, which covers the real agreement.qualifiedcommercial.com
-    // subdomain where pathname never actually shows "/agreement".
-    pathname.startsWith("/agreement") ||
-    // agreement.qualifiedcommercial.com portal (rewritten server-side by
-    // middleware.ts's host-based rewrite) -- public, unauthenticated,
-    // fill-and-sign contract portal, same bare-shell treatment as the
-    // other public intake pages above.
-    isAgreementPortal ||
-    // Token-resolved HUD shares — opened by title / escrow / insurance
-    // contacts without an account, so we render them bare.
-    pathname.startsWith("/hud/share");
+  // Which routes skip the app chrome — see lib/shellRoutes.ts for why each
+  // prefix is on the list.
+  const isBareRoute = computeBareRoute(pathname, { isAgreementPortal });
 
   // A session that still owes a required task — setting up two-step
   // verification, for instance — reports isSignedIn === false, because
@@ -172,15 +145,7 @@ export default function AppShell({
   }
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: `auto 1fr ${railW}px`,
-        height: "100vh",
-        background: t.bg,
-        transition: "grid-template-columns .2s ease",
-      }}
-    >
+    <div className={sidebarCollapsed ? "app rail" : "app"} style={{ height: "100vh" }}>
       <Sidebar />
       {/* min-height:0 + minWidth:0 are REQUIRED on the flex column so the
           inner <main> can actually shrink and scroll instead of pushing the
@@ -188,14 +153,22 @@ export default function AppShell({
           grows to fit children's content and the whole document scrolls. */}
       <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 }}>
         <TopBar />
-        <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: 24 }}>
+        {/* The rail is a flex SIBLING of the scroll area, not a grid column.
+            As a column it animated grid-template-columns and reflowed the page
+            underneath every time Elara opened. */}
+        <div style={{ display: "flex", minWidth: 0, minHeight: 0, flex: 1 }}>
+          <main
+            className="content content--wide"
+            style={{ flex: 1, minWidth: 0, overflowY: "auto", overflowX: "hidden" }}
+          >
           {/* Above the page, not inside it: the prompt has to be visible
               wherever you land, not only on one screen you might not open. */}
-          <MfaBanner />
-          {children}
-        </main>
+            <MfaBanner />
+            {children}
+          </main>
+          <AIRail />
+        </div>
       </div>
-      <AIRail />
       <GlobalSearch />
     </div>
   );
