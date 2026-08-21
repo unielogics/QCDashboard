@@ -29,9 +29,6 @@ type VendorAccess = {
   file_scope: "all_active" | "selected";
   can_download: boolean;
   can_add_notes: boolean;
-  can_use_ai_chat: boolean;
-  can_view_ai_summary: boolean;
-  can_view_ai_tasks: boolean;
   can_propose_tasks: boolean;
   view_count: number;
   download_count: number;
@@ -41,15 +38,11 @@ type VendorAccess = {
 };
 type FileRow = { id: string; file_name: string; content_type: string; size_bytes?: number; created_at: string; preview_url?: string | null; download_url?: string | null };
 type Note = { id: string; author_name: string; content: string; created_at: string };
-type AITask = { id: string; status: string; title: string; instructions: string; rationale?: string | null };
-type AIMessage = { id: string; role: "user" | "assistant"; content: string; created_at: string };
 type VendorRoom = {
   bucket: VendorBucket;
   vendor_access: VendorAccess;
   files: FileRow[];
   notes: Note[];
-  ai_summary?: Record<string, unknown> | null;
-  ai_tasks?: AITask[];
 };
 
 export default function VendorBucketsPage() {
@@ -62,8 +55,6 @@ export default function VendorBucketsPage() {
   const [room, setRoom] = useState<VendorRoom | null>(null);
   const [reviewFile, setReviewFile] = useState<FileRow | null>(null);
   const [note, setNote] = useState("");
-  const [aiText, setAiText] = useState("");
-  const [aiMessages, setAiMessages] = useState<AIMessage[]>([]);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -85,7 +76,6 @@ export default function VendorBucketsPage() {
     try {
       const payload = await call<VendorRoom>(`/buckets/vendor/${bucketId}`);
       setRoom(payload);
-      setAiMessages([]);
     } catch (error) {
       setStatus(readableError(error));
       setRoom(null);
@@ -148,25 +138,6 @@ export default function VendorBucketsPage() {
       setStatus(readableError(error));
     } finally {
       setDownloadingId(null);
-    }
-  }
-
-  async function sendAIMessage() {
-    if (!room || !aiText.trim()) return;
-    const text = aiText.trim();
-    setAiText("");
-    setBusy(true);
-    try {
-      const payload = await call<{ messages: AIMessage[] }>(`/buckets/vendor/${room.bucket.id}/ai-chat`, {
-        method: "POST",
-        body: JSON.stringify({ message: text }),
-      });
-      setAiMessages((current) => [...current, ...payload.messages]);
-      await loadRoom(room.bucket.id);
-    } catch (error) {
-      setStatus(readableError(error));
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -264,77 +235,24 @@ export default function VendorBucketsPage() {
                 </div>
               </Panel>
 
-              <div style={{ display: "grid", gap: 14 }}>
-                {(room.vendor_access.can_view_ai_summary || room.vendor_access.can_view_ai_tasks || room.vendor_access.can_use_ai_chat) ? (
-                  <Panel t={t}>
-                    <SectionLabel>AI assistant</SectionLabel>
-                    <p style={{ margin: "0 0 10px", color: t.ink3, fontSize: 13, lineHeight: 1.45 }}>
-                      Answers are limited to this vendor room and files visible to you.
-                    </p>
-                    {room.vendor_access.can_view_ai_summary ? (
-                      <div style={summaryStyle(t)}>
-                        {summaryText(room.ai_summary)}
-                        {summaryItems(room.ai_summary, "missing_or_incomplete_items").length ? (
-                          <div style={{ marginTop: 8, color: t.danger }}>
-                            <strong>Needs attention: </strong>{summaryItems(room.ai_summary, "missing_or_incomplete_items").slice(0, 2).map(describeAIItem).join(" ")}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    {room.vendor_access.can_view_ai_tasks ? (
-                      <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                        {(room.ai_tasks ?? []).length === 0 ? <div style={emptyStyle(t)}>No approved vendor tasks yet.</div> : (room.ai_tasks ?? []).map((task) => (
-                          <div key={task.id} style={task.status === "completed" ? smallCardStyle(t) : dangerCardStyle(t)}>
-                            <strong style={{ color: t.ink }}>{task.title}</strong>
-                            <div style={{ color: t.ink3, fontSize: 12 }}>{task.status}</div>
-                            <div style={{ color: t.ink2, fontSize: 13, marginTop: 4 }}>{task.instructions}</div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                    {room.vendor_access.can_use_ai_chat ? (
-                      <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                        <div style={{ display: "grid", gap: 8, maxHeight: 220, overflowY: "auto" }}>
-                          {aiMessages.length === 0 ? <div style={emptyStyle(t)}>Ask a question or suggest a requirement. Proposed tasks go to Qualified Commercial for approval.</div> : aiMessages.slice(-8).map((message) => (
-                            <div key={message.id} style={message.role === "assistant" ? aiBubbleStyle(t) : aiBubbleUserStyle(t)}>{message.content}</div>
-                          ))}
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
-                          <input
-                            style={inputStyle(t)}
-                            placeholder="Ask about this bucket..."
-                            value={aiText}
-                            onChange={(event) => setAiText(event.target.value)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") sendAIMessage();
-                            }}
-                          />
-                          <button style={buttonStyle(t, "secondary")} onClick={sendAIMessage} disabled={busy || !aiText.trim()}>Send</button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </Panel>
-                ) : null}
-
-                <Panel t={t}>
-                  <SectionLabel>Notes</SectionLabel>
-                  {room.vendor_access.can_add_notes ? (
-                    <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
-                      <textarea style={{ ...inputStyle(t), minHeight: 88, paddingTop: 10, resize: "vertical" }} placeholder="Add a note for Qualified Commercial" value={note} onChange={(event) => setNote(event.target.value)} />
-                      <button style={buttonStyle(t, "primary")} onClick={addNote} disabled={busy || !note.trim()}>Add note</button>
-                    </div>
-                  ) : <div style={emptyStyle(t)}>Notes are disabled for this vendor access.</div>}
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {room.notes.length === 0 ? <div style={emptyStyle(t)}>No notes yet.</div> : room.notes.map((item) => (
-                      <div key={item.id} style={smallCardStyle(t)}>
-                        <strong style={{ color: t.ink }}>{item.author_name || "Qualified Commercial"}</strong>
-                        <div style={{ color: t.ink3, fontSize: 12 }}>{formatDateTime(item.created_at)}</div>
-                        <div style={{ color: t.ink2, marginTop: 6, whiteSpace: "pre-wrap" }}>{item.content}</div>
-                      </div>
-                    ))}
+              <Panel t={t}>
+                <SectionLabel>Notes</SectionLabel>
+                {room.vendor_access.can_add_notes ? (
+                  <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
+                    <textarea style={{ ...inputStyle(t), minHeight: 88, paddingTop: 10, resize: "vertical" }} placeholder="Add a note for Qualified Commercial" value={note} onChange={(event) => setNote(event.target.value)} />
+                    <button style={buttonStyle(t, "primary")} onClick={addNote} disabled={busy || !note.trim()}>Add note</button>
                   </div>
-                </Panel>
-              </div>
+                ) : <div style={emptyStyle(t)}>Notes are disabled for this vendor access.</div>}
+                <div style={{ display: "grid", gap: 8 }}>
+                  {room.notes.length === 0 ? <div style={emptyStyle(t)}>No notes yet.</div> : room.notes.map((item) => (
+                    <div key={item.id} style={smallCardStyle(t)}>
+                      <strong style={{ color: t.ink }}>{item.author_name || "Qualified Commercial"}</strong>
+                      <div style={{ color: t.ink3, fontSize: 12 }}>{formatDateTime(item.created_at)}</div>
+                      <div style={{ color: t.ink2, marginTop: 6, whiteSpace: "pre-wrap" }}>{item.content}</div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
             </div>
           ) : null}
         </div>
@@ -362,24 +280,6 @@ function Panel({ t, children }: { t: ReturnType<typeof useTheme>["t"]; children:
 function readableError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return "Request failed.";
-}
-
-function summaryText(summary: Record<string, unknown> | null | undefined): string {
-  if (!summary) return "AI summary has not been completed for these files yet.";
-  if (typeof summary.summary === "string") return summary.summary;
-  return "AI summary is available for this vendor room.";
-}
-
-function summaryItems(summary: Record<string, unknown> | null | undefined, key: string): unknown[] {
-  const value = summary?.[key];
-  return Array.isArray(value) ? value : [];
-}
-
-function describeAIItem(item: unknown): string {
-  if (typeof item === "string") return item;
-  if (!item || typeof item !== "object") return "";
-  const row = item as Record<string, unknown>;
-  return [row.title, row.file_name, row.detail, row.summary, row.explanation].filter((value) => typeof value === "string" && value).join(" - ");
 }
 
 function fileExtension(fileName: string): string {
@@ -449,18 +349,3 @@ function smallCardStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
   return { border: `1px solid ${t.line}`, borderRadius: 8, background: t.surface2, padding: 10 };
 }
 
-function dangerCardStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return { border: `1px solid ${t.danger}`, borderRadius: 8, background: t.dangerBg, padding: 10 };
-}
-
-function summaryStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return { border: `1px solid ${t.line}`, borderRadius: 8, background: t.surface2, padding: 10, color: t.ink2, fontSize: 13, lineHeight: 1.45 };
-}
-
-function aiBubbleStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return { border: `1px solid ${t.petrol}`, background: t.petrolSoft, color: t.petrol, borderRadius: 8, padding: 10, fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-wrap" };
-}
-
-function aiBubbleUserStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return { border: `1px solid ${t.line}`, background: t.surface2, color: t.ink2, borderRadius: 8, padding: 10, fontSize: 13, lineHeight: 1.45, whiteSpace: "pre-wrap" };
-}

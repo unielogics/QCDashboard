@@ -12,11 +12,9 @@ type FileRow = { id: string; file_name: string; content_type: string; size_bytes
 type Note = { id: string; author_name: string; content: string; created_at: string };
 type Access = {
   bucket: { name: string; client_name?: string | null; purpose?: string | null };
-  share: { recipient_name: string; can_download: boolean; can_add_notes: boolean; can_use_ai_chat?: boolean; can_view_ai_summary?: boolean; can_view_ai_tasks?: boolean; can_propose_tasks?: boolean };
+  share: { recipient_name: string; can_download: boolean; can_add_notes: boolean; can_propose_tasks?: boolean };
   files: FileRow[];
   notes: Note[];
-  ai_summary?: Record<string, unknown> | null;
-  ai_tasks?: AITask[];
 };
 type ShareInfo = {
   bucket: { name: string; client_name?: string | null; purpose?: string | null };
@@ -24,13 +22,8 @@ type ShareInfo = {
   recipient_email?: string | null;
   can_download: boolean;
   can_add_notes: boolean;
-  can_use_ai_chat?: boolean;
-  can_view_ai_summary?: boolean;
-  can_view_ai_tasks?: boolean;
   can_propose_tasks?: boolean;
 };
-type AITask = { id: string; status: string; title: string; instructions: string; rationale?: string | null };
-type AIMessage = { id: string; role: "user" | "assistant"; content: string; created_at: string };
 
 export default function BucketSharePage() {
   const params = useParams<{ token: string }>();
@@ -43,9 +36,6 @@ export default function BucketSharePage() {
   const [status, setStatus] = useState("Loading secure room...");
   const [working, setWorking] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [aiMessages, setAiMessages] = useState<AIMessage[]>([]);
-  const [aiText, setAiText] = useState("");
-  const [aiBusy, setAiBusy] = useState(false);
 
   useEffect(() => {
     fetch(`${apiBase}/api/v1/buckets/share/${token}`)
@@ -134,29 +124,6 @@ export default function BucketSharePage() {
       if (!openSignedUrl(payload.url)) setStatus("Download is not available for this file.");
     } finally {
       setDownloadingId(null);
-    }
-  }
-
-  async function sendAIMessage() {
-    if (!access || !aiText.trim()) return;
-    const text = aiText.trim();
-    setAiText("");
-    setAiBusy(true);
-    try {
-      const res = await fetch(`${apiBase}/api/v1/buckets/share/${token}/ai-chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ passcode: passcode.trim(), message: text }),
-      });
-      if (!res.ok) {
-        setStatus("AI chat is not available for this share.");
-        return;
-      }
-      const payload = (await res.json()) as { messages: AIMessage[] };
-      setAiMessages((current) => [...current, ...payload.messages]);
-      await openRoom();
-    } finally {
-      setAiBusy(false);
     }
   }
 
@@ -303,55 +270,6 @@ export default function BucketSharePage() {
                   </div>
                 ))}
               </div>
-              {(access.share.can_view_ai_summary || access.share.can_view_ai_tasks || access.share.can_use_ai_chat) ? (
-                <div style={{ marginTop: 16, borderTop: "1px solid #e2e8f0", paddingTop: 14 }}>
-                  <h2 style={sectionTitle}>AI review assistant</h2>
-                  <p style={sectionCopy}>The assistant only answers from files and notes visible to this share link.</p>
-                  {access.share.can_view_ai_summary && access.ai_summary ? (
-                    <div style={{ ...emptyState, color: "#334155", marginTop: 10 }}>
-                      {shareSummaryText(access.ai_summary)}
-                      {shareSummaryItems(access.ai_summary, "missing_or_incomplete_items").length ? (
-                        <div style={shareAttentionBox}>
-                          <strong>Needs attention</strong>
-                          <span>{shareSummaryItems(access.ai_summary, "missing_or_incomplete_items").slice(0, 2).map(describeShareAIItem).join(" ")}</span>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {access.share.can_view_ai_tasks ? (
-                    <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                      {(access.ai_tasks ?? []).length === 0 ? <div style={emptyState}>No approved to-dos for this share.</div> : (access.ai_tasks ?? []).map((task) => (
-                        <div key={task.id} style={task.status === "completed" ? noteCard : shareTaskCard}>
-                          <div style={noteAuthor}>{task.title}</div>
-                          <div style={noteDate}>{task.status}</div>
-                          <p style={noteText}>{task.instructions}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  {access.share.can_use_ai_chat ? (
-                    <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-                      <div style={{ display: "grid", gap: 8, maxHeight: 190, overflowY: "auto" }}>
-                        {aiMessages.length === 0 ? <div style={emptyState}>Ask a question or suggest a required follow-up. Suggestions go to Qualified Commercial for approval.</div> : aiMessages.slice(-6).map((message) => (
-                          <div key={message.id} style={message.role === "assistant" ? aiBubble : aiBubbleUser}>{message.content}</div>
-                        ))}
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
-                        <input
-                          style={chatInput}
-                          value={aiText}
-                          onChange={(e) => setAiText(e.target.value)}
-                          placeholder="Ask about shared files..."
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") sendAIMessage().catch(() => undefined);
-                          }}
-                        />
-                        <button style={secondaryButton} onClick={() => sendAIMessage().catch(() => undefined)} disabled={aiBusy || !aiText.trim()}>Send</button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
             </aside>
           </div>
           {status ? <p style={statusStyle(status)}>{status}</p> : null}
@@ -427,32 +345,6 @@ function statusStyle(value: string): CSSProperties {
   return { margin: "14px 0 0", color: isError ? "#b91c1c" : "#0f766e", fontWeight: 800 };
 }
 
-function shareSummaryText(summary: Record<string, unknown>): string {
-  if (typeof summary.summary === "string") return summary.summary;
-  const perFile = Array.isArray(summary.per_file_summaries) ? summary.per_file_summaries : [];
-  if (perFile.length) return `${perFile.length} shared file${perFile.length === 1 ? "" : "s"} have AI review notes.`;
-  return "AI summary is available for the files shared with you.";
-}
-
-function shareSummaryItems(summary: Record<string, unknown>, key: string): unknown[] {
-  const value = summary[key];
-  return Array.isArray(value) ? value : [];
-}
-
-function describeShareAIItem(item: unknown): string {
-  if (typeof item === "string") return item;
-  if (!item || typeof item !== "object") return String(item ?? "");
-  const row = item as Record<string, unknown>;
-  const parts = [
-    typeof row.title === "string" ? row.title : "",
-    typeof row.file_name === "string" ? row.file_name : "",
-    typeof row.detail === "string" ? row.detail : "",
-    typeof row.summary === "string" ? row.summary : "",
-    typeof row.explanation === "string" ? row.explanation : "",
-  ].filter(Boolean);
-  return parts.length ? parts.join(" - ") : JSON.stringify(row);
-}
-
 const page: CSSProperties = { minHeight: "100vh", background: "#f3f5f8", color: "#111827", padding: 24, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" };
 const gateShell: CSSProperties = { maxWidth: 760, margin: "6vh auto 0", display: "grid", gap: 18 };
 const gateCard: CSSProperties = { background: "#fff", border: "1px solid #d8dee8", borderRadius: 12, padding: 28, boxShadow: "0 18px 45px rgba(15,23,42,.08)" };
@@ -493,15 +385,10 @@ const noteComposer: CSSProperties = { display: "grid", gap: 8, marginBottom: 12 
 const noteField: CSSProperties = { minHeight: 96, border: "1px solid #cbd5e1", borderRadius: 9, padding: 10, font: "inherit", resize: "vertical", boxSizing: "border-box" };
 const noteList: CSSProperties = { display: "grid", gap: 8 };
 const noteCard: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, background: "#fbfdff" };
-const shareTaskCard: CSSProperties = { border: "1px solid #fca5a5", borderRadius: 10, padding: 10, background: "#fff1f2" };
-const shareAttentionBox: CSSProperties = { display: "grid", gap: 4, borderTop: "1px solid #fecaca", marginTop: 10, paddingTop: 10, color: "#991b1b", lineHeight: 1.4 };
 const noteAuthor: CSSProperties = { color: "#111827", fontWeight: 900, fontSize: 13 };
 const noteDate: CSSProperties = { color: "#64748b", fontSize: 12, marginTop: 2 };
 const noteText: CSSProperties = { margin: "8px 0 0", color: "#334155", lineHeight: 1.45, whiteSpace: "pre-wrap" };
 const emptyState: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 10, padding: 13, color: "#64748b", background: "#f8fafc", fontSize: 13 };
-const chatInput: CSSProperties = { height: 38, border: "1px solid #cbd5e1", borderRadius: 8, padding: "0 10px", font: "inherit", minWidth: 0, boxSizing: "border-box" };
-const aiBubble: CSSProperties = { border: "1px solid #dbeafe", background: "#eff6ff", color: "#1e3a8a", borderRadius: 10, padding: 10, fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap" };
-const aiBubbleUser: CSSProperties = { border: "1px solid #e2e8f0", background: "#fff", color: "#334155", borderRadius: 10, padding: 10, fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap" };
 
 function fileIcon(file: FileRow): CSSProperties {
   const type = reviewFileType(file.content_type, file.file_name);

@@ -40,15 +40,10 @@ type UploadSession = {
   recipient_name: string;
   recipient_email?: string | null;
   allow_notes: boolean;
-  can_use_ai_chat?: boolean;
-  can_view_ai_tasks?: boolean;
   requested_documents: RequestedDoc[];
   files?: UploadedFile[];
-  ai_summary?: Record<string, unknown> | null;
 };
-type AITask = { id: string; status: string; title: string; instructions: string; rationale?: string | null };
-type AIMessage = { id: string; role: "user" | "assistant"; content: string; created_at: string };
-type RoomTab = "todo" | "uploaded" | "chat";
+type RoomTab = "todo" | "uploaded";
 type QueuedFile = {
   id: string;
   file: File;
@@ -74,10 +69,6 @@ export default function BucketRequestPage() {
   const [isAccessing, setIsAccessing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [aiTasks, setAiTasks] = useState<AITask[]>([]);
-  const [aiMessages, setAiMessages] = useState<AIMessage[]>([]);
-  const [aiText, setAiText] = useState("");
-  const [aiBusy, setAiBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<RoomTab>("todo");
 
   useEffect(() => {
@@ -114,8 +105,6 @@ export default function BucketRequestPage() {
   async function refreshRoom() {
     const data = await fetchAccessSession();
     setSession(data);
-    if (data.can_view_ai_tasks) await loadAITasks();
-    else setAiTasks([]);
   }
 
   async function openInvite() {
@@ -129,45 +118,10 @@ export default function BucketRequestPage() {
       setEmail(data.recipient_email || "");
       setActiveTab("todo");
       setStatus("");
-      if (data.can_view_ai_tasks) loadAITasks().catch(() => undefined);
-      else setAiTasks([]);
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "The access code did not work.");
     } finally {
       setIsAccessing(false);
-    }
-  }
-
-  async function loadAITasks() {
-    // Passcode in the POST body, never the query string (query strings leak
-    // into access logs, Referer headers, and browser history).
-    const res = await fetch(`${apiBase}/api/v1/buckets/request/${token}/ai-tasks`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ passcode: passcode.trim() }),
-    });
-    if (res.ok) setAiTasks(await res.json());
-  }
-
-  async function sendAIMessage() {
-    if (!session || !aiText.trim()) return;
-    const text = aiText.trim();
-    setAiText("");
-    setAiBusy(true);
-    try {
-      const res = await fetch(`${apiBase}/api/v1/buckets/request/${token}/ai-chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ passcode: passcode.trim(), message: text }),
-      });
-      if (!res.ok) throw new Error(await responseMessage(res, "AI chat is unavailable."));
-      const payload = (await res.json()) as { messages: AIMessage[] };
-      setAiMessages((current) => [...current, ...payload.messages]);
-      if (session.can_view_ai_tasks) await loadAITasks();
-    } catch (e) {
-      setStatus(e instanceof Error ? e.message : "AI chat is unavailable.");
-    } finally {
-      setAiBusy(false);
     }
   }
 
@@ -295,13 +249,7 @@ export default function BucketRequestPage() {
     () => (session?.requested_documents ?? []).filter((doc) => !isRequestedDocComplete(doc, uploadedDocIds)),
     [session?.requested_documents, uploadedDocIds],
   );
-  const completedDocs = useMemo(
-    () => (session?.requested_documents ?? []).filter((doc) => isRequestedDocComplete(doc, uploadedDocIds)),
-    [session?.requested_documents, uploadedDocIds],
-  );
-  const visibleTasks = aiTasks.filter((task) => task.status === "approved" || task.status === "completed");
-  const needsAttentionCount = missingDocs.length + visibleTasks.filter((task) => task.status !== "completed").length + summaryItems(session?.ai_summary, "blocked_files").length;
-  const hasAnalysis = hasAnalysisSummary(session?.ai_summary);
+  const needsAttentionCount = missingDocs.length;
 
   return (
     <main style={page}>
@@ -356,40 +304,6 @@ export default function BucketRequestPage() {
           <div style={securityNotice}>
             <strong>Encrypted upload room.</strong> Uploaded documents are encrypted. Access to view these documents is gated and regulated through authorized user controls.
           </div>
-          <section style={insightPanel}>
-            <div>
-              <h2 style={sectionTitle}>AI analysis summary</h2>
-              <p style={insightCopy}>{summaryText(session.ai_summary, uploadedFiles.length, missingDocs.length)}</p>
-            </div>
-            <div style={insightGrid}>
-              <div style={goodMetric}>
-                <strong>{completedDocs.length}</strong>
-                <span>complete</span>
-              </div>
-              <div style={needsMetric}>
-                <strong>{missingDocs.length}</strong>
-                <span>missing</span>
-              </div>
-              <div style={summaryMetric}>
-                <strong>{uploadedFiles.length}</strong>
-                <span>uploaded</span>
-              </div>
-            </div>
-            {summaryItems(session.ai_summary, "blocked_files").length ? (
-              <div style={dangerSummary}>
-                <strong>Password required before AI can read some files.</strong>
-                <span>{summaryItems(session.ai_summary, "blocked_files").slice(0, 2).map(describeAIItem).join(" ")}</span>
-              </div>
-            ) : null}
-            {hasAnalysis ? (
-              <AIAnalysisSummary summary={session.ai_summary} />
-            ) : (
-              <div style={analysisEmpty}>
-                AI analysis has not been completed for this upload room yet. The file list is available now, and this section will update after Qualified Commercial runs or reruns the bucket review.
-              </div>
-            )}
-          </section>
-
           <div style={contentGrid}>
             <div style={mainPanel}>
               <div style={identityGrid}>
@@ -470,7 +384,6 @@ export default function BucketRequestPage() {
                 {([
                   ["todo", `To-dos${needsAttentionCount ? ` (${needsAttentionCount})` : ""}`],
                   ["uploaded", `Uploaded (${uploadedFiles.length})`],
-                  ["chat", "Ask AI"],
                 ] as const).map(([tab, label]) => (
                   <button key={tab} style={tabButton(activeTab === tab, tab === "todo" && needsAttentionCount > 0)} onClick={() => setActiveTab(tab)}>
                     {label}
@@ -486,17 +399,6 @@ export default function BucketRequestPage() {
                     onChanged={() => { refreshRoom().catch(() => undefined); }}
                   />
                   <h2 style={sectionTitle}>What needs attention</h2>
-                  {visibleTasks.filter((task) => task.status !== "completed").length ? (
-                    <div style={docList}>
-                      {visibleTasks.filter((task) => task.status !== "completed").map((task) => (
-                        <div key={task.id} style={urgentTask}>
-                          <div style={docTitleRow}><span>{task.title}</span><span style={dangerBadge}>To do</span></div>
-                          <small style={docDescription}>{task.instructions}</small>
-                          {task.rationale ? <small style={muted}>{task.rationale}</small> : null}
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
                   <div style={docList}>
                     {session.requested_documents.length === 0 ? (
                       <div style={emptyState}>No requested documents were added to this bucket.</div>
@@ -545,43 +447,6 @@ export default function BucketRequestPage() {
                 </section>
               ) : null}
 
-              {activeTab === "chat" ? (
-                <section style={sideSection}>
-                  <h2 style={sectionTitle}>Ask AI</h2>
-                  <p style={{ ...muted, marginTop: 6, lineHeight: 1.4 }}>Ask questions about what is uploaded, what is still needed, and how to complete the request. This chat cannot change Qualified Commercial instructions.</p>
-                  {hasAnalysis ? (
-                    <div style={chatBaseline}>
-                      <strong>Chat baseline</strong>
-                      <span>{summaryText(session.ai_summary, uploadedFiles.length, missingDocs.length)}</span>
-                    </div>
-                  ) : null}
-                  {!session.can_use_ai_chat ? <div style={emptyState}>AI chat is disabled for this upload room.</div> : null}
-                  {session.can_use_ai_chat ? (
-                    <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-                      <div style={{ display: "grid", gap: 8, maxHeight: 260, overflowY: "auto" }}>
-                        {aiMessages.length === 0 ? <div style={emptyState}>Ask what is still needed or how to upload a document.</div> : aiMessages.slice(-8).map((message) => (
-                          <div key={message.id} style={message.role === "assistant" ? aiBubble : aiBubbleUser}>
-                            {message.content}
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
-                        <input
-                          style={field}
-                          value={aiText}
-                          onChange={(e) => setAiText(e.target.value)}
-                          placeholder="Ask a question..."
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") sendAIMessage().catch(() => undefined);
-                          }}
-                        />
-                        <button style={removeButton} onClick={() => sendAIMessage().catch(() => undefined)} disabled={aiBusy || !aiText.trim()}>Send</button>
-                      </div>
-                    </div>
-                  ) : null}
-                </section>
-              ) : null}
-
               {session.allow_notes ? (
                 <section style={sideSection}>
                   <h2 style={sectionTitle}>Upload note</h2>
@@ -593,60 +458,6 @@ export default function BucketRequestPage() {
         </section>
       )}
     </main>
-  );
-}
-
-function AIAnalysisSummary({ summary }: { summary?: Record<string, unknown> | null }) {
-  const available = summaryItems(summary, "available_documents");
-  const missing = summaryItems(summary, "missing_or_incomplete_items");
-  const questions = summaryItems(summary, "underwriter_questions");
-  const discrepancies = summaryItems(summary, "discrepancies");
-  const gaps = summaryItems(summary, "proof_of_funds_financial_collateral_gaps");
-  const perFile = summaryItems(summary, "per_file_summaries");
-  const context = summary && typeof summary.ai_context === "object" && summary.ai_context ? summary.ai_context as Record<string, unknown> : {};
-  const contextRows = [
-    ["Deal", stringValue(context.deal_type)],
-    ["Docs", stringValue(context.documentation_level)],
-    ["Collateral", stringValue(context.collateral_type)],
-    ["Purpose", stringValue(context.loan_purpose)],
-  ].filter(([, value]) => value);
-  return (
-    <div style={analysisGrid}>
-      {contextRows.length ? (
-        <div style={analysisBlock}>
-          <strong>Review inputs</strong>
-          <div style={contextPills}>
-            {contextRows.map(([label, value]) => (
-              <span key={label} style={contextPill}>{label}: {value}</span>
-            ))}
-          </div>
-          {stringValue(context.underwriting_focus) ? <p style={analysisText}>{stringValue(context.underwriting_focus)}</p> : null}
-        </div>
-      ) : null}
-      <AnalysisList title="What was analyzed" items={available.length ? available : perFile} empty="No detailed file analysis has been published yet." />
-      <AnalysisList title="Missing or needs clarification" items={[...missing, ...questions, ...gaps, ...discrepancies]} danger empty="No missing items or clarification requests are currently published." />
-      {perFile.length && available.length ? <AnalysisList title="Per-file notes" items={perFile} empty="" /> : null}
-    </div>
-  );
-}
-
-function AnalysisList({ title, items, empty, danger = false }: { title: string; items: unknown[]; empty: string; danger?: boolean }) {
-  return (
-    <div style={danger ? analysisBlockDanger : analysisBlock}>
-      <strong>{title}</strong>
-      {items.length ? (
-        <div style={analysisList}>
-          {items.slice(0, 5).map((item, index) => (
-            <div key={`${title}-${index}`} style={analysisItem}>
-              {describeAIItem(item)}
-            </div>
-          ))}
-          {items.length > 5 ? <small style={muted}>+{items.length - 5} more</small> : null}
-        </div>
-      ) : (
-        <p style={analysisText}>{empty}</p>
-      )}
-    </div>
   );
 }
 
@@ -728,56 +539,6 @@ function fileKindLabel(file: UploadedFile): string {
   return "Document";
 }
 
-function summaryItems(summary: Record<string, unknown> | null | undefined, key: string): unknown[] {
-  const value = summary?.[key];
-  return Array.isArray(value) ? value : [];
-}
-
-function summaryText(summary: Record<string, unknown> | null | undefined, uploadedCount: number, missingCount: number): string {
-  if (typeof summary?.summary === "string" && summary.summary.trim()) return summary.summary;
-  if (!summary) {
-    return "AI analysis has not been completed yet. Uploaded files are listed below and the summary will update after review.";
-  }
-  if (uploadedCount || missingCount) {
-    return `${uploadedCount} uploaded file${uploadedCount === 1 ? "" : "s"} on record. ${missingCount} requested item${missingCount === 1 ? "" : "s"} still need attention.`;
-  }
-  return "Start by uploading the requested documents. Qualified Commercial and the AI summary will update as files are received and reviewed.";
-}
-
-function hasAnalysisSummary(summary: Record<string, unknown> | null | undefined): boolean {
-  if (!summary) return false;
-  if (typeof summary.summary === "string" && summary.summary.trim()) return true;
-  return [
-    "available_documents",
-    "missing_or_incomplete_items",
-    "underwriter_questions",
-    "discrepancies",
-    "proof_of_funds_financial_collateral_gaps",
-    "per_file_summaries",
-    "blocked_files",
-  ].some((key) => summaryItems(summary, key).length > 0);
-}
-
-function describeAIItem(item: unknown): string {
-  if (typeof item === "string") return item;
-  if (!item || typeof item !== "object") return String(item ?? "");
-  const row = item as Record<string, unknown>;
-  const parts = [
-    stringValue(row.title),
-    stringValue(row.file_name),
-    stringValue(row.document_type),
-    stringValue(row.detail),
-    stringValue(row.summary),
-    stringValue(row.instructions),
-    stringValue(row.explanation),
-  ].filter(Boolean);
-  return parts.length ? parts.join(" - ") : JSON.stringify(row);
-}
-
-function stringValue(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
 // Dealer-AI dark theme — matches /dealer-ai-underwriter (navy #060B1A, teal
 // #21D3C7, gold gradient #E9D58A→#D4AF37, Inter + translucent-white surfaces).
 const page: CSSProperties = { minHeight: "100vh", background: "radial-gradient(1200px 620px at 50% -12%, #0C1428 0%, #060B1A 62%)", color: "#F1F5F9", padding: 24, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" };
@@ -802,23 +563,6 @@ const muted: CSSProperties = { color: "#95A3B6" };
 const summaryPill: CSSProperties = { border: "1px solid rgba(33,211,199,.25)", borderRadius: 999, padding: "8px 12px", color: "#BFFCF7", background: "rgba(33,211,199,.10)", fontWeight: 800, whiteSpace: "nowrap" };
 const attentionPill: CSSProperties = { ...summaryPill, borderColor: "rgba(239,68,68,.35)", color: "#FCA5A5", background: "rgba(239,68,68,.12)" };
 const securityNotice: CSSProperties = { border: "1px solid rgba(33,211,199,.22)", borderRadius: 12, padding: "11px 13px", color: "#BFEFEA", background: "rgba(33,211,199,.06)", fontSize: 13.5, lineHeight: 1.45, marginBottom: 18 };
-const insightPanel: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 14, border: "1px solid rgba(255,255,255,.08)", borderRadius: 16, padding: 16, background: "rgba(255,255,255,.02)", marginBottom: 18 };
-const insightCopy: CSSProperties = { margin: "7px 0 0", color: "#B8C4D6", lineHeight: 1.45 };
-const insightGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, minmax(76px, 1fr))", gap: 8, alignSelf: "start" };
-const insightMetricBase: CSSProperties = { borderRadius: 12, padding: "10px 12px", display: "grid", gap: 2, textAlign: "center", fontWeight: 900 };
-const goodMetric: CSSProperties = { ...insightMetricBase, border: "1px solid rgba(52,211,153,.30)", background: "rgba(52,211,153,.10)", color: "#6EE7B7" };
-const needsMetric: CSSProperties = { ...insightMetricBase, border: "1px solid rgba(239,68,68,.32)", background: "rgba(239,68,68,.10)", color: "#FCA5A5" };
-const summaryMetric: CSSProperties = { ...insightMetricBase, border: "1px solid rgba(33,211,199,.28)", background: "rgba(33,211,199,.10)", color: "#7FE7DE" };
-const dangerSummary: CSSProperties = { gridColumn: "1 / -1", display: "grid", gap: 3, border: "1px solid rgba(239,68,68,.32)", borderRadius: 12, padding: 12, background: "rgba(239,68,68,.10)", color: "#FCA5A5", lineHeight: 1.4 };
-const analysisGrid: CSSProperties = { gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))", gap: 10 };
-const analysisBlock: CSSProperties = { display: "grid", gap: 8, border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: 12, background: "rgba(255,255,255,.02)", color: "#D6DEEA", lineHeight: 1.4 };
-const analysisBlockDanger: CSSProperties = { ...analysisBlock, borderColor: "rgba(239,68,68,.30)", background: "rgba(239,68,68,.08)", color: "#FCA5A5" };
-const analysisList: CSSProperties = { display: "grid", gap: 7 };
-const analysisItem: CSSProperties = { borderTop: "1px solid rgba(255,255,255,.08)", paddingTop: 7, fontSize: 13, lineHeight: 1.4 };
-const analysisText: CSSProperties = { margin: 0, color: "#95A3B6", fontSize: 13, lineHeight: 1.45 };
-const analysisEmpty: CSSProperties = { gridColumn: "1 / -1", border: "1px dashed rgba(255,255,255,.16)", borderRadius: 12, padding: 12, color: "#95A3B6", background: "rgba(255,255,255,.015)", lineHeight: 1.45 };
-const contextPills: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 6 };
-const contextPill: CSSProperties = { border: "1px solid rgba(33,211,199,.28)", borderRadius: 999, padding: "4px 8px", background: "rgba(33,211,199,.08)", color: "#7FE7DE", fontSize: 12, fontWeight: 900 };
 const contentGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 20 };
 const mainPanel: CSSProperties = { minWidth: 0 };
 const identityGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: 12, marginBottom: 16 };
@@ -837,12 +581,11 @@ const removeButton: CSSProperties = { height: 38, border: "1px solid rgba(255,25
 const submittedBadge: CSSProperties = { height: 38, border: "1px solid rgba(52,211,153,.30)", borderRadius: 10, background: "rgba(52,211,153,.10)", color: "#6EE7B7", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 13, padding: "0 12px" };
 const sidePanel: CSSProperties = { display: "grid", gap: 14, alignContent: "start" };
 const sideSection: CSSProperties = { border: "1px solid rgba(255,255,255,.08)", borderRadius: 14, padding: 16, background: "rgba(255,255,255,.02)" };
-const tabs: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, border: "1px solid rgba(255,255,255,.08)", borderRadius: 14, padding: 6, background: "rgba(255,255,255,.02)" };
+const tabs: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6, border: "1px solid rgba(255,255,255,.08)", borderRadius: 14, padding: 6, background: "rgba(255,255,255,.02)" };
 const docList: CSSProperties = { display: "grid", gap: 10, marginTop: 12 };
 const docItem: CSSProperties = { display: "grid", gap: 4, borderBottom: "1px solid rgba(255,255,255,.08)", paddingBottom: 10, fontWeight: 800 };
 const docItemLinked: CSSProperties = { border: "1px solid rgba(52,211,153,.30)", borderRadius: 10, padding: 10, background: "rgba(52,211,153,.08)" };
 const requiredDocItem: CSSProperties = { border: "1px solid rgba(239,68,68,.30)", borderRadius: 10, padding: 10, background: "rgba(239,68,68,.08)" };
-const urgentTask: CSSProperties = { display: "grid", gap: 5, border: "1px solid rgba(239,68,68,.32)", borderRadius: 10, padding: 10, background: "rgba(239,68,68,.10)", fontWeight: 800 };
 const uploadedFileItem: CSSProperties = { display: "grid", gap: 5, border: "1px solid rgba(33,211,199,.22)", borderRadius: 10, padding: 10, background: "rgba(33,211,199,.06)", fontWeight: 800 };
 const docTitleRow: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 };
 const docDescription: CSSProperties = { color: "#B8C4D6", fontWeight: 600, lineHeight: 1.4 };
@@ -850,9 +593,6 @@ const checkBadge: CSSProperties = { border: "1px solid rgba(52,211,153,.35)", bo
 const openBadge: CSSProperties = { border: "1px solid rgba(255,255,255,.12)", borderRadius: 999, padding: "3px 8px", color: "#95A3B6", background: "rgba(255,255,255,.03)", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
 const dangerBadge: CSSProperties = { border: "1px solid rgba(239,68,68,.35)", borderRadius: 999, padding: "3px 8px", color: "#FCA5A5", background: "rgba(239,68,68,.12)", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" };
 const notesField: CSSProperties = { width: "100%", minHeight: 160, border: "1px solid rgba(255,255,255,.14)", borderRadius: 10, padding: 12, font: "inherit", background: "#232323", color: "#F8FAFC", resize: "vertical", boxSizing: "border-box", marginTop: 12 };
-const chatBaseline: CSSProperties = { display: "grid", gap: 4, border: "1px solid rgba(33,211,199,.22)", borderRadius: 10, padding: 10, background: "rgba(33,211,199,.06)", color: "#7FE7DE", fontSize: 13, lineHeight: 1.4, marginTop: 10 };
-const aiBubble: CSSProperties = { border: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.03)", color: "#E7ECF3", borderRadius: 10, padding: 10, fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap" };
-const aiBubbleUser: CSSProperties = { border: "1px solid rgba(255,255,255,.10)", background: "#2B2B2B", color: "#F8FAFC", borderRadius: 10, padding: 10, fontSize: 13, lineHeight: 1.4, whiteSpace: "pre-wrap" };
 
 function tabButton(active: boolean, danger = false): CSSProperties {
   return {

@@ -105,9 +105,6 @@ type VendorAccess = {
   can_download: boolean;
   can_add_notes: boolean;
   can_see_internal_notes: boolean;
-  can_use_ai_chat: boolean;
-  can_view_ai_summary: boolean;
-  can_view_ai_tasks: boolean;
   can_propose_tasks: boolean;
   last_accessed_at?: string | null;
   view_count: number;
@@ -132,7 +129,6 @@ type Activity = {
   created_at: string;
 };
 type BucketDetail = Bucket & {
-  ai_context?: BucketAIContext | null;
   requested_documents: RequestedDoc[];
   files: BucketFile[];
   upload_links?: UploadLink[];
@@ -163,8 +159,6 @@ type UploadLink = {
   recipient_email?: string | null;
   allow_notes?: boolean;
   allow_multiple_sessions?: boolean;
-  can_use_ai_chat?: boolean;
-  can_view_ai_tasks?: boolean;
   status: string;
   completed_at?: string | null;
   expires_at?: string | null;
@@ -192,58 +186,7 @@ type PublicShareViewerDraft = {
 };
 type ActivityPage = { items: Activity[]; total: number; limit: number; offset: number };
 type ActivityFilters = { action: string; actor_role: string; target_type: string; q: string; date_from: string; date_to: string };
-type BucketAIContext = {
-  deal_type?: string | null;
-  documentation_level?: string | null;
-  collateral_type?: string | null;
-  loan_purpose?: string | null;
-  underwriting_focus?: string | null;
-  custom_instructions?: string | null;
-};
-type BucketAIReview = {
-  id: string;
-  status: string;
-  context_snapshot?: BucketAIContext | null;
-  result?: Record<string, unknown> | null;
-  error?: string | null;
-  created_at: string;
-  completed_at?: string | null;
-};
-type BucketAIMessage = {
-  id: string;
-  role: "user" | "assistant";
-  author_name?: string | null;
-  content: string;
-  proposed_context_patch?: BucketAIContext | null;
-  created_at: string;
-};
-type BucketAIActionItem = {
-  id: string;
-  status: "proposed" | "approved" | "rejected" | "completed";
-  route: "admin" | "uploader" | "share" | "vendor";
-  upload_link_id?: string | null;
-  share_id?: string | null;
-  vendor_access_id?: string | null;
-  file_id?: string | null;
-  requested_document_id?: string | null;
-  title: string;
-  instructions: string;
-  rationale?: string | null;
-  created_by?: "ai" | "admin" | string;
-  created_at: string;
-};
-type AIMode = "review" | "chat" | "actions";
 type DetailFocus = "vendors" | null;
-type ManualActionDraft = {
-  title: string;
-  instructions: string;
-  route: "admin" | "uploader" | "share" | "vendor";
-  upload_link_id: string;
-  share_id: string;
-  vendor_access_id: string;
-  file_id: string;
-  requested_document_id: string;
-};
 type VendorAccessDraft = {
   vendor_user_id: string;
   vendor_name: string;
@@ -255,9 +198,6 @@ type VendorAccessDraft = {
   can_download: boolean;
   can_add_notes: boolean;
   can_see_internal_notes: boolean;
-  can_use_ai_chat: boolean;
-  can_view_ai_summary: boolean;
-  can_view_ai_tasks: boolean;
   can_propose_tasks: boolean;
   expires_days: number;
 };
@@ -306,7 +246,6 @@ const ACTIVITY_ACTION_OPTIONS = [
   "vendor_file_annotation_denied",
   "vendor_note_created",
   "vendor_note_denied",
-  "vendor_ai_chat",
   "vendor_task_proposed",
   "note_created",
   "file_review_opened",
@@ -367,19 +306,6 @@ function newPublicShareViewerDraft(): PublicShareViewerDraft {
   };
 }
 
-function emptyManualActionDraft(): ManualActionDraft {
-  return {
-    title: "",
-    instructions: "",
-    route: "admin",
-    upload_link_id: "",
-    share_id: "",
-    vendor_access_id: "",
-    file_id: "",
-    requested_document_id: "",
-  };
-}
-
 function emptyVendorAccessDraft(): VendorAccessDraft {
   return {
     vendor_user_id: "",
@@ -392,9 +318,6 @@ function emptyVendorAccessDraft(): VendorAccessDraft {
     can_download: false,
     can_add_notes: true,
     can_see_internal_notes: false,
-    can_use_ai_chat: true,
-    can_view_ai_summary: true,
-    can_view_ai_tasks: true,
     can_propose_tasks: true,
     expires_days: 30,
   };
@@ -490,16 +413,6 @@ export default function BucketsAdminPage() {
   const [activityLoading, setActivityLoading] = useState(false);
   const [expandedShareId, setExpandedShareId] = useState<string | null>(null);
   const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null);
-  const [aiReviews, setAiReviews] = useState<BucketAIReview[]>([]);
-  const [aiMessages, setAiMessages] = useState<BucketAIMessage[]>([]);
-  const [aiActions, setAiActions] = useState<BucketAIActionItem[]>([]);
-  const [aiContextDraft, setAiContextDraft] = useState<BucketAIContext>({});
-  const [aiChatText, setAiChatText] = useState("");
-  const [aiBusy, setAiBusy] = useState(false);
-  const [aiMode, setAiMode] = useState<AIMode>("review");
-  const [aiPanelOpen, setAiPanelOpen] = useState(true);
-  const [manualActionOpen, setManualActionOpen] = useState(false);
-  const [manualActionDraft, setManualActionDraft] = useState<ManualActionDraft>(() => emptyManualActionDraft());
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
@@ -553,12 +466,7 @@ export default function BucketsAdminPage() {
     setAdminUploadStatus(null);
     setAdminUploadForm(loadAdminUploadDraft(row));
     setAdminUploadDraftStatus(null);
-    setAiContextDraft(row.ai_context ?? {});
-    setAiMode("review");
-    setAiPanelOpen(true);
-    setManualActionOpen(false);
-    setManualActionDraft(emptyManualActionDraft());
-    await Promise.all([loadBucketActivity(bucketId, 0, filters), loadBucketAI(bucketId)]);
+    await loadBucketActivity(bucketId, 0, filters);
   }
 
   async function openBucket(bucketId: string, focus: DetailFocus = null) {
@@ -610,114 +518,6 @@ export default function BucketsAdminPage() {
     const next = { ...activityFilters, ...patch };
     setActivityFilters(next);
     void loadBucketActivity(detail.id, 0, next);
-  }
-
-  async function loadBucketAI(bucketId: string) {
-    const [reviews, messages, actions] = await Promise.all([
-      call<BucketAIReview[]>(`/buckets/admin/${bucketId}/ai-reviews`),
-      call<BucketAIMessage[]>(`/buckets/admin/${bucketId}/ai-chat`),
-      call<BucketAIActionItem[]>(`/buckets/admin/${bucketId}/ai-action-items`),
-    ]);
-    setAiReviews(reviews);
-    setAiMessages(messages);
-    setAiActions(actions);
-    setAiMode(reviews.length ? "chat" : "review");
-  }
-
-  async function queueAIReview() {
-    if (!detail) return;
-    setAiBusy(true);
-    try {
-      await call<BucketAIReview>(`/buckets/admin/${detail.id}/ai-reviews`, {
-        method: "POST",
-        body: JSON.stringify({ context: aiContextDraft }),
-      });
-      await loadBucketAI(detail.id);
-      await loadBucket(detail.id);
-      setNotice("AI review queued. Results will appear after processing.");
-    } finally {
-      setAiBusy(false);
-    }
-  }
-
-  async function sendAIChat() {
-    if (!detail || !aiChatText.trim()) return;
-    const text = aiChatText.trim();
-    setAiChatText("");
-    setAiBusy(true);
-    try {
-      await call(`/buckets/admin/${detail.id}/ai-chat`, {
-        method: "POST",
-        body: JSON.stringify({ message: text }),
-      });
-      await loadBucketAI(detail.id);
-    } finally {
-      setAiBusy(false);
-    }
-  }
-
-  async function applyAIContextPatch(patch: BucketAIContext) {
-    if (!detail) return;
-    setAiBusy(true);
-    try {
-      const row = await call<BucketDetail>(`/buckets/admin/${detail.id}/ai-context/apply`, {
-        method: "POST",
-        body: JSON.stringify(patch),
-      });
-      setDetail((current) => current ? { ...current, ai_context: row.ai_context } : current);
-      setAiContextDraft(row.ai_context ?? {});
-      setNotice("Bucket AI instructions updated.");
-    } finally {
-      setAiBusy(false);
-    }
-  }
-
-  async function patchAIAction(item: BucketAIActionItem, patch: Partial<BucketAIActionItem>) {
-    if (!detail) return;
-    const updated = await call<BucketAIActionItem>(`/buckets/admin/${detail.id}/ai-action-items/${item.id}`, {
-      method: "PATCH",
-      body: JSON.stringify(patch),
-    });
-    setAiActions((items) => items.map((row) => (row.id === item.id ? updated : row)));
-  }
-
-  async function createManualAIAction() {
-    if (!detail || !manualActionDraft.title.trim() || !manualActionDraft.instructions.trim()) return;
-    const payload: Record<string, unknown> = {
-      title: manualActionDraft.title.trim(),
-      instructions: manualActionDraft.instructions.trim(),
-      route: manualActionDraft.route,
-      status: "approved",
-      rationale: "Created manually by admin.",
-    };
-    if (manualActionDraft.route === "uploader") {
-      if (manualActionDraft.upload_link_id) payload.upload_link_id = manualActionDraft.upload_link_id;
-    }
-    if (manualActionDraft.route === "share") {
-      if (!manualActionDraft.share_id) {
-        setNotice("Select a share recipient before creating this task.");
-        return;
-      }
-      payload.share_id = manualActionDraft.share_id;
-    }
-    if (manualActionDraft.route === "vendor") {
-      if (!manualActionDraft.vendor_access_id) {
-        setNotice("Select a vendor before creating this task.");
-        return;
-      }
-      payload.vendor_access_id = manualActionDraft.vendor_access_id;
-    }
-    if (manualActionDraft.file_id) payload.file_id = manualActionDraft.file_id;
-    if (manualActionDraft.requested_document_id) payload.requested_document_id = manualActionDraft.requested_document_id;
-
-    const created = await call<BucketAIActionItem>(`/buckets/admin/${detail.id}/ai-action-items`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    setAiActions((items) => [created, ...items]);
-    setManualActionDraft(emptyManualActionDraft());
-    setManualActionOpen(false);
-    setNotice("Task created and routed.");
   }
 
   async function deleteBucket(bucket: Bucket) {
@@ -857,8 +657,6 @@ export default function BucketsAdminPage() {
   const selectedCreateDocs = createDocs.filter((doc) => createChecked[doc.id]);
   const selectedShareFileIds = Object.entries(shareFiles).filter(([, selected]) => selected).map(([id]) => id);
   const visibleFiles = useMemo(() => uniqueBucketFiles(detail?.files ?? []), [detail?.files]);
-  const latestAIResult = aiReviews[0]?.result ?? null;
-  const blockedReviewFiles = useMemo(() => blockedAIFileMap(latestAIResult), [latestAIResult]);
   const activityPage = Math.floor(activityOffset / ACTIVITY_PAGE_SIZE) + 1;
   const activityPageCount = Math.max(1, Math.ceil(activityTotal / ACTIVITY_PAGE_SIZE));
   const canPageActivityBack = Boolean(detail && activityOffset > 0 && !activityLoading);
@@ -1237,9 +1035,6 @@ export default function BucketsAdminPage() {
       can_download: vendorDraft.can_download,
       can_add_notes: vendorDraft.can_add_notes,
       can_see_internal_notes: vendorDraft.can_see_internal_notes,
-      can_use_ai_chat: vendorDraft.can_use_ai_chat,
-      can_view_ai_summary: vendorDraft.can_view_ai_summary,
-      can_view_ai_tasks: vendorDraft.can_view_ai_tasks,
       can_propose_tasks: vendorDraft.can_propose_tasks,
       expires_at: vendorDraft.expires_days ? shareExpiryDate(vendorDraft.expires_days) : null,
     };
@@ -1347,9 +1142,6 @@ export default function BucketsAdminPage() {
           can_download: vendorAssignmentDraft.can_download,
           can_add_notes: vendorAssignmentDraft.can_add_notes,
           can_see_internal_notes: vendorAssignmentDraft.can_see_internal_notes,
-          can_use_ai_chat: vendorAssignmentDraft.can_use_ai_chat,
-          can_view_ai_summary: vendorAssignmentDraft.can_view_ai_summary,
-          can_view_ai_tasks: vendorAssignmentDraft.can_view_ai_tasks,
           can_propose_tasks: vendorAssignmentDraft.can_propose_tasks,
           expires_at: vendorAssignmentDraft.expires_days ? shareExpiryDate(vendorAssignmentDraft.expires_days) : null,
         }),
@@ -1933,8 +1725,6 @@ export default function BucketsAdminPage() {
                       ["can_download", "Download"],
                       ["can_add_notes", "Notes"],
                       ["can_see_internal_notes", "Internal notes"],
-                      ["can_use_ai_chat", "AI chat"],
-                      ["can_view_ai_summary", "AI summary"],
                     ] as const).map(([key, label]) => (
                       <label key={key} style={permissionRowStyle(t)}>
                         <span style={{ color: t.ink, fontSize: 13, fontWeight: 850 }}>{label}</span>
@@ -2252,22 +2042,6 @@ export default function BucketsAdminPage() {
                 title="Vendor access - login required"
               >
                 <Icon name="user" size={16} />
-              </button>
-              <button
-                style={{
-                  ...iconButtonStyle(t),
-                  borderColor: aiPanelOpen ? t.petrol : t.line,
-                  background: aiPanelOpen ? t.petrolSoft : t.surface,
-                  color: aiPanelOpen ? t.petrol : t.ink2,
-                }}
-                onClick={() => {
-                  setAiPanelOpen((value) => !value);
-                  setAiMode("actions");
-                }}
-                aria-label="Toggle AI actions"
-                title="AI review, chat, and tasks"
-              >
-                <Icon name="spark" size={16} />
               </button>
               <button
                 style={{ ...iconButtonStyle(t), width: "auto", padding: "0 12px", gap: 6 }}
@@ -2638,18 +2412,15 @@ export default function BucketsAdminPage() {
                   <EmptyInline icon="file" title="No files uploaded yet" body="Files uploaded through request links will appear here." />
                 ) : (
                   <div style={{ display: "grid", gap: 8 }}>
-                    {visibleFiles.map((file) => {
-                      const blocked = blockedReviewFiles.get(file.id);
-                      return (
-                      <div key={file.id} style={{ ...fileRowStyle(t), borderColor: blocked ? t.danger : t.line, background: blocked ? t.dangerBg : t.surface2 }}>
+                    {visibleFiles.map((file) => (
+                      <div key={file.id} style={fileRowStyle(t)}>
                         <label style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                           <input type="checkbox" checked={!!shareFiles[file.id]} onChange={(e) => setShareFiles({ ...shareFiles, [file.id]: e.target.checked })} />
                           <span style={{ minWidth: 0 }}>
-                            <span style={{ display: "block", color: blocked ? t.danger : t.ink, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.file_name}</span>
-                            <span style={{ color: blocked ? t.danger : t.ink3, fontSize: 12 }}>
+                            <span style={{ display: "block", color: t.ink, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.file_name}</span>
+                            <span style={{ color: t.ink3, fontSize: 12 }}>
                               {file.uploaded_by_name || "Unknown"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}
                             </span>
-                            {blocked ? <span style={{ display: "block", color: t.danger, fontSize: 12, marginTop: 3 }}>{blocked.explanation || "Password-protected PDF. Upload an unlocked copy for AI review."}</span> : null}
                           </span>
                         </label>
                         <div style={{ display: "flex", gap: 6 }}>
@@ -2671,8 +2442,7 @@ export default function BucketsAdminPage() {
                           </button>
                         </div>
                       </div>
-                    );
-                    })}
+                    ))}
                   </div>
                 )}
               </PanelBox>
@@ -2701,210 +2471,6 @@ export default function BucketsAdminPage() {
             </div>
 
             <div style={{ display: "grid", gap: 12 }}>
-              {aiPanelOpen ? (
-                <PanelBox>
-                  <SectionLabel
-                    action={
-                      aiMode === "review"
-                        ? (aiReviews[0] ? statusLabel(aiReviews[0].status) : "No review")
-                        : aiMode === "chat"
-                          ? `${aiMessages.length} messages`
-                          : `${aiActions.filter((item) => item.status === "proposed").length} pending`
-                    }
-                  >
-                    Bucket AI Workspace
-                  </SectionLabel>
-                  <div style={modeToggleStyle(t)}>
-                    {([
-                      ["review", "Underwriting review"],
-                      ["chat", "Chat"],
-                      ["actions", "Actions"],
-                    ] as const).map(([mode, label]) => (
-                      <button key={mode} style={modeButtonStyle(t, aiMode === mode)} onClick={() => setAiMode(mode)}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {aiMode === "review" ? (
-                    <>
-                      <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                        <input style={field} placeholder="Deal type / program" value={aiContextDraft.deal_type ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, deal_type: event.target.value })} />
-                        <input style={field} placeholder="Documentation level" value={aiContextDraft.documentation_level ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, documentation_level: event.target.value })} />
-                        <input style={field} placeholder="Collateral type" value={aiContextDraft.collateral_type ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, collateral_type: event.target.value })} />
-                        <input style={field} placeholder="Loan purpose" value={aiContextDraft.loan_purpose ?? ""} onChange={(event) => setAiContextDraft({ ...aiContextDraft, loan_purpose: event.target.value })} />
-                        <textarea
-                          style={{ ...field, minHeight: 66, paddingTop: 10, resize: "vertical" }}
-                          placeholder="Underwriting focus"
-                          value={aiContextDraft.underwriting_focus ?? ""}
-                          onChange={(event) => setAiContextDraft({ ...aiContextDraft, underwriting_focus: event.target.value })}
-                        />
-                        <textarea
-                          style={{ ...field, minHeight: 76, paddingTop: 10, resize: "vertical" }}
-                          placeholder="Custom AI instructions"
-                          value={aiContextDraft.custom_instructions ?? ""}
-                          onChange={(event) => setAiContextDraft({ ...aiContextDraft, custom_instructions: event.target.value })}
-                        />
-                        <button style={{ ...primary, opacity: aiBusy || !visibleFiles.length ? 0.68 : 1 }} disabled={aiBusy || !visibleFiles.length} onClick={() => queueAIReview().catch((e) => setNotice(String(e)))}>
-                          {aiBusy ? "Working..." : aiReviews.length ? "Reanalyze files" : "Run AI review"}
-                        </button>
-                      </div>
-                      {aiReviews[0] ? (
-                        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-                          {aiReviews[0].error ? <div style={{ ...emptyInlineStyle(t), color: t.danger }}>{aiReviews[0].error}</div> : null}
-                          {aiReviews[0].result ? <AIReviewResult t={t} result={aiReviews[0].result} /> : <div style={emptyInlineStyle(t)}>Review is {statusLabel(aiReviews[0].status).toLowerCase()}.</div>}
-                        </div>
-                      ) : (
-                        <div style={{ ...emptyInlineStyle(t), marginTop: 10 }}>Run a review after entering the deal context. The AI will summarize available files, missing items, discrepancies, and underwriter questions.</div>
-                      )}
-                    </>
-                  ) : null}
-
-                  {aiMode === "chat" ? (
-                    <>
-                      {blockedReviewFiles.size ? (
-                        <div style={blockedFilesPanelStyle(t)}>
-                          <strong>Password required before AI can read {blockedReviewFiles.size} file{blockedReviewFiles.size === 1 ? "" : "s"}.</strong>
-                          <span>Upload unlocked copies or replace those files, then reanalyze.</span>
-                        </div>
-                      ) : null}
-                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-                        <button style={secondary} disabled={aiBusy || !visibleFiles.length} onClick={() => queueAIReview().catch((e) => setNotice(String(e)))}>
-                          <Icon name="refresh" size={14} />
-                          Reanalyze files
-                        </button>
-                      </div>
-                      <div style={{ display: "grid", gap: 8, maxHeight: 360, overflowY: "auto", marginTop: 10 }}>
-                        {aiMessages.length === 0 ? (
-                          <div style={emptyInlineStyle(t)}>Ask about this bucket or tell the AI how to adjust its underwriting instructions.</div>
-                        ) : aiMessages.slice(-12).map((message) => (
-                          <div key={message.id} style={{ ...smallRowStyle(t), background: message.role === "assistant" ? t.surface2 : t.surface }}>
-                            <strong style={{ color: t.ink }}>{message.role === "assistant" ? "Bucket AI" : message.author_name || "You"}</strong>
-                            <div style={{ color: t.ink2, fontSize: 13, whiteSpace: "pre-wrap", marginTop: 4 }}>{message.content}</div>
-                            {message.proposed_context_patch ? (
-                              <button style={{ ...secondary, marginTop: 8 }} onClick={() => applyAIContextPatch(message.proposed_context_patch || {}).catch((e) => setNotice(String(e)))}>
-                                Apply suggested instructions
-                              </button>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, marginTop: 10 }}>
-                        <input
-                          style={field}
-                          placeholder="Ask Bucket AI..."
-                          value={aiChatText}
-                          onChange={(event) => setAiChatText(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") sendAIChat().catch((e) => setNotice(String(e)));
-                          }}
-                        />
-                        <button style={secondary} disabled={aiBusy || !aiChatText.trim()} onClick={() => sendAIChat().catch((e) => setNotice(String(e)))}>Send</button>
-                      </div>
-                    </>
-                  ) : null}
-
-                  {aiMode === "actions" ? (
-                    <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-                      <button style={secondary} onClick={() => setManualActionOpen((value) => !value)}>
-                        <Icon name="plus" size={14} />
-                        Create manual task
-                      </button>
-                      {manualActionOpen ? (
-                        <div style={manualActionFormStyle(t)}>
-                          <input style={field} placeholder="Task title" value={manualActionDraft.title} onChange={(event) => setManualActionDraft({ ...manualActionDraft, title: event.target.value })} />
-                          <textarea
-                            style={{ ...field, minHeight: 74, paddingTop: 10, resize: "vertical" }}
-                            placeholder="Instructions"
-                            value={manualActionDraft.instructions}
-                            onChange={(event) => setManualActionDraft({ ...manualActionDraft, instructions: event.target.value })}
-                          />
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                            <select
-                              style={field}
-                              value={manualActionDraft.route}
-                              onChange={(event) => setManualActionDraft({ ...manualActionDraft, route: event.target.value as ManualActionDraft["route"], upload_link_id: "", share_id: "", vendor_access_id: "" })}
-                            >
-                              <option value="admin">Route to admin</option>
-                              <option value="uploader">Route to uploader/client</option>
-                              <option value="share">Route to shared viewer</option>
-                              <option value="vendor">Route to vendor</option>
-                            </select>
-                            {manualActionDraft.route === "uploader" ? (
-                              <select style={field} value={manualActionDraft.upload_link_id} onChange={(event) => setManualActionDraft({ ...manualActionDraft, upload_link_id: event.target.value })}>
-                                <option value="">All upload clients</option>
-                                {(detail.upload_links ?? []).map((link) => (
-                                  <option key={link.id} value={link.id}>{link.recipient_name}</option>
-                                ))}
-                              </select>
-                            ) : manualActionDraft.route === "share" ? (
-                              <select style={field} value={manualActionDraft.share_id} onChange={(event) => setManualActionDraft({ ...manualActionDraft, share_id: event.target.value })}>
-                                <option value="">Select share recipient</option>
-                                {detail.shares.map((share) => (
-                                  <option key={share.id} value={share.id}>{share.recipient_name}</option>
-                                ))}
-                              </select>
-                            ) : manualActionDraft.route === "vendor" ? (
-                              <select style={field} value={manualActionDraft.vendor_access_id} onChange={(event) => setManualActionDraft({ ...manualActionDraft, vendor_access_id: event.target.value })}>
-                                <option value="">Select vendor</option>
-                                {(detail.vendor_access ?? []).filter((access) => access.status === "active").map((access) => (
-                                  <option key={access.id} value={access.id}>{access.vendor_name || access.vendor_email || "Vendor"}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              <div style={{ ...emptyInlineStyle(t), minHeight: 44, display: "flex", alignItems: "center" }}>Internal admin task</div>
-                            )}
-                          </div>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                            <select style={field} value={manualActionDraft.file_id} onChange={(event) => setManualActionDraft({ ...manualActionDraft, file_id: event.target.value })}>
-                              <option value="">No specific file</option>
-                              {visibleFiles.map((file) => (
-                                <option key={file.id} value={file.id}>{file.file_name}</option>
-                              ))}
-                            </select>
-                            <select style={field} value={manualActionDraft.requested_document_id} onChange={(event) => setManualActionDraft({ ...manualActionDraft, requested_document_id: event.target.value })}>
-                              <option value="">No request item</option>
-                              {detail.requested_documents.map((doc) => (
-                                <option key={doc.id} value={doc.id}>{doc.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                            <button style={secondary} onClick={() => setManualActionOpen(false)}>Cancel</button>
-                            <button style={primary} onClick={() => createManualAIAction().catch((e) => setNotice(String(e)))} disabled={!manualActionDraft.title.trim() || !manualActionDraft.instructions.trim()}>
-                              Create task
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                      {aiActions.length === 0 ? (
-                        <div style={emptyInlineStyle(t)}>No action tasks yet. Create one manually or approve AI proposals from chat/review.</div>
-                      ) : aiActions.slice(0, 10).map((item) => (
-                        <div key={item.id} style={smallRowStyle(t)}>
-                          <div style={{ minWidth: 0 }}>
-                            <strong style={{ color: t.ink }}>{item.title}</strong>
-                            <div style={{ color: t.ink3, fontSize: 12 }}>
-                              {statusLabel(item.route)} | {statusLabel(item.status)} | {item.created_by === "admin" ? "Manual" : "AI"}
-                            </div>
-                            <div style={{ color: t.ink2, fontSize: 13, marginTop: 4 }}>{item.instructions}</div>
-                            {item.rationale ? <div style={{ color: t.ink3, fontSize: 12, marginTop: 4 }}>{item.rationale}</div> : null}
-                          </div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                            {item.status === "proposed" ? (
-                              <>
-                                <button style={secondary} onClick={() => patchAIAction(item, { status: "approved" }).catch((e) => setNotice(String(e)))}>Approve</button>
-                                <button style={secondary} onClick={() => patchAIAction(item, { status: "rejected" }).catch((e) => setNotice(String(e)))}>Reject</button>
-                              </>
-                            ) : null}
-                            {item.status === "approved" ? <button style={secondary} onClick={() => patchAIAction(item, { status: "completed" }).catch((e) => setNotice(String(e)))}>Complete</button> : null}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </PanelBox>
-              ) : null}
-
               <PanelBox>
                 <SectionLabel>Notes</SectionLabel>
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
@@ -3101,27 +2667,6 @@ export default function BucketsAdminPage() {
                       </label>
                       <label style={permissionRowStyle(t)}>
                         <span>
-                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>AI chat</strong>
-                          <span style={{ color: t.ink3, fontSize: 12 }}>Scoped assistant access.</span>
-                        </span>
-                        <input type="checkbox" checked={vendorDraft.can_use_ai_chat} onChange={(event) => setVendorDraft({ ...vendorDraft, can_use_ai_chat: event.target.checked })} />
-                      </label>
-                      <label style={permissionRowStyle(t)}>
-                        <span>
-                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>AI summary</strong>
-                          <span style={{ color: t.ink3, fontSize: 12 }}>Show scoped review summary.</span>
-                        </span>
-                        <input type="checkbox" checked={vendorDraft.can_view_ai_summary} onChange={(event) => setVendorDraft({ ...vendorDraft, can_view_ai_summary: event.target.checked })} />
-                      </label>
-                      <label style={permissionRowStyle(t)}>
-                        <span>
-                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>AI tasks</strong>
-                          <span style={{ color: t.ink3, fontSize: 12 }}>Show approved vendor tasks.</span>
-                        </span>
-                        <input type="checkbox" checked={vendorDraft.can_view_ai_tasks} onChange={(event) => setVendorDraft({ ...vendorDraft, can_view_ai_tasks: event.target.checked })} />
-                      </label>
-                      <label style={permissionRowStyle(t)}>
-                        <span>
                           <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Propose tasks</strong>
                           <span style={{ color: t.ink3, fontSize: 12 }}>Requires admin approval.</span>
                         </span>
@@ -3196,9 +2741,6 @@ export default function BucketsAdminPage() {
                                 ["can_download", "Download"],
                                 ["can_add_notes", "Notes"],
                                 ["can_see_internal_notes", "Internal notes"],
-                                ["can_use_ai_chat", "AI chat"],
-                                ["can_view_ai_summary", "AI summary"],
-                                ["can_view_ai_tasks", "AI tasks"],
                                 ["can_propose_tasks", "Propose tasks"],
                               ] as const).map(([key, label]) => (
                                 <label key={key} style={permissionRowStyle(t)}>
@@ -3836,40 +3378,6 @@ function CreateStatusBanner({ status }: { status: { kind: "working" | "success" 
   );
 }
 
-function AIReviewResult({ t, result }: { t: ReturnType<typeof useTheme>["t"]; result: Record<string, unknown> }) {
-  const summary = stringValue(result.executive_summary) || stringValue(result.summary);
-  const blocked = arrayValue(result.blocked_files);
-  const missing = arrayValue(result.missing_or_incomplete_items);
-  const discrepancies = arrayValue(result.discrepancies);
-  const questions = arrayValue(result.underwriter_questions);
-  const perFile = arrayValue(result.per_file_summaries);
-  return (
-    <div style={{ display: "grid", gap: 8 }}>
-      {summary ? <div style={{ color: t.ink2, fontSize: 13, lineHeight: 1.45 }}>{summary}</div> : null}
-      {blocked.length ? <AIResultList t={t} title="Password required" items={blocked} danger /> : null}
-      <AIResultList t={t} title="Missing / incomplete" items={missing} />
-      <AIResultList t={t} title="Discrepancies" items={discrepancies} />
-      <AIResultList t={t} title="Underwriter questions" items={questions} />
-      <AIResultList t={t} title="Per-file notes" items={perFile} />
-    </div>
-  );
-}
-
-function AIResultList({ t, title, items, danger = false }: { t: ReturnType<typeof useTheme>["t"]; title: string; items: unknown[]; danger?: boolean }) {
-  if (!items.length) return null;
-  return (
-    <div style={{ display: "grid", gap: 5 }}>
-      <strong style={{ color: danger ? t.danger : t.ink, fontSize: 12.5 }}>{title}</strong>
-      {items.slice(0, 4).map((item, index) => (
-        <div key={`${title}-${index}`} style={{ borderTop: `1px solid ${danger ? t.danger : t.line}`, paddingTop: 6, color: danger ? t.danger : t.ink2, fontSize: 12.5, lineHeight: 1.4 }}>
-          {describeAIItem(item)}
-        </div>
-      ))}
-      {items.length > 4 ? <div style={{ color: t.ink3, fontSize: 12 }}>+{items.length - 4} more</div> : null}
-    </div>
-  );
-}
-
 function PanelBox({ children, style }: { children: React.ReactNode; style?: CSSProperties }) {
   const { t } = useTheme();
   return <div style={{ ...panelStyle(t), padding: 14, ...style }}>{children}</div>;
@@ -4082,56 +3590,6 @@ function miniButtonStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
   };
 }
 
-function modeToggleStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: 6,
-    padding: 4,
-    border: `1px solid ${t.line}`,
-    borderRadius: 8,
-    background: t.surface2,
-  };
-}
-
-function modeButtonStyle(t: ReturnType<typeof useTheme>["t"], active: boolean): CSSProperties {
-  return {
-    minHeight: 32,
-    border: `1px solid ${active ? t.petrol : "transparent"}`,
-    borderRadius: 7,
-    background: active ? t.petrolSoft : "transparent",
-    color: active ? t.petrol : t.ink2,
-    fontSize: 12,
-    fontWeight: 900,
-    cursor: "pointer",
-  };
-}
-
-function manualActionFormStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    display: "grid",
-    gap: 8,
-    padding: 10,
-    border: `1px solid ${t.line}`,
-    borderRadius: 8,
-    background: t.surface2,
-  };
-}
-
-function blockedFilesPanelStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    display: "grid",
-    gap: 4,
-    padding: 10,
-    border: `1px solid ${t.danger}`,
-    borderRadius: 8,
-    background: t.dangerBg,
-    color: t.danger,
-    fontSize: 12.5,
-    lineHeight: 1.35,
-  };
-}
-
 function sharePopupStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
   return {
     position: "absolute",
@@ -4239,48 +3697,6 @@ function statusLabel(status: string) {
   return status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function stringValue(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function arrayValue(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function blockedAIFileMap(result: Record<string, unknown> | null | undefined): Map<string, { file_name: string; explanation: string }> {
-  const rows = arrayValue(result?.blocked_files);
-  const blocked = new Map<string, { file_name: string; explanation: string }>();
-  rows.forEach((item) => {
-    if (!item || typeof item !== "object") return;
-    const row = item as Record<string, unknown>;
-    const fileId = stringValue(row.file_id);
-    if (!fileId) return;
-    blocked.set(fileId, {
-      file_name: stringValue(row.file_name),
-      explanation: stringValue(row.explanation) || "Password-protected PDF. Upload an unlocked copy for AI review.",
-    });
-  });
-  return blocked;
-}
-
-function describeAIItem(item: unknown): string {
-  if (typeof item === "string") return item;
-  if (!item || typeof item !== "object") return String(item ?? "");
-  const obj = item as Record<string, unknown>;
-  const parts = [
-    stringValue(obj.title),
-    stringValue(obj.question),
-    stringValue(obj.file_name),
-    stringValue(obj.detail),
-    stringValue(obj.summary),
-    stringValue(obj.instructions),
-    stringValue(obj.reason),
-    stringValue(obj.rationale),
-    stringValue(obj.explanation),
-  ].filter(Boolean);
-  return parts.length ? parts.join(" - ") : JSON.stringify(obj);
-}
-
 function activityLabel(action: string) {
   const labels: Record<string, string> = {
     bucket_created: "Bucket created",
@@ -4334,7 +3750,6 @@ function activityLabel(action: string) {
     vendor_file_annotation_denied: "Vendor annotation denied",
     vendor_note_created: "Vendor note created",
     vendor_note_denied: "Vendor note denied",
-    vendor_ai_chat: "Vendor AI chat",
     vendor_task_proposed: "Vendor task proposed",
   };
   return labels[action] ?? statusLabel(action);
