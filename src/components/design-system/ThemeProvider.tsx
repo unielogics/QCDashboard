@@ -1,149 +1,74 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { QC_DENSITY, QC_TOKENS, type Density, type QCTokens, type ThemeMode, tokensToCssVars } from "./tokens";
+// Theme shim — light only.
+//
+// This app is being migrated from inline style objects onto the plain-CSS
+// design system in globals.css, which QCDealerOS already runs. Dark mode was
+// dropped in that move: two apps behind one login should not be two visual
+// worlds, and Capital OS committed to a single light theme.
+//
+// `useTheme()` survives as a frozen constant rather than a context read,
+// because ~205 files destructure `t` from it. Deleting it outright would break
+// every one of them in a single commit; leaving it here lets routes migrate to
+// classes one at a time. It has no provider state, no listener, and no storage.
+//
+// The values in QC_TOKENS.light are deliberately identical to the CSS custom
+// properties in globals.css, so an un-migrated component renders the same
+// surface as a migrated one sitting next to it. That is the whole reason this
+// migration can be incremental. **If you change a colour, change it in BOTH
+// places** until this file is deleted.
+//
+// This is scaffolding with an end date. When `grep -rl useTheme src` returns
+// nothing, delete this file, tokens.ts and buttons.ts — see Phase 4 of the
+// migration plan.
 
-// User preference for how to pick the applied theme.
-//   - "light"  → always light
-//   - "dark"   → always dark
-//   - "system" → follow the OS preference (and update live via matchMedia)
+import { QC_DENSITY, QC_TOKENS, type Density, type QCTokens, type ThemeMode } from "./tokens";
+
 export type ThemePreference = "light" | "dark" | "system";
 
 interface ThemeCtx {
-  mode: ThemeMode;            // resolved palette currently in effect
+  mode: ThemeMode;
   isDark: boolean;
-  preference: ThemePreference; // user's chosen preference
-  setMode: (m: ThemeMode) => void;        // legacy: forces a concrete palette + clears system pref
+  preference: ThemePreference;
+  setMode: (m: ThemeMode) => void;
   setPreference: (p: ThemePreference) => void;
-  toggle: () => void;          // legacy
+  toggle: () => void;
   density: Density;
   setDensity: (d: Density) => void;
   t: QCTokens;
   d: (typeof QC_DENSITY)[Density];
 }
 
-const Ctx = createContext<ThemeCtx | null>(null);
+const NOOP = () => {};
 
-const STORAGE_KEY = "qc.theme";
-const DENSITY_KEY = "qc.density";
+// Frozen so a stray `theme.t.ink = …` fails loudly rather than tinting one
+// route and confusing whoever finds it later.
+const LIGHT: ThemeCtx = Object.freeze({
+  mode: "light" as ThemeMode,
+  isDark: false,
+  preference: "light" as ThemePreference,
+  setMode: NOOP,
+  setPreference: NOOP,
+  toggle: NOOP,
+  density: "comfortable" as Density,
+  setDensity: NOOP,
+  t: QC_TOKENS.light,
+  d: QC_DENSITY.comfortable,
+});
 
-function readSystemPalette(): ThemeMode {
-  if (typeof window === "undefined") return "light";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
+/**
+ * Kept only so `layout.tsx` and `providers.tsx` need no change during the
+ * migration. It renders nothing of its own: the background, colour and type
+ * that used to be set on a wrapper div here are now owned by globals.css.
+ *
+ * The wrapper it used to render also hardcoded `fontFamily: -apple-system`,
+ * which beat the Inter / Inter Tight faces layout.tsx loads — so the app never
+ * rendered in its own typeface. Removing the div is what fixed that.
+ */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // `mode` is the resolved palette in effect. `preference` is what the user
-  // picked — when it's "system", `mode` mirrors the OS preference live.
-  const [mode, setModeState] = useState<ThemeMode>("light");
-  const [preference, setPreferenceState] = useState<ThemePreference>("system");
-  const [density, setDensity] = useState<Density>("comfortable");
-
-  // Hydrate from localStorage on mount. Stored values:
-  //   "light" / "dark" → explicit preference
-  //   absent           → "system" (follow OS)
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved === "light" || saved === "dark") {
-      setPreferenceState(saved);
-      setModeState(saved);
-    } else {
-      setPreferenceState("system");
-      setModeState(readSystemPalette());
-    }
-    const savedDensity = localStorage.getItem(DENSITY_KEY);
-    if (savedDensity === "comfortable" || savedDensity === "compact") {
-      setDensity(savedDensity);
-    }
-  }, []);
-
-  useEffect(() => { localStorage.setItem(DENSITY_KEY, density); }, [density]);
-
-  // Live-listen to the OS preference whenever the user is in "system" mode.
-  // Removes the listener when they pick an explicit theme so we don't fight them.
-  useEffect(() => {
-    if (preference !== "system" || typeof window === "undefined") return;
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = (e: MediaQueryListEvent) => setModeState(e.matches ? "dark" : "light");
-    media.addEventListener("change", handler);
-    return () => media.removeEventListener("change", handler);
-  }, [preference]);
-
-  const t = QC_TOKENS[mode];
-  const d = QC_DENSITY[density];
-
-  // Mirror the theme tokens onto :root so html/body (styled in globals.css)
-  // pick up the active palette. Without this the body bg falls back to the
-  // pre-hydration default and overscroll/elastic-scroll flashes white in
-  // dark mode (and the inverted color in light mode after a toggle).
-  useEffect(() => {
-    const root = document.documentElement;
-    const vars = tokensToCssVars(t);
-    Object.entries(vars).forEach(([k, v]) => {
-      if (typeof v === "string") root.style.setProperty(k, v);
-    });
-    root.style.colorScheme = mode;
-  }, [t, mode]);
-
-  const setPreference = useCallback((p: ThemePreference) => {
-    setPreferenceState(p);
-    if (p === "system") {
-      localStorage.removeItem(STORAGE_KEY);
-      setModeState(readSystemPalette());
-    } else {
-      localStorage.setItem(STORAGE_KEY, p);
-      setModeState(p);
-    }
-  }, []);
-
-  const setMode = useCallback((m: ThemeMode) => {
-    // Legacy entry point — treat as an explicit preference so the picker
-    // and toggle stay in sync.
-    setPreference(m);
-  }, [setPreference]);
-
-  const toggle = useCallback(() => {
-    setMode(mode === "dark" ? "light" : "dark");
-  }, [mode, setMode]);
-
-  const value = useMemo<ThemeCtx>(
-    () => ({
-      mode,
-      isDark: mode === "dark",
-      preference,
-      setMode,
-      setPreference,
-      toggle,
-      density,
-      setDensity,
-      t,
-      d,
-    }),
-    [mode, preference, setMode, setPreference, toggle, density, t, d]
-  );
-
-  return (
-    <Ctx.Provider value={value}>
-      <div
-        style={{
-          ...tokensToCssVars(t),
-          background: t.bg,
-          color: t.ink,
-          minHeight: "100vh",
-          // No fontFamily here. This used to hardcode -apple-system and win over
-          // the Inter / Inter Tight faces layout.tsx already loads, so the app
-          // has never rendered in its own typeface. globals.css owns type now.
-          WebkitFontSmoothing: "antialiased",
-        }}
-      >
-        {children}
-      </div>
-    </Ctx.Provider>
-  );
+  return <>{children}</>;
 }
 
 export function useTheme(): ThemeCtx {
-  const ctx = useContext(Ctx);
-  if (!ctx) throw new Error("useTheme must be used inside <ThemeProvider>");
-  return ctx;
+  return LIGHT;
 }

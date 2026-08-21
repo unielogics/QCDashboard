@@ -7,38 +7,30 @@ import { Icon } from "./Icon";
 // — Card —
 export function Card({
   children,
-  pad = 18,
-  glass = false,
+  pad,
+  glass: _glass = false,
   onClick,
   style,
+  className,
 }: {
   children: ReactNode;
+  /** Override .card's padding. Prefer leaving it unset. */
   pad?: number;
+  /** Retired with dark mode; accepted so ~112 call sites need no edit. */
   glass?: boolean;
   onClick?: () => void;
   style?: CSSProperties;
+  className?: string;
 }) {
-  const { t, isDark } = useTheme();
+  // Renders `.card` from globals.css. Reskinned in place rather than at the
+  // call sites: Card appears in 112 files, so changing it here restyles all of
+  // them without a single page edit — the highest-leverage move in this
+  // migration, and the riskiest, which is why it lands on its own commit.
   return (
     <div
       onClick={onClick}
-      style={{
-        background:
-          glass && isDark
-            ? "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015))"
-            : t.surface,
-        border: `1px solid ${t.line}`,
-        // --r in globals.css. Card renders in 112 files; an 18px radius beside a
-        // 14px .panel is the most visible seam in a half-migrated screen.
-        borderRadius: 14,
-        padding: pad,
-        boxShadow: isDark ? "none" : t.shadow,
-        backdropFilter: glass ? "blur(12px) saturate(160%)" : undefined,
-        WebkitBackdropFilter: glass ? "blur(12px) saturate(160%)" : undefined,
-        cursor: onClick ? "pointer" : "default",
-        transition: "transform .15s ease, border-color .15s ease",
-        ...style,
-      }}
+      className={["card", className].filter(Boolean).join(" ")}
+      style={pad != null ? { padding: pad, ...style } : style}
     >
       {children}
     </div>
@@ -483,40 +475,36 @@ export function Panel({
   title,
   action,
   children,
-  pad = 16,
+  pad,
   style,
+  className,
 }: {
   title?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
+  /** Override .panel-b's padding. Prefer leaving it unset. */
   pad?: number;
   style?: CSSProperties;
+  className?: string;
 }) {
-  const { t } = useTheme();
+  // Renders `.panel` / `.panel-h` / `.panel-b`. One flat container with a
+  // header hairline, replacing the card-in-card nesting this used to produce.
   return (
-    <div
-      style={{
-        background: t.surface,
-        border: `1px solid ${t.line}`,
-        borderRadius: 14,
-        ...style,
-      }}
-    >
+    <div className={["panel", className].filter(Boolean).join(" ")} style={style}>
       {(title || action) && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "12px 16px",
-            borderBottom: `1px solid ${t.line}`,
-          }}
-        >
-          <div style={{ fontFamily: "var(--font-inter-tight), var(--font-inter), system-ui, sans-serif", fontSize: 13, fontWeight: 700, color: t.ink }}>{title}</div>
-          {action}
+        <div className="panel-h">
+          {title && <h3 style={{ fontSize: 14, margin: 0 }}>{title}</h3>}
+          {action && (
+            <>
+              <span style={{ flex: 1 }} />
+              {action}
+            </>
+          )}
         </div>
       )}
-      <div style={{ padding: pad }}>{children}</div>
+      <div className="panel-b" style={pad != null ? { padding: pad } : undefined}>
+        {children}
+      </div>
     </div>
   );
 }

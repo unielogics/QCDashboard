@@ -2,7 +2,7 @@
 
 // Profile / Account screen — port of the mobile design at
 // qualified-commercial/project/screens/profile.jsx (handoff bundle).
-// Sections: Header (avatar+tier), Credit, Appearance, Account list.
+// Sections: Header (avatar+tier), Credit, Account list.
 // Account list rows are stubs for now where backend doesn't expose the
 // data yet (Plaid, Notifications, MFA, Tax) — they navigate to coming-soon
 // destinations or no-op with a toast. Sign Out is the live row at the
@@ -45,7 +45,7 @@ const THEME_OPTIONS: { id: ThemePreference; label: string; icon: string }[] = [
 ];
 
 export default function ProfilePage() {
-  const { t, preference, setPreference, isDark } = useTheme();
+  const { t } = useTheme();
   const router = useRouter();
   const clerk = useClerk();
   const { data: user } = useCurrentUser();
@@ -170,7 +170,7 @@ export default function ProfilePage() {
           {credit?.fico ? (
             <CreditVerifiedCard
               t={t}
-              isDark={isDark}
+              isDark={false}
               fico={credit.fico}
               expiresAt={credit.expires_at ?? null}
               onRerun={() => { setPullMode("rerun"); setPullOpen(true); }}
@@ -184,54 +184,8 @@ export default function ProfilePage() {
         </>
       )}
 
-      {/* Appearance — 3-way Light / Auto / Dark */}
-      <SectionLabel>Appearance</SectionLabel>
-      <Card pad={14}>
-        <div style={{ fontSize: 12.5, fontWeight: 600, color: t.ink2, marginBottom: 10 }}>Theme</div>
-        <div
-          style={{
-            display: "flex",
-            gap: 6,
-            background: t.chip,
-            borderRadius: 11,
-            padding: 3,
-          }}
-        >
-          {THEME_OPTIONS.map((opt) => {
-            const active = preference === opt.id;
-            return (
-              <button
-                key={opt.id}
-                onClick={() => setPreference(opt.id)}
-                style={{
-                  flex: 1,
-                  padding: "9px",
-                  borderRadius: 8,
-                  border: "none",
-                  background: active ? t.surface : "transparent",
-                  boxShadow: active && !isDark ? "0 1px 2px rgba(11,22,41,0.08)" : "none",
-                  color: active ? t.ink : t.ink3,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                }}
-              >
-                <Icon name={opt.icon} size={14} /> {opt.label}
-              </button>
-            );
-          })}
-        </div>
-        {preference === "system" && (
-          <div style={{ marginTop: 8, fontSize: 11, color: t.ink3 }}>
-            Following your system preference — currently <strong style={{ color: t.ink2 }}>{isDark ? "dark" : "light"}</strong>.
-          </div>
-        )}
-      </Card>
+      {/* No Appearance section: this app is light-only, matching Capital OS.
+          The 3-way Light / Auto / Dark control was removed with dark mode. */}
 
       {/* Account */}
       <SectionLabel>Account</SectionLabel>

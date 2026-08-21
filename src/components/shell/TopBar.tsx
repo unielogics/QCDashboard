@@ -19,7 +19,7 @@ import { usePrimaryShortcutLabel } from "@/lib/platformShortcuts";
 import { withAlpha } from "@/components/design-system/tokens";
 
 export default function TopBar() {
-  const { t, isDark, toggle } = useTheme();
+  const { t } = useTheme();
   const router = useRouter();
   const collapsed = useUI((s) => s.sidebarCollapsed);
   const toggleSidebar = useUI((s) => s.toggleSidebar);
@@ -152,26 +152,8 @@ export default function TopBar() {
       )}
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
-        {/* Theme toggle — sun/moon per design */}
-        <button
-          onClick={toggle}
-          title={isDark ? "Switch to light" : "Switch to dark"}
-          aria-label="Toggle theme"
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            border: `1px solid ${t.line}`,
-            background: "transparent",
-            color: t.ink2,
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Icon name={isDark ? "sun" : "moon"} size={14} />
-        </button>
+        {/* No theme toggle: this app is light-only, matching Capital OS.
+            The slot simply closes up. */}
 
         {/* Funding ⇄ Audit system switcher — operators only. Both apps share
             the same Clerk application, so one sign-in works on app. and
