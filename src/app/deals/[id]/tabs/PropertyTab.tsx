@@ -6,9 +6,18 @@
 // the linked Loan at promote_deal_to_loan time.
 
 import { useEffect, useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import {
+  Btn,
+  Callout,
+  CellChip,
+  Field,
+  Input,
+  Panel,
+  Select,
+  Sub,
+  cx,
+} from "@/components/ds";
 import { useLoan, useUpdateDealById, useUpdateProperty } from "@/hooks/useApi";
 import { GoogleAddressInput } from "@/components/property/GoogleAddressInput";
 import { PropertyMap } from "@/components/property/PropertyMap";
@@ -75,7 +84,6 @@ export function PropertyTab({
   // show up in the top callout so the agent still knows about them.
   requiredFieldRows?: DSTaskRow[];
 }) {
-  const { t } = useTheme();
   const updateDeal = useUpdateDealById();
   const updateProperty = useUpdateProperty();
   // Once the deal has been promoted, the linked Loan row is the
@@ -202,48 +210,32 @@ export function PropertyTab({
   }
 
   const isSeller = deal.deal_type === "seller";
+  const saving = updateDeal.isPending || updateProperty.isPending;
 
   return (
-    <Card pad={18}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-        <SectionLabel>Property</SectionLabel>
-        {linkedLoan ? (
-          <span
-            style={{
-              padding: "2px 8px",
-              borderRadius: 999,
-              background: t.brandSoft,
-              color: t.brand,
-              fontSize: 10.5,
-              fontWeight: 800,
-              letterSpacing: 0.4,
-              textTransform: "uppercase",
-            }}
-            title="Edits sync to the funding workspace on the same loan"
-          >
+    <Panel
+      title="Property"
+      sub={
+        linkedLoan ? (
+          <CellChip tone="acc" title="Edits sync to the funding workspace on the same loan">
             Syncs to {linkedLoan.deal_id}
-          </span>
-        ) : null}
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-          {dirty ? <span style={{ fontSize: 11, color: t.warn, fontWeight: 700 }}>Unsaved changes</span> : null}
-          {!dirty && savedAt ? <span style={{ fontSize: 11, color: t.ink3 }}>Saved</span> : null}
-          {err ? <span style={{ fontSize: 11, color: t.danger }}>{err}</span> : null}
-          {dirty ? (
-            <button onClick={reset} style={btnSecondary(t)}>Discard</button>
-          ) : null}
-          <button
-            onClick={save}
-            disabled={!dirty || updateDeal.isPending || updateProperty.isPending}
-            style={btnPrimary(t, !dirty || updateDeal.isPending || updateProperty.isPending)}
-          >
-            {updateDeal.isPending || updateProperty.isPending ? "Saving…" : "Save changes"}
-          </button>
-        </div>
-      </div>
-
+          </CellChip>
+        ) : undefined
+      }
+      actions={
+        <>
+          {dirty ? <CellChip tone="warn">Unsaved changes</CellChip> : null}
+          {!dirty && savedAt ? <CellChip tone="ok">Saved</CellChip> : null}
+          {err ? <CellChip tone="bad">{err}</CellChip> : null}
+          {dirty ? <Btn onClick={reset}>Discard</Btn> : null}
+          <Btn variant="pri" onClick={save} disabled={!dirty || saving}>
+            {saving ? "Saving…" : "Save changes"}
+          </Btn>
+        </>
+      }
+    >
       {requiredFieldRows.length > 0 ? (
         <RequiredFieldsCallout
-          t={t}
           flagCount={countTrue(redFlags)}
           unmappedLabels={unmappedLabels}
         />
@@ -251,7 +243,13 @@ export function PropertyTab({
 
       {/* Address row — full width + map preview side by side */}
       <Section title="Address">
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(220px, 0.6fr)", gap: 14 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1.4fr) minmax(220px, 0.6fr)",
+            gap: 14,
+          }}
+        >
           <div>
             <GoogleAddressInput
               value={{ street: draft.address, city: draft.city, state: draft.state, zip: draft.zip }}
@@ -260,7 +258,7 @@ export function PropertyTab({
             />
           </div>
           {draft.address ? (
-            <div style={{ borderRadius: 8, overflow: "hidden", border: `1px solid ${t.line}` }}>
+            <div className="mapbox">
               <PropertyMap
                 address={draft.address}
                 city={draft.city || null}
@@ -273,149 +271,167 @@ export function PropertyTab({
               />
             </div>
           ) : (
-            <div
-              style={{
-                borderRadius: 8,
-                border: `1px dashed ${t.line}`,
-                background: t.surface2,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: t.ink3,
-                fontSize: 12,
-                minHeight: 180,
-                padding: 12,
-                textAlign: "center",
-              }}
-            >
-              Map appears once you enter a street address.
-            </div>
+            <div className="mapbox empty">Map appears once you enter a street address.</div>
           )}
         </div>
       </Section>
 
       <Section title="Details">
-        <Grid cols="1fr 1fr 1fr 1fr 1fr">
-          <Field label="Property type" required={redFlags.property_type}>
-            <select value={draft.property_type} onChange={(e) => set("property_type", e.target.value)} style={inputStyle(t, redFlags.property_type)}>
+        <div className="fldgrid five">
+          <Field label="Property type" req={redFlags.property_type}>
+            <Select
+              value={draft.property_type}
+              onChange={(e) => set("property_type", e.target.value)}
+              className={cx(redFlags.property_type && "bad")}
+            >
               <option value="">—</option>
               {PROPERTY_TYPES.map((p) => (
                 <option key={p} value={p}>{p.replace(/_/g, " ")}</option>
               ))}
-            </select>
+            </Select>
           </Field>
-          <Field label="Beds" required={redFlags.beds}>
-            <input type="number" value={draft.beds} onChange={(e) => set("beds", e.target.value)} placeholder="3" style={inputStyle(t, redFlags.beds)} />
+          <Field label="Beds" req={redFlags.beds}>
+            <Input
+              type="number"
+              value={draft.beds}
+              onChange={(e) => set("beds", e.target.value)}
+              placeholder="3"
+              className={cx(redFlags.beds && "bad")}
+            />
           </Field>
-          <Field label="Baths" required={redFlags.baths}>
-            <input type="number" step="0.5" value={draft.baths} onChange={(e) => set("baths", e.target.value)} placeholder="2.5" style={inputStyle(t, redFlags.baths)} />
+          <Field label="Baths" req={redFlags.baths}>
+            <Input
+              type="number"
+              step="0.5"
+              value={draft.baths}
+              onChange={(e) => set("baths", e.target.value)}
+              placeholder="2.5"
+              className={cx(redFlags.baths && "bad")}
+            />
           </Field>
-          <Field label="Sq ft" required={redFlags.sqft}>
-            <input type="number" value={draft.sqft} onChange={(e) => set("sqft", e.target.value)} placeholder="1850" style={inputStyle(t, redFlags.sqft)} />
+          <Field label="Sq ft" req={redFlags.sqft}>
+            <Input
+              type="number"
+              value={draft.sqft}
+              onChange={(e) => set("sqft", e.target.value)}
+              placeholder="1850"
+              className={cx(redFlags.sqft && "bad")}
+            />
           </Field>
-          <Field label="Year built" required={redFlags.year_built}>
-            <input type="number" value={draft.year_built} onChange={(e) => set("year_built", e.target.value)} placeholder="1998" style={inputStyle(t, redFlags.year_built)} />
+          <Field label="Year built" req={redFlags.year_built}>
+            <Input
+              type="number"
+              value={draft.year_built}
+              onChange={(e) => set("year_built", e.target.value)}
+              placeholder="1998"
+              className={cx(redFlags.year_built && "bad")}
+            />
           </Field>
-        </Grid>
+        </div>
       </Section>
 
       <Section title={isSeller ? "Listing" : "Pricing"}>
-        <Grid cols="1fr 1fr 1fr 1fr">
+        <div className="fldgrid four">
           {isSeller ? (
-            <Field label="List price" required={redFlags.list_price}>
-              <input type="number" value={draft.list_price} onChange={(e) => set("list_price", e.target.value)} placeholder="450000" style={inputStyle(t, redFlags.list_price)} />
+            <Field label="List price" req={redFlags.list_price}>
+              <Input
+                type="number"
+                value={draft.list_price}
+                onChange={(e) => set("list_price", e.target.value)}
+                placeholder="450000"
+                className={cx(redFlags.list_price && "bad")}
+              />
             </Field>
           ) : (
-            <Field label="Target price" required={redFlags.target_price}>
-              <input type="number" value={draft.target_price} onChange={(e) => set("target_price", e.target.value)} placeholder="375000" style={inputStyle(t, redFlags.target_price)} />
+            <Field label="Target price" req={redFlags.target_price}>
+              <Input
+                type="number"
+                value={draft.target_price}
+                onChange={(e) => set("target_price", e.target.value)}
+                placeholder="375000"
+                className={cx(redFlags.target_price && "bad")}
+              />
             </Field>
           )}
-          <Field label="Listing status" required={redFlags.listing_status}>
-            <select value={draft.listing_status} onChange={(e) => set("listing_status", e.target.value)} style={inputStyle(t, redFlags.listing_status)}>
+          <Field label="Listing status" req={redFlags.listing_status}>
+            <Select
+              value={draft.listing_status}
+              onChange={(e) => set("listing_status", e.target.value)}
+              className={cx(redFlags.listing_status && "bad")}
+            >
               <option value="">—</option>
               {LISTING_STATUSES.map((s) => (
                 <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
               ))}
-            </select>
+            </Select>
           </Field>
-          <Field label="MLS#" required={redFlags.mls_number}>
-            <input value={draft.mls_number} onChange={(e) => set("mls_number", e.target.value)} placeholder="A4592031" style={inputStyle(t, redFlags.mls_number)} />
+          <Field label="MLS#" req={redFlags.mls_number}>
+            <Input
+              value={draft.mls_number}
+              onChange={(e) => set("mls_number", e.target.value)}
+              placeholder="A4592031"
+              className={cx(redFlags.mls_number && "bad")}
+            />
           </Field>
           {/* When buyer, also expose list_price as the seller's asking
               so the agent can capture both buyer target + seller list
               if they're tracking offer math. */}
           {!isSeller ? (
-            <Field label="Seller's asking" required={redFlags.list_price}>
-              <input type="number" value={draft.list_price} onChange={(e) => set("list_price", e.target.value)} placeholder="425000" style={inputStyle(t, redFlags.list_price)} />
+            <Field label="Seller's asking" req={redFlags.list_price}>
+              <Input
+                type="number"
+                value={draft.list_price}
+                onChange={(e) => set("list_price", e.target.value)}
+                placeholder="425000"
+                className={cx(redFlags.list_price && "bad")}
+              />
             </Field>
           ) : (
-            <Field label="Target / negotiation price" required={redFlags.target_price}>
-              <input type="number" value={draft.target_price} onChange={(e) => set("target_price", e.target.value)} placeholder="440000" style={inputStyle(t, redFlags.target_price)} />
+            <Field label="Target / negotiation price" req={redFlags.target_price}>
+              <Input
+                type="number"
+                value={draft.target_price}
+                onChange={(e) => set("target_price", e.target.value)}
+                placeholder="440000"
+                className={cx(redFlags.target_price && "bad")}
+              />
             </Field>
           )}
-        </Grid>
+        </div>
       </Section>
-    </Card>
+    </Panel>
   );
 }
 
 function RequiredFieldsCallout({
-  t,
   flagCount,
   unmappedLabels,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   flagCount: number;
   unmappedLabels: string[];
 }) {
   const total = flagCount + unmappedLabels.length;
   if (total === 0) {
     return (
-      <div
-        style={{
-          marginBottom: 14,
-          padding: "10px 12px",
-          borderRadius: 8,
-          background: `${t.brand}10`,
-          border: `1px solid ${t.brand}40`,
-          fontSize: 12.5,
-          color: t.ink2,
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-        }}
-      >
-        <Icon name="docCheck" size={12} color={t.brand} stroke={2.2} />
+      <Callout tone="acc" icon={<Icon name="docCheck" size={14} stroke={2.2} />} className="mb">
         All property fields are filled — nothing red on this tab right now.
-      </div>
+      </Callout>
     );
   }
   return (
-    <div
-      style={{
-        marginBottom: 14,
-        padding: "10px 12px",
-        borderRadius: 8,
-        background: `${t.danger}10`,
-        border: `1px solid ${t.danger}55`,
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 10,
-      }}
-    >
-      <Icon name="alert" size={13} color={t.danger} stroke={2.2} />
-      <div style={{ flex: 1, fontSize: 12.5, color: t.ink }}>
-        <strong>{total} property field{total === 1 ? "" : "s"} need data.</strong>{" "}
-        Fields outlined in red below are the ones to fill.
-        {unmappedLabels.length > 0 ? (
-          <div style={{ marginTop: 4, fontSize: 11.5, color: t.ink3 }}>
-            Also pending (no dedicated field on this tab):{" "}
-            {unmappedLabels.slice(0, 4).join(", ")}
-            {unmappedLabels.length > 4 ? `, +${unmappedLabels.length - 4} more` : ""}
-          </div>
-        ) : null}
-      </div>
-    </div>
+    <Callout tone="bad" icon={<Icon name="alert" size={14} stroke={2.2} />} className="mb">
+      <strong>
+        {total} property field{total === 1 ? "" : "s"} need data.
+      </strong>{" "}
+      Fields outlined in red below are the ones to fill.
+      {unmappedLabels.length > 0 ? (
+        <Sub>
+          Also pending (no dedicated field on this tab):{" "}
+          {unmappedLabels.slice(0, 4).join(", ")}
+          {unmappedLabels.length > 4 ? `, +${unmappedLabels.length - 4} more` : ""}
+        </Sub>
+      ) : null}
+    </Callout>
   );
 }
 
@@ -424,117 +440,10 @@ function countTrue(flags: PropertyFieldFlags): number {
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  const { t } = useTheme();
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1.2, marginBottom: 8 }}>
-        {title.toUpperCase()}
-      </div>
+    <div className="fldsec">
+      <div className="lbl">{title}</div>
       {children}
     </div>
   );
-}
-
-function Grid({ cols, children }: { cols: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10 }}>
-      {children}
-    </div>
-  );
-}
-
-function Field({
-  label,
-  required = false,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  const { t } = useTheme();
-  return (
-    <label
-      style={{
-        display: "block",
-        minWidth: 0,
-        position: "relative",
-        paddingLeft: required ? 8 : 0,
-        borderLeft: required ? `3px solid ${t.danger}` : "none",
-        transition: "border-color 120ms",
-      }}
-    >
-      <span
-        style={{
-          fontSize: 10.5,
-          fontWeight: 700,
-          letterSpacing: 0.4,
-          textTransform: "uppercase",
-          color: required ? t.danger : t.ink3,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        {label}
-        {required ? (
-          <span
-            style={{
-              fontSize: 9,
-              fontWeight: 900,
-              padding: "1px 6px",
-              borderRadius: 9,
-              background: t.danger,
-              color: "#fff",
-              letterSpacing: 0.5,
-            }}
-          >
-            REQUIRED
-          </span>
-        ) : null}
-      </span>
-      <div style={{ marginTop: 4 }}>{children}</div>
-    </label>
-  );
-}
-
-function inputStyle(t: ReturnType<typeof useTheme>["t"], required = false): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "8px 10px",
-    fontSize: 13,
-    borderRadius: 6,
-    border: `1px solid ${required ? t.danger : t.line}`,
-    background: t.surface,
-    color: t.ink,
-    boxSizing: "border-box",
-    boxShadow: required ? `0 0 0 2px ${t.danger}22` : "none",
-  };
-}
-
-function btnPrimary(t: ReturnType<typeof useTheme>["t"], disabled: boolean): React.CSSProperties {
-  return {
-    padding: "7px 14px",
-    fontSize: 12,
-    fontWeight: 700,
-    borderRadius: 6,
-    border: "none",
-    background: t.brand,
-    color: t.inverse,
-    cursor: disabled ? "default" : "pointer",
-    opacity: disabled ? 0.4 : 1,
-  };
-}
-
-function btnSecondary(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    padding: "7px 14px",
-    fontSize: 12,
-    fontWeight: 600,
-    borderRadius: 6,
-    border: `1px solid ${t.line}`,
-    background: t.surface,
-    color: t.ink,
-    cursor: "pointer",
-  };
 }

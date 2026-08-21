@@ -9,9 +9,9 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Pill, StageBadge } from "@/components/design-system/primitives";
+import { StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import { Btn, BtnLink, Callout, CellChip, Sub, Tag, cx } from "@/components/ds";
 import { ActiveAgentStrip } from "@/components/ActiveAgentStrip";
 import {
   useClient,
@@ -51,7 +51,6 @@ const TAB_ORDER = [
 // (DealNotesFloatingButton + DealNotesPanel) mounted on this page.
 
 export default function DealPage() {
-  const { t } = useTheme();
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
@@ -86,7 +85,11 @@ export default function DealPage() {
   const markReady = useMarkDealReadyForLending(deal?.client_id ?? "");
 
   if (!deal) {
-    return <div style={{ padding: 24, color: t.ink3, fontSize: 13 }}>Loading…</div>;
+    return (
+      <div className="content">
+        <Sub>Loading…</Sub>
+      </div>
+    );
   }
 
   const isPromoted = !!deal.promoted_loan_id;
@@ -137,143 +140,51 @@ export default function DealPage() {
     .join(" · ");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="grid" style={{ gap: 16 }}>
       {/* AI agents currently working this deal — pause / remove inline. */}
       <ActiveAgentStrip dealId={deal.id} />
+
       {/* Slim summary header — modeled on /loans/[id] header pattern. */}
-      <div
-        style={{
-          border: `1px solid ${t.line}`,
-          borderRadius: 16,
-          background: `linear-gradient(180deg, ${t.surface}, ${t.surface2})`,
-          boxShadow: t.shadow,
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) auto",
-            gap: 18,
-            padding: "14px 16px 12px",
-            alignItems: "center",
-          }}
-        >
+      <div className="filehd">
+        <div className="filehd-b">
           <div style={{ minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <Link
-                href="/pipeline"
-                style={{
-                  fontSize: 10.5,
-                  fontWeight: 700,
-                  color: t.ink3,
-                  letterSpacing: 1.2,
-                  textDecoration: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
-                <Icon name="chevL" size={10} /> PIPELINE
+            <div className="row" style={{ gap: 8 }}>
+              <Link href="/pipeline" className="crumb">
+                <Icon name="chevL" size={10} /> Pipeline
               </Link>
-              <Pill bg={t.brandSoft} color={t.brand}>
-                {dealTypeLabel(deal.deal_type)}
-              </Pill>
-              <Pill>{deal.status}</Pill>
+              <CellChip tone="acc">{dealTypeLabel(deal.deal_type)}</CellChip>
+              <Tag>{deal.status}</Tag>
               {isPromoted && loan ? <StageBadge stage={loanStageIndex(loan.stage)} /> : null}
               <AiStatusBadge state={aiStateOf(deal.ai_status)} size="sm" />
             </div>
-            <h1
-              style={{
-                fontSize: 21,
-                fontWeight: 850,
-                color: t.ink,
-                margin: "5px 0 3px",
-                letterSpacing: 0,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {deal.title}
-            </h1>
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                alignItems: "center",
-                flexWrap: "wrap",
-                fontSize: 12.5,
-                color: t.ink2,
-              }}
-            >
+            <h1 className="filehd-t">{deal.title}</h1>
+            <div className="row" style={{ gap: 10, fontSize: 12.5 }}>
               {client?.name ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <span className="row" style={{ gap: 5, flexWrap: "nowrap" }}>
                   <Icon name="user" size={11} stroke={2.2} />
-                  <strong style={{ color: t.ink }}>{client.name}</strong>
+                  <strong>{client.name}</strong>
                 </span>
               ) : null}
-              {headerSubLine ? <span style={{ color: t.ink4 }}>·</span> : null}
-              {headerSubLine ? <span>{headerSubLine}</span> : null}
+              {headerSubLine ? <span className="sub">{headerSubLine}</span> : null}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <div className="row" style={{ gap: 8, flexWrap: "nowrap", flexShrink: 0 }}>
             {!isPromoted && canPromote ? (
-              <button
-                onClick={onMarkReady}
-                disabled={busy}
-                style={{
-                  padding: "8px 14px",
-                  fontSize: 12,
-                  fontWeight: 800,
-                  borderRadius: 8,
-                  border: "none",
-                  background: t.brand,
-                  color: t.inverse,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  opacity: busy ? 0.6 : 1,
-                }}
-              >
+              <Btn variant="pri" onClick={onMarkReady} disabled={busy}>
                 <Icon name="bolt" size={12} /> {busy ? "Promoting…" : "Ready for Funding"}
-              </button>
+              </Btn>
             ) : null}
             {isPromoted && loan ? (
-              <Link
-                href={`/loans/${loan.id}`}
-                style={{
-                  padding: "8px 14px",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  borderRadius: 8,
-                  border: `1px solid ${t.line}`,
-                  background: t.surface,
-                  color: t.ink,
-                  textDecoration: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
+              <BtnLink href={`/loans/${loan.id}`}>
                 Open funding workbench <Icon name="chevR" size={11} />
-              </Link>
+              </BtnLink>
             ) : null}
           </div>
         </div>
 
-        {/* Tab strip. */}
-        <div
-          style={{
-            display: "flex",
-            gap: 4,
-            borderTop: `1px solid ${t.line}`,
-            paddingLeft: 8,
-            background: t.surface,
-            overflowX: "auto",
-          }}
-        >
+        {/* Tab strip. A real tablist: these switch which view you are looking
+            at, so a screen reader should say so. */}
+        <div className="ftabs" role="tablist" aria-label="Deal sections">
           {tabs.map((x) => {
             const isActive = activeTab === x.id;
             const badge =
@@ -285,81 +196,37 @@ export default function DealPage() {
             return (
               <button
                 key={x.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={cx("ftab", isActive && "on")}
                 onClick={() => onTabChange(x.id)}
-                style={{
-                  padding: "10px 14px",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  border: "none",
-                  background: "transparent",
-                  color: isActive ? t.ink : t.ink3,
-                  borderBottom: `2px solid ${isActive ? t.petrol : "transparent"}`,
-                  cursor: "pointer",
-                  marginBottom: -1,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  whiteSpace: "nowrap",
-                }}
               >
                 <Icon name={x.icon} size={13} />
                 {x.label}
-                {badge > 0 ? (
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      minWidth: 18,
-                      height: 18,
-                      padding: "0 5px",
-                      borderRadius: 9,
-                      background: t.danger,
-                      color: "#fff",
-                      fontSize: 10.5,
-                      fontWeight: 900,
-                      fontFeatureSettings: '"tnum"',
-                      marginLeft: 2,
-                    }}
-                  >
-                    {badge}
-                  </span>
-                ) : null}
+                {badge > 0 ? <span className="cnt sm">{badge}</span> : null}
               </button>
             );
           })}
         </div>
       </div>
 
-      {err ? (
-        <div style={{ padding: 10, borderRadius: 8, background: t.warnBg, color: t.warn, fontSize: 12 }}>
-          {err}
-        </div>
-      ) : null}
+      {err ? <div className="warnline">{err}</div> : null}
       {handoffResult ? (
-        <div
-          style={{
-            padding: 12,
-            borderRadius: 8,
-            background: t.surface2,
-            border: `1px solid ${t.brand}`,
-            fontSize: 12,
-            color: t.ink2,
-          }}
-        >
-          <div style={{ fontWeight: 700, color: t.brand, marginBottom: 4 }}>
-            <Icon name="bolt" size={11} /> Funding file created
-          </div>
+        <Callout tone="acc" icon={<Icon name="bolt" size={14} />}>
+          <b style={{ fontSize: 13 }}>Funding file created</b>
           {handoffResult.handoff_summary ? (
-            <div style={{ whiteSpace: "pre-wrap", marginBottom: 4 }}>{handoffResult.handoff_summary}</div>
-          ) : null}
-          {handoffResult.missing_lending_items.length > 0 ? (
-            <div>
-              <strong>Still needed:</strong>{" "}
-              {handoffResult.missing_lending_items.slice(0, 5).join(", ")}
+            <div style={{ whiteSpace: "pre-wrap", fontSize: 12.5, margin: "4px 0" }}>
+              {handoffResult.handoff_summary}
             </div>
           ) : null}
-        </div>
+          {handoffResult.missing_lending_items.length > 0 ? (
+            <Sub>
+              <strong>Still needed:</strong>{" "}
+              {handoffResult.missing_lending_items.slice(0, 5).join(", ")}
+            </Sub>
+          ) : null}
+        </Callout>
       ) : null}
 
       {activeTab === "property" ? (
@@ -377,7 +244,7 @@ export default function DealPage() {
         <DocumentsTab clientId={deal.client_id} loanId={deal.promoted_loan_id} />
       ) : null}
       {activeTab === "chat" && currentUser ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="grid" style={{ gap: 16 }}>
           {/* (A) Agent thread — always present on a deal. Broker + client
               + AI converge here pre-funding and continue here for ongoing
               nurture post-funding. */}
@@ -389,7 +256,6 @@ export default function DealPage() {
             <LoanChatTab loanId={deal.promoted_loan_id} user={currentUser} />
           ) : (
             <PromoteHint
-              t={t}
               canPromote={canPromote}
               isPending={busy}
               onMarkReady={onMarkReady}
@@ -417,62 +283,30 @@ export default function DealPage() {
 }
 
 function PromoteHint({
-  t,
   canPromote,
   isPending,
   onMarkReady,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   canPromote: boolean;
   isPending: boolean;
   onMarkReady: () => void;
 }) {
   return (
-    <div
-      style={{
-        padding: 18,
-        background: t.surface,
-        borderRadius: 14,
-        border: `1px dashed ${t.line}`,
-        display: "flex",
-        alignItems: "center",
-        gap: 14,
-      }}
-    >
-      <div
-        style={{
-          width: 36, height: 36, borderRadius: 18,
-          background: t.brandSoft, color: t.brand,
-          display: "inline-flex", alignItems: "center", justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
+    <div className="hintbox">
+      <span className="hintbox-i">
         <Icon name="bolt" size={16} />
-      </div>
+      </span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>
-          (L) Loan chat appears after funding handoff
-        </div>
-        <div style={{ fontSize: 12, color: t.ink3, marginTop: 2, lineHeight: 1.5 }}>
-          The funding-team thread is created on promotion and seeded with a
-          summary of the (A) chat above so lending picks up where you left off.
-        </div>
+        <b style={{ fontSize: 13 }}>(L) Loan chat appears after funding handoff</b>
+        <Sub>
+          The funding-team thread is created on promotion and seeded with a summary of the (A) chat
+          above so lending picks up where you left off.
+        </Sub>
       </div>
       {canPromote ? (
-        <button
-          onClick={onMarkReady}
-          disabled={isPending}
-          style={{
-            padding: "8px 14px", borderRadius: 10,
-            background: t.brand, color: t.inverse, border: "none",
-            fontSize: 12, fontWeight: 700,
-            cursor: isPending ? "wait" : "pointer",
-            opacity: isPending ? 0.7 : 1,
-            flexShrink: 0,
-          }}
-        >
+        <Btn variant="pri" onClick={onMarkReady} disabled={isPending}>
           {isPending ? "Promoting…" : "Mark Ready"}
-        </button>
+        </Btn>
       ) : null}
     </div>
   );

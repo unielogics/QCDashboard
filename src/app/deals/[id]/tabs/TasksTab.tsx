@@ -10,11 +10,10 @@
 //      playbook configured in Settings → AI → Lead Templates, and
 //      lets the agent bulk-create AgentTasks from a checklist.
 
-import { useEffect, useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { useMemo, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
+import { Btn, Card, CellChip, Field, Input, Panel, Seg, Select, Sub, Tag, Textarea } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import {
   useAgentPlaybook,
   useClientTasks,
@@ -82,8 +81,15 @@ function playbookCategoryToTaskCategory(c: string, side: "buyer" | "seller"): Ag
 
 type Filter = "all" | "open" | "done" | "ai" | "human";
 
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: "open", label: "Open" },
+  { value: "all", label: "All" },
+  { value: "done", label: "Done" },
+  { value: "ai", label: "AI" },
+  { value: "human", label: "Mine" },
+];
+
 export function TasksTab({ deal }: { deal: Deal }) {
-  const { t } = useTheme();
   const [filter, setFilter] = useState<Filter>("open");
   const [createOpen, setCreateOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -114,54 +120,34 @@ export function TasksTab({ deal }: { deal: Deal }) {
   }, [workflowTasks, filter]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <SectionLabel>Workflow tasks · {workflowTasks.length}</SectionLabel>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {(["open", "all", "done", "ai", "human"] as Filter[]).map((id) => (
-            <button
-              key={id}
-              onClick={() => setFilter(id)}
-              style={{
-                padding: "4px 10px",
-                fontSize: 11,
-                fontWeight: 700,
-                borderRadius: 999,
-                border: `1px solid ${filter === id ? t.brand : t.line}`,
-                background: filter === id ? t.brandSoft : t.surface,
-                color: filter === id ? t.brand : t.ink2,
-                cursor: "pointer",
-                textTransform: "capitalize",
-              }}
-            >
-              {id}
-            </button>
-          ))}
-        </div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <button onClick={() => setTemplateOpen(true)} style={btnSecondary(t)}>
-            <Icon name="spark" size={12} /> Draft from template
-          </button>
-          <button onClick={() => setCreateOpen(true)} style={btnPrimary(t, false)}>
-            <Icon name="plus" size={12} /> New task
-          </button>
-        </div>
+    <div className="grid">
+      <div className="pagebar" style={{ padding: 0 }}>
+        <span className="lbl">Workflow tasks</span>
+        <Tag>{workflowTasks.length}</Tag>
+        <Seg as="filter" ariaLabel="Task filter" value={filter} onChange={setFilter} options={FILTERS} />
+        <span className="spacer" />
+        <Btn onClick={() => setTemplateOpen(true)}>
+          <Icon name="spark" size={12} /> Draft from template
+        </Btn>
+        <Btn variant="pri" onClick={() => setCreateOpen(true)}>
+          <Icon name="plus" size={12} /> New task
+        </Btn>
       </div>
 
       {isLoading ? (
-        <Card pad={16}>
-          <div style={{ color: t.ink3, fontSize: 13 }}>Loading…</div>
+        <Card>
+          <Sub>Loading…</Sub>
         </Card>
       ) : filtered.length === 0 ? (
-        <Card pad={20}>
-          <div style={{ fontSize: 13, color: t.ink3 }}>
+        <Card>
+          <Sub>
             {workflowTasks.length === 0
               ? "No workflow tasks on this deal yet. Click “Draft from template” to pull from your buyer or seller playbook, or “New task” to add one manually."
               : `No tasks match the "${filter}" filter.`}
-          </div>
+          </Sub>
         </Card>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div className="grid g8">
           {filtered.map((task) => (
             <TaskRow
               key={task.id}
@@ -178,17 +164,14 @@ export function TasksTab({ deal }: { deal: Deal }) {
       )}
 
       {createOpen ? (
-        <NewTaskModal
+        <NewTaskDrawer
           clientId={deal.client_id}
           dealId={deal.id}
           onClose={() => setCreateOpen(false)}
         />
       ) : null}
       {templateOpen ? (
-        <TemplateDrawerModal
-          deal={deal}
-          onClose={() => setTemplateOpen(false)}
-        />
+        <TemplateDrawer deal={deal} onClose={() => setTemplateOpen(false)} />
       ) : null}
     </div>
   );
@@ -207,72 +190,48 @@ function TaskRow({
   onPromote: () => void;
   promoting: boolean;
 }) {
-  const { t } = useTheme();
   const isDone = task.status === "done" || task.status === "cancelled";
   const canPromote = task.owner_type === "ai" && !task.ai_assignment_id;
   return (
-    <Card pad={12} style={{ opacity: isDone ? 0.65 : 1 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+    <Card style={{ padding: 13, opacity: isDone ? 0.65 : 1 }}>
+      <div className="row" style={{ gap: 10, alignItems: "flex-start", flexWrap: "nowrap" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span
-              style={{
-                fontSize: 13.5,
-                fontWeight: 700,
-                color: t.ink,
-                textDecoration: isDone ? "line-through" : "none",
-              }}
-            >
+          <div className="row" style={{ gap: 8 }}>
+            <b style={{ fontSize: 13.5, textDecoration: isDone ? "line-through" : "none" }}>
               {task.title}
-            </span>
-            <Pill>{CATEGORY_LABELS[task.category]}</Pill>
+            </b>
+            <Tag>{CATEGORY_LABELS[task.category]}</Tag>
             {task.owner_type === "ai" ? (
               <AiStatusBadge state={task.ai_assignment_id ? "deployed" : "draft_first"} size="sm" />
             ) : null}
-            {task.priority === "high" ? (
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 800,
-                  padding: "1px 6px",
-                  borderRadius: 4,
-                  background: t.warnBg,
-                  color: t.warn,
-                  textTransform: "uppercase",
-                }}
-              >
-                High
-              </span>
-            ) : null}
+            {task.priority === "high" ? <CellChip tone="warn">High</CellChip> : null}
           </div>
-          {task.due_at ? (
-            <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 3 }}>
-              Due {new Date(task.due_at).toLocaleString()}
-            </div>
-          ) : null}
+          {task.due_at ? <Sub>Due {new Date(task.due_at).toLocaleString()}</Sub> : null}
           {task.description ? (
-            <div style={{ fontSize: 12, color: t.ink2, marginTop: 4 }}>{task.description}</div>
+            <div style={{ fontSize: 12.5, marginTop: 4 }}>{task.description}</div>
           ) : null}
         </div>
-        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+        <div className="row" style={{ gap: 6, flexWrap: "nowrap", flexShrink: 0 }}>
           {canPromote ? (
-            <button onClick={onPromote} disabled={promoting} style={btnPrimary(t, promoting)}>
+            <Btn variant="pri" size="sm" onClick={onPromote} disabled={promoting}>
               {promoting ? "Promoting…" : "Promote to AI"}
-            </button>
+            </Btn>
           ) : null}
           {!isDone ? (
-            <button onClick={onComplete} style={btnSecondary(t)}>Complete</button>
+            <Btn size="sm" onClick={onComplete}>
+              Complete
+            </Btn>
           ) : null}
-          <button onClick={onDelete} style={{ ...btnSecondary(t), color: t.danger }}>
+          <Btn size="sm" className="danger" onClick={onDelete}>
             Delete
-          </button>
+          </Btn>
         </div>
       </div>
     </Card>
   );
 }
 
-function NewTaskModal({
+function NewTaskDrawer({
   clientId,
   dealId,
   onClose,
@@ -281,7 +240,6 @@ function NewTaskModal({
   dealId: string;
   onClose: () => void;
 }) {
-  const { t } = useTheme();
   const create = useCreateAgentTask(clientId);
   const [body, setBody] = useState<AgentTaskCreateBody>({
     title: "",
@@ -308,53 +266,67 @@ function NewTaskModal({
   }
 
   return (
-    <ModalShell onClose={onClose}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>New task</div>
-        <ModalCloseButton onClick={onClose} />
-      </div>
-      <Field label="Title">
-        <input value={body.title} onChange={(e) => setBody({ ...body, title: e.target.value })} style={inputStyle(t)} placeholder='e.g. "Send pre-approval letter"' />
-      </Field>
-      <Field label="Description">
-        <textarea
-          value={body.description ?? ""}
-          onChange={(e) => setBody({ ...body, description: e.target.value })}
-          rows={3}
-          style={{ ...inputStyle(t), fontFamily: "inherit", resize: "vertical" }}
-        />
-      </Field>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <Field label="Category">
-          <select value={body.category ?? "other"} onChange={(e) => setBody({ ...body, category: e.target.value as AgentTaskCategory })} style={inputStyle(t)}>
-            <option value="buyer_workflow">Buyer workflow</option>
-            <option value="seller_workflow">Seller workflow</option>
-            <option value="funding_prep">Funding prep</option>
-            <option value="document_collection">Document collection</option>
-            <option value="other">Other</option>
-          </select>
+    <Drawer
+      open
+      onClose={onClose}
+      width="md"
+      title="New task"
+      footer={
+        <>
+          {err ? <span style={{ fontSize: 12, color: "var(--danger)" }}>{err}</span> : null}
+          <span style={{ flex: 1 }} />
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn variant="pri" onClick={save} disabled={create.isPending}>
+            {create.isPending ? "Saving…" : "Create"}
+          </Btn>
+        </>
+      }
+    >
+      <div className="grid g10">
+        <Field label="Title">
+          <Input
+            value={body.title}
+            onChange={(e) => setBody({ ...body, title: e.target.value })}
+            placeholder='e.g. "Send pre-approval letter"'
+          />
         </Field>
-        <Field label="Owner">
-          <select value={body.owner_type ?? "human"} onChange={(e) => setBody({ ...body, owner_type: e.target.value as "human" | "ai" | "shared" })} style={inputStyle(t)}>
-            <option value="human">Me</option>
-            <option value="ai">AI</option>
-            <option value="shared">Shared</option>
-          </select>
+        <Field label="Description">
+          <Textarea
+            value={body.description ?? ""}
+            onChange={(e) => setBody({ ...body, description: e.target.value })}
+            rows={3}
+          />
         </Field>
+        <div className="fldgrid two">
+          <Field label="Category">
+            <Select
+              value={body.category ?? "other"}
+              onChange={(e) => setBody({ ...body, category: e.target.value as AgentTaskCategory })}
+            >
+              <option value="buyer_workflow">Buyer workflow</option>
+              <option value="seller_workflow">Seller workflow</option>
+              <option value="funding_prep">Funding prep</option>
+              <option value="document_collection">Document collection</option>
+              <option value="other">Other</option>
+            </Select>
+          </Field>
+          <Field label="Owner">
+            <Select
+              value={body.owner_type ?? "human"}
+              onChange={(e) => setBody({ ...body, owner_type: e.target.value as "human" | "ai" | "shared" })}
+            >
+              <option value="human">Me</option>
+              <option value="ai">AI</option>
+              <option value="shared">Shared</option>
+            </Select>
+          </Field>
+        </div>
       </div>
-      {err ? <div style={{ fontSize: 12, color: t.danger }}>{err}</div> : null}
-      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-        <button onClick={onClose} style={btnSecondary(t)}>Cancel</button>
-        <button onClick={save} disabled={create.isPending} style={btnPrimary(t, create.isPending)}>
-          {create.isPending ? "Saving…" : "Create"}
-        </button>
-      </div>
-    </ModalShell>
+    </Drawer>
   );
 }
 
-function TemplateDrawerModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
-  const { t } = useTheme();
+function TemplateDrawer({ deal, onClose }: { deal: Deal; onClose: () => void }) {
   const side: "buyer" | "seller" = deal.deal_type === "seller" ? "seller" : "buyer";
   const playbook = useAgentPlaybook(side);
   const create = useCreateAgentTask(deal.client_id);
@@ -422,53 +394,47 @@ function TemplateDrawerModal({ deal, onClose }: { deal: Deal; onClose: () => voi
   }
 
   return (
-    <ModalShell onClose={onClose} width={620}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <Icon name="spark" size={15} stroke={2.2} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: t.ink }}>
-            Draft from {side} template
-          </div>
-          <div style={{ fontSize: 11.5, color: t.ink3 }}>
-            Tasks come from your <strong>Settings → AI → Lead Templates</strong>. Pick the ones
-            relevant to this deal; you can edit or delete them per-file afterward.
-          </div>
-        </div>
-        <button onClick={onClose} style={{ background: "transparent", border: "none", color: t.ink3, padding: 4, cursor: "pointer" }}>
-          <Icon name="x" size={16} />
-        </button>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <button onClick={selectAll} style={btnSecondary(t)}>Select all</button>
-        <button onClick={selectNone} style={btnSecondary(t)}>Clear</button>
-        <span style={{ marginLeft: "auto", fontSize: 11, color: t.ink3, fontWeight: 700 }}>
+    <Drawer
+      open
+      onClose={onClose}
+      title={`Draft from ${side} template`}
+      sub="Tasks come from your Settings → AI → Lead Templates. Pick the ones relevant to this deal; you can edit or delete them per-file afterward."
+      footer={
+        <>
+          {err ? <span style={{ fontSize: 12, color: "var(--danger)" }}>{err}</span> : null}
+          <span style={{ flex: 1 }} />
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn variant="pri" onClick={addSelected} disabled={busy || picked.size === 0}>
+            {busy ? "Adding…" : `Add ${picked.size || ""} task${picked.size === 1 ? "" : "s"}`}
+          </Btn>
+        </>
+      }
+    >
+      <div className="pagebar" style={{ padding: "0 0 12px" }}>
+        <Btn size="sm" onClick={selectAll}>
+          Select all
+        </Btn>
+        <Btn size="sm" onClick={selectNone}>
+          Clear
+        </Btn>
+        <span className="spacer" />
+        <span className="lbl">
           {picked.size}/{requirements.length} selected
         </span>
       </div>
-      <div style={{ flex: 1, minHeight: 200, maxHeight: 420, overflowY: "auto", border: `1px solid ${t.line}`, borderRadius: 8 }}>
+      <div className="picklist">
         {playbook.isLoading ? (
-          <div style={{ padding: 14, fontSize: 12, color: t.ink3 }}>Loading playbook…</div>
+          <Sub>Loading playbook…</Sub>
         ) : requirements.length === 0 ? (
-          <div style={{ padding: 14, fontSize: 12, color: t.ink3 }}>
-            No requirements in your {side} playbook yet. Configure them in Settings → AI →
-            Lead Templates and they&apos;ll show up here.
-          </div>
+          <Sub>
+            No requirements in your {side} playbook yet. Configure them in Settings → AI → Lead
+            Templates and they&apos;ll show up here.
+          </Sub>
         ) : (
           requirements.map((r) => {
             const checked = picked.has(r.requirement_key);
             return (
-              <label
-                key={r.requirement_key}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 10,
-                  padding: "10px 12px",
-                  borderBottom: `1px solid ${t.line}`,
-                  cursor: "pointer",
-                  background: checked ? t.brandSoft : "transparent",
-                }}
-              >
+              <label key={r.requirement_key} className={checked ? "pick on" : "pick"} style={{ alignItems: "flex-start" }}>
                 <input
                   type="checkbox"
                   checked={checked}
@@ -476,14 +442,13 @@ function TemplateDrawerModal({ deal, onClose }: { deal: Deal; onClose: () => voi
                   style={{ marginTop: 3 }}
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{r.label}</div>
-                  <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
-                    {r.required_level} · {r.category} · default owner: {r.default_owner_type ?? "human"}
-                  </div>
+                  <b style={{ fontSize: 13 }}>{r.label}</b>
+                  <Sub>
+                    {r.required_level} · {r.category} · default owner:{" "}
+                    {r.default_owner_type ?? "human"}
+                  </Sub>
                   {r.objective_text ? (
-                    <div style={{ fontSize: 11.5, color: t.ink2, marginTop: 4 }}>
-                      {r.objective_text}
-                    </div>
+                    <div style={{ fontSize: 11.5, marginTop: 4 }}>{r.objective_text}</div>
                   ) : null}
                 </div>
               </label>
@@ -491,114 +456,6 @@ function TemplateDrawerModal({ deal, onClose }: { deal: Deal; onClose: () => voi
           })
         )}
       </div>
-      {err ? <div style={{ fontSize: 12, color: t.danger }}>{err}</div> : null}
-      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-        <button onClick={onClose} style={btnSecondary(t)}>Cancel</button>
-        <button onClick={addSelected} disabled={busy || picked.size === 0} style={btnPrimary(t, busy || picked.size === 0)}>
-          {busy ? "Adding…" : `Add ${picked.size || ""} task${picked.size === 1 ? "" : "s"}`}
-        </button>
-      </div>
-    </ModalShell>
+    </Drawer>
   );
-}
-
-function ModalShell({ onClose, width = 520, children }: { onClose: () => void; width?: number; children: React.ReactNode }) {
-  const { t } = useTheme();
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.4)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 100,
-        padding: 20,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: t.surface,
-          border: `1px solid ${t.line}`,
-          borderRadius: 12,
-          width,
-          maxWidth: "100%",
-          padding: 20,
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  const { t } = useTheme();
-  return (
-    <label style={{ display: "block" }}>
-      <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" }}>{label}</span>
-      <div style={{ marginTop: 4 }}>{children}</div>
-    </label>
-  );
-}
-
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: 8,
-    fontSize: 13,
-    borderRadius: 6,
-    border: `1px solid ${t.line}`,
-    background: t.surface,
-    color: t.ink,
-    boxSizing: "border-box",
-  };
-}
-
-function btnPrimary(t: ReturnType<typeof useTheme>["t"], disabled: boolean): React.CSSProperties {
-  return {
-    padding: "7px 14px",
-    fontSize: 12,
-    fontWeight: 700,
-    borderRadius: 6,
-    border: "none",
-    background: t.brand,
-    color: t.inverse,
-    cursor: disabled ? "default" : "pointer",
-    opacity: disabled ? 0.5 : 1,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-  };
-}
-
-function btnSecondary(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    padding: "7px 12px",
-    fontSize: 12,
-    fontWeight: 700,
-    borderRadius: 6,
-    border: `1px solid ${t.line}`,
-    background: t.surface,
-    color: t.ink2,
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-  };
 }

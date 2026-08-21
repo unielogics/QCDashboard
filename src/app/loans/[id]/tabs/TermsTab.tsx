@@ -11,10 +11,8 @@
 // the in-page preview is ahead of the saved loan.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { Btn, CellChip, Kpi, StatusLine, WarnLine, cx, type ChipTone } from "@/components/ds";
 import { useClient, useCurrentCredit, useDownloadTermSheet, useParsedReport, useRecalc, useUpdateClient, useUpdateLoan } from "@/hooks/useApi";
 import {
   AmortizationStyle,
@@ -78,7 +76,6 @@ type Draft = {
 };
 
 export function TermsTab({ loan }: { loan: Loan }) {
-  const { t } = useTheme();
   const recalc = useRecalc();
   const updateLoan = useUpdateLoan();
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -189,6 +186,9 @@ export function TermsTab({ loan }: { loan: Loan }) {
     !!result && result.warnings.length === 0,
   ].filter(Boolean).length;
   const criteriaCompletion = Math.round((criteriaReady / 9) * 100);
+  // Data-derived: the completion figure and its bar share one tone.
+  const completionTone =
+    criteriaCompletion >= 80 ? "var(--ok)" : criteriaCompletion >= 60 ? "var(--warn)" : "var(--accent)";
 
   // Unsaved-edits detection — compares the current draft against the
   // saved loan's mirror. Cheap: just stringify both.
@@ -298,104 +298,81 @@ export function TermsTab({ loan }: { loan: Loan }) {
   });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div className="grid">
       <div
+        className="card"
         style={{
-          border: `1px solid ${t.line}`,
-          borderRadius: 16,
-          background: t.surface,
-          boxShadow: t.shadow,
-          padding: 14,
           display: "grid",
           gridTemplateColumns: "minmax(0, 1fr) 320px auto",
           gap: 14,
           alignItems: "center",
         }}
       >
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.4, textTransform: "uppercase" }}>
-            Underwriter workbench
-          </div>
-          <div style={{ marginTop: 4, fontSize: 20, fontWeight: 950, color: t.ink, letterSpacing: 0 }}>
-            Build and fine-tune the loan math
-          </div>
+        <div>
+          <div className="lbl">Underwriter workbench</div>
+          <h3>Build and fine-tune the loan math</h3>
         </div>
         <div>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-            <span style={{ fontSize: 11, fontWeight: 900, color: t.ink3, letterSpacing: 1.1, textTransform: "uppercase" }}>Criteria completion</span>
-            <span style={{ fontSize: 12, fontWeight: 950, color: criteriaCompletion >= 80 ? t.profit : criteriaCompletion >= 60 ? t.warn : t.brand }}>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <span className="lbl">Criteria completion</span>
+            <span className="num" style={{ fontWeight: 800, color: completionTone }}>
               {criteriaCompletion}%
             </span>
           </div>
-          <div style={{ height: 8, borderRadius: 999, background: t.line, overflow: "hidden", marginTop: 8 }}>
-            <div
-              style={{
-                width: `${criteriaCompletion}%`,
-                height: "100%",
-                borderRadius: 999,
-                background: criteriaCompletion >= 80 ? t.profit : criteriaCompletion >= 60 ? t.warn : t.brand,
-              }}
-            />
+          <div className="track mt">
+            <div className="fill" style={{ width: `${criteriaCompletion}%`, background: completionTone }} />
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <div className="row" style={{ justifyContent: "flex-end" }}>
           <DownloadTermSheetButton loan={loan} unsaved={hasUnsavedEdits} />
-          <button onClick={() => setDraft(fromLoan(loan))} style={{ ...qcBtn(t), padding: "8px 11px", borderRadius: 8 }}>
-            Reset
-          </button>
-          <button
+          <Btn onClick={() => setDraft(fromLoan(loan))}>Reset</Btn>
+          <Btn
+            variant="pri"
             onClick={saveCriteria}
             disabled={updateLoan.isPending || !numbers.amount || !numbers.baseRate}
-            style={{
-              ...qcBtnPrimary(t),
-              padding: "8px 12px",
-              borderRadius: 8,
-              opacity: updateLoan.isPending || !numbers.amount || !numbers.baseRate ? 0.6 : 1,
-              cursor: updateLoan.isPending ? "wait" : "pointer",
-              whiteSpace: "nowrap",
-            }}
+            style={{ whiteSpace: "nowrap", cursor: updateLoan.isPending ? "wait" : undefined }}
           >
             <Icon name="check" size={13} />
             {updateLoan.isPending ? "Saving..." : "Save Criteria"}
-          </button>
+          </Btn>
         </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 420px", gap: 14, alignItems: "start" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+        <div className="grid" style={{ minWidth: 0 }}>
           <WorkbenchPanel eyebrow="Structure" title="Loan structure">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-              <Field label="Loan type">
+            <div className="cg">
+              <Field className="s4" label="Loan type">
                 <ReadOnlyChip value={prettify(loan.type)} />
               </Field>
-              <Field label="Purpose">
-                <select value={draft.purpose} onChange={(e) => setDraftField(setDraft, "purpose", e.target.value)} style={inputStyle(t)}>
+              <Field className="s4" label="Purpose">
+                <select className="field" value={draft.purpose} onChange={(e) => setDraftField(setDraft, "purpose", e.target.value)}>
                   <option value="">—</option>
                   {LoanPurposeOptions.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
               </Field>
-              <Field label="Property type">
-                <select value={draft.propertyType} onChange={(e) => setDraftField(setDraft, "propertyType", e.target.value)} style={inputStyle(t)}>
+              <Field className="s4" label="Property type">
+                <select className="field" value={draft.propertyType} onChange={(e) => setDraftField(setDraft, "propertyType", e.target.value)}>
                   {PropertyTypeOptions.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
               </Field>
-              <Field label="Term (months)">
+              <Field className="s4" label="Term (months)">
                 <NumberInput value={draft.termMonths} onChange={(v) => setDraftField(setDraft, "termMonths", v)} />
               </Field>
-              <Field label="Amortization">
-                <select value={draft.amortizationStyle} onChange={(e) => setDraftField(setDraft, "amortizationStyle", e.target.value)} style={inputStyle(t)}>
+              <Field className="s4" label="Amortization">
+                <select className="field" value={draft.amortizationStyle} onChange={(e) => setDraftField(setDraft, "amortizationStyle", e.target.value)}>
                   <option value="">—</option>
                   {AmortizationStyleOptions.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
               </Field>
-              <Field label="Prepay penalty">
-                <select value={draft.prepayPenalty} onChange={(e) => setDraftField(setDraft, "prepayPenalty", e.target.value)} style={inputStyle(t)}>
+              <Field className="s4" label="Prepay penalty">
+                <select className="field" value={draft.prepayPenalty} onChange={(e) => setDraftField(setDraft, "prepayPenalty", e.target.value)}>
                   <option value="">—</option>
                   {PrepayPenaltyOptions.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -406,55 +383,55 @@ export function TermsTab({ loan }: { loan: Loan }) {
           </WorkbenchPanel>
 
           <WorkbenchPanel eyebrow="Pricing" title="Rate, points & fees">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-              <MoneyField label="Requested amount" value={draft.amount} onChange={(v) => setDraftField(setDraft, "amount", v)} />
-              <Field label="Base rate">
+            <div className="cg">
+              <MoneyField className="s4" label="Requested amount" value={draft.amount} onChange={(v) => setDraftField(setDraft, "amount", v)} />
+              <Field className="s4" label="Base rate">
                 <NumberInput suffix="%" value={draft.baseRatePct} onChange={(v) => setDraftField(setDraft, "baseRatePct", v)} />
               </Field>
-              <Field label="Discount points">
+              <Field className="s4" label="Discount points">
                 <NumberInput value={draft.points} step="0.25" onChange={(v) => setDraftField(setDraft, "points", v)} />
               </Field>
-              <Field label="Origination">
+              <Field className="s4" label="Origination">
                 <NumberInput suffix="%" value={draft.originationPct} onChange={(v) => setDraftField(setDraft, "originationPct", v)} />
               </Field>
-              <MoneyField label="Lender fees (flat)" value={draft.lenderFees} onChange={(v) => setDraftField(setDraft, "lenderFees", v)} />
-              <MoneyField label="Payoff" value={draft.payoff} onChange={(v) => setDraftField(setDraft, "payoff", v)} />
+              <MoneyField className="s4" label="Lender fees (flat)" value={draft.lenderFees} onChange={(v) => setDraftField(setDraft, "lenderFees", v)} />
+              <MoneyField className="s4" label="Payoff" value={draft.payoff} onChange={(v) => setDraftField(setDraft, "payoff", v)} />
             </div>
           </WorkbenchPanel>
 
           <WorkbenchPanel eyebrow="Collateral" title="Property & rehab">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-              <MoneyField label="ARV / value" value={draft.arv} onChange={(v) => setDraftField(setDraft, "arv", v)} />
-              <MoneyField label="BRV / purchase price" value={draft.brv} onChange={(v) => setDraftField(setDraft, "brv", v)} />
-              <MoneyField label="Rehab budget" value={draft.rehabBudget} onChange={(v) => setDraftField(setDraft, "rehabBudget", v)} />
+            <div className="cg">
+              <MoneyField className="s4" label="ARV / value" value={draft.arv} onChange={(v) => setDraftField(setDraft, "arv", v)} />
+              <MoneyField className="s4" label="BRV / purchase price" value={draft.brv} onChange={(v) => setDraftField(setDraft, "brv", v)} />
+              <MoneyField className="s4" label="Rehab budget" value={draft.rehabBudget} onChange={(v) => setDraftField(setDraft, "rehabBudget", v)} />
             </div>
           </WorkbenchPanel>
 
           {showsRentalIncome(loan.type) ? (
             <WorkbenchPanel eyebrow="Income" title="Rental income & DSCR inputs">
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-                <MoneyField label="Gross monthly rent" value={draft.monthlyRent} onChange={(v) => setDraftField(setDraft, "monthlyRent", v)} />
-                <Field label="Vacancy %">
+              <div className="cg">
+                <MoneyField className="s4" label="Gross monthly rent" value={draft.monthlyRent} onChange={(v) => setDraftField(setDraft, "monthlyRent", v)} />
+                <Field className="s4" label="Vacancy %">
                   <NumberInput suffix="%" value={draft.vacancyPct} onChange={(v) => setDraftField(setDraft, "vacancyPct", v)} />
                 </Field>
-                <Field label="Operating expense ratio">
+                <Field className="s4" label="Operating expense ratio">
                   <NumberInput suffix="%" value={draft.expenseRatioPct} onChange={(v) => setDraftField(setDraft, "expenseRatioPct", v)} />
                 </Field>
               </div>
               {result?.effective_rent != null ? (
-                <div style={{ marginTop: 10, fontSize: 12, color: t.ink3 }}>
-                  Effective rent after vacancy & expenses: <strong style={{ color: t.ink }}>${result.effective_rent.toLocaleString()}</strong>
+                <div className="sub mt">
+                  Effective rent after vacancy & expenses: <strong>${result.effective_rent.toLocaleString()}</strong>
                 </div>
               ) : null}
             </WorkbenchPanel>
           ) : null}
 
           <WorkbenchPanel eyebrow="Carrying costs" title="Taxes, insurance & reserves">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
-              <MoneyField label="Annual taxes" value={draft.annualTaxes} onChange={(v) => setDraftField(setDraft, "annualTaxes", v)} />
-              <MoneyField label="Annual insurance" value={draft.annualInsurance} onChange={(v) => setDraftField(setDraft, "annualInsurance", v)} />
-              <MoneyField label="Monthly HOA" value={draft.monthlyHoa} onChange={(v) => setDraftField(setDraft, "monthlyHoa", v)} />
-              <MoneyField label="Reserves required" value={draft.reservesRequired} onChange={(v) => setDraftField(setDraft, "reservesRequired", v)} />
+            <div className="cg">
+              <MoneyField className="s3" label="Annual taxes" value={draft.annualTaxes} onChange={(v) => setDraftField(setDraft, "annualTaxes", v)} />
+              <MoneyField className="s3" label="Annual insurance" value={draft.annualInsurance} onChange={(v) => setDraftField(setDraft, "annualInsurance", v)} />
+              <MoneyField className="s3" label="Monthly HOA" value={draft.monthlyHoa} onChange={(v) => setDraftField(setDraft, "monthlyHoa", v)} />
+              <MoneyField className="s3" label="Reserves required" value={draft.reservesRequired} onChange={(v) => setDraftField(setDraft, "reservesRequired", v)} />
             </div>
           </WorkbenchPanel>
 
@@ -465,17 +442,17 @@ export function TermsTab({ loan }: { loan: Loan }) {
           />
 
           <WorkbenchPanel eyebrow="Borrower" title="Entity & experience">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-              <Field label="Entity type">
-                <select value={draft.entityType} onChange={(e) => setDraftField(setDraft, "entityType", e.target.value)} style={inputStyle(t)}>
+            <div className="cg">
+              <Field className="s6" label="Entity type">
+                <select className="field" value={draft.entityType} onChange={(e) => setDraftField(setDraft, "entityType", e.target.value)}>
                   <option value="">—</option>
                   {EntityTypeOptions.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
               </Field>
-              <Field label="Experience tier">
-                <select value={draft.experienceTier} onChange={(e) => setDraftField(setDraft, "experienceTier", e.target.value)} style={inputStyle(t)}>
+              <Field className="s6" label="Experience tier">
+                <select className="field" value={draft.experienceTier} onChange={(e) => setDraftField(setDraft, "experienceTier", e.target.value)}>
                   <option value="">—</option>
                   {ExperienceTierOptions.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -505,70 +482,66 @@ export function TermsTab({ loan }: { loan: Loan }) {
             />
           </WorkbenchPanel>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-            <RuleTile icon="calc" label="Math path" value={recalc.isPending ? "Calculating" : "Backend recalc"} />
-            <RuleTile icon="shield" label="Warnings" value={result?.warnings.length ? `${result.warnings.length} open` : "Clear"} tone={result?.warnings.length ? "watch" : "ready"} />
-            <RuleTile icon="docCheck" label="Save state" value={saved ? "Saved" : saveError ? "Error" : hasUnsavedEdits ? "Unsaved edits" : "In sync"} tone={saved ? "ready" : saveError ? "danger" : hasUnsavedEdits ? "watch" : "ready"} />
+          <div className="cg">
+            <RuleTile className="s4" icon="calc" label="Math path" value={recalc.isPending ? "Calculating" : "Backend recalc"} />
+            <RuleTile className="s4" icon="shield" label="Warnings" value={result?.warnings.length ? `${result.warnings.length} open` : "Clear"} tone={result?.warnings.length ? "watch" : "ready"} />
+            <RuleTile className="s4" icon="docCheck" label="Save state" value={saved ? "Saved" : saveError ? "Error" : hasUnsavedEdits ? "Unsaved edits" : "In sync"} tone={saved ? "ready" : saveError ? "danger" : hasUnsavedEdits ? "watch" : "ready"} />
           </div>
         </div>
 
         <div style={{ position: "sticky", top: 96 }}>
           <WorkbenchPanel eyebrow="Live terms" title="Underwriting output" action={recalc.isPending ? "Calculating" : "Live"}>
-            <div style={{ padding: 14, borderRadius: 14, background: t.brandSoft, border: `1px solid ${t.lineStrong}` }}>
-              <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>Sized loan amount</div>
-              <div style={{ marginTop: 5, fontSize: 32, fontWeight: 950, color: t.brand, fontFeatureSettings: '"tnum"', letterSpacing: 0 }}>
-                ${Math.round(sizedAmount).toLocaleString()}
-              </div>
+            <Kpi label="Sized loan amount" value={`$${Math.round(sizedAmount).toLocaleString()}`} />
+
+            <div className="cg mt">
+              <ResultMetric className="s6" label="Final rate" value={finalRate ? `${(finalRate * 100).toFixed(3)}%` : "Missing"} tone={finalRate ? "neutral" : "watch"} />
+              <ResultMetric className="s6" label={amortStyle === "interest_only" ? "Monthly interest" : "Monthly P&I"} value={result ? `$${Math.round(result.monthly_pi).toLocaleString()}` : "..."} />
+              <ResultMetric className="s6" label="DSCR" value={result?.dscr != null ? result.dscr.toFixed(2) : loan.dscr != null ? loan.dscr.toFixed(2) : "N/A"} tone={(result?.dscr ?? loan.dscr ?? 0) >= 1.25 ? "ready" : (result?.dscr ?? loan.dscr ?? 0) > 0 ? "watch" : "neutral"} />
+              <ResultMetric className="s6" label="Total cash to close" value={result?.total_cash_to_close != null ? `$${Math.round(result.total_cash_to_close).toLocaleString()}` : "..."} />
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 10 }}>
-              <ResultMetric label="Final rate" value={finalRate ? `${(finalRate * 100).toFixed(3)}%` : "Missing"} tone={finalRate ? "neutral" : "watch"} />
-              <ResultMetric label={amortStyle === "interest_only" ? "Monthly interest" : "Monthly P&I"} value={result ? `$${Math.round(result.monthly_pi).toLocaleString()}` : "..."} />
-              <ResultMetric label="DSCR" value={result?.dscr != null ? result.dscr.toFixed(2) : loan.dscr != null ? loan.dscr.toFixed(2) : "N/A"} tone={(result?.dscr ?? loan.dscr ?? 0) >= 1.25 ? "ready" : (result?.dscr ?? loan.dscr ?? 0) > 0 ? "watch" : "neutral"} />
-              <ResultMetric label="Total cash to close" value={result?.total_cash_to_close != null ? `$${Math.round(result.total_cash_to_close).toLocaleString()}` : "..."} />
-            </div>
-
-            <div style={{ marginTop: 12, padding: 12, borderRadius: 13, background: t.surface2, border: `1px solid ${t.line}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+            <div className="card mt">
+              <div className="row">
                 <div>
-                  <div style={{ fontSize: 12, color: t.ink, fontWeight: 900 }}>Sizing result</div>
-                  <div style={{ marginTop: 3, fontSize: 11.5, color: t.ink3, textTransform: "capitalize" }}>
+                  <b>Sizing result</b>
+                  <div className="sub">
                     {hasSizing
                       ? `${constraintLabel(result.sizing!.binding_constraint)} cap $${Math.round(result.sizing!.max_allowed).toLocaleString()}`
                       : "No sizing constraint returned"}
                   </div>
                 </div>
+                <span className="sp" />
                 {hasSizing ? (
-                  <Pill bg={result.sizing!.clamped ? t.warnBg : t.profitBg} color={result.sizing!.clamped ? t.warn : t.profit}>
+                  <CellChip tone={result.sizing!.clamped ? "warn" : "ok"}>
                     {result.sizing!.clamped ? "Clamped" : "Within cap"}
-                  </Pill>
+                  </CellChip>
                 ) : null}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 10 }}>
-                <SmallRatio t={t} label="LTV" value={ltv != null ? `${(ltv * 100).toFixed(1)}%` : "N/A"} />
-                <SmallRatio t={t} label="LTC" value={ltc != null ? `${(ltc * 100).toFixed(1)}%` : "N/A"} />
-                <SmallRatio t={t} label="ARV LTV" value={result?.sizing?.arv_ltv != null ? `${(result.sizing.arv_ltv * 100).toFixed(1)}%` : "N/A"} />
+              <div className="cg mt">
+                <SmallRatio className="s4" label="LTV" value={ltv != null ? `${(ltv * 100).toFixed(1)}%` : "N/A"} />
+                <SmallRatio className="s4" label="LTC" value={ltc != null ? `${(ltc * 100).toFixed(1)}%` : "N/A"} />
+                <SmallRatio className="s4" label="ARV LTV" value={result?.sizing?.arv_ltv != null ? `${(result.sizing.arv_ltv * 100).toFixed(1)}%` : "N/A"} />
               </div>
             </div>
 
             {result?.warnings.length ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+              <div className="grid mt">
                 {result.warnings.map((warning) => (
-                  <div key={`${warning.code}-${warning.message}`} style={{ display: "flex", gap: 8, padding: "9px 10px", borderRadius: 10, background: t.warnBg, color: t.warn, fontSize: 12.5, fontWeight: 800 }}>
-                    <Icon name="alert" size={14} />
-                    {warning.message}
-                  </div>
+                  <WarnLine key={`${warning.code}-${warning.message}`}>
+                    <Icon name="alert" size={14} /> {warning.message}
+                  </WarnLine>
                 ))}
               </div>
             ) : (
-              <div style={{ marginTop: 12, color: t.profit, display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 850 }}>
+              <div className="note">
                 <Icon name="check" size={14} />
                 No current sizing or pricing warnings.
               </div>
             )}
 
-            {saveError ? <div style={{ marginTop: 12, color: t.danger, fontSize: 12, fontWeight: 850 }}>{saveError}</div> : null}
-            {saved ? <div style={{ marginTop: 12, color: t.profit, fontSize: 12, fontWeight: 850 }}>Criteria saved to loan file.</div> : null}
+            {/* Sentences, not words: a chip would be clipped by the panel. */}
+            {saveError ? <StatusLine className="mt" tone="bad">{saveError}</StatusLine> : null}
+            {saved ? <StatusLine className="mt" tone="ok">Criteria saved to loan file.</StatusLine> : null}
           </WorkbenchPanel>
         </div>
       </div>
@@ -669,21 +642,32 @@ function setDraftField(setDraft: React.Dispatch<React.SetStateAction<Draft>>, ke
   setDraft((current) => ({ ...current, [key]: value }));
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  const { t } = useTheme();
+/**
+ * A labelled control. Stays a <label> wrapping its input: clicking the caption
+ * focuses the field, which is the affordance a div would silently drop.
+ */
+function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <span style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1.1, textTransform: "uppercase" }}>
-        {label}
-      </span>
+    <label className={className} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span className="lbl">{label}</span>
       {children}
     </label>
   );
 }
 
-function MoneyField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function MoneyField({
+  label,
+  value,
+  onChange,
+  className,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+}) {
   return (
-    <Field label={label}>
+    <Field label={label} className={className}>
       <NumberInput prefix="$" value={value} onChange={onChange} />
     </Field>
   );
@@ -702,41 +686,26 @@ function NumberInput({
   suffix?: string;
   step?: string;
 }) {
-  const { t } = useTheme();
   return (
     <div style={{ position: "relative" }}>
-      {prefix ? <span style={inputAdorn(t, "left")}>{prefix}</span> : null}
+      {prefix ? <span style={inputAdorn("left")}>{prefix}</span> : null}
       <input
+        className="field"
         value={value}
         inputMode="decimal"
         step={step}
         onChange={(event) => onChange(event.target.value.replace(/[^0-9.]/g, ""))}
-        style={{
-          ...inputStyle(t),
-          paddingLeft: prefix ? 28 : 12,
-          paddingRight: suffix ? 30 : 12,
-        }}
+        // Width and the adornment gutters only: the rest of the input is `.field`.
+        style={{ width: "100%", paddingLeft: prefix ? 28 : undefined, paddingRight: suffix ? 30 : undefined }}
       />
-      {suffix ? <span style={inputAdorn(t, "right")}>{suffix}</span> : null}
+      {suffix ? <span style={inputAdorn("right")}>{suffix}</span> : null}
     </div>
   );
 }
 
+/** Field-shaped, muted: reads as a value you cannot edit, not a control. */
 function ReadOnlyChip({ value }: { value: string }) {
-  const { t } = useTheme();
-  return (
-    <div
-      style={{
-        ...inputStyle(t),
-        background: t.chip,
-        color: t.ink2,
-        fontWeight: 900,
-        letterSpacing: 0.2,
-      }}
-    >
-      {value}
-    </div>
-  );
+  return <div className="field c-mut">{value}</div>;
 }
 
 function WorkbenchPanel({
@@ -752,21 +721,22 @@ function WorkbenchPanel({
   action?: string;
   children: React.ReactNode;
 }) {
-  const { t } = useTheme();
   return (
-    <section id={id} style={{ border: `1px solid ${t.line}`, borderRadius: 16, background: t.surface, boxShadow: t.shadow, padding: 16, minWidth: 0, scrollMarginTop: 120 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 13 }}>
+    // scrollMarginTop keeps an #id-anchored section clear of the sticky cockpit bar.
+    <section id={id} className="panel" style={{ scrollMarginTop: 120 }}>
+      <div className="panel-h">
         <div>
-          <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.4, textTransform: "uppercase" }}>{eyebrow}</div>
-          <div style={{ marginTop: 3, fontSize: 17, fontWeight: 950, color: t.ink, letterSpacing: 0 }}>{title}</div>
+          <div className="lbl">{eyebrow}</div>
+          <h3>{title}</h3>
         </div>
         {action ? (
-          <Pill bg={t.chip} color={t.ink2} style={{ fontWeight: 850 }}>
-            {action}
-          </Pill>
+          <>
+            <span className="sp" />
+            <CellChip tone="mut">{action}</CellChip>
+          </>
         ) : null}
       </div>
-      {children}
+      <div className="panel-b">{children}</div>
     </section>
   );
 }
@@ -776,22 +746,24 @@ function RuleTile({
   label,
   value,
   tone = "neutral",
+  className,
 }: {
   icon: string;
   label: string;
   value: string;
   tone?: "ready" | "watch" | "danger" | "neutral";
+  className?: string;
 }) {
-  const { t } = useTheme();
-  const color = tone === "ready" ? t.profit : tone === "watch" ? t.warn : tone === "danger" ? t.danger : t.ink;
-  const bg = tone === "ready" ? t.profitBg : tone === "watch" ? t.warnBg : tone === "danger" ? t.dangerBg : t.surface;
+  const chipTone: ChipTone = tone === "ready" ? "ok" : tone === "watch" ? "warn" : tone === "danger" ? "bad" : "mut";
   return (
-    <div style={{ border: `1px solid ${t.line}`, borderRadius: 14, background: bg, padding: 13, boxShadow: t.shadow }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, color, fontSize: 12, fontWeight: 950 }}>
-        <Icon name={icon} size={15} />
+    <div className={cx("kpi", className)}>
+      <div className="lbl row">
+        <Icon name={icon} size={14} />
         {label}
       </div>
-      <div style={{ marginTop: 8, fontSize: 17, color: t.ink, fontWeight: 950, fontFeatureSettings: '"tnum"' }}>{value}</div>
+      <div className="kdelta">
+        <CellChip tone={chipTone}>{value}</CellChip>
+      </div>
     </div>
   );
 }
@@ -800,50 +772,35 @@ function ResultMetric({
   label,
   value,
   tone = "neutral",
+  className,
 }: {
   label: string;
   value: string;
   tone?: "ready" | "watch" | "neutral";
+  className?: string;
 }) {
-  const { t } = useTheme();
-  const color = tone === "ready" ? t.profit : tone === "watch" ? t.warn : t.ink;
+  const color = tone === "ready" ? "var(--ok)" : tone === "watch" ? "var(--warn)" : undefined;
   return (
-    <div style={{ padding: 12, borderRadius: 12, background: t.surface2, border: `1px solid ${t.line}`, minWidth: 0 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.1, textTransform: "uppercase" }}>
-        {label}
-      </div>
-      <div style={{ marginTop: 5, fontSize: 20, fontWeight: 950, color, fontFeatureSettings: '"tnum"', overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+    <div className={cx("kpi", className)}>
+      <div className="lbl">{label}</div>
+      {/* colour is tone-derived; `.knum` owns the type and the nowrap. */}
+      <div className="knum num" style={{ color, overflow: "hidden", textOverflow: "ellipsis" }}>
         {value}
       </div>
     </div>
   );
 }
 
-function SmallRatio({ t, label, value }: { t: ReturnType<typeof useTheme>["t"]; label: string; value: string }) {
+function SmallRatio({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
-    <div>
-      <div style={{ fontSize: 9.5, fontWeight: 800, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>{label}</div>
-      <div style={{ marginTop: 2, fontSize: 13, color: t.ink, fontWeight: 850, fontFeatureSettings: '"tnum"' }}>{value}</div>
+    <div className={className}>
+      <div className="lbl">{label}</div>
+      <div className="num"><b>{value}</b></div>
     </div>
   );
 }
 
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 10,
-    background: t.surface2,
-    border: `1px solid ${t.line}`,
-    color: t.ink,
-    fontSize: 13,
-    fontFamily: "inherit",
-    outline: "none",
-    fontFeatureSettings: '"tnum"',
-  };
-}
-
-function inputAdorn(t: ReturnType<typeof useTheme>["t"], side: "left" | "right"): React.CSSProperties {
+function inputAdorn(side: "left" | "right"): React.CSSProperties {
   return {
     position: "absolute",
     top: 0,
@@ -851,7 +808,7 @@ function inputAdorn(t: ReturnType<typeof useTheme>["t"], side: "left" | "right")
     [side]: 10,
     display: "inline-flex",
     alignItems: "center",
-    color: t.ink3,
+    color: "var(--muted)",
     fontSize: 12,
     fontWeight: 800,
     pointerEvents: "none",
@@ -897,7 +854,6 @@ function prettify(value: string) {
 }
 
 function DownloadTermSheetButton({ loan, unsaved }: { loan: Loan; unsaved: boolean }) {
-  const { t } = useTheme();
   const dl = useDownloadTermSheet();
   const handle = async () => {
     try {
@@ -916,25 +872,17 @@ function DownloadTermSheetButton({ loan, unsaved }: { loan: Loan; unsaved: boole
     }
   };
   return (
-    <button
+    <Btn
       onClick={handle}
       disabled={dl.isPending}
       title={unsaved
         ? "Save criteria first — the PDF renders from saved state, not the in-page preview."
         : "Download a PDF term sheet + amortization schedule. Shareable with the borrower."}
-      style={{
-        ...qcBtn(t),
-        padding: "8px 11px",
-        borderRadius: 8,
-        opacity: dl.isPending ? 0.6 : unsaved ? 0.85 : 1,
-        cursor: dl.isPending ? "wait" : "pointer",
-        whiteSpace: "nowrap",
-        position: "relative",
-      }}
+      style={{ whiteSpace: "nowrap", cursor: dl.isPending ? "wait" : undefined }}
     >
       <Icon name="doc" size={12} />
       {dl.isPending ? "Generating…" : unsaved ? "PDF (saved state)" : "Download PDF"}
-    </button>
+    </Btn>
   );
 }
 
@@ -957,7 +905,6 @@ function CreditPanel({
   ficoOverride: string;
   onOverrideChange: (value: string) => void;
 }) {
-  const { t } = useTheme();
   const credit = useCurrentCredit(clientId);
   const client = useClient(clientId);
   const updateClient = useUpdateClient();
@@ -1014,11 +961,11 @@ function CreditPanel({
     : effective >= 660 ? "Acceptable"
     : effective >= 620 ? "Subprime"
     : "Below floor";
-  const tierTone = effective === null
-    ? { bg: t.chip, fg: t.ink3 }
-    : effective >= 720 ? { bg: t.profitBg, fg: t.profit }
-    : effective >= 660 ? { bg: t.chip, fg: t.ink2 }
-    : { bg: t.warnBg, fg: t.warn };
+  const tierTone: ChipTone = effective === null
+    ? "mut"
+    : effective >= 720 ? "ok"
+    : effective >= 660 ? "mut"
+    : "warn";
 
   // Lazy-fetch parsed report only when the details panel is open —
   // keeps the criteria tab cheap on initial render.
@@ -1034,24 +981,12 @@ function CreditPanel({
     <WorkbenchPanel eyebrow="Borrower" title="Credit">
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 14, alignItems: "center" }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 800, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 4 }}>
-            Effective FICO
+          <div className="lbl">Effective FICO</div>
+          <div className="row">
+            <span className="big">{effective ?? "—"}</span>
+            {tierLabel ? <CellChip tone={tierTone}>{tierLabel}</CellChip> : null}
           </div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            <span style={{ fontSize: 28, fontWeight: 900, color: t.ink, lineHeight: 1 }}>
-              {effective ?? "—"}
-            </span>
-            {tierLabel ? (
-              <span style={{
-                fontSize: 10, fontWeight: 800, padding: "2px 8px",
-                borderRadius: 999, background: tierTone.bg, color: tierTone.fg,
-                textTransform: "uppercase", letterSpacing: 0.4,
-              }}>
-                {tierLabel}
-              </span>
-            ) : null}
-          </div>
-          <div style={{ fontSize: 11, color: t.ink3, marginTop: 3 }}>
+          <div className="sub">
             {effectiveSource === "override"
               ? "Source: underwriter override"
               : effectiveSource === "pulled"
@@ -1062,87 +997,70 @@ function CreditPanel({
           </div>
         </div>
 
-        <div style={{ paddingLeft: 14, borderLeft: `1px solid ${t.line}` }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 4 }}>
-            Underwriter override
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ paddingLeft: 14, borderLeft: "1px solid var(--line)" }}>
+          <div className="lbl">Underwriter override</div>
+          <div className="row">
             <input
+              className="field"
               type="number"
               inputMode="numeric"
               value={ficoOverride}
               onChange={(e) => onOverrideChange(e.target.value)}
               onBlur={syncOverrideToClient}
               placeholder={pulled !== null ? String(pulled) : manual !== null ? String(manual) : "Enter score"}
-              style={{ ...inputStyle(t), width: 110 }}
+              style={{ width: 110 }}
             />
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700 }}>
+            <div>
+              <div className="sub">
                 {pulled !== null
                   ? `iSoftPull: ${pulled}`
                   : "No iSoftPull on file"}
-              </span>
+              </div>
               {manual !== null && manual !== pulled ? (
-                <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700 }}>
-                  Borrower record: {manual}
-                </span>
+                <div className="sub">Borrower record: {manual}</div>
               ) : null}
               {pulled === null && manual === null ? (
-                <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700, fontStyle: "italic" }}>
-                  Leave blank or enter manually
-                </span>
+                <div className="sub"><em>Leave blank or enter manually</em></div>
               ) : null}
             </div>
           </div>
           {overrideNum ? (
-            <label style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              marginTop: 8,
-              fontSize: 11, color: t.ink3, fontWeight: 700,
-              cursor: "pointer",
-            }}>
+            <label className="pick mt">
               <input
                 type="checkbox"
                 checked={syncToBorrower}
                 onChange={(e) => setSyncToBorrower(e.target.checked)}
-                style={{ width: 13, height: 13, cursor: "pointer" }}
               />
-              Also save to borrower record (used across all their loans)
-              {updateClient.isPending ? <span style={{ color: t.ink3 }}>· saving…</span> : null}
+              <span className="sub">
+                Also save to borrower record (used across all their loans)
+                {updateClient.isPending ? " · saving…" : null}
+              </span>
             </label>
           ) : null}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setExpanded(!expanded)}
-          style={{ ...qcBtn(t), padding: "6px 10px", borderRadius: 7, fontSize: 12 }}
-        >
+        <Btn size="sm" onClick={() => setExpanded(!expanded)}>
           {expanded ? "Hide details" : "Show details"}
-        </button>
+        </Btn>
       </div>
 
       {expanded ? (
-        <div style={{
-          marginTop: 14, padding: 12,
-          border: `1px solid ${t.line}`, borderRadius: 12,
-          background: t.surface2,
-        }}>
+        <div className="card mt">
           {credit.isLoading || parsed.isLoading ? (
-            <div style={{ fontSize: 12, color: t.ink3 }}>Loading credit details…</div>
+            <div className="sub">Loading credit details…</div>
           ) : credit.data && parsed.data ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
-              <DetailStat label="Tradelines" value={counts?.tradelines} t={t} />
-              <DetailStat label="Recent inquiries" value={counts?.inquiries} t={t} />
-              <DetailStat label="Collections" value={counts?.collections} t={t} />
-              <DetailStat label="Public records" value={counts?.public_records} t={t} />
+            <div className="cg">
+              <DetailStat className="s3" label="Tradelines" value={counts?.tradelines} />
+              <DetailStat className="s3" label="Recent inquiries" value={counts?.inquiries} />
+              <DetailStat className="s3" label="Collections" value={counts?.collections} />
+              <DetailStat className="s3" label="Public records" value={counts?.public_records} />
             </div>
           ) : credit.data ? (
-            <div style={{ fontSize: 12, color: t.ink3 }}>
+            <div className="sub">
               Detailed report not available yet. The score above is still authoritative.
             </div>
           ) : (
-            <div style={{ fontSize: 12, color: t.ink3 }}>
+            <div className="sub">
               No credit pull on file yet. Run a pull from the Credit tab or set an override above.
             </div>
           )}
@@ -1154,18 +1072,16 @@ function CreditPanel({
 
 
 function DetailStat({
-  label, value, t,
+  label, value, className,
 }: {
   label: string;
   value: number | null | undefined;
-  t: ReturnType<typeof useTheme>["t"];
+  className?: string;
 }) {
   return (
-    <div>
-      <div style={{ fontSize: 10, fontWeight: 800, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 3 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 800, color: t.ink }}>
+    <div className={cx("kpi", className)}>
+      <div className="lbl">{label}</div>
+      <div className="knum num">
         {value === null || value === undefined ? "—" : value}
       </div>
     </div>

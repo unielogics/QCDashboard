@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import { Btn, CellChip, Chip, IconBtn, Kpi, KpiRow, Seg, type ChipTone } from "@/components/ds";
 import { useClient, useCurrentUser, useDocuments, useLoan, useLoanActivity, useRecalc, useSendClientEmail, useStageTransition, useUpdateLoan } from "@/hooks/useApi";
 import { EmailComposer } from "@/components/email/EmailComposer";
 import { EmailsBreadcrumbTab } from "@/components/email/EmailsBreadcrumbTab";
@@ -82,7 +82,6 @@ const CLIENT_TABS = [
 
 export default function LoanDetailPage() {
   const params = useParams<{ id: string }>();
-  const { t } = useTheme();
   const profile = useActiveProfile();
   // Needed for the inline Loan-chat tab (passed through to DealChatInput).
   const { data: currentUser } = useCurrentUser();
@@ -152,7 +151,7 @@ export default function LoanDetailPage() {
   const flaggedDocs = useMemo(() => docs.filter((doc) => doc.status === "flagged"), [docs]);
   const openDocs = useMemo(() => docs.filter((doc) => doc.status !== "verified"), [docs]);
 
-  if (!loan) return <div style={{ color: t.ink3 }}>Loading…</div>;
+  if (!loan) return <div className="sub">Loading…</div>;
 
   const isInternal = profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
   const isAgent = profile.role === Role.BROKER;
@@ -180,124 +179,64 @@ export default function LoanDetailPage() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div
-        style={{
-          border: `1px solid ${t.line}`,
-          borderRadius: 16,
-          background: `linear-gradient(180deg, ${t.surface}, ${t.surface2})`,
-          boxShadow: t.shadow,
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) 430px",
-            gap: 18,
-            padding: "14px 16px 12px",
-            alignItems: "center",
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span
-                style={{
-                  fontSize: 10.5,
-                  fontWeight: 800,
-                  color: t.ink3,
-                  letterSpacing: 1.4,
-                  fontFamily: "ui-monospace, SF Mono, monospace",
-                }}
-              >
-                {loan.deal_id}
-              </span>
+    <div>
+      {/* Cockpit identity bar — deal chips, address, borrower/contact
+          strip, the click-to-open file-completion cluster, the compact
+          stage strip and the tab rail all live in one sticky header. */}
+      <div className="ckhead">
+        <div className="ckrow">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="ckrow">
+              <span className="lbl num">{loan.deal_id}</span>
               <StageBadge stage={stageIndex} />
               <Pill>{loan.type.replace("_", " ")}</Pill>
               <DealHealthPill health={loan.deal_health} />
             </div>
-            <h1
-              style={{
-                fontSize: 21,
-                fontWeight: 850,
-                color: t.ink,
-                margin: "5px 0 3px",
-                letterSpacing: 0,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {loan.address}
-            </h1>
+            <div className="hd">
+              <h1>{loan.address}</h1>
+            </div>
             {/* Borrower meta strip — natural person + LLC + FICO. */}
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: t.ink2, marginBottom: 4 }}>
+            <div className="ckrow">
               {client?.name || loan.client_name ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <Chip title="Borrower">
                   <Icon name="user" size={11} stroke={2.2} />
-                  <strong style={{ color: t.ink }}>{client?.name ?? loan.client_name}</strong>
-                </span>
+                  <strong>{client?.name ?? loan.client_name}</strong>
+                </Chip>
               ) : null}
               {loan.entity_name ? (
-                <>
-                  <span style={{ color: t.ink4 }}>·</span>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    <span style={{ fontSize: 9, fontWeight: 900, color: t.ink3, letterSpacing: 0.5 }}>LLC</span>
-                    <span style={{ color: t.ink }}>{loan.entity_name}</span>
-                  </span>
-                </>
+                <Chip title="Borrowing entity">
+                  <span className="lbl">LLC</span>
+                  {loan.entity_name}
+                </Chip>
               ) : null}
               {(() => {
                 const fico = loan.fico_override ?? client?.fico ?? null;
                 if (fico == null) return null;
-                const tone = fico >= 740 ? t.profit : fico >= 680 ? t.warn : t.danger;
-                const toneBg = fico >= 740 ? t.profitBg : fico >= 680 ? t.warnBg : t.dangerBg;
-                return (
-                  <>
-                    <span style={{ color: t.ink4 }}>·</span>
-                    <span style={{
-                      display: "inline-flex", alignItems: "center", gap: 4,
-                      padding: "2px 7px", borderRadius: 999,
-                      background: toneBg, color: tone,
-                      fontSize: 11, fontWeight: 900,
-                    }}>
-                      FICO {fico}
-                    </span>
-                  </>
-                );
+                const tone: ChipTone = fico >= 740 ? "ok" : fico >= 680 ? "warn" : "bad";
+                return <CellChip tone={tone}>FICO {fico}</CellChip>;
               })()}
               <PresencePill lastSeenAt={client?.last_seen_at ?? null} />
               {isInternal ? (
-                <span style={{ position: "relative", display: "inline-flex" }}>
-                  <button
-                    type="button"
+                <span className="popwrap">
+                  <Btn
+                    size="sm"
                     onClick={(e) => {
                       e.stopPropagation();
                       setAgentPickerOpen((v) => !v);
                     }}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      padding: "3px 9px",
-                      borderRadius: 999,
-                      border: `1px solid ${loan.broker_id ? t.line : `${t.danger}66`}`,
-                      background: loan.broker_id ? t.surface2 : `${t.danger}10`,
-                      color: loan.broker_id ? t.ink : t.danger,
-                      fontSize: 11,
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                    }}
                     title={loan.broker_id ? "Reassign agent on this file" : "Assign an agent to this file"}
                   >
                     <Icon name="user" size={10} stroke={2.2} />
-                    <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: 0.6, color: t.ink3 }}>
-                      AGENT
-                    </span>
-                    <span>{loan.broker_name ?? "Not assigned"}</span>
+                    <span className="lbl">Agent</span>
+                    {/* An unassigned file is a blocker, not a detail — it keeps the
+                        danger tone it always had, now via the chip vocabulary. */}
+                    {loan.broker_id ? (
+                      <span>{loan.broker_name ?? "Not assigned"}</span>
+                    ) : (
+                      <CellChip tone="bad">{loan.broker_name ?? "Not assigned"}</CellChip>
+                    )}
                     <Icon name="chevR" size={10} />
-                  </button>
+                  </Btn>
                   {agentPickerOpen ? (
                     <LoanAgentPicker
                       loan={loan}
@@ -306,81 +245,42 @@ export default function LoanDetailPage() {
                   ) : null}
                 </span>
               ) : loan.broker_name ? (
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 5,
-                    padding: "2px 8px",
-                    borderRadius: 999,
-                    background: t.surface2,
-                    border: `1px solid ${t.line}`,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: t.ink2,
-                  }}
-                  title="Loan owner / agent"
-                >
+                <Chip title="Loan owner / agent">
                   <Icon name="user" size={10} stroke={2.2} />
                   {loan.broker_name}
-                </span>
+                </Chip>
               ) : null}
             </div>
             {/* Contact strip — email + phone with click-to-copy / tel/mailto links. */}
             {(client?.email || client?.phone) ? (
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 11.5, color: t.ink3, marginBottom: 4 }}>
+              <div className="ckrow">
                 {client?.email ? (
-                  <a
-                    href={`mailto:${client.email}`}
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 5,
-                      color: t.ink2, textDecoration: "none",
-                    }}
-                  >
+                  <Chip href={`mailto:${client.email}`} title="Email the borrower">
                     <Icon name="mail" size={11} stroke={2.2} />
                     <span>{client.email}</span>
-                  </a>
-                ) : null}
-                {client?.email && client?.phone ? (
-                  <span style={{ color: t.ink4 }}>·</span>
+                  </Chip>
                 ) : null}
                 {client?.phone ? (
-                  <a
-                    href={`tel:${client.phone.replace(/[^+\d]/g, "")}`}
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 5,
-                      color: t.ink2, textDecoration: "none",
-                    }}
-                  >
+                  <Chip href={`tel:${client.phone.replace(/[^+\d]/g, "")}`} title="Call the borrower">
                     <Icon name="phone" size={11} stroke={2.2} />
                     <span>{client.phone}</span>
-                  </a>
+                  </Chip>
                 ) : null}
                 {canEmailClient ? (
-                  <>
-                    <span style={{ color: t.ink4 }}>·</span>
-                    <button
-                      onClick={() => setEmailClientOpen(true)}
-                      style={{
-                        display: "inline-flex", alignItems: "center", gap: 5,
-                        border: `1px solid ${t.line}`, borderRadius: 999, background: t.surface,
-                        color: t.ink2, cursor: "pointer", fontSize: 11.5, padding: "2px 10px",
-                      }}
-                    >
-                      <Icon name="mail" size={11} stroke={2.2} />
-                      <span>Email client from my Gmail</span>
-                    </button>
-                  </>
+                  <Btn size="sm" onClick={() => setEmailClientOpen(true)}>
+                    <Icon name="mail" size={11} stroke={2.2} />
+                    <span>Email client from my Gmail</span>
+                  </Btn>
                 ) : null}
               </div>
             ) : null}
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: t.ink2 }}>
+            <div className="ckrow sub">
               <span>{loan.city ?? "No city"}</span>
-              <span style={{ color: t.ink4 }}>/</span>
+              <span>/</span>
               <span>{QC_FMT.short(Number(loan.amount))}</span>
-              <span style={{ color: t.ink4 }}>/</span>
+              <span>/</span>
               <span>{loan.close_date ? `Close ${new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "No close date"}</span>
-              <span style={{ color: t.ink4 }}>/</span>
+              <span>/</span>
               <span>{docsReceived}/{docs.length || 0} docs received</span>
             </div>
           </div>
@@ -395,54 +295,46 @@ export default function LoanDetailPage() {
             onClick={() => setShowBlockers(true)}
             title={totalBlockers > 0 ? `${totalBlockers} item${totalBlockers === 1 ? "" : "s"} blocking this file — click for details` : "All clear"}
             style={{
-              all: "unset",
-              cursor: "pointer",
               display: "grid",
               gridTemplateColumns: "72px minmax(0, 1fr)",
               gap: 14,
               alignItems: "center",
-              padding: 4,
-              margin: -4,
-              borderRadius: 12,
+              textAlign: "left",
+              cursor: "pointer",
+              flex: "0 0 auto",
+              // 560 is not decoration: `.kpis` is auto-fit minmax(150px, 1fr),
+              // and below this the three tiles fall to a 2 + 1 ragged row.
+              width: 560,
+              maxWidth: "100%",
             }}
           >
             <CompletionDial score={completion.score} label={completion.label} />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 11, fontWeight: 850, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
-                    File completion
-                  </span>
-                  {totalBlockers > 0 ? (
-                    <span style={{
-                      fontSize: 10, fontWeight: 900,
-                      padding: "2px 6px", borderRadius: 4,
-                      background: totalBlockers > 5 ? t.dangerBg : t.warnBg,
-                      color: totalBlockers > 5 ? t.danger : t.warn,
-                    }}>
-                      ⚠ {totalBlockers}
-                    </span>
-                  ) : null}
-                </div>
-                <div style={{ fontSize: 12, fontWeight: 850, color: completion.score >= 80 ? t.profit : completion.score >= 60 ? t.warn : t.danger }}>
+            <div>
+              <div className="row">
+                <span className="lbl">File completion</span>
+                {totalBlockers > 0 ? (
+                  <CellChip tone={totalBlockers > 5 ? "bad" : "warn"}>⚠ {totalBlockers}</CellChip>
+                ) : null}
+                <span className="sp" />
+                <CellChip tone={completion.score >= 80 ? "ok" : completion.score >= 60 ? "warn" : "bad"}>
                   {completion.label}
-                </div>
+                </CellChip>
               </div>
-              <div style={{ height: 8, borderRadius: 999, background: t.line, overflow: "hidden", marginTop: 8 }}>
+              <div className="track mt">
+                {/* width + tone are data-derived; the track/fill shape is the class. */}
                 <div
+                  className="fill"
                   style={{
                     width: `${completion.score}%`,
-                    height: "100%",
-                    borderRadius: 999,
-                    background: completion.score >= 80 ? t.profit : completion.score >= 60 ? t.warn : t.brand,
+                    background: completion.score >= 80 ? "var(--ok)" : completion.score >= 60 ? "var(--warn)" : "var(--accent)",
                   }}
                 />
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 9 }}>
+              <KpiRow className="mt">
                 <HeaderStat label="Criteria" value={`${completion.criteria.ready}/${completion.criteria.total}`} />
                 <HeaderStat label="Docs" value={`${completion.docs.verified}/${completion.docs.total || 0}`} />
                 <HeaderStat label="Stage" value={`${completion.stage.index + 1}/${completion.stage.total}`} />
-              </div>
+              </KpiRow>
             </div>
           </button>
         </div>
@@ -476,41 +368,28 @@ export default function LoanDetailPage() {
             }
           }}
         />
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: 6, padding: 6, border: `1px solid ${t.line}`, borderRadius: 14, background: t.surface, boxShadow: t.shadow, overflowX: "auto" }}>
-        {tabs.map((tabDef) => {
-          const active = activeTab === tabDef.id;
-          const isDocs = tabDef.id === "docs";
-          return (
-            <button
-              key={tabDef.id}
-              onClick={() => openLoanArea(tabDef.id)}
-              style={{
-                padding: "9px 12px",
-                borderRadius: 9,
-                color: active ? t.inverse : t.ink3,
-                fontSize: 13, fontWeight: 700,
-                background: active ? t.brand : "transparent",
-                border: `1px solid ${active ? t.brand : "transparent"}`,
-                cursor: "pointer",
-                display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
-              }}
-            >
-              <Icon name={tabDef.icon} size={13} />
-              {tabDef.label}
-              {isDocs && docs.length > 0 && (
-                <span style={{
-                  marginLeft: 4, padding: "1px 6px", borderRadius: 999,
-                  background: t.chip, color: t.ink3, fontSize: 10, fontWeight: 800, fontFeatureSettings: '"tnum"',
-                }}>
-                  {docsReceived}/{docs.length}
+        {/* Tabs — one segmented rail. `as="tabs"` gives it role=tablist +
+            aria-selected, which the hand-rolled buttons never had. */}
+        <div className="cktabs">
+          <Seg
+            as="tabs"
+            ariaLabel="Loan sections"
+            value={activeTab}
+            onChange={(next) => openLoanArea(next)}
+            options={tabs.map((tabDef) => ({
+              value: tabDef.id as string,
+              label: (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <Icon name={tabDef.icon} size={13} />
+                  {tabDef.label}
+                  {tabDef.id === "docs" && docs.length > 0 ? (
+                    <span className="tag num">{docsReceived}/{docs.length}</span>
+                  ) : null}
                 </span>
-              )}
-            </button>
-          );
-        })}
+              ),
+            }))}
+          />
+        </div>
       </div>
 
       {activeTab === "file" && (
@@ -535,7 +414,7 @@ export default function LoanDetailPage() {
         <LoanChatTab loanId={loan.id} user={currentUser} />
       )}
       {activeTab === "thread" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div>
           {/* Thread participants + Pending drafts now render INSIDE
               LenderConnectCard's right column (LenderThread), so the
               whole lender file lives in a single section. */}
@@ -587,38 +466,37 @@ export default function LoanDetailPage() {
 }
 
 function CompletionDial({ score, label }: { score: number; label: string }) {
-  const { t } = useTheme();
-  const color = score >= 80 ? t.profit : score >= 60 ? t.warn : t.brand;
+  // The sweep angle and its tone are the data — they stay inline. Everything
+  // else the dial needs is a token.
+  const color = score >= 80 ? "var(--ok)" : score >= 60 ? "var(--warn)" : "var(--accent)";
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+    <div
+      title={label}
+      style={{
+        width: 68,
+        height: 68,
+        borderRadius: 999,
+        background: `conic-gradient(${color} ${score * 3.6}deg, var(--line) 0deg)`,
+        display: "grid",
+        placeItems: "center",
+        boxShadow: "inset 0 0 0 1px var(--line)",
+      }}
+    >
       <div
-        title={label}
+        className="num"
         style={{
-          width: 68,
-          height: 68,
+          width: 52,
+          height: 52,
           borderRadius: 999,
-          background: `conic-gradient(${color} ${score * 3.6}deg, ${t.line} 0deg)`,
+          background: "var(--surface)",
           display: "grid",
           placeItems: "center",
-          boxShadow: `inset 0 0 0 1px ${t.line}`,
+          color,
+          fontSize: 18,
+          fontWeight: 900,
         }}
       >
-        <div
-          style={{
-            width: 52,
-            height: 52,
-            borderRadius: 999,
-            background: t.surface,
-            display: "grid",
-            placeItems: "center",
-            color,
-            fontSize: 18,
-            fontWeight: 900,
-            fontFeatureSettings: '"tnum"',
-          }}
-        >
-          {score}%
-        </div>
+        {score}%
       </div>
     </div>
   );
@@ -631,27 +509,11 @@ function CompletionDial({ score, label }: { score: number; label: string }) {
 const ONLINE_WINDOW_SEC = 5 * 60; // 5-minute "online" window
 
 function PresencePill({ lastSeenAt }: { lastSeenAt: string | null }) {
-  const { t } = useTheme();
   if (lastSeenAt === null) {
     return (
-      <>
-        <span style={{ color: t.ink4 }}>·</span>
-        <span
-          title="Borrower hasn't opened the app yet"
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 5,
-            padding: "2px 7px", borderRadius: 999,
-            background: t.surface2, color: t.ink3,
-            fontSize: 10.5, fontWeight: 800,
-          }}
-        >
-          <span style={{
-            width: 6, height: 6, borderRadius: 999,
-            background: t.ink3, opacity: 0.5,
-          }} />
-          Not signed in
-        </span>
-      </>
+      <Chip dotColor="var(--faint)" title="Borrower hasn't opened the app yet">
+        Not signed in
+      </Chip>
     );
   }
   const last = new Date(lastSeenAt);
@@ -659,26 +521,12 @@ function PresencePill({ lastSeenAt }: { lastSeenAt: string | null }) {
   const online = ageSec < ONLINE_WINDOW_SEC;
   const relative = formatPresenceAge(ageSec);
   return (
-    <>
-      <span style={{ color: t.ink4 }}>·</span>
-      <span
-        title={`Last seen ${last.toLocaleString()}`}
-        style={{
-          display: "inline-flex", alignItems: "center", gap: 5,
-          padding: "2px 8px", borderRadius: 999,
-          background: online ? t.profitBg : t.surface2,
-          color: online ? t.profit : t.ink3,
-          fontSize: 10.5, fontWeight: 850,
-        }}
-      >
-        <span style={{
-          width: 7, height: 7, borderRadius: 999,
-          background: online ? t.profit : t.ink3,
-          boxShadow: online ? `0 0 0 3px ${t.profit}33` : "none",
-        }} />
-        {online ? "Online" : `${relative} ago`}
-      </span>
-    </>
+    <Chip
+      dotColor={online ? "var(--ok)" : "var(--faint)"}
+      title={`Last seen ${last.toLocaleString()}`}
+    >
+      {online ? "Online" : `${relative} ago`}
+    </Chip>
   );
 }
 
@@ -696,13 +544,9 @@ function formatPresenceAge(seconds: number): string {
 
 
 function HeaderStat({ label, value }: { label: string; value: string | number }) {
-  const { t } = useTheme();
-  return (
-    <div style={{ border: `1px solid ${t.line}`, borderRadius: 8, padding: "6px 8px", background: t.surface }}>
-      <div style={{ fontSize: 9.5, fontWeight: 800, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase" }}>{label}</div>
-      <div style={{ marginTop: 2, fontSize: 13, fontWeight: 900, color: t.ink, fontFeatureSettings: '"tnum"' }}>{value}</div>
-    </div>
-  );
+  // Same three tiles, now a real `.kpi` — the header stat and the KPI band
+  // elsewhere in the console were always the same object drawn twice.
+  return <Kpi label={label} value={value} />;
 }
 
 
@@ -724,6 +568,17 @@ function HeaderStat({ label, value }: { label: string; value: string | number })
 import type { Document as DocumentType, Loan as LoanType } from "@/lib/types";
 type StageMutation = ReturnType<typeof useStageTransition>;
 type StageValue = typeof LoanStageOptions[number]["value"];
+
+// The auto-status tones map onto the shared chip vocabulary rather than a
+// second private palette — "this is fine / watch it / it is broken" has to be
+// the same word here as it is in a table cell.
+const STATUS_TONE: Record<"ready" | "watch" | "danger" | "brand" | "muted", ChipTone> = {
+  ready: "ok",
+  watch: "warn",
+  danger: "bad",
+  brand: "acc",
+  muted: "mut",
+};
 
 // Wrapper that owns the updateLoan mutation for the "Did not process"
 // path — separate from CompactStageStrip so the stage hook stays
@@ -755,7 +610,6 @@ function CompactStageStrip({
   onOpenLoanChat: () => void;
   onCopilot: () => void;
 }) {
-  const { t } = useTheme();
   void docs;
 
   // Auto-derive what the file *is* doing right now. Stage on the loan
@@ -784,125 +638,76 @@ function CompactStageStrip({
   const showCompletionActions = !!loan.lender_id && (loan.stage === "lender_connected" || loan.stage === "closing");
 
   return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-      padding: "10px 14px",
-      borderTop: `1px solid ${t.line}`,
-      background: t.surface2,
-    }}>
+    <div className="row mt">
       {/* Live status pill */}
-      <span style={{
-        display: "inline-flex", alignItems: "center", gap: 7,
-        padding: "5px 11px",
-        borderRadius: 999,
-        background: tone === "ready" ? t.profitBg : tone === "watch" ? t.warnBg : tone === "danger" ? t.dangerBg : tone === "brand" ? t.brandSoft : t.surface,
-        color: tone === "ready" ? t.profit : tone === "watch" ? t.warn : tone === "danger" ? t.danger : tone === "brand" ? t.brand : t.ink2,
-        fontSize: 11.5, fontWeight: 900, letterSpacing: 0.2,
-        whiteSpace: "nowrap",
-      }}>
-        <span style={{
-          width: 7, height: 7, borderRadius: 999,
-          background: tone === "ready" ? t.profit : tone === "watch" ? t.warn : tone === "danger" ? t.danger : tone === "brand" ? t.brand : t.ink2,
-          animation: autoStatus.pulse ? "qcPulse 1.6s ease-in-out infinite" : undefined,
-        }} />
+      <CellChip tone={STATUS_TONE[tone]}>
+        <span
+          className="repdot"
+          style={{
+            background: "currentColor",
+            animation: autoStatus.pulse ? "qcPulse 1.6s ease-in-out infinite" : undefined,
+          }}
+        />
         {autoStatus.label}
-      </span>
-      <span style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.3, minWidth: 0, flex: 1 }}>
-        {autoStatus.hint}
-      </span>
+      </CellChip>
+      <span className="sp sub">{autoStatus.hint}</span>
 
-      {/* Mini stage strip — 6 tiny dots, current one labeled. */}
+      {/* Mini stage strip — 6 tiny dots, current one labeled. The dot
+          colours are the data (done / current / not reached), so they stay
+          inline; only the palette moved onto tokens. */}
       <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
         {FILE_STAGE_KEYS.map((s, i) => {
           const done = i < stageIndex;
           const active = i === stageIndex;
-          const color = done ? t.profit : active ? t.brand : t.line;
+          const color = done ? "var(--ok)" : active ? "var(--accent)" : "var(--line2)";
           return (
-            <div key={s} title={FILE_STAGE_LABELS[i]} style={{
-              display: "inline-flex", alignItems: "center", gap: 4,
-            }}>
-              <span style={{
-                width: active ? 9 : 7, height: active ? 9 : 7,
-                borderRadius: 999, background: color,
-                boxShadow: active ? `0 0 0 3px ${t.brandSoft}` : "none",
-              }} />
+            <Fragment key={s}>
+              <span
+                title={FILE_STAGE_LABELS[i]}
+                style={{
+                  width: active ? 9 : 7, height: active ? 9 : 7,
+                  borderRadius: 999, background: color,
+                  boxShadow: active ? "0 0 0 3px var(--accent-100)" : "none",
+                }}
+              />
               {i < FILE_STAGE_KEYS.length - 1 ? (
-                <span style={{ width: 14, height: 2, background: done ? t.profit : t.line, borderRadius: 999 }} />
+                <span style={{ width: 14, height: 2, background: done ? "var(--ok)" : "var(--line2)", borderRadius: 999 }} />
               ) : null}
-            </div>
+            </Fragment>
           );
         })}
-        <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 900, color: t.ink, letterSpacing: 0.3 }}>
-          {FILE_STAGE_LABELS[stageIndex]}
-        </span>
+        <span className="lbl">{FILE_STAGE_LABELS[stageIndex]}</span>
       </div>
 
-      <div style={{ flex: "0 0 auto", display: "inline-flex", gap: 6 }}>
+      <div className="pgacts">
         {showCompletionActions && canEdit ? (
           <>
-            <button
-              onClick={markDidNotProcess}
-              disabled={stageMut.isPending}
-              style={{
-                padding: "7px 12px", borderRadius: 9,
-                background: t.surface, color: t.ink2,
-                border: `1px solid ${t.lineStrong}`,
-                fontSize: 12, fontWeight: 850,
-                cursor: stageMut.isPending ? "wait" : "pointer",
-                fontFamily: "inherit",
-              }}
-            >
+            <Btn onClick={markDidNotProcess} disabled={stageMut.isPending}>
               Did not process
-            </button>
-            <button
-              onClick={markFunded}
-              disabled={stageMut.isPending}
-              style={{
-                padding: "7px 12px", borderRadius: 9,
-                background: t.profit, color: t.inverse,
-                border: "none",
-                fontSize: 12, fontWeight: 900,
-                cursor: stageMut.isPending ? "wait" : "pointer",
-                fontFamily: "inherit",
-              }}
-            >
+            </Btn>
+            <Btn variant="pri" onClick={markFunded} disabled={stageMut.isPending}>
               <Icon name="check" size={12} /> Mark Funded
-            </button>
+            </Btn>
           </>
         ) : null}
-        <button
+        <IconBtn
           onClick={onOpenLoanChat}
           title="Open the chat (AI ↔ borrower) on this file"
           aria-label="Open chat"
-          style={{
-            width: 32, height: 32, borderRadius: 9,
-            background: t.brandSoft, color: t.brand,
-            border: `1px solid ${t.brand}40`,
-            display: "inline-flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer", fontFamily: "inherit",
-          }}
         >
           <Icon name="chat" size={14} stroke={2.2} />
-        </button>
-        <button
-          onClick={onCopilot}
-          style={{
-            padding: "7px 12px", borderRadius: 9,
-            background: t.petrolSoft, color: t.petrol,
-            border: `1px solid ${t.petrol}40`,
-            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5,
-            fontSize: 12, fontWeight: 800,
-            cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
-          }}
-        >
+        </IconBtn>
+        <Btn onClick={onCopilot}>
           <Icon name="sparkles" size={12} /> Elara
-        </button>
+        </Btn>
       </div>
 
       {stageMut.isError ? (
-        <span style={{ width: "100%", fontSize: 11, color: t.danger, fontWeight: 800 }}>
+        // width:100% is the flex-row line break — the message has to own its
+        // own line, and `.statusline` carries the tone.
+        <div className="statusline c-bad" style={{ width: "100%" }}>
           {stageMut.error instanceof Error ? stageMut.error.message : "Failed to update stage"}
-        </span>
+        </div>
       ) : null}
 
       <style jsx>{`

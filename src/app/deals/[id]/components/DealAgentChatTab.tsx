@@ -10,9 +10,8 @@
 // only (they reference loan_instructions / ai_tasks).
 
 import { useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtnPrimary } from "@/components/design-system/buttons";
+import { Btn, Panel, Seg, Textarea } from "@/components/ds";
 import { useDealAgentChat, useSendDealAgentChat } from "@/hooks/useApi";
 import { DealChatMode, Role, DealChatRole } from "@/lib/enums.generated";
 import type { LoanChatMessage, User } from "@/lib/types";
@@ -39,7 +38,6 @@ interface Props {
 }
 
 export function DealAgentChatTab({ dealId, user }: Props) {
-  const { t } = useTheme();
   const { data: messages = [], isLoading } = useDealAgentChat(dealId);
   const send = useSendDealAgentChat();
 
@@ -83,44 +81,19 @@ export function DealAgentChatTab({ dealId, user }: Props) {
   };
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateRows: "auto 1fr auto",
-        gap: 12,
-        background: t.surface,
-        borderRadius: 14,
-        border: `1px solid ${t.line}`,
-        boxShadow: t.shadow,
-        minHeight: "60vh",
-      }}
+    <Panel
+      title={
+        <span className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+          <Icon name="chat" size={14} /> Agent chat (A)
+        </span>
+      }
+      sub="AI ↔ broker ↔ client — pre-funding nurture"
     >
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "12px 14px",
-          borderBottom: `1px solid ${t.line}`,
-          background: t.surface2,
-          borderTopLeftRadius: 14,
-          borderTopRightRadius: 14,
-        }}
-      >
-        <Icon name="chat" size={14} />
-        <span style={{ fontSize: 13, fontWeight: 900, color: t.ink }}>
-          Agent chat (A)
-        </span>
-        <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>
-          AI ↔ broker ↔ client — pre-funding nurture
-        </span>
-      </header>
-
-      <div style={{ minHeight: 0, overflow: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="thr">
         {isLoading ? (
-          <div style={{ color: t.ink3, fontSize: 13 }}>Loading conversation…</div>
+          <div className="thr-empty">Loading conversation…</div>
         ) : messages.length === 0 ? (
-          <div style={{ color: t.ink3, fontSize: 13, textAlign: "center", padding: 32 }}>
+          <div className="thr-empty" style={{ textAlign: "center", padding: 32 }}>
             No messages yet. Start the conversation — the AI will join in.
           </div>
         ) : (
@@ -128,90 +101,52 @@ export function DealAgentChatTab({ dealId, user }: Props) {
         )}
       </div>
 
-      <div
-        style={{
-          padding: 12,
-          borderTop: `1px solid ${t.line}`,
-          background: t.surface2,
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-        }}
-      >
+      <div className="composer">
         {modes.length > 1 ? (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {modes.map((m) => {
-              const active = mode === m.mode;
-              return (
-                <button
-                  key={m.mode}
-                  onClick={() => setMode(m.mode)}
-                  style={{
-                    all: "unset",
-                    cursor: "pointer",
-                    padding: "5px 10px",
-                    borderRadius: 999,
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    border: `1px solid ${active ? t.brand : t.line}`,
-                    background: active ? t.brandSoft : "transparent",
-                    color: active ? t.brand : t.ink2,
-                  }}
-                >
-                  {m.label}
-                </button>
-              );
-            })}
-          </div>
+          <Seg
+            as="filter"
+            value={mode}
+            onChange={setMode}
+            options={modes.map((m) => ({ value: m.mode, label: m.label }))}
+          />
         ) : null}
         {flash ? (
-          <div style={{ fontSize: 11.5, color: flash.includes("fail") ? t.danger : t.ink2 }}>{flash}</div>
-        ) : null}
-        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder={modes.find((m) => m.mode === mode)?.hint ?? "Type a message…"}
-            rows={2}
-            style={{
-              flex: 1,
-              resize: "none",
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: `1px solid ${t.line}`,
-              background: t.surface,
-              color: t.ink,
-              fontSize: 13,
-              fontFamily: "inherit",
-            }}
-          />
-          <button
-            onClick={submit}
-            disabled={!body.trim()}
-            style={{
-              ...qcBtnPrimary(t),
-              opacity: !body.trim() ? 0.5 : 1,
-              cursor: !body.trim() ? "not-allowed" : "pointer",
-            }}
+          <div
+            className="sub"
+            style={{ color: flash.includes("fail") ? "var(--danger)" : undefined }}
           >
+            {flash}
+          </div>
+        ) : null}
+        <Textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          // The mode hint moved to the composer row below. A placeholder
+          // vanishes the moment you start typing, which is exactly when
+          // "does the borrower see this?" becomes worth checking.
+          placeholder="Type a message…"
+          rows={2}
+        />
+        <div className="composer-row">
+          <span className="hint">
+            {modes.find((m) => m.mode === mode)?.hint}
+          </span>
+          <Btn variant="pri" onClick={submit} disabled={!body.trim() || send.isPending}>
             {send.isPending ? "Sending…" : "Send"}
-          </button>
+          </Btn>
         </div>
       </div>
-    </div>
+    </Panel>
   );
 }
 
 function Bubble({ m, user }: { m: LoanChatMessage; user: User }) {
-  const { t } = useTheme();
   const isMe =
     (m.from_role === DealChatRole.CLIENT && user.role === Role.CLIENT) ||
     (m.from_role === DealChatRole.BROKER && user.role === Role.BROKER) ||
     (m.from_role === DealChatRole.SUPER_ADMIN && (user.role === Role.SUPER_ADMIN || user.role === Role.LOAN_EXEC));
   const isAI = m.from_role === DealChatRole.AI;
   const isInternal = m.from_role === DealChatRole.BROKER_INTERNAL;
-  const bg = isInternal ? t.surface2 : isAI ? t.petrolSoft : isMe ? t.brandSoft : t.surface2;
-  const borderC = isInternal ? t.line : isAI ? t.petrol : isMe ? t.brand : t.line;
   const label = (() => {
     if (m.from_role === DealChatRole.AI) return "Elara";
     const roleWord =
@@ -223,25 +158,22 @@ function Bubble({ m, user }: { m: LoanChatMessage; user: User }) {
     return nm ? `${nm} (${roleWord})` : roleWord;
   })();
   return (
-    <div style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "78%" }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, marginBottom: 3, textTransform: "uppercase", letterSpacing: 0.6 }}>
-        {label}
+    // `.msg.internal` is dashed rather than tinted: an internal note is not a
+    // fourth kind of participant, it is the same person speaking off the
+    // record, and a dashed edge says that without inventing another colour.
+    <div className={`msg${isMe ? " mine" : ""}${isAI ? " ai" : ""}${isInternal ? " internal" : ""}`}>
+      <div className="msg-h">
+        <span className="msg-role">{label}</span>
+        <span className="msg-when">
+          {new Date(m.created_at).toLocaleString(undefined, {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          })}
+        </span>
       </div>
-      <div
-        style={{
-          padding: "10px 13px",
-          borderRadius: 12,
-          background: bg,
-          borderWidth: 1,
-          borderStyle: isInternal ? "dashed" : "solid",
-          borderColor: borderC,
-        }}
-      >
-        <div style={{ fontSize: 13, color: t.ink, whiteSpace: "pre-wrap" }}>{m.body}</div>
-      </div>
-      <div style={{ fontSize: 10.5, color: t.ink4, marginTop: 3 }}>
-        {new Date(m.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-      </div>
+      <div className="msg-b">{m.body}</div>
     </div>
   );
 }

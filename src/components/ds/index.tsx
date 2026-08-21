@@ -178,12 +178,19 @@ export function CellChip({
   tone = "mut",
   children,
   className,
+  title,
 }: {
   tone?: ChipTone;
   children: ReactNode;
   className?: string;
+  /** Hover explanation. A chip is terse by design; some of them need a sentence. */
+  title?: string;
 }) {
-  return <span className={cx("cellchip", `c-${tone}`, className)}>{children}</span>;
+  return (
+    <span className={cx("cellchip", `c-${tone}`, className)} title={title}>
+      {children}
+    </span>
+  );
 }
 
 /** Standalone pill with an optional status dot — heavier than a CellChip. */
@@ -235,6 +242,52 @@ export function StatusLine({
   className?: string;
 }) {
   return <div className={cx("statusline", `c-${tone}`, className)}>{children}</div>;
+}
+
+/**
+ * A card that has something to say — a warning, a nudge, a piece of context.
+ *
+ * Tone reuses the chip vocabulary rather than inventing a second one, so
+ * "this is bad" is the same word here as it is in a table cell.
+ */
+export function Callout({
+  tone = "acc",
+  icon,
+  children,
+  className,
+}: {
+  tone?: ChipTone;
+  icon?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cx("callout", `c-${tone}`, className)}>
+      {icon}
+      <div className="grow">{children}</div>
+    </div>
+  );
+}
+
+/** Read-only list row: icon, growing middle, status on the right. */
+export function ItemRow({
+  icon,
+  children,
+  right,
+  className,
+}: {
+  icon?: ReactNode;
+  children: ReactNode;
+  right?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cx("itemrow", className)}>
+      {icon}
+      <div className="grow">{children}</div>
+      {right}
+    </div>
+  );
 }
 
 export function Tag({ children, className }: { children: ReactNode; className?: string }) {
@@ -339,18 +392,37 @@ export function Field({
   label,
   hint,
   error,
+  req,
   children,
   className,
 }: {
   label?: ReactNode;
   hint?: ReactNode;
   error?: ReactNode;
+  /**
+   * The system is still waiting on this one.
+   *
+   * Distinct from `error`, which means "what you typed is wrong". This means
+   * "nothing is here yet and something downstream needs it" — a different
+   * message, and it is set by the requirement engine rather than by
+   * validation. Marks the label with a rail and a REQUIRED tag; pair it with
+   * `bad` on the control so the signal is not colour alone.
+   */
+  req?: boolean;
   children: ReactNode;
   className?: string;
 }) {
   return (
-    <div className={cx(className)} style={{ display: "grid", gap: 5, minWidth: 0 }}>
-      {label && <span className="lbl">{label}</span>}
+    <div
+      className={cx(req && "fld-req", className)}
+      style={{ display: "grid", gap: 5, minWidth: 0 }}
+    >
+      {label && (
+        <span className="lbl">
+          {label}
+          {req && <span className="reqtag">Required</span>}
+        </span>
+      )}
       {children}
       {error ? (
         <span className="sub" style={{ color: "var(--danger)" }}>

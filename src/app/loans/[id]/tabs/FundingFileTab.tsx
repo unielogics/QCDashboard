@@ -1,11 +1,43 @@
 "use client";
 
+// Funding file tab — the loan cockpit's default workspace.
+//
+// Styling only: migrated off the inline token objects onto the plain-CSS design
+// system in globals.css / app-extras.css. Every control, endpoint, panel, empty
+// state and callback is the one that was here before — the five workspace
+// panels, the two "open the full workbench" jumps, the per-criterion and
+// per-condition drill-throughs, and the recalc effect with its exact payload
+// and dependency list.
+//
+// The components below the exported tab (OperationalHeader, CompletionGauge,
+// MiniTile, PathTile, Track, LoanStageStepper, FileCompletionStrip,
+// BlockersPopup and friends) are no longer rendered by this tab — the loan
+// header in page.tsx owns that furniture now — but they are KEPT and migrated
+// rather than deleted, because deleting a funding control is how a deal stops
+// being fundable.
+//
+// One bespoke layout stays inline: the fixed-width workspace rail beside the
+// panel body. A 224px nav column is a design decision, not 3/12 of the cockpit
+// grid — `.cg` would give it ~430px on the wide cockpit content width.
+
 import { useEffect, useMemo, useState } from "react";
-import { Pill, VerifiedBadge } from "@/components/design-system/primitives";
+import { VerifiedBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { QC_FMT } from "@/components/design-system/tokens";
+import {
+  Btn,
+  CG,
+  Card,
+  CellChip,
+  Kpi,
+  KpiRow,
+  Panel,
+  StatusLine,
+  Tag,
+  cx,
+  type ChipTone,
+} from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { useLoanPrequalRequests, useRecalc } from "@/hooks/useApi";
 import type { Activity, Document, Loan } from "@/lib/types";
 import { getCriteriaItems, getFileCompletion, FILE_STAGE_KEYS, FILE_STAGE_LABELS } from "../fileReadiness";
@@ -13,6 +45,31 @@ import { getCriteriaItems, getFileCompletion, FILE_STAGE_KEYS, FILE_STAGE_LABELS
 // on its own tab — property details belong with the rest of the deal
 // foundation (address, beds/baths, taxes/insurance, ARV/LTV).
 import { PropertyTab } from "./PropertyTab";
+
+/** Status vocabulary used across this file, mapped once onto the chip tones. */
+type Tone = "ready" | "watch" | "danger" | "open" | "neutral";
+
+const TONE_CHIP: Record<Tone, ChipTone> = {
+  ready: "ok",
+  watch: "warn",
+  danger: "bad",
+  open: "acc",
+  neutral: "mut",
+};
+
+/** Ink colour for a figure that carries its own status. */
+function toneInk(tone: Tone): string | undefined {
+  if (tone === "ready") return "var(--ok)";
+  if (tone === "watch") return "var(--warn)";
+  if (tone === "danger") return "var(--danger)";
+  if (tone === "open") return "var(--muted)";
+  return undefined;
+}
+
+/** Completion bar colour — the same three thresholds the file used before. */
+function scoreInk(score: number): string {
+  return score >= 85 ? "var(--ok)" : score >= 65 ? "var(--warn)" : "var(--accent)";
+}
 
 export function FundingFileTab({
   loan,
@@ -27,7 +84,6 @@ export function FundingFileTab({
   canEdit?: boolean;
   onOpenTab?: (tab: string, targetId?: string) => void;
 }) {
-  const { t } = useTheme();
   const recalc = useRecalc();
   const { data: prequalRequests = [] } = useLoanPrequalRequests(loan.id);
   const [activePanel, setActivePanel] = useState<"math" | "criteria" | "documents" | "property" | "activity">("math");
@@ -137,16 +193,16 @@ export function FundingFileTab({
   ] as const;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <>
       {/* Stage stepper + clickable file-completion strip + blockers
           popup all live in the loan header (page.tsx) now — this tab
           starts directly with the Workspace panel selector + the
           chosen panel's content. */}
 
-      <div style={{ display: "grid", gridTemplateColumns: "220px minmax(0, 1fr)", gap: 14, alignItems: "start" }}>
-        <Panel compact>
-          <HeaderRow eyebrow="Workspace" title="Open only what you need" />
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {/* Bespoke on purpose: a fixed 224px rail beside a fluid body. */}
+      <div style={{ display: "grid", gridTemplateColumns: "224px minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
+        <Panel title="Open only what you need" sub="Workspace">
+          <div>
             <PanelNavButton active={activePanel === "math"} icon="calc" title="Math + sizing" detail="Live recalc and UW ratios" onClick={() => setActivePanel("math")} />
             <PanelNavButton active={activePanel === "criteria"} icon="sliders" title="Criteria fields" detail={`${completion.criteria.ready}/${completion.criteria.total} ready`} onClick={() => setActivePanel("criteria")} />
             <PanelNavButton active={activePanel === "documents"} icon="docCheck" title="Docs + conditions" detail={`${openDocs.length} open`} onClick={() => setActivePanel("documents")} />
@@ -156,70 +212,78 @@ export function FundingFileTab({
         </Panel>
 
         {activePanel === "math" ? (
-          <Panel>
-            <HeaderRow eyebrow="Calculation engine" title="Sizing and underwriting snapshot" action={recalc.isPending ? "Calculating" : "Live recalc"} />
-            <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr 0.8fr 0.8fr 1fr", gap: 10 }}>
+          <Panel
+            title="Sizing and underwriting snapshot"
+            sub="Calculation engine"
+            actions={<Tag>{recalc.isPending ? "Calculating" : "Live recalc"}</Tag>}
+          >
+            <KpiRow>
               <CalcMetric label="Sized amount" value={QC_FMT.usd(sizedAmount, 0)} emphasis />
               <CalcMetric label="Final rate" value={finalRate != null ? `${(finalRate * 100).toFixed(3)}%` : "Missing"} />
               <CalcMetric label="DSCR" value={dscr != null ? dscr.toFixed(2) : "N/A"} tone={dscr != null && dscr >= 1.25 ? "ready" : dscr ? "watch" : "open"} />
               <CalcMetric label="LTV" value={ltv != null ? `${(ltv * 100).toFixed(1)}%` : "N/A"} tone={ltv != null && ltv <= 0.75 ? "ready" : ltv ? "watch" : "open"} />
               <CalcMetric label="Binding cap" value={cap ? QC_FMT.usd(cap, 0) : "No cap"} sub={binding ? binding.replace(/_/g, " ") : undefined} />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginTop: 12 }}>
+            </KpiRow>
+            <KpiRow className="mt">
               <CalcMetric label="Term" value={loan.term_months ? `${loan.term_months} mo` : "Missing"} tone={loan.term_months ? "neutral" : "open"} />
               <CalcMetric label="Monthly rent" value={loan.monthly_rent ? QC_FMT.usd(Number(loan.monthly_rent), 0) : loan.type === "dscr" ? "Missing" : "N/A"} tone={loan.type === "dscr" && !loan.monthly_rent ? "open" : "neutral"} />
               <CalcMetric label="ARV / value" value={loan.arv ? QC_FMT.usd(Number(loan.arv), 0) : "Missing"} tone={loan.arv ? "neutral" : "open"} />
               <CalcMetric label="Taxes + ins." value={QC_FMT.usd(Number(loan.annual_taxes || 0) + Number(loan.annual_insurance || 0), 0)} />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 12 }}>
-              <RatioBar label="DSCR target" value={dscr ?? 0} target={1.25} formatter={(v) => v.toFixed(2)} />
-              <RatioBar label="LTV ceiling" value={ltv ?? 0} target={0.75} formatter={(v) => `${(v * 100).toFixed(1)}%`} reverse />
-              <RatioBar label="Completion" value={completion.score} target={100} formatter={(v) => `${Math.round(v)}%`} />
-            </div>
-            <button type="button" onClick={() => onOpenTab?.("terms", "criteria-output")} style={inlineAction(t)}>
+            </KpiRow>
+            <CG className="mt">
+              <RatioBar className="s4" label="DSCR target" value={dscr ?? 0} target={1.25} formatter={(v) => v.toFixed(2)} />
+              <RatioBar className="s4" label="LTV ceiling" value={ltv ?? 0} target={0.75} formatter={(v) => `${(v * 100).toFixed(1)}%`} reverse />
+              <RatioBar className="s4" label="Completion" value={completion.score} target={100} formatter={(v) => `${Math.round(v)}%`} />
+            </CG>
+            <Btn className="mt" onClick={() => onOpenTab?.("terms", "criteria-output")}>
               <Icon name="arrowR" size={13} /> Open full criteria workbench
-            </button>
+            </Btn>
           </Panel>
         ) : null}
 
         {activePanel === "criteria" ? (
-          <Panel>
-            <HeaderRow eyebrow="Criteria matrix" title="Fields required before underwriting" action={`${completion.criteria.score}% complete`} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 9 }}>
+          <Panel
+            title="Fields required before underwriting"
+            sub="Criteria matrix"
+            actions={<Tag>{`${completion.criteria.score}% complete`}</Tag>}
+          >
+            <CG>
               {criteria.map((item) => (
-                <CriterionTile key={item.id} label={item.label} value={item.value} ready={item.ready} group={item.group} onClick={() => onOpenTab?.("terms", criteriaTarget(item.id))} />
+                <CriterionTile key={item.id} className="s3" label={item.label} value={item.value} ready={item.ready} group={item.group} onClick={() => onOpenTab?.("terms", criteriaTarget(item.id))} />
               ))}
-            </div>
+            </CG>
           </Panel>
         ) : null}
 
         {activePanel === "documents" ? (
-          <Panel>
-            <HeaderRow eyebrow="Open conditions" title="Document queue" action={`${openDocs.length} open`} />
+          <Panel title="Document queue" sub="Open conditions" actions={<Tag>{`${openDocs.length} open`}</Tag>}>
             {openDocs.length === 0 ? (
-              <div style={{ padding: 14, borderRadius: 12, background: t.profitBg, color: t.profit, display: "flex", gap: 8, alignItems: "center", fontSize: 13, fontWeight: 850 }}>
-                <Icon name="check" size={15} />
+              <StatusLine tone="ok">
+                <Icon name="check" size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />
                 All document conditions are verified.
-              </div>
+              </StatusLine>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 9 }}>
+              <CG>
                 {openDocs.slice(0, 10).map((doc) => (
-                  <ConditionRow key={doc.id} doc={doc} onClick={() => onOpenTab?.("docs")} />
+                  <ConditionRow key={doc.id} className="s6" doc={doc} onClick={() => onOpenTab?.("docs")} />
                 ))}
-              </div>
+              </CG>
             )}
-            <button type="button" onClick={() => onOpenTab?.("workflow")} style={inlineAction(t)}>
+            <Btn className="mt" onClick={() => onOpenTab?.("workflow")}>
               <Icon name="cal" size={13} /> Manage due dates and collection rules
-            </button>
+            </Btn>
           </Panel>
         ) : null}
 
-        {activePanel === "property" ? <PropertyTab loan={loan} canEdit={canEdit} /> : null}
+        {activePanel === "property" ? (
+          <div style={{ minWidth: 0 }}>
+            <PropertyTab loan={loan} canEdit={canEdit} />
+          </div>
+        ) : null}
 
         {activePanel === "activity" ? (
-          <Panel>
-            <HeaderRow eyebrow="Recent file activity" title="Latest movement" />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+          <Panel title="Latest movement" sub="Recent file activity">
+            <CG>
               {(activity.length
                 ? activity.slice(0, 6)
                 : [{
@@ -232,19 +296,19 @@ export function FundingFileTab({
                     payload: null,
                     occurred_at: "",
                   }]).map((item) => (
-                <div key={item.id} style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: 12, background: t.surface2, minHeight: 78 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 7, color: t.ink3, fontSize: 10.5, fontWeight: 850, letterSpacing: 1, textTransform: "uppercase" }}>
+                <div key={item.id} className="card s4">
+                  <div className="row lbl">
                     <Icon name="audit" size={13} />
                     {item.occurred_at ? new Date(item.occurred_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Activity"}
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 13, fontWeight: 800, color: t.ink, lineHeight: 1.35 }}>{item.summary}</div>
+                  <div className="mt">{item.summary}</div>
                 </div>
               ))}
-            </div>
+            </CG>
           </Panel>
         ) : null}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -267,63 +331,46 @@ function OperationalHeader({
   openDocs: number;
   warnings: number;
 }) {
-  const { t } = useTheme();
-  const color = nextAction.tone === "ready" ? t.profit : nextAction.tone === "danger" ? t.danger : nextAction.tone === "watch" ? t.warn : t.brand;
   return (
-    <section
-      style={{
-        border: `1px solid ${t.line}`,
-        borderRadius: 16,
-        background: `linear-gradient(180deg, ${t.surface}, ${t.surface2})`,
-        boxShadow: t.shadow,
-        padding: 16,
-        display: "grid",
-        gridTemplateColumns: "minmax(220px, 1fr) 1.25fr minmax(360px, 1.1fr)",
-        gap: 14,
-        alignItems: "stretch",
-      }}
-    >
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.4, textTransform: "uppercase" }}>File command</div>
-        <div style={{ marginTop: 5, fontSize: 25, fontWeight: 950, color: t.ink, letterSpacing: 0 }}>{label}</div>
-        <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: t.line, overflow: "hidden" }}>
-          <div style={{ width: `${score}%`, height: "100%", background: score >= 85 ? t.profit : score >= 65 ? t.warn : t.brand }} />
-        </div>
-        <div style={{ marginTop: 7, fontSize: 12, fontWeight: 900, color: score >= 85 ? t.profit : score >= 65 ? t.warn : t.brand }}>{score}% complete</div>
-      </div>
-
-      <div style={{ border: `1px solid ${t.line}`, borderRadius: 13, background: t.surface, padding: 13, minWidth: 0 }}>
-        <div style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: `${color}18`, color, display: "grid", placeItems: "center" }}>
-            <Icon name={nextAction.tone === "ready" ? "check" : nextAction.tone === "danger" ? "alert" : "arrowR"} size={16} />
+    <Card hi>
+      <CG>
+        <div className="s3">
+          <div className="lbl">File command</div>
+          <div className="big">{label}</div>
+          <div className="track mt">
+            <div className="fill" style={{ width: `${score}%`, background: scoreInk(score) }} />
           </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.1, textTransform: "uppercase" }}>Next action</div>
-            <div style={{ marginTop: 4, fontSize: 15, fontWeight: 950, color: t.ink }}>{nextAction.title}</div>
-            <div style={{ marginTop: 4, fontSize: 12, fontWeight: 750, color: t.ink3, lineHeight: 1.35 }}>{nextAction.detail}</div>
+          <div className="mt">
+            <CellChip tone={score >= 85 ? "ok" : score >= 65 ? "warn" : "acc"}>{score}% complete</CellChip>
           </div>
         </div>
-      </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
-        <HeaderKpi label="Sized" value={QC_FMT.usd(amount, 0)} />
-        <HeaderKpi label="Rate" value={finalRate != null ? `${(finalRate * 100).toFixed(3)}%` : "Missing"} tone={finalRate != null ? "neutral" : "watch"} />
-        <HeaderKpi label="DSCR" value={dscr != null ? dscr.toFixed(2) : "N/A"} tone={dscr != null && dscr >= 1.25 ? "ready" : dscr ? "watch" : "neutral"} />
-        <HeaderKpi label="Blockers" value={openDocs + warnings} tone={openDocs + warnings ? "watch" : "ready"} />
-      </div>
-    </section>
+        <div className="card s4">
+          <div className="row">
+            <CellChip tone={TONE_CHIP[nextAction.tone]}>
+              <Icon name={nextAction.tone === "ready" ? "check" : nextAction.tone === "danger" ? "alert" : "arrowR"} size={14} />
+            </CellChip>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="lbl">Next action</div>
+              <b>{nextAction.title}</b>
+              <div className="sub">{nextAction.detail}</div>
+            </div>
+          </div>
+        </div>
+
+        <KpiRow className="s5">
+          <HeaderKpi label="Sized" value={QC_FMT.usd(amount, 0)} />
+          <HeaderKpi label="Rate" value={finalRate != null ? `${(finalRate * 100).toFixed(3)}%` : "Missing"} tone={finalRate != null ? "neutral" : "watch"} />
+          <HeaderKpi label="DSCR" value={dscr != null ? dscr.toFixed(2) : "N/A"} tone={dscr != null && dscr >= 1.25 ? "ready" : dscr ? "watch" : "neutral"} />
+          <HeaderKpi label="Blockers" value={openDocs + warnings} tone={openDocs + warnings ? "watch" : "ready"} />
+        </KpiRow>
+      </CG>
+    </Card>
   );
 }
 
 function HeaderKpi({ label, value, tone = "neutral" }: { label: string; value: string | number; tone?: "ready" | "watch" | "neutral" }) {
-  const { t } = useTheme();
-  const color = tone === "ready" ? t.profit : tone === "watch" ? t.warn : t.ink;
-  return (
-    <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface, padding: "10px 11px", minWidth: 0 }}>
-      <div style={{ fontSize: 9.5, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>{label}</div>
-      <div style={{ marginTop: 5, fontSize: 16, fontWeight: 950, color, fontFeatureSettings: '"tnum"', overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
-    </div>
-  );
+  return <Kpi label={label} value={<span style={{ color: toneInk(tone) }}>{value}</span>} />;
 }
 
 function getNextAction({
@@ -357,47 +404,6 @@ function getNextAction({
   return { tone: "ready" as const, title: "Package ready for review", detail: "Criteria, documents, and live calculations are clean." };
 }
 
-function Panel({
-  children,
-  compact,
-}: {
-  children: React.ReactNode;
-  compact?: boolean;
-}) {
-  const { t } = useTheme();
-  return (
-    <section
-      style={{
-        background: t.surface,
-        border: `1px solid ${t.line}`,
-        borderRadius: 16,
-        padding: compact ? 14 : 16,
-        boxShadow: t.shadow,
-        minWidth: 0,
-      }}
-    >
-      {children}
-    </section>
-  );
-}
-
-function HeaderRow({ eyebrow, title, action }: { eyebrow: string; title: string; action?: string }) {
-  const { t } = useTheme();
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 12 }}>
-      <div>
-        <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.4, textTransform: "uppercase" }}>{eyebrow}</div>
-        <div style={{ marginTop: 3, fontSize: 17, fontWeight: 900, color: t.ink, letterSpacing: 0 }}>{title}</div>
-      </div>
-      {action ? (
-        <Pill bg={t.chip} color={t.ink2} style={{ fontWeight: 800 }}>
-          {action}
-        </Pill>
-      ) : null}
-    </div>
-  );
-}
-
 function PanelNavButton({
   active,
   icon,
@@ -411,83 +417,41 @@ function PanelNavButton({
   detail: string;
   onClick: () => void;
 }) {
-  const { t } = useTheme();
   return (
     <button
       type="button"
       onClick={onClick}
-      style={{
-        width: "100%",
-        textAlign: "left",
-        border: `1px solid ${active ? t.brand : t.line}`,
-        background: active ? t.brandSoft : t.surface2,
-        color: t.ink,
-        borderRadius: 11,
-        padding: 10,
-        cursor: "pointer",
-        display: "grid",
-        gridTemplateColumns: "28px minmax(0, 1fr)",
-        gap: 8,
-        alignItems: "center",
-        fontFamily: "inherit",
-      }}
+      aria-pressed={active}
+      className={cx("pick", active && "on")}
+      style={{ width: "100%", textAlign: "left", font: "inherit" }}
     >
-      <span style={{ width: 28, height: 28, borderRadius: 9, background: active ? t.brand : t.surface, color: active ? t.inverse : t.ink3, display: "grid", placeItems: "center" }}>
-        <Icon name={icon} size={14} />
-      </span>
-      <span style={{ minWidth: 0 }}>
-        <span style={{ display: "block", fontSize: 12.5, fontWeight: 900, color: active ? t.brand : t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
-        <span style={{ display: "block", marginTop: 2, fontSize: 11, fontWeight: 700, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</span>
+      <Icon name={icon} size={16} />
+      <span style={{ minWidth: 0, flex: 1, display: "grid" }}>
+        <b>{title}</b>
+        <span className="sub">{detail}</span>
       </span>
     </button>
   );
 }
 
 function CompletionGauge({ score, label }: { score: number; label: string }) {
-  const { t } = useTheme();
-  const color = score >= 85 ? t.profit : score >= 65 ? t.warn : t.brand;
+  const color = scoreInk(score);
   return (
     <div
+      className="gauge"
       title={label}
-      style={{
-        width: 150,
-        height: 150,
-        borderRadius: 999,
-        background: `conic-gradient(${color} ${score * 3.6}deg, ${t.line} 0deg)`,
-        display: "grid",
-        placeItems: "center",
-        boxShadow: `inset 0 0 0 1px ${t.line}`,
-      }}
+      style={{ borderRadius: 999, background: `conic-gradient(${color} ${score * 3.6}deg, var(--line) 0deg)` }}
     >
-      <div
-        style={{
-          width: 112,
-          height: 112,
-          borderRadius: 999,
-          background: t.surface,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          border: `1px solid ${t.line}`,
-        }}
-      >
-        <div style={{ fontSize: 34, fontWeight: 950, color, fontFeatureSettings: '"tnum"', lineHeight: 1 }}>{score}%</div>
-        <div style={{ marginTop: 5, fontSize: 10, fontWeight: 900, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>Complete</div>
+      <div className="val" style={{ margin: 18, borderRadius: 999, background: "var(--surface)", border: "1px solid var(--line)" }}>
+        <b style={{ color }}>{score}%</b>
+        <span>Complete</span>
       </div>
     </div>
   );
 }
 
 function MiniTile({ label, value, tone = "neutral" }: { label: string; value: string | number; tone?: "ready" | "watch" | "neutral" }) {
-  const { t } = useTheme();
-  const color = tone === "ready" ? t.profit : tone === "watch" ? t.warn : t.ink;
-  return (
-    <div style={{ border: `1px solid ${t.line}`, borderRadius: 10, padding: "9px 10px", background: t.surface2 }}>
-      <div style={{ fontSize: 9.5, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>{label}</div>
-      <div style={{ marginTop: 4, fontSize: 16, fontWeight: 950, color, fontFeatureSettings: '"tnum"' }}>{value}</div>
-    </div>
-  );
+  return <Kpi label={label} value={<span style={{ color: toneInk(tone) }}>{value}</span>} />;
 }
 
 function PathTile({
@@ -503,39 +467,36 @@ function PathTile({
   };
   onClick: () => void;
 }) {
-  const { t } = useTheme();
-  const color = step.status === "ready" ? t.profit : step.status === "watch" ? t.warn : t.ink3;
-  const bg = step.status === "ready" ? t.profitBg : step.status === "watch" ? t.warnBg : t.surface2;
+  const color = toneInk(step.status) ?? "var(--muted)";
   return (
-    <button type="button" onClick={onClick} style={{ textAlign: "left", border: `1px solid ${t.line}`, borderRadius: 13, padding: 12, background: t.surface2, minWidth: 0, cursor: "pointer", fontFamily: "inherit" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-        <div style={{ width: 30, height: 30, borderRadius: 9, background: bg, color, display: "grid", placeItems: "center" }}>
+    <button type="button" onClick={onClick} className="card" style={{ width: "100%", textAlign: "left", font: "inherit", cursor: "pointer" }}>
+      <div className="kv">
+        <CellChip tone={TONE_CHIP[step.status]}>
           <Icon name={step.icon} size={15} />
-        </div>
-        <div style={{ fontSize: 18, fontWeight: 950, color, fontFeatureSettings: '"tnum"' }}>{Math.round(step.score)}%</div>
+        </CellChip>
+        <b className="num" style={{ color }}>{Math.round(step.score)}%</b>
       </div>
-      <div style={{ marginTop: 10, fontSize: 13, fontWeight: 900, color: t.ink }}>{step.label}</div>
-      <div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 700, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{step.detail}</div>
-      <div style={{ height: 5, borderRadius: 999, background: t.line, overflow: "hidden", marginTop: 10 }}>
-        <div style={{ width: `${Math.min(100, Math.max(0, step.score))}%`, height: "100%", background: color }} />
+      <div className="mt">{step.label}</div>
+      <div className="sub">{step.detail}</div>
+      <div className="track mt">
+        <div className="fill" style={{ width: `${Math.min(100, Math.max(0, step.score))}%`, background: color }} />
       </div>
     </button>
   );
 }
 
 function Track({ label, value, detail }: { label: string; value: number; detail: string }) {
-  const { t } = useTheme();
-  const color = value >= 85 ? t.profit : value >= 60 ? t.warn : t.brand;
+  const color = value >= 85 ? "var(--ok)" : value >= 60 ? "var(--warn)" : "var(--accent)";
   return (
-    <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: "10px 12px", background: t.surface2 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ fontSize: 12, fontWeight: 900, color: t.ink }}>{label}</div>
-        <div style={{ fontSize: 12, fontWeight: 950, color, fontFeatureSettings: '"tnum"' }}>{value}%</div>
+    <div className="card">
+      <div className="kv">
+        <b>{label}</b>
+        <b className="num" style={{ color }}>{value}%</b>
       </div>
-      <div style={{ marginTop: 8, height: 7, borderRadius: 999, background: t.line, overflow: "hidden" }}>
-        <div style={{ width: `${value}%`, height: "100%", background: color }} />
+      <div className="track mt">
+        <div className="fill" style={{ width: `${value}%`, background: color }} />
       </div>
-      <div style={{ marginTop: 6, fontSize: 11.5, color: t.ink3, fontWeight: 700 }}>{detail}</div>
+      <div className="sub">{detail}</div>
     </div>
   );
 }
@@ -553,19 +514,21 @@ function AttentionRow({
   meta: string;
   onClick?: () => void;
 }) {
-  const { t } = useTheme();
-  const color = tone === "ready" ? t.profit : tone === "watch" ? t.warn : tone === "danger" ? t.danger : t.ink3;
-  const bg = tone === "ready" ? t.profitBg : tone === "watch" ? t.warnBg : tone === "danger" ? t.dangerBg : t.surface2;
   return (
-    <button type="button" onClick={onClick} style={{ display: "grid", gridTemplateColumns: "30px minmax(0, 1fr) 16px", gap: 9, alignItems: "center", padding: 10, borderRadius: 12, border: `1px solid ${t.line}`, background: tone === "open" ? t.surface2 : bg, cursor: onClick ? "pointer" : "default", textAlign: "left", fontFamily: "inherit" }}>
-      <div style={{ width: 30, height: 30, borderRadius: 9, display: "grid", placeItems: "center", color, background: tone === "open" ? t.chip : t.surface }}>
+    <button
+      type="button"
+      onClick={onClick}
+      className="rung"
+      style={{ width: "100%", textAlign: "left", font: "inherit", cursor: onClick ? "pointer" : "default" }}
+    >
+      <CellChip tone={TONE_CHIP[tone]}>
         <Icon name={icon} size={14} />
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 900, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-        <div style={{ marginTop: 2, fontSize: 11, fontWeight: 750, color }}>{meta}</div>
-      </div>
-      {onClick ? <Icon name="arrowR" size={12} style={{ color: t.ink3 }} /> : <span />}
+      </CellChip>
+      <span style={{ minWidth: 0, flex: 1, display: "grid" }}>
+        <b>{title}</b>
+        <span className="sub">{meta}</span>
+      </span>
+      {onClick ? <Icon name="arrowR" size={12} className="sub" /> : <span />}
     </button>
   );
 }
@@ -583,14 +546,13 @@ function CalcMetric({
   tone?: "ready" | "watch" | "open" | "neutral";
   emphasis?: boolean;
 }) {
-  const { t } = useTheme();
-  const color = tone === "ready" ? t.profit : tone === "watch" ? t.warn : tone === "open" ? t.ink3 : t.ink;
+  const color = emphasis ? "var(--accent)" : toneInk(tone);
   return (
-    <div style={{ border: `1px solid ${emphasis ? t.lineStrong : t.line}`, borderRadius: 12, padding: "12px 13px", background: emphasis ? t.brandSoft : t.surface2, minWidth: 0 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.1, textTransform: "uppercase" }}>{label}</div>
-      <div style={{ marginTop: 5, fontSize: emphasis ? 24 : 20, fontWeight: 950, color: emphasis ? t.brand : color, fontFeatureSettings: '"tnum"', overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
-      {sub ? <div style={{ marginTop: 3, fontSize: 11, fontWeight: 750, color: t.ink3, textTransform: "capitalize" }}>{sub}</div> : null}
-    </div>
+    <Kpi
+      label={label}
+      value={<span style={{ color }}>{value}</span>}
+      sub={sub ? <span style={{ textTransform: "capitalize" }}>{sub}</span> : undefined}
+    />
   );
 }
 
@@ -600,63 +562,88 @@ function RatioBar({
   target,
   formatter,
   reverse,
+  className,
 }: {
   label: string;
   value: number;
   target: number;
   formatter: (value: number) => string;
   reverse?: boolean;
+  className?: string;
 }) {
-  const { t } = useTheme();
   const ratio = target > 0 ? value / target : 0;
   const healthy = reverse ? value > 0 && value <= target : value >= target;
-  const color = healthy ? t.profit : value > 0 ? t.warn : t.ink4;
+  const color = healthy ? "var(--ok)" : value > 0 ? "var(--warn)" : "var(--faint)";
   const width = Math.max(4, Math.min(100, ratio * 100));
   return (
-    <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: "10px 12px", background: t.surface2 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ fontSize: 12, fontWeight: 900, color: t.ink }}>{label}</div>
-        <div style={{ fontSize: 12, fontWeight: 950, color, fontFeatureSettings: '"tnum"' }}>{formatter(value)}</div>
+    <div className={cx("card", className)}>
+      <div className="kv">
+        <b>{label}</b>
+        <b className="num" style={{ color }}>{formatter(value)}</b>
       </div>
-      <div style={{ height: 7, borderRadius: 999, background: t.line, overflow: "hidden", marginTop: 8 }}>
-        <div style={{ width: `${width}%`, height: "100%", background: color }} />
+      <div className="track mt">
+        <div className="fill" style={{ width: `${width}%`, background: color }} />
       </div>
-      <div style={{ marginTop: 6, fontSize: 11, fontWeight: 750, color: t.ink3 }}>Target {formatter(target)}</div>
+      <div className="sub">Target {formatter(target)}</div>
     </div>
   );
 }
 
-function CriterionTile({ label, value, ready, group, onClick }: { label: string; value: string; ready: boolean; group: string; onClick: () => void }) {
-  const { t } = useTheme();
+function CriterionTile({
+  label,
+  value,
+  ready,
+  group,
+  onClick,
+  className,
+}: {
+  label: string;
+  value: string;
+  ready: boolean;
+  group: string;
+  onClick: () => void;
+  className?: string;
+}) {
   return (
-    <button type="button" onClick={onClick} style={{ textAlign: "left", border: `1px solid ${ready ? t.line : t.warn}55`, borderRadius: 12, padding: 12, background: ready ? t.surface2 : t.warnBg, minWidth: 0, cursor: "pointer", fontFamily: "inherit" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-        <div style={{ fontSize: 10, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>{group}</div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx("card", className)}
+      style={{ width: "100%", textAlign: "left", font: "inherit", cursor: "pointer" }}
+    >
+      <div className="kv">
+        <span className="lbl">{group}</span>
         <VerifiedBadge kind={ready ? "verified" : "pending"} />
       </div>
-      <div style={{ marginTop: 9, fontSize: 12.5, fontWeight: 900, color: t.ink }}>{label}</div>
-      <div style={{ marginTop: 4, fontSize: 15, fontWeight: 950, color: ready ? t.ink : t.warn, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textTransform: value.includes("_") ? "capitalize" : undefined }}>{value}</div>
-      <div style={{ marginTop: 8, fontSize: 10.5, fontWeight: 850, color: t.brand, display: "inline-flex", alignItems: "center", gap: 4 }}>
-        Open editor <Icon name="arrowR" size={10} />
+      <b className="mt" style={{ display: "block" }}>{label}</b>
+      <div className="num" style={{ color: ready ? undefined : "var(--warn)", textTransform: value.includes("_") ? "capitalize" : undefined }}>{value}</div>
+      <div className="mt">
+        <span className="linky">
+          Open editor <Icon name="arrowR" size={10} />
+        </span>
       </div>
     </button>
   );
 }
 
-function ConditionRow({ doc, onClick }: { doc: Document; onClick: () => void }) {
-  const { t } = useTheme();
+function ConditionRow({ doc, onClick, className }: { doc: Document; onClick: () => void; className?: string }) {
   const kind = doc.status === "flagged" ? "flagged" : "pending";
   return (
-    <button type="button" onClick={onClick} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto 16px", gap: 10, alignItems: "center", padding: "10px 11px", borderRadius: 12, border: `1px solid ${doc.status === "flagged" ? t.danger : t.line}`, background: doc.status === "flagged" ? t.dangerBg : t.surface2, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 900, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.name}</div>
-        <div style={{ marginTop: 3, fontSize: 11, fontWeight: 700, color: t.ink3 }}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx("rung", className)}
+      style={{ width: "100%", textAlign: "left", font: "inherit", cursor: "pointer" }}
+    >
+      <span style={{ minWidth: 0, flex: 1, display: "grid" }}>
+        <b>{doc.name}</b>
+        <span className="sub">
           {doc.category ?? "Document"}
           {doc.requested_on ? ` / requested ${new Date(doc.requested_on).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
-        </div>
-      </div>
+        </span>
+      </span>
       <VerifiedBadge kind={kind} />
-      <Icon name="arrowR" size={12} style={{ color: t.ink3 }} />
+      <Icon name="arrowR" size={12} className="sub" />
     </button>
   );
 }
@@ -667,59 +654,31 @@ function criteriaTarget(id: string) {
   return "criteria-pricing";
 }
 
-function inlineAction(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    marginTop: 12,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "8px 11px",
-    borderRadius: 9,
-    border: `1px solid ${t.lineStrong}`,
-    background: t.surface,
-    color: t.brand,
-    fontSize: 12,
-    fontWeight: 850,
-    cursor: "pointer",
-    fontFamily: "inherit",
-  };
-}
-
 // ── New components for the slim header ─────────────────────────────
 
 function LoanStageStepper({ currentIndex, totalStages: _t }: { currentIndex: number; totalStages: number }) {
-  const { t } = useTheme();
   return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: `repeat(${FILE_STAGE_KEYS.length}, 1fr)`,
-      gap: 0,
-      background: t.surface,
-      border: `1px solid ${t.line}`,
-      borderRadius: 14,
-      padding: "14px 18px",
-      boxShadow: t.shadow,
-    }}>
+    <div className="card" style={{ display: "grid", gridTemplateColumns: `repeat(${FILE_STAGE_KEYS.length}, 1fr)`, gap: 0 }}>
       {FILE_STAGE_KEYS.map((_stage, i) => {
         const done = i < currentIndex;
         const active = i === currentIndex;
-        const dotBg = done ? t.profit : active ? t.brand : t.surface2;
-        const dotColor = done || active ? t.inverse : t.ink3;
-        const lineColor = done ? t.profit : active ? t.brand : t.line;
+        const dotBg = done ? "var(--ok)" : active ? "var(--accent)" : "var(--sunken)";
+        const dotColor = done || active ? "#fff" : "var(--muted)";
+        const lineColor = done ? "var(--ok)" : active ? "var(--accent)" : "var(--line)";
         return (
           <div key={FILE_STAGE_KEYS[i]} style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 0, position: "relative" }}>
             {/* Connecting line behind the dot */}
             {i > 0 ? (
               <div style={{
                 position: "absolute", top: 16, left: 0, width: "50%",
-                height: 3, background: done ? t.profit : i === currentIndex ? t.brand : t.line,
+                height: 3, background: done ? "var(--ok)" : i === currentIndex ? "var(--accent)" : "var(--line)",
                 borderRadius: 2,
               }} />
             ) : null}
             {i < FILE_STAGE_KEYS.length - 1 ? (
               <div style={{
                 position: "absolute", top: 16, right: 0, width: "50%",
-                height: 3, background: done ? t.profit : t.line,
+                height: 3, background: done ? "var(--ok)" : "var(--line)",
                 borderRadius: 2,
               }} />
             ) : null}
@@ -731,28 +690,26 @@ function LoanStageStepper({ currentIndex, totalStages: _t }: { currentIndex: num
               border: `2px solid ${lineColor}`,
               display: "grid", placeItems: "center",
               fontSize: 14, fontWeight: 900,
-              boxShadow: active ? `0 0 0 4px ${t.brandSoft}` : "none",
+              boxShadow: active ? "0 0 0 4px var(--accent-100)" : "none",
             }}>
               {done ? "✓" : i + 1}
             </div>
-            <div style={{
-              marginTop: 7,
-              fontSize: 11,
-              fontWeight: 900,
-              color: active ? t.brand : done ? t.ink : t.ink3,
-              letterSpacing: 0.4,
-              textAlign: "center",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              maxWidth: "100%",
-            }}>
+            <div
+              className="lbl"
+              style={{
+                marginTop: 7,
+                color: active ? "var(--accent)" : done ? "var(--ink)" : undefined,
+                textAlign: "center",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                maxWidth: "100%",
+              }}
+            >
               {FILE_STAGE_LABELS[i]}
             </div>
             {active ? (
-              <div style={{ marginTop: 2, fontSize: 9.5, fontWeight: 800, color: t.brand, letterSpacing: 0.6, textTransform: "uppercase" }}>
-                Current
-              </div>
+              <div className="lbl" style={{ color: "var(--accent)" }}>Current</div>
             ) : null}
           </div>
         );
@@ -768,52 +725,33 @@ function FileCompletionStrip({
   missingCriteria: number; flaggedDocs: number; totalBlockers: number;
   onClick: () => void;
 }) {
-  const { t } = useTheme();
-  const tone = totalBlockers === 0 ? t.profit : totalBlockers > 5 ? t.danger : t.warn;
-  const toneBg = totalBlockers === 0 ? t.profitBg : totalBlockers > 5 ? t.dangerBg : t.warnBg;
+  const tone: ChipTone = totalBlockers === 0 ? "ok" : totalBlockers > 5 ? "bad" : "warn";
+  const barInk = totalBlockers === 0 ? "var(--ok)" : totalBlockers > 5 ? "var(--danger)" : "var(--warn)";
   return (
     <button
       type="button"
       onClick={onClick}
-      style={{
-        all: "unset",
-        cursor: "pointer",
-        display: "grid",
-        gridTemplateColumns: "minmax(0, 1fr) auto",
-        gap: 14,
-        alignItems: "center",
-        padding: "12px 16px",
-        borderRadius: 14,
-        background: t.surface,
-        border: `1px solid ${t.line}`,
-        boxShadow: t.shadow,
-      }}
+      className="card"
+      style={{ width: "100%", textAlign: "left", font: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}
     >
-      <div style={{ minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 22, fontWeight: 950, color: t.ink, fontFeatureSettings: '"tnum"' }}>
-            {Math.round(score)}%
-          </span>
-          <span style={{ fontSize: 13, fontWeight: 800, color: t.ink2 }}>{label}</span>
-          <span style={{ fontSize: 11, color: t.ink3 }}>· click to see what's left</span>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div className="row">
+          <span className="big num">{Math.round(score)}%</span>
+          <b>{label}</b>
+          <span className="sub">· click to see what&apos;s left</span>
         </div>
-        <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: t.surface2, overflow: "hidden" }}>
-          <div style={{ width: `${Math.max(0, Math.min(100, score))}%`, height: "100%", background: tone, borderRadius: 999 }} />
+        <div className="track mt">
+          <div className="fill" style={{ width: `${Math.max(0, Math.min(100, score))}%`, background: barInk }} />
         </div>
       </div>
-      <div style={{
-        display: "inline-flex", alignItems: "center", gap: 6,
-        padding: "9px 13px", borderRadius: 11,
-        background: toneBg, color: tone,
-        fontSize: 13, fontWeight: 900,
-      }}>
+      <CellChip tone={tone}>
         {totalBlockers > 0 ? "⚠" : "✓"}
         <span>
           {totalBlockers === 0
             ? "All clear"
             : `${totalBlockers} blocker${totalBlockers === 1 ? "" : "s"} · ${warnings} warn · ${missingCriteria} crit · ${flaggedDocs} flag · ${openDocs} open`}
         </span>
-      </div>
+      </CellChip>
     </button>
   );
 }
@@ -829,63 +767,35 @@ function BlockersPopup({
   onOpenTab?: (tab: string, targetId?: string) => void;
   onCriteriaJump: (id: string) => void;
 }) {
-  const { t } = useTheme();
   const total = warnings.length + missingCriteria.length + flaggedDocs.length + (openDocs.length > 0 ? 1 : 0);
+  // ds/Drawer, not a hand-rolled overlay: it keeps the backdrop-click close and
+  // the role=dialog/aria-modal this had, and adds Escape, body-scroll lock and
+  // focus restore, which the original did not carry.
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, zIndex: 100,
-        background: "rgba(0,0,0,0.55)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 20,
-      }}
+    <Drawer
+      open
+      onClose={onClose}
+      width="md"
+      title={total === 0 ? "Nothing to fix — this file is clear" : `${total} item${total === 1 ? "" : "s"} need attention`}
+      sub="File Blockers"
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: t.surface, color: t.ink,
-          border: `1px solid ${t.line}`, borderRadius: 14,
-          boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
-          width: "min(640px, 100%)", maxHeight: "85vh", overflow: "hidden",
-          display: "flex", flexDirection: "column",
-        }}
-      >
-        <div style={{
-          padding: "14px 16px",
-          borderBottom: `1px solid ${t.line}`,
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-        }}>
-          <div>
-            <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
-              File Blockers
-            </div>
-            <div style={{ marginTop: 2, fontSize: 16, fontWeight: 900, color: t.ink }}>
-              {total === 0 ? "Nothing to fix — this file is clear" : `${total} item${total === 1 ? "" : "s"} need attention`}
-            </div>
-          </div>
-          <ModalCloseButton onClick={onClose} />
-        </div>
-        <div style={{ padding: 14, overflow: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
-          {warnings.map((warning) => (
-            <AttentionRow key={`${warning.code}-${warning.message}`} tone="watch" icon="alert" title={warning.message} meta={warning.code.replace(/_/g, " ")} onClick={() => { onClose(); onOpenTab?.("uw"); }} />
-          ))}
-          {missingCriteria.map((item) => (
-            <AttentionRow key={item.id} tone="open" icon="sliders" title={`${item.label} is missing`} meta={item.group} onClick={() => { onClose(); onCriteriaJump(item.id); }} />
-          ))}
-          {flaggedDocs.map((doc) => (
-            <AttentionRow key={doc.id} tone="danger" icon="doc" title={doc.name} meta={doc.category ?? "Flagged document"} onClick={() => { onClose(); onOpenTab?.("docs"); }} />
-          ))}
-          {openDocs.length > 0 ? (
-            <AttentionRow tone="open" icon="docCheck" title={`${openDocs.length} document condition${openDocs.length === 1 ? "" : "s"} still open`} meta="Review Documents or Conditions" onClick={() => { onClose(); onOpenTab?.("workflow"); }} />
-          ) : null}
-          {total === 0 ? (
-            <AttentionRow tone="ready" icon="check" title="No calculation warnings or flagged documents" meta="Ready for internal review" />
-          ) : null}
-        </div>
+      <div className="ladder">
+        {warnings.map((warning) => (
+          <AttentionRow key={`${warning.code}-${warning.message}`} tone="watch" icon="alert" title={warning.message} meta={warning.code.replace(/_/g, " ")} onClick={() => { onClose(); onOpenTab?.("uw"); }} />
+        ))}
+        {missingCriteria.map((item) => (
+          <AttentionRow key={item.id} tone="open" icon="sliders" title={`${item.label} is missing`} meta={item.group} onClick={() => { onClose(); onCriteriaJump(item.id); }} />
+        ))}
+        {flaggedDocs.map((doc) => (
+          <AttentionRow key={doc.id} tone="danger" icon="doc" title={doc.name} meta={doc.category ?? "Flagged document"} onClick={() => { onClose(); onOpenTab?.("docs"); }} />
+        ))}
+        {openDocs.length > 0 ? (
+          <AttentionRow tone="open" icon="docCheck" title={`${openDocs.length} document condition${openDocs.length === 1 ? "" : "s"} still open`} meta="Review Documents or Conditions" onClick={() => { onClose(); onOpenTab?.("workflow"); }} />
+        ) : null}
+        {total === 0 ? (
+          <AttentionRow tone="ready" icon="check" title="No calculation warnings or flagged documents" meta="Ready for internal review" />
+        ) : null}
       </div>
-    </div>
+    </Drawer>
   );
 }

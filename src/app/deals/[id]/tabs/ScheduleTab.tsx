@@ -8,11 +8,24 @@
 // of the schedule-class categories. Same backing model the Tasks tab
 // uses, just filtered.
 
-import { useEffect, useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { useMemo, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
+import {
+  Btn,
+  Card,
+  Field,
+  IconBtn,
+  Input,
+  Panel,
+  Seg,
+  Select,
+  Sub,
+  Tag,
+  Textarea,
+  cx,
+  type ChipTone,
+} from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import {
   useClientTasks,
   useCreateAgentTask,
@@ -44,28 +57,29 @@ const CATEGORY_LABELS: Record<AgentTaskCategory, string> = {
   other: "Other",
 };
 
-const CATEGORY_COLOR: Record<AgentTaskCategory, { fg: keyof PaletteHints; bg: keyof PaletteHints }> = {
-  buyer_workflow: { fg: "brand", bg: "brandSoft" },
-  seller_workflow: { fg: "brand", bg: "brandSoft" },
-  funding_prep: { fg: "warn", bg: "warnBg" },
-  showing: { fg: "brand", bg: "brandSoft" },
-  open_house: { fg: "warn", bg: "warnBg" },
-  listing_prep: { fg: "ink2", bg: "chip" },
-  cma: { fg: "ink2", bg: "chip" },
-  photography: { fg: "ink2", bg: "chip" },
-  document_collection: { fg: "ink2", bg: "chip" },
-  other: { fg: "ink2", bg: "chip" },
+// Chips on the calendar carry the chip tone vocabulary rather than a second
+// palette of their own, so "this one is time-sensitive" reads the same here as
+// it does in a table.
+const CATEGORY_TONE: Record<AgentTaskCategory, ChipTone> = {
+  buyer_workflow: "acc",
+  seller_workflow: "acc",
+  funding_prep: "warn",
+  showing: "acc",
+  open_house: "warn",
+  listing_prep: "mut",
+  cma: "mut",
+  photography: "mut",
+  document_collection: "mut",
+  other: "mut",
 };
 
-type PaletteHints = { brand: string; brandSoft: string; warn: string; warnBg: string; ink2: string; chip: string };
-
-const FILTERS: { id: "all" | AgentTaskCategory; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "showing", label: "Showings" },
-  { id: "open_house", label: "Open houses" },
-  { id: "listing_prep", label: "Listing prep" },
-  { id: "cma", label: "CMA" },
-  { id: "photography", label: "Photography" },
+const FILTERS: { value: "all" | AgentTaskCategory; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "showing", label: "Showings" },
+  { value: "open_house", label: "Open houses" },
+  { value: "listing_prep", label: "Listing prep" },
+  { value: "cma", label: "CMA" },
+  { value: "photography", label: "Photography" },
 ];
 
 function startOfDay(d: Date): Date {
@@ -86,7 +100,6 @@ function isoDate(d: Date): string {
 }
 
 export function ScheduleTab({ clientId, dealId }: { clientId: string; dealId: string }) {
-  const { t } = useTheme();
   const [filter, setFilter] = useState<"all" | AgentTaskCategory>("all");
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
   const [createOpen, setCreateOpen] = useState<{ at?: Date } | null>(null);
@@ -140,128 +153,58 @@ export function ScheduleTab({ clientId, dealId }: { clientId: string; dealId: st
     : "";
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 14, alignItems: "flex-start" }}>
+    <div className="withrail">
       {/* Calendar */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <SectionLabel>{monthLabel}</SectionLabel>
-          <div style={{ display: "inline-flex", gap: 4, marginLeft: 6 }}>
-            <NavBtn t={t} onClick={() => setAnchor(addDays(anchor, -30))} icon="chevL" />
-            <NavBtn t={t} onClick={() => setAnchor(startOfDay(new Date()))} label="Today" />
-            <NavBtn t={t} onClick={() => setAnchor(addDays(anchor, 30))} icon="chevR" />
-          </div>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {FILTERS.map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setFilter(f.id)}
-                style={{
-                  padding: "4px 10px",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  borderRadius: 999,
-                  border: `1px solid ${filter === f.id ? t.brand : t.line}`,
-                  background: filter === f.id ? t.brandSoft : t.surface,
-                  color: filter === f.id ? t.brand : t.ink2,
-                  cursor: "pointer",
-                }}
-              >
-                {f.label}
-              </button>
-            ))}
-            <button
-              onClick={() => setCreateOpen({})}
-              style={{
-                padding: "5px 12px",
-                fontSize: 12,
-                fontWeight: 700,
-                borderRadius: 6,
-                border: "none",
-                background: t.brand,
-                color: t.inverse,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              <Icon name="plus" size={11} /> New event
-            </button>
-          </div>
+      <div className="grid" style={{ minWidth: 0 }}>
+        <div className="pagebar" style={{ padding: 0 }}>
+          <b style={{ fontSize: 15 }}>{monthLabel}</b>
+          <IconBtn onClick={() => setAnchor(addDays(anchor, -30))} aria-label="Previous month">
+            <Icon name="chevL" size={13} />
+          </IconBtn>
+          <Btn size="sm" onClick={() => setAnchor(startOfDay(new Date()))}>
+            Today
+          </Btn>
+          <IconBtn onClick={() => setAnchor(addDays(anchor, 30))} aria-label="Next month">
+            <Icon name="chevR" size={13} />
+          </IconBtn>
+          <span className="spacer" />
+          <Seg as="filter" ariaLabel="Event type" value={filter} onChange={setFilter} options={FILTERS} />
+          <Btn variant="pri" size="sm" onClick={() => setCreateOpen({})}>
+            <Icon name="plus" size={11} /> New event
+          </Btn>
         </div>
 
-        <Card pad={0}>
-          {/* Weekday header */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7, 1fr)",
-              borderBottom: `1px solid ${t.line}`,
-              background: t.surface2,
-            }}
-          >
+        <div className="cal">
+          <div className="cal-hd">
             {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-              <div
-                key={d}
-                style={{
-                  padding: "8px 10px",
-                  fontSize: 10.5,
-                  fontWeight: 800,
-                  color: t.ink3,
-                  letterSpacing: 1.2,
-                  textTransform: "uppercase",
-                }}
-              >
-                {d}
-              </div>
+              <div key={d}>{d}</div>
             ))}
           </div>
-          {/* Grid */}
-          <div style={{ display: "grid", gridTemplateRows: `repeat(${grid.length}, minmax(96px, 1fr))` }}>
+          <div className="cal-b">
             {grid.map((week, wIdx) => (
-              <div key={wIdx} style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
-                {week.map((dayIso, dIdx) => {
+              <div className="cal-w" key={wIdx}>
+                {week.map((dayIso) => {
                   const date = new Date(dayIso);
                   const isToday = sameDay(date, today);
-                  const inMonth = grid[0] && date.getMonth() === new Date(grid[Math.floor(grid.length / 2)][3]).getMonth();
+                  const inMonth =
+                    grid[0] &&
+                    date.getMonth() === new Date(grid[Math.floor(grid.length / 2)][3]).getMonth();
                   const events = eventsByDay.get(dayIso) ?? [];
                   return (
                     <button
                       key={dayIso}
+                      type="button"
+                      className={cx("cal-d", isToday && "today", !inMonth && "out")}
                       onClick={() => setCreateOpen({ at: date })}
-                      style={{
-                        minHeight: 96,
-                        textAlign: "left",
-                        padding: "6px 8px",
-                        background: isToday ? t.brandSoft : inMonth ? t.surface : t.surface2,
-                        border: "none",
-                        borderRight: dIdx < 6 ? `1px solid ${t.line}` : "none",
-                        borderBottom: wIdx < grid.length - 1 ? `1px solid ${t.line}` : "none",
-                        cursor: "pointer",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 4,
-                        overflow: "hidden",
-                      }}
+                      aria-label={`Add an event on ${date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}`}
                     >
-                      <div
-                        style={{
-                          fontSize: 11.5,
-                          fontWeight: isToday ? 800 : 700,
-                          color: isToday ? t.brand : inMonth ? t.ink : t.ink3,
-                          letterSpacing: 0,
-                        }}
-                      >
-                        {date.getDate()}
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, minHeight: 0 }}>
+                      <div className="cal-n">{date.getDate()}</div>
+                      <div className="cal-evs">
                         {events.slice(0, 3).map((ev) => (
-                          <EventChip key={ev.id} task={ev} t={t} />
+                          <EventChip key={ev.id} task={ev} />
                         ))}
                         {events.length > 3 ? (
-                          <div style={{ fontSize: 10, color: t.ink3, fontWeight: 700 }}>
-                            +{events.length - 3} more
-                          </div>
+                          <div className="cal-more">+{events.length - 3} more</div>
                         ) : null}
                       </div>
                     </button>
@@ -270,29 +213,31 @@ export function ScheduleTab({ clientId, dealId }: { clientId: string; dealId: st
               </div>
             ))}
           </div>
-        </Card>
+        </div>
       </div>
 
       {/* Right rail — Next 7 days */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, position: "sticky", top: 14 }}>
-        <SectionLabel>Next 7 days · {next7.length}</SectionLabel>
+      <div className="railcol">
+        <div className="row">
+          <span className="lbl">Next 7 days</span>
+          <Tag>{next7.length}</Tag>
+        </div>
         {isLoading ? (
-          <Card pad={12}>
-            <div style={{ color: t.ink3, fontSize: 12 }}>Loading…</div>
+          <Card>
+            <Sub>Loading…</Sub>
           </Card>
         ) : next7.length === 0 ? (
-          <Card pad={12}>
-            <div style={{ fontSize: 12, color: t.ink3 }}>
+          <Card>
+            <Sub>
               No upcoming events. Click a date on the calendar or “New event” to schedule one.
-            </div>
+            </Sub>
           </Card>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="grid g8">
             {next7.map((task) => (
               <UpcomingCard
                 key={task.id}
                 task={task}
-                t={t}
                 onComplete={() => complete.mutate(task.id)}
                 onDelete={() => { if (confirm(`Delete "${task.title}"?`)) del.mutate(task.id); }}
                 onPromote={() => promote.mutate(task.id)}
@@ -304,7 +249,7 @@ export function ScheduleTab({ clientId, dealId }: { clientId: string; dealId: st
       </div>
 
       {createOpen ? (
-        <NewEventModal
+        <NewEventDrawer
           clientId={clientId}
           dealId={dealId}
           initialAt={createOpen.at}
@@ -335,29 +280,13 @@ function buildGrid(anchor: Date): string[][] {
   return rows;
 }
 
-function EventChip({ task, t }: { task: AgentTask; t: ReturnType<typeof useTheme>["t"] }) {
-  const palette = CATEGORY_COLOR[task.category] ?? CATEGORY_COLOR.other;
-  const bg = (t as unknown as PaletteHints)[palette.bg];
-  const fg = (t as unknown as PaletteHints)[palette.fg];
+function EventChip({ task }: { task: AgentTask }) {
+  const tone = CATEGORY_TONE[task.category] ?? "mut";
   const time = task.due_at
     ? new Date(task.due_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
     : "";
   return (
-    <div
-      style={{
-        padding: "1px 6px",
-        borderRadius: 4,
-        background: bg,
-        color: fg,
-        fontSize: 10.5,
-        fontWeight: 700,
-        lineHeight: 1.3,
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-      }}
-      title={`${task.title} · ${time}`}
-    >
+    <div className={cx("cal-ev", `c-${tone}`)} title={`${task.title} · ${time}`}>
       {time ? `${time} · ` : ""}
       {task.title}
     </div>
@@ -366,14 +295,12 @@ function EventChip({ task, t }: { task: AgentTask; t: ReturnType<typeof useTheme
 
 function UpcomingCard({
   task,
-  t,
   onComplete,
   onDelete,
   onPromote,
   promoting,
 }: {
   task: AgentTask;
-  t: ReturnType<typeof useTheme>["t"];
   onComplete: () => void;
   onDelete: () => void;
   onPromote: () => void;
@@ -383,64 +310,44 @@ function UpcomingCard({
   const isDone = task.status === "done" || task.status === "cancelled";
   const canPromote = task.owner_type === "ai" && !task.ai_assignment_id;
   return (
-    <Card pad={10} style={{ opacity: isDone ? 0.6 : 1 }}>
-      <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+    <Card style={{ padding: 11, opacity: isDone ? 0.6 : 1 }}>
+      <div className="row" style={{ gap: 10, alignItems: "flex-start", flexWrap: "nowrap" }}>
         {when ? (
-          <div
-            style={{
-              width: 48,
-              textAlign: "center",
-              padding: "4px 0",
-              borderRadius: 6,
-              background: t.surface2,
-              border: `1px solid ${t.line}`,
-              flexShrink: 0,
-            }}
-          >
-            <div style={{ fontSize: 9.5, color: t.ink3, fontWeight: 700, textTransform: "uppercase" }}>
-              {when.toLocaleDateString(undefined, { month: "short" })}
-            </div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: t.ink, lineHeight: 1 }}>
-              {when.getDate()}
-            </div>
-            <div style={{ fontSize: 9.5, color: t.ink3, fontWeight: 600 }}>
+          <div className="datetile">
+            <div className="m">{when.toLocaleDateString(undefined, { month: "short" })}</div>
+            <div className="d">{when.getDate()}</div>
+            <div className="h">
               {when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
             </div>
           </div>
         ) : null}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            <span
+          <div className="row" style={{ gap: 6 }}>
+            <b
               style={{
                 fontSize: 12.5,
-                fontWeight: 700,
-                color: t.ink,
                 textDecoration: isDone ? "line-through" : "none",
               }}
             >
               {task.title}
-            </span>
-            <Pill>{CATEGORY_LABELS[task.category]}</Pill>
+            </b>
+            <Tag>{CATEGORY_LABELS[task.category]}</Tag>
           </div>
-          {task.description ? (
-            <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 3 }}>{task.description}</div>
-          ) : null}
-          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          {task.description ? <Sub>{task.description}</Sub> : null}
+          <div className="row" style={{ gap: 6, marginTop: 8 }}>
             {canPromote ? (
-              <button
-                onClick={onPromote}
-                disabled={promoting}
-                style={btnPrimary(t, promoting)}
-              >
+              <Btn variant="pri" size="sm" onClick={onPromote} disabled={promoting}>
                 {promoting ? "Promoting…" : "Promote to AI"}
-              </button>
+              </Btn>
             ) : null}
             {!isDone ? (
-              <button onClick={onComplete} style={btnSecondary(t)}>Complete</button>
+              <Btn size="sm" onClick={onComplete}>
+                Complete
+              </Btn>
             ) : null}
-            <button onClick={onDelete} style={{ ...btnSecondary(t), color: t.danger }}>
+            <Btn size="sm" onClick={onDelete} className="danger">
               Delete
-            </button>
+            </Btn>
           </div>
         </div>
       </div>
@@ -448,41 +355,7 @@ function UpcomingCard({
   );
 }
 
-function NavBtn({
-  t,
-  onClick,
-  icon,
-  label,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  onClick: () => void;
-  icon?: "chevL" | "chevR";
-  label?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        padding: "4px 10px",
-        fontSize: 11,
-        fontWeight: 700,
-        borderRadius: 6,
-        border: `1px solid ${t.line}`,
-        background: t.surface,
-        color: t.ink2,
-        cursor: "pointer",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-      }}
-    >
-      {icon ? <Icon name={icon} size={11} /> : null}
-      {label ?? null}
-    </button>
-  );
-}
-
-function NewEventModal({
+function NewEventDrawer({
   clientId,
   dealId,
   initialAt,
@@ -493,7 +366,6 @@ function NewEventModal({
   initialAt: Date | undefined;
   onClose: () => void;
 }) {
-  const { t } = useTheme();
   const create = useCreateAgentTask(clientId);
   const [body, setBody] = useState<AgentTaskCreateBody>({
     title: "",
@@ -511,14 +383,6 @@ function NewEventModal({
     return `${seed.getFullYear()}-${pad(seed.getMonth() + 1)}-${pad(seed.getDate())}T${pad(seed.getHours())}:${pad(seed.getMinutes())}`;
   });
   const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   async function save() {
     if (!body.title.trim()) {
@@ -538,153 +402,77 @@ function NewEventModal({
   }
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.4)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 100,
-      }}
+    <Drawer
+      open
+      onClose={onClose}
+      width="md"
+      title="New schedule event"
+      footer={
+        <>
+          {err ? <span style={{ fontSize: 12, color: "var(--danger)" }}>{err}</span> : null}
+          <span style={{ flex: 1 }} />
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn variant="pri" onClick={save} disabled={create.isPending}>
+            {create.isPending ? "Saving…" : "Create"}
+          </Btn>
+        </>
+      }
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: t.surface,
-          border: `1px solid ${t.line}`,
-          borderRadius: 10,
-          padding: 20,
-          minWidth: 440,
-          maxWidth: 520,
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>New schedule event</div>
-          <ModalCloseButton onClick={onClose} />
-        </div>
+      <div className="grid g10">
         <Field label="Type">
-          <select
+          <Select
             value={body.category ?? "showing"}
             onChange={(e) => setBody({ ...body, category: e.target.value as AgentTaskCategory })}
-            style={inputStyle(t)}
           >
             {SCHEDULE_CATEGORIES.map((c) => (
               <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
             ))}
-          </select>
+          </Select>
         </Field>
         <Field label="Title">
-          <input
+          <Input
             value={body.title}
             onChange={(e) => setBody({ ...body, title: e.target.value })}
             placeholder='e.g. "Open house 123 Main St"'
-            style={inputStyle(t)}
           />
         </Field>
         <Field label="Date & time">
-          <input
+          <Input
             type="datetime-local"
             value={dateStr}
             onChange={(e) => setDateStr(e.target.value)}
-            style={inputStyle(t)}
           />
         </Field>
-        <Field label="Description (location, attendees, talking points)">
-          <textarea
+        <Field label="Description" hint="Location, attendees, talking points.">
+          <Textarea
             value={body.description ?? ""}
             onChange={(e) => setBody({ ...body, description: e.target.value })}
             rows={3}
-            style={{ ...inputStyle(t), fontFamily: "inherit", resize: "vertical" }}
           />
         </Field>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className="fldgrid two">
           <Field label="Owner">
-            <select
+            <Select
               value={body.owner_type ?? "human"}
               onChange={(e) => setBody({ ...body, owner_type: e.target.value as "human" | "ai" | "shared" })}
-              style={inputStyle(t)}
             >
               <option value="human">Me</option>
               <option value="ai">AI</option>
               <option value="shared">Shared</option>
-            </select>
+            </Select>
           </Field>
           <Field label="Priority">
-            <select
+            <Select
               value={body.priority ?? "medium"}
               onChange={(e) => setBody({ ...body, priority: e.target.value as "low" | "medium" | "high" })}
-              style={inputStyle(t)}
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
-            </select>
+            </Select>
           </Field>
         </div>
-        {err ? <div style={{ fontSize: 12, color: t.danger }}>{err}</div> : null}
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={btnSecondary(t)}>Cancel</button>
-          <button onClick={save} disabled={create.isPending} style={btnPrimary(t, create.isPending)}>
-            {create.isPending ? "Saving…" : "Create"}
-          </button>
-        </div>
       </div>
-    </div>
+    </Drawer>
   );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  const { t } = useTheme();
-  return (
-    <label style={{ display: "block" }}>
-      <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase" }}>{label}</span>
-      <div style={{ marginTop: 4 }}>{children}</div>
-    </label>
-  );
-}
-
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: 8,
-    fontSize: 13,
-    borderRadius: 6,
-    border: `1px solid ${t.line}`,
-    background: t.surface,
-    color: t.ink,
-    boxSizing: "border-box",
-  };
-}
-
-function btnPrimary(t: ReturnType<typeof useTheme>["t"], disabled: boolean): React.CSSProperties {
-  return {
-    padding: "5px 10px",
-    fontSize: 11,
-    fontWeight: 700,
-    borderRadius: 6,
-    border: "none",
-    background: t.brand,
-    color: t.inverse,
-    cursor: disabled ? "default" : "pointer",
-    opacity: disabled ? 0.5 : 1,
-  };
-}
-
-function btnSecondary(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    padding: "5px 10px",
-    fontSize: 11,
-    fontWeight: 600,
-    borderRadius: 6,
-    border: `1px solid ${t.line}`,
-    background: t.surface,
-    color: t.ink,
-    cursor: "pointer",
-  };
 }

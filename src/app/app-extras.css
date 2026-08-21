@@ -126,3 +126,176 @@
   display: block; padding: 9px 12px; border-radius: 10px;
   font-size: 12.8px; font-weight: 600; line-height: 1.45;
 }
+
+/* Read-only list row — an icon, a growing middle, a status on the right.
+   Written out independently in eight places across deals/ and loans/ before it
+   was named. `.pick` is the interactive sibling of this; this one does not
+   claim to be clickable. */
+.itemrow { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--sunken2); }
+.itemrow + .itemrow { margin-top: 6px; }
+.itemrow > .grow { flex: 1; min-width: 0; }
+.itemrow svg { flex-shrink: 0; color: var(--muted); }
+
+/* Callout — a card that has something to say. Tone comes from a c-* class on
+   the same element, so it uses the same vocabulary as a chip. */
+.callout { display: flex; gap: 11px; align-items: flex-start; padding: 13px 15px; border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--r-sm); background: var(--surface); }
+.callout.c-bad { border-left-color: var(--danger); background: var(--danger-tint); color: inherit; }
+.callout.c-warn { border-left-color: var(--warn); background: var(--warn-tint); color: inherit; }
+.callout.c-acc { border-left-color: var(--accent); background: var(--accent-100); color: inherit; }
+.callout > svg { flex-shrink: 0; margin-top: 1px; }
+.callout > .grow { flex: 1; min-width: 0; }
+
+/* Stack of blocks. `.grid` gives 14px; these are the two other rhythms the
+   app actually uses. */
+.grid.g4 { gap: 4px; }
+.grid.g6 { gap: 6px; }
+.grid.g8 { gap: 8px; }
+
+/* Micro-label — the ALL-CAPS tag before a field name. Smaller than .lbl and
+   inline rather than block. */
+.mlbl { display: inline-block; font-size: 9.5px; font-weight: 800; padding: 1px 6px; border-radius: 9px; background: var(--sunken); color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; }
+
+/* ---------- a field the system is still waiting on ----------
+   Red on the control alone is a colour-only signal. The rail on the label and
+   the REQUIRED tag carry the same message without relying on colour vision,
+   which is why all three are here and not just the border. */
+.field.bad { border-color: var(--danger); box-shadow: 0 0 0 2px var(--danger-tint); }
+.fld-req { padding-left: 9px; border-left: 3px solid var(--danger); }
+.fld-req > .lbl { color: var(--danger); }
+.reqtag { font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 9px; background: var(--danger); color: #fff; letter-spacing: 0.05em; margin-left: 6px; }
+
+/* An internal note in a thread — the same person speaking off the record.
+   Dashed rather than tinted: a fourth colour would read as a fourth kind of
+   participant, which is exactly what it is not. */
+.msg.internal .msg-b { border-style: dashed; background: var(--sunken); }
+.msg.internal .msg-role { color: var(--muted); }
+
+/* ---------- form layout ----------
+   Fixed-column form rows. `.cg` is the 12-column page grid and is the wrong
+   tool inside a panel: a five-across row of short fields wants five equal
+   columns that collapse together, not five spans of a page-width grid. */
+.fldsec + .fldsec { margin-top: 18px; }
+.fldsec > .lbl { display: block; margin-bottom: 9px; }
+.fldgrid { display: grid; gap: 11px; }
+.fldgrid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fldgrid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.fldgrid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.fldgrid.five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 1100px) {
+  .fldgrid.four, .fldgrid.five { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fldgrid.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .fldgrid.two, .fldgrid.three, .fldgrid.four, .fldgrid.five { grid-template-columns: 1fr; }
+}
+
+/* Map preview beside an address form. Its empty state has to hold the same
+   box, or the form jumps the moment an address is entered. */
+.mapbox { border-radius: 9px; overflow: hidden; border: 1px solid var(--line); min-height: 180px; }
+.mapbox.empty { border-style: dashed; background: var(--sunken2); color: var(--muted); font-size: 12px; display: grid; place-items: center; text-align: center; padding: 12px; }
+
+.mb { margin-bottom: 14px; }
+
+/* An item row the AI has flagged. */
+.itemrow.flagged { border-color: rgba(161, 92, 7, 0.3); background: var(--warn-tint); }
+
+/* ---------- month calendar ----------
+   A real grid, not a table: cells are targets you click to create on a date,
+   and the day number plus its chips are a stack, not a row of data. */
+.cal { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--surface); box-shadow: var(--sh1); }
+.cal-hd { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--line); background: var(--sunken2); }
+.cal-hd > div { padding: 8px 10px; font-size: 10.3px; font-weight: 700; color: var(--muted); letter-spacing: 0.09em; text-transform: uppercase; }
+.cal-b { display: grid; }
+.cal-w { display: grid; grid-template-columns: repeat(7, 1fr); }
+.cal-d {
+  min-height: 96px; text-align: left; padding: 6px 8px; background: var(--surface);
+  border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  cursor: pointer; display: flex; flex-direction: column; gap: 4px; overflow: hidden;
+  font-family: inherit; color: inherit;
+}
+.cal-w > .cal-d:last-child { border-right: 0; }
+.cal-b > .cal-w:last-child > .cal-d { border-bottom: 0; }
+.cal-d:hover { background: var(--sunken2); }
+.cal-d.out { background: var(--sunken2); }
+.cal-d.out .cal-n { color: var(--faint); }
+.cal-d.today { background: var(--accent-100); }
+.cal-d.today .cal-n { color: var(--accent); font-weight: 800; }
+.cal-n { font-size: 11.5px; font-weight: 700; }
+.cal-evs { display: flex; flex-direction: column; gap: 3px; flex: 1; min-height: 0; }
+.cal-ev {
+  padding: 1px 6px; border-radius: 4px; font-size: 10.5px; font-weight: 700; line-height: 1.35;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cal-more { font-size: 10px; color: var(--muted); font-weight: 700; }
+
+/* Date tile — month, day, time stacked in a fixed-width block beside an event. */
+.datetile { width: 48px; flex-shrink: 0; text-align: center; padding: 5px 0; border-radius: 8px; background: var(--sunken2); border: 1px solid var(--line); }
+.datetile .m { font-size: 9.5px; color: var(--muted); font-weight: 700; text-transform: uppercase; }
+.datetile .d { font-size: 15px; font-weight: 800; line-height: 1.1; }
+.datetile .h { font-size: 9.5px; color: var(--muted); font-weight: 600; }
+
+/* A two-pane tab: main surface plus a sticky right rail that is part of the
+   page rather than the shell. */
+.withrail { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; }
+/* NOT named `.side` — that is the app sidebar (height:100vh, border-right),
+   and a page-level rail reusing the name inherits a full-viewport height and
+   a border it never asked for. */
+.withrail > .railcol { position: sticky; top: 14px; display: grid; gap: 10px; align-content: start; }
+@media (max-width: 1100px) { .withrail { grid-template-columns: 1fr; } .withrail > .railcol { position: static; } }
+
+/* Destructive action. Reads as a normal button until you look at it — the
+   weight belongs on the confirm, not on every Delete in a list. */
+.btn.danger { color: var(--danger); }
+.btn.danger:hover { background: var(--danger-tint); border-color: rgba(178, 42, 42, 0.28); }
+
+.grid.g10 { gap: 10px; }
+
+/* A scrollable list of .pick rows. Bounded so a 60-item playbook does not push
+   the drawer footer — and its Add button — off the bottom of the screen. */
+.picklist { max-height: 46vh; overflow-y: auto; padding: 2px; }
+.picklist .pick input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; flex: 0 0 auto; }
+
+/* Elara's mark in a header strip. */
+.botmark { width: 38px; height: 38px; border-radius: 9px; background: var(--sunken2); border: 1px solid var(--line); display: inline-grid; place-items: center; flex-shrink: 0; font-size: 19px; line-height: 1; }
+
+/* Count badge inside a button — "3 · Property tab". */
+.cnt { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* The thing under the cursor mid-drag. */
+.dragchip { padding: 6px 11px; border-radius: 8px; background: var(--sunken2); color: var(--ink2); border: 1px solid var(--line); font-size: 11.5px; font-weight: 700; }
+.dragchip.ai { background: var(--accent-100); color: var(--accent); border-color: var(--accent-200); }
+.grabbable { cursor: grab; }
+.grabbable:active { cursor: grabbing; }
+
+/* Workbench: a queue you drag FROM beside a table you drop INTO. Both panels
+   must be full height so the drop targets stay aligned with their sources. */
+.wbench { display: grid; grid-template-columns: minmax(280px, 0.85fr) minmax(420px, 1.3fr); gap: 12px; align-items: stretch; }
+@media (max-width: 1100px) { .wbench { grid-template-columns: 1fr; } }
+.qscroll { max-height: 540px; overflow-y: auto; }
+
+/* ---------- file header ----------
+   The identity block at the top of a working file (/deals/[id], /loans/[id]):
+   breadcrumb + status chips, the file's name, who it belongs to, and the
+   actions — with the tab strip fused to its bottom edge so the tabs read as
+   belonging to this file rather than to the page. */
+.filehd { border: 1px solid var(--line); border-radius: var(--r); background: linear-gradient(180deg, var(--surface), var(--sunken2)); box-shadow: var(--sh1); overflow: hidden; }
+.filehd-b { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; padding: 14px 16px 12px; align-items: center; }
+@media (max-width: 720px) { .filehd-b { grid-template-columns: 1fr; } }
+.filehd-t { font-family: var(--fh); font-size: 21px; font-weight: 650; letter-spacing: -0.02em; margin: 5px 0 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Back link above a file title. */
+.crumb { font-size: 10.5px; font-weight: 700; color: var(--muted); letter-spacing: 0.09em; text-transform: uppercase; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+.crumb:hover { color: var(--ink2); }
+
+/* Tabs fused to the bottom of a file header. */
+.ftabs { display: flex; gap: 4px; border-top: 1px solid var(--line); padding-left: 8px; background: var(--surface); overflow-x: auto; }
+.ftab { padding: 10px 14px; font-size: 13px; font-weight: 600; border: 0; background: transparent; color: var(--muted); border-bottom: 2px solid transparent; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-family: inherit; margin-bottom: -1px; }
+.ftab:hover { color: var(--ink2); }
+.ftab.on { color: var(--ink); border-bottom-color: var(--petrol); }
+
+.cnt.sm { min-width: 18px; height: 18px; padding: 0 5px; font-size: 10.5px; }
+
+/* A dashed panel explaining what will exist later. Not an error and not a
+   warning — a placeholder with a reason. */
+.hintbox { padding: 18px; background: var(--surface); border-radius: var(--r); border: 1px dashed var(--line2); display: flex; align-items: center; gap: 14px; }
+.hintbox-i { width: 36px; height: 36px; border-radius: 50%; background: var(--accent-100); color: var(--accent); display: inline-grid; place-items: center; flex-shrink: 0; }

@@ -5,19 +5,39 @@
 // Replaces the read-only Hud1Tab. Now a real table:
 //   • Operator can add / edit / delete line items
 //   • Inline edit on label / payee / amount / category / note
-//   • "Share" opens a modal that mints a public token + URL the
+//   • "Share" opens a drawer that mints a public token + URL the
 //     operator can drop on title / escrow / insurance contacts so they
 //     can fill their own line items without an account.
 //   • Active share links are listed with revoke + last-used info.
 //
 // Totals + categorization rolled up at the bottom.
+//
+// Styling lives in globals.css / app-extras.css. The two-pane shape is
+// `.withrail` (main surface + sticky 320px rail); the share dialog is
+// ds/Drawer, which carries Escape, backdrop click, body-scroll lock and focus
+// restore — none of which the hand-rolled overlay this replaced had.
 
 import { useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, SectionLabel, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { QC_FMT } from "@/components/design-system/tokens";
+import {
+  Btn,
+  Card,
+  CellChip,
+  Field,
+  IconBtn,
+  Input,
+  Lbl,
+  Linky,
+  Panel,
+  Select,
+  StatusLine,
+  Table,
+  Tag,
+  Td,
+  Tr,
+} from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import {
   useCreateHudLine,
   useCreateHudShareLink,
@@ -37,8 +57,9 @@ const CATEGORY_OPTIONS = [
   { value: "third_party", label: "Third party" },
 ];
 
+const MONO = "ui-monospace, SFMono-Regular, SF Mono, Menlo, monospace";
+
 export function HudTab({ loan }: { loan: Loan }) {
-  const { t } = useTheme();
   const { data: lines = [], isLoading } = useHudLines(loan.id);
   const create = useCreateHudLine(loan.id);
   const update = useUpdateHudLine();
@@ -61,29 +82,26 @@ export function HudTab({ loan }: { loan: Loan }) {
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 18 }}>
-      <Card pad={0}>
-        <div style={{
-          display: "flex", alignItems: "center", gap: 10,
-          padding: "12px 16px", borderBottom: `1px solid ${t.line}`,
-        }}>
-          <span style={{ fontSize: 14, fontWeight: 800, color: t.ink }}>
-            HUD Settlement Statement
-          </span>
-          <Pill bg={t.surface2} color={t.ink3}>{lines.length} line{lines.length === 1 ? "" : "s"}</Pill>
-          <div style={{ flex: 1 }} />
-          <button onClick={() => setShareOpen(true)} style={qcBtn(t)}>
-            <Icon name="send" size={12} /> Share / invite
-          </button>
-          <button onClick={addNewLine} disabled={create.isPending} style={qcBtnPrimary(t)}>
-            <Icon name="add" size={12} /> Add row
-          </button>
-        </div>
-
+    <div className="withrail">
+      <Panel
+        title="HUD Settlement Statement"
+        sub={<Tag>{lines.length} line{lines.length === 1 ? "" : "s"}</Tag>}
+        actions={
+          <>
+            <Btn onClick={() => setShareOpen(true)}>
+              <Icon name="send" size={12} /> Share / invite
+            </Btn>
+            <Btn variant="pri" onClick={addNewLine} disabled={create.isPending}>
+              <Icon name="add" size={12} /> Add row
+            </Btn>
+          </>
+        }
+        noPad
+      >
         {isLoading ? (
-          <div style={{ padding: 24, fontSize: 13, color: t.ink3 }}>Loading HUD lines…</div>
+          <div className="panel-b sub">Loading HUD lines…</div>
         ) : lines.length === 0 ? (
-          <div style={{ padding: 24, fontSize: 13, color: t.ink3 }}>
+          <div className="panel-b sub">
             No HUD lines yet. Click <strong>Add row</strong> to start, or use <strong>Share / invite</strong> to let a title / escrow / insurance contact fill theirs in.
           </div>
         ) : (
@@ -93,23 +111,35 @@ export function HudTab({ loan }: { loan: Loan }) {
             onDelete={(lineId) => remove.mutate(lineId)}
           />
         )}
-      </Card>
+      </Panel>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <Card pad={16}>
-          <SectionLabel>Totals</SectionLabel>
-          <SumRow label="Fixed costs" value={fixedTotal} t={t} />
-          <SumRow label="Variable" value={variableTotal} t={t} />
-          <SumRow label="Reserves" value={reservesTotal} t={t} />
-          <SumRow label="Third-party" value={thirdPartyTotal} t={t} />
-          <div style={{ marginTop: 12, paddingTop: 12, borderTop: `2px solid ${t.line}` }}>
-            <SumRow label="Total fees + reserves" value={total} t={t} bold />
+      {/* Not `.side`: that class belongs to the app shell (height:100vh,
+          border-right, surface background) and `.withrail > .side` only
+          overrides position/display, so the shell's leftovers leak in. The
+          rail is simply the second grid column. */}
+      <div className="grid">
+        <Card>
+          <Lbl>Totals</Lbl>
+          <div className="mt">
+            <SumRow label="Fixed costs" value={fixedTotal} />
+            <SumRow label="Variable" value={variableTotal} />
+            <SumRow label="Reserves" value={reservesTotal} />
+            <SumRow label="Third-party" value={thirdPartyTotal} />
+          </div>
+          {/* The grand total is the figure the closer reads off this tab, so it
+              gets the headline treatment rather than a fifth identical row. */}
+          <div className="mt">
+            <Lbl>Total fees + reserves</Lbl>
+            <div className="big num">{QC_FMT.usd(total)}</div>
           </div>
         </Card>
 
         <ShareLinksCard loanId={loan.id} />
       </div>
 
+      {/* Kept as a conditional mount, not a permanently-mounted `open={…}`
+          drawer: the form and the minted-token state must reset each time the
+          operator opens it. */}
       {shareOpen ? (
         <ShareLinkModal
           loanId={loan.id}
@@ -128,32 +158,27 @@ function HudTable({
   onUpdate: (lineId: string, patch: Partial<HudLine>) => void;
   onDelete: (lineId: string) => void;
 }) {
-  const { t } = useTheme();
   return (
-    <div style={{ overflow: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-        <thead>
-          <tr style={{ background: t.surface2 }}>
-            <Th t={t} width={140}>Code</Th>
-            <Th t={t}>Item</Th>
-            <Th t={t} width={180}>Payee</Th>
-            <Th t={t} width={140}>Category</Th>
-            <Th t={t} width={140} align="right">Amount</Th>
-            <Th t={t} width={48}>&nbsp;</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((line) => (
-            <HudRow
-              key={line.id}
-              line={line}
-              onUpdate={(patch) => onUpdate(line.id, patch)}
-              onDelete={() => onDelete(line.id)}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Table
+      caption="HUD settlement line items"
+      cols={[
+        { label: "Code", width: 140 },
+        { label: "Item" },
+        { label: "Payee", width: 180 },
+        { label: "Category", width: 140 },
+        { label: "Amount", align: "r", width: 140 },
+        { label: <span className="sr-only">Row actions</span>, width: 48 },
+      ]}
+    >
+      {lines.map((line) => (
+        <HudRow
+          key={line.id}
+          line={line}
+          onUpdate={(patch) => onUpdate(line.id, patch)}
+          onDelete={() => onDelete(line.id)}
+        />
+      ))}
+    </Table>
   );
 }
 
@@ -165,30 +190,25 @@ function HudRow({
   onUpdate: (patch: Partial<HudLine>) => void;
   onDelete: () => void;
 }) {
-  const { t } = useTheme();
   const [confirmDelete, setConfirmDelete] = useState(false);
   return (
-    <tr style={{ borderTop: `1px solid ${t.line}` }}>
-      <Td t={t}>
-        <span style={{
-          fontSize: 10, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase",
-          padding: "2px 6px", borderRadius: 4,
-          background: t.chip, color: t.ink3,
-        }}>
-          {line.code}
+    <Tr>
+      <Td>
+        <span className="row">
+          <span className="mlbl">{line.code}</span>
+          {line.created_by_share_link_id ? (
+            <CellChip tone="acc" title="Added via share link">↩ shared</CellChip>
+          ) : null}
         </span>
-        {line.created_by_share_link_id ? (
-          <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: t.brand }} title="Added via share link">↩ shared</span>
-        ) : null}
       </Td>
-      <Td t={t}>
+      <Td>
         <InlineEdit
           value={line.label}
           editable={line.editable}
           onCommit={(v) => onUpdate({ label: v })}
         />
         {line.note ? (
-          <div style={{ marginTop: 2, fontSize: 11, color: t.ink3, fontStyle: "italic" }}>
+          <div className="sub">
             <InlineEdit
               value={line.note ?? ""}
               editable={line.editable}
@@ -197,7 +217,7 @@ function HudRow({
             />
           </div>
         ) : (
-          <div style={{ marginTop: 2 }}>
+          <div className="sub">
             <InlineEdit
               value=""
               editable={line.editable}
@@ -207,7 +227,7 @@ function HudRow({
           </div>
         )}
       </Td>
-      <Td t={t}>
+      <Td>
         <InlineEdit
           value={line.payee ?? ""}
           editable={line.editable}
@@ -215,68 +235,51 @@ function HudRow({
           placeholder="—"
         />
       </Td>
-      <Td t={t}>
-        <select
+      <Td>
+        <Select
           value={line.category}
           disabled={!line.editable}
           onChange={(e) => onUpdate({ category: e.target.value })}
-          style={{
-            padding: "5px 7px",
-            borderRadius: 6,
-            border: `1px solid ${t.line}`,
-            background: t.surface,
-            color: t.ink,
-            fontSize: 12,
-            fontFamily: "inherit",
-            cursor: line.editable ? "pointer" : "not-allowed",
-          }}
+          aria-label="Category"
         >
           {CATEGORY_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
-        </select>
+        </Select>
       </Td>
-      <Td t={t} align="right">
+      <Td align="r">
         <CurrencyEdit
           value={Number(line.amount)}
           editable={line.editable}
           onCommit={(v) => onUpdate({ amount: v })}
         />
       </Td>
-      <Td t={t} align="right">
+      <Td align="r">
         {line.editable ? (
           confirmDelete ? (
-            <button
+            <Btn
+              size="sm"
+              className="c-bad"
               onClick={() => { onDelete(); setConfirmDelete(false); }}
-              style={{
-                background: t.dangerBg, color: t.danger, border: `1px solid ${t.danger}`,
-                fontSize: 11, fontWeight: 800, padding: "3px 8px", borderRadius: 6,
-                cursor: "pointer", fontFamily: "inherit",
-              }}
               title="Click again to confirm"
             >
               Sure?
-            </button>
+            </Btn>
           ) : (
-            <button
+            <IconBtn
               onClick={() => setConfirmDelete(true)}
               onBlur={() => setConfirmDelete(false)}
-              style={{
-                all: "unset", cursor: "pointer", color: t.ink3, fontSize: 16, lineHeight: 1,
-                padding: "4px 8px", borderRadius: 6,
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = t.danger; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = t.ink3; }}
               title="Remove this line"
+              aria-label="Remove this line"
             >
               ×
-            </button>
+            </IconBtn>
           )
         ) : (
-          <span title="Locked line" style={{ color: t.ink3, fontSize: 10 }}>🔒</span>
+          <span className="sub" title="Locked line">🔒</span>
         )}
       </Td>
-    </tr>
+    </Tr>
   );
 }
 
@@ -289,15 +292,14 @@ function InlineEdit({
   onCommit: (next: string) => void;
   placeholder?: string;
 }) {
-  const { t } = useTheme();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   if (!editable) {
-    return <span style={{ color: t.ink2 }}>{value || placeholder || "—"}</span>;
+    return <span>{value || placeholder || "—"}</span>;
   }
   if (editing) {
     return (
-      <input
+      <Input
         autoFocus
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
@@ -306,33 +308,19 @@ function InlineEdit({
           if (e.key === "Enter") { setEditing(false); if (draft !== value) onCommit(draft); }
           if (e.key === "Escape") { setEditing(false); setDraft(value); }
         }}
-        style={{
-          width: "100%",
-          padding: "3px 6px",
-          borderRadius: 5,
-          border: `1px solid ${t.brand}`,
-          background: t.surface,
-          color: t.ink,
-          fontSize: 12.5,
-          fontFamily: "inherit",
-          outline: "none",
-        }}
+        // Genuinely layout-dependent: the control has to fill whatever cell it
+        // lands in, and .field deliberately does not set a width.
+        style={{ width: "100%" }}
       />
     );
   }
   return (
     <span
       onClick={() => { setDraft(value); setEditing(true); }}
-      style={{
-        display: "inline-block",
-        minHeight: 18,
-        padding: "1px 4px",
-        borderRadius: 4,
-        cursor: "text",
-        color: value ? t.ink : t.ink3,
-        fontStyle: value ? "normal" : "italic",
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = t.surface2; }}
+      className={value ? undefined : "sub"}
+      // Bespoke click-to-edit affordance: a text cell that is also a target.
+      style={{ display: "inline-block", minHeight: 18, padding: "1px 4px", borderRadius: 4, cursor: "text" }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--sunken2)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
     >
       {value || placeholder || "—"}
@@ -348,16 +336,16 @@ function CurrencyEdit({
   editable: boolean;
   onCommit: (next: number) => void;
 }) {
-  const { t } = useTheme();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value === 0 ? "" : String(value));
   if (!editable) {
-    return <span style={{ color: t.ink2, fontFeatureSettings: '"tnum"' }}>{QC_FMT.usd(value)}</span>;
+    return <span className="num">{QC_FMT.usd(value)}</span>;
   }
   if (editing) {
     return (
-      <input
+      <Input
         autoFocus
+        className="align-r num"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
@@ -373,35 +361,16 @@ function CurrencyEdit({
           }
           if (e.key === "Escape") { setEditing(false); setDraft(String(value)); }
         }}
-        style={{
-          width: "100%",
-          padding: "3px 6px",
-          borderRadius: 5,
-          border: `1px solid ${t.brand}`,
-          background: t.surface,
-          color: t.ink,
-          fontSize: 12.5,
-          textAlign: "right",
-          fontFamily: "inherit",
-          fontFeatureSettings: '"tnum"',
-          outline: "none",
-        }}
+        style={{ width: "100%" }}
       />
     );
   }
   return (
     <span
       onClick={() => { setDraft(value === 0 ? "" : String(value)); setEditing(true); }}
-      style={{
-        display: "inline-block",
-        padding: "1px 4px",
-        borderRadius: 4,
-        cursor: "text",
-        color: t.ink,
-        fontFeatureSettings: '"tnum"',
-        fontWeight: 700,
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = t.surface2; }}
+      className="num"
+      style={{ display: "inline-block", padding: "1px 4px", borderRadius: 4, cursor: "text", fontWeight: 700 }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--sunken2)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
     >
       {QC_FMT.usd(value)}
@@ -410,61 +379,11 @@ function CurrencyEdit({
 }
 
 
-function Th({
-  children, t, width, align,
-}: {
-  children: React.ReactNode;
-  t: ReturnType<typeof useTheme>["t"];
-  width?: number;
-  align?: "left" | "right" | "center";
-}) {
+function SumRow({ label, value, bold }: { label: string; value: number; bold?: boolean }) {
   return (
-    <th style={{
-      fontSize: 10, fontWeight: 900, letterSpacing: 0.8,
-      textTransform: "uppercase", color: t.ink3,
-      padding: "9px 10px",
-      textAlign: align || "left",
-      width,
-    }}>
-      {children}
-    </th>
-  );
-}
-
-
-function Td({
-  children, t, align,
-}: {
-  children: React.ReactNode;
-  t: ReturnType<typeof useTheme>["t"];
-  align?: "left" | "right" | "center";
-}) {
-  return (
-    <td style={{
-      padding: "8px 10px",
-      textAlign: align || "left",
-      verticalAlign: "top",
-      color: t.ink,
-      fontSize: 12.5,
-    }}>
-      {children}
-    </td>
-  );
-}
-
-
-function SumRow({ label, value, t, bold }: { label: string; value: number; t: ReturnType<typeof useTheme>["t"]; bold?: boolean }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
-      <span style={{ fontSize: 12.5, color: bold ? t.ink : t.ink2, fontWeight: bold ? 800 : 600 }}>{label}</span>
-      <span style={{
-        fontSize: bold ? 16 : 13,
-        fontWeight: bold ? 900 : 700,
-        color: t.ink,
-        fontFeatureSettings: '"tnum"',
-      }}>
-        {QC_FMT.usd(value)}
-      </span>
+    <div className="kv">
+      {bold ? <b>{label}</b> : <span>{label}</span>}
+      <b className="num">{QC_FMT.usd(value)}</b>
     </div>
   );
 }
@@ -474,25 +393,24 @@ function SumRow({ label, value, t, bold }: { label: string; value: number; t: Re
 
 
 function ShareLinksCard({ loanId }: { loanId: string }) {
-  const { t } = useTheme();
   const { data: shares = [], isLoading } = useHudShareLinks(loanId);
   const revoke = useRevokeHudShareLink(loanId);
   const active = shares.filter((s) => !s.revoked_at);
 
   if (isLoading) {
     return (
-      <Card pad={16}>
-        <SectionLabel>Share links</SectionLabel>
-        <div style={{ fontSize: 12, color: t.ink3 }}>Loading…</div>
+      <Card>
+        <Lbl>Share links</Lbl>
+        <div className="sub mt">Loading…</div>
       </Card>
     );
   }
   if (active.length === 0) return null;
 
   return (
-    <Card pad={16}>
-      <SectionLabel>Active share links</SectionLabel>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <Card>
+      <Lbl>Active share links</Lbl>
+      <div className="mt">
         {active.map((s) => (
           <ShareLinkRow
             key={s.id}
@@ -507,7 +425,6 @@ function ShareLinksCard({ loanId }: { loanId: string }) {
 
 
 function ShareLinkRow({ share, onRevoke }: { share: HudShareLink; onRevoke: () => void }) {
-  const { t } = useTheme();
   const [copied, setCopied] = useState(false);
   const url = `${typeof window !== "undefined" ? window.location.origin : ""}/hud/share/${share.token}`;
 
@@ -522,82 +439,45 @@ function ShareLinkRow({ share, onRevoke }: { share: HudShareLink; onRevoke: () =
   };
 
   return (
-    <div style={{
-      padding: 10,
-      borderRadius: 9,
-      border: `1px solid ${t.line}`,
-      background: t.surface2,
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontSize: 12, fontWeight: 800, color: t.ink, flex: 1 }}>
-          {share.label || share.invitee_email || share.invitee_role || "Untitled link"}
-        </span>
-        <button
-          onClick={onRevoke}
-          title="Revoke this link"
-          style={{
-            all: "unset", cursor: "pointer",
-            padding: "2px 6px", borderRadius: 4,
-            color: t.ink3, fontSize: 11, fontWeight: 700,
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = t.danger; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = t.ink3; }}
-        >
-          Revoke
-        </button>
-      </div>
-      {share.invitee_role || share.invitee_email ? (
-        <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
-          {share.invitee_role || "—"}{share.invitee_email ? ` · ${share.invitee_email}` : ""}
+    <div className="itemrow">
+      <div className="grow grid g6">
+        <div className="row">
+          <b>{share.label || share.invitee_email || share.invitee_role || "Untitled link"}</b>
+          <span className="sp" />
+          <Linky onClick={onRevoke} title="Revoke this link">Revoke</Linky>
         </div>
-      ) : null}
-      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-        <input
-          readOnly
-          value={url}
-          onFocus={(e) => e.currentTarget.select()}
-          style={{
-            flex: 1,
-            padding: "4px 7px",
-            borderRadius: 5,
-            border: `1px solid ${t.line}`,
-            background: t.surface,
-            color: t.ink2,
-            fontSize: 11,
-            fontFamily: "ui-monospace, SF Mono, monospace",
-            outline: "none",
-          }}
-        />
-        <button
-          onClick={copy}
-          style={{
-            padding: "4px 10px",
-            borderRadius: 5,
-            background: copied ? t.profitBg : t.surface,
-            color: copied ? t.profit : t.ink2,
-            border: `1px solid ${t.line}`,
-            fontSize: 11, fontWeight: 800,
-            cursor: "pointer",
-            fontFamily: "inherit",
-          }}
-        >
-          {copied ? "Copied" : "Copy"}
-        </button>
-      </div>
-      {share.last_used_at ? (
-        <div style={{ fontSize: 10, color: t.ink3, marginTop: 4 }}>
-          Last used {new Date(share.last_used_at).toLocaleString()}
+        {share.invitee_role || share.invitee_email ? (
+          <div className="sub">
+            {share.invitee_role || "—"}{share.invitee_email ? ` · ${share.invitee_email}` : ""}
+          </div>
+        ) : null}
+        <div className="row">
+          <Input
+            grow
+            readOnly
+            value={url}
+            aria-label="Share link URL"
+            onFocus={(e) => e.currentTarget.select()}
+            // A token URL is read character by character when someone is
+            // checking it — monospace is the point, not decoration.
+            style={{ fontFamily: MONO }}
+          />
+          <Btn size="sm" className={copied ? "c-ok" : undefined} onClick={copy}>
+            {copied ? "Copied" : "Copy"}
+          </Btn>
         </div>
-      ) : (
-        <div style={{ fontSize: 10, color: t.ink3, marginTop: 4 }}>Not opened yet</div>
-      )}
+        {share.last_used_at ? (
+          <div className="sub">Last used {new Date(share.last_used_at).toLocaleString()}</div>
+        ) : (
+          <div className="sub">Not opened yet</div>
+        )}
+      </div>
     </div>
   );
 }
 
 
 function ShareLinkModal({ loanId, onClose }: { loanId: string; onClose: () => void }) {
-  const { t } = useTheme();
   const create = useCreateHudShareLink(loanId);
   const [label, setLabel] = useState("");
   const [email, setEmail] = useState("");
@@ -617,146 +497,87 @@ function ShareLinkModal({ loanId, onClose }: { loanId: string; onClose: () => vo
     setCreatedToken(link.token);
   };
 
-  return (
-    <div
-      style={{
-        position: "fixed", inset: 0,
-        background: "rgba(0,0,0,0.32)", zIndex: 80,
-        display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
-      }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div style={{
-        width: "min(520px, 96vw)",
-        background: t.surface,
-        borderRadius: 14,
-        border: `1px solid ${t.line}`,
-        boxShadow: "0 24px 48px rgba(0,0,0,0.22)",
-        display: "flex", flexDirection: "column",
-      }}>
-        <header style={{
-          display: "flex", alignItems: "center", gap: 10,
-          padding: "14px 18px", borderBottom: `1px solid ${t.line}`,
-        }}>
-          <Icon name="send" size={14} />
-          <span style={{ fontSize: 14, fontWeight: 900, color: t.ink }}>Invite to fill HUD</span>
-          <div style={{ flex: 1 }} />
-          <button onClick={onClose} aria-label="Close" style={{
-            all: "unset", cursor: "pointer", color: t.ink3, fontSize: 18, fontWeight: 900,
-            lineHeight: 1, padding: 4, borderRadius: 4,
-          }}>×</button>
-        </header>
-
-        <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
-          {createdUrl ? (
-            <>
-              <div style={{
-                padding: 14, borderRadius: 10,
-                background: t.profitBg, color: t.profit,
-                fontSize: 12.5, fontWeight: 700, lineHeight: 1.45,
-              }}>
-                Link minted. Share the URL below with the invitee — anyone with this link can add HUD lines without logging in.
-              </div>
-              <div style={{
-                padding: 10, borderRadius: 8,
-                background: t.surface2,
-                border: `1px solid ${t.line}`,
-                fontFamily: "ui-monospace, SF Mono, monospace",
-                fontSize: 12, color: t.ink,
-                wordBreak: "break-all",
-              }}>
-                {createdUrl}
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(createdUrl);
-                      setCopied(true);
-                      window.setTimeout(() => setCopied(false), 1800);
-                    } catch { /* ignore */ }
-                  }}
-                  style={qcBtnPrimary(t)}
-                >
-                  <Icon name="copy" size={12} /> {copied ? "Copied" : "Copy link"}
-                </button>
-                <button onClick={onClose} style={qcBtn(t)}>Done</button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
-                Generate a public URL for a title, escrow, or insurance contact to add their settlement line items directly to this loan&apos;s HUD.
-              </div>
-              <Field label="Label (shown in your share-links list)" t={t}>
-                <input
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                  placeholder="e.g. Title — First American"
-                  style={modalInput(t)}
-                />
-              </Field>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <Field label="Invitee role (optional)" t={t}>
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                    style={modalInput(t)}
-                  >
-                    <option value="">—</option>
-                    <option value="title">Title</option>
-                    <option value="escrow">Escrow</option>
-                    <option value="insurance">Insurance</option>
-                    <option value="appraiser">Appraiser</option>
-                    <option value="lender">Lender</option>
-                    <option value="other">Other</option>
-                  </select>
-                </Field>
-                <Field label="Invitee email (optional)" t={t}>
-                  <input
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="contact@title-co.com"
-                    style={modalInput(t)}
-                  />
-                </Field>
-              </div>
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
-                <button onClick={onClose} style={qcBtn(t)}>Cancel</button>
-                <button onClick={submit} disabled={create.isPending} style={qcBtnPrimary(t)}>
-                  {create.isPending ? "Generating…" : "Generate link"}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-function Field({ label, children, t }: { label: string; children: React.ReactNode; t: ReturnType<typeof useTheme>["t"] }) {
-  return (
-    <div>
-      <div style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 5 }}>
-        {label}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function modalInput(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "8px 11px",
-    borderRadius: 8,
-    border: `1px solid ${t.line}`,
-    background: t.surface2,
-    color: t.ink,
-    fontSize: 13,
-    fontFamily: "inherit",
-    outline: "none",
+  const copyCreated = async () => {
+    if (!createdUrl) return;
+    try {
+      await navigator.clipboard.writeText(createdUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch { /* ignore */ }
   };
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      width="md"
+      ariaLabel="Invite to fill HUD"
+      title={<><Icon name="send" size={14} /> Invite to fill HUD</>}
+      footer={
+        createdUrl ? (
+          <>
+            <Btn variant="pri" onClick={copyCreated}>
+              <Icon name="copy" size={12} /> {copied ? "Copied" : "Copy link"}
+            </Btn>
+            <Btn onClick={onClose}>Done</Btn>
+          </>
+        ) : (
+          <>
+            <span className="sp" />
+            <Btn onClick={onClose}>Cancel</Btn>
+            <Btn variant="pri" onClick={submit} disabled={create.isPending}>
+              {create.isPending ? "Generating…" : "Generate link"}
+            </Btn>
+          </>
+        )
+      }
+    >
+      {createdUrl ? (
+        <div className="grid">
+          <StatusLine tone="ok">
+            Link minted. Share the URL below with the invitee — anyone with this link can add HUD lines without logging in.
+          </StatusLine>
+          <div className="field" style={{ fontFamily: MONO, wordBreak: "break-all" }}>
+            {createdUrl}
+          </div>
+        </div>
+      ) : (
+        <div className="grid">
+          <div className="sub">
+            Generate a public URL for a title, escrow, or insurance contact to add their settlement line items directly to this loan&apos;s HUD.
+          </div>
+          <Field label="Label (shown in your share-links list)">
+            <Input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="e.g. Title — First American"
+            />
+          </Field>
+          <div className="fldgrid two">
+            <Field label="Invitee role (optional)">
+              <Select
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+              >
+                <option value="">—</option>
+                <option value="title">Title</option>
+                <option value="escrow">Escrow</option>
+                <option value="insurance">Insurance</option>
+                <option value="appraiser">Appraiser</option>
+                <option value="lender">Lender</option>
+                <option value="other">Other</option>
+              </Select>
+            </Field>
+            <Field label="Invitee email (optional)">
+              <Input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="contact@title-co.com"
+              />
+            </Field>
+          </div>
+        </div>
+      )}
+    </Drawer>
+  );
 }
