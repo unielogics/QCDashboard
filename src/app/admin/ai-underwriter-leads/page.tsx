@@ -918,7 +918,7 @@ function LeadDetailPanel({
   const [ingestFiles, setIngestFiles] = useState<DriveFile[]>([]);
   const [deletionBusy, setDeletionBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [prototypeView, setPrototypeView] = useState<"workflow" | "sources" | "evidence" | "rep" | "audit">("workflow");
+  const [prototypeView, setPrototypeView] = useState<"underwriter" | "workflow" | "client" | "sources" | "evidence" | "rep" | "audit">("underwriter");
   const [submissionStep, setSubmissionStep] = useState(2);
   const [sendReviewOpen, setSendReviewOpen] = useState(false);
   const [contactEditOpen, setContactEditOpen] = useState(false);
@@ -952,7 +952,7 @@ function LeadDetailPanel({
     else if (detail.latest_review?.status === "completed" || detail.intake.status === "reviewed") setSubmissionStep(3);
     else if (detail.files.length) setSubmissionStep(2);
     else setSubmissionStep(1);
-    setPrototypeView("workflow");
+    setPrototypeView("underwriter");
     setContactDraft({
       full_name: detail.intake.full_name || "",
       business_name: detail.intake.business_name || "",
@@ -1198,6 +1198,8 @@ function LeadDetailPanel({
           </Btn>
         ) : null}
         <PageActionMenu items={[
+          { label: "Open underwriting chat", onSelect: () => setPrototypeView("underwriter"), hidden: !detail },
+          { label: "View client conversation", onSelect: () => setPrototypeView("client"), hidden: !detail },
           { label: "Attach another bucket", onSelect: onLinkBucketIntake, hidden: !detail },
           { label: "Dealer partner messages", onSelect: () => setPrototypeView("rep"), hidden: !detail },
           { label: "Delete lead", onSelect: () => setConfirmDeleteOpen(true), tone: "danger", hidden: !detail },
@@ -1211,7 +1213,9 @@ function LeadDetailPanel({
         <>
           <div className="intake-tabs" role="tablist" aria-label="AI intake detail">
             {([
+              ["underwriter", "Underwriter AI"],
               ["workflow", "Workflow"],
+              ["client", "Client conversation"],
               ["sources", "Data sources"],
               ["evidence", "Evidence"],
               ["rep", "Rep channel"],
@@ -1221,7 +1225,28 @@ function LeadDetailPanel({
             ))}
           </div>
 
-          <div className={cx("intake-file-body", prototypeView === "workflow" && "with-sequence")}>
+          <div className={cx(
+            "intake-file-body",
+            prototypeView === "workflow" && "with-sequence",
+            prototypeView === "underwriter" && "is-focus",
+          )}>
+            {prototypeView === "underwriter" ? (
+              cockpitResponse && cockpitAdapter ? (
+                <div className="intake-underwriter-stage">
+                  <LeadCockpit
+                    response={cockpitResponse}
+                    adapter={cockpitAdapter}
+                    variant={detail.intake.variant}
+                    initialMessages={detail.messages}
+                    onResponse={onCockpitResponse}
+                    onRequestRerun={onRerun}
+                  />
+                </div>
+              ) : (
+                <div className="empty">Loading the private underwriting conversation...</div>
+              )
+            ) : null}
+
             {prototypeView === "workflow" ? (
               <>
                 <aside className="submission-rail">
@@ -1300,6 +1325,10 @@ function LeadDetailPanel({
               </>
               ) : null}
 
+              {prototypeView === "client" && cockpitAdapter ? (
+                <ClientConversation adapter={cockpitAdapter} clientName={detail.intake.full_name} />
+              ) : null}
+
               {prototypeView === "sources" ? (
                 <Panel title="Data sources" actions={<Btn onClick={onLinkBucketIntake}>Attach another bucket</Btn>}>
                   <div className="source-room"><div><CellChip tone="acc">Primary bucket</CellChip><strong>{detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"}</strong><span className="sub">{detail.files.length} files handed to this intake</span></div><Link href={`/admin/buckets?bucket=${detail.intake.bucket_id}`} className="btn">Open bucket</Link></div>
@@ -1331,7 +1360,7 @@ function LeadDetailPanel({
                   </div>
                 </Panel>
               ) : null}
-            <aside className="grid">
+            {prototypeView !== "underwriter" ? <aside className="grid">
               <Panel
                 title="Contact"
                 actions={
@@ -1352,7 +1381,7 @@ function LeadDetailPanel({
               </Panel>
               <Panel title="Missing and blockers"><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No blockers listed." /></Panel>
               <Panel title="File controls"><Row><Select value={detail.intake.outcome_status} disabled={outcomeBusy} onChange={(event) => changeOutcomeStatus(event.target.value)} aria-label="Outcome status"><option value="submitted">Submitted</option><option value="closed">Closed</option><option value="denied">Denied</option></Select><Select value={detail.intake.preferred_language} disabled={languageBusy} onChange={(event) => changeLanguage(event.target.value)} aria-label="Client language"><option value="en">English</option><option value="es">Español</option></Select></Row></Panel>
-            </aside>
+            </aside> : null}
           </div>
         </>
       )}
@@ -2130,9 +2159,9 @@ function ClientConversation({ adapter, clientName }: { adapter: LeadCockpitAdapt
   }
 
   return (
-    <div className="grid g10">
+    <div className="grid g10" style={{ alignContent: "start" }}>
       <WarnLine>
-        This is the <strong>client-facing</strong> conversation{clientName ? ` with ${clientName}` : ""}. Anything you send here is visible to the client and is attributed to you as their underwriter. Your private notes stay in the Conversation tab.
+        This is the <strong>client-facing</strong> conversation{clientName ? ` with ${clientName}` : ""}. Anything you send here is visible to the client and is attributed to you as their underwriter. Private operator and partner messages stay in the Rep channel tab.
       </WarnLine>
 
       <div className="card">

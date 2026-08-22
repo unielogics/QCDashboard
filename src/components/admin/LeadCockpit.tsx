@@ -366,7 +366,7 @@ export function LeadCockpit({
     // Bespoke track (rule 3) — and load-bearing: the parent Modal is size="stage"
     // and this height:100% + minHeight:0 chain is what lets both panels scroll
     // inside it instead of growing the dialog. Do not swap this for `.cg`.
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(0,0.85fr)", gap: 14, minHeight: 0, height: "100%" }}>
+    <div className="lead-cockpit">
       {/* CHAT + UPLOAD */}
       <section
         className="panel"

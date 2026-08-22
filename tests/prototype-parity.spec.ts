@@ -162,6 +162,39 @@ test("bucket files open in a full-screen navigable review workspace", async ({ p
   await expect(reviewer).toBeHidden();
 });
 
+test("operator AI intake exposes private underwriting chat and the client transcript", async ({ page }, testInfo) => {
+  test.skip(!["desktop-1600", "mobile-390"].includes(testInfo.project.name), "The chat workspace is exercised at desktop and mobile widths.");
+  const intakeId = process.env.QC_E2E_INTAKE_ID;
+  test.skip(!intakeId, "An intake fixture is required.");
+  await page.route(`**/admin/ai-underwriter-leads/${intakeId}/client-thread`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        messages: [
+          { id: "client-turn", role: "user", author_name: "Fixture Client", content: "Did you receive the bank statements I uploaded?", created_at: "2026-08-22T13:00:00Z" },
+          { id: "client-ai-turn", role: "assistant", author_name: "Bucket AI", content: "Yes. The statements are in your secure intake room.", created_at: "2026-08-22T13:00:01Z" },
+        ],
+      }),
+    });
+  });
+  await openConsolePage(page, `/admin/ai-underwriter-leads?lead=${intakeId}`);
+  const intakeFile = page.locator(".ai-intake-detail-shell");
+  await expect(intakeFile).toBeVisible();
+  await expect(intakeFile.getByRole("tab", { name: "Underwriter AI" })).toHaveAttribute("aria-selected", "true");
+  await expect(intakeFile.getByText("Underwriter conversation", { exact: true })).toBeVisible();
+  await expect(intakeFile.getByLabel("Message the AI underwriter")).toBeVisible();
+  await assertStableGeometry(page);
+  await captureReviewImage(page, "intake-underwriter-ai", testInfo);
+
+  await intakeFile.getByRole("tab", { name: "Client conversation" }).click();
+  await expect(intakeFile.getByText("Did you receive the bank statements I uploaded?", { exact: true })).toBeVisible();
+  await expect(intakeFile.getByText("Yes. The statements are in your secure intake room.", { exact: true })).toBeVisible();
+  await expect(intakeFile.getByLabel("Reply on behalf (as underwriter)")).toBeVisible();
+  await assertStableGeometry(page);
+  await captureReviewImage(page, "intake-client-conversation", testInfo);
+});
+
 test("intake evidence, contact editing, and review controls share the file workspace", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-1600", "The intake workflow is exercised at the canonical viewport.");
   const intakeId = process.env.QC_E2E_INTAKE_ID;
@@ -169,6 +202,8 @@ test("intake evidence, contact editing, and review controls share the file works
   await openConsolePage(page, `/admin/ai-underwriter-leads?lead=${intakeId}`);
   const intakeFile = page.locator(".ai-intake-detail-shell");
   await expect(intakeFile).toBeVisible();
+
+  await intakeFile.getByRole("tab", { name: "Workflow" }).click();
   await expect(intakeFile.locator(".submission-step.status-complete")).toHaveCount(1);
   await expect(intakeFile.locator(".submission-step.status-partial")).toHaveCount(1);
   await expect(intakeFile.locator(".submission-step.status-not-started")).toHaveCount(3);
@@ -190,6 +225,17 @@ test("intake evidence, contact editing, and review controls share the file works
   const reviewDrawer = page.getByRole("dialog", { name: "Run AI review" });
   await expect(reviewDrawer).toContainText("continue working anywhere in the console");
   await reviewDrawer.getByRole("button", { name: "Cancel" }).click();
+});
+
+test("public client intake entry points retain the language and secure-start gate", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "The public intake entry points are checked once at the canonical viewport.");
+  for (const route of ["/dealer-ai-underwriter", "/funding-review", "/mca-refinance-intake"]) {
+    await page.goto(route, { waitUntil: "domcontentloaded" });
+    await expect(page).not.toHaveURL(/sign-in/);
+    await expect(page.getByRole("heading", { name: "Choose your language / Elige tu idioma" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continue in English" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continuar en Español" })).toBeVisible();
+  }
 });
 
 test("AI review minimizes, survives navigation, and returns to the completed intake", async ({ page }, testInfo) => {
@@ -219,6 +265,8 @@ test("AI review minimizes, survives navigation, and returns to the completed int
 
   await openConsolePage(page, `/admin/ai-underwriter-leads?lead=${intakeId}`);
   const intakeFile = page.locator(".ai-intake-detail-shell");
+  await intakeFile.getByRole("tab", { name: "Workflow" }).click();
+  await intakeFile.getByRole("button", { name: /AI review/i }).first().click();
   await intakeFile.getByRole("button", { name: /Run AI review/i }).first().click();
   await page.getByRole("dialog", { name: "Run AI review" }).getByRole("button", { name: "Run review" }).click();
   const progress = page.getByRole("dialog", { name: "Running AI review..." });
