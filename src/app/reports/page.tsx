@@ -12,7 +12,7 @@ import {
   Panel,
 } from "@/components/ds";
 import { useDashboardReport, useLoans } from "@/hooks/useApi";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { LoanType } from "@/lib/enums.generated";
 
 const STAGE_LABELS = ["Prequalified", "Collecting Docs", "Lender Connected", "Processing", "Closing", "Funded"];

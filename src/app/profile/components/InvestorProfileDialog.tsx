@@ -29,7 +29,7 @@ import {
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import { useMyClient, useUpdateMyClient } from "@/hooks/useApi";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 
 interface Props {
   open: boolean;

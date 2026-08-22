@@ -63,7 +63,7 @@ import type {
   SmartIntakePayload,
 } from "@/lib/types";
 import type { Role as RoleType } from "@/lib/enums.generated";
-import type { QCTokens } from "@/components/design-system/tokens";
+import type { CssVars } from "@/components/design-system/cssVars";
 
 type DealSide = "buyer" | "seller";
 

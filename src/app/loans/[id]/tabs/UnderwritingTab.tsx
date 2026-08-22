@@ -10,7 +10,7 @@
 import { useEffect } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { useClient, useRecalc } from "@/hooks/useApi";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { Callout, Kpi, KpiRow, Panel } from "@/components/ds";
 import type { Loan } from "@/lib/types";
 

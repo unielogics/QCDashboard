@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { CellChip, Panel, Row, Sub } from "@/components/ds";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { useClients } from "@/hooks/useApi";
 import type { AnalysisRun } from "@/lib/types";
 

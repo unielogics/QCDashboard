@@ -7,7 +7,7 @@
 // the sheet's amber line for an action with a consequence worth naming.
 
 import { Icon } from "@/components/design-system/Icon";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { Panel, WarnLine } from "@/components/ds";
 import type { Loan } from "@/lib/types";
 

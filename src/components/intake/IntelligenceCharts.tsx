@@ -14,7 +14,6 @@
 
 import type { CSSProperties } from "react";
 import { V, type CssVars } from "@/components/design-system/cssVars";
-import type { QCTokens } from "@/components/design-system/tokens";
 import type { IntelligenceModel, IntelligenceValue } from "@/lib/intake";
 import type { Lang } from "@/lib/intakeCopy";
 

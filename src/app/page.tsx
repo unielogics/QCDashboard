@@ -32,7 +32,7 @@ import {
   useMyCredit,
   useRefreshFred,
 } from "@/hooks/useApi";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import type { AITask, Broker, CalendarEvent, FredSeriesSummary, Loan } from "@/lib/types";
 import { Role } from "@/lib/enums.generated";
 import { CreditPullModal } from "@/components/CreditPullModal";

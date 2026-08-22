@@ -32,7 +32,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import {
   Btn,
   CG,

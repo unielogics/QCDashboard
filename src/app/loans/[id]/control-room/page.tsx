@@ -16,7 +16,7 @@ import { useDocuments, useLoan, useMessages, useRecalc, useSendMessage, useUpdat
 import { useDealChannel } from "@/hooks/useDealChannel";
 import { useActiveProfile } from "@/store/role";
 import { Role, MessageFrom, PropertyTypeOptions } from "@/lib/enums.generated";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { parseUSD } from "@/lib/formCoerce";
 import type { Document, Loan } from "@/lib/types";
 import { DocUploadButton } from "@/app/documents/components/DocUploadButton";

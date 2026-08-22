@@ -19,7 +19,7 @@
 
 import Link from "next/link";
 import { Icon } from "@/components/design-system/Icon";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { CG, Callout, CellChip, Kpi, KpiRow, PageHeader, Panel, cx, type ChipTone } from "@/components/ds";
 import {
   useAdminPrequalQueue,

@@ -8,7 +8,7 @@
 // is scanned, and a badge inside each tile means reading every tile.
 
 import { Icon } from "@/components/design-system/Icon";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { Kpi, KpiRow, Panel, StatusLine } from "@/components/ds";
 import type { Loan, Document, Activity } from "@/lib/types";
 import Link from "next/link";

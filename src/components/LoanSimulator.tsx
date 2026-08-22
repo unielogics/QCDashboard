@@ -38,7 +38,7 @@ import {
   type ChipTone,
 } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { useFredSeries, useLoans, useMyCredit } from "@/hooks/useApi";
 import { EligibilityBanner } from "@/components/EligibilityBanner";
 import {

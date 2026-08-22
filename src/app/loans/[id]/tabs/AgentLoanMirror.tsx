@@ -11,7 +11,7 @@
 import Link from "next/link";
 import { Pill, StageBadge, VerifiedBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { Callout, ItemRow, Kpi, KpiRow, Panel } from "@/components/ds";
 import type { Activity, Document, Loan } from "@/lib/types";
 

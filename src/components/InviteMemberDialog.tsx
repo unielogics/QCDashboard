@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Btn } from "@/components/ds";
 import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { RightPanel } from "@/components/design-system/RightPanel";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { useInviteUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 
@@ -73,18 +73,16 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
       ariaLabel="Invite team member"
       footer={
         <>
-          <button onClick={onClose} style={qcBtn()} disabled={invite.isPending}>Cancel</button>
-          <button
+          <Btn onClick={onClose} disabled={invite.isPending}>Cancel</Btn>
+          <Btn
+            variant="pri"
             onClick={submit}
             disabled={!valid || invite.isPending}
             style={{
-              ...qcBtnPrimary(),
-              opacity: valid && !invite.isPending ? 1 : 0.5,
-              cursor: valid && !invite.isPending ? "pointer" : "not-allowed",
             }}
           >
             <Icon name="send" size={13} /> {invite.isPending ? "Sending…" : "Send invite"}
-          </button>
+          </Btn>
         </>
       }
     >

@@ -25,7 +25,7 @@ import {
   useCurrentUser,
   type DSPipelineSummaryItem,
 } from "@/hooks/useApi";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { loanTypeLabel, type Client, type Document } from "@/lib/types";
 import { getFileCompletion } from "@/app/loans/[id]/fileReadiness";
 import { SmartIntakeModal } from "./components/SmartIntakeModal";

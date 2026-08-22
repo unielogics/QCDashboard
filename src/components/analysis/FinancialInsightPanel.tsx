@@ -1,7 +1,7 @@
 "use client";
 
 import { Callout, Card, Kpi, KpiRow, Lbl, Panel } from "@/components/ds";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import type { AnalysisProduct } from "@/lib/types";
 import type { ReactNode } from "react";
 

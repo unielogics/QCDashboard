@@ -18,7 +18,7 @@
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { useUpdateProperty } from "@/hooks/useApi";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { parseUSD, parseIntStrict } from "@/lib/formCoerce";
 import { PropertyType, PropertyTypeOptions } from "@/lib/enums.generated";
 import type { Loan } from "@/lib/types";

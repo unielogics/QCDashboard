@@ -11,7 +11,7 @@
 // the TermsTab shows a hint to save before downloading.
 
 import { CellChip, KpiRow, Panel } from "@/components/ds";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import type { AmortizationStyle, EntityType, ExitStrategy, ExperienceTier, LoanPurpose, LoanType, PrepayPenalty, PropertyType } from "@/lib/enums.generated";
 import { AmortizationStyleOptions, ExitStrategyOptions, EntityTypeOptions, ExperienceTierOptions, LoanPurposeOptions, LoanTypeOptions, PrepayPenaltyOptions, PropertyTypeOptions } from "@/lib/enums.generated";
 import type { RecalcResponse } from "@/lib/types";

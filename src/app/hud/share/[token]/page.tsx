@@ -40,7 +40,7 @@ import {
 } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { api, ApiError } from "@/lib/api";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { parseUSD } from "@/lib/formCoerce";
 import type { HudLine, PublicHudView } from "@/lib/types";
 

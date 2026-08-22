@@ -9,9 +9,9 @@
 // endpoints.
 
 import { useState } from "react";
+import { Btn } from "@/components/ds";
 import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Modal } from "@/components/design-system/Modal";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { useDealRegistrations, useIssueDealRegistration } from "@/hooks/useApi";
 
 const METHOD_OPTIONS = [
@@ -144,10 +144,10 @@ export function IssueDealRegistrationModal({
         ) : null}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" onClick={onClose} style={qcBtn()}>Close</button>
-          <button type="button" onClick={submit} disabled={issue.isPending} style={{ ...qcBtnPrimary(), opacity: issue.isPending ? 0.6 : 1 }}>
+          <Btn onClick={onClose}>Close</Btn>
+          <Btn variant="pri" onClick={submit} disabled={issue.isPending}>
             {issue.isPending ? "Issuing…" : "Issue registration"}
-          </button>
+          </Btn>
         </div>
 
         {registrations && registrations.length > 0 ? (

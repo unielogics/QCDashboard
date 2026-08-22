@@ -59,7 +59,7 @@ import {
 import { PreQualRequestList } from "@/components/PreQualRequestList";
 import { PreQualRequestModal } from "@/components/PreQualRequestModal";
 import { LoanPurpose, LoanType, PropertyType, Role } from "@/lib/enums.generated";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import type { AddressParts, AnalysisProduct, AnalysisRun, FredSeriesSummary, RecalcResponse, SimulatorSettings } from "@/lib/types";
 import { EligibilityBanner } from "@/components/EligibilityBanner";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";

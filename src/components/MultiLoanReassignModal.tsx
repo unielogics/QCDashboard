@@ -15,7 +15,7 @@ import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useLoans, useUpdateLoan } from "@/hooks/useApi";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import type { Broker } from "@/lib/types";
 
 interface Props {

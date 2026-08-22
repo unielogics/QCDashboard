@@ -15,7 +15,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { Btn, KpiRow, Panel, Table, Td, Tr } from "@/components/ds";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 
 export type AmortizationStyle = "fully_amortizing" | "interest_only";
 

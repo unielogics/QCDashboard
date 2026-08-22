@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Btn } from "@/components/ds";
 import { V } from "@/components/design-system/cssVars";
 import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { SignaturePad, type SignaturePadHandle } from "@/components/design-system/SignaturePad";
 import {
   useCompletePaymentAuthorization,
@@ -153,9 +153,9 @@ function PaymentAuthorizationInner() {
           Credit pulls and credit-derived terms unlock after you sign the payment authorization and securely save a card through Stripe. The app remains available for non-credit workflows.
         </p>
         {!started ? (
-          <button onClick={begin} style={qcBtnPrimary()} disabled={start.isPending}>
+          <Btn variant="pri" onClick={begin} disabled={start.isPending}>
             Begin authorization
-          </button>
+          </Btn>
         ) : (
           <p style={{ color: V.ink3, fontSize: 12, lineHeight: 1.55, margin: 0, maxHeight: 120, overflow: "auto" }}>
             {started.document.text}
@@ -176,7 +176,7 @@ function PaymentAuthorizationInner() {
             <Field label="Legal name" value={typedName} onChange={setTypedName} />
             <div style={{ marginTop: 10, fontSize: 11, color: V.ink3, fontWeight: 700 }}>Draw signature</div>
             <SignaturePad ref={sigPadRef} />
-            <button onClick={() => sigPadRef.current?.clear()} style={{ ...qcBtn(), marginTop: 10 }}>Clear signature</button>
+            <Btn onClick={() => sigPadRef.current?.clear()} className="mt">Clear signature</Btn>
           </Card>
 
           <Card pad={20}>
@@ -203,9 +203,9 @@ function PaymentAuthorizationInner() {
           </Card>
 
           {error ? <div style={{ color: V.danger, fontSize: 13, fontWeight: 700 }}>{error}</div> : null}
-          <button onClick={submit} style={qcBtnPrimary()} disabled={setup.isPending || complete.isPending || start.isPending}>
+          <Btn variant="pri" onClick={submit} disabled={setup.isPending || complete.isPending || start.isPending}>
             Complete authorization
-          </button>
+          </Btn>
         </>
       ) : null}
     </div>

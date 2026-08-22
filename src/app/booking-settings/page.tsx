@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
-import { QC_TOKENS, withAlpha } from "@/components/design-system/tokens";
+import { withAlpha } from "@/lib/color";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, CG, Input, PageHeader, Panel, Row, Select, StatusLine, Textarea, cx } from "@/components/ds";
 import {
@@ -259,12 +259,13 @@ function BookingPreview({ settings, hostName, logoUrl, profileUrl }: { settings:
   // This component tracks /book/[slug], not this stylesheet. If that file's
   // layout changes, this one changes with it.
   //
-  // `l` survives for the two values that must be a concrete hex: withAlpha()
-  // composites against one, and onAccentPreview() does luminance maths on one.
-  // Everything else reads the custom properties directly — globals.css IS this
-  // palette, and a second copy of a colour is a colour that will drift.
-  const l = QC_TOKENS.light;
-  const accent = settings.primary_color || l.brand;
+  // These two must be a concrete hex, not a var(): `withAlpha()` composites
+  // against real channel values, and `onAccentPreview()` decides black-or-white
+  // text by measuring contrast — neither can read a CSS variable from JS. They
+  // are the accent and ink from :root in globals.css, written out.
+  const BRAND = "#1b4b9e";
+  const INK = "#0f1720";
+  const accent = settings.primary_color || BRAND;
   return (
     // The device frame: the public page's own ground (--bg), pinned beside the
     // editor, wearing the host's accent as its top rule. Bespoke because it is
@@ -299,7 +300,7 @@ function BookingPreview({ settings, hostName, logoUrl, profileUrl }: { settings:
               // NOT `.btn`: these are a picture of the slot buttons, and `.btn`
               // carries cursor:pointer, which would advertise a click the
               // preview cannot honour. Colours are the host's, so inline.
-              <div key={`${label}-${index}`} style={{ textAlign: "center", padding: "8px 4px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, border: `1px solid ${index === 0 ? accent : "var(--line2)"}`, background: index === 0 ? accent : "var(--surface)", color: index === 0 ? onAccentPreview(accent, l.ink) : "var(--ink)" }}>{label}</div>
+              <div key={`${label}-${index}`} style={{ textAlign: "center", padding: "8px 4px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, border: `1px solid ${index === 0 ? accent : "var(--line2)"}`, background: index === 0 ? accent : "var(--surface)", color: index === 0 ? onAccentPreview(accent, INK) : "var(--ink)" }}>{label}</div>
             ))}
           </div>
         </div>

@@ -22,7 +22,7 @@ import { useBrokers, useClientPaymentAuthorizationSummaries, useClients, useCurr
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
 import { Role } from "@/lib/enums.generated";
 import type { Broker, Client, ClientStage, PaymentAuthorizationClientSummaryRead } from "@/lib/types";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { AgentLeadModal } from "@/app/pipeline/components/AgentLeadModal";
 
 // Stages-as-filter-chips shown above the table.

@@ -12,7 +12,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { useLoanPrequalRequests } from "@/hooks/useApi";
 import { PrequalReviewModal } from "@/components/PrequalReviewModal";
 import { PREQUAL_LOAN_TYPE_LABELS, type Loan, type PrequalRequest } from "@/lib/types";

@@ -5,7 +5,6 @@ import { V, type CssVars } from "@/components/design-system/cssVars";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { api } from "@/lib/api";
-import type { QCTokens } from "@/components/design-system/tokens";
 import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
 
 type Intake = {

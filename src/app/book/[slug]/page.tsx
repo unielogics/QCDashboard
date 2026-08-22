@@ -31,12 +31,8 @@ import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { Card, Textarea, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
-import { QC_TOKENS, withAlpha } from "@/components/design-system/tokens";
+import { withAlpha } from "@/lib/color";
 
-// The ONE token object left on this page. `withAlpha()` composites a real hex,
-// so the accent fallback and the on-accent ink cannot be `var(--accent)` /
-// `var(--ink)` strings — everything else on the page is a class.
-const t = QC_TOKENS.light;
 
 interface PublicBookingSlot {
   starts_at: string;

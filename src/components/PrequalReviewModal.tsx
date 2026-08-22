@@ -31,22 +31,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useUI } from "@/store/ui";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnDanger } from "@/components/design-system/buttons";
-import { QC_FMT } from "@/components/design-system/tokens";
-import {
-  Btn,
-  CellChip,
-  CG,
-  Field,
-  IconBtn,
-  Input,
-  Linky,
-  Note,
-  Panel,
-  Textarea,
-  WarnLine,
-  type ChipTone,
-} from "@/components/ds";
+import { QC_FMT } from "@/lib/fmt";
+import { Btn, CellChip, CG, Field, IconBtn, Input, Linky, Note, Panel, Textarea, WarnLine, type ChipTone } from "@/components/ds";
 import {
   useApprovePrequalRequest,
   useRejectPrequalRequest,
@@ -778,7 +764,7 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
             <button
               onClick={onReject}
               disabled={reject.isPending}
-              style={{ ...qcBtnDanger(), opacity: reject.isPending ? 0.5 : 1 }}
+              className="btn pri-bad"
             >
               {reject.isPending ? "Rejecting…" : "Confirm reject"}
             </button>
@@ -786,10 +772,8 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
             <button
               onClick={() => setConfirmReject(true)}
               disabled={isSuperseded}
+              className="btn danger"
               style={{
-                ...qcBtn(),
-                color: "var(--danger)",
-                borderColor: "rgba(180, 35, 24, 0.28)",
                 opacity: isSuperseded ? 0.4 : 1,
                 cursor: isSuperseded ? "not-allowed" : "pointer",
               }}

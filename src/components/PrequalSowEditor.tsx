@@ -16,8 +16,7 @@
 
 import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn } from "@/components/design-system/buttons";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import type { PrequalSowLineItem } from "@/lib/types";
 
 export function PrequalSowEditor({
@@ -135,10 +134,7 @@ export function PrequalSowEditor({
           <button
             type="button"
             onClick={addItem}
-            style={{
-              ...qcBtn(),
-              display: "inline-flex", alignItems: "center", gap: 6,
-            }}
+            className="btn"
           >
             <Icon name="plus" size={12} /> Add row
           </button>

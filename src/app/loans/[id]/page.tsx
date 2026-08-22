@@ -11,7 +11,7 @@ import { EmailsBreadcrumbTab } from "@/components/email/EmailsBreadcrumbTab";
 import { FileBlockersPopup } from "@/components/FileBlockersPopup";
 import { getCriteriaItems } from "./fileReadiness";
 import { useDealChannel } from "@/hooks/useDealChannel";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { useUI } from "@/store/ui";
 import { useActiveProfile } from "@/store/role";
 import { LoanStageOptions, Role } from "@/lib/enums.generated";

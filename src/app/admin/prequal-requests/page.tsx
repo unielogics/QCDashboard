@@ -30,7 +30,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Btn, CellChip, cx, Loading, PageHeader, Panel, Row, Seg, Sub, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
 import { useAdminPrequalQueue } from "@/hooks/useApi";

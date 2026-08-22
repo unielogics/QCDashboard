@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { useBrokerLeaderboard } from "@/hooks/useApi";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import {
   CG,
   Card,

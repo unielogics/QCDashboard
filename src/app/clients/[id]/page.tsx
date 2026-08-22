@@ -36,7 +36,7 @@ import { ClientAIPlanCard } from "@/components/ClientAIPlanCard";
 import { CreditReportDetail } from "@/components/CreditReportDetail";
 import { ActiveAgentStrip } from "@/components/ActiveAgentStrip";
 import { useActiveProfile } from "@/store/role";
-import { QC_FMT } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/lib/fmt";
 import { parseIntStrict } from "@/lib/formCoerce";
 import { deriveExperienceMode } from "@/lib/experienceMode";
 import { canEditExperienceMode } from "@/lib/experienceModePermissions";
