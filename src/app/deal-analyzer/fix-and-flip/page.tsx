@@ -6,7 +6,6 @@
 
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import {
   Btn,
@@ -133,7 +132,6 @@ function gradeTone(g: string): ChipTone {
 export default function FixAndFlipAnalyzerPage() {
   // Still read for ClientSearchBlock, which takes `t` and is shared with routes
   // that have not migrated yet.
-  const { t } = useTheme();
   const sp = useSearchParams();
   const queryClientId = sp?.get("clientId") ?? null;
   const { data: myClient } = useMyClient();
@@ -447,7 +445,6 @@ export default function FixAndFlipAnalyzerPage() {
             </div>
           ) : (
             <ClientSearchBlock
-              t={t}
               onPick={(c) => setSelectedClientId(c.id)}
               label="Search client"
               helperText="Credit and experience come from the linked borrower profile."

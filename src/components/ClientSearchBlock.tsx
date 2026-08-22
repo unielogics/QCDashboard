@@ -7,7 +7,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import type { QCTokens } from "@/components/design-system/tokens";
+import { Field } from "@/components/ds";
 import { useClients } from "@/hooks/useApi";
 import type { ListScope } from "@/lib/types";
 
@@ -20,7 +20,6 @@ export interface ClientPickResult {
 }
 
 interface Props {
-  t: QCTokens;
   onPick: (c: ClientPickResult) => void;
   label?: string;
   helperText?: ReactNode;
@@ -28,7 +27,6 @@ interface Props {
 }
 
 export function ClientSearchBlock({
-  t,
   onPick,
   label = "Find an existing client",
   helperText,
@@ -53,78 +51,53 @@ export function ClientSearchBlock({
       .slice(0, 8);
   }, [clients, query]);
 
+  const showEmptyBook = open && matches.length === 0 && clients.length === 0;
+  const showNoMatch = open && matches.length === 0 && clients.length > 0 && !!query.trim();
+
   return (
-    <div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3, marginBottom: 6 }}>
-        {label}
-      </div>
-      <div style={{ position: "relative" }}>
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "0 12px",
-          background: t.surface2,
-          border: `1px solid ${t.line}`,
-          borderRadius: 9,
-        }}>
+    <Field label={label} hint={helperText}>
+      {/* The dropdown is positioned against this, not against the Field, so
+          the helper line underneath does not push it down. */}
+      <div className="csearch">
+        <div className="csearch-in">
           <Icon name="search" size={14} />
           <input
             value={query}
             onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
             onFocus={() => setOpen(true)}
             placeholder="Search by name or email…"
-            style={{
-              flex: 1, minWidth: 0,
-              padding: "10px 0",
-              background: "transparent", border: "none",
-              color: t.ink, fontSize: 13, outline: "none",
-              fontFamily: "inherit",
-            }}
+            role="combobox"
+            aria-expanded={open && matches.length > 0}
+            aria-autocomplete="list"
           />
         </div>
-        {open && matches.length === 0 && clients.length === 0 ? (
-          <div style={{
-            position: "absolute", top: "100%", left: 0, right: 0,
-            marginTop: 4, background: t.surface,
-            border: `1px solid ${t.line}`, borderRadius: 9,
-            boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
-            zIndex: 10, padding: "10px 12px", fontSize: 12, color: t.ink3,
-          }}>
-            You don&apos;t have any clients yet — fill out the form below to add your first one.
+
+        {showEmptyBook ? (
+          <div className="popmenu csearch-pop">
+            <p className="sub csearch-note">
+              You don&apos;t have any clients yet — fill out the form below to add your first one.
+            </p>
           </div>
         ) : null}
-        {open && matches.length === 0 && clients.length > 0 && query.trim() ? (
-          <div style={{
-            position: "absolute", top: "100%", left: 0, right: 0,
-            marginTop: 4, background: t.surface,
-            border: `1px solid ${t.line}`, borderRadius: 9,
-            boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
-            zIndex: 10, padding: "10px 12px", fontSize: 12, color: t.ink3,
-          }}>
-            No clients match &ldquo;{query.trim()}&rdquo;. You can still create a new one below.
+
+        {showNoMatch ? (
+          <div className="popmenu csearch-pop">
+            <p className="sub csearch-note">
+              No clients match &ldquo;{query.trim()}&rdquo;. You can still create a new one below.
+            </p>
           </div>
         ) : null}
-        {open && matches.length > 0 && (
-          <div style={{
-            position: "absolute", top: "100%", left: 0, right: 0,
-            marginTop: 4, background: t.surface,
-            border: `1px solid ${t.line}`, borderRadius: 9,
-            boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
-            zIndex: 10, maxHeight: 280, overflow: "auto",
-          }}>
-            {!query.trim() ? (
-              <div style={{
-                padding: "8px 12px",
-                fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
-                textTransform: "uppercase", color: t.ink3,
-                borderBottom: `1px solid ${t.line}`,
-                background: t.surface2,
-              }}>
-                Your clients
-              </div>
-            ) : null}
+
+        {open && matches.length > 0 ? (
+          <div className="popmenu csearch-pop scroll" role="listbox">
+            {!query.trim() ? <div className="lbl mhd">Your clients</div> : null}
             {matches.map((c) => (
               <button
                 key={c.id}
+                type="button"
+                role="option"
+                aria-selected={false}
+                className="mi csearch-hit"
                 onClick={() => {
                   onPick({
                     id: c.id,
@@ -136,30 +109,20 @@ export function ClientSearchBlock({
                   setQuery("");
                   setOpen(false);
                 }}
-                style={{
-                  all: "unset", cursor: "pointer",
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "9px 12px", borderBottom: `1px solid ${t.line}`,
-                  width: "calc(100% - 24px)",
-                }}
               >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.name}
-                  </div>
-                  <div style={{ fontSize: 11, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.email ?? "—"}
-                  </div>
-                </div>
+                <span className="grow">
+                  {/* Was `width: calc(100% - 24px)` on an `all: unset` button —
+                      which also unsets box-sizing, so every row rendered 24px
+                      narrower than the menu it sat in. */}
+                  <b className="trunc">{c.name}</b>
+                  <span className="sub trunc">{c.email ?? "—"}</span>
+                </span>
                 <Icon name="arrowR" size={11} />
               </button>
             ))}
           </div>
-        )}
+        ) : null}
       </div>
-      {helperText ? (
-        <div style={{ fontSize: 11, color: t.ink3, marginTop: 6 }}>{helperText}</div>
-      ) : null}
-    </div>
+    </Field>
   );
 }

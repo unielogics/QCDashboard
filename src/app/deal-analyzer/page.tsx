@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import {
   CellChip,
@@ -76,7 +75,6 @@ function canLookupAddress(parts: AddressParts | null): parts is AddressParts {
 export default function DealAnalyzerPage() {
   // Still read for ClientSearchBlock, which takes `t` and is shared with routes
   // that have not migrated yet.
-  const { t } = useTheme();
   const router = useRouter();
   const sp = useSearchParams();
   const { data: currentUser } = useCurrentUser();
@@ -452,7 +450,6 @@ export default function DealAnalyzerPage() {
               </div>
             ) : (
               <ClientSearchBlock
-                t={t}
                 onPick={setSelectedClient}
                 label="Search client"
                 helperText="Required before sharing to client or creating a pending prequalification."

@@ -28,7 +28,6 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, WarnLine, cx } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
@@ -81,7 +80,6 @@ const INITIAL: FormState = {
 
 export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   // Kept only for <ClientSearchBlock>, which still takes a token bag.
-  const { t } = useTheme();
   const router = useRouter();
   const create = useCreateClient();
   const sendIntakeLink = useSendIntakeLink();
@@ -228,7 +226,6 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
               own search input + dropdown. Picking a match exits the
               wizard and routes to that client's detail page. */}
           <ClientSearchBlock
-            t={t}
             scope="mine"
             label="Already in your book?"
             helperText="Search to open an existing client instead of creating a duplicate."

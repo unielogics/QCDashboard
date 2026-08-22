@@ -1516,3 +1516,23 @@ a.pick { color: inherit; text-decoration: none; }
   width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto;
   box-shadow: 0 30px 100px rgba(0, 0, 0, 0.5);
 }
+
+/* ---------- client search ----------
+   A search field that opens a menu of matches. `.field` is the box and
+   `.popmenu` is the menu; what neither owns is the relationship between them,
+   or a field with a glyph living inside it. */
+.csearch { position: relative; }
+.csearch-in { display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--sunken2); border: 1px solid var(--line); border-radius: 9px; }
+.csearch-in:focus-within { border-color: var(--accent-400); }
+.csearch-in > svg { flex-shrink: 0; color: var(--muted); }
+.csearch-in > input { flex: 1; min-width: 0; padding: 10px 0; background: none; border: 0; outline: none; color: var(--ink); font-size: 13px; font-family: inherit; }
+.csearch-in > input::placeholder { color: var(--faint); }
+
+/* The menu spans the field rather than hugging its right edge — it is a list
+   of results FOR this input, not a menu of actions beside it. */
+.csearch-pop { left: 0; right: 0; min-width: 0; }
+.csearch-pop.scroll { max-height: 280px; overflow-y: auto; }
+.csearch-note { margin: 0; padding: 6px 10px; }
+.csearch-hit { display: flex; align-items: center; gap: 10px; }
+.csearch-hit > .grow { display: grid; }
+.csearch-hit b { font-size: 12.5px; }

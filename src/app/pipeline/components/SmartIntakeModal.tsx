@@ -868,7 +868,6 @@ function BorrowerStepView({
           create a new one. Hidden when prefillClient locked us in. */}
       {!locked && (
         <ClientSearchBlock
-          t={t}
           onPick={onPickClient}
           helperText="Don't see them? Skip the search and fill the borrower fields below — we'll create a new client."
         />

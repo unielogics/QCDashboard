@@ -1153,7 +1153,6 @@ function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: Si
           </div>
         ) : (
           <ClientSearchBlock
-            t={t}
             onPick={setSelectedClient}
             label="Search client"
             helperText="Required before sharing to client or creating a pending prequalification."

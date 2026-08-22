@@ -31,7 +31,6 @@
 // (`open`, `onClose`) are untouched.
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import { QC_FMT } from "@/components/design-system/tokens";
 import {
@@ -83,7 +82,6 @@ interface Props {
 export function AdminPrequalCreateModal({ open, onClose }: Props) {
   // Still read: ClientSearchBlock takes `t` as a prop and is not this
   // agent's file to change. Nothing else in here reads a token.
-  const { t } = useTheme();
   const submit = useAdminCreateManualPrequal();
   const createClient = useCreateClient();
 
@@ -415,7 +413,6 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
                     <CG>
                       <div className="s12">
                         <ClientSearchBlock
-                          t={t}
                           label="Search by name or email"
                           onPick={(c) => setPickedClient(c)}
                         />
