@@ -4178,6 +4178,13 @@ const fieldWrap: CSSProperties = { display: "grid", gap: 6 };
 const labelStyle: CSSProperties = { color: "#B8C4D6", fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0 };
 const fieldHint: CSSProperties = { color: "#9FB0C8", fontSize: 12, marginTop: -4 };
 const input: CSSProperties = {
+  // An <input> carries an intrinsic minimum width from its default `size`
+  // attribute — about 20 characters, ~242px with this padding. As a grid or
+  // flex item, `min-width: auto` means it CANNOT SHRINK below that, so in a
+  // two-column row whose tracks are 217px it overflowed its own label by 25px
+  // and landed 15px on top of the field beside it. box-sizing was never the
+  // problem; the intrinsic minimum was.
+  minWidth: 0,
   minHeight: 44,
   border: "1px solid rgba(255,255,255,.16)",
   borderRadius: 12,
@@ -4326,6 +4333,13 @@ const queueRemoveButton: CSSProperties = {
 };
 const queueRemovePlaceholder: CSSProperties = { width: 34, height: 34, display: "block" };
 const select: CSSProperties = {
+  // An <input> carries an intrinsic minimum width from its default `size`
+  // attribute — about 20 characters, ~242px with this padding. As a grid or
+  // flex item, `min-width: auto` means it CANNOT SHRINK below that, so in a
+  // two-column row whose tracks are 217px it overflowed its own label by 25px
+  // and landed 15px on top of the field beside it. box-sizing was never the
+  // problem; the intrinsic minimum was.
+  minWidth: 0,
   minHeight: 38,
   border: "1px solid rgba(255,255,255,.16)",
   borderRadius: 10,
