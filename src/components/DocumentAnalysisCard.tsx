@@ -7,7 +7,7 @@
 // /loans/{id}/document-analyses endpoint or inline data passed by
 // the parent.
 
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
 
 interface AnalysisIssue {
@@ -33,7 +33,6 @@ export function DocumentAnalysisCard({
   documentName, detectedDocumentType, confidence,
   extractedFacts, issues, recommendedAction, onResolve,
 }: Props) {
-  const { t } = useTheme();
   const conf = confidence ?? 0;
 
   return (
@@ -42,25 +41,25 @@ export function DocumentAnalysisCard({
         <SectionLabel>Document analysis</SectionLabel>
         <span style={{
           fontSize: 11, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
-          background: t.surface2, color: t.ink, textTransform: "uppercase",
+          background: V.surface2, color: V.ink, textTransform: "uppercase",
         }}>
           {detectedDocumentType || "Unknown type"}
         </span>
-        <span style={{ fontSize: 12, color: t.ink3, marginLeft: "auto" }}>
+        <span style={{ fontSize: 12, color: V.ink3, marginLeft: "auto" }}>
           confidence {(conf * 100).toFixed(0)}%
         </span>
       </div>
-      <div style={{ fontSize: 12, color: t.ink3, marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: V.ink3, marginBottom: 10 }}>
         {documentName}
       </div>
 
       {extractedFacts && Object.keys(extractedFacts).length > 0 ? (
         <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, marginBottom: 4, textTransform: "uppercase" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: V.ink3, marginBottom: 4, textTransform: "uppercase" }}>
             Extracted facts
           </div>
           {Object.entries(extractedFacts).map(([k, v]) => (
-            <div key={k} style={{ fontSize: 12, color: t.ink }}>
+            <div key={k} style={{ fontSize: 12, color: V.ink }}>
               <strong>{k}:</strong> {String(v)}
             </div>
           ))}
@@ -77,7 +76,7 @@ export function DocumentAnalysisCard({
             ⚠ Contradiction detected
           </div>
           {issues.map((iss, i) => (
-            <div key={i} style={{ fontSize: 12, color: t.ink, marginBottom: 6 }}>
+            <div key={i} style={{ fontSize: 12, color: V.ink, marginBottom: 6 }}>
               <strong>{iss.field}:</strong> document says{" "}
               <code>{String(iss.winning_value)}</code> ({iss.winning_source})
               {iss.conflicts && iss.conflicts.length > 0 ? (
@@ -89,19 +88,19 @@ export function DocumentAnalysisCard({
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
               <button
                 onClick={() => onResolve("update_field_from_doc", issues[0].field)}
-                style={btn(t)}
+                style={btn()}
               >
                 Update from doc
               </button>
               <button
                 onClick={() => onResolve("confirm_field_chat", issues[0].field)}
-                style={btn(t)}
+                style={btn()}
               >
                 Keep chat value
               </button>
               <button
                 onClick={() => onResolve("request_borrower_confirm", issues[0].field)}
-                style={btn(t)}
+                style={btn()}
               >
                 Ask borrower
               </button>
@@ -111,7 +110,7 @@ export function DocumentAnalysisCard({
       ) : null}
 
       {recommendedAction && !issues?.length ? (
-        <div style={{ fontSize: 12, color: t.ink3 }}>
+        <div style={{ fontSize: 12, color: V.ink3 }}>
           Recommended: <code>{recommendedAction}</code>
         </div>
       ) : null}
@@ -119,10 +118,10 @@ export function DocumentAnalysisCard({
   );
 }
 
-function btn(t: ReturnType<typeof useTheme>["t"]) {
+function btn() {
   return {
     padding: "4px 10px", fontSize: 11, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.surface, color: t.ink, cursor: "pointer",
+    borderRadius: 6, border: `1px solid ${V.line}`,
+    background: V.surface, color: V.ink, cursor: "pointer",
   } as const;
 }

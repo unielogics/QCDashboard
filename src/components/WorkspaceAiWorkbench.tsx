@@ -7,8 +7,8 @@
 // exists.
 
 import Link from "next/link";
+import { V } from "@/components/design-system/cssVars";
 import { useRouter } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { DealSecretaryPicker } from "@/components/DealSecretaryPicker";
@@ -27,7 +27,6 @@ export interface WorkspaceAiWorkbenchProps {
 }
 
 export function WorkspaceAiWorkbench({ clientId, scope, isOperator }: WorkspaceAiWorkbenchProps) {
-  const { t } = useTheme();
   const router = useRouter();
   const { data: view, isLoading, error } = useClientAiFollowUp({
     clientId,
@@ -41,7 +40,7 @@ export function WorkspaceAiWorkbench({ clientId, scope, isOperator }: WorkspaceA
   if (isLoading) {
     return (
       <Card pad={20}>
-        <div style={{ color: t.ink3, fontSize: 13 }}>Loading Elara…</div>
+        <div style={{ color: V.ink3, fontSize: 13 }}>Loading Elara…</div>
       </Card>
     );
   }
@@ -49,7 +48,7 @@ export function WorkspaceAiWorkbench({ clientId, scope, isOperator }: WorkspaceA
     return (
       <Card pad={20}>
         <SectionLabel>Elara unavailable</SectionLabel>
-        <div style={{ marginTop: 8, fontSize: 13, color: t.ink3 }}>
+        <div style={{ marginTop: 8, fontSize: 13, color: V.ink3 }}>
           Couldn&apos;t load Elara view. Try refreshing.
         </div>
       </Card>
@@ -98,9 +97,9 @@ export function WorkspaceAiWorkbench({ clientId, scope, isOperator }: WorkspaceA
               fontSize: 12,
               fontWeight: 700,
               borderRadius: 6,
-              border: `1px solid ${t.line}`,
-              background: t.surface,
-              color: t.ink,
+              border: `1px solid ${V.line}`,
+              background: V.surface,
+              color: V.ink,
               textDecoration: "none",
               display: "inline-flex",
               alignItems: "center",

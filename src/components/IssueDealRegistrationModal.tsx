@@ -9,8 +9,8 @@
 // endpoints.
 
 import { useState } from "react";
+import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Modal } from "@/components/design-system/Modal";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { useDealRegistrations, useIssueDealRegistration } from "@/hooks/useApi";
 
@@ -33,7 +33,6 @@ export function IssueDealRegistrationModal({
   companyId: string;
   companyName: string;
 }) {
-  const { t } = useTheme();
   const { data: registrations } = useDealRegistrations(companyId);
   const issue = useIssueDealRegistration();
 
@@ -100,10 +99,10 @@ export function IssueDealRegistrationModal({
     <Modal open={open} onClose={onClose} title={`Issue Deal Registration — ${companyName}`}>
       <div style={{ display: "grid", gap: 14 }}>
         {justIssued ? (
-          <div style={{ border: `1px solid ${t.petrol}`, borderRadius: 10, padding: 12, background: t.petrolSoft, display: "grid", gap: 6 }}>
-            <div style={{ fontWeight: 800, color: t.ink, fontSize: 13 }}>Issued: {justIssued.number}</div>
+          <div style={{ border: `1px solid ${V.petrol}`, borderRadius: 10, padding: 12, background: V.petrolSoft, display: "grid", gap: 6 }}>
+            <div style={{ fontWeight: 800, color: V.ink, fontSize: 13 }}>Issued: {justIssued.number}</div>
             {justIssued.url ? (
-              <a href={justIssued.url} target="_blank" rel="noreferrer" style={{ color: t.petrol, fontSize: 12.5, fontWeight: 700 }}>
+              <a href={justIssued.url} target="_blank" rel="noreferrer" style={{ color: V.petrol, fontSize: 12.5, fontWeight: 700 }}>
                 Download Exhibit 1 certificate
               </a>
             ) : null}
@@ -111,56 +110,56 @@ export function IssueDealRegistrationModal({
         ) : null}
 
         <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-          <Field t={t} label="Date and time of introduction" type="datetime-local" value={introducedAt} onChange={setIntroducedAt} />
-          <Field t={t} label="Client / Borrower" value={clientBorrower} onChange={setClientBorrower} />
+          <Field label="Date and time of introduction" type="datetime-local" value={introducedAt} onChange={setIntroducedAt} />
+          <Field label="Client / Borrower" value={clientBorrower} onChange={setClientBorrower} />
         </div>
-        <Field t={t} label="Financing opportunity (type, amount, use of proceeds)" value={financingOpportunity} onChange={setFinancingOpportunity} multiline />
+        <Field label="Financing opportunity (type, amount, use of proceeds)" value={financingOpportunity} onChange={setFinancingOpportunity} multiline />
         <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-          <Field t={t} label="Introduced capital source" value={introducedCapitalSource} onChange={setIntroducedCapitalSource} />
-          <Field t={t} label="Introduced program / division" value={introducedProgram} onChange={setIntroducedProgram} />
+          <Field label="Introduced capital source" value={introducedCapitalSource} onChange={setIntroducedCapitalSource} />
+          <Field label="Introduced program / division" value={introducedProgram} onChange={setIntroducedProgram} />
         </div>
-        <Field t={t} label="Introduced contact (name, title)" value={introducedContact} onChange={setIntroducedContact} />
+        <Field label="Introduced contact (name, title)" value={introducedContact} onChange={setIntroducedContact} />
 
         <label style={{ display: "block" }}>
-          <div style={fieldLabelStyle(t)}>Method of introduction</div>
-          <select value={methodOfIntroduction} onChange={(e) => setMethodOfIntroduction(e.target.value)} style={inputStyle(t)}>
+          <div style={fieldLabelStyle()}>Method of introduction</div>
+          <select value={methodOfIntroduction} onChange={(e) => setMethodOfIntroduction(e.target.value)} style={inputStyle()}>
             {METHOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </label>
         {methodOfIntroduction === "other" ? (
-          <Field t={t} label="Describe method" value={methodOtherDescription} onChange={setMethodOtherDescription} />
+          <Field label="Describe method" value={methodOtherDescription} onChange={setMethodOtherDescription} />
         ) : null}
 
-        <Field t={t} label="Documents transmitted" value={documentsTransmitted} onChange={setDocumentsTransmitted} />
+        <Field label="Documents transmitted" value={documentsTransmitted} onChange={setDocumentsTransmitted} />
         <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-          <Field t={t} label="Coded designation (if staged disclosure)" value={codedDesignation} onChange={setCodedDesignation} />
-          <Field t={t} label="Capital source no. (staged disclosure)" value={capitalSourceNumber} onChange={setCapitalSourceNumber} />
+          <Field label="Coded designation (if staged disclosure)" value={codedDesignation} onChange={setCodedDesignation} />
+          <Field label="Capital source no. (staged disclosure)" value={capitalSourceNumber} onChange={setCapitalSourceNumber} />
         </div>
-        <Field t={t} label="Date identity disclosed" type="date" value={dateIdentityDisclosed} onChange={setDateIdentityDisclosed} />
+        <Field label="Date identity disclosed" type="date" value={dateIdentityDisclosed} onChange={setDateIdentityDisclosed} />
 
         {(formError || issue.error) ? (
-          <div style={{ color: t.danger, fontSize: 12.5 }}>
+          <div style={{ color: V.danger, fontSize: 12.5 }}>
             {formError || (issue.error instanceof Error ? issue.error.message : "Something went wrong.")}
           </div>
         ) : null}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button type="button" onClick={onClose} style={qcBtn(t)}>Close</button>
-          <button type="button" onClick={submit} disabled={issue.isPending} style={{ ...qcBtnPrimary(t), opacity: issue.isPending ? 0.6 : 1 }}>
+          <button type="button" onClick={onClose} style={qcBtn()}>Close</button>
+          <button type="button" onClick={submit} disabled={issue.isPending} style={{ ...qcBtnPrimary(), opacity: issue.isPending ? 0.6 : 1 }}>
             {issue.isPending ? "Issuing…" : "Issue registration"}
           </button>
         </div>
 
         {registrations && registrations.length > 0 ? (
-          <div style={{ borderTop: `1px solid ${t.line}`, paddingTop: 10, display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5, color: t.ink3 }}>
+          <div style={{ borderTop: `1px solid ${V.line}`, paddingTop: 10, display: "grid", gap: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5, color: V.ink3 }}>
               Previously issued
             </div>
             {registrations.map((r) => (
-              <div key={r.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12.5, color: t.ink2 }}>
+              <div key={r.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12.5, color: V.ink2 }}>
                 <span>{r.registration_number} — {r.client_borrower}</span>
                 {r.certificate_download_url ? (
-                  <a href={r.certificate_download_url} target="_blank" rel="noreferrer" style={{ color: t.petrol, fontWeight: 700 }}>Download</a>
+                  <a href={r.certificate_download_url} target="_blank" rel="noreferrer" style={{ color: V.petrol, fontWeight: 700 }}>Download</a>
                 ) : null}
               </div>
             ))}
@@ -171,23 +170,20 @@ export function IssueDealRegistrationModal({
   );
 }
 
-function fieldLabelStyle(t: ReturnType<typeof useTheme>["t"]) {
-  return { fontSize: 11, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: 0.5, color: t.ink3, marginBottom: 4 };
+function fieldLabelStyle() {
+  return { fontSize: 11, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: 0.5, color: V.ink3, marginBottom: 4 };
 }
 
-function inputStyle(t: ReturnType<typeof useTheme>["t"]) {
-  return { width: "100%", boxSizing: "border-box" as const, padding: "9px 11px", borderRadius: 9, border: `1px solid ${t.line}`, background: t.surface2, color: t.ink, fontSize: 13, outline: "none" };
+function inputStyle() {
+  return { width: "100%", boxSizing: "border-box" as const, padding: "9px 11px", borderRadius: 9, border: `1px solid ${V.line}`, background: V.surface2, color: V.ink, fontSize: 13, outline: "none" };
 }
 
-function Field({
-  t,
-  label,
+function Field({ label,
   value,
   onChange,
   type = "text",
   multiline = false,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   value: string;
   onChange: (v: string) => void;
@@ -196,11 +192,11 @@ function Field({
 }) {
   return (
     <label style={{ display: "block" }}>
-      <div style={fieldLabelStyle(t)}>{label}</div>
+      <div style={fieldLabelStyle()}>{label}</div>
       {multiline ? (
-        <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={2} style={{ ...inputStyle(t), resize: "vertical", font: "inherit" }} />
+        <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={2} style={{ ...inputStyle(), resize: "vertical", font: "inherit" }} />
       ) : (
-        <input type={type} value={value} onChange={(e) => onChange(e.target.value)} style={inputStyle(t)} />
+        <input type={type} value={value} onChange={(e) => onChange(e.target.value)} style={inputStyle()} />
       )}
     </label>
   );

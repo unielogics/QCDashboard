@@ -7,7 +7,7 @@
 // all operators viewing the same task.
 
 import { useEffect, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Icon } from "@/components/design-system/Icon";
 import { useCurrentUser, useFeedbackForOutput, useUpsertFeedback } from "@/hooks/useApi";
 import { FeedbackOutputType, FeedbackRating } from "@/lib/enums.generated";
@@ -21,7 +21,6 @@ interface Props {
 }
 
 export function FeedbackWidget({ outputType, outputId, loanId, compact = false }: Props) {
-  const { t } = useTheme();
   const { data: user } = useCurrentUser();
   const { data: feedback = [] } = useFeedbackForOutput(outputType, outputId);
   const upsert = useUpsertFeedback();
@@ -72,26 +71,24 @@ export function FeedbackWidget({ outputType, outputId, loanId, compact = false }
     >
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <ThumbButton
-          t={t}
           icon="thumbsUp"
           active={upActive}
-          activeColor={t.profit}
+          activeColor={V.profit}
           onClick={() => sendVote(FeedbackRating.UP)}
           ariaLabel="Helpful"
         />
         {upCount > 0 && (
-          <span style={{ color: t.ink3, fontWeight: 600, fontFeatureSettings: '"tnum"' }}>{upCount}</span>
+          <span style={{ color: V.ink3, fontWeight: 600, fontFeatureSettings: '"tnum"' }}>{upCount}</span>
         )}
         <ThumbButton
-          t={t}
           icon="thumbsDown"
           active={downActive}
-          activeColor={t.danger}
+          activeColor={V.danger}
           onClick={() => sendVote(FeedbackRating.DOWN)}
           ariaLabel="Not helpful"
         />
         {downCount > 0 && (
-          <span style={{ color: t.ink3, fontWeight: 600, fontFeatureSettings: '"tnum"' }}>{downCount}</span>
+          <span style={{ color: V.ink3, fontWeight: 600, fontFeatureSettings: '"tnum"' }}>{downCount}</span>
         )}
         <button
           onClick={() => setShowComment((v) => !v)}
@@ -104,8 +101,8 @@ export function FeedbackWidget({ outputType, outputId, loanId, compact = false }
             gap: 4,
             padding: "3px 7px",
             borderRadius: 6,
-            color: showComment ? t.petrol : t.ink3,
-            background: showComment ? t.petrolSoft : "transparent",
+            color: showComment ? V.petrol : V.ink3,
+            background: showComment ? V.petrolSoft : "transparent",
           }}
         >
           <Icon name="comment" size={compact ? 11 : 13} />
@@ -114,7 +111,7 @@ export function FeedbackWidget({ outputType, outputId, loanId, compact = false }
         {myFeedback?.comment && !showComment && (
           <span
             style={{
-              color: t.ink3,
+              color: V.ink3,
               fontStyle: "italic",
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -138,9 +135,9 @@ export function FeedbackWidget({ outputType, outputId, loanId, compact = false }
               width: "100%",
               padding: "8px 10px",
               borderRadius: 8,
-              background: t.surface2,
-              border: `1px solid ${t.line}`,
-              color: t.ink,
+              background: V.surface2,
+              border: `1px solid ${V.line}`,
+              color: V.ink,
               fontSize: 12.5,
               fontFamily: "inherit",
               outline: "none",
@@ -150,7 +147,7 @@ export function FeedbackWidget({ outputType, outputId, loanId, compact = false }
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
             <button
               onClick={() => setShowComment(false)}
-              style={ghostBtn(t)}
+              style={ghostBtn()}
             >
               Cancel
             </button>
@@ -158,9 +155,9 @@ export function FeedbackWidget({ outputType, outputId, loanId, compact = false }
               onClick={saveComment}
               disabled={upsert.isPending}
               style={{
-                ...ghostBtn(t),
-                background: t.ink,
-                color: t.inverse,
+                ...ghostBtn(),
+                background: V.ink,
+                color: V.inverse,
                 border: "none",
                 fontWeight: 700,
               }}
@@ -174,15 +171,12 @@ export function FeedbackWidget({ outputType, outputId, loanId, compact = false }
   );
 }
 
-function ThumbButton({
-  t,
-  icon,
+function ThumbButton({ icon,
   active,
   activeColor,
   onClick,
   ariaLabel,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   icon: "thumbsUp" | "thumbsDown";
   active: boolean;
   activeColor: string;
@@ -204,7 +198,7 @@ function ThumbButton({
         height: 26,
         borderRadius: 6,
         background: active ? `${activeColor}22` : "transparent",
-        color: active ? activeColor : t.ink3,
+        color: active ? activeColor : V.ink3,
       }}
     >
       <Icon name={icon} size={13} stroke={active ? 2.4 : 1.8} />
@@ -212,13 +206,13 @@ function ThumbButton({
   );
 }
 
-function ghostBtn(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
+function ghostBtn(): React.CSSProperties {
   return {
     padding: "5px 10px",
     borderRadius: 6,
-    background: t.surface,
-    border: `1px solid ${t.line}`,
-    color: t.ink2,
+    background: V.surface,
+    border: `1px solid ${V.line}`,
+    color: V.ink2,
     fontSize: 12,
     cursor: "pointer",
     fontFamily: "inherit",

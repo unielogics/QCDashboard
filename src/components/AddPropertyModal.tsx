@@ -6,7 +6,7 @@
 // property detail view.
 
 import { useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Card } from "@/components/design-system/primitives";
 import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
 import { GoogleAddressInput } from "@/components/property/GoogleAddressInput";
@@ -30,7 +30,6 @@ const PROPERTY_TYPES = [
 ];
 
 export function AddPropertyModal({ clientSide, onSubmit, onClose }: Props) {
-  const { t } = useTheme();
   const defaultSide: ClientPropertyInput["side"] =
     clientSide === "seller" ? "seller_listing" : "buyer_target";
   const [side, setSide] = useState<ClientPropertyInput["side"]>(defaultSide);
@@ -93,19 +92,19 @@ export function AddPropertyModal({ clientSide, onSubmit, onClose }: Props) {
       <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 580 }}>
         <Card pad={20}>
           <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: t.ink, margin: 0, flex: 1 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: V.ink, margin: 0, flex: 1 }}>
               Add property
             </h2>
             <ModalCloseButton onClick={onClose} />
           </div>
 
           {/* Side picker */}
-          <Field label="Type" t={t}>
+          <Field label="Type">
             <div style={{ display: "flex", gap: 6 }}>
-              <Chip active={side === "buyer_target"} onClick={() => setSide("buyer_target")} t={t}>
+              <Chip active={side === "buyer_target"} onClick={() => setSide("buyer_target")}>
                 Buyer target
               </Chip>
-              <Chip active={side === "seller_listing"} onClick={() => setSide("seller_listing")} t={t}>
+              <Chip active={side === "seller_listing"} onClick={() => setSide("seller_listing")}>
                 Seller listing
               </Chip>
             </div>
@@ -124,49 +123,49 @@ export function AddPropertyModal({ clientSide, onSubmit, onClose }: Props) {
             />
           </div>
 
-          <Field label="Property type" t={t}>
-            <select value={propertyType} onChange={e => setPropertyType(e.target.value)} style={input(t)}>
+          <Field label="Property type">
+            <select value={propertyType} onChange={e => setPropertyType(e.target.value)} style={input()}>
               {PROPERTY_TYPES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
           </Field>
 
-          <Field label={side === "seller_listing" ? "List price" : "Target price"} t={t}>
+          <Field label={side === "seller_listing" ? "List price" : "Target price"}>
             <input
               type="number"
               inputMode="numeric"
               value={price}
               onChange={e => setPrice(e.target.value)}
               placeholder="e.g. 875000"
-              style={input(t)}
+              style={input()}
             />
           </Field>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
-            <Field label="Beds" t={t}>
-              <input type="number" value={bedrooms} onChange={e => setBedrooms(e.target.value)} style={input(t)} />
+            <Field label="Beds">
+              <input type="number" value={bedrooms} onChange={e => setBedrooms(e.target.value)} style={input()} />
             </Field>
-            <Field label="Baths" t={t}>
-              <input type="number" step="0.5" value={bathrooms} onChange={e => setBathrooms(e.target.value)} style={input(t)} />
+            <Field label="Baths">
+              <input type="number" step="0.5" value={bathrooms} onChange={e => setBathrooms(e.target.value)} style={input()} />
             </Field>
-            <Field label="Sq ft" t={t}>
-              <input type="number" value={sqft} onChange={e => setSqft(e.target.value)} style={input(t)} />
+            <Field label="Sq ft">
+              <input type="number" value={sqft} onChange={e => setSqft(e.target.value)} style={input()} />
             </Field>
-            <Field label="Units" t={t}>
-              <input type="number" value={units} onChange={e => setUnits(e.target.value)} style={input(t)} />
+            <Field label="Units">
+              <input type="number" value={units} onChange={e => setUnits(e.target.value)} style={input()} />
             </Field>
           </div>
 
-          <Field label="Notes" t={t}>
+          <Field label="Notes">
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
               rows={2}
-              style={{ ...input(t), resize: "vertical", fontFamily: "inherit" }}
+              style={{ ...input(), resize: "vertical", fontFamily: "inherit" }}
             />
           </Field>
 
           {err ? (
-            <div style={{ color: t.danger, fontSize: 12, marginBottom: 10 }}>
+            <div style={{ color: V.danger, fontSize: 12, marginBottom: 10 }}>
               {err}
             </div>
           ) : null}
@@ -178,7 +177,7 @@ export function AddPropertyModal({ clientSide, onSubmit, onClose }: Props) {
               style={{
                 padding: "10px 16px", fontSize: 13, fontWeight: 700,
                 borderRadius: 8, border: "none",
-                background: t.brand, color: t.inverse, cursor: "pointer",
+                background: V.brand, color: V.inverse, cursor: "pointer",
                 opacity: busy ? 0.5 : 1,
               }}
             >
@@ -188,8 +187,8 @@ export function AddPropertyModal({ clientSide, onSubmit, onClose }: Props) {
               onClick={onClose}
               style={{
                 padding: "10px 16px", fontSize: 13, fontWeight: 700,
-                borderRadius: 8, border: `1px solid ${t.line}`,
-                background: t.surface, color: t.ink, cursor: "pointer",
+                borderRadius: 8, border: `1px solid ${V.line}`,
+                background: V.surface, color: V.ink, cursor: "pointer",
               }}
             >
               Cancel
@@ -202,10 +201,10 @@ export function AddPropertyModal({ clientSide, onSubmit, onClose }: Props) {
 }
 
 
-function Field({ label, children, t }: { label: string; children: React.ReactNode; t: ReturnType<typeof useTheme>["t"] }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, marginBottom: 4, textTransform: "uppercase" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: V.ink3, marginBottom: 4, textTransform: "uppercase" }}>
         {label}
       </div>
       {children}
@@ -215,11 +214,10 @@ function Field({ label, children, t }: { label: string; children: React.ReactNod
 
 
 function Chip({
-  active, onClick, t, children,
+  active, onClick, children,
 }: {
   active: boolean;
   onClick: () => void;
-  t: ReturnType<typeof useTheme>["t"];
   children: React.ReactNode;
 }) {
   return (
@@ -228,9 +226,9 @@ function Chip({
       style={{
         padding: "6px 12px", fontSize: 12, fontWeight: 700,
         borderRadius: 18, cursor: "pointer",
-        border: `1px solid ${active ? t.brand : t.line}`,
-        background: active ? t.brand : t.surface,
-        color: active ? t.inverse : t.ink,
+        border: `1px solid ${active ? V.brand : V.line}`,
+        background: active ? V.brand : V.surface,
+        color: active ? V.inverse : V.ink,
       }}
     >
       {children}
@@ -239,10 +237,10 @@ function Chip({
 }
 
 
-function input(t: ReturnType<typeof useTheme>["t"]) {
+function input() {
   return {
     width: "100%", padding: 8, fontSize: 13,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.surface, color: t.ink,
+    borderRadius: 6, border: `1px solid ${V.line}`,
+    background: V.surface, color: V.ink,
   } as const;
 }

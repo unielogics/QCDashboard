@@ -12,7 +12,7 @@
 // `cadence_*` / `confirm_*` action shape. Falls back gracefully on
 // older tasks that lack the new payload fields.
 
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Card } from "@/components/design-system/primitives";
 import type { AITask } from "@/lib/types";
 
@@ -25,7 +25,6 @@ interface Props {
 
 
 export function AIInboxCard({ task, onApprove, onEdit, onDismiss }: Props) {
-  const { t } = useTheme();
   const dp = (task.draft_payload || {}) as Record<string, unknown>;
 
   const what = task.title || "(Untitled task)";
@@ -37,7 +36,7 @@ export function AIInboxCard({ task, onApprove, onEdit, onDismiss }: Props) {
   const accent =
     severity === "high" ? "#c14444"
     : severity === "low" ? "#888"
-    : t.petrol;
+    : V.petrol;
 
   return (
     <Card pad={16}>
@@ -47,7 +46,7 @@ export function AIInboxCard({ task, onApprove, onEdit, onDismiss }: Props) {
           background: accent, marginTop: 2,
         }} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: t.ink, marginBottom: 2 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: V.ink, marginBottom: 2 }}>
             {what}
           </div>
           {task.priority === "high" ? (
@@ -62,16 +61,16 @@ export function AIInboxCard({ task, onApprove, onEdit, onDismiss }: Props) {
       </div>
 
       {why ? (
-        <Section label="Why" t={t}>
+        <Section label="Why">
           {why}
         </Section>
       ) : null}
 
       {message ? (
-        <Section label="Suggested message" t={t}>
+        <Section label="Suggested message">
           <div style={{
-            padding: 10, borderRadius: 6, background: t.surface2,
-            fontSize: 13, color: t.ink, lineHeight: 1.5,
+            padding: 10, borderRadius: 6, background: V.surface2,
+            fontSize: 13, color: V.ink, lineHeight: 1.5,
             fontStyle: "italic", whiteSpace: "pre-wrap",
           }}>
             {message}
@@ -80,20 +79,20 @@ export function AIInboxCard({ task, onApprove, onEdit, onDismiss }: Props) {
       ) : null}
 
       {willHappen ? (
-        <Section label="What happens if I approve" t={t}>
+        <Section label="What happens if I approve">
           {willHappen}
         </Section>
       ) : null}
 
       <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
         {onApprove ? (
-          <button onClick={() => onApprove(task)} style={btnPrimary(t)}>Approve</button>
+          <button onClick={() => onApprove(task)} style={btnPrimary()}>Approve</button>
         ) : null}
         {onEdit ? (
-          <button onClick={() => onEdit(task)} style={btnSecondary(t)}>Edit</button>
+          <button onClick={() => onEdit(task)} style={btnSecondary()}>Edit</button>
         ) : null}
         {onDismiss ? (
-          <button onClick={() => onDismiss(task)} style={{ ...btnSecondary(t), color: "#c14444" }}>
+          <button onClick={() => onDismiss(task)} style={{ ...btnSecondary(), color: "#c14444" }}>
             Dismiss
           </button>
         ) : null}
@@ -159,14 +158,14 @@ function explainOutcome(task: AITask, dp: Record<string, unknown>): string | nul
 }
 
 
-function Section({ label, children, t }: { label: string; children: React.ReactNode; t: ReturnType<typeof useTheme>["t"] }) {
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={{
-        fontSize: 11, fontWeight: 700, color: t.ink3,
+        fontSize: 11, fontWeight: 700, color: V.ink3,
         marginBottom: 4, textTransform: "uppercase",
       }}>{label}</div>
-      <div style={{ fontSize: 13, color: t.ink, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 13, color: V.ink, lineHeight: 1.5 }}>
         {children}
       </div>
     </div>
@@ -174,19 +173,19 @@ function Section({ label, children, t }: { label: string; children: React.ReactN
 }
 
 
-function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
+function btnPrimary() {
   return {
     padding: "8px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.petrol, color: "#fff", cursor: "pointer",
+    borderRadius: 6, border: `1px solid ${V.line}`,
+    background: V.petrol, color: "#fff", cursor: "pointer",
   } as const;
 }
 
 
-function btnSecondary(t: ReturnType<typeof useTheme>["t"]) {
+function btnSecondary() {
   return {
     padding: "8px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.surface, color: t.ink, cursor: "pointer",
+    borderRadius: 6, border: `1px solid ${V.line}`,
+    background: V.surface, color: V.ink, cursor: "pointer",
   } as const;
 }

@@ -14,7 +14,7 @@
 // internal state besides what React tracks for inputs. Caller owns
 // the array shape (PrequalSowLineItem[]).
 
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Icon } from "@/components/design-system/Icon";
 import { qcBtn } from "@/components/design-system/buttons";
 import { QC_FMT } from "@/components/design-system/tokens";
@@ -29,7 +29,6 @@ export function PrequalSowEditor({
   onChange: (next: PrequalSowLineItem[]) => void;
   readOnly?: boolean;
 }) {
-  const { t } = useTheme();
   const total = items.reduce((sum, item) => sum + (Number(item.total_usd) || 0), 0);
 
   const setItem = (idx: number, patch: Partial<PrequalSowLineItem>) => {
@@ -50,7 +49,7 @@ export function PrequalSowEditor({
           ? "minmax(120px, 1fr) minmax(160px, 2fr) 130px"
           : "minmax(120px, 1fr) minmax(160px, 2fr) 130px 32px",
         gap: 6,
-        fontSize: 10, fontWeight: 700, color: t.ink3,
+        fontSize: 10, fontWeight: 700, color: V.ink3,
         letterSpacing: 1, textTransform: "uppercase",
         marginBottom: 6,
       }}>
@@ -62,13 +61,13 @@ export function PrequalSowEditor({
 
       {items.length === 0 ? (
         <div style={{
-          fontSize: 12, color: t.ink3, padding: 14,
-          textAlign: "center", border: `1px dashed ${t.line}`,
-          borderRadius: 9, background: t.surface2,
+          fontSize: 12, color: V.ink3, padding: 14,
+          textAlign: "center", border: `1px dashed ${V.line}`,
+          borderRadius: 9, background: V.surface2,
         }}>
           {readOnly
             ? "No scope-of-work lines on file."
-            : <>No scope-of-work lines yet. Tap <strong style={{ color: t.ink2 }}>Add row</strong> to start.</>}
+            : <>No scope-of-work lines yet. Tap <strong style={{ color: V.ink2 }}>Add row</strong> to start.</>}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -85,14 +84,14 @@ export function PrequalSowEditor({
                 onChange={(e) => setItem(idx, { category: e.target.value })}
                 placeholder="Demo / HVAC / Plumbing"
                 disabled={readOnly}
-                style={inputStyle(t)}
+                style={inputStyle()}
               />
               <input
                 value={item.description}
                 onChange={(e) => setItem(idx, { description: e.target.value })}
                 placeholder="Brief description"
                 disabled={readOnly}
-                style={inputStyle(t)}
+                style={inputStyle()}
               />
               <input
                 value={String(item.total_usd || "")}
@@ -103,7 +102,7 @@ export function PrequalSowEditor({
                 placeholder="0"
                 inputMode="numeric"
                 disabled={readOnly}
-                style={{ ...inputStyle(t), fontFeatureSettings: '"tnum"' }}
+                style={{ ...inputStyle(), fontFeatureSettings: '"tnum"' }}
               />
               {!readOnly ? (
                 <button
@@ -116,7 +115,7 @@ export function PrequalSowEditor({
                     width: 24, height: 24,
                     borderRadius: 6,
                     display: "inline-flex", alignItems: "center", justifyContent: "center",
-                    color: t.ink3,
+                    color: V.ink3,
                   }}
                 >
                   <Icon name="x" size={12} />
@@ -129,7 +128,7 @@ export function PrequalSowEditor({
 
       <div style={{
         marginTop: 12, paddingTop: 10,
-        borderTop: `1px solid ${t.line}`,
+        borderTop: `1px solid ${V.line}`,
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
         {!readOnly ? (
@@ -137,7 +136,7 @@ export function PrequalSowEditor({
             type="button"
             onClick={addItem}
             style={{
-              ...qcBtn(t),
+              ...qcBtn(),
               display: "inline-flex", alignItems: "center", gap: 6,
             }}
           >
@@ -145,10 +144,10 @@ export function PrequalSowEditor({
           </button>
         ) : <div />}
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: V.ink3, letterSpacing: 1, textTransform: "uppercase" }}>
             Total construction
           </div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: t.ink, marginTop: 2, fontFeatureSettings: '"tnum"' }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: V.ink, marginTop: 2, fontFeatureSettings: '"tnum"' }}>
             {QC_FMT.usd(total, 0)}
           </div>
         </div>
@@ -157,14 +156,14 @@ export function PrequalSowEditor({
   );
 }
 
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
+function inputStyle(): React.CSSProperties {
   return {
     width: "100%",
     padding: "8px 10px",
     borderRadius: 7,
-    background: t.surface2,
-    border: `1px solid ${t.line}`,
-    color: t.ink,
+    background: V.surface2,
+    border: `1px solid ${V.line}`,
+    color: V.ink,
     fontSize: 12.5,
     fontFamily: "inherit",
     outline: "none",

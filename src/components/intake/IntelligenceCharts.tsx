@@ -6,14 +6,14 @@
 // the broker portal.
 //
 // These render on the LIGHT institutional console (the admin/broker surfaces
-// consume them inside a white t.surface panel), so the palette here is
-// theme-driven off the design-system tokens via useTheme(). The two PUBLIC
+// consume them inside a white V.surface panel), so the palette here is
+// coloured from the CSS variables in globals.css. The two PUBLIC
 // dark intake cockpits (dealer-ai-underwriter, funding-review) do NOT use these
 // components — they keep their own local dark-cockpit chart code and import
 // only CHART_COPY from this file. So recoloring here is safe for them.
 
 import type { CSSProperties } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V, type CssVars } from "@/components/design-system/cssVars";
 import type { QCTokens } from "@/components/design-system/tokens";
 import type { IntelligenceModel, IntelligenceValue } from "@/lib/intake";
 import type { Lang } from "@/lib/intakeCopy";
@@ -83,46 +83,46 @@ export const chartGrid: CSSProperties = {
 export const chartHeader: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" };
 export const intelligenceTables: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,360px),1fr))", gap: 12 };
 
-function chartStyles(t: QCTokens) {
-  const card: CSSProperties = { border: `1px solid ${t.line}`, borderRadius: 14, background: t.surface2, padding: 16, display: "grid", gap: 12, minWidth: 0, color: t.ink2 };
-  const missing: CSSProperties = { border: `1px solid ${t.line}`, background: t.warnBg, color: t.warn, borderRadius: 999, padding: "7px 10px", fontSize: 12, fontWeight: 800 };
-  const complete: CSSProperties = { ...missing, background: t.profitBg, color: t.profit };
-  const status: CSSProperties = { border: `1px solid ${t.line}`, background: t.petrolSoft, color: t.petrol, borderRadius: 999, minHeight: 30, padding: "0 10px", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, whiteSpace: "nowrap" };
-  const metric: CSSProperties = { ...status, background: t.surface2, color: t.ink2 };
+function chartStyles() {
+  const card: CSSProperties = { border: `1px solid ${V.line}`, borderRadius: 14, background: V.surface2, padding: 16, display: "grid", gap: 12, minWidth: 0, color: V.ink2 };
+  const missing: CSSProperties = { border: `1px solid ${V.line}`, background: V.warnBg, color: V.warn, borderRadius: 999, padding: "7px 10px", fontSize: 12, fontWeight: 800 };
+  const complete: CSSProperties = { ...missing, background: V.profitBg, color: V.profit };
+  const status: CSSProperties = { border: `1px solid ${V.line}`, background: V.petrolSoft, color: V.petrol, borderRadius: 999, minHeight: 30, padding: "0 10px", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900, whiteSpace: "nowrap" };
+  const metric: CSSProperties = { ...status, background: V.surface2, color: V.ink2 };
   return {
     chartCard: card,
     chartCardWide: { ...card, gridColumn: "1 / -1" } as CSSProperties,
-    chartEmptyState: { border: `1px dashed ${t.line}`, borderRadius: 14, minHeight: 110, display: "grid", placeItems: "center", textAlign: "center", padding: 14, color: t.ink3, lineHeight: 1.45 } as CSSProperties,
+    chartEmptyState: { border: `1px dashed ${V.line}`, borderRadius: 14, minHeight: 110, display: "grid", placeItems: "center", textAlign: "center", padding: 14, color: V.ink3, lineHeight: 1.45 } as CSSProperties,
     intelligenceTable: { display: "grid", gap: 8 } as CSSProperties,
-    intelligenceTableRow: { border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface, padding: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 6, alignItems: "start", color: t.ink2 } as CSSProperties,
-    gaugeWrap: { display: "grid", justifyItems: "center", gap: 3, color: t.ink } as CSSProperties,
+    intelligenceTableRow: { border: `1px solid ${V.line}`, borderRadius: 12, background: V.surface, padding: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 6, alignItems: "start", color: V.ink2 } as CSSProperties,
+    gaugeWrap: { display: "grid", justifyItems: "center", gap: 3, color: V.ink } as CSSProperties,
     gaugeSvg: { width: "min(260px, 100%)", height: 145, display: "block" } as CSSProperties,
-    gaugeTrackStroke: t.line,
-    gaugeNeedle: t.ink,
+    gaugeTrackStroke: V.line,
+    gaugeNeedle: V.ink,
     equityChartWrap: { display: "grid", gap: 12 } as CSSProperties,
-    equityTrack: { height: 22, borderRadius: 999, overflow: "hidden", background: t.line, display: "flex" } as CSSProperties,
-    equityDebtFill: { height: "100%", background: `linear-gradient(90deg,${t.danger},${t.warn})`, transition: "width .3s ease" } as CSSProperties,
-    equityValueFill: { height: "100%", background: `linear-gradient(90deg,${t.petrol},${t.profit})`, transition: "width .3s ease" } as CSSProperties,
-    equityLegend: { display: "grid", gap: 6, color: t.ink3, fontSize: 12 } as CSSProperties,
-    legendDebtDot: { display: "inline-block", width: 8, height: 8, borderRadius: 99, background: t.warn, marginRight: 6 } as CSSProperties,
-    legendEquityDot: { display: "inline-block", width: 8, height: 8, borderRadius: 99, background: t.petrol, marginRight: 6 } as CSSProperties,
+    equityTrack: { height: 22, borderRadius: 999, overflow: "hidden", background: V.line, display: "flex" } as CSSProperties,
+    equityDebtFill: { height: "100%", background: `linear-gradient(90deg,${V.danger},${V.warn})`, transition: "width .3s ease" } as CSSProperties,
+    equityValueFill: { height: "100%", background: `linear-gradient(90deg,${V.petrol},${V.profit})`, transition: "width .3s ease" } as CSSProperties,
+    equityLegend: { display: "grid", gap: 6, color: V.ink3, fontSize: 12 } as CSSProperties,
+    legendDebtDot: { display: "inline-block", width: 8, height: 8, borderRadius: 99, background: V.warn, marginRight: 6 } as CSSProperties,
+    legendEquityDot: { display: "inline-block", width: 8, height: 8, borderRadius: 99, background: V.petrol, marginRight: 6 } as CSSProperties,
     cashFlowBarList: { display: "grid", gap: 12 } as CSSProperties,
     cashFlowBarRow: { display: "grid", gap: 6 } as CSSProperties,
-    cashFlowBarLabel: { display: "flex", justifyContent: "space-between", gap: 12, color: t.ink2, fontSize: 13 } as CSSProperties,
-    cashFlowTrack: { height: 9, borderRadius: 999, overflow: "hidden", background: t.line } as CSSProperties,
+    cashFlowBarLabel: { display: "flex", justifyContent: "space-between", gap: 12, color: V.ink2, fontSize: 13 } as CSSProperties,
+    cashFlowTrack: { height: 9, borderRadius: 999, overflow: "hidden", background: V.line } as CSSProperties,
     cashFlowFill: { height: "100%", borderRadius: 999, transition: "width .3s ease" } as CSSProperties,
-    cashFlowPos: t.petrol,
-    cashFlowNeg: t.danger,
+    cashFlowPos: V.petrol,
+    cashFlowNeg: V.danger,
     miniChart: { height: 180, display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(32px,1fr)", gap: 8, alignItems: "end" } as CSSProperties,
-    miniChartColumn: { height: "100%", display: "grid", gridTemplateRows: "1fr auto", gap: 8, justifyItems: "center", minWidth: 0, color: t.ink3, fontSize: 11 } as CSSProperties,
+    miniChartColumn: { height: "100%", display: "grid", gridTemplateRows: "1fr auto", gap: 8, justifyItems: "center", minWidth: 0, color: V.ink3, fontSize: 11 } as CSSProperties,
     miniChartBarWrap: { height: "100%", width: "100%", display: "flex", alignItems: "end", justifyContent: "center" } as CSSProperties,
-    miniChartBar: { width: "72%", borderRadius: "10px 10px 2px 2px", background: `linear-gradient(180deg,${t.petrol},${t.gold})` } as CSSProperties,
+    miniChartBar: { width: "72%", borderRadius: "10px 10px 2px 2px", background: `linear-gradient(180deg,${V.petrol},${V.gold})` } as CSSProperties,
     riskList: { display: "grid", gap: 8 } as CSSProperties,
-    riskRow: { borderRadius: 12, padding: 10, background: t.warnBg, color: t.warn, border: `1px solid ${t.line}`, lineHeight: 1.35 } as CSSProperties,
-    strengthRow: { borderRadius: 12, padding: 10, background: t.profitBg, color: t.profit, border: `1px solid ${t.line}`, lineHeight: 1.35 } as CSSProperties,
-    kpiCard: { border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface2, padding: 12, display: "grid", gap: 4, color: t.ink3, fontSize: 12 } as CSSProperties,
-    kpiCardEmphasis: { border: `1px solid ${t.petrol}`, borderRadius: 12, background: t.petrolSoft, padding: 12, display: "grid", gap: 4, color: t.ink3, fontSize: 12 } as CSSProperties,
-    kpiValue: { color: t.ink, fontSize: 15, fontWeight: 800 } as CSSProperties,
+    riskRow: { borderRadius: 12, padding: 10, background: V.warnBg, color: V.warn, border: `1px solid ${V.line}`, lineHeight: 1.35 } as CSSProperties,
+    strengthRow: { borderRadius: 12, padding: 10, background: V.profitBg, color: V.profit, border: `1px solid ${V.line}`, lineHeight: 1.35 } as CSSProperties,
+    kpiCard: { border: `1px solid ${V.line}`, borderRadius: 12, background: V.surface2, padding: 12, display: "grid", gap: 4, color: V.ink3, fontSize: 12 } as CSSProperties,
+    kpiCardEmphasis: { border: `1px solid ${V.petrol}`, borderRadius: 12, background: V.petrolSoft, padding: 12, display: "grid", gap: 4, color: V.ink3, fontSize: 12 } as CSSProperties,
+    kpiValue: { color: V.ink, fontSize: 15, fontWeight: 800 } as CSSProperties,
     kpiFooter: { display: "grid", gap: 5, alignContent: "end" } as CSSProperties,
     missingChip: missing,
     completeChip: complete,
@@ -160,17 +160,16 @@ function priorityStyle(s: ChartStyles, priority: string): CSSProperties {
 }
 
 // Exported colour-bearing scaffolding for the Lead Cockpit (needs `t`).
-export const chartCard = (t: QCTokens): CSSProperties => chartStyles(t).chartCard;
-export const chartCardWide = (t: QCTokens): CSSProperties => chartStyles(t).chartCardWide;
-export const chartEmptyState = (t: QCTokens): CSSProperties => chartStyles(t).chartEmptyState;
+export const chartCard = (): CSSProperties => chartStyles().chartCard;
+export const chartCardWide = (): CSSProperties => chartStyles().chartCardWide;
+export const chartEmptyState = (): CSSProperties => chartStyles().chartEmptyState;
 
 // ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
 
 export function IntelligenceKpi({ metric, emphasis }: { metric: IntelligenceValue; emphasis?: boolean }) {
-  const { t } = useTheme();
-  const s = chartStyles(t);
+  const s = chartStyles();
   return (
     <div style={emphasis ? s.kpiCardEmphasis : s.kpiCard}>
       <span>{metric.label}</span>
@@ -184,8 +183,7 @@ export function IntelligenceKpi({ metric, emphasis }: { metric: IntelligenceValu
 }
 
 export function GaugeChart({ value, language = "en" }: { value: number | null | undefined; language?: Lang }) {
-  const { t } = useTheme();
-  const s = chartStyles(t);
+  const s = chartStyles();
   const cc = CHART_COPY[language];
   const numeric = typeof value === "number" && Number.isFinite(value) ? value : null;
   const clamped = numeric === null ? 0 : Math.max(0, Math.min(numeric, 3));
@@ -209,8 +207,7 @@ export function GaugeChart({ value, language = "en" }: { value: number | null | 
 }
 
 export function EquityChart({ equity, ltv, language = "en" }: { equity: number | null | undefined; ltv: number | null | undefined; language?: Lang }) {
-  const { t } = useTheme();
-  const s = chartStyles(t);
+  const s = chartStyles();
   const cc = CHART_COPY[language];
   const ltvPct = typeof ltv === "number" && Number.isFinite(ltv) ? Math.max(0, Math.min(ltv, 100)) : null;
   const equityPct = ltvPct === null ? null : Math.max(0, 100 - ltvPct);
@@ -230,8 +227,7 @@ export function EquityChart({ equity, ltv, language = "en" }: { equity: number |
 }
 
 export function CashFlowBars({ bars, language = "en" }: { bars: IntelligenceModel["cashFlowBars"]; language?: Lang }) {
-  const { t } = useTheme();
-  const s = chartStyles(t);
+  const s = chartStyles();
   const cc = CHART_COPY[language];
   const max = Math.max(...bars.map((bar) => Math.abs(bar.value || 0)), 1);
   return (
@@ -257,8 +253,7 @@ export function CashFlowBars({ bars, language = "en" }: { bars: IntelligenceMode
 }
 
 export function MiniBarChart({ series, emptyLabel }: { series: Array<{ label: string; value: number | null }>; emptyLabel: string }) {
-  const { t } = useTheme();
-  const s = chartStyles(t);
+  const s = chartStyles();
   const valid = series.filter((item) => typeof item.value === "number" && Number.isFinite(item.value));
   if (!valid.length) return <div style={s.chartEmptyState}>{emptyLabel}</div>;
   const max = Math.max(...valid.map((item) => Math.abs(item.value || 0)), 1);
@@ -282,8 +277,7 @@ export function MiniBarChart({ series, emptyLabel }: { series: Array<{ label: st
 }
 
 export function EvidenceCoverageTable({ rows, language = "en" }: { rows: IntelligenceModel["coverage"]; language?: Lang }) {
-  const { t } = useTheme();
-  const s = chartStyles(t);
+  const s = chartStyles();
   const cc = CHART_COPY[language];
   if (!rows.length) return <div style={s.chartEmptyState}>{cc.awaitingEvidenceMap}</div>;
   return (
@@ -300,8 +294,7 @@ export function EvidenceCoverageTable({ rows, language = "en" }: { rows: Intelli
 }
 
 export function MissingTable({ rows, language = "en" }: { rows: IntelligenceModel["missing"]; language?: Lang }) {
-  const { t } = useTheme();
-  const s = chartStyles(t);
+  const s = chartStyles();
   const cc = CHART_COPY[language];
   if (!rows.length) return <div style={s.chartEmptyState}>{cc.noBlockingItems}</div>;
   return (
@@ -318,8 +311,7 @@ export function MissingTable({ rows, language = "en" }: { rows: IntelligenceMode
 }
 
 export function RiskStrengthTable({ title, rows, tone, language = "en" }: { title: string; rows: string[]; tone: "green" | "amber"; language?: Lang }) {
-  const { t } = useTheme();
-  const s = chartStyles(t);
+  const s = chartStyles();
   const cc = CHART_COPY[language];
   return (
     <div style={s.chartCard}>

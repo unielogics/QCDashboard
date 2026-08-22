@@ -7,10 +7,10 @@
 //     a tooltip showing the date + value + delta vs prior point).
 //
 // Pure SVG, no chart library — keeps bundle small and matches the
-// existing Sparkline visual language. Themed via useTheme tokens.
+// existing Sparkline visual language. Colour comes from the CSS variables.
 
 import { useMemo, useRef, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V, type CssVars } from "@/components/design-system/cssVars";
 
 export interface FredChartPoint {
   date: string; // ISO date
@@ -29,7 +29,7 @@ interface Props {
    *              tooltip card on hover.
    */
   variant?: "compact" | "expanded";
-  /** Override the line color. Defaults to t.spark. */
+  /** Override the line color. Defaults to V.spark. */
   color?: string;
   /** Show the area fill below the line. */
   fill?: boolean;
@@ -52,8 +52,7 @@ export function FredChart({
   color,
   fill,
 }: Props) {
-  const { t } = useTheme();
-  const lineColor = color ?? t.spark;
+  const lineColor = color ?? V.spark;
   const fillEnabled = fill ?? variant === "compact";
 
   // Filter to plottable (non-null) points, normalize timestamps.
@@ -96,7 +95,7 @@ export function FredChart({
           alignItems: "center",
           justifyContent: "center",
           fontSize: 11,
-          color: t.ink4,
+          color: V.ink4,
           fontStyle: "italic",
         }}
       >
@@ -150,7 +149,6 @@ export function FredChart({
         {/* Expanded variant: axes + gridlines */}
         {variant === "expanded" && (
           <ExpandedAxes
-            t={t}
             width={width}
             height={height}
             min={minVal}
@@ -187,7 +185,7 @@ export function FredChart({
               x2={hovered.x}
               y1={0}
               y2={height}
-              stroke={t.ink3}
+              stroke={V.ink3}
               strokeWidth={1}
               strokeDasharray="3 3"
               opacity={0.5}
@@ -206,15 +204,15 @@ export function FredChart({
             left: Math.min(Math.max(hovered.x, 60), width - 60),
             top: Math.max(hovered.y - (variant === "expanded" ? 60 : 42), 0),
             transform: "translateX(-50%)",
-            background: t.ink,
-            color: t.inverse,
+            background: V.ink,
+            color: V.inverse,
             padding: variant === "expanded" ? "8px 11px" : "5px 8px",
             borderRadius: 7,
             fontSize: variant === "expanded" ? 12 : 11,
             fontWeight: 600,
             whiteSpace: "nowrap",
             pointerEvents: "none",
-            boxShadow: t.shadow,
+            boxShadow: V.shadow,
             zIndex: 5,
             lineHeight: 1.35,
           }}
@@ -247,16 +245,13 @@ export function FredChart({
 // Axes / gridlines for the expanded variant. Two horizontal grid lines
 // (min, max) with labels on the left, two date labels on the bottom (start,
 // end) — minimal and clean, doesn't fight the line.
-function ExpandedAxes({
-  t,
-  width,
+function ExpandedAxes({ width,
   height,
   min,
   max,
   firstDate,
   lastDate,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   width: number;
   height: number;
   min: number;
@@ -282,7 +277,7 @@ function ExpandedAxes({
             x2={width - 8}
             y1={yFor(v)}
             y2={yFor(v)}
-            stroke={t.line}
+            stroke={V.line}
             strokeWidth={1}
           />
           <text
@@ -291,7 +286,7 @@ function ExpandedAxes({
             textAnchor="end"
             style={{
               fontSize: 10,
-              fill: t.ink3,
+              fill: V.ink3,
               fontFeatureSettings: '"tnum"',
               fontFamily: "inherit",
             }}
@@ -305,7 +300,7 @@ function ExpandedAxes({
         x={padX}
         y={height - 6}
         textAnchor="start"
-        style={{ fontSize: 10, fill: t.ink3, fontFamily: "inherit" }}
+        style={{ fontSize: 10, fill: V.ink3, fontFamily: "inherit" }}
       >
         {firstDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
       </text>
@@ -313,7 +308,7 @@ function ExpandedAxes({
         x={width - 8}
         y={height - 6}
         textAnchor="end"
-        style={{ fontSize: 10, fill: t.ink3, fontFamily: "inherit" }}
+        style={{ fontSize: 10, fill: V.ink3, fontFamily: "inherit" }}
       >
         {lastDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
       </text>

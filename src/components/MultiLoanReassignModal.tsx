@@ -11,7 +11,7 @@
 // joined by loan_id so reassigning the loan implicitly carries them.
 
 import { useEffect, useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useLoans, useUpdateLoan } from "@/hooks/useApi";
@@ -29,7 +29,6 @@ interface Props {
 }
 
 export function MultiLoanReassignModal({ clientId, newBroker, brokerName, onClose }: Props) {
-  const { t } = useTheme();
   const { data: loans = [], isLoading } = useLoans();
   const update = useUpdateLoan();
 
@@ -122,8 +121,8 @@ export function MultiLoanReassignModal({ clientId, newBroker, brokerName, onClos
     >
       <div
         style={{
-          background: t.surface,
-          border: `1px solid ${t.line}`,
+          background: V.surface,
+          border: `1px solid ${V.line}`,
           borderRadius: 12,
           width: 560,
           maxWidth: "100%",
@@ -137,10 +136,10 @@ export function MultiLoanReassignModal({ clientId, newBroker, brokerName, onClos
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Icon name="user" size={16} stroke={2.2} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: t.ink }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: V.ink }}>
               Sweep loans onto {brokerName ?? "this agent"}?
             </div>
-            <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: V.ink3, marginTop: 2 }}>
               This client carries {candidates.length} open loan{candidates.length === 1 ? "" : "s"} on a
               different broker. Reassign them so this agent sees the full picture in their pipeline,
               or skip to keep the funding-side ownership where it is.
@@ -148,7 +147,7 @@ export function MultiLoanReassignModal({ clientId, newBroker, brokerName, onClos
           </div>
           <button
             onClick={onClose}
-            style={{ background: "transparent", border: "none", color: t.ink3, cursor: "pointer", padding: 4 }}
+            style={{ background: "transparent", border: "none", color: V.ink3, cursor: "pointer", padding: 4 }}
           >
             <Icon name="x" size={16} />
           </button>
@@ -166,8 +165,8 @@ export function MultiLoanReassignModal({ clientId, newBroker, brokerName, onClos
                   gap: 10,
                   padding: "10px 12px",
                   borderRadius: 8,
-                  border: `1px solid ${checked ? t.brand : t.line}`,
-                  background: checked ? t.brandSoft : t.surface2,
+                  border: `1px solid ${checked ? V.brand : V.line}`,
+                  background: checked ? V.brandSoft : V.surface2,
                   cursor: "pointer",
                 }}
               >
@@ -175,21 +174,21 @@ export function MultiLoanReassignModal({ clientId, newBroker, brokerName, onClos
                   type="checkbox"
                   checked={checked}
                   onChange={() => toggle(loan.id)}
-                  style={{ accentColor: t.brand }}
+                  style={{ accentColor: V.brand }}
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{loan.deal_id}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: V.ink }}>{loan.deal_id}</span>
                     <Pill>{loan.stage}</Pill>
-                    <span style={{ fontSize: 11, color: t.ink3 }}>
+                    <span style={{ fontSize: 11, color: V.ink3 }}>
                       {loan.type.replace(/_/g, " ")}
                     </span>
                   </div>
-                  <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>
+                  <div style={{ fontSize: 11.5, color: V.ink3, marginTop: 2 }}>
                     {loan.address}
                   </div>
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: t.ink2, fontFeatureSettings: '"tnum"' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: V.ink2, fontFeatureSettings: '"tnum"' }}>
                   {QC_FMT.short(Number(loan.amount))}
                 </div>
               </label>
@@ -197,19 +196,19 @@ export function MultiLoanReassignModal({ clientId, newBroker, brokerName, onClos
           })}
         </div>
 
-        {err ? <div style={{ fontSize: 12, color: t.danger }}>{err}</div> : null}
+        {err ? <div style={{ fontSize: 12, color: V.danger }}>{err}</div> : null}
 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-          <button onClick={onClose} disabled={busy} style={btnSecondary(t)}>
+          <button onClick={onClose} disabled={busy} style={btnSecondary()}>
             Skip — just the client
           </button>
-          <button onClick={() => sweep(true)} disabled={busy} style={btnSecondary(t)}>
+          <button onClick={() => sweep(true)} disabled={busy} style={btnSecondary()}>
             Sweep all
           </button>
           <button
             onClick={() => sweep(false)}
             disabled={busy || picked.size === 0}
-            style={btnPrimary(t, busy || picked.size === 0)}
+            style={btnPrimary(busy || picked.size === 0)}
           >
             {busy
               ? "Reassigning…"
@@ -223,29 +222,29 @@ export function MultiLoanReassignModal({ clientId, newBroker, brokerName, onClos
   );
 }
 
-function btnPrimary(t: ReturnType<typeof useTheme>["t"], disabled: boolean): React.CSSProperties {
+function btnPrimary(disabled: boolean): React.CSSProperties {
   return {
     padding: "8px 14px",
     fontSize: 12,
     fontWeight: 800,
     borderRadius: 6,
     border: "none",
-    background: t.brand,
-    color: t.inverse,
+    background: V.brand,
+    color: V.inverse,
     cursor: disabled ? "default" : "pointer",
     opacity: disabled ? 0.5 : 1,
   };
 }
 
-function btnSecondary(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
+function btnSecondary(): React.CSSProperties {
   return {
     padding: "8px 14px",
     fontSize: 12,
     fontWeight: 700,
     borderRadius: 6,
-    border: `1px solid ${t.line}`,
-    background: t.surface,
-    color: t.ink2,
+    border: `1px solid ${V.line}`,
+    background: V.surface,
+    color: V.ink2,
     cursor: "pointer",
   };
 }

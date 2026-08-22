@@ -4,7 +4,7 @@
 // CTA. Shared between TermsTab (per-loan) and the standalone Simulator page.
 
 import { useRouter } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V } from "@/components/design-system/cssVars";
 import { Card } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import type { EligibilityBanner as EligibilityBannerData } from "@/lib/eligibility";
@@ -20,23 +20,22 @@ const TARGET_HREF: Record<NonNullable<EligibilityBannerData["ctaTarget"]>, strin
 };
 
 export function EligibilityBanner({ banner }: { banner: EligibilityBannerData }) {
-  const { t } = useTheme();
   const router = useRouter();
 
   const palette = (() => {
     switch (banner.kind) {
       case "credit-blocked":
-        return { bg: t.dangerBg, fg: t.danger, icon: "lock" as const };
+        return { bg: V.dangerBg, fg: V.danger, icon: "lock" as const };
       case "credit-warn":
-        return { bg: t.warnBg, fg: t.warn, icon: "alert" as const };
+        return { bg: V.warnBg, fg: V.warn, icon: "alert" as const };
       case "experience":
-        return { bg: t.petrolSoft, fg: t.petrol, icon: "trend" as const };
+        return { bg: V.petrolSoft, fg: V.petrol, icon: "trend" as const };
       case "no-credit":
-        return { bg: t.brandSoft, fg: t.brand, icon: "shield" as const };
+        return { bg: V.brandSoft, fg: V.brand, icon: "shield" as const };
       case "credit-expired":
-        return { bg: t.dangerBg, fg: t.danger, icon: "refresh" as const };
+        return { bg: V.dangerBg, fg: V.danger, icon: "refresh" as const };
       case "credit-expiring":
-        return { bg: t.warnBg, fg: t.warn, icon: "refresh" as const };
+        return { bg: V.warnBg, fg: V.warn, icon: "refresh" as const };
     }
   })();
 
@@ -70,7 +69,7 @@ export function EligibilityBanner({ banner }: { banner: EligibilityBannerData })
           >
             {banner.title}
           </div>
-          <div style={{ fontSize: 12, color: t.ink2, marginTop: 4, lineHeight: 1.45 }}>{banner.body}</div>
+          <div style={{ fontSize: 12, color: V.ink2, marginTop: 4, lineHeight: 1.45 }}>{banner.body}</div>
           {banner.ctaLabel && banner.ctaTarget ? (
             <button
               onClick={() => router.push(TARGET_HREF[banner.ctaTarget!])}

@@ -13,7 +13,7 @@
 // onto the same agent in a single decision.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V } from "@/components/design-system/cssVars";
 import { Icon } from "@/components/design-system/Icon";
 import { useBrokers, useUpdateLoan } from "@/hooks/useApi";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
@@ -29,7 +29,6 @@ interface Props {
 }
 
 export function LoanAgentPicker({ loan, anchor, onClose }: Props) {
-  const { t } = useTheme();
   const { data: brokers = [], isLoading } = useBrokers();
   const update = useUpdateLoan();
 
@@ -117,8 +116,8 @@ export function LoanAgentPicker({ loan, anchor, onClose }: Props) {
         style={{
           ...popoverStyle,
           width: 280,
-          background: t.surface,
-          border: `1px solid ${t.line}`,
+          background: V.surface,
+          border: `1px solid ${V.line}`,
           borderRadius: 10,
           boxShadow: "0 18px 40px rgba(0,0,0,0.32)",
           padding: 10,
@@ -129,13 +128,13 @@ export function LoanAgentPicker({ loan, anchor, onClose }: Props) {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Icon name="user" size={12} stroke={2.2} />
-          <span style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>
+          <span style={{ fontSize: 10.5, fontWeight: 900, color: V.ink3, letterSpacing: 1, textTransform: "uppercase" }}>
             Reassign agent
           </span>
           <span style={{ flex: 1 }} />
           <button
             onClick={onClose}
-            style={{ background: "transparent", border: "none", color: t.ink3, cursor: "pointer", padding: 2 }}
+            style={{ background: "transparent", border: "none", color: V.ink3, cursor: "pointer", padding: 2 }}
           >
             <Icon name="x" size={12} />
           </button>
@@ -150,9 +149,9 @@ export function LoanAgentPicker({ loan, anchor, onClose }: Props) {
             padding: "7px 9px",
             fontSize: 12.5,
             borderRadius: 6,
-            border: `1px solid ${t.line}`,
-            background: t.surface2,
-            color: t.ink,
+            border: `1px solid ${V.line}`,
+            background: V.surface2,
+            color: V.ink,
             outline: "none",
           }}
         />
@@ -167,9 +166,9 @@ export function LoanAgentPicker({ loan, anchor, onClose }: Props) {
           }}
         >
           {isLoading ? (
-            <div style={{ padding: 10, fontSize: 12, color: t.ink3 }}>Loading agents…</div>
+            <div style={{ padding: 10, fontSize: 12, color: V.ink3 }}>Loading agents…</div>
           ) : filtered.length === 0 ? (
-            <div style={{ padding: 10, fontSize: 12, color: t.ink3 }}>
+            <div style={{ padding: 10, fontSize: 12, color: V.ink3 }}>
               {search ? "No agents match that search." : "No agents available."}
             </div>
           ) : (
@@ -187,8 +186,8 @@ export function LoanAgentPicker({ loan, anchor, onClose }: Props) {
                     padding: "8px 10px",
                     borderRadius: 6,
                     border: "none",
-                    background: isCurrent ? t.brandSoft : "transparent",
-                    color: t.ink,
+                    background: isCurrent ? V.brandSoft : "transparent",
+                    color: V.ink,
                     fontSize: 12.5,
                     cursor: busy || isCurrent ? "default" : "pointer",
                     textAlign: "left",
@@ -196,7 +195,7 @@ export function LoanAgentPicker({ loan, anchor, onClose }: Props) {
                     opacity: busy && !isCurrent ? 0.6 : 1,
                   }}
                   onMouseOver={(e) => {
-                    if (!isCurrent && !busy) (e.currentTarget as HTMLElement).style.background = t.surface2;
+                    if (!isCurrent && !busy) (e.currentTarget as HTMLElement).style.background = V.surface2;
                   }}
                   onMouseOut={(e) => {
                     if (!isCurrent) (e.currentTarget as HTMLElement).style.background = "transparent";
@@ -204,7 +203,7 @@ export function LoanAgentPicker({ loan, anchor, onClose }: Props) {
                 >
                   <span style={{ flex: 1 }}>{b.display_name}</span>
                   {isCurrent ? (
-                    <span style={{ fontSize: 10, fontWeight: 800, color: t.brand, letterSpacing: 0.5 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, color: V.brand, letterSpacing: 0.5 }}>
                       CURRENT
                     </span>
                   ) : null}
@@ -223,9 +222,9 @@ export function LoanAgentPicker({ loan, anchor, onClose }: Props) {
               fontSize: 11.5,
               fontWeight: 700,
               borderRadius: 6,
-              border: `1px solid ${t.line}`,
-              background: t.surface2,
-              color: t.danger,
+              border: `1px solid ${V.line}`,
+              background: V.surface2,
+              color: V.danger,
               cursor: busy ? "default" : "pointer",
               opacity: busy ? 0.6 : 1,
             }}
@@ -234,7 +233,7 @@ export function LoanAgentPicker({ loan, anchor, onClose }: Props) {
           </button>
         ) : null}
 
-        {err ? <div style={{ fontSize: 11.5, color: t.danger }}>{err}</div> : null}
+        {err ? <div style={{ fontSize: 11.5, color: V.danger }}>{err}</div> : null}
       </div>
 
       {sweepFor ? (

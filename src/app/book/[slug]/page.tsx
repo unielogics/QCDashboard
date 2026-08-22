@@ -26,6 +26,7 @@
 // host-accent colour stays inline because it is data, not design.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { V } from "@/components/design-system/cssVars";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { Card, Textarea, cx } from "@/components/ds";
@@ -82,7 +83,7 @@ function onAccent(hex: string): string {
     return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
   });
   const L = 0.2126 * chan[0] + 0.7152 * chan[1] + 0.0722 * chan[2];
-  return L > 0.45 ? t.ink : "#FFFFFF";
+  return L > 0.45 ? V.ink : "#FFFFFF";
 }
 
 export default function PublicBookingPage() {
@@ -131,7 +132,7 @@ export default function PublicBookingPage() {
     return groups;
   }, [profile]);
 
-  const accent = profile?.primary_color || t.brand;
+  const accent = profile?.primary_color || V.brand;
   const accentInk = onAccent(accent);
   const activeDay = days[Math.min(dayIndex, Math.max(0, days.length - 1))];
 

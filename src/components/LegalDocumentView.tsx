@@ -5,7 +5,7 @@
 // hit the page from the in-app footer.
 
 import Link from "next/link";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V } from "@/components/design-system/cssVars";
 import { Card } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import type { LegalDocument } from "@/lib/legal";
@@ -27,14 +27,13 @@ const CHROME_COPY: Record<Lang, { backToApp: string; effectiveDate: string }> = 
 };
 
 export function LegalDocumentView({ doc, peerHref, peerLabel, language = "en" }: Props) {
-  const { t } = useTheme();
   const cc = CHROME_COPY[language];
   return (
     <div
       style={{
-        background: t.bg,
+        background: V.bg,
         minHeight: "100vh",
-        color: t.ink,
+        color: V.ink,
         padding: "32px 24px 80px",
       }}
     >
@@ -47,7 +46,7 @@ export function LegalDocumentView({ doc, peerHref, peerLabel, language = "en" }:
               display: "inline-flex",
               alignItems: "center",
               gap: 6,
-              color: t.petrol,
+              color: V.petrol,
               fontSize: 12,
               fontWeight: 700,
               textDecoration: "none",
@@ -61,7 +60,7 @@ export function LegalDocumentView({ doc, peerHref, peerLabel, language = "en" }:
               fontWeight: 700,
               letterSpacing: 1.6,
               textTransform: "uppercase",
-              color: t.petrol,
+              color: V.petrol,
             }}
           >
             {COMPANY_NAME}
@@ -70,17 +69,17 @@ export function LegalDocumentView({ doc, peerHref, peerLabel, language = "en" }:
 
         {/* Title */}
         <div>
-          <h1 style={{ fontSize: 32, fontWeight: 800, color: t.ink, margin: 0, letterSpacing: -0.6 }}>
+          <h1 style={{ fontSize: 32, fontWeight: 800, color: V.ink, margin: 0, letterSpacing: -0.6 }}>
             {doc.title}
           </h1>
-          <div style={{ fontSize: 12.5, color: t.ink3, marginTop: 6 }}>
+          <div style={{ fontSize: 12.5, color: V.ink3, marginTop: 6 }}>
             {cc.effectiveDate} {doc.effectiveDate}
           </div>
         </div>
 
         {doc.preamble && (
           <Card pad={16}>
-            <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.6 }}>{doc.preamble}</div>
+            <div style={{ fontSize: 13, color: V.ink2, lineHeight: 1.6 }}>{doc.preamble}</div>
           </Card>
         )}
 
@@ -94,7 +93,7 @@ export function LegalDocumentView({ doc, peerHref, peerLabel, language = "en" }:
                     style={{
                       fontSize: 16,
                       fontWeight: 800,
-                      color: t.ink,
+                      color: V.ink,
                       margin: "0 0 8px",
                       letterSpacing: -0.2,
                     }}
@@ -107,7 +106,7 @@ export function LegalDocumentView({ doc, peerHref, peerLabel, language = "en" }:
                     key={j}
                     style={{
                       fontSize: 13.5,
-                      color: t.ink2,
+                      color: V.ink2,
                       lineHeight: 1.7,
                       margin: "0 0 8px",
                     }}
@@ -127,7 +126,7 @@ export function LegalDocumentView({ doc, peerHref, peerLabel, language = "en" }:
             alignItems: "center",
             justifyContent: "space-between",
             fontSize: 12,
-            color: t.ink3,
+            color: V.ink3,
             paddingTop: 8,
           }}
         >
@@ -136,7 +135,7 @@ export function LegalDocumentView({ doc, peerHref, peerLabel, language = "en" }:
           </span>
           <Link
             href={peerHref}
-            style={{ color: t.petrol, fontWeight: 700, textDecoration: "none" }}
+            style={{ color: V.petrol, fontWeight: 700, textDecoration: "none" }}
           >
             {peerLabel} →
           </Link>

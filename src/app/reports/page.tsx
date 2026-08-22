@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, type ReactNode } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V } from "@/components/design-system/cssVars";
 import { Sparkline } from "@/components/design-system/primitives";
 import {
   CG,
@@ -68,7 +68,6 @@ export default function ReportsPage() {
   // Kept only for the Sparkline `color` prop: that primitive writes the value
   // into SVG presentation attributes, where a `var(--ok)` reference is not
   // reliably resolved. Everything else on this page is on the stylesheet.
-  const { t } = useTheme();
   const { data: loans = [] } = useLoans();
   const { data: report } = useDashboardReport();
 
@@ -135,7 +134,7 @@ export default function ReportsPage() {
             <span className="sub">YTD</span>
           </div>
           <div className="mt">
-            <Sparkline data={monthlyFunded} color={t.profit} width={520} height={80} fill />
+            <Sparkline data={monthlyFunded} color={V.profit} width={520} height={80} fill />
           </div>
           <div
             className="sub"

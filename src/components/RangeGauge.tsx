@@ -10,7 +10,7 @@
 // dimmed with a small lock glyph. When `binding` is set, the matching
 // tick is recolored with the warn token to highlight the constraint.
 
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V } from "@/components/design-system/cssVars";
 
 export interface RangeGaugeProps {
   current: number;            // 0..1 — current LTV/utilization
@@ -42,7 +42,6 @@ export function RangeGauge({
   height,
   showLabels = true,
 }: RangeGaugeProps) {
-  const { t } = useTheme();
   const safeMax = Math.max(0.001, Math.min(1, max));
   const safeCurrent = Math.max(0, Math.min(safeMax, current));
 
@@ -57,7 +56,7 @@ export function RangeGauge({
 
   const xFor = (v: number): number => PAD_X + ((v / scaleMax) * (width - PAD_X * 2));
 
-  const fillColor = binding ? t.warn : t.brand;
+  const fillColor = binding ? V.warn : V.brand;
 
   return (
     <svg
@@ -75,8 +74,8 @@ export function RangeGauge({
         width={width - PAD_X * 2}
         height={TRACK_HEIGHT}
         rx={TRACK_HEIGHT / 2}
-        fill={t.surface2}
-        stroke={t.line}
+        fill={V.surface2}
+        stroke={V.line}
       />
 
       {/* Filled portion (current value) */}
@@ -97,7 +96,7 @@ export function RangeGauge({
         x2={xFor(safeMax)}
         y1={trackY - 3}
         y2={trackY + TRACK_HEIGHT + 3}
-        stroke={binding ? t.warn : t.ink2}
+        stroke={binding ? V.warn : V.ink2}
         strokeWidth={2}
       />
 
@@ -109,7 +108,7 @@ export function RangeGauge({
             x2={xFor(secondaryCap.at)}
             y1={trackY - 1}
             y2={trackY + TRACK_HEIGHT + 1}
-            stroke={t.ink3}
+            stroke={V.ink3}
             strokeWidth={1}
             strokeDasharray="3 2"
           />
@@ -118,7 +117,7 @@ export function RangeGauge({
               x={xFor(secondaryCap.at)}
               y={trackY + TRACK_HEIGHT + 14}
               fontSize={9}
-              fill={t.ink3}
+              fill={V.ink3}
               textAnchor="middle"
               fontWeight={600}
             >
@@ -139,7 +138,7 @@ export function RangeGauge({
               x2={tx}
               y1={trackY + TRACK_HEIGHT}
               y2={trackY + TRACK_HEIGHT + 4}
-              stroke={t.ink3}
+              stroke={V.ink3}
               strokeWidth={1}
             />
             {showLabels && (
@@ -147,7 +146,7 @@ export function RangeGauge({
                 x={tx}
                 y={trackY + TRACK_HEIGHT + 14}
                 fontSize={9}
-                fill={t.ink3}
+                fill={V.ink3}
                 textAnchor="middle"
                 fontWeight={600}
               >
@@ -160,7 +159,7 @@ export function RangeGauge({
 
       {/* External markers (e.g. payoff position) */}
       {markers.map((m, i) => {
-        const tone = m.tone === "warn" ? t.warn : t.ink3;
+        const tone = m.tone === "warn" ? V.warn : V.ink3;
         const mx = xFor(m.at);
         return (
           <g key={i}>
@@ -187,7 +186,7 @@ export function RangeGauge({
         cy={trackY + TRACK_HEIGHT / 2}
         r={6}
         fill={fillColor}
-        stroke={t.surface}
+        stroke={V.surface}
         strokeWidth={2}
       />
     </svg>

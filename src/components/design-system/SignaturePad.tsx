@@ -11,7 +11,6 @@
 
 import { forwardRef, useImperativeHandle, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { cx } from "@/components/ds";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 
 export type SignaturePadHandle = {
   getDataUrl: () => string;
@@ -19,12 +18,25 @@ export type SignaturePadHandle = {
   hasSignature: () => boolean;
 };
 
-export const SignaturePad = forwardRef<SignaturePadHandle, { width?: number; height?: number }>(
-  function SignaturePad({ width = 560, height = 150 }, ref) {
-    // `isDark` is always false now (ThemeProvider is a light-only shim), but
-    // the branch is kept rather than folded away — removing it is a separate
-    // decision from restyling.
-    const { isDark } = useTheme();
+export const SignaturePad = forwardRef<
+  SignaturePadHandle,
+  {
+    width?: number;
+    height?: number;
+    /**
+     * Draw in light ink, for a pad sitting on a dark ground.
+     *
+     * This is the one thing in the app that genuinely cannot be a class: the
+     * stroke goes INTO A BITMAP, so its colour has to be a JS value. It used
+     * to come from `useTheme().isDark` — which is why this component was the
+     * last thing keeping the theme hook alive after dark mode was removed.
+     * The public intake rooms are dark-ground and are the reason the branch
+     * survives at all; everything in the console leaves it off.
+     */
+    inkOnDark?: boolean;
+  }
+>(
+  function SignaturePad({ width = 560, height = 150, inkOnDark = false }, ref) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const drawing = useRef(false);
 
@@ -39,11 +51,11 @@ export const SignaturePad = forwardRef<SignaturePadHandle, { width?: number; hei
         ref={canvasRef}
         width={width}
         height={height}
-        onPointerDown={(e) => startDraw(e, canvasRef.current, drawing, isDark)}
+        onPointerDown={(e) => startDraw(e, canvasRef.current, drawing, inkOnDark)}
         onPointerMove={(e) => moveDraw(e, canvasRef.current, drawing)}
         onPointerUp={() => { drawing.current = false; }}
         onPointerLeave={() => { drawing.current = false; }}
-        className={cx("sigpad", isDark && "dark")}
+        className={cx("sigpad", inkOnDark && "dark")}
         // `height` is a prop and drives the CSS box as well as the canvas
         // bitmap, so the two cannot diverge.
         style={{ height }}
@@ -52,7 +64,7 @@ export const SignaturePad = forwardRef<SignaturePadHandle, { width?: number; hei
   },
 );
 
-function startDraw(event: ReactPointerEvent<HTMLCanvasElement>, canvas: HTMLCanvasElement | null, drawing: { current: boolean }, isDark: boolean) {
+function startDraw(event: ReactPointerEvent<HTMLCanvasElement>, canvas: HTMLCanvasElement | null, drawing: { current: boolean }, inkOnDark: boolean) {
   if (!canvas) return;
   drawing.current = true;
   const ctx = canvas.getContext("2d");
@@ -63,7 +75,7 @@ function startDraw(event: ReactPointerEvent<HTMLCanvasElement>, canvas: HTMLCanv
   ctx.lineJoin = "round";
   // Must contrast against the canvas background above (#080A10 dark / #F8FAFC
   // light) -- a fixed dark stroke was nearly invisible on the dark canvas.
-  ctx.strokeStyle = isDark ? "#F8FAFC" : "#111827";
+  ctx.strokeStyle = inkOnDark ? "#F8FAFC" : "#111827";
   ctx.beginPath();
   ctx.moveTo(pos.x, pos.y);
 }

@@ -4,7 +4,7 @@
 // Used in the Lender edit modal for "products serviced" — operator
 // taps a chip to add the product, taps again to remove it.
 
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V } from "@/components/design-system/cssVars";
 import { LoanType, LoanTypeOptions } from "@/lib/enums.generated";
 
 interface Props {
@@ -14,7 +14,6 @@ interface Props {
 }
 
 export function LoanTypeChips({ selected, onChange, disabled = false }: Props) {
-  const { t } = useTheme();
   const set = new Set<string>(selected);
 
   const toggle = (value: LoanType) => {
@@ -44,9 +43,9 @@ export function LoanTypeChips({ selected, onChange, disabled = false }: Props) {
               cursor: disabled ? "not-allowed" : "pointer",
               padding: "7px 12px",
               borderRadius: 999,
-              border: `1px solid ${isOn ? t.petrol : t.line}`,
-              background: isOn ? t.brandSoft : "transparent",
-              color: isOn ? t.brand : t.ink2,
+              border: `1px solid ${isOn ? V.petrol : V.line}`,
+              background: isOn ? V.brandSoft : "transparent",
+              color: isOn ? V.brand : V.ink2,
               fontSize: 12.5,
               fontWeight: isOn ? 700 : 500,
               letterSpacing: -0.1,

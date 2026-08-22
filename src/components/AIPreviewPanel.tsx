@@ -7,13 +7,13 @@
 // (agent-only) and a cadence dry-run preview. Persists nothing.
 
 import { useState } from "react";
+import { V, type CssVars } from "@/components/design-system/cssVars";
 import {
   useClients,
   usePreviewAIPlan,
   usePreviewCadence,
   usePreviewHandoffPacket,
 } from "@/hooks/useApi";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
 
 interface Props {
@@ -22,7 +22,6 @@ interface Props {
 }
 
 export function AIPreviewPanel({ mode }: Props) {
-  const { t } = useTheme();
   const { data: clients = [] } = useClients();
   const [clientId, setClientId] = useState<string>("");
 
@@ -37,7 +36,7 @@ export function AIPreviewPanel({ mode }: Props) {
   return (
     <Card pad={16}>
       <SectionLabel>AI Preview</SectionLabel>
-      <div style={{ fontSize: 12, color: t.ink3, marginTop: 4, marginBottom: 12 }}>
+      <div style={{ fontSize: 12, color: V.ink3, marginTop: 4, marginBottom: 12 }}>
         Run the AI's logic against a real (or test) client without saving anything.
       </div>
 
@@ -47,8 +46,8 @@ export function AIPreviewPanel({ mode }: Props) {
           onChange={e => setClientId(e.target.value)}
           style={{
             width: "100%", padding: 8, fontSize: 13,
-            borderRadius: 6, border: `1px solid ${t.line}`,
-            background: t.surface, color: t.ink,
+            borderRadius: 6, border: `1px solid ${V.line}`,
+            background: V.surface, color: V.ink,
           }}
         >
           <option value="">— Pick a client —</option>
@@ -63,7 +62,7 @@ export function AIPreviewPanel({ mode }: Props) {
           <button
             disabled={!clientId || plan.isPending}
             onClick={() => plan.mutate({ client_id: clientId })}
-            style={btn(t)}
+            style={btn()}
           >
             {plan.isPending ? "Running…" : "Preview AI Plan"}
           </button>
@@ -72,7 +71,7 @@ export function AIPreviewPanel({ mode }: Props) {
           <button
             disabled={!clientId || handoff.isPending}
             onClick={() => handoff.mutate(clientId)}
-            style={btn(t)}
+            style={btn()}
           >
             {handoff.isPending ? "Building…" : "Preview Handoff Packet"}
           </button>
@@ -81,7 +80,7 @@ export function AIPreviewPanel({ mode }: Props) {
           <button
             disabled={cadence.isPending}
             onClick={() => cadence.mutate({ client_id: clientId || null })}
-            style={btn(t)}
+            style={btn()}
           >
             {cadence.isPending ? "Computing…" : "Preview Cadence Actions"}
           </button>
@@ -89,7 +88,7 @@ export function AIPreviewPanel({ mode }: Props) {
       </div>
 
       {plan.data ? (
-        <PreviewBlock title="Plan preview" t={t}>
+        <PreviewBlock title="Plan preview">
           <Field label="Phase">{plan.data.current_phase}</Field>
           <Field label="Readiness">{plan.data.readiness_score ?? 0}%</Field>
           <Field label="Next-best question">{plan.data.next_best_question || "—"}</Field>
@@ -98,7 +97,7 @@ export function AIPreviewPanel({ mode }: Props) {
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {plan.data.required_items.map(i => (
                   <li key={i.requirement_key} style={{ fontSize: 12 }}>
-                    {i.label} <span style={{ color: t.ink3 }}>({i.required_level}, src={i.source}, status={i.status})</span>
+                    {i.label} <span style={{ color: V.ink3 }}>({i.required_level}, src={i.source}, status={i.status})</span>
                   </li>
                 ))}
               </ul>
@@ -108,25 +107,25 @@ export function AIPreviewPanel({ mode }: Props) {
       ) : null}
 
       {handoff.data ? (
-        <PreviewBlock title="Handoff packet preview" t={t}>
-          <Field label="Summary"><pre style={preStyle(t)}>{handoff.data.handoff_summary || "—"}</pre></Field>
+        <PreviewBlock title="Handoff packet preview">
+          <Field label="Summary"><pre style={preStyle()}>{handoff.data.handoff_summary || "—"}</pre></Field>
           <Field label="Missing lending items">{(handoff.data.missing_lending_items || []).join(", ") || "—"}</Field>
           <Field label="First lending question">{handoff.data.first_lending_question || "—"}</Field>
           <Field label="Recommended path">
-            <pre style={preStyle(t)}>{JSON.stringify(handoff.data.recommended_lending_path || {}, null, 2)}</pre>
+            <pre style={preStyle()}>{JSON.stringify(handoff.data.recommended_lending_path || {}, null, 2)}</pre>
           </Field>
         </PreviewBlock>
       ) : null}
 
       {cadence.data ? (
-        <PreviewBlock title="Cadence actions that would fire today" t={t}>
+        <PreviewBlock title="Cadence actions that would fire today">
           {cadence.data.length === 0 ? (
-            <div style={{ fontSize: 12, color: t.ink3 }}>No rules fire right now.</div>
+            <div style={{ fontSize: 12, color: V.ink3 }}>No rules fire right now.</div>
           ) : cadence.data.map((c, i) => (
-            <div key={i} style={{ padding: 8, borderBottom: `1px solid ${t.line}`, fontSize: 12 }}>
+            <div key={i} style={{ padding: 8, borderBottom: `1px solid ${V.line}`, fontSize: 12 }}>
               <strong>{c.action_type}</strong> for {c.client_name} ({c.trigger_event})
               {c.message_preview ? (
-                <div style={{ color: t.ink3, marginTop: 4 }}>{c.message_preview}</div>
+                <div style={{ color: V.ink3, marginTop: 4 }}>{c.message_preview}</div>
               ) : null}
             </div>
           ))}
@@ -136,14 +135,14 @@ export function AIPreviewPanel({ mode }: Props) {
   );
 }
 
-function PreviewBlock({ title, children, t }: { title: string; children: React.ReactNode; t: ReturnType<typeof useTheme>["t"] }) {
+function PreviewBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{
       marginTop: 14, padding: 12,
-      border: `1px dashed ${t.line}`, borderRadius: 8,
-      background: t.surface2,
+      border: `1px dashed ${V.line}`, borderRadius: 8,
+      background: V.surface2,
     }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, marginBottom: 8, textTransform: "uppercase" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: V.ink3, marginBottom: 8, textTransform: "uppercase" }}>
         {title}
       </div>
       {children}
@@ -160,19 +159,19 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function btn(t: ReturnType<typeof useTheme>["t"]) {
+function btn() {
   return {
     padding: "6px 12px", fontSize: 12, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.surface, color: t.ink, cursor: "pointer",
+    borderRadius: 6, border: `1px solid ${V.line}`,
+    background: V.surface, color: V.ink, cursor: "pointer",
   } as const;
 }
 
-function preStyle(t: ReturnType<typeof useTheme>["t"]) {
+function preStyle() {
   return {
-    background: t.surface, padding: 8, borderRadius: 6,
+    background: V.surface, padding: 8, borderRadius: 6,
     fontSize: 11, lineHeight: 1.4, overflowX: "auto" as const,
-    border: `1px solid ${t.line}`, color: t.ink,
+    border: `1px solid ${V.line}`, color: V.ink,
     margin: 0, whiteSpace: "pre-wrap" as const,
   } as const;
 }

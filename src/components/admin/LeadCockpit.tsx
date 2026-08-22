@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Icon } from "@/components/design-system/Icon";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { TypingDots } from "@/components/design-system/TypingDots";
 import { FileDropzone } from "@/components/design-system/FileDropzone";
 import { Btn, Callout, CellChip, cx, IconBtn, ItemRow, Lbl, type ChipTone } from "@/components/ds";
@@ -78,7 +78,7 @@ type QueuedFile = { id: string; file: File; status: "ready" | "uploading" | "upl
  * Interactive admin cockpit for an AI Underwriter lead: a live chat + file
  * upload panel beside a live intelligence panel (fundability, KPIs, evidence
  * coverage, next step). Mirrors the client experience but is laid out for the
- * admin modal and themed via useTheme(). Reuses the shared intake helpers.
+ * admin modal. Reuses the shared intake helpers.
  */
 export function LeadCockpit({
   response,
@@ -98,7 +98,6 @@ export function LeadCockpit({
    *  running inline. */
   onRequestRerun?: () => void;
 }) {
-  const { t } = useTheme();
   const [current, setCurrent] = useState<IntakeResponse>(response);
   const seedChat = (msgs?: Array<{ id: string; role: string; content: string; created_at?: string }>): ChatLine[] =>
     (msgs ?? []).map((m) => ({
@@ -557,21 +556,21 @@ export function LeadCockpit({
               ) : null}
 
               <div style={chartGrid}>
-                <div style={chartCard(t)}>
+                <div style={chartCard()}>
                   <div style={chartHeader}>
                     <strong>Debt service coverage</strong>
                   </div>
                   <GaugeChart value={intelligence.dscr.raw} />
                 </div>
 
-                <div style={chartCard(t)}>
+                <div style={chartCard()}>
                   <div style={chartHeader}>
                     <strong>Real estate equity / LTV</strong>
                   </div>
                   <EquityChart equity={intelligence.equity.raw} ltv={intelligence.ltv.raw} />
                 </div>
 
-                <div style={chartCardWide(t)}>
+                <div style={chartCardWide()}>
                   <div style={chartHeader}>
                     <strong>Cash flow stack</strong>
                     <span className="sub">Revenue / cash flow / debt service</span>
@@ -579,7 +578,7 @@ export function LeadCockpit({
                   <CashFlowBars bars={intelligence.cashFlowBars} />
                 </div>
 
-                <div style={chartCard(t)}>
+                <div style={chartCard()}>
                   <div style={chartHeader}>
                     <strong>Year-to-year performance</strong>
                     <span className="sub">Tax / P&amp;L trend</span>
@@ -587,7 +586,7 @@ export function LeadCockpit({
                   <MiniBarChart series={intelligence.yearlySeries} emptyLabel="Awaiting tax returns and YTD P&L figures." />
                 </div>
 
-                <div style={chartCard(t)}>
+                <div style={chartCard()}>
                   <div style={chartHeader}>
                     <strong>Month-to-month cash flow</strong>
                     <span className="sub">Bank statement trend</span>
@@ -597,14 +596,14 @@ export function LeadCockpit({
               </div>
 
               <div style={intelligenceTables}>
-                <div style={chartCard(t)}>
+                <div style={chartCard()}>
                   <div style={chartHeader}>
                     <strong>Evidence coverage</strong>
                     <span className="sub">{current.files.length} files</span>
                   </div>
                   <EvidenceCoverageTable rows={intelligence.coverage} />
                 </div>
-                <div style={chartCard(t)}>
+                <div style={chartCard()}>
                   <div style={chartHeader}>
                     <strong>Still needed</strong>
                     <span className="sub">{intelligence.missing.length} items</span>
@@ -624,7 +623,7 @@ export function LeadCockpit({
               a brand-new lead with no documents should still let admin/broker
               request or fill out a PFS/debt-schedule immediately. */}
           {variant !== "real_estate_dscr_v1" && (adapter.requestPfs || adapter.requestDebtSchedule) ? (
-            <div style={chartCard(t)}>
+            <div style={chartCard()}>
               <div style={chartHeader}>
                 <strong>Financial forms</strong>
                 <span className="sub">{missingPfsOrDebtDocs.length} open</span>
@@ -711,7 +710,7 @@ function chipTone(tone: "green" | "red" | "amber"): ChipTone {
 // rather than deleted: removing them is a separate call, and `bannerTone` is
 // still the documented mapping for the pill/banner names.
 
-function bubble(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
+function bubble(): CSSProperties {
   return {
     borderRadius: 12,
     padding: "9px 12px",
@@ -719,20 +718,20 @@ function bubble(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
     lineHeight: 1.5,
     maxWidth: "82%",
     whiteSpace: "pre-wrap",
-    border: `1px solid ${t.line}`,
+    border: `1px solid ${V.line}`,
   };
 }
 
-function sectionLabel(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return { color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5 };
+function sectionLabel(): CSSProperties {
+  return { color: V.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5 };
 }
 
-function pill(t: ReturnType<typeof useTheme>["t"], tone: "neutral" | "profit" | "warn" | "danger"): CSSProperties {
+function pill(tone: "neutral" | "profit" | "warn" | "danger"): CSSProperties {
   const map = {
-    neutral: { bg: t.surface2, fg: t.ink2 },
-    profit: { bg: t.profitBg, fg: t.profit },
-    warn: { bg: t.warnBg, fg: t.warn },
-    danger: { bg: t.dangerBg, fg: t.danger },
+    neutral: { bg: V.surface2, fg: V.ink2 },
+    profit: { bg: V.profitBg, fg: V.profit },
+    warn: { bg: V.warnBg, fg: V.warn },
+    danger: { bg: V.dangerBg, fg: V.danger },
   }[tone];
   return { background: map.bg, color: map.fg, borderRadius: 999, padding: "3px 9px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" };
 }
@@ -744,15 +743,15 @@ function bannerTone(tone: "green" | "red" | "amber"): "profit" | "danger" | "war
   return "warn";
 }
 
-function banner(t: ReturnType<typeof useTheme>["t"], tone: "profit" | "danger" | "warn"): CSSProperties {
+function banner(tone: "profit" | "danger" | "warn"): CSSProperties {
   const isGood = tone === "profit";
   const isBad = tone === "danger";
   return {
     borderRadius: 12,
     padding: "11px 13px",
-    background: isGood ? t.profitBg : isBad ? t.dangerBg : t.warnBg,
-    color: isGood ? t.profit : isBad ? t.danger : t.warn,
-    border: `1px solid ${t.line}`,
+    background: isGood ? V.profitBg : isBad ? V.dangerBg : V.warnBg,
+    color: isGood ? V.profit : isBad ? V.danger : V.warn,
+    border: `1px solid ${V.line}`,
   };
 }
 

@@ -13,7 +13,7 @@
 // instance — open just stamps the right row's id into state.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V } from "@/components/design-system/cssVars";
 import { Icon } from "@/components/design-system/Icon";
 
 export interface ContextMenuItem {
@@ -54,7 +54,6 @@ export function ContextMenu<T>({
    *  row that was right-clicked. */
   items: ContextMenuItem[] | ((payload: T) => ContextMenuItem[]);
 }) {
-  const { t } = useTheme();
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -98,8 +97,8 @@ export function ContextMenu<T>({
         top, left,
         zIndex: 100,
         minWidth: MENU_W,
-        background: t.surface,
-        border: `1px solid ${t.lineStrong}`,
+        background: V.surface,
+        border: `1px solid ${V.lineStrong}`,
         borderRadius: 9,
         boxShadow: "0 14px 32px rgba(0,0,0,0.22), 0 2px 8px rgba(0,0,0,0.10)",
         padding: 4,
@@ -126,14 +125,14 @@ export function ContextMenu<T>({
             borderRadius: 6,
             fontSize: 12.5,
             fontWeight: 700,
-            color: item.disabled ? t.ink3 : item.tone === "danger" ? t.danger : t.ink,
+            color: item.disabled ? V.ink3 : item.tone === "danger" ? V.danger : V.ink,
             cursor: item.disabled ? "not-allowed" : "pointer",
             opacity: item.disabled ? 0.6 : 1,
             boxSizing: "border-box",
           }}
           onMouseEnter={(e) => {
             if (item.disabled) return;
-            e.currentTarget.style.background = item.tone === "danger" ? t.dangerBg : t.surface2;
+            e.currentTarget.style.background = item.tone === "danger" ? V.dangerBg : V.surface2;
           }}
           onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
         >
@@ -146,7 +145,7 @@ export function ContextMenu<T>({
           )}
           <span style={{ flex: 1 }}>{item.label}</span>
           {item.hint ? (
-            <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700 }}>{item.hint}</span>
+            <span style={{ fontSize: 10.5, color: V.ink3, fontWeight: 700 }}>{item.hint}</span>
           ) : null}
         </button>
       ))}

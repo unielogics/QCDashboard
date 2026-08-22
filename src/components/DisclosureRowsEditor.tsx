@@ -8,7 +8,7 @@
 // columns), a remove button per row, and an "Add" button. Starts empty --
 // nothing is disclosed until the signer adds a row.
 
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V } from "@/components/design-system/cssVars";
 import type { TableColumn } from "@/hooks/useApi";
 
 export type DisclosureRow = Record<string, string | boolean>;
@@ -24,7 +24,6 @@ export function DisclosureRowsEditor({
   onChange: (rows: DisclosureRow[]) => void;
   addLabel?: string;
 }) {
-  const { t } = useTheme();
 
   function addRow() {
     const blank: DisclosureRow = {};
@@ -48,19 +47,19 @@ export function DisclosureRowsEditor({
             <div
               key={i}
               style={{
-                border: `1px solid ${t.line}`,
+                border: `1px solid ${V.line}`,
                 borderRadius: 10,
                 padding: 10,
                 display: "grid",
                 gap: 8,
                 gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
                 alignItems: "end",
-                background: t.surface2,
+                background: V.surface2,
               }}
             >
               {columns.map((col) => (
                 <label key={col.key} style={{ display: "block", minWidth: 0 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.4, color: t.ink3, marginBottom: 3 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.4, color: V.ink3, marginBottom: 3 }}>
                     {col.label}
                   </div>
                   {col.input_type === "checkbox" ? (
@@ -74,7 +73,7 @@ export function DisclosureRowsEditor({
                     <select
                       value={(row[col.key] as string) || ""}
                       onChange={(e) => updateRow(i, col.key, e.target.value)}
-                      style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: 8, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, fontSize: 12.5 }}
+                      style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: 8, border: `1px solid ${V.line}`, background: V.surface, color: V.ink, fontSize: 12.5 }}
                     >
                       <option value="">Select…</option>
                       {(col.options || []).map((opt) => (
@@ -86,7 +85,7 @@ export function DisclosureRowsEditor({
                       type={col.input_type === "date" ? "date" : "text"}
                       value={(row[col.key] as string) || ""}
                       onChange={(e) => updateRow(i, col.key, e.target.value)}
-                      style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: 8, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, fontSize: 12.5 }}
+                      style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: 8, border: `1px solid ${V.line}`, background: V.surface, color: V.ink, fontSize: 12.5 }}
                     />
                   )}
                 </label>
@@ -94,7 +93,7 @@ export function DisclosureRowsEditor({
               <button
                 type="button"
                 onClick={() => removeRow(i)}
-                style={{ height: 32, border: `1px solid ${t.line}`, borderRadius: 8, background: "none", color: t.danger, fontSize: 12, cursor: "pointer" }}
+                style={{ height: 32, border: `1px solid ${V.line}`, borderRadius: 8, background: "none", color: V.danger, fontSize: 12, cursor: "pointer" }}
               >
                 Remove
               </button>
@@ -102,12 +101,12 @@ export function DisclosureRowsEditor({
           ))}
         </div>
       ) : (
-        <div style={{ fontSize: 12, color: t.ink3, fontStyle: "italic" }}>None disclosed yet.</div>
+        <div style={{ fontSize: 12, color: V.ink3, fontStyle: "italic" }}>None disclosed yet.</div>
       )}
       <button
         type="button"
         onClick={addRow}
-        style={{ alignSelf: "start", height: 32, padding: "0 12px", border: `1px solid ${t.petrol}`, borderRadius: 8, background: "none", color: t.petrol, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+        style={{ alignSelf: "start", height: 32, padding: "0 12px", border: `1px solid ${V.petrol}`, borderRadius: 8, background: "none", color: V.petrol, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
       >
         + {addLabel}
       </button>

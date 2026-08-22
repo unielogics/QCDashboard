@@ -7,7 +7,7 @@
 // open it from any tab. Previously rendered inside FundingFileTab;
 // extracted so the same component serves both surfaces.
 
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V } from "@/components/design-system/cssVars";
 import { Icon } from "@/components/design-system/Icon";
 import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
 import type { Document } from "@/lib/types";
@@ -37,7 +37,6 @@ export interface FileBlockersPopupProps {
 export function FileBlockersPopup({
   onClose, warnings, missingCriteria, flaggedDocs, openDocs, onOpenTab, onCriteriaJump,
 }: FileBlockersPopupProps) {
-  const { t } = useTheme();
   const total = warnings.length + missingCriteria.length + flaggedDocs.length + (openDocs.length > 0 ? 1 : 0);
   return (
     <div
@@ -54,8 +53,8 @@ export function FileBlockersPopup({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: t.surface, color: t.ink,
-          border: `1px solid ${t.line}`, borderRadius: 14,
+          background: V.surface, color: V.ink,
+          border: `1px solid ${V.line}`, borderRadius: 14,
           boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
           width: "min(640px, 100%)", maxHeight: "85vh", overflow: "hidden",
           display: "flex", flexDirection: "column",
@@ -63,14 +62,14 @@ export function FileBlockersPopup({
       >
         <div style={{
           padding: "14px 16px",
-          borderBottom: `1px solid ${t.line}`,
+          borderBottom: `1px solid ${V.line}`,
           display: "flex", justifyContent: "space-between", alignItems: "center",
         }}>
           <div>
-            <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
+            <div style={{ fontSize: 10.5, fontWeight: 900, color: V.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
               File Blockers
             </div>
-            <div style={{ marginTop: 2, fontSize: 16, fontWeight: 900, color: t.ink }}>
+            <div style={{ marginTop: 2, fontSize: 16, fontWeight: 900, color: V.ink }}>
               {total === 0 ? "Nothing to fix — this file is clear" : `${total} item${total === 1 ? "" : "s"} need attention`}
             </div>
           </div>
@@ -107,9 +106,8 @@ function Row({
   meta: string;
   onClick?: () => void;
 }) {
-  const { t } = useTheme();
-  const color = tone === "ready" ? t.profit : tone === "watch" ? t.warn : tone === "danger" ? t.danger : t.ink3;
-  const bg = tone === "ready" ? t.profitBg : tone === "watch" ? t.warnBg : tone === "danger" ? t.dangerBg : t.surface2;
+  const color = tone === "ready" ? V.profit : tone === "watch" ? V.warn : tone === "danger" ? V.danger : V.ink3;
+  const bg = tone === "ready" ? V.profitBg : tone === "watch" ? V.warnBg : tone === "danger" ? V.dangerBg : V.surface2;
   return (
     <button
       type="button"
@@ -121,8 +119,8 @@ function Row({
         alignItems: "center",
         padding: 10,
         borderRadius: 12,
-        border: `1px solid ${t.line}`,
-        background: tone === "open" ? t.surface2 : bg,
+        border: `1px solid ${V.line}`,
+        background: tone === "open" ? V.surface2 : bg,
         cursor: onClick ? "pointer" : "default",
         textAlign: "left",
         fontFamily: "inherit",
@@ -132,16 +130,16 @@ function Row({
         style={{
           width: 30, height: 30, borderRadius: 9,
           display: "grid", placeItems: "center",
-          color, background: tone === "open" ? t.chip : t.surface,
+          color, background: tone === "open" ? V.chip : V.surface,
         }}
       >
         <Icon name={icon} size={14} />
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 900, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div style={{ fontSize: 12.5, fontWeight: 900, color: V.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {title}
         </div>
-        <div style={{ marginTop: 2, fontSize: 11, fontWeight: 700, color: t.ink3 }}>{meta}</div>
+        <div style={{ marginTop: 2, fontSize: 11, fontWeight: 700, color: V.ink3 }}>{meta}</div>
       </div>
       {onClick ? <Icon name="arrowR" size={12} /> : null}
     </button>

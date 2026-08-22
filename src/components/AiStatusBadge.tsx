@@ -3,7 +3,7 @@
 // Single source of truth for the AI status chip. Used by the agent
 // pipeline (LeadsPipelineView) and the /deals/[id] file header.
 
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { V } from "@/components/design-system/cssVars";
 import type { WorkspaceAiState } from "@/lib/types";
 
 const LABELS: Record<WorkspaceAiState, string> = {
@@ -23,13 +23,12 @@ export function AiStatusBadge({
   size?: "sm" | "md";
   tooltip?: string;
 }) {
-  const { t } = useTheme();
   const palette = {
-    deployed: { bg: t.brandSoft, fg: t.brand },
-    paused: { bg: t.surface2, fg: t.ink3 },
-    draft_first: { bg: t.surface2, fg: t.ink2 },
-    human_only: { bg: t.chip, fg: t.ink2 },
-    idle: { bg: t.surface2, fg: t.ink3 },
+    deployed: { bg: V.brandSoft, fg: V.brand },
+    paused: { bg: V.surface2, fg: V.ink3 },
+    draft_first: { bg: V.surface2, fg: V.ink2 },
+    human_only: { bg: V.chip, fg: V.ink2 },
+    idle: { bg: V.surface2, fg: V.ink3 },
   } as const;
   const c = palette[state];
   const pad = size === "sm" ? "1px 6px" : "2px 8px";

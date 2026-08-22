@@ -13,7 +13,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import {
   Btn,
   CG,
@@ -112,7 +111,6 @@ const LOAN_TYPE_OPTIONS: { value: LoanType; label: string }[] = [
 type Mode = "free" | "loan";
 
 export default function SimulatorPage() {
-  const { t } = useTheme();
   const { data: user } = useCurrentUser();
   const { data: loans = [] } = useLoans();
   const { data: settings } = useSettings();
@@ -247,7 +245,7 @@ export default function SimulatorPage() {
         }
       />
 
-      {mode === "free" ? <FreeCalcMode t={t} sim={sim} /> : <FromLoanMode sim={sim} loans={loans} />}
+      {mode === "free" ? <FreeCalcMode sim={sim} /> : <FromLoanMode sim={sim} loans={loans} />}
     </div>
   );
 }
@@ -888,9 +886,7 @@ function analysisProductFor(type: LoanType): AnalysisProduct | null {
   return null;
 }
 
-// `t` survives here for exactly one reason: <ClientSearchBlock> still takes a
-// token object as a required prop. Nothing else in this component reads it.
-function FreeCalcMode({ t, sim }: { t: ReturnType<typeof useTheme>["t"]; sim: SimulatorSettings }) {
+function FreeCalcMode({ sim }: { sim: SimulatorSettings }) {
   const calc = useFreeCalc();
   const { data: fred } = useFredSeries();
   const createAnalysis = useCreateAnalysisRun();

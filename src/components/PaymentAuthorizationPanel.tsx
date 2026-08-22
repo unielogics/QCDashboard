@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { V } from "@/components/design-system/cssVars";
 import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { SignaturePad, type SignaturePadHandle } from "@/components/design-system/SignaturePad";
@@ -29,7 +29,6 @@ const EMPTY_BILLING: BillingAddress = {
 };
 
 export function PaymentAuthorizationPanel() {
-  const { t } = useTheme();
   const status = usePaymentAuthorizationStatus();
   const publishableKey = status.data?.stripe_publishable_key;
   const stripePromise = useMemo<Promise<Stripe | null> | null>(
@@ -41,7 +40,7 @@ export function PaymentAuthorizationPanel() {
     return (
       <Card pad={20}>
         <SectionLabel>Payment authorization required</SectionLabel>
-        <p style={{ color: t.ink2, fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+        <p style={{ color: V.ink2, fontSize: 13, lineHeight: 1.6, margin: 0 }}>
           Stripe is not configured yet. Contact Qualified Commercial before running credit.
         </p>
       </Card>
@@ -56,7 +55,6 @@ export function PaymentAuthorizationPanel() {
 }
 
 function PaymentAuthorizationInner() {
-  const { t } = useTheme();
   const { data: user } = useCurrentUser();
   const status = usePaymentAuthorizationStatus();
   const start = useStartPaymentAuthorization();
@@ -151,15 +149,15 @@ function PaymentAuthorizationInner() {
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Card pad={20}>
         <SectionLabel>Payment authorization required</SectionLabel>
-        <p style={{ color: t.ink2, fontSize: 13, lineHeight: 1.6, marginTop: 0 }}>
+        <p style={{ color: V.ink2, fontSize: 13, lineHeight: 1.6, marginTop: 0 }}>
           Credit pulls and credit-derived terms unlock after you sign the payment authorization and securely save a card through Stripe. The app remains available for non-credit workflows.
         </p>
         {!started ? (
-          <button onClick={begin} style={qcBtnPrimary(t)} disabled={start.isPending}>
+          <button onClick={begin} style={qcBtnPrimary()} disabled={start.isPending}>
             Begin authorization
           </button>
         ) : (
-          <p style={{ color: t.ink3, fontSize: 12, lineHeight: 1.55, margin: 0, maxHeight: 120, overflow: "auto" }}>
+          <p style={{ color: V.ink3, fontSize: 12, lineHeight: 1.55, margin: 0, maxHeight: 120, overflow: "auto" }}>
             {started.document.text}
           </p>
         )}
@@ -176,9 +174,9 @@ function PaymentAuthorizationInner() {
           <Card pad={20}>
             <SectionLabel>Signer</SectionLabel>
             <Field label="Legal name" value={typedName} onChange={setTypedName} />
-            <div style={{ marginTop: 10, fontSize: 11, color: t.ink3, fontWeight: 700 }}>Draw signature</div>
+            <div style={{ marginTop: 10, fontSize: 11, color: V.ink3, fontWeight: 700 }}>Draw signature</div>
             <SignaturePad ref={sigPadRef} />
-            <button onClick={() => sigPadRef.current?.clear()} style={{ ...qcBtn(t), marginTop: 10 }}>Clear signature</button>
+            <button onClick={() => sigPadRef.current?.clear()} style={{ ...qcBtn(), marginTop: 10 }}>Clear signature</button>
           </Card>
 
           <Card pad={20}>
@@ -196,16 +194,16 @@ function PaymentAuthorizationInner() {
 
           <Card pad={20}>
             <SectionLabel>Secure card</SectionLabel>
-            <p style={{ color: t.ink3, fontSize: 12.5, lineHeight: 1.5, marginTop: 0 }}>
+            <p style={{ color: V.ink3, fontSize: 12.5, lineHeight: 1.5, marginTop: 0 }}>
               Card details are collected by Stripe. Qualified Commercial stores only the Stripe token and card metadata.
             </p>
-            <div style={{ padding: 12, borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface2 }}>
-              <CardElement options={{ style: { base: { color: t.ink, fontSize: "15px", "::placeholder": { color: t.ink3 } } } }} />
+            <div style={{ padding: 12, borderRadius: 10, border: `1px solid ${V.line}`, background: V.surface2 }}>
+              <CardElement options={{ style: { base: { color: V.ink, fontSize: "15px", "::placeholder": { color: V.ink3 } } } }} />
             </div>
           </Card>
 
-          {error ? <div style={{ color: t.danger, fontSize: 13, fontWeight: 700 }}>{error}</div> : null}
-          <button onClick={submit} style={qcBtnPrimary(t)} disabled={setup.isPending || complete.isPending || start.isPending}>
+          {error ? <div style={{ color: V.danger, fontSize: 13, fontWeight: 700 }}>{error}</div> : null}
+          <button onClick={submit} style={qcBtnPrimary()} disabled={setup.isPending || complete.isPending || start.isPending}>
             Complete authorization
           </button>
         </>
@@ -215,21 +213,19 @@ function PaymentAuthorizationInner() {
 }
 
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  const { t } = useTheme();
   return (
     <label style={{ display: "block", marginTop: 10 }}>
-      <div style={{ fontSize: 11, color: t.ink3, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 5 }}>{label}</div>
-      <input value={value} onChange={(e) => onChange(e.target.value)} style={{ width: "100%", borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface2, color: t.ink, padding: "11px 12px", fontSize: 14 }} />
+      <div style={{ fontSize: 11, color: V.ink3, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 5 }}>{label}</div>
+      <input value={value} onChange={(e) => onChange(e.target.value)} style={{ width: "100%", borderRadius: 10, border: `1px solid ${V.line}`, background: V.surface2, color: V.ink, padding: "11px 12px", fontSize: 14 }} />
     </label>
   );
 }
 
 function CheckRow({ label, checked, onClick }: { label: string; checked: boolean; onClick: () => void }) {
-  const { t } = useTheme();
   return (
     <button type="button" onClick={onClick} style={{ all: "unset", cursor: "pointer", display: "flex", gap: 10, alignItems: "flex-start", padding: "8px 0" }}>
-      <span style={{ width: 20, height: 20, borderRadius: 6, border: `1px solid ${checked ? t.petrol : t.lineStrong}`, background: checked ? t.petrol : "transparent", color: checked ? "#07110F" : "transparent", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 900 }}>✓</span>
-      <span style={{ color: t.ink2, fontSize: 13, lineHeight: 1.45 }}>{label}</span>
+      <span style={{ width: 20, height: 20, borderRadius: 6, border: `1px solid ${checked ? V.petrol : V.lineStrong}`, background: checked ? V.petrol : "transparent", color: checked ? "#07110F" : "transparent", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 900 }}>✓</span>
+      <span style={{ color: V.ink2, fontSize: 13, lineHeight: 1.45 }}>{label}</span>
     </button>
   );
 }

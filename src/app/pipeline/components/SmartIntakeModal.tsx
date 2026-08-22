@@ -30,7 +30,6 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, CellChip, IconBtn, Linky, Note as DSNote, Seg, WarnLine, cx } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
@@ -335,7 +334,6 @@ export function SmartIntakeModal({
   // can still tap "Choose different client" to clear it.
   prefillClient?: IntakePrefillClient | null;
 }) {
-  const { t } = useTheme();
   const router = useRouter();
   const createIntake = useCreateIntake();
   const { data: user } = useCurrentUser();
@@ -605,7 +603,6 @@ export function SmartIntakeModal({
       {/* Body — switch on step */}
       {step === 0 && (
         <BorrowerStepView
-          t={t}
           form={form}
           update={update}
           showSideToggle={showSideToggle}
@@ -789,7 +786,6 @@ interface StepProps {
 
 interface BorrowerStepProps extends StepProps {
   /** Only still here for <ClientSearchBlock>, which has not been migrated. */
-  t: QCTokens;
   showSideToggle: boolean;
   pickedClient: IntakePrefillClient | null;
   onPickClient: (c: IntakePrefillClient) => void;
@@ -797,7 +793,6 @@ interface BorrowerStepProps extends StepProps {
 }
 
 function BorrowerStepView({
-  t,
   form,
   update,
   showSideToggle,
