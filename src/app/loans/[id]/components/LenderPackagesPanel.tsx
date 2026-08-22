@@ -7,16 +7,7 @@
 // close, focus return and a body scroll lock that the old overlay never had.
 
 import { useMemo, useState, type ReactNode } from "react";
-import {
-  Btn,
-  CellChip,
-  Input,
-  Panel,
-  Select,
-  StatusLine,
-  Sub,
-  Textarea,
-} from "@/components/ds";
+import { Btn, CellChip, Empty, Input, Panel, Select, StatusLine, Sub, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import {
@@ -106,7 +97,9 @@ export function LenderPackagesPanel({ loan }: Props) {
           {error instanceof Error ? error.message : "Could not load lender packages."}
         </StatusLine>
       ) : packages.length === 0 && !isLoading ? (
-        <Sub>No secure lender packages have been created for this file yet.</Sub>
+        <Empty>
+          No secure lender packages have been created for this file yet.
+        </Empty>
       ) : (
         packages.map((pkg) => (
           <Panel

@@ -23,7 +23,7 @@
 // `.content` owns both.
 
 import { useEffect, useState } from "react";
-import { Btn, Field, Input, Panel, Row, Seg, Sub, Textarea } from "@/components/ds";
+import { Btn, Field, Input, Loading, Panel, Row, Seg, Sub, Textarea } from "@/components/ds";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 import {
@@ -103,7 +103,7 @@ export default function AIIdentityPage() {
       {isAINotDeployed(idErr) ? (
         <AINotDeployedBanner surface="Lending AI" />
       ) : isLoading ? (
-        <Panel><Sub>Loading…</Sub></Panel>
+        <Panel><Loading>Loading…</Loading></Panel>
       ) : (
         <>
           {/* ── Identity ────────────────────────────────────────── */}

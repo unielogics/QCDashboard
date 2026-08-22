@@ -22,20 +22,7 @@
 //   Pill                      → CellChip tone
 
 import { useMemo, useState } from "react";
-import {
-  Btn,
-  CellChip,
-  Input,
-  Linky,
-  PageHeader,
-  Panel,
-  Row,
-  Sub,
-  Table,
-  Td,
-  Tr,
-  cx,
-} from "@/components/ds";
+import { Btn, CellChip, cx, Input, Linky, Loading, PageHeader, Panel, Row, Sub, Table, Td, Tr } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useActiveProfile } from "@/store/role";
 import { Role, LoanTypeOptions } from "@/lib/enums.generated";
@@ -171,7 +158,7 @@ export default function LendersAdminPage() {
 
       {/* Table */}
       {isLoading ? (
-        <Panel><Sub>Loading…</Sub></Panel>
+        <Panel><Loading>Loading…</Loading></Panel>
       ) : visible.length === 0 ? (
         <Panel>
           <Sub>

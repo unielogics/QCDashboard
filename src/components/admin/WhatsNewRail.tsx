@@ -8,7 +8,7 @@
 
 import { useMemo } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { Btn, cx, IconBtn, Sub } from "@/components/ds";
+import { Btn, cx, Empty, IconBtn, Sub } from "@/components/ds";
 import { useLeadsWhatsNew, useMarkWhatsNewSeen } from "@/hooks/useApi";
 import type { WhatsNewItem } from "@/lib/types";
 
@@ -115,9 +115,7 @@ export function WhatsNewRail({
         {feed.isLoading ? (
           <Sub>Loading activity…</Sub>
         ) : groups.length === 0 ? (
-          <div className="hintbox">
-            <Sub>No client or broker activity in the last 7 days.</Sub>
-          </div>
+          <Empty>No client or broker activity in the last 7 days.</Empty>
         ) : (
           groups.map((group) => (
             <section key={group.intakeId || group.name} className="disc on">

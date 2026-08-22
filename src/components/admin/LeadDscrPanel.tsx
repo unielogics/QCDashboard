@@ -7,7 +7,7 @@
 // backend-computed signal, never surfaced to the borrower, and the numbers
 // come from arithmetic over stated + document-extracted facts, not the model.
 
-import { CellChip, ItemRow, Lbl, Panel, Row, Sub } from "@/components/ds";
+import { CellChip, Empty, ItemRow, Lbl, Loading, Panel, Row, Sub } from "@/components/ds";
 import { useLeadDscrPotential } from "@/hooks/useApi";
 
 function money(value: unknown): string {
@@ -24,7 +24,7 @@ export function LeadDscrPanel({ intakeId }: { intakeId: string }) {
   if (query.isLoading) {
     return (
       <Panel title="DSCR potential">
-        <Sub>Computing DSCR potential…</Sub>
+        <Loading>Computing DSCR potential…</Loading>
       </Panel>
     );
   }
@@ -33,7 +33,7 @@ export function LeadDscrPanel({ intakeId }: { intakeId: string }) {
   if (!potential) {
     return (
       <Panel title="DSCR potential">
-        <Sub>Not applicable — this screen is real-estate-lead only.</Sub>
+        <Empty>Not applicable — this screen is real-estate-lead only.</Empty>
       </Panel>
     );
   }

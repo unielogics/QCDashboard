@@ -15,16 +15,7 @@
 // chosen from the bullet's kind — see the comment at that site.
 
 import { Icon } from "@/components/design-system/Icon";
-import {
-  Callout,
-  CellChip,
-  Kpi,
-  KpiRow,
-  Note,
-  Panel,
-  Sub,
-  type ChipTone,
-} from "@/components/ds";
+import { Callout, CellChip, Empty, Kpi, KpiRow, Loading, Note, Panel, Sub, type ChipTone } from "@/components/ds";
 import type { CreditSummary } from "@/lib/types";
 
 const TIER_LABEL: Record<string, { label: string; tone: ChipTone }> = {
@@ -44,14 +35,14 @@ export function CreditSummaryCard({
   if (loading) {
     return (
       <Panel title="Credit summary">
-        <Sub>Loading…</Sub>
+        <Loading>Loading…</Loading>
       </Panel>
     );
   }
   if (!summary || summary.fico == null) {
     return (
       <Panel title="Credit summary">
-        <Sub>No credit pull on file.</Sub>
+        <Empty>No credit pull on file.</Empty>
       </Panel>
     );
   }

@@ -23,18 +23,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import {
-  Btn,
-  BtnLink,
-  CellChip,
-  Input,
-  PageHeader,
-  Panel,
-  Row,
-  Select,
-  Sub,
-  WarnLine,
-} from "@/components/ds";
+import { Btn, BtnLink, CellChip, Input, Loading, PageHeader, Panel, Row, Select, Sub, WarnLine } from "@/components/ds";
 import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
 import { useCurrentUser } from "@/hooks/useApi";
@@ -180,7 +169,7 @@ export default function AdminAgreementsPage() {
           <span></span>
         </div>
         {loading ? (
-          <div className="panel-b"><Sub>Loading agreements...</Sub></div>
+          <div className="panel-b"><Loading>Loading agreements...</Loading></div>
         ) : rows.map((row) => (
           <div key={`${row.source}-${row.id}`} className="gridrow" style={{ gridTemplateColumns: COLS }}>
             <div>

@@ -17,7 +17,7 @@
 // prevent.
 
 import { Icon } from "@/components/design-system/Icon";
-import { BtnLink, CellChip, Panel, Sub, Tag } from "@/components/ds";
+import { BtnLink, CellChip, Empty, Panel, Sub, Tag } from "@/components/ds";
 import type { ParsedReport, ParsedTradeAccount, ParsedInquiry } from "@/lib/types";
 
 export function CreditReportDetail({
@@ -80,7 +80,7 @@ export function CreditReportDetail({
               ) : null}
             </div>
           ))}
-          {report.scores.length === 0 ? <Sub>No scores parsed.</Sub> : null}
+          {report.scores.length === 0 ? <Empty>No scores parsed.</Empty> : null}
         </div>
       </Panel>
 
@@ -165,7 +165,7 @@ export function CreditReportDetail({
       {/* Tradelines */}
       <Panel title={`Trade accounts (${report.trade_accounts.length})`}>
         <div className="ladder">
-          {report.trade_accounts.length === 0 ? <Sub>No tradelines.</Sub> : null}
+          {report.trade_accounts.length === 0 ? <Empty>No tradelines.</Empty> : null}
           {report.trade_accounts.map((ta, i) => (
             <TradeRow key={i} account={ta} />
           ))}
@@ -174,7 +174,7 @@ export function CreditReportDetail({
 
       {/* Inquiries */}
       <Panel title={`Inquiries (${report.inquiries.length})`}>
-        {report.inquiries.length === 0 ? <Sub>No inquiries on file.</Sub> : null}
+        {report.inquiries.length === 0 ? <Empty>No inquiries on file.</Empty> : null}
         {report.inquiries.map((inq, i) => (
           <InquiryRow key={i} inq={inq} />
         ))}

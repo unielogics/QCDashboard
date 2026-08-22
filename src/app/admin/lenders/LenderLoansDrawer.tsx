@@ -17,7 +17,7 @@
 //   status Pill               → CellChip tone
 
 import Link from "next/link";
-import { CellChip, Panel, Sub } from "@/components/ds";
+import { CellChip, Loading, Panel, Sub } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import { useLenderLoans } from "@/hooks/useApi";
@@ -50,7 +50,7 @@ export function LenderLoansDrawer({ lender, onClose }: Props) {
       bodyClass="grid"
     >
       {isLoading ? (
-        <Panel><Sub>Loading loans…</Sub></Panel>
+        <Panel><Loading>Loading loans…</Loading></Panel>
       ) : isError ? (
         <Panel>
           <div className="statusline c-bad">

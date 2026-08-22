@@ -15,7 +15,7 @@
 // owns both, and setting them again double-padded inside it.
 
 import { useState } from "react";
-import { Input, Panel, Row, Select, Sub, CellChip } from "@/components/ds";
+import { CellChip, Empty, Input, Loading, Panel, Row, Select, Sub } from "@/components/ds";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 import { isAINotDeployed, useAuditEvents } from "@/hooks/useApi";
@@ -75,9 +75,9 @@ export default function AuditFeedPage() {
         </div>
 
         {isLoading ? (
-          <div className="panel-b"><Sub>Loading…</Sub></div>
+          <div className="panel-b"><Loading>Loading…</Loading></div>
         ) : events.length === 0 ? (
-          <div className="panel-b"><Sub>No events match those filters.</Sub></div>
+          <div className="panel-b"><Empty>No events match those filters.</Empty></div>
         ) : (
           events.map((e) => (
             // `.gridrow.top` is the feed row: hairline under, top-aligned

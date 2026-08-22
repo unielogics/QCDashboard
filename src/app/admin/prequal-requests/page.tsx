@@ -28,17 +28,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  Btn,
-  CellChip,
-  PageHeader,
-  Panel,
-  Row,
-  Seg,
-  Sub,
-  cx,
-  type ChipTone,
-} from "@/components/ds";
+import { Btn, CellChip, cx, Loading, PageHeader, Panel, Row, Seg, Sub, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { useActiveProfile } from "@/store/role";
@@ -291,7 +281,7 @@ export default function AdminPrequalQueuePage() {
 
       {/* Table */}
       {isLoading ? (
-        <Panel><Sub>Loading queue…</Sub></Panel>
+        <Panel><Loading>Loading queue…</Loading></Panel>
       ) : visible.length === 0 ? (
         <Panel>
           <Sub>

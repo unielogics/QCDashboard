@@ -15,7 +15,7 @@
 // listener is gone — the dialog owns it, plus focus return and a scroll lock.
 
 import { useState } from "react";
-import { Btn, Callout, StatusLine, Sub, Textarea } from "@/components/ds";
+import { Btn, Callout, Empty, StatusLine, Sub, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import type { DSAIQuestion } from "@/hooks/useApi";
@@ -69,9 +69,9 @@ export function AIQuestionsPopover({ questions, onAnswer, open, onClose }: Props
       </Callout>
 
       {questions.length === 0 ? (
-        <Sub>
+        <Empty>
           No open questions. The AI will pop a question here when it needs context before engaging the borrower.
-        </Sub>
+        </Empty>
       ) : null}
 
       {questions.map((q) => {

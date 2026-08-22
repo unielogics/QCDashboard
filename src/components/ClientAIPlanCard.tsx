@@ -33,17 +33,7 @@ import {
   usePreviewAIPlan,
   type ClientAIPlanItem,
 } from "@/hooks/useApi";
-import {
-  Btn,
-  Callout,
-  CellChip,
-  ItemRow,
-  Note,
-  Panel,
-  Sub,
-  Textarea,
-  type ChipTone,
-} from "@/components/ds";
+import { Btn, Callout, CellChip, Empty, ItemRow, Loading, Note, Panel, Sub, Textarea, type ChipTone } from "@/components/ds";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 
 interface Props {
@@ -82,14 +72,14 @@ export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
   if (isLoading) {
     return (
       <Panel title="Client AI Plan">
-        <Sub>Loading AI plan…</Sub>
+        <Loading>Loading AI plan…</Loading>
       </Panel>
     );
   }
   if (!plan) {
     return (
       <Panel title="Client AI Plan">
-        <Sub>No AI plan yet for this client.</Sub>
+        <Empty>No AI plan yet for this client.</Empty>
       </Panel>
     );
   }

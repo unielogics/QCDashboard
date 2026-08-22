@@ -14,7 +14,7 @@
 // Restyled onto the plain-CSS design system. Every colour pair that used to
 // be two theme reads is now a chip tone.
 
-import { CellChip, Callout, Lbl, Sub, type ChipTone } from "@/components/ds";
+import { Callout, CellChip, Empty, Lbl, Sub, type ChipTone } from "@/components/ds";
 import type { LenderActionItem, LenderExtract } from "@/lib/types";
 
 interface Props {
@@ -41,7 +41,9 @@ export function LenderActionItemsPanel({ extract }: Props) {
       ) : null}
 
       {items.length === 0 ? (
-        <Sub>No outstanding action items detected.</Sub>
+        <Empty>
+          No outstanding action items detected.
+        </Empty>
       ) : (
         <div className="grid g8">
           {items.map((i) => (

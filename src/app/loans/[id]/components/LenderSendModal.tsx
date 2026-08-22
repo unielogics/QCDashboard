@@ -9,7 +9,7 @@
 // verbatim so nothing changes for a screen-reader user.
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Btn, Input, Linky, Select, StatusLine, Sub, Textarea } from "@/components/ds";
+import { Btn, Empty, Input, Linky, Select, StatusLine, Sub, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import { useCreateLenderPackage, useDocuments, useLenders } from "@/hooks/useApi";
@@ -179,7 +179,9 @@ export function LenderSendModal({ open, onClose, loan, primaryLender }: Props) {
           {lendersLoading ? (
             <Sub>Loading lenders...</Sub>
           ) : lenders.length === 0 ? (
-            <Sub>No active lenders are available.</Sub>
+            <Empty>
+              No active lenders are available.
+            </Empty>
           ) : (
             <div className="picklist">
               {lenders.map((lender) => {
@@ -214,7 +216,9 @@ export function LenderSendModal({ open, onClose, loan, primaryLender }: Props) {
           {docsLoading ? (
             <Sub>Loading documents...</Sub>
           ) : sendable.length === 0 ? (
-            <Sub>No received or verified documents are ready.</Sub>
+            <Empty>
+              No received or verified documents are ready.
+            </Empty>
           ) : (
             <div className="picklist">
               {sendable.map((doc) => (

@@ -16,7 +16,7 @@
 // `Drawer`, which brings Escape-to-close, focus return and a scroll lock.
 
 import { useState } from "react";
-import { Btn, CellChip, StatusLine, Sub } from "@/components/ds";
+import { Btn, CellChip, Empty, StatusLine, Sub } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import {
@@ -188,7 +188,9 @@ function DocPickerModal({
       {isLoading ? (
         <Sub>Loading…</Sub>
       ) : usable.length === 0 ? (
-        <Sub>No uploaded files on this loan yet.</Sub>
+        <Empty>
+          No uploaded files on this loan yet.
+        </Empty>
       ) : (
         <div className="picklist">
           {usable.map((d) => (

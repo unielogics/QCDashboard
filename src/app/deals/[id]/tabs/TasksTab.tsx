@@ -12,7 +12,7 @@
 
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { Btn, Card, CellChip, Field, Input, Panel, Seg, Select, Sub, Tag, Textarea } from "@/components/ds";
+import { Btn, Card, CellChip, Empty, Field, Input, Panel, Seg, Select, Sub, Tag, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import {
   useAgentPlaybook,
@@ -426,10 +426,10 @@ function TemplateDrawer({ deal, onClose }: { deal: Deal; onClose: () => void }) 
         {playbook.isLoading ? (
           <Sub>Loading playbook…</Sub>
         ) : requirements.length === 0 ? (
-          <Sub>
+          <Empty>
             No requirements in your {side} playbook yet. Configure them in Settings → AI → Lead
             Templates and they&apos;ll show up here.
-          </Sub>
+          </Empty>
         ) : (
           requirements.map((r) => {
             const checked = picked.has(r.requirement_key);

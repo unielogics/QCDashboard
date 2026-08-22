@@ -633,6 +633,55 @@ export function Sub({ children, className }: { children: ReactNode; className?: 
 }
 
 /** Petrol-tinted explanatory callout. */
+/**
+ * A list with nothing in it.
+ *
+ * Deliberately not a `<Sub>`: a caption is a left-aligned grey line beside
+ * other content, and when it is the ONLY thing in a panel it reads as text
+ * that failed to load rather than as an answer. This is the answer — centred,
+ * given room, and optionally with a glyph and a next step.
+ */
+export function Empty({
+  icon,
+  title,
+  children,
+  action,
+  className,
+}: {
+  icon?: string;
+  /** The headline. Without it the body text carries the whole message. */
+  title?: ReactNode;
+  children?: ReactNode;
+  /** What to do about it, when there is something to do. */
+  action?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cx("empty", className)}>
+      {icon ? <Icon name={icon} size={20} /> : null}
+      {title ? <b>{title}</b> : null}
+      {children}
+      {action ? <div style={{ marginTop: 10 }}>{action}</div> : null}
+    </div>
+  );
+}
+
+/**
+ * A panel waiting on its data.
+ *
+ * Shares `.empty`'s centred, padded block — a placeholder and an empty result
+ * want the same shape — but it is a different word because it means a
+ * different thing, and a reader who finds `<Empty>Loading…</Empty>` has to
+ * stop and work out which one the author meant.
+ */
+export function Loading({ children = "Loading…", className }: { children?: ReactNode; className?: string }) {
+  return (
+    <div className={cx("empty", className)} aria-live="polite">
+      {children}
+    </div>
+  );
+}
+
 export function Note({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cx("note", className)}>{children}</div>;
 }

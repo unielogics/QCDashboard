@@ -14,23 +14,7 @@
 
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import {
-  Btn,
-  BtnLink,
-  Callout,
-  CellChip,
-  Field,
-  Input,
-  ItemRow,
-  Kpi,
-  KpiRow,
-  Panel,
-  Sub,
-  Table,
-  Tag,
-  Td,
-  Tr,
-} from "@/components/ds";
+import { Btn, BtnLink, Callout, CellChip, Empty, Field, Input, ItemRow, Kpi, KpiRow, Panel, Sub, Table, Tag, Td, Tr } from "@/components/ds";
 import {
   useCreateHudLine,
   useDocuments,
@@ -526,7 +510,9 @@ function PrequalListCard({
       {loading ? (
         <Loading />
       ) : prequals.length === 0 ? (
-        <Sub>No prequalification history yet for this loan.</Sub>
+        <Empty>
+          No prequalification history yet for this loan.
+        </Empty>
       ) : (
         <div>
           {prequals.map((p) => (
@@ -602,7 +588,9 @@ function ConditionsCard({
       {loading ? (
         <Loading />
       ) : workflow.length === 0 ? (
-        <Sub>No conditions on file yet — the funding team adds these as the loan progresses.</Sub>
+        <Empty>
+          No conditions on file yet — the funding team adds these as the loan progresses.
+        </Empty>
       ) : (
         <div>
           {workflow.map((c) => (
@@ -663,10 +651,10 @@ function DocumentsReadOnlyCard({
       {loading ? (
         <Loading />
       ) : docs.length === 0 ? (
-        <Sub>
+        <Empty>
           No loan documents yet. Funding-side uploads will appear here as the borrower submits
           them.
-        </Sub>
+        </Empty>
       ) : (
         <div>
           {docs.map((d) => (

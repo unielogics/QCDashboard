@@ -8,7 +8,7 @@
 // Amount / Category are actual column headers.
 
 import { useState } from "react";
-import { CellChip, Input, Panel, StatusLine, Sub, Table, Td, Tr } from "@/components/ds";
+import { CellChip, Empty, Input, Panel, StatusLine, Sub, Table, Td, Tr } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useUpdateHudLine } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
@@ -64,7 +64,7 @@ export function HudPreview({ loanId, lines, canEdit }: Props) {
     >
       {lines.length === 0 ? (
         <div className="panel-b">
-          <Sub>No HUD lines yet. They populate when the loan reaches the Closing stage.</Sub>
+          <Empty>No HUD lines yet. They populate when the loan reaches the Closing stage.</Empty>
         </div>
       ) : (
         <Table

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { Btn, BtnLink, IconBtn, Callout, Panel, StatusLine, Sub, Textarea, cx } from "@/components/ds";
+import { Btn, BtnLink, Callout, cx, Empty, IconBtn, Panel, StatusLine, Sub, Textarea } from "@/components/ds";
 
 export type BucketReviewFile = {
   id: string;
@@ -383,7 +383,9 @@ export function BucketFileReviewPanel({
             </Panel>
             <Panel title="Review comments" bodyClass="grid g8">
               {(review?.annotations ?? []).length === 0 ? (
-                <Sub>No comments yet.</Sub>
+                <Empty>
+                  No comments yet.
+                </Empty>
               ) : review!.annotations.map((annotation) => (
                 <button
                   key={annotation.id}

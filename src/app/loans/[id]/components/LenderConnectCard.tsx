@@ -19,7 +19,7 @@
 // panel and the lender thread are siblings, not nested cards.
 
 import { useMemo, useState } from "react";
-import { Btn, CellChip, Linky, Panel, Select, StatusLine, Sub } from "@/components/ds";
+import { Btn, CellChip, Empty, Linky, Panel, Select, StatusLine, Sub } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import {
   useConnectLender,
@@ -387,10 +387,10 @@ function NotifyForm({
       </div>
       <div className="grid g6">
         {visible.length === 0 ? (
-          <Sub>
+          <Empty>
             No broker / super-admin participants on this loan yet — add them in the
             participants table below first.
-          </Sub>
+          </Empty>
         ) : (
           visible.map((p) => {
             const isClient = p.role === "client";

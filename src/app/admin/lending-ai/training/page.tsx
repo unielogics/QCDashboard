@@ -28,19 +28,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  Btn,
-  CG,
-  CellChip,
-  Field,
-  PageHeader,
-  Panel,
-  Row,
-  Seg,
-  StatusLine,
-  Sub,
-  Textarea,
-} from "@/components/ds";
+import { Btn, CellChip, CG, Empty, Field, Loading, PageHeader, Panel, Row, Seg, StatusLine, Sub, Textarea } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
@@ -169,9 +157,9 @@ export default function AiTrainingPage() {
           ) : null}
 
           {isLoading ? (
-            <Panel><Sub>Loading…</Sub></Panel>
+            <Panel><Loading>Loading…</Loading></Panel>
           ) : !current ? (
-            <Panel><Sub>No task selected.</Sub></Panel>
+            <Panel><Empty>No task selected.</Empty></Panel>
           ) : (
             <Panel bodyClass="grid">
               <Field label="Instructions">
@@ -241,7 +229,7 @@ export default function AiTrainingPage() {
           >
             <div className="qscroll">
               {feedback.length === 0 ? (
-                <div className="panel-b"><Sub>No flagged AI output yet.</Sub></div>
+                <div className="panel-b"><Empty>No flagged AI output yet.</Empty></div>
               ) : (
                 feedback.map((f, i) => (
                   // `.gridrow.top` owns the hairline between entries and drops

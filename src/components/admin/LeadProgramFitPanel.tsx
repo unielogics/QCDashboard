@@ -10,7 +10,7 @@
 // backend (PROGRAM_LABELS + _compute_loan_program_fit) needs no matching
 // change here.
 
-import { CellChip, ItemRow, Panel, Sub } from "@/components/ds";
+import { CellChip, Empty, ItemRow, Loading, Panel, Sub } from "@/components/ds";
 import { useLeadProgramFit } from "@/hooks/useApi";
 import type { LeadProgramFitProgram } from "@/lib/types";
 
@@ -37,7 +37,7 @@ export function LeadProgramFitPanel({ intakeId }: { intakeId: string }) {
   if (fit.isLoading) {
     return (
       <Panel title="Program fit">
-        <Sub>Loading program fit…</Sub>
+        <Loading>Loading program fit…</Loading>
       </Panel>
     );
   }
@@ -46,7 +46,7 @@ export function LeadProgramFitPanel({ intakeId }: { intakeId: string }) {
   if (!data?.computed) {
     return (
       <Panel title="Program fit">
-        <Sub>Not applicable — this screen is dealer-lead only.</Sub>
+        <Empty>Not applicable — this screen is dealer-lead only.</Empty>
       </Panel>
     );
   }

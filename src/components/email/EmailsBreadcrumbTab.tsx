@@ -10,7 +10,7 @@
 // that could carry body text.
 
 import Link from "next/link";
-import { CellChip, Panel, Sub } from "@/components/ds";
+import { CellChip, Empty, Panel, Sub } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 
 export type BreadcrumbRow = {
@@ -64,11 +64,11 @@ export function EmailsBreadcrumbTab({
       }
     >
       {emails.length === 0 ? (
-        <Sub>
+        <Empty>
           No tracked email yet. When a client or party emails your connected Workspace
           mailbox, it appears here as a private breadcrumb — sender, subject, and time
           only. The full message stays in your inbox.
-        </Sub>
+        </Empty>
       ) : (
         emails.map((e) => {
           const p = e.payload ?? {};
