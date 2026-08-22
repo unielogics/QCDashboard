@@ -23,6 +23,7 @@ import {
   useLoans,
   usePipelineClientSummary,
   useCurrentUser,
+  useUnifiedOperatorFiles,
   type DSPipelineSummaryItem,
 } from "@/hooks/useApi";
 import { QC_FMT } from "@/lib/fmt";
@@ -33,6 +34,13 @@ import { ClientFilePipeline } from "./components/ClientFilePipeline";
 import { LoanAgentPicker } from "@/components/LoanAgentPicker";
 import { AIAgentAssignPicker } from "./components/AIAgentAssignPicker";
 import type { Loan } from "@/lib/types";
+import {
+  BucketIntakeLinkDrawer,
+  UnifiedFilesTable,
+  UnifiedKanbanBoard,
+  UnifiedOperatorFilters,
+} from "@/components/operator/UnifiedOperator";
+import type { UnifiedFileRow, UnifiedOrigin, UnifiedVertical } from "@/lib/unifiedOperator";
 
 type PipelineMode = "leads" | "funding";
 
@@ -106,6 +114,19 @@ function OperatorPipelinePage({ role }: { role: string }) {
   // existing pipeline list instead of a separate queue.
   const [handoffOnly, setHandoffOnly] = useState(false);
   const [search, setSearch] = useState<string>("");
+  const [unifiedFilters, setUnifiedFilters] = useState<{
+    vertical: UnifiedVertical | "all";
+    origin: UnifiedOrigin | "all";
+    q: string;
+  }>({ vertical: "all", origin: "all", q: "" });
+  const [unifiedView, setUnifiedView] = useState<"board" | "table">("board");
+  const [linkRow, setLinkRow] = useState<UnifiedFileRow | null>(null);
+  const { data: unifiedFiles, isLoading: unifiedLoading } = useUnifiedOperatorFiles({
+    vertical: unifiedFilters.vertical,
+    origin: unifiedFilters.origin,
+    q: unifiedFilters.q,
+    limit: 350,
+  });
   const [intakeOpen, setIntakeOpen] = useState(false);
   // `/pipeline?new=1` (e.g. the dashboard "Add Lead" button) opens the
   // intake modal straight away — there's no standalone /leads route.
@@ -190,6 +211,8 @@ function OperatorPipelinePage({ role }: { role: string }) {
   const needsStructure = fundingRows.filter((row) => row.readiness.score < 65).length;
   const openConditionCount = fundingRows.reduce((acc, row) => acc + row.openDocs.length, 0);
   const blockedAiCount = fundingRows.filter((row) => row.summary?.state === "blocked").length;
+  const unifiedRows = unifiedFiles?.items ?? [];
+  const unifiedRollup = unifiedFiles?.rollup;
 
   return (
     <>
@@ -312,6 +335,63 @@ function OperatorPipelinePage({ role }: { role: string }) {
           SmartIntake flow — it finds-or-creates the client by email,
           then originates a Loan with property + ask + AI cadence. */}
       <SmartIntakeModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
+      <BucketIntakeLinkDrawer
+        open={linkRow != null}
+        onClose={() => setLinkRow(null)}
+        initialBucketId={linkRow?.bucket_id}
+        initialIntakeId={linkRow?.intake_id}
+      />
+
+      {activeMode === "funding" ? (
+        <div className="mt" style={{ display: "grid", gap: 12 }}>
+          <div className="row split" style={{ alignItems: "flex-start", gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ fontSize: 18, margin: 0 }}>Unified command board</h2>
+              <div className="sub">
+                Working ladders feed the shared funding ladder across deals, loans, buckets, Dealer OS, reps, and AI intake.
+              </div>
+            </div>
+            <Seg<"board" | "table">
+              ariaLabel="Unified pipeline layout"
+              value={unifiedView}
+              onChange={setUnifiedView}
+              options={[
+                { value: "board", label: <><Icon name="layers" size={13} /> Board</> },
+                { value: "table", label: <><Icon name="filter" size={13} /> Table</> },
+              ]}
+            />
+          </div>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+            <CellChip tone="acc">{unifiedRollup?.total ?? (unifiedLoading ? "..." : 0)} total</CellChip>
+            <CellChip tone="mut">{unifiedRollup?.working ?? 0} working</CellChip>
+            <CellChip tone="gold">{unifiedRollup?.promoted ?? 0} promoted</CellChip>
+            <CellChip tone={(unifiedRollup?.needs_attention ?? 0) > 0 ? "warn" : "ok"}>
+              {unifiedRollup?.needs_attention ?? 0} need attention
+            </CellChip>
+            <CellChip tone="pet">{unifiedRollup?.mca ?? 0} MCA</CellChip>
+          </div>
+          <UnifiedOperatorFilters
+            value={unifiedFilters}
+            onChange={setUnifiedFilters}
+            searchPlaceholder="Search unified files, borrowers, buckets, reps..."
+          />
+          {unifiedView === "board" ? (
+            <UnifiedKanbanBoard
+              rows={unifiedRows}
+              vertical={unifiedFilters.vertical}
+              onLinkBucketIntake={setLinkRow}
+            />
+          ) : (
+            <Panel noPad>
+              <UnifiedFilesTable
+                rows={unifiedRows}
+                empty={unifiedLoading ? "Loading unified files..." : "No unified files match these filters."}
+                onLinkBucketIntake={setLinkRow}
+              />
+            </Panel>
+          )}
+        </div>
+      ) : null}
 
       {activeMode === "funding" ? (
         <FundingMetricsRow

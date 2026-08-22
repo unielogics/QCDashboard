@@ -17,7 +17,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FredChart } from "@/components/FredChart";
 import { Icon } from "@/components/design-system/Icon";
 import {
@@ -31,6 +31,7 @@ import {
   useLoans,
   useMyCredit,
   useRefreshFred,
+  useUnifiedOperatorFiles,
 } from "@/hooks/useApi";
 import { QC_FMT } from "@/lib/fmt";
 import type { AITask, Broker, CalendarEvent, FredSeriesSummary, Loan } from "@/lib/types";
@@ -56,6 +57,12 @@ import {
   type ChipTone,
   type Col,
 } from "@/components/ds";
+import {
+  BucketIntakeLinkDrawer,
+  UnifiedBlueprintRail,
+  UnifiedFilesTable,
+} from "@/components/operator/UnifiedOperator";
+import type { UnifiedFileRow } from "@/lib/unifiedOperator";
 
 const STAGE_KEYS = [
   "prequalified",
@@ -94,6 +101,8 @@ export default function DashboardPage() {
   const { data: tasks = [] } = useAITasks();
   const { data: events = [] } = useCalendar();
   const { data: report } = useDashboardReport();
+  const { data: unifiedFiles, isLoading: unifiedLoading } = useUnifiedOperatorFiles({ limit: 120 });
+  const [linkRow, setLinkRow] = useState<UnifiedFileRow | null>(null);
 
   const firstName = (() => {
     if (!user) return null;
@@ -128,6 +137,13 @@ export default function DashboardPage() {
   // pattern as isVendor below.
   const isDealerPartner = user?.role === Role.DEALER_PARTNER;
   const showOperatorPipeline = !isClient && !isBroker;
+  const isInternalOperator =
+    user?.role === Role.SUPER_ADMIN ||
+    user?.role === Role.LOAN_EXEC ||
+    user?.role === Role.REGIONAL_MANAGER;
+  const unifiedRows = unifiedFiles?.items ?? [];
+  const unifiedRollup = unifiedFiles?.rollup;
+  const unifiedRecentRows = useMemo(() => unifiedRows.slice(0, 12), [unifiedRows]);
 
   useEffect(() => {
     if (isVendor) router.replace("/vendor/buckets");
@@ -210,6 +226,61 @@ export default function DashboardPage() {
           />
         </KpiRow>
       )}
+
+      {isInternalOperator ? (
+        <>
+          <KpiRow className="s12">
+            <Kpi
+              label="Unified files"
+              value={unifiedRollup?.total ?? (unifiedLoading ? "..." : 0)}
+              sub={`${unifiedRollup?.working ?? 0} working | ${unifiedRollup?.promoted ?? 0} promoted`}
+              icon="layers"
+              iconTone="acc"
+            />
+            <Kpi
+              label="Needs attention"
+              value={unifiedRollup?.needs_attention ?? 0}
+              sub="health, missing docs, or stale coverage"
+              icon="alert"
+              iconTone={(unifiedRollup?.needs_attention ?? 0) > 0 ? "warn" : "ok"}
+            />
+            <Kpi
+              label="Real estate"
+              value={unifiedRollup?.real_estate ?? 0}
+              sub="realtor, mobile, and source deal handoffs"
+              icon="building"
+              iconTone="acc"
+            />
+            <Kpi
+              label="Main Street + dealer"
+              value={(unifiedRollup?.main_street ?? 0) + (unifiedRollup?.dealer ?? 0)}
+              sub={`${unifiedRollup?.mca ?? 0} MCA refinance files`}
+              icon="dollar"
+              iconTone="gold"
+            />
+          </KpiRow>
+          <div className="s12">
+            <UnifiedBlueprintRail />
+          </div>
+          <Panel
+            className="s12"
+            title="Unified operator console"
+            sub="One projection across pipeline, clients, buckets, AI intake, Dealer OS, and rep-originated cases."
+            actions={
+              <Link href="/pipeline" className="linky">
+                Open command board <Icon name="arrowR" size={12} />
+              </Link>
+            }
+            noPad
+          >
+            <UnifiedFilesTable
+              rows={unifiedRecentRows}
+              empty={unifiedLoading ? "Loading unified file projection..." : "No unified files are available yet."}
+              onLinkBucketIntake={setLinkRow}
+            />
+          </Panel>
+        </>
+      ) : null}
 
       <TodaysOverduePanel tasks={tasks} events={events} loans={loans} isClient={isClient} />
 
@@ -365,6 +436,12 @@ export default function DashboardPage() {
           {isRegionalManager ? <RegionalAgentsPanel /> : <TopBrokersPanel />}
         </>
       )}
+      <BucketIntakeLinkDrawer
+        open={linkRow != null}
+        onClose={() => setLinkRow(null)}
+        initialBucketId={linkRow?.bucket_id}
+        initialIntakeId={linkRow?.intake_id}
+      />
     </CG>
   );
 }

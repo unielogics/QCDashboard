@@ -18,12 +18,22 @@ import {
   type Col,
 } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
-import { useBrokers, useClientPaymentAuthorizationSummaries, useClients, useCurrentUser, useLoans, useUpdateClient } from "@/hooks/useApi";
+import {
+  useBrokers,
+  useClientPaymentAuthorizationSummaries,
+  useClients,
+  useCurrentUser,
+  useLoans,
+  useUnifiedOperatorFiles,
+  useUpdateClient,
+} from "@/hooks/useApi";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
 import { Role } from "@/lib/enums.generated";
 import type { Broker, Client, ClientStage, PaymentAuthorizationClientSummaryRead } from "@/lib/types";
 import { QC_FMT } from "@/lib/fmt";
 import { AgentLeadModal } from "@/app/pipeline/components/AgentLeadModal";
+import { UnifiedFileTags } from "@/components/operator/UnifiedOperator";
+import type { UnifiedFileRow } from "@/lib/unifiedOperator";
 
 // Stages-as-filter-chips shown above the table.
 type StageFilter = "all" | ClientStage;
@@ -101,6 +111,74 @@ function inferredStage(c: Client, activeLoans: number): ClientStage {
   return "lead";
 }
 
+type UnifiedClientBookRow = {
+  key: string;
+  name: string;
+  subtitle: string;
+  shape: "Person" | "Business" | "Person + business";
+  files: UnifiedFileRow[];
+  exposure: number;
+  sample: UnifiedFileRow | null;
+};
+
+function buildUnifiedClientBook(rows: UnifiedFileRow[]): UnifiedClientBookRow[] {
+  const map = new Map<
+    string,
+    {
+      name: string;
+      clientNames: Set<string>;
+      businessNames: Set<string>;
+      files: UnifiedFileRow[];
+      exposure: number;
+      sample: UnifiedFileRow | null;
+    }
+  >();
+
+  for (const row of rows) {
+    const name = (row.business_name || row.client_name || row.label).trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    const current =
+      map.get(key) ??
+      {
+        name,
+        clientNames: new Set<string>(),
+        businessNames: new Set<string>(),
+        files: [],
+        exposure: 0,
+        sample: null,
+      };
+    if (row.client_name) current.clientNames.add(row.client_name);
+    if (row.business_name) current.businessNames.add(row.business_name);
+    current.files.push(row);
+    current.exposure += Number(row.amount ?? 0);
+    if (!current.sample) current.sample = row;
+    map.set(key, current);
+  }
+
+  return Array.from(map.entries())
+    .map(([key, row]) => {
+      const hasPerson = row.clientNames.size > 0;
+      const hasBusiness = row.businessNames.size > 0;
+      const shape: UnifiedClientBookRow["shape"] =
+        hasPerson && hasBusiness ? "Person + business" : hasBusiness ? "Business" : "Person";
+      const subtitleParts = [
+        [...row.clientNames].slice(0, 2).join(", "),
+        [...new Set(row.files.map((file) => file.vertical_label))].slice(0, 3).join(", "),
+      ].filter(Boolean);
+      return {
+        key,
+        name: row.name,
+        subtitle: subtitleParts.join(" | ") || "No linked profile detail",
+        shape,
+        files: row.files,
+        exposure: row.exposure,
+        sample: row.sample,
+      };
+    })
+    .sort((a, b) => b.files.length - a.files.length || b.exposure - a.exposure || a.name.localeCompare(b.name));
+}
+
 // Header cell that carries the sort. `.tbl th` owns the type; this only adds
 // the click target and the direction caret.
 function SortLabel({
@@ -133,6 +211,7 @@ export default function ClientsPage() {
   const { data: user } = useCurrentUser();
   const { data: clients = [] } = useClients();
   const { data: loans = [] } = useLoans();
+  const { data: unifiedFiles } = useUnifiedOperatorFiles({ limit: 400 });
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<StageFilter>("all");
   const [dealerOnly, setDealerOnly] = useState(false);
@@ -201,6 +280,7 @@ export default function ClientsPage() {
 
   const { sort, onSort, compare } = useSort("exposure", "desc");
   const sorted = useMemo(() => [...filtered].sort(compare), [filtered, compare]);
+  const unifiedClientBook = useMemo(() => buildUnifiedClientBook(unifiedFiles?.items ?? []), [unifiedFiles?.items]);
 
   const cols: Col[] = COLS.map((c) => ({
     label: <SortLabel label={c.label} colKey={c.key} sortKey={sort.key} dir={sort.dir} onSort={onSort} />,
@@ -259,6 +339,51 @@ export default function ClientsPage() {
           Dealer AI intake
         </Btn>
       </Row>
+
+      {isInternal ? (
+        <Panel title="Unified client book" sub="Person and business records grouped across pipeline, buckets, AI intake, and funding." noPad>
+          <Table
+            caption="Unified client book"
+            cols={[
+              { label: "Client", width: "30%" },
+              { label: "Shape", width: 132 },
+              { label: "Unified tags" },
+              { label: "Files", width: 80, align: "r" },
+              { label: "Exposure", width: 110, align: "r" },
+            ]}
+          >
+            {unifiedClientBook.slice(0, 12).map((row) => (
+              <Tr key={row.key}>
+                <Td>
+                  <b>{row.name}</b>
+                  <div className="sub">{row.subtitle}</div>
+                </Td>
+                <Td>
+                  <CellChip tone={row.shape === "Person + business" ? "acc" : row.shape === "Business" ? "gold" : "mut"}>
+                    {row.shape}
+                  </CellChip>
+                </Td>
+                <Td>
+                  {row.sample ? <UnifiedFileTags row={row.sample} compact /> : <span className="sub">No tags</span>}
+                </Td>
+                <Td align="r">
+                  <span className="num">{row.files.length}</span>
+                </Td>
+                <Td align="r">
+                  <b className="num">{QC_FMT.short(row.exposure)}</b>
+                </Td>
+              </Tr>
+            ))}
+            {unifiedClientBook.length === 0 ? (
+              <Tr>
+                <Td colSpan={5}>
+                  <span className="sub">No unified client records are available yet.</span>
+                </Td>
+              </Tr>
+            ) : null}
+          </Table>
+        </Panel>
+      ) : null}
 
       <Panel noPad>
         <Table cols={cols} caption="Clients">

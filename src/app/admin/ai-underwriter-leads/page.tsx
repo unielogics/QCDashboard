@@ -56,6 +56,7 @@ import { WhatsNewButton, WhatsNewRail } from "@/components/admin/WhatsNewRail";
 import { BankerSubmissionModal } from "@/components/admin/BankerSubmissionModal";
 import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
+import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import type { IntakeResponse } from "@/lib/intake";
 import { useUI } from "@/store/ui";
 
@@ -252,6 +253,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [linkLead, setLinkLead] = useState<Pick<LeadRow, "id" | "bucket_id" | "business_name" | "full_name"> | null>(null);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
@@ -675,12 +677,25 @@ export default function AdminAIUnderwriterLeadsPage() {
             <span>Evidence</span>
             <span>Next step</span>
             <span>Updated</span>
+            <span />
           </div>
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
             {loading ? (
               <div className="panel-b sub">Loading dealer leads...</div>
             ) : rows.map((row) => (
-              <button key={row.id} type="button" onClick={() => openLead(row.id)} style={rowStyle(selectedId === row.id)}>
+              <div
+                key={row.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => openLead(row.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openLead(row.id);
+                  }
+                }}
+                style={rowStyle(selectedId === row.id)}
+              >
                 <div style={{ minWidth: 0 }}>
                   <strong style={{ display: "flex", alignItems: "center", gap: 7, overflow: "hidden", whiteSpace: "nowrap" }}>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{row.business_name || row.full_name}</span>
@@ -715,7 +730,20 @@ export default function AdminAIUnderwriterLeadsPage() {
                   {row.one_next_step || "Awaiting AI next step."}
                 </div>
                 <div className="sub">{formatDate(row.updated_at)}</div>
-              </button>
+                <div>
+                  <Btn
+                    size="sm"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setLinkLead(row);
+                    }}
+                    title="Link this AI intake to a document bucket"
+                  >
+                    <Icon name="link" size={13} />
+                    Link bucket
+                  </Btn>
+                </div>
+              </div>
             ))}
           </div>
           <div className="row" style={{ flexShrink: 0, padding: "12px 16px", borderTop: "1px solid var(--line)" }}>
@@ -737,6 +765,14 @@ export default function AdminAIUnderwriterLeadsPage() {
           // Reflect the cleared NEW badge once the lead loads.
           loadLeads().catch(() => undefined);
         }}
+      />
+
+      <BucketIntakeLinkDrawer
+        open={linkLead !== null}
+        onClose={() => setLinkLead(null)}
+        initialBucketId={linkLead?.bucket_id}
+        initialIntakeId={linkLead?.id}
+        title="Link AI intake to bucket"
       />
 
       <Modal open={!!selectedId} onClose={closeLead} size="stage" insetLeft={sidebarWidth} bodyStyle={{ display: "flex", flexDirection: "column" }}>
@@ -776,6 +812,16 @@ export default function AdminAIUnderwriterLeadsPage() {
               );
             }}
             onDownloadZip={() => downloadPackageZip(selectedId)}
+            onLinkBucketIntake={() => {
+              if (detail?.intake) {
+                setLinkLead({
+                  id: detail.intake.id,
+                  bucket_id: detail.intake.bucket_id,
+                  business_name: detail.intake.business_name,
+                  full_name: detail.intake.full_name,
+                });
+              }
+            }}
             onPostNote={(content) => postLeadNote(selectedId, content)}
             onUpdateOutcomeStatus={(status) => updateOutcomeStatus(selectedId, status)}
             onUpdateLanguage={(language) => updateLeadLanguage(selectedId, language)}
@@ -822,6 +868,7 @@ function LeadDetailPanel({
   cockpitAdapter,
   onCockpitResponse,
   onDownloadZip,
+  onLinkBucketIntake,
   onPostNote,
   onUpdateOutcomeStatus,
   onUpdateLanguage,
@@ -845,6 +892,7 @@ function LeadDetailPanel({
   cockpitAdapter: LeadCockpitAdapter | null;
   onCockpitResponse: (r: IntakeResponse) => void;
   onDownloadZip: () => Promise<void>;
+  onLinkBucketIntake: () => void;
   onPostNote: (content: string) => Promise<void>;
   onUpdateOutcomeStatus: (status: string) => Promise<void>;
   onUpdateLanguage: (language: string) => Promise<void>;
@@ -1243,6 +1291,10 @@ function LeadDetailPanel({
                   </Btn>
                   <Btn onClick={onExport}>Export intelligence PDF</Btn>
                   <Link href={`/admin/buckets`} className="btn">Open Buckets</Link>
+                  <Btn onClick={onLinkBucketIntake}>
+                    <Icon name="link" size={14} />
+                    Link bucket
+                  </Btn>
                   <Btn onClick={() => navigator.clipboard.writeText(detail.intake.bucket_id)}>Copy bucket ID</Btn>
                 </Row>
                 {detail.latest_review?.status ? (
@@ -1393,6 +1445,10 @@ function LeadDetailPanel({
                   <Row>
                     <Btn variant="pri" onClick={downloadZip} disabled={zipBusy}>
                       {zipBusy ? <><Spinner /> Building ZIP…</> : "Download full package (.zip)"}
+                    </Btn>
+                    <Btn onClick={onLinkBucketIntake}>
+                      <Icon name="link" size={14} />
+                      Link bucket
                     </Btn>
                     <Btn onClick={() => copyText("Bucket ID", detail.intake.bucket_id)}>Copy bucket ID</Btn>
                   </Row>
@@ -2146,7 +2202,7 @@ function CompactList({ rows, empty }: { rows: Array<{ title: string; body: strin
 // minmax(0,…) on the text columns so they shrink + ellipsize instead of forcing
 // horizontal overflow when the sidebar is expanded / on smaller screens (a
 // fixed floor here clipped the name column).
-const LEAD_COLS = "minmax(0,1.3fr) minmax(0,1fr) minmax(120px,150px) minmax(0,1.3fr) 90px";
+const LEAD_COLS = "minmax(0,1.3fr) minmax(0,1fr) minmax(120px,150px) minmax(0,1.3fr) 90px 122px";
 
 function rowStyle(active: boolean) {
   return {

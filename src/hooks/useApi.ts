@@ -147,6 +147,15 @@ import type {
 } from "@/lib/types";
 import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurpose, PropertyType, Role, DealChatMode, DealChatRole, FeedbackOutputType, FeedbackRating, AmortizationStyle } from "@/lib/enums.generated";
 import type { ClosingCostTier } from "@/lib/fixFlip/types";
+import type {
+  BucketIntakeLinkPayload,
+  BucketIntakeLinkResult,
+  UnifiedFileDetail,
+  UnifiedFilePage,
+  UnifiedOrigin,
+  UnifiedSourceKind,
+  UnifiedVertical,
+} from "@/lib/unifiedOperator";
 
 export function useDevUser(): string {
   return useActiveProfile().email;
@@ -6836,6 +6845,80 @@ export function useStarMessage() {
       qc.invalidateQueries({ queryKey: ["inboxThreads", devUser] });
       qc.invalidateQueries({ queryKey: ["inboxSearch"] });
       if (vars.threadId) qc.invalidateQueries({ queryKey: ["inboxThread", vars.threadId, devUser] });
+    },
+  });
+}
+
+export type UnifiedOperatorFileFilters = {
+  vertical?: UnifiedVertical | "all";
+  origin?: UnifiedOrigin | "all";
+  q?: string;
+  limit?: number;
+};
+
+function operatorFileQueryString(filters: UnifiedOperatorFileFilters = {}): string {
+  const params = new URLSearchParams();
+  if (filters.vertical && filters.vertical !== "all") params.set("vertical", filters.vertical);
+  if (filters.origin && filters.origin !== "all") params.set("origin", filters.origin);
+  if (filters.q?.trim()) params.set("q", filters.q.trim());
+  if (filters.limit) params.set("limit", String(filters.limit));
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+export function useUnifiedOperatorFiles(filters: UnifiedOperatorFileFilters = {}) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qs = operatorFileQueryString(filters);
+  return useQuery({
+    queryKey: [
+      "operator-files",
+      devUser,
+      filters.vertical ?? "all",
+      filters.origin ?? "all",
+      filters.q?.trim() ?? "",
+      filters.limit ?? 200,
+    ],
+    queryFn: () => apiCall<UnifiedFilePage>(`/operator-files${qs}`),
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useUnifiedOperatorFile(
+  sourceKind: UnifiedSourceKind | null | undefined,
+  sourceId: string | null | undefined,
+) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["operator-file", devUser, sourceKind ?? "", sourceId ?? ""],
+    queryFn: () => apiCall<UnifiedFileDetail>(`/operator-files/${sourceKind}/${sourceId}`),
+    enabled: Boolean(sourceKind && sourceId),
+    staleTime: 15 * 1000,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useLinkBucketIntake() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BucketIntakeLinkPayload) =>
+      apiCall<BucketIntakeLinkResult>("/operator-files/bucket-intake-links", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["operator-files", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-file", devUser] });
+      qc.invalidateQueries({ queryKey: ["buckets"] });
+      qc.invalidateQueries({ queryKey: ["ai-underwriter-leads"] });
+      qc.invalidateQueries({ queryKey: ["lead-funnel"] });
+      if (vars.bucket_id) qc.invalidateQueries({ queryKey: ["bucket", vars.bucket_id] });
+      if (vars.intake_id) qc.invalidateQueries({ queryKey: ["ai-underwriter-lead", vars.intake_id] });
     },
   });
 }

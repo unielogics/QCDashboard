@@ -23,6 +23,7 @@ import {
 import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
 import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
 import { EmailComposer } from "@/components/email/EmailComposer";
+import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import { useCurrentUser } from "@/hooks/useApi";
 import { api, ApiError } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
@@ -401,6 +402,7 @@ export default function BucketsAdminPage() {
   const [convertLeadBucket, setConvertLeadBucket] = useState<Bucket | null>(null);
   const [convertLeadBusy, setConvertLeadBusy] = useState(false);
   const [convertLeadError, setConvertLeadError] = useState<string | null>(null);
+  const [linkBucket, setLinkBucket] = useState<Bucket | null>(null);
   const [vendorAssignmentBucket, setVendorAssignmentBucket] = useState<Bucket | null>(null);
   const [vendorAssignmentDetail, setVendorAssignmentDetail] = useState<BucketDetail | null>(null);
   const [vendorAssignmentDraft, setVendorAssignmentDraft] = useState<VendorAccessDraft>(() => emptyVendorAccessDraft());
@@ -1788,7 +1790,15 @@ export default function BucketsAdminPage() {
           </div>
         }
       >
-        <BucketTable buckets={filteredBuckets} deletingId={deletingId} onSelect={(id) => openBucket(id)} onOpenVendors={openVendorAssignment} onConvertToLead={setConvertLeadBucket} onDelete={deleteBucket} />
+        <BucketTable
+          buckets={filteredBuckets}
+          deletingId={deletingId}
+          onSelect={(id) => openBucket(id)}
+          onOpenVendors={openVendorAssignment}
+          onConvertToLead={setConvertLeadBucket}
+          onLinkIntake={setLinkBucket}
+          onDelete={deleteBucket}
+        />
       </Panel>
 
       {convertLeadBucket ? (
@@ -1803,6 +1813,13 @@ export default function BucketsAdminPage() {
           onConvert={convertBucketToLead}
         />
       ) : null}
+
+      <BucketIntakeLinkDrawer
+        open={linkBucket !== null}
+        onClose={() => setLinkBucket(null)}
+        initialBucketId={linkBucket?.id}
+        title="Link bucket to AI intake"
+      />
 
       <Drawer
         open={createOpen}
@@ -2069,6 +2086,15 @@ export default function BucketsAdminPage() {
               >
                 <Icon name="bolt" size={16} />
                 AI Lead
+              </Btn>
+              <Btn
+                size="sm"
+                onClick={() => detail && setLinkBucket(detail)}
+                aria-label="Link bucket to AI intake"
+                title="Link this bucket to an existing AI intake"
+              >
+                <Icon name="link" size={16} />
+                Link intake
               </Btn>
               <div ref={shareMenuRef} className="popwrap">
                 <Btn
@@ -3393,6 +3419,7 @@ function BucketTable({
   onSelect,
   onOpenVendors,
   onConvertToLead,
+  onLinkIntake,
   onDelete,
 }: {
   buckets: Bucket[];
@@ -3400,6 +3427,7 @@ function BucketTable({
   onSelect: (id: string) => void;
   onOpenVendors: (id: string) => void;
   onConvertToLead: (bucket: Bucket) => void;
+  onLinkIntake: (bucket: Bucket) => void;
   onDelete: (bucket: Bucket) => void;
 }) {
   if (buckets.length === 0) {
@@ -3408,7 +3436,7 @@ function BucketTable({
   // A bespoke nine-column track, not `.cg`: these are list columns sized to
   // their contents (a 70px file count, a 44px delete), not spans of the
   // twelve-column page grid.
-  const columns = "minmax(220px, 1.35fr) minmax(130px, .75fr) minmax(150px, .72fr) 70px minmax(150px, .65fr) 112px 130px 84px 44px";
+  const columns = "minmax(220px, 1.35fr) minmax(130px, .75fr) minmax(150px, .72fr) 70px minmax(150px, .65fr) 112px 130px 126px 84px 44px";
   return (
     <div>
       <div
@@ -3427,6 +3455,7 @@ function BucketTable({
         <div className="lbl">Files</div>
         <div className="lbl">Status</div>
         <div className="lbl">Access</div>
+        <div />
         <div />
         <div className="lbl">Updated</div>
         <div />
@@ -3488,6 +3517,18 @@ function BucketTable({
           >
             <Icon name="spark" size={13} />
             AI Lead
+          </Btn>
+          <Btn
+            size="sm"
+            style={{ justifySelf: "start" }}
+            onClick={(event) => {
+              event.stopPropagation();
+              onLinkIntake(bucket);
+            }}
+            title="Link this bucket to an existing AI intake"
+          >
+            <Icon name="link" size={13} />
+            Link intake
           </Btn>
           <div className="sub">{formatDate(bucket.updated_at)}</div>
           <IconBtn
