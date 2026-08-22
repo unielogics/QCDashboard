@@ -15,7 +15,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useAuth } from "@clerk/nextjs";
 import {
   Btn,
   Callout,
@@ -33,9 +32,10 @@ import { Tabs } from "@/components/design-system/Tabs";
 import { IconButton } from "@/components/design-system/IconButton";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { useUI } from "@/store/ui";
-import { api, ApiError } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
 import { useCurrentUser } from "@/hooks/useApi";
+import { useAuthedFetch } from "@/hooks/useAuthedFetch";
 import { LeadCockpit, type LeadCockpitAdapter } from "@/components/admin/LeadCockpit";
 import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
@@ -152,7 +152,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
   const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
   const sidebarWidth = sidebarCollapsed ? 68 : 232;
 
-  const { getToken } = useAuth();
+  const authedFetch = useAuthedFetch();
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const searchParams = useSearchParams();
 
@@ -196,8 +196,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
   }, [searchParams]);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const token = await getToken();
-    return api<T>(path, { ...init, authToken: token ?? undefined });
+    return authedFetch<T>(path, init);
   }
 
   async function loadLeads() {

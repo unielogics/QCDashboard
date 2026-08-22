@@ -12,7 +12,7 @@
 // closes unless suppressed, body scroll is locked while open, and focus moves
 // into the dialog on open and returns to whatever opened it on close.
 
-import { useCallback, useEffect, useId, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, type CSSProperties, type ReactNode } from "react";
 import { cx } from "./index";
 
 export type DrawerWidth = "md" | "lg" | "xl";
@@ -28,22 +28,26 @@ export function Drawer({
   onClose,
   title,
   sub,
+  headerActions,
   footer,
   children,
   width = "lg",
   closeOnBackdrop = true,
   bodyClass,
+  bodyStyle,
   ariaLabel,
 }: {
   open: boolean;
   onClose: () => void;
   title?: ReactNode;
   sub?: ReactNode;
+  headerActions?: ReactNode;
   footer?: ReactNode;
   children: ReactNode;
   width?: DrawerWidth;
   closeOnBackdrop?: boolean;
   bodyClass?: string;
+  bodyStyle?: CSSProperties;
   /**
    * Overrides the announced name of the dialog.
    *
@@ -114,13 +118,16 @@ export function Drawer({
             <path d="M18 6 6 18M6 6l12 12" />
           </svg>
         </button>
-        {(title || sub) && (
+        {(title || sub || headerActions) && (
           <div className="drawer-h">
-            {title && <h2 id={titleId}>{title}</h2>}
-            {sub && <p className="drawer-sub sub">{sub}</p>}
+            <div className="drawer-h-main">
+              {title && <h2 id={titleId}>{title}</h2>}
+              {sub && <p className="drawer-sub sub">{sub}</p>}
+            </div>
+            {headerActions ? <div className="pgacts drawer-h-actions">{headerActions}</div> : null}
           </div>
         )}
-        <div className={cx("drawer-b", bodyClass)}>{children}</div>
+        <div className={cx("drawer-b", bodyClass)} style={bodyStyle}>{children}</div>
         {footer && <div className="drawer-f">{footer}</div>}
       </div>
     </>

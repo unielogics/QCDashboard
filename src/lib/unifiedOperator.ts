@@ -31,12 +31,15 @@ export type UnifiedFileRow = {
   label: string;
   subtitle: string | null;
   principal?: string | null;
+  phone?: string | null;
+  client_id: string | null;
   client_name: string | null;
   business_name: string | null;
   vertical: UnifiedVertical;
   vertical_label: string;
   origin: UnifiedOrigin;
   origin_label: string;
+  source_label?: string;
   stage: UnifiedStage;
   amount: number | null;
   health: string;
@@ -50,6 +53,11 @@ export type UnifiedFileRow = {
   owner_name: string | null;
   rep_name: string | null;
   dealer_name: string | null;
+  case_ref?: string | null;
+  linked_bucket_ids?: string[];
+  linked_intake_ids?: string[];
+  source_deal_id?: string | null;
+  promoted_loan_id?: string | null;
   bucket_id: string | null;
   bucket_name: string | null;
   intake_id: string | null;
@@ -96,6 +104,67 @@ export type UnifiedAuditItem = {
 export type UnifiedFileDetail = {
   file: UnifiedFileRow;
   audit: UnifiedAuditItem[];
+  ladder: UnifiedStage[];
+  gate: {
+    key: string;
+    label: string;
+    state: "locked" | "ready" | "passed";
+    ready: boolean;
+    blockers: string[];
+  };
+  blockers: string[];
+  document_pack: {
+    vertical: UnifiedVertical;
+    documents: UnifiedDocumentRequirement[];
+    signatures: UnifiedDocumentRequirement[];
+  };
+  linked_sources: Array<{
+    kind: UnifiedSourceKind;
+    id: string;
+    ref: string;
+    label: string;
+    relationship: string;
+    route: string | null;
+  }>;
+  participants: Array<{ name: string; role: string; email: string | null; phone: string | null }>;
+  profile: {
+    shape: "person" | "business" | "person_and_business";
+    person: Record<string, string | number | boolean | null>;
+    business: Record<string, string | number | boolean | null>;
+  };
+  activities: UnifiedActivity[];
+  actions: UnifiedActionDefinition[];
+};
+
+export type UnifiedDocumentRequirement = {
+  key: string;
+  label: string;
+  kind: "document" | "signature";
+  required: boolean;
+  status: "missing" | "requested" | "received" | "complete";
+};
+
+export type UnifiedActivity = {
+  id: string;
+  source: "funding" | "client" | "bucket" | "intake" | "dealer";
+  action: string;
+  actor_name: string | null;
+  actor_role: string | null;
+  detail: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type UnifiedActionDefinition = {
+  key: string;
+  label: string;
+  method: "POST" | "PATCH" | "DELETE";
+  path: string;
+  tone: "default" | "danger";
+  effects: string[];
+  reversible: boolean;
+  external: boolean;
+  confirmation_label: string;
 };
 
 export type BucketIntakeLinkPayload = {
@@ -108,13 +177,49 @@ export type BucketIntakeLinkPayload = {
 
 export type BucketIntakeLinkResult = {
   ok: boolean;
+  link_id: string;
   bucket_id: string;
   intake_id: string;
   relationship: "primary" | "supporting" | "source";
   linked_file_ids?: string[];
   audit_ids: string[];
   audit_action?: string;
-  bucket_context?: Record<string, unknown>;
+  review_id: string | null;
+  status: "active" | "unlinked";
+};
+
+export type BucketIntakeLinkRead = {
+  link_id: string;
+  bucket_id: string;
+  intake_id: string;
+  relationship: "primary" | "supporting" | "source";
+  linked_file_ids: string[];
+  note: string | null;
+  status: "active" | "unlinked";
+  created_at: string;
+  updated_at: string;
+};
+
+export type BucketIntakeLinkOption = {
+  id: string;
+  label: string;
+  subtitle: string | null;
+  file_count: number;
+  linked: boolean;
+};
+
+export type BucketIntakeLinkOptions = {
+  buckets: BucketIntakeLinkOption[];
+  intakes: BucketIntakeLinkOption[];
+};
+
+export type OperatorBucketFile = {
+  id: string;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+  status: string;
+  deleted_at: string | null;
 };
 
 export type ProgramBlueprint = {
@@ -257,25 +362,6 @@ export const DOCUMENT_PACKS: Record<UnifiedVertical, DocumentPackBlueprint> = {
     signatures: ["Debt review consent", "Funding application"],
   },
 };
-
-export const UNIFIED_ACTIONS: UnifiedAction[] = [
-  { key: "review_file", label: "Review file", tone: "acc" },
-  {
-    key: "link_bucket_intake",
-    label: "Link bucket and intake",
-    tone: "gold",
-    workflowChanging: true,
-  },
-  {
-    key: "promote_to_funding",
-    label: "Promote to funding",
-    tone: "ok",
-    workflowChanging: true,
-  },
-  { key: "request_docs", label: "Request documents", tone: "warn", workflowChanging: true },
-  { key: "send_external", label: "Send external package", tone: "pet", external: true },
-  { key: "archive", label: "Archive", tone: "bad", destructive: true },
-];
 
 export function verticalTone(vertical: UnifiedVertical): UnifiedTone {
   if (vertical === "real_estate") return "acc";

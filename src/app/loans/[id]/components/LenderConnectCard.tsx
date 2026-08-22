@@ -21,6 +21,7 @@
 import { useMemo, useState } from "react";
 import { Btn, CellChip, Empty, Linky, Panel, Select, StatusLine, Sub } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import {
   useConnectLender,
   useDisconnectLender,
@@ -40,6 +41,7 @@ interface Props {
 }
 
 export function LenderConnectCard({ loan }: Props) {
+  const confirmAction = useConfirmAction();
   const profile = useActiveProfile();
   const isInternal = profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
   const canManageConnection = profile.role === Role.SUPER_ADMIN;
@@ -109,7 +111,14 @@ export function LenderConnectCard({ loan }: Props) {
   };
 
   const handleDisconnect = async () => {
-    if (!window.confirm("Disconnect this lender? The hide-identity participant row will be removed; stage stays unchanged.")) return;
+    const confirmed = await confirmAction({
+      title: "Disconnect lender",
+      body: "The hidden lender participant will be removed. The funding stage will remain unchanged.",
+      confirmLabel: "Disconnect lender",
+      tone: "danger",
+      reversible: true,
+    });
+    if (!confirmed) return;
     try {
       await disconnect.mutateAsync(loan.id);
     } catch (e) {

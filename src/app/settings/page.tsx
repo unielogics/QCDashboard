@@ -17,6 +17,7 @@ import {
   Lbl,
   PageHeader,
   Panel,
+  Row,
   Select,
   Table,
   Td,
@@ -48,6 +49,7 @@ import {
 } from "@/hooks/useApi";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { parseIntStrict } from "@/lib/formCoerce";
 import { InviteMemberDialog } from "@/components/InviteMemberDialog";
 import type {
@@ -224,6 +226,16 @@ export default function SettingsPage() {
     }
   };
 
+  const currentSettingsKey: keyof AppSettingsData | null = ({
+    checklists: "checklists",
+    cadence: "ai_cadence",
+    referrals: "referrals",
+    pricing: "pricing",
+    simulator: "simulator",
+    security: "security",
+    letterhead: "letterhead",
+  } as Partial<Record<SectionId, keyof AppSettingsData>>)[section] ?? null;
+
   if (isLoading && !draft) {
     return <div className="sub">Loading settings…</div>;
   }
@@ -242,19 +254,15 @@ export default function SettingsPage() {
     <div className="grid">
       <PageHeader
         title="Settings"
-        actions={
-          <>
-            {canEdit
-              ? <CellChip tone="acc">Editing as super-admin</CellChip>
-              : <CellChip tone="warn">Read-only — super-admin required</CellChip>}
-            {error && (
-              <CellChip tone="warn">Backend /settings not deployed yet — preview mode (saves disabled)</CellChip>
-            )}
-            {savedFlash && <CellChip tone="ok">✓ {savedFlash}</CellChip>}
-            {errFlash && <CellChip tone="bad">{errFlash}</CellChip>}
-          </>
-        }
+        lede={canEdit ? "Super-admin configuration" : "Read-only"}
+        actions={<>{canEdit && currentSettingsKey ? <Btn variant="pri" onClick={() => handleSaveSection(currentSettingsKey)} disabled={!dirty || update.isPending}><Icon name="check" size={13} /> {update.isPending ? "Saving..." : "Save changes"}</Btn> : null}<PageActionMenu items={[{ label: "Lending AI", href: "/admin/lending-ai" }, { label: "Elara usage and controls", href: "/admin/token-usage" }]} /></>}
       />
+      <Row>
+        {canEdit ? <CellChip tone="acc">Editing as super-admin</CellChip> : <CellChip tone="warn">Read-only — super-admin required</CellChip>}
+        {error ? <CellChip tone="warn">Settings service unavailable · preview mode</CellChip> : null}
+        {savedFlash ? <CellChip tone="ok">{savedFlash}</CellChip> : null}
+        {errFlash ? <CellChip tone="bad">{errFlash}</CellChip> : null}
+      </Row>
 
       {/* Lending AI breadcrumb — shown when an admin arrives via a
           legacy tile in the Lending AI portal. Lets them step back. */}
@@ -269,7 +277,7 @@ export default function SettingsPage() {
 
       {/* A 220px rail beside a fluid body — a bespoke split, not two of the
           twelve cockpit columns, so this grid stays inline. */}
-      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 16, alignItems: "flex-start" }}>
+      <div className="settings-layout">
         <div className="card">
           {/* Lending AI — the canonical home for AI configuration.
               Routes away (not an in-page section). Sits at the top of
@@ -476,7 +484,7 @@ function ChecklistsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
   return (
     <Panel
       title="Per loan-type doc checklist"
-      actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}
+      actions={null}
     >
       {/* `.seg` is the sheet's tab strip; `.on` marks the selected loan type. */}
       <div className="seg" style={{ marginBottom: 14 }}>
@@ -682,7 +690,7 @@ function CadenceSection({ draft, setDraft, canEdit, dirty, onSave, saving }: Sec
   const set = (patch: Partial<AICadenceSettings>) => setDraft((d) => d && ({ ...d, ai_cadence: { ...ac, ...patch } }));
 
   return (
-    <Panel title="AI cadence & autonomy" actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}>
+    <Panel title="AI cadence & autonomy">
       <div className="cg">
         <Field className="s6" label="Morning digest">
           <Input type="time" value={ac.morning_digest} onChange={(e) => set({ morning_digest: e.target.value })} disabled={!canEdit} />
@@ -719,7 +727,7 @@ function ReferralsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: S
   const set = (patch: Partial<ReferralSettings>) => setDraft((d) => d && ({ ...d, referrals: { ...r, ...patch } }));
 
   return (
-    <Panel title="Referral workflow" actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}>
+    <Panel title="Referral workflow">
       <Toggle label="Require super-admin approval for self-claimed referrals" value={r.require_approval} onChange={(v) => set({ require_approval: v })} disabled={!canEdit} />
       <Toggle label="Auto-link from broker invite URL" value={r.auto_link_from_url} onChange={(v) => set({ auto_link_from_url: v })} disabled={!canEdit} />
       <Toggle label="Block re-attribution after first funded loan" value={r.block_re_attribution} onChange={(v) => set({ block_re_attribution: v })} disabled={!canEdit} />
@@ -751,7 +759,7 @@ function PricingSection({ draft, setDraft, canEdit, dirty, onSave, saving }: Sec
   const set = (patch: Partial<PricingSettings>) => setDraft((d) => d && ({ ...d, pricing: { ...p, ...patch } }));
 
   return (
-    <Panel title="Pricing & rate-sheet automation" actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}>
+    <Panel title="Pricing & rate-sheet automation">
       <div className="cg">
         <Field className="s6" label="Daily rate-sheet pull">
           <Input type="time" value={p.daily_pull_time} onChange={(e) => set({ daily_pull_time: e.target.value })} disabled={!canEdit} />
@@ -810,7 +818,7 @@ function SecuritySection({ draft, setDraft, canEdit, dirty, onSave, saving }: Se
   const set = (patch: Partial<SecuritySettings>) => setDraft((d) => d && ({ ...d, security: { ...s, ...patch } }));
 
   return (
-    <Panel title="Security" actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}>
+    <Panel title="Security">
       <Toggle label="SSO (Okta)" sub="Enforce single sign-on for the operator console." value={s.sso_enabled} onChange={(v) => set({ sso_enabled: v })} disabled={!canEdit} />
 
       {/* Two-step verification is owned by Clerk, not by these settings.
@@ -1554,7 +1562,7 @@ function SimulatorSection({ draft, setDraft, canEdit, dirty, onSave, saving }: S
   return (
     <Panel
       title="Borrower simulator"
-      actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}
+      actions={null}
     >
       <div className="sub">
         Defines the bounds the Simulate screen exposes to borrowers. Changes apply immediately to every borrower&apos;s
@@ -1684,7 +1692,7 @@ function LetterheadSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
   return (
     <Panel
       title="Firm letterhead — prequal PDF header & signature"
-      actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}
+      actions={null}
     >
       <div className="sub">
         Edits here change every pre-qualification letter generated from the next

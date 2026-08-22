@@ -121,7 +121,7 @@ export default function AiTrainingPage() {
     setTimeout(() => setSavedMsg(null), 4000);
   };
 
-  const useAsExample = (text: string) => {
+  const appendExample = (text: string) => {
     setForm((p) => ({
       ...p,
       examples: p.examples ? `${p.examples}\n${text}` : text,
@@ -252,7 +252,7 @@ export default function AiTrainingPage() {
                     <Row>
                       <Btn
                         size="sm"
-                        onClick={() => useAsExample(f.text)}
+                        onClick={() => appendExample(f.text)}
                         title="Append this to the selected task's example phrasings"
                       >
                         <Icon name="plus" size={11} /> Use as example

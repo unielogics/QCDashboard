@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEven
 import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
 import {
   Btn,
@@ -12,7 +13,6 @@ import {
   Field,
   IconBtn,
   Input,
-  PageHeader,
   Panel,
   Select,
   StatusLine,
@@ -21,15 +21,16 @@ import {
   cx,
 } from "@/components/ds";
 import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
 import { EmailComposer } from "@/components/email/EmailComposer";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
-import { useCurrentUser } from "@/hooks/useApi";
+import { useBucketIntakeLinks, useCurrentUser, useUnifiedOperatorFiles } from "@/hooks/useApi";
+import type { BucketIntakeLinkRead } from "@/lib/unifiedOperator";
 import { api, ApiError } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
 import { APP_ORIGIN } from "@/lib/appUrl";
 import { openSignedUrl } from "@/lib/safeOpen";
-import { useUI } from "@/store/ui";
 
 type Bucket = {
   id: string;
@@ -43,6 +44,7 @@ type Bucket = {
   updated_at: string;
   file_count?: number;
   uploaded_file_count?: number;
+  vendor_access_count?: number;
 };
 type RequestedDoc = {
   id: string;
@@ -337,10 +339,13 @@ function emptyVendorAccessDraft(): VendorAccessDraft {
 }
 
 export default function BucketsAdminPage() {
+  const confirmAction = useConfirmAction();
   const router = useRouter();
   const searchParams = useSearchParams();
   const bucketParam = searchParams.get("bucket");
   const { data: me, isLoading: meLoading } = useCurrentUser();
+  const { data: bucketLinks = [] } = useBucketIntakeLinks({ all: true });
+  const { data: unifiedFiles } = useUnifiedOperatorFiles({ limit: 500 });
   const { getToken } = useAuth();
   const adminFileInputRef = useRef<HTMLInputElement | null>(null);
   const shareMenuRef = useRef<HTMLDivElement | null>(null);
@@ -349,8 +354,10 @@ export default function BucketsAdminPage() {
   const [detail, setDetail] = useState<BucketDetail | null>(null);
   const [detailFocus, setDetailFocus] = useState<DetailFocus>(null);
   const [search, setSearch] = useState("");
+  const [bucketView, setBucketView] = useState<"all" | "collecting" | "review" | "complete">("all");
   const [busy, setBusy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteReviewBucket, setDeleteReviewBucket] = useState<Bucket | null>(null);
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -534,8 +541,6 @@ export default function BucketsAdminPage() {
   }
 
   async function deleteBucket(bucket: Bucket) {
-    const confirmed = window.confirm(`Delete bucket "${bucket.name}"? It will be removed from the bucket list.`);
-    if (!confirmed) return;
     setDeletingId(bucket.id);
     setNotice(null);
     try {
@@ -543,6 +548,7 @@ export default function BucketsAdminPage() {
       if (detail?.id === bucket.id) setDetail(null);
       await loadBuckets();
       setNotice("Bucket deleted.");
+      setDeleteReviewBucket(null);
     } finally {
       setDeletingId(null);
     }
@@ -683,15 +689,28 @@ export default function BucketsAdminPage() {
   );
   const filteredBuckets = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return buckets;
-    return buckets.filter((bucket) =>
-      [bucket.name, bucket.client_name, bucket.purpose, bucket.bucket_type, bucket.status]
+    return buckets.filter((bucket) => {
+      const status = bucket.status.toLowerCase();
+      const statusMatches = bucketView === "all"
+        || (bucketView === "collecting" && !status.includes("complete") && !status.includes("review"))
+        || (bucketView === "review" && status.includes("review"))
+        || (bucketView === "complete" && (status.includes("complete") || status.includes("closed")));
+      if (!statusMatches) return false;
+      if (!q) return true;
+      return [bucket.name, bucket.client_name, bucket.purpose, bucket.bucket_type, bucket.status]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
-        .includes(q),
-    );
-  }, [buckets, search]);
+        .includes(q);
+    });
+  }, [buckets, search, bucketView]);
+  const primaryIntakeByBucket = useMemo(() => {
+    const pairs = new Map<string, string>();
+    for (const file of unifiedFiles?.items ?? []) {
+      if (file.bucket_id && file.intake_id) pairs.set(file.bucket_id, file.intake_id);
+    }
+    return pairs;
+  }, [unifiedFiles?.items]);
 
   if (meLoading) return <PanelBox>Loading Buckets...</PanelBox>;
   if (me && me.role !== Role.SUPER_ADMIN) return null;
@@ -1022,7 +1041,16 @@ export default function BucketsAdminPage() {
   }
 
   async function setShareStatus(share: Share, statusValue: "active" | "revoked") {
-    if (statusValue === "revoked" && !window.confirm(`Revoke access for ${share.recipient_name}?`)) return;
+    if (statusValue === "revoked") {
+      const confirmed = await confirmAction({
+        title: `Revoke access for ${share.recipient_name}`,
+        body: "The recipient will immediately lose access to the shared bucket files.",
+        confirmLabel: "Revoke access",
+        tone: "danger",
+        reversible: true,
+      });
+      if (!confirmed) return;
+    }
     await patchShare(share, { status: statusValue });
     setNotice(statusValue === "revoked" ? "Share access revoked." : "Share access reactivated.");
   }
@@ -1094,7 +1122,16 @@ export default function BucketsAdminPage() {
   }
 
   async function setVendorStatus(access: VendorAccess, statusValue: "active" | "revoked") {
-    if (statusValue === "revoked" && !window.confirm(`Revoke access for ${access.vendor_name || access.vendor_email || "this vendor"}?`)) return;
+    if (statusValue === "revoked") {
+      const confirmed = await confirmAction({
+        title: `Revoke access for ${access.vendor_name || access.vendor_email || "this vendor"}`,
+        body: "The vendor will immediately lose access to this file room.",
+        confirmLabel: "Revoke vendor access",
+        tone: "danger",
+        reversible: true,
+      });
+      if (!confirmed) return;
+    }
     await patchVendorAccess(access, { status: statusValue });
     setNotice(statusValue === "revoked" ? "Vendor access revoked." : "Vendor access reactivated.");
   }
@@ -1391,10 +1428,14 @@ export default function BucketsAdminPage() {
 
   async function deleteFile(file: BucketFile) {
     if (!detail || deletingFileId) return;
-    const ok = window.confirm(
-      `Delete "${file.file_name}"?\n\nThis removes it from the bucket, revokes share access, and stops preview/download immediately.`,
-    );
-    if (!ok) return;
+    const confirmed = await confirmAction({
+      title: `Delete ${file.file_name}`,
+      body: "This removes the file from the bucket, revokes share access, and stops preview and download immediately.",
+      confirmLabel: "Delete file",
+      tone: "danger",
+      reversible: false,
+    });
+    if (!confirmed) return;
     setDeletingFileId(file.id);
     try {
       await call(`/buckets/admin/${detail.id}/files/${file.id}`, { method: "DELETE" });
@@ -1567,33 +1608,35 @@ export default function BucketsAdminPage() {
     // Grid, not flex-column: `.panel` is overflow:hidden, and as a flex child
     // that zeroes its automatic minimum size and clips its own body.
     <div className="grid">
-      <PageHeader
-        title="Buckets"
-        lede="Secure document rooms for collecting and selectively sharing files."
-        actions={
-          <>
-            <Btn onClick={() => setVendorDirectoryOpen(true)}>
-              <Icon name="user" size={15} />
-              Manage vendors
-            </Btn>
-            <Btn
-              variant="pri"
-              onClick={() => {
-                setCreateResult(null);
-                setCreateStatus(null);
-                setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
-                setCreateInvites([]);
-                setCustomDocs([]);
-                setCustomDocDraft({ name: "", description: "", required: true, allow_multiple_files: false });
-                setCreateOpen(true);
-              }}
-            >
-              <Icon name="plus" size={15} />
-              Create bucket
-            </Btn>
-          </>
-        }
-      />
+      <div className="ckhead">
+        <div className="ckrow">
+          <h1>Buckets</h1>
+          <CellChip tone="mut">{buckets.filter((bucket) => !bucket.status.toLowerCase().includes("complete")).length} open</CellChip>
+          <span className="sp" />
+          <span className="sub">Secure document rooms. Every bucket can feed an AI intake.</span>
+          <Btn variant="pri" size="sm" onClick={() => {
+            setCreateResult(null);
+            setCreateStatus(null);
+            setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
+            setCreateInvites([]);
+            setCustomDocs([]);
+            setCustomDocDraft({ name: "", description: "", required: true, allow_multiple_files: false });
+            setCreateOpen(true);
+          }}><Icon name="plus" size={13} /> Create bucket</Btn>
+          <PageActionMenu label="Bucket actions" items={[
+            { label: "Manage vendor directory", onSelect: () => setVendorDirectoryOpen(true) },
+            { label: "Open AI intake", href: "/admin/ai-underwriter-leads" },
+          ]} />
+        </div>
+        <div className="cktabs" role="tablist" aria-label="Bucket status">
+          {[
+            { value: "all" as const, label: "All buckets" },
+            { value: "collecting" as const, label: "Collecting" },
+            { value: "review" as const, label: "In review" },
+            { value: "complete" as const, label: "Complete" },
+          ].map((item) => <button key={item.value} type="button" role="tab" aria-selected={bucketView === item.value} className={bucketView === item.value ? "on" : undefined} onClick={() => setBucketView(item.value)}>{item.label}</button>)}
+        </div>
+      </div>
 
       {notice ? (
         // One slot, two meanings: sixteen call sites pass readableError() into
@@ -1792,12 +1835,14 @@ export default function BucketsAdminPage() {
       >
         <BucketTable
           buckets={filteredBuckets}
+          links={bucketLinks}
+          primaryIntakeByBucket={primaryIntakeByBucket}
           deletingId={deletingId}
           onSelect={(id) => openBucket(id)}
           onOpenVendors={openVendorAssignment}
           onConvertToLead={setConvertLeadBucket}
           onLinkIntake={setLinkBucket}
-          onDelete={deleteBucket}
+          onDelete={setDeleteReviewBucket}
         />
       </Panel>
 
@@ -1814,12 +1859,22 @@ export default function BucketsAdminPage() {
         />
       ) : null}
 
-      <BucketIntakeLinkDrawer
-        open={linkBucket !== null}
-        onClose={() => setLinkBucket(null)}
-        initialBucketId={linkBucket?.id}
-        title="Link bucket to AI intake"
-      />
+      <Drawer
+        open={deleteReviewBucket !== null}
+        onClose={() => setDeleteReviewBucket(null)}
+        width="md"
+        title="Review before running"
+        sub="Delete bucket"
+        closeOnBackdrop={!deletingId}
+        footer={<><Btn onClick={() => setDeleteReviewBucket(null)} disabled={Boolean(deletingId)}>Cancel</Btn><span className="sp" /><Btn onClick={() => deleteReviewBucket && deleteBucket(deleteReviewBucket)} disabled={Boolean(deletingId)} className="danger">{deletingId ? "Deleting..." : "Delete bucket"}</Btn></>}
+      >
+        <div className="grid">
+          <div className="warnline"><b>{deleteReviewBucket?.name}</b> will be removed from the active bucket list.</div>
+          <div className="kv"><span>Actor</span><b>Current signed-in operator</b></div>
+          <div className="kv"><span>Execution</span><b>Immediately after confirmation</b></div>
+          <div className="kv"><span>Reversible</span><b>No</b></div>
+        </div>
+      </Drawer>
 
       <Drawer
         open={createOpen}
@@ -3076,6 +3131,13 @@ export default function BucketsAdminPage() {
           </div>
         </ModalFrame>
       ) : null}
+      <BucketIntakeLinkDrawer
+        open={linkBucket !== null}
+        onClose={() => setLinkBucket(null)}
+        initialBucketId={linkBucket?.id}
+        initialIntakeId={linkBucket ? primaryIntakeByBucket.get(linkBucket.id) : undefined}
+        title="Link bucket to AI intake"
+      />
       {reviewFile ? (
         <BucketFileReviewPanel
           title="Admin file review"
@@ -3415,6 +3477,8 @@ function ConvertToLeadModal({
 
 function BucketTable({
   buckets,
+  links,
+  primaryIntakeByBucket,
   deletingId,
   onSelect,
   onOpenVendors,
@@ -3423,6 +3487,8 @@ function BucketTable({
   onDelete,
 }: {
   buckets: Bucket[];
+  links: BucketIntakeLinkRead[];
+  primaryIntakeByBucket: Map<string, string>;
   deletingId: string | null;
   onSelect: (id: string) => void;
   onOpenVendors: (id: string) => void;
@@ -3433,118 +3499,39 @@ function BucketTable({
   if (buckets.length === 0) {
     return <div className="sub" style={{ padding: 18 }}>No buckets yet. Use Create bucket to start.</div>;
   }
-  // A bespoke nine-column track, not `.cg`: these are list columns sized to
-  // their contents (a 70px file count, a 44px delete), not spans of the
-  // twelve-column page grid.
-  const columns = "minmax(220px, 1.35fr) minmax(130px, .75fr) minmax(150px, .72fr) 70px minmax(150px, .65fr) 112px 130px 126px 84px 44px";
   return (
-    <div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: columns,
-          gap: 12,
-          padding: "10px 14px",
-          background: "var(--sunken2)",
-          borderBottom: "1px solid var(--line2)",
-        }}
-      >
-        <div className="lbl">Bucket</div>
-        <div className="lbl">Client</div>
-        <div className="lbl">Type</div>
-        <div className="lbl">Files</div>
-        <div className="lbl">Status</div>
-        <div className="lbl">Access</div>
-        <div />
-        <div />
-        <div className="lbl">Updated</div>
-        <div />
-      </div>
-      {buckets.map((bucket) => (
-        // Stays a role="button" div rather than a <tr>: a table row is neither
-        // focusable nor Enter-activatable, and this row IS the way into a
-        // bucket. Converting it would cost keyboard access outright.
-        <div
-          key={bucket.id}
-          role="button"
-          tabIndex={0}
-          onClick={() => onSelect(bucket.id)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              onSelect(bucket.id);
-            }
-          }}
-          style={{
-            display: "grid",
-            gridTemplateColumns: columns,
-            gap: 12,
-            alignItems: "center",
-            padding: "13px 14px",
-            borderBottom: "1px solid var(--line)",
-            background: "var(--surface)",
-            cursor: "pointer",
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <div className="trunc" style={{ fontWeight: 650 }}>{bucket.name}</div>
-            <div className="sub trunc">{bucket.purpose || "No purpose"}</div>
-          </div>
-          <div className="trunc">{bucket.client_name || "No client"}</div>
-          <div className="trunc">{bucket.bucket_type || "Bucket"}</div>
-          <div className="num">{bucket.uploaded_file_count ?? 0}</div>
-          <div style={{ minWidth: 0 }}><CellChip>{statusLabel(bucket.status)}</CellChip></div>
-          <Btn
-            size="sm"
-            style={{ justifySelf: "start" }}
-            onClick={(event) => {
-              event.stopPropagation();
-              onOpenVendors(bucket.id);
-            }}
-            title="Open vendor access settings for this bucket"
-          >
-            <Icon name="user" size={13} />
-            Vendors
-          </Btn>
-          <Btn
-            size="sm"
-            style={{ justifySelf: "start" }}
-            onClick={(event) => {
-              event.stopPropagation();
-              onConvertToLead(bucket);
-            }}
-            title="Convert this bucket into an AI Underwriter Lead"
-          >
-            <Icon name="spark" size={13} />
-            AI Lead
-          </Btn>
-          <Btn
-            size="sm"
-            style={{ justifySelf: "start" }}
-            onClick={(event) => {
-              event.stopPropagation();
-              onLinkIntake(bucket);
-            }}
-            title="Link this bucket to an existing AI intake"
-          >
-            <Icon name="link" size={13} />
-            Link intake
-          </Btn>
-          <div className="sub">{formatDate(bucket.updated_at)}</div>
-          <IconBtn
-            className="danger"
-            onClick={(event) => {
-              event.stopPropagation();
-              onDelete(bucket);
-            }}
-            disabled={deletingId === bucket.id}
-            aria-label={`Delete ${bucket.name}`}
-            title="Delete bucket"
-          >
-            <Icon name="x" size={14} />
-          </IconBtn>
-        </div>
-      ))}
+    <div className="tblwrap">
+      <table className="tbl">
+        <thead><tr><th>Bucket</th><th>Client</th><th>Requested / uploaded</th><th>Vendors</th><th>Status</th><th>Linked AI intake</th><th>Updated</th><th className="r">Actions</th></tr></thead>
+        <tbody>
+          {buckets.map((bucket) => {
+            const link = links.find((item) => item.bucket_id === bucket.id && item.status === "active");
+            const primaryIntakeId = primaryIntakeByBucket.get(bucket.id);
+            return (
+              <tr key={bucket.id} onClick={() => onSelect(bucket.id)}>
+                <td><button type="button" className="linky" onClick={() => onSelect(bucket.id)}>{bucket.name}</button><div className="sub num">{bucket.id.slice(0, 8)} · {bucket.bucket_type || "Bucket"}</div></td>
+                <td>{bucket.client_name || <span className="sub">No client</span>}</td>
+                <td className="num">{bucket.file_count ?? 0} / {bucket.uploaded_file_count ?? 0}</td>
+                <td className="num">{bucket.vendor_access_count ?? 0}</td>
+                <td><CellChip tone={bucket.status.toLowerCase().includes("complete") ? "ok" : bucket.status.toLowerCase().includes("review") ? "acc" : "warn"}>{statusLabel(bucket.status)}</CellChip></td>
+                <td>{link || primaryIntakeId ? <button type="button" className="cellchip c-acc" onClick={(event) => { event.stopPropagation(); onLinkIntake(bucket); }}>{(link?.intake_id || primaryIntakeId || "").slice(0, 8)}</button> : <Btn size="sm" onClick={(event) => { event.stopPropagation(); onLinkIntake(bucket); }}>Link</Btn>}</td>
+                <td className="sub">{formatDate(bucket.updated_at)}</td>
+                <td className="r">
+                  <span onClick={(event) => event.stopPropagation()}>
+                    <PageActionMenu label={`Actions for ${bucket.name}`} items={[
+                      { label: "Open bucket", onSelect: () => onSelect(bucket.id) },
+                      { label: "Vendor access", onSelect: () => onOpenVendors(bucket.id) },
+                      { label: link || primaryIntakeId ? "Manage AI intake link" : "Link AI intake", onSelect: () => onLinkIntake(bucket) },
+                      { label: "Create AI intake", onSelect: () => onConvertToLead(bucket) },
+                      { label: deletingId === bucket.id ? "Deleting..." : "Delete bucket", onSelect: () => onDelete(bucket), tone: "danger" },
+                    ]} />
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -3571,37 +3558,10 @@ function ModalFrame({
   children: React.ReactNode;
   onClose: () => void;
 }) {
-  const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
-  // Data-derived geometry: the overlay begins where the app sidebar ends, and
-  // the sidebar's width is state rather than a constant.
-  const sidebarOffset = sidebarCollapsed ? 68 : 232;
   return (
-    // zIndex 59 sits one under `.drawer-scrim` (60) ON PURPOSE. A ds Drawer
-    // opened from inside this surface — the AI-lead link in the header — is at
-    // 61, so it lands on top. At the old 200 it was buried behind this scrim
-    // and appeared not to open at all.
-    <div className="drawer-scrim" style={{ left: sidebarOffset, zIndex: 59, display: "flex" }}>
-      {/* `.panel` owns the surface, the hairline and the elevation. The four
-          zeroes squared off against the viewport edges are the one thing a
-          full-bleed frame has to take back from it. */}
-      <div
-        className="panel"
-        style={{ flex: 1, minWidth: 0, borderRadius: 0, borderTop: 0, borderRight: 0, borderBottom: 0 }}
-      >
-        <div className="panel-h">
-          <div style={{ minWidth: 0 }}>
-            <h2 className="trunc frame-t">{title}</h2>
-            {subtitle ? <div className="sub trunc">{subtitle}</div> : null}
-          </div>
-          <span className="sp" />
-          {action}
-          <IconBtn onClick={onClose} aria-label="Close">
-            <Icon name="x" size={16} />
-          </IconBtn>
-        </div>
-        <div className="panel-b" style={{ overflowY: "auto" }}>{children}</div>
-      </div>
-    </div>
+    <Drawer open onClose={onClose} width="xl" title={title} sub={subtitle} headerActions={action} bodyClass="grid">
+      {children}
+    </Drawer>
   );
 }
 

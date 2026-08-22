@@ -84,6 +84,7 @@ export default function DealAnalyzerPage() {
     currentUser?.role === Role.SUPER_ADMIN ||
     currentUser?.role === Role.LOAN_EXEC;
   const wantNew = sp?.get("new") === "1";
+  const showRuns = sp?.get("view") === "runs";
   const runId = sp?.get("run") ?? null;
   const [product, setProduct] = useState<AnalysisProduct>((sp?.get("product") as AnalysisProduct) || "dscr_purchase");
   const [selectedClient, setSelectedClient] = useState<ClientPickResult | null>(null);
@@ -139,6 +140,12 @@ export default function DealAnalyzerPage() {
   const valueRange = estimateRange(snapshot?.rentcast_value, "value");
   const rentRange = estimateRange(snapshot?.rentcast_rent, "rent");
   const report = savedRun?.ai_report ?? null;
+
+  useEffect(() => {
+    if (isListFirstRole && !runId && !wantNew && !showRuns) {
+      router.replace("/deal-analyzer/fix-and-flip?new=1");
+    }
+  }, [isListFirstRole, router, runId, showRuns, wantNew]);
 
   useEffect(() => {
     setSavedRun(null);
@@ -381,7 +388,11 @@ export default function DealAnalyzerPage() {
     );
   }
 
-  if (isListFirstRole && !wantNew) {
+  if (isListFirstRole && !wantNew && !showRuns) {
+    return <div className="empty">Opening Deal Analyzer...</div>;
+  }
+
+  if (isListFirstRole && !wantNew && showRuns) {
     const actions = [
       {
         label: "New DSCR analysis",
@@ -404,7 +415,7 @@ export default function DealAnalyzerPage() {
           emptyText="No saved Deal Analyzer runs in the last 30 days."
           runs={recentRuns}
           loading={recentRunsLoading}
-          onOpen={(id) => router.push(`/deal-analyzer?run=${id}`)}
+          onOpen={(id) => router.push(`/deal-analyzer?view=runs&run=${id}`)}
           actions={isBroker ? actions : undefined}
         />
         {!isBroker ? <AnalysisFloatingAction label="Start a new analysis" actions={actions} /> : null}

@@ -34,13 +34,14 @@ import {
   useUnifiedOperatorFiles,
 } from "@/hooks/useApi";
 import { QC_FMT } from "@/lib/fmt";
-import type { AITask, Broker, CalendarEvent, FredSeriesSummary, Loan } from "@/lib/types";
+import type { AITask, Broker, CalendarEvent, DashboardReport, FredSeriesSummary, Loan } from "@/lib/types";
 import { Role } from "@/lib/enums.generated";
 import { CreditPullModal } from "@/components/CreditPullModal";
 import { RateDetailModal } from "@/components/RateDetailModal";
 import { AgentHomeView } from "./components/AgentHomeView";
 import {
   Btn,
+  BtnLink,
   CG,
   Card,
   CellChip,
@@ -57,12 +58,8 @@ import {
   type ChipTone,
   type Col,
 } from "@/components/ds";
-import {
-  BucketIntakeLinkDrawer,
-  UnifiedBlueprintRail,
-  UnifiedFilesTable,
-} from "@/components/operator/UnifiedOperator";
-import type { UnifiedFileRow } from "@/lib/unifiedOperator";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { FUNDING_LADDER, VERTICAL_OPTIONS, formatUnifiedAmount, operatorFileHref, verticalTone, type UnifiedFileRow, type UnifiedVertical } from "@/lib/unifiedOperator";
 
 const STAGE_KEYS = [
   "prequalified",
@@ -101,8 +98,6 @@ export default function DashboardPage() {
   const { data: tasks = [] } = useAITasks();
   const { data: events = [] } = useCalendar();
   const { data: report } = useDashboardReport();
-  const { data: unifiedFiles, isLoading: unifiedLoading } = useUnifiedOperatorFiles({ limit: 120 });
-  const [linkRow, setLinkRow] = useState<UnifiedFileRow | null>(null);
 
   const firstName = (() => {
     if (!user) return null;
@@ -137,13 +132,6 @@ export default function DashboardPage() {
   // pattern as isVendor below.
   const isDealerPartner = user?.role === Role.DEALER_PARTNER;
   const showOperatorPipeline = !isClient && !isBroker;
-  const isInternalOperator =
-    user?.role === Role.SUPER_ADMIN ||
-    user?.role === Role.LOAN_EXEC ||
-    user?.role === Role.REGIONAL_MANAGER;
-  const unifiedRows = unifiedFiles?.items ?? [];
-  const unifiedRollup = unifiedFiles?.rollup;
-  const unifiedRecentRows = useMemo(() => unifiedRows.slice(0, 12), [unifiedRows]);
 
   useEffect(() => {
     if (isVendor) router.replace("/vendor/buckets");
@@ -164,6 +152,18 @@ export default function DashboardPage() {
   }
   if (isDealerPartner) {
     return null;
+  }
+
+  if (!isClient) {
+    return (
+      <OperatorDashboard
+        firstName={firstName}
+        greeting={greeting}
+        tasks={tasks}
+        events={events}
+        report={report}
+      />
+    );
   }
 
   const closingSoon = loans
@@ -226,61 +226,6 @@ export default function DashboardPage() {
           />
         </KpiRow>
       )}
-
-      {isInternalOperator ? (
-        <>
-          <KpiRow className="s12">
-            <Kpi
-              label="Unified files"
-              value={unifiedRollup?.total ?? (unifiedLoading ? "..." : 0)}
-              sub={`${unifiedRollup?.working ?? 0} working | ${unifiedRollup?.promoted ?? 0} promoted`}
-              icon="layers"
-              iconTone="acc"
-            />
-            <Kpi
-              label="Needs attention"
-              value={unifiedRollup?.needs_attention ?? 0}
-              sub="health, missing docs, or stale coverage"
-              icon="alert"
-              iconTone={(unifiedRollup?.needs_attention ?? 0) > 0 ? "warn" : "ok"}
-            />
-            <Kpi
-              label="Real estate"
-              value={unifiedRollup?.real_estate ?? 0}
-              sub="realtor, mobile, and source deal handoffs"
-              icon="building"
-              iconTone="acc"
-            />
-            <Kpi
-              label="Main Street + dealer"
-              value={(unifiedRollup?.main_street ?? 0) + (unifiedRollup?.dealer ?? 0)}
-              sub={`${unifiedRollup?.mca ?? 0} MCA refinance files`}
-              icon="dollar"
-              iconTone="gold"
-            />
-          </KpiRow>
-          <div className="s12">
-            <UnifiedBlueprintRail />
-          </div>
-          <Panel
-            className="s12"
-            title="Unified operator console"
-            sub="One projection across pipeline, clients, buckets, AI intake, Dealer OS, and rep-originated cases."
-            actions={
-              <Link href="/pipeline" className="linky">
-                Open command board <Icon name="arrowR" size={12} />
-              </Link>
-            }
-            noPad
-          >
-            <UnifiedFilesTable
-              rows={unifiedRecentRows}
-              empty={unifiedLoading ? "Loading unified file projection..." : "No unified files are available yet."}
-              onLinkBucketIntake={setLinkRow}
-            />
-          </Panel>
-        </>
-      ) : null}
 
       <TodaysOverduePanel tasks={tasks} events={events} loans={loans} isClient={isClient} />
 
@@ -436,14 +381,154 @@ export default function DashboardPage() {
           {isRegionalManager ? <RegionalAgentsPanel /> : <TopBrokersPanel />}
         </>
       )}
-      <BucketIntakeLinkDrawer
-        open={linkRow != null}
-        onClose={() => setLinkRow(null)}
-        initialBucketId={linkRow?.bucket_id}
-        initialIntakeId={linkRow?.intake_id}
-      />
     </CG>
   );
+}
+
+function OperatorDashboard({
+  firstName,
+  greeting,
+  tasks,
+  events,
+  report,
+}: {
+  firstName: string | null;
+  greeting: string;
+  tasks: AITask[];
+  events: CalendarEvent[];
+  report: DashboardReport | undefined;
+}) {
+  const { data: unified, isLoading } = useUnifiedOperatorFiles({ limit: 500 });
+  const rows = unified?.items ?? [];
+  const rollup = unified?.rollup;
+  const now = new Date();
+  const todayEvents = events.filter((event) => isSameDay(new Date(event.starts_at), now) && event.status !== "cancelled");
+  const pendingTasks = tasks.filter((task) => task.status === "pending");
+  const attention = rows.filter((row) => row.health_tone === "bad" || row.health_tone === "warn").slice(0, 4);
+  const totalValue = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const gateBlocked = rows.filter((row) => !row.funding_stage && row.health_tone !== "ok").length;
+  const dateline = now.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+  const time = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+
+  return (
+    <div>
+      <div className="ckhead dashboard-head">
+        <div className="ckrow">
+          <div>
+            <span className="lbl" style={{ color: "var(--petrol)" }}>{dateline} · {time} ET</span>
+            <h1 className="dashboard-greeting">{firstName ? `${greeting}, ${firstName}.` : `${greeting}.`}</h1>
+          </div>
+          <span className="sp" />
+          <span className="sub">{pendingTasks.filter((task) => task.priority === "high").length} high-priority · {todayEvents.length} events · {rollup?.total ?? 0} files in flight</span>
+          <BtnLink href="/pipeline?new=1" size="sm" className="pri"><Icon name="plus" size={13} /> New file</BtnLink>
+          <PageActionMenu label="Dashboard actions" items={[
+            { label: "Open pipeline", href: "/pipeline" },
+            { label: "Open client book", href: "/clients" },
+            { label: "Open AI approval queue", href: "/ai-inbox" },
+          ]} />
+        </div>
+        <div className="pagebar" style={{ paddingTop: 2 }}><span className="sub">One operating view across pipeline, evidence, intake, funding, and every originating channel.</span></div>
+      </div>
+
+      <KpiRow>
+        <Kpi label="Files in flight" value={isLoading ? "..." : rollup?.total ?? 0} sub={`${rollup?.working ?? 0} still in the working band`} />
+        <Kpi label="Pipeline value" value={formatUnifiedAmount(totalValue)} sub="across four verticals" />
+        <Kpi label="Held at the gate" value={gateBlocked} sub="missing evidence or authorization" tone={gateBlocked ? "warn" : "ok"} />
+        <Kpi label="Funded YTD · all closed files" value={report ? QC_FMT.short(report.funded_ytd) : "—"} sub={report?.funded_ytd_delta != null ? `${report.funded_ytd_delta >= 0 ? "+" : ""}${report.funded_ytd_delta}% vs prior year` : "No comparison yet"} tone="ok" />
+      </KpiRow>
+
+      <Panel className="mt" title="By vertical" actions={<><CellChip tone="gold">{rows.filter((row) => row.origin === "rep").length} from the rep desk</CellChip><span className="sub">Same spine, four evidence packs.</span></>}>
+        <div className="vertical-summary-grid">
+          {VERTICAL_OPTIONS.filter((item): item is { value: UnifiedVertical; label: string } => item.value !== "all").map((item) => {
+            const verticalRows = rows.filter((row) => row.vertical === item.value);
+            const value = verticalRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+            const blocked = verticalRows.filter((row) => row.health_tone === "bad" || row.health_tone === "warn").length;
+            const promoted = verticalRows.filter((row) => row.funding_stage).length;
+            return (
+              <Link key={item.value} href={`/pipeline?vertical=${item.value}`} className="vertical-summary">
+                <span className="row"><CellChip tone={verticalTone(item.value)}>{item.label}</CellChip><span className="sp" /><span className="sub num">{verticalRows.length} files</span></span>
+                <b className="vertical-summary-value num">{formatUnifiedAmount(value)}</b>
+                <span className="track"><span className="fill" style={{ width: `${verticalRows.length ? Math.round((promoted / verticalRows.length) * 100) : 0}%` }} /></span>
+                <span className="sub">{verticalRows.length - promoted} working · {promoted} in funding</span>
+                <CellChip tone={blocked ? "warn" : "ok"}>{blocked ? `${blocked} held` : "Clear"}</CellChip>
+              </Link>
+            );
+          })}
+        </div>
+      </Panel>
+
+      <div className="cg mt">
+        <div className="s8">
+          <Panel title="Needs attention today" actions={<CellChip tone={attention.length ? "bad" : "ok"}>{attention.length} open</CellChip>}>
+            {attention.map((row, index) => <AttentionRow key={row.id} row={row} index={index + 1} />)}
+            {!attention.length ? <div className="empty">No logical files need immediate attention.</div> : null}
+          </Panel>
+
+          <Panel className="mt" title="Funding band at a glance" actions={<><span className="sub">{rollup?.working ?? 0} more still in the working band</span><Link className="linky" href="/pipeline">View all</Link></>}>
+            <div className="funding-summary-grid">
+              {FUNDING_LADDER.map((stage) => {
+                const stageRows = rows.filter((row) => row.funding_stage?.key === stage.key);
+                return <Link key={stage.key} href="/pipeline" className="funding-summary"><span className="lbl">{stage.label}</span><b className="num">{stageRows.length}</b><span className="sub num">{formatUnifiedAmount(stageRows.reduce((sum, row) => sum + Number(row.amount || 0), 0))}</span></Link>;
+              })}
+            </div>
+          </Panel>
+
+          <DashboardRatesPanel />
+        </div>
+
+        <div className="s4">
+          <Panel title="Elara · pending approval" actions={<Link className="linky" href="/ai-inbox">Queue</Link>}>
+            <div className="ladder">
+              {pendingTasks.slice(0, 3).map((task) => <Link className="queue-card" href="/ai-inbox" key={task.id}><span className="row"><CellChip tone={task.priority === "high" ? "bad" : task.priority === "medium" ? "warn" : "mut"}>{task.priority}</CellChip><CellChip tone="mut">{task.source}</CellChip></span><b>{task.title}</b><span className="sub">{task.summary}</span></Link>)}
+              {!pendingTasks.length ? <div className="empty">No approvals are waiting.</div> : null}
+            </div>
+          </Panel>
+
+          <Panel className="mt" title="On the calendar" actions={<Link className="linky" href="/calendar">Calendar</Link>}>
+            {todayEvents.slice(0, 3).map((event) => <div className="calendar-brief" key={event.id}><b className="num">{new Date(event.starts_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</b><span><strong>{event.title}</strong><small>{event.who || event.kind}</small></span></div>)}
+            {!todayEvents.length ? <div className="empty">Nothing else is scheduled today.</div> : null}
+          </Panel>
+
+          <Panel className="mt" title="Recent activity" actions={<span className="sub">audit</span>}>
+            {[...rows].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at))).slice(0, 4).map((row) => <div className="kv audit-brief" key={row.id}><Link className="linky" href={operatorFileHref(row)}>{row.title || row.label}<small>{row.stage.label}</small></Link><b className="sub num">{formatRelativeTime(row.updated_at)}</b></div>)}
+          </Panel>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AttentionRow({ row, index }: { row: UnifiedFileRow; index: number }) {
+  return (
+    <div className="prio">
+      <span className="n">{index}</span>
+      <div className="grow"><div className="t">{row.title || row.label}</div><div className="d">{row.stage.label} · {row.coverage} evidence · {row.origin_label}</div></div>
+      <CellChip tone={row.health_tone}>{row.health}</CellChip>
+      <Link href={operatorFileHref(row)} className="btn sm">Open</Link>
+    </div>
+  );
+}
+
+function DashboardRatesPanel() {
+  const { data: series = [] } = useFredSeries();
+  return (
+    <Panel className="mt" title="Today's market rates" actions={<Link className="linky" href="/market-rates">View all</Link>}>
+      <div className="rates-summary-grid">
+        {series.slice(0, 4).map((item) => <Link href="/market-rates" className="rate-summary" key={item.series_id}><b>{item.label}</b><span className="sub">{item.series_id}</span><strong className="num">{item.current_value != null ? `${item.current_value.toFixed(3)}%` : "—"}</strong><span className="sub num">{item.current_date || "Awaiting FRED"}</span></Link>)}
+        {!series.length ? <div className="empty">Market rates are loading.</div> : null}
+      </div>
+    </Panel>
+  );
+}
+
+function formatRelativeTime(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const minutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h`;
+  return `${Math.floor(minutes / 1440)}d`;
 }
 
 const CLOSING_COLS: Col[] = [

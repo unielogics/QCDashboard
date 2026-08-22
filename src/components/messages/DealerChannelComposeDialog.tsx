@@ -6,7 +6,6 @@
 // /admin/ai-underwriter-leads create / dealer-partners / assign-partner routes.
 
 import { useEffect, useMemo, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
 import { Drawer } from "@/components/ds/Drawer";
 import {
   Btn,
@@ -18,7 +17,8 @@ import {
   Textarea,
   cx,
 } from "@/components/ds";
-import { api, ApiError } from "@/lib/api";
+import { ApiError } from "@/lib/api";
+import { useAuthedFetch } from "@/hooks/useAuthedFetch";
 
 type Partner = { id: string; name: string; email: string };
 type LeadRow = { id: string; business_name?: string | null; full_name: string; email: string };
@@ -32,7 +32,7 @@ export function DealerChannelComposeDialog({
   onClose: () => void;
   onSent: (intakeId: string) => void;
 }) {
-  const { getToken } = useAuth();
+  const authedFetch = useAuthedFetch();
 
   const [mode, setMode] = useState<"existing" | "new">("existing");
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -46,8 +46,7 @@ export function DealerChannelComposeDialog({
   const [error, setError] = useState<string | null>(null);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const token = await getToken();
-    return api<T>(path, { ...init, authToken: token ?? undefined });
+    return authedFetch<T>(path, init);
   }
 
   useEffect(() => {

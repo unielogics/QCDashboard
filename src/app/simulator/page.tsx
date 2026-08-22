@@ -126,6 +126,7 @@ export default function SimulatorPage() {
   const isBroker = user?.role === Role.BROKER;
   const isListFirstRole = isBroker || isOperator;
   const wantNew = spq?.get("new") === "1";
+  const showRuns = spq?.get("view") === "runs";
   const startType = spq?.get("type") ?? "";
   const runId = spq?.get("run") ?? null;
   const analysisRunId = spq?.get("analysisRun") ?? null;
@@ -182,7 +183,7 @@ export default function SimulatorPage() {
     );
   }
 
-  if (isListFirstRole && !wantNew) {
+  if (isListFirstRole && !wantNew && showRuns) {
     const actions = [
       {
         label: "New broker calculator",
@@ -211,7 +212,7 @@ export default function SimulatorPage() {
           emptyText="No saved simulations or file recalculations in the last 30 days."
           runs={recentRuns}
           loading={simulatorRunsLoading || recalcRunsLoading}
-          onOpen={(id) => router.push(`/simulator?analysisRun=${id}`)}
+          onOpen={(id) => router.push(`/simulator?view=runs&analysisRun=${id}`)}
           actions={isBroker ? actions : undefined}
         />
         {!isBroker ? <AnalysisFloatingAction label="Start a new simulation" actions={actions} /> : null}

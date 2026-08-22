@@ -105,25 +105,27 @@ export function PageHeader({
   title,
   lede,
   actions,
+  eyebrow,
+  meta,
+  className,
 }: {
   title: ReactNode;
   lede?: ReactNode;
   actions?: ReactNode;
+  eyebrow?: ReactNode;
+  meta?: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="hd">
-      {/* h1, not h2: this is the page title, and the shell renders no heading of
-          its own. Emitting h2 here left migrated pages with no top-level heading
-          at all — an outline a screen reader reads as a page without a name.
-          `.hd h1` in app-extras.css gives it the same visual weight. */}
-      <h1>{title}</h1>
-      {lede && <span className="lede">{lede}</span>}
-      {actions && (
-        <>
-          <span style={{ flex: 1 }} />
-          <span className="pgacts">{actions}</span>
-        </>
-      )}
+    <div className={cx("ckhead", "pagehead", className)}>
+      {eyebrow ? <div className="lbl pagehead-eye">{eyebrow}</div> : null}
+      <div className="ckrow">
+        <h1>{title}</h1>
+        {lede ? <span className="lede">{lede}</span> : null}
+        <span className="sp" />
+        {actions ? <span className="pgacts">{actions}</span> : null}
+      </div>
+      {meta ? <div className="pagehead-meta">{meta}</div> : null}
     </div>
   );
 }

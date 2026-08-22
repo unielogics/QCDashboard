@@ -6,10 +6,7 @@ import {
   Btn,
   CellChip,
   Input,
-  PageHeader,
   Panel,
-  Row,
-  Seg,
   Table,
   Td,
   Tr,
@@ -32,8 +29,8 @@ import { Role } from "@/lib/enums.generated";
 import type { Broker, Client, ClientStage, PaymentAuthorizationClientSummaryRead } from "@/lib/types";
 import { QC_FMT } from "@/lib/fmt";
 import { AgentLeadModal } from "@/app/pipeline/components/AgentLeadModal";
-import { UnifiedFileTags } from "@/components/operator/UnifiedOperator";
-import type { UnifiedFileRow } from "@/lib/unifiedOperator";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { VERTICAL_OPTIONS, verticalTone, type UnifiedVertical } from "@/lib/unifiedOperator";
 
 // Stages-as-filter-chips shown above the table.
 type StageFilter = "all" | ClientStage;
@@ -74,31 +71,16 @@ const STAGE_TONE: Record<ClientStage, ChipTone> = {
 
 type ClientCol = Col & { key?: string };
 
-// Internal users (super_admin / loan_exec) see an Agent column they can
-// click to assign or reassign the broker on each client. Brokers don't
-// see this column — they only own their own clients and don't need to
-// reassign anything.
-const INTERNAL_COLS: ClientCol[] = [
-  { label: "Client",                            key: "name" },
-  { label: "Stage",       width: 130,           key: "_stage" },
-  { label: "Billing auth", width: 140,          key: "_billing_auth" },
-  { label: "Type",        width: 90,            key: "_type" },
-  { label: "Agent",       width: 160,           key: "broker_name" },
-  { label: "FICO",        width: 70,  align: "r", key: "fico" },
-  { label: "Loans",       width: 60,  align: "r", key: "active_loans" },
-  { label: "Exposure",    width: 100, align: "r", key: "exposure" },
-  { label: "City",        width: 120,           key: "city" },
-  { label: "Since",       width: 80,            key: "since" },
-];
-const BROKER_COLS: ClientCol[] = [
-  { label: "Client",                            key: "name" },
-  { label: "Stage",       width: 130,           key: "_stage" },
-  { label: "Type",        width: 90,            key: "_type" },
-  { label: "FICO",        width: 70,  align: "r", key: "fico" },
-  { label: "Loans",       width: 60,  align: "r", key: "active_loans" },
-  { label: "Exposure",    width: 100, align: "r", key: "exposure" },
-  { label: "City",        width: 120,           key: "city" },
-  { label: "Since",       width: 80,            key: "since" },
+const CLIENT_COLS: ClientCol[] = [
+  { label: "Client", key: "name" },
+  { label: "Record", width: 126, key: "_record_shape" },
+  { label: "Vertical", width: 126, key: "_vertical_label" },
+  { label: "Stage", width: 122, key: "_stage" },
+  { label: "Authorizations", width: 142, key: "_billing_auth" },
+  { label: "Desk", width: 156, key: "broker_name" },
+  { label: "Credit", width: 72, align: "r", key: "fico" },
+  { label: "Files", width: 62, align: "r", key: "file_count" },
+  { label: "Exposure", width: 108, align: "r", key: "exposure" },
 ];
 
 // Best-effort stage inference for legacy Client rows that don't yet carry the
@@ -109,74 +91,6 @@ function inferredStage(c: Client, activeLoans: number): ClientStage {
   if (c.funded_count > 0) return "funded";
   if (activeLoans > 0) return "processing";
   return "lead";
-}
-
-type UnifiedClientBookRow = {
-  key: string;
-  name: string;
-  subtitle: string;
-  shape: "Person" | "Business" | "Person + business";
-  files: UnifiedFileRow[];
-  exposure: number;
-  sample: UnifiedFileRow | null;
-};
-
-function buildUnifiedClientBook(rows: UnifiedFileRow[]): UnifiedClientBookRow[] {
-  const map = new Map<
-    string,
-    {
-      name: string;
-      clientNames: Set<string>;
-      businessNames: Set<string>;
-      files: UnifiedFileRow[];
-      exposure: number;
-      sample: UnifiedFileRow | null;
-    }
-  >();
-
-  for (const row of rows) {
-    const name = (row.business_name || row.client_name || row.label).trim();
-    if (!name) continue;
-    const key = name.toLowerCase();
-    const current =
-      map.get(key) ??
-      {
-        name,
-        clientNames: new Set<string>(),
-        businessNames: new Set<string>(),
-        files: [],
-        exposure: 0,
-        sample: null,
-      };
-    if (row.client_name) current.clientNames.add(row.client_name);
-    if (row.business_name) current.businessNames.add(row.business_name);
-    current.files.push(row);
-    current.exposure += Number(row.amount ?? 0);
-    if (!current.sample) current.sample = row;
-    map.set(key, current);
-  }
-
-  return Array.from(map.entries())
-    .map(([key, row]) => {
-      const hasPerson = row.clientNames.size > 0;
-      const hasBusiness = row.businessNames.size > 0;
-      const shape: UnifiedClientBookRow["shape"] =
-        hasPerson && hasBusiness ? "Person + business" : hasBusiness ? "Business" : "Person";
-      const subtitleParts = [
-        [...row.clientNames].slice(0, 2).join(", "),
-        [...new Set(row.files.map((file) => file.vertical_label))].slice(0, 3).join(", "),
-      ].filter(Boolean);
-      return {
-        key,
-        name: row.name,
-        subtitle: subtitleParts.join(" | ") || "No linked profile detail",
-        shape,
-        files: row.files,
-        exposure: row.exposure,
-        sample: row.sample,
-      };
-    })
-    .sort((a, b) => b.files.length - a.files.length || b.exposure - a.exposure || a.name.localeCompare(b.name));
 }
 
 // Header cell that carries the sort. `.tbl th` owns the type; this only adds
@@ -211,10 +125,10 @@ export default function ClientsPage() {
   const { data: user } = useCurrentUser();
   const { data: clients = [] } = useClients();
   const { data: loans = [] } = useLoans();
-  const { data: unifiedFiles } = useUnifiedOperatorFiles({ limit: 400 });
+  const { data: unifiedFiles } = useUnifiedOperatorFiles({ limit: 500 });
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<StageFilter>("all");
-  const [dealerOnly, setDealerOnly] = useState(false);
+  const [verticalFilter, setVerticalFilter] = useState<UnifiedVertical | "all">("all");
   const [intakeOpen, setIntakeOpen] = useState(false);
 
   const canCreate = user?.role !== Role.CLIENT;
@@ -222,7 +136,6 @@ export default function ClientsPage() {
   // Brokers operate within their own scope; clients are read-only.
   const isInternal = user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC;
   const { data: authRows = [] } = useClientPaymentAuthorizationSummaries({ enabled: isInternal });
-  const COLS = isInternal ? INTERNAL_COLS : BROKER_COLS;
 
   const authByClient = useMemo(() => {
     const map = new Map<string, PaymentAuthorizationClientSummaryRead>();
@@ -244,17 +157,30 @@ export default function ClientsPage() {
         );
       }
     }
+    const filesByClient = new Map<string, NonNullable<typeof unifiedFiles>["items"]>();
+    for (const file of unifiedFiles?.items ?? []) {
+      if (!file.client_id) continue;
+      filesByClient.set(file.client_id, [...(filesByClient.get(file.client_id) ?? []), file]);
+    }
     return clients.map((c) => {
       const active_loans = activeByClient.get(c.id) ?? 0;
+      const files = filesByClient.get(c.id) ?? [];
+      const verticals = [...new Set(files.map((file) => file.vertical))];
+      const businesses = files.filter((file) => file.business_name).map((file) => file.business_name as string);
+      const logicalExposure = files.reduce((sum, file) => sum + Number(file.amount ?? 0), 0);
       return {
         ...c,
         active_loans,
-        exposure: exposureByClient.get(c.id) ?? Number(c.funded_total),
+        exposure: files.length ? logicalExposure : exposureByClient.get(c.id) ?? Number(c.funded_total),
         _stage: inferredStage(c, active_loans),
-        _type: c.client_type ?? null,
+        _record_shape: businesses.length ? "Person + business" : "Person",
+        _businesses: businesses,
+        _verticals: verticals,
+        _vertical_label: verticals.length === 1 ? files[0]?.vertical_label ?? "Unassigned" : verticals.length > 1 ? "Mixed" : "Unassigned",
+        file_count: files.length,
       };
     });
-  }, [clients, loans]);
+  }, [clients, loans, unifiedFiles]);
 
   const stageCounts = useMemo(() => {
     const counts: Record<string, number> = { all: enriched.length };
@@ -265,7 +191,7 @@ export default function ClientsPage() {
   const filtered = useMemo(() => {
     let rows = enriched;
     if (stageFilter !== "all") rows = rows.filter((c) => c._stage === stageFilter);
-    if (dealerOnly) rows = rows.filter((c) => c.source_channel === "dealer_ai_intake");
+    if (verticalFilter !== "all") rows = rows.filter((c) => c._verticals.includes(verticalFilter));
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       rows = rows.filter(
@@ -276,13 +202,12 @@ export default function ClientsPage() {
       );
     }
     return rows;
-  }, [enriched, stageFilter, search, dealerOnly]);
+  }, [enriched, stageFilter, search, verticalFilter]);
 
   const { sort, onSort, compare } = useSort("exposure", "desc");
   const sorted = useMemo(() => [...filtered].sort(compare), [filtered, compare]);
-  const unifiedClientBook = useMemo(() => buildUnifiedClientBook(unifiedFiles?.items ?? []), [unifiedFiles?.items]);
 
-  const cols: Col[] = COLS.map((c) => ({
+  const cols: Col[] = CLIENT_COLS.map((c) => ({
     label: <SortLabel label={c.label} colKey={c.key} sortKey={sort.key} dir={sort.dir} onSort={onSort} />,
     align: c.align,
     width: c.width,
@@ -290,154 +215,71 @@ export default function ClientsPage() {
 
   return (
     <div className="grid">
-      <PageHeader
-        title="Clients"
-        lede={`· ${filtered.length} of ${enriched.length}`}
-        actions={
-          <>
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, email, city…"
-              aria-label="Search clients"
-              style={{ width: 240 }}
-            />
-            {canCreate && (
-              // Clients tab owns person/contact creation only — the slim
-              // AgentLeadModal mirrors the mobile single-page New Client
-              // form. Loan-file creation lives on /pipeline.
-              <Btn variant="pri" onClick={() => setIntakeOpen(true)}>
-                <Icon name="plus" size={14} /> New client
-              </Btn>
-            )}
-          </>
-        }
-      />
-
-      {/* Stage filter chips. Single-select, click again to clear (back to All). */}
-      <Row>
-        <Seg<StageFilter>
-          value={stageFilter}
-          onChange={setStageFilter}
-          ariaLabel="Stage filter"
-          options={STAGE_CHIPS.map((chip) => ({
-            value: chip.value,
-            label: (
-              <>
-                {chip.label} <span className="tag">{stageCounts[chip.value] ?? 0}</span>
-              </>
-            ),
-          }))}
-        />
-        <Btn
-          size="sm"
-          variant={dealerOnly ? "pri" : "default"}
-          aria-pressed={dealerOnly}
-          onClick={() => setDealerOnly((v) => !v)}
-          title="Show only clients created from a dealer AI intake"
-        >
-          Dealer AI intake
-        </Btn>
-      </Row>
-
-      {isInternal ? (
-        <Panel title="Unified client book" sub="Person and business records grouped across pipeline, buckets, AI intake, and funding." noPad>
-          <Table
-            caption="Unified client book"
-            cols={[
-              { label: "Client", width: "30%" },
-              { label: "Shape", width: 132 },
-              { label: "Unified tags" },
-              { label: "Files", width: 80, align: "r" },
-              { label: "Exposure", width: 110, align: "r" },
-            ]}
-          >
-            {unifiedClientBook.slice(0, 12).map((row) => (
-              <Tr key={row.key}>
-                <Td>
-                  <b>{row.name}</b>
-                  <div className="sub">{row.subtitle}</div>
-                </Td>
-                <Td>
-                  <CellChip tone={row.shape === "Person + business" ? "acc" : row.shape === "Business" ? "gold" : "mut"}>
-                    {row.shape}
-                  </CellChip>
-                </Td>
-                <Td>
-                  {row.sample ? <UnifiedFileTags row={row.sample} compact /> : <span className="sub">No tags</span>}
-                </Td>
-                <Td align="r">
-                  <span className="num">{row.files.length}</span>
-                </Td>
-                <Td align="r">
-                  <b className="num">{QC_FMT.short(row.exposure)}</b>
-                </Td>
-              </Tr>
-            ))}
-            {unifiedClientBook.length === 0 ? (
-              <Tr>
-                <Td colSpan={5}>
-                  <span className="sub">No unified client records are available yet.</span>
-                </Td>
-              </Tr>
-            ) : null}
-          </Table>
-        </Panel>
-      ) : null}
+      <div className="ckhead">
+        <div className="ckrow">
+          <h1>Clients</h1>
+          <span className="sub">· {filtered.length} of {enriched.length}</span>
+          <span className="sp" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name, email, EIN, city..."
+            aria-label="Search clients"
+            style={{ width: 260 }}
+          />
+          {canCreate ? <Btn variant="pri" size="sm" onClick={() => setIntakeOpen(true)}><Icon name="plus" size={14} /> New client</Btn> : null}
+          <PageActionMenu items={[
+            { label: "Open pipeline", href: "/pipeline" },
+            { label: "Open prequalifications", href: "/admin/prequal-requests" },
+          ]} label="Client book actions" />
+        </div>
+        <div className="vfilter">
+          {VERTICAL_OPTIONS.map((vertical) => (
+            <button key={vertical.value} type="button" className={verticalFilter === vertical.value ? "on" : undefined} onClick={() => setVerticalFilter(vertical.value)}>
+              {vertical.label}
+            </button>
+          ))}
+        </div>
+        <div className="cktabs" role="tablist" aria-label="Client stage">
+          {STAGE_CHIPS.map((chip) => (
+            <button key={chip.value} type="button" role="tab" aria-selected={stageFilter === chip.value} className={stageFilter === chip.value ? "on" : undefined} onClick={() => setStageFilter(chip.value)}>
+              {chip.label} <span className="tag">{stageCounts[chip.value] ?? 0}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       <Panel noPad>
         <Table cols={cols} caption="Clients">
           {sorted.map((c) => (
             <Tr key={c.id} onClick={() => (window.location.href = `/clients/${c.id}`)}>
               <Td>
-                <Row>
-                  <b>{c.name}</b>
-                  {c.source_channel === "dealer_ai_intake" ? <CellChip tone="acc">Dealer AI</CellChip> : null}
-                </Row>
-                <div className="sub">{c.email}</div>
+                <b>{c.name}</b>
+                <div className="sub">{c.email || c.city || c.id}</div>
               </Td>
               <Td>
-                <CellChip tone={STAGE_TONE[c._stage]}>{STAGE_LABEL[c._stage]}</CellChip>
+                <CellChip tone={c._record_shape === "Person + business" ? "acc" : "mut"}>{c._record_shape}</CellChip>
               </Td>
-              {isInternal && (
-                <Td>
-                  <BillingAuthPill row={authByClient.get(c.id) ?? null} />
-                </Td>
-              )}
               <Td>
-                {c._type ? (
-                  <CellChip tone={c._type === "buyer" ? "acc" : "warn"}>
-                    {c._type === "buyer" ? "Buyer" : "Seller"}
-                  </CellChip>
-                ) : (
-                  <span className="sub">—</span>
-                )}
+                <CellChip tone={c._verticals.length === 1 ? verticalTone(c._verticals[0]) : "mut"}>{c._vertical_label}</CellChip>
               </Td>
-              {isInternal && (
-                <Td>
-                  <AssignBrokerCell client={c} />
-                </Td>
-              )}
+              <Td><CellChip tone={STAGE_TONE[c._stage]}>{STAGE_LABEL[c._stage]}</CellChip></Td>
+              <Td><BillingAuthPill row={authByClient.get(c.id) ?? null} /></Td>
+              <Td>{isInternal ? <AssignBrokerCell client={c} /> : <span className="sub">{c.broker_name || "My desk"}</span>}</Td>
               <Td align="r">
                 <span className="num">{c.fico ?? "—"}</span>
               </Td>
               <Td align="r">
-                <span className="num">{c.active_loans}</span>
+                <span className="num">{c.file_count}</span>
               </Td>
               <Td align="r">
                 <b className="num">{QC_FMT.short(c.exposure)}</b>
-              </Td>
-              <Td>
-                <span className="sub">{c.city ?? "—"}</span>
-              </Td>
-              <Td>
-                <span className="sub">{c.since ? new Date(c.since).getFullYear() : "—"}</span>
               </Td>
             </Tr>
           ))}
           {sorted.length === 0 && (
             <tr>
-              <td colSpan={COLS.length} style={{ textAlign: "center", padding: 24 }}>
+              <td colSpan={CLIENT_COLS.length} style={{ textAlign: "center", padding: 24 }}>
                 <span className="sub">
                   {search || stageFilter !== "all"
                     ? "No clients match the current filters."

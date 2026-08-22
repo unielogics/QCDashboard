@@ -16,6 +16,8 @@ import { MessageFrom, Role } from "@/lib/enums.generated";
 import { NewThreadDialog } from "./components/NewThreadDialog";
 import { ThreadChatView } from "@/components/messages/ThreadChatView";
 import type { AIChatThread, Loan } from "@/lib/types";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 
 // Per-role attribution for outbound messages. Architecture decision #6 —
 // Agent-side messages should be labeled from the Agent (the Borrower sees
@@ -266,6 +268,7 @@ function OperatorMessagesView() {
   const { data: messages = [] } = useMessages(activeLoan);
   const sendMessage = useSendMessage();
   const [draft, setDraft] = useState("");
+  const [sendReviewOpen, setSendReviewOpen] = useState(false);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
   const activeLoanData = useMemo(() => loans.find((l) => l.id === activeLoan), [loans, activeLoan]);
@@ -277,6 +280,10 @@ function OperatorMessagesView() {
   const myFromRole = fromRoleForProfile(profile.role);
 
   useEffect(() => {
+    if (!activeLoan && loans.length) setActiveLoan(loans[0].id);
+  }, [activeLoan, loans]);
+
+  useEffect(() => {
     // Scroll to bottom when messages change
     if (scrollerRef.current) {
       scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight;
@@ -284,6 +291,11 @@ function OperatorMessagesView() {
   }, [messages.length, activeLoan]);
 
   const handleSend = async () => {
+    if (!activeLoan || !draft.trim() || sendMessage.isPending) return;
+    setSendReviewOpen(true);
+  };
+
+  const confirmSend = async () => {
     if (!activeLoan || !draft.trim() || sendMessage.isPending) return;
     const body = draft.trim();
     setDraft("");
@@ -294,6 +306,7 @@ function OperatorMessagesView() {
         from_role: fromRoleForProfile(profile.role),
         is_draft: false,
       });
+      setSendReviewOpen(false);
     } catch {
       // restore draft on failure
       setDraft(body);
@@ -308,20 +321,23 @@ function OperatorMessagesView() {
   };
 
   return (
-    <div style={SPLIT}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
+      <div className="ckhead">
+        <div className="ckrow">
+          <h1>Messages</h1>
+          <CellChip tone="mut">{loans.length} threads</CellChip>
+          <span className="sp" />
+          <Btn variant="pri" size="sm" onClick={() => setNewThreadOpen(true)}><Icon name="plus" size={13} /> New thread</Btn>
+          <PageActionMenu label="Message actions" items={[
+            { label: "Open Elara queue", href: "/ai-inbox" },
+            { label: "Open pipeline", href: "/pipeline" },
+          ]} />
+        </div>
+      </div>
+      <div style={{ ...SPLIT, flex: 1, minHeight: 0 }}>
       <Panel
         title="Threads"
         noPad
-        actions={
-          <Btn
-            size="sm"
-            variant="pri"
-            onClick={() => setNewThreadOpen(true)}
-            title="Start a new thread (pick client + loan)"
-          >
-            <Icon name="plus" size={11} stroke={2.4} /> New
-          </Btn>
-        }
       >
         <div className="panel-b" style={{ overflowY: "auto", minHeight: 0 }}>
           {loans.map((l) => (
@@ -427,6 +443,16 @@ function OperatorMessagesView() {
           </div>
         </div>
       </div>
+      </div>
+      <ConfirmDialog
+        open={sendReviewOpen}
+        onClose={() => setSendReviewOpen(false)}
+        onConfirm={confirmSend}
+        busy={sendMessage.isPending}
+        title="Send message"
+        body={<>The message will be sent as <b>{profile.role === Role.BROKER ? "Agent" : "Qualified Commercial Funding Team"}</b> and recorded on the active loan file.</>}
+        confirmLabel="Send message"
+      />
     </div>
   );
 }

@@ -30,6 +30,8 @@ import {
 import { Role } from "@/lib/enums.generated";
 import type { AITask, CalendarActivityItem, CalendarEvent, Document, Loan, UserBookingSettings } from "@/lib/types";
 import { EventModal } from "./components/EventModal";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 
 type Window = 7 | 30 | 90;
 const WINDOWS: { id: Window; label: string }[] = [
@@ -144,51 +146,48 @@ export default function CalendarPage() {
                 <Icon name="plus" size={14} /> New event
               </Btn>
             )}
+            <PageActionMenu
+              items={[
+                { label: "Booking settings", href: "/booking-settings", hidden: isClient },
+                { label: "Open document vault", href: "/vault" },
+              ]}
+            />
           </>
         }
       />
       {!isClient && <EventModal open={createOpen} onClose={() => setCreateOpen(false)} />}
 
-      <div className="cg">
-        <div className="s8" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <TodayTimeline
-            events={todayEvents}
-            nowTs={nowTs}
-            canCancel={canCancelEvents}
-            canDelete={canDeleteEvents}
-          />
+      <div className="daily-split calendar-split">
+        <div className="grid">
+          <Panel title="Today" sub={new Date(nowTs).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}>
+            <div className="grid">
+              {todayEvents.length ? todayEvents.map((ev) => (
+                <CompactEventRow key={ev.id} ev={ev} canCancel={canCancelEvents} canDelete={canDeleteEvents} />
+              )) : <div className="sub">Nothing scheduled today.</div>}
+            </div>
+          </Panel>
 
-          {upcomingDays.length > 0 ? (
-            upcomingDays.map((day) => (
-              <Panel key={day} title={formatDayHeader(day)}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <Panel title="Upcoming" sub={`next ${windowDays} days`}>
+            <div className="grid">
+              {upcomingDays.length ? upcomingDays.map((day) => (
+                <div key={day} className="grid">
+                  <div className="lbl">{formatDayHeader(day)}</div>
                   {byUpcomingDay[day].map((ev) => (
-                    <CompactEventRow
-                      key={ev.id}
-                      ev={ev}
-                      canCancel={canCancelEvents}
-                      canDelete={canDeleteEvents}
-                    />
+                    <CompactEventRow key={ev.id} ev={ev} canCancel={canCancelEvents} canDelete={canDeleteEvents} />
                   ))}
                 </div>
-              </Panel>
-            ))
-          ) : (
-            <Panel>
-              <div className="sub" style={{ textAlign: "center" }}>
-                No upcoming events after today in the next {windowDays} days.
-              </div>
-            </Panel>
-          )}
+              )) : <div className="sub">No upcoming events in this window.</div>}
+            </div>
+          </Panel>
         </div>
 
-        <div className="s4" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="grid">
           {isClient ? (
             <ClientActivityFeed rows={activity} />
           ) : (
             <>
-              <CalendarShareCard booking={bookingSettings ?? null} />
               <TodosRail todos={todos} windowDays={windowDays} />
+              <CalendarShareCard booking={bookingSettings ?? null} />
             </>
           )}
         </div>
@@ -416,6 +415,7 @@ function TimelineEventBlock({
   const event = item.event;
   const update = useUpdateCalendarEvent();
   const remove = useDeleteCalendarEvent();
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const state = eventTone(event);
   const isDone = event.status === "done";
   const isCancelled = event.status === "cancelled";
@@ -437,11 +437,11 @@ function TimelineEventBlock({
   const deleteEvent = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm(`Delete "${event.title}"? Use cancel when you need an audit trail.`)) return;
-    remove.mutate(event.id);
+    setDeleteOpen(true);
   };
 
   return (
+    <>
     <Link
       href={href}
       onClick={(e) => {
@@ -522,12 +522,24 @@ function TimelineEventBlock({
         ) : null}
       </div>
     </Link>
+    <ConfirmDialog
+      open={deleteOpen}
+      onClose={() => setDeleteOpen(false)}
+      title={`Delete ${event.title}`}
+      body="This permanently removes the calendar entry. Use Cancel event when the history must remain visible."
+      confirmLabel="Delete event"
+      tone="danger"
+      busy={remove.isPending}
+      onConfirm={() => remove.mutate(event.id, { onSuccess: () => setDeleteOpen(false) })}
+    />
+    </>
   );
 }
 
 function CompactEventRow({ ev, canCancel, canDelete }: { ev: CalendarEvent; canCancel: boolean; canDelete: boolean }) {
   const update = useUpdateCalendarEvent();
   const remove = useDeleteCalendarEvent();
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const state = eventTone(ev);
   const isDone = ev.status === "done";
   const isCancelled = ev.status === "cancelled";
@@ -545,11 +557,11 @@ function CompactEventRow({ ev, canCancel, canDelete }: { ev: CalendarEvent; canC
   const onDelete = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm(`Delete "${ev.title}"? Use cancel when you need an audit trail.`)) return;
-    remove.mutate(ev.id);
+    setDeleteOpen(true);
   };
 
   return (
+    <>
     <Link
       href={eventHref(ev)}
       onClick={(e) => {
@@ -600,6 +612,17 @@ function CompactEventRow({ ev, canCancel, canDelete }: { ev: CalendarEvent; canC
         </IconBtn>
       ) : null}
     </Link>
+    <ConfirmDialog
+      open={deleteOpen}
+      onClose={() => setDeleteOpen(false)}
+      title={`Delete ${ev.title}`}
+      body="This permanently removes the calendar entry. Use Cancel event when the history must remain visible."
+      confirmLabel="Delete event"
+      tone="danger"
+      busy={remove.isPending}
+      onConfirm={() => remove.mutate(ev.id, { onSuccess: () => setDeleteOpen(false) })}
+    />
+    </>
   );
 }
 

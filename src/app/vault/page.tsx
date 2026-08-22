@@ -34,6 +34,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { useCurrentUser, useDocuments, useLoans, useRequiredDocuments, useUploadDocument } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import type { Document, Loan } from "@/lib/types";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
 
 type UploadKind = "experience" | "active_asset";
 
@@ -136,9 +137,12 @@ export default function VaultPage() {
         title="Vault"
         lede={<CellChip tone="acc">Funding</CellChip>}
         actions={
-          <Btn variant="pri" onClick={() => setUploadOpen(true)}>
-            <Icon name="plus" size={14} /> Upload
-          </Btn>
+          <>
+            <Btn variant="pri" onClick={() => setUploadOpen(true)}>
+              <Icon name="plus" size={14} /> Upload
+            </Btn>
+            <PageActionMenu items={[{ label: "Prequalifications", href: "/admin/prequal-requests", hidden: isClient }, { label: "Calendar", href: "/calendar" }]} />
+          </>
         }
       />
       <div className="sub">

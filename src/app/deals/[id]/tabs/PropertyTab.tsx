@@ -180,7 +180,6 @@ export function PropertyTab({
         for (const [k, v] of Object.entries(sharedPayload)) {
           if (v !== null && v !== "") loanPatch[k] = v;
         }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await updateProperty.mutateAsync({ loanId: linkedLoan.id, ...(loanPatch as any) });
         await updateDeal.mutateAsync({
           clientId: deal.client_id,

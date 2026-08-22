@@ -10,7 +10,7 @@
 //
 // Styling migrated off the inline token objects onto the plain-CSS design
 // system (globals.css + app-extras.css) via the wrappers in @/components/ds.
-// Every mutation, permission predicate, confirm() and tooltip survives; only
+// Every mutation, permission predicate and tooltip survives; only
 // the surface vocabulary moved:
 //   local OutcomeNote helper   → Note (`.note` is the petrol explanatory block)
 //   product picker buttons     → Seg as="tabs" (it switches which playbook you
@@ -24,8 +24,9 @@
 // `.content` owns both.
 
 import { useEffect, useMemo, useState } from "react";
-import { Btn, Callout, CellChip, Note, Panel, Row, Seg, Sub, Textarea, cx } from "@/components/ds";
+import { Btn, Callout, CellChip, Note, Panel, Row, Seg, Sub, Textarea, WarnLine, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { StageChecklist } from "@/components/StageChecklist";
 import { AIPreviewPanel } from "@/components/AIPreviewPanel";
@@ -153,6 +154,7 @@ function PlaybookPanel({
    *  keeps the identity of the product it was opened for. */
   productKey: string;
 }) {
+  const confirmAction = useConfirmAction();
   const { data: reqs = [] } = useLendingPlaybookRequirements(playbook.id);
   const upsert = useUpsertLendingRequirement(playbook.id);
   const del = useDeleteLendingRequirement(playbook.id);
@@ -187,10 +189,14 @@ function PlaybookPanel({
         <>
           {editable && reqs.length > 0 ? (
             <Btn
-              onClick={() => {
-                if (confirm("Run AI inference to suggest task dependencies + grouping for this playbook? This overwrites previous suggestions but never your manual depends_on / parent_key.")) {
-                  inferDeps.mutate();
-                }
+              onClick={async () => {
+                const confirmed = await confirmAction({
+                  title: "Infer playbook dependencies",
+                  body: "AI will replace previous suggestions. Manual dependencies and parent groups remain unchanged until an individual suggestion is approved.",
+                  confirmLabel: "Run inference",
+                  reversible: true,
+                });
+                if (confirmed) inferDeps.mutate();
               }}
               disabled={inferDeps.isPending}
               title="Ask Claude to suggest task dependencies + parent grouping. Suggestions land in a review panel below — nothing is applied until you confirm per row."
@@ -349,6 +355,7 @@ function EscalationEditor() {
   const { data, isLoading } = useFundingMetaRules("escalation");
   const patch = usePatchFundingMetaRules("escalation");
   const [text, setText] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => { if (data) setText(JSON.stringify(data.rules || {}, null, 2)); }, [data]);
 
   return (
@@ -365,15 +372,16 @@ function EscalationEditor() {
             className="mono"
             aria-label="Escalation rules, raw JSON"
             value={text}
-            onChange={e => setText(e.target.value)}
+            onChange={e => { setText(e.target.value); setError(null); }}
             rows={10}
           />
+          {error ? <WarnLine>{error}</WarnLine> : null}
           <Row>
             <Btn
               variant="pri"
               onClick={async () => {
                 try { await patch.mutateAsync(JSON.parse(text || "{}")); }
-                catch { alert("Invalid JSON"); }
+                catch { setError("Invalid JSON. Correct the syntax before saving."); }
               }}
               disabled={patch.isPending}
             >
@@ -391,6 +399,7 @@ function CommunicationEditor() {
   const { data, isLoading } = useFundingMetaRules("communication");
   const patch = usePatchFundingMetaRules("communication");
   const [text, setText] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => { if (data) setText(JSON.stringify(data.rules || {}, null, 2)); }, [data]);
 
   return (
@@ -407,15 +416,16 @@ function CommunicationEditor() {
             className="mono"
             aria-label="Communication rules, raw JSON"
             value={text}
-            onChange={e => setText(e.target.value)}
+            onChange={e => { setText(e.target.value); setError(null); }}
             rows={10}
           />
+          {error ? <WarnLine>{error}</WarnLine> : null}
           <Row>
             <Btn
               variant="pri"
               onClick={async () => {
                 try { await patch.mutateAsync(JSON.parse(text || "{}")); }
-                catch { alert("Invalid JSON"); }
+                catch { setError("Invalid JSON. Correct the syntax before saving."); }
               }}
               disabled={patch.isPending}
             >

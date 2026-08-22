@@ -10,7 +10,6 @@ import {
   Lbl,
   Linky,
   Note,
-  PageHeader,
   Panel,
   Seg,
   Textarea,
@@ -18,12 +17,13 @@ import {
   cx,
   type ChipTone,
 } from "@/components/ds";
-import { useAITasks, useAITaskDecision } from "@/hooks/useApi";
-import { useActiveProfile } from "@/store/role";
-import { FeedbackOutputType, Role } from "@/lib/enums.generated";
+import { useAITasks, useAITaskDecision, useCurrentUser } from "@/hooks/useApi";
+import { FeedbackOutputType } from "@/lib/enums.generated";
 import type { AITask } from "@/lib/types";
 import { FeedbackWidget } from "@/components/FeedbackWidget";
 import { AIInboxCard } from "@/components/AIInboxCard";
+import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
 
 const SOURCE_FILTERS = ["all", "underwriting", "messages", "risk", "calendar", "documents", "pipeline", "rates", "broker_suggestion"] as const;
 type SourceFilter = (typeof SOURCE_FILTERS)[number];
@@ -59,12 +59,12 @@ export default function AIInboxPage() {
 
   // Elara Inbox is an operator/agent surface — borrowers must not reach it,
   // even by typing the URL. Bounce CLIENT logins back to their dashboard.
-  const profile = useActiveProfile();
+  const { data: currentUser, isLoading: currentUserLoading } = useCurrentUser();
   const router = useRouter();
   useEffect(() => {
-    if (profile.role === Role.CLIENT) router.replace("/");
-  }, [profile.role, router]);
-  if (profile.role === Role.CLIENT) return null;
+    if (currentUser?.role === "client") router.replace("/");
+  }, [currentUser?.role, router]);
+  if (currentUserLoading || !currentUser || currentUser.role === "client") return null;
 
   return (
     // Full-height master/detail: the queue and the detail pane each scroll
@@ -72,64 +72,32 @@ export default function AIInboxPage() {
     // Deliberately not .cg — that grid sizes to content and would drop the
     // footer below the fold.
     <div style={{ display: "flex", flexDirection: "column", gap: 14, height: "100%" }}>
-      {/* Header with Elara Inbox / Elara Rules tab toggle. Elara Rules is the
-          standing-config surface that earlier lived at /ai-tasks; folded in
-          here so the Agent has one mental model — "AI" = both the queue of
-          drafted actions awaiting my approval AND the rules that produce them. */}
-      <PageHeader
-        title="AI"
-        actions={
-          <Seg<ActiveTab>
-            value={tab}
-            onChange={setTab}
-            ariaLabel="AI section"
-            options={[
-              {
-                value: "inbox",
-                label:
-                  tab === "inbox" && filtered.length > 0 ? (
-                    <>
-                      Inbox <span className="tag">{filtered.length}</span>
-                    </>
-                  ) : (
-                    "Inbox"
-                  ),
-              },
-              { value: "rules", label: "Rules" },
-            ]}
-          />
-        }
-      />
-
-      {tab === "inbox" && (
-        <div className="row">
-          <Lbl>Priority</Lbl>
-          <Seg<PriorityFilter>
-            value={priority}
-            onChange={setPriority}
-            ariaLabel="Filter by priority"
-            as="filter"
-            options={PRIORITY_FILTERS.map((p) => ({ value: p, label: humanLabel(p) }))}
-          />
-          <Lbl>Source</Lbl>
-          <div className="row">
-            {SOURCE_FILTERS.map((s) => (
-              <Btn
-                key={s}
-                size="sm"
-                variant={filter === s ? "pri" : "default"}
-                aria-pressed={filter === s}
-                onClick={() => setFilter(s)}
-              >
-                {humanLabel(s)}
-              </Btn>
-            ))}
-          </div>
+      <div className="ckhead">
+        <div className="ckrow">
+          <h1>AI</h1>
+          <CellChip tone={filtered.length ? "warn" : "ok"}>{filtered.length} pending</CellChip>
+          <span className="sp" />
+          <span className="sub">Nothing here has been sent. Every item waits for a person.</span>
+          <Btn variant="pri" size="sm" onClick={() => filtered[0] && setSelectedId(filtered[0].id)} disabled={!filtered.length}>Review next</Btn>
+          <PageActionMenu label="AI queue actions" items={[
+            { label: "Open pipeline", href: "/pipeline" },
+            { label: "Open AI intake", href: "/admin/ai-underwriter-leads" },
+          ]} />
         </div>
-      )}
+        <div className="cktabs" role="tablist" aria-label="AI section">
+          <button type="button" role="tab" aria-selected={tab === "inbox"} className={tab === "inbox" ? "on" : undefined} onClick={() => setTab("inbox")}>Inbox <span className="tag">{filtered.length}</span></button>
+          <button type="button" role="tab" aria-selected={tab === "rules"} className={tab === "rules" ? "on" : undefined} onClick={() => setTab("rules")}>Rules</button>
+        </div>
+        {tab === "inbox" ? <div className="pagebar" style={{ paddingBottom: 10 }}>
+          <Lbl>Priority</Lbl>
+          <Seg<PriorityFilter> value={priority} onChange={setPriority} ariaLabel="Filter by priority" as="filter" options={PRIORITY_FILTERS.map((p) => ({ value: p, label: humanLabel(p) }))} />
+          <Lbl>Source</Lbl>
+          {SOURCE_FILTERS.map((source) => <Btn key={source} size="sm" variant={filter === source ? "pri" : "default"} aria-pressed={filter === source} onClick={() => setFilter(source)}>{humanLabel(source)}</Btn>)}
+        </div> : null}
+      </div>
 
       {tab === "inbox" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(380px, 1fr) 2fr", gap: 14, flex: 1, minHeight: 0 }}>
+        <div className="daily-split" style={{ flex: 1, minHeight: 0 }}>
           {/* Master list */}
           <Panel title="Queue" sub={`${filtered.length} pending`} noPad>
             <div className="panel-b" style={{ overflowY: "auto", minHeight: 0 }}>
@@ -269,6 +237,7 @@ function Detail({ task }: { task: AITask }) {
   const [draftJson, setDraftJson] = useState<string>("");
   const [editError, setEditError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [pendingDecision, setPendingDecision] = useState<"approved" | "dismissed" | null>(null);
 
   // Reset edit state when task changes
   useEffect(() => {
@@ -281,46 +250,44 @@ function Detail({ task }: { task: AITask }) {
   const handleApprove = async () => {
     setEditError(null);
     setFeedback(null);
-    let editedPayload: Record<string, unknown> | undefined = undefined;
     if (editMode) {
       try {
-        editedPayload = JSON.parse(draftJson);
+        JSON.parse(draftJson);
       } catch (e) {
         setEditError("Drafted payload is not valid JSON.");
         return;
       }
     }
-    try {
-      await decision.mutateAsync({
-        taskId: task.id,
-        decision: "approved",
-        edited_payload: editedPayload ?? null,
-        loanId: task.loan_id ?? undefined,
-      });
-      setFeedback("Approved & queued for execution.");
-    } catch (e) {
-      setFeedback(e instanceof Error ? e.message : "Failed to approve.");
-    }
+    setPendingDecision("approved");
   };
 
   const handleDismiss = async () => {
     setEditError(null);
     setFeedback(null);
+    setPendingDecision("dismissed");
+  };
+
+  const confirmDecision = async () => {
+    if (!pendingDecision) return;
     try {
+      const editedPayload = editMode && pendingDecision === "approved" ? JSON.parse(draftJson) as Record<string, unknown> : undefined;
       await decision.mutateAsync({
         taskId: task.id,
-        decision: "dismissed",
+        decision: pendingDecision,
+        edited_payload: editedPayload ?? null,
         loanId: task.loan_id ?? undefined,
       });
-      setFeedback("Dismissed.");
+      setFeedback(pendingDecision === "approved" ? "Approved and queued for execution." : "Dismissed.");
+      setPendingDecision(null);
     } catch (e) {
-      setFeedback(e instanceof Error ? e.message : "Failed to dismiss.");
+      setFeedback(e instanceof Error ? e.message : "Failed to update this task.");
     }
   };
 
   const confidencePct = (task.confidence * 100).toFixed(0);
 
   return (
+    <>
     <Panel
       title={task.title}
       sub={`${task.agent} · conf ${confidencePct}%`}
@@ -432,6 +399,17 @@ function Detail({ task }: { task: AITask }) {
         </Btn>
       </div>
     </Panel>
+    <ConfirmDialog
+      open={pendingDecision !== null}
+      onClose={() => setPendingDecision(null)}
+      onConfirm={confirmDecision}
+      busy={decision.isPending}
+      title={pendingDecision === "dismissed" ? "Dismiss Elara task" : editMode ? "Approve edited task" : "Approve and run Elara task"}
+      body={pendingDecision === "dismissed" ? "The recommendation leaves the pending queue and the decision remains in audit history." : "The drafted action will be queued for execution using the currently displayed payload."}
+      confirmLabel={pendingDecision === "dismissed" ? "Dismiss task" : editMode ? "Approve edited draft" : "Approve and run"}
+      tone={pendingDecision === "dismissed" ? "danger" : "default"}
+    />
+    </>
   );
 }
 

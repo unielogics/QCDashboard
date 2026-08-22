@@ -10,6 +10,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Btn, CellChip, Empty, Input, Panel, Select, StatusLine, Sub, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import {
   useCreateManualLenderTerms,
   useLoanLenderPackages,
@@ -54,6 +55,7 @@ type ManualDraft = {
 };
 
 export function LenderPackagesPanel({ loan }: Props) {
+  const confirmAction = useConfirmAction();
   const { data: packages = [], isLoading, isError, error } = useLoanLenderPackages(loan.id);
   const revokePackage = useRevokeLenderPackage();
   const selectTerms = useSelectLenderTerms();
@@ -69,14 +71,25 @@ export function LenderPackagesPanel({ loan }: Props) {
   );
 
   const handleSelect = async (term: LenderTermRead) => {
-    const applyToLoan = window.confirm(
-      "Select this lender as primary and apply these terms to the loan fields? Press Cancel to select the lender without overwriting loan terms.",
-    );
-    await selectTerms.mutateAsync({ loanId: loan.id, termId: term.id, applyToLoan });
+    const confirmed = await confirmAction({
+      title: "Select lender and apply terms",
+      body: "This lender becomes primary and its quoted values replace the current loan term fields.",
+      confirmLabel: "Select and apply",
+      reversible: true,
+    });
+    if (!confirmed) return;
+    await selectTerms.mutateAsync({ loanId: loan.id, termId: term.id, applyToLoan: true });
   };
 
   const handleRevoke = async (pkg: LenderPackageRead) => {
-    if (!window.confirm("Revoke this lender package? Lenders will lose portal access immediately.")) return;
+    const confirmed = await confirmAction({
+      title: "Revoke lender package",
+      body: "All recipients on this package will lose portal access immediately.",
+      confirmLabel: "Revoke package",
+      tone: "danger",
+      reversible: false,
+    });
+    if (!confirmed) return;
     await revokePackage.mutateAsync({ loanId: loan.id, packageId: pkg.id, reason: "Revoked from loan workspace" });
   };
 

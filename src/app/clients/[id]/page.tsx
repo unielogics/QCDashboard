@@ -27,6 +27,7 @@ import {
 } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { useBrokers, useClient, useClientActivity, useClientPaymentAuthorizationStatus, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useSendIntakeLink, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
 import { EmailsBreadcrumbTab } from "@/components/email/EmailsBreadcrumbTab";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
@@ -947,6 +948,7 @@ function ClientStageCard({
   canEdit: boolean;
   clientLoans: Loan[];
 }) {
+  const confirmAction = useConfirmAction();
   const updateStage = useUpdateClientStage();
   const startFunding = useStartFunding();
   const [error, setError] = useState<string | null>(null);
@@ -965,9 +967,13 @@ function ClientStageCard({
 
   const handleStartFunding = async () => {
     setError(null);
-    if (!confirm("Start funding for this client? This marks the prequal approved, creates the loan, and hands off to the Funding Team. The client moves to 'Ready for Lending' and you'll keep read-only visibility during processing.")) {
-      return;
-    }
+    const confirmed = await confirmAction({
+      title: "Start funding for this client",
+      body: "The prequalification will be approved, a loan will be created, and the file will move to the Funding Team. The originating desk keeps read-only visibility.",
+      confirmLabel: "Start funding",
+      reversible: false,
+    });
+    if (!confirmed) return;
     try {
       await startFunding.mutateAsync(client.id);
     } catch (e) {
@@ -1082,7 +1088,6 @@ function AssignedAgentCard({ client }: { client: Client }) {
   const anchorRef = useRef<HTMLDivElement | null>(null);
 
   const canAssign = user?.role === "super_admin" || user?.role === "loan_exec";
-  if (!canAssign) return null;
 
   useEffect(() => {
     if (!open) return;
@@ -1104,6 +1109,8 @@ function AssignedAgentCard({ client }: { client: Client }) {
     if (!q) return brokers;
     return brokers.filter((b: Broker) => b.display_name.toLowerCase().includes(q));
   }, [brokers, query]);
+
+  if (!canAssign) return null;
 
   const assigned = !!client.broker_id;
 

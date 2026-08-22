@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
-import { useAuth } from "@clerk/nextjs";
 import MfaBanner from "@/components/MfaBanner";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "./Sidebar";
@@ -17,6 +16,7 @@ import { _setActiveProfileFromUser } from "@/store/role";
 import { isPrimaryShortcut } from "@/lib/platformShortcuts";
 import { Role, ContractType } from "@/lib/enums.generated";
 import { PlatformAccessGate } from "@/components/broker/PlatformAccessGate";
+import { useConsoleAuth } from "@/lib/consoleAuth";
 
 export default function AppShell({
   children,
@@ -39,7 +39,7 @@ export default function AppShell({
   const theme = useUI((s) => s.theme);
   const setTheme = useUI((s) => s.setTheme);
   const setSearchOpen = useUI((s) => s.setSearchOpen);
-  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  const { isLoaded: authLoaded, isSignedIn } = useConsoleAuth();
 
   // Rehydrate the user's persisted sidebar choice once, post-mount. Doing
   // this in an effect (rather than at store init) keeps the first client
@@ -47,7 +47,11 @@ export default function AppShell({
   // (React #418/#425) when localStorage says "collapsed".
   useEffect(() => {
     const persisted = readPersistedSidebar();
-    if (persisted) setSidebarCollapsed(true);
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      useUI.setState({ sidebarCollapsed: true });
+    } else if (persisted) {
+      setSidebarCollapsed(true);
+    }
     setTheme(readPersistedTheme());
   }, [setSidebarCollapsed, setTheme]);
   const { data: user } = useCurrentUser();

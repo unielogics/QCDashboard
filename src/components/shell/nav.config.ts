@@ -79,7 +79,7 @@ const ANALYSIS_TOOLS: ToolGroup = {
   id: "analysis",
   label: "Analysis",
   items: [
-    { label: "Deal analyzer", href: "/deal-analyzer", icon: "hammer", desc: "Model a fix & flip or rental" },
+    { label: "Deal analyzer", href: "/deal-analyzer/fix-and-flip?new=1", icon: "hammer", desc: "Model a fix & flip or rental" },
     { label: "Simulator", href: "/simulator", icon: "calc", desc: "Rate, DSCR and payment scenarios" },
     { label: "Rate sheet", href: "/rates", icon: "sliders", desc: "Current pricing by program" },
     { label: "Reports", href: "/reports", icon: "trend", desc: "Funded, pipeline and pull-through" },

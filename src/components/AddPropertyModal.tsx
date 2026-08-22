@@ -7,8 +7,8 @@
 
 import { useState } from "react";
 import { V, type CssVars } from "@/components/design-system/cssVars";
-import { Card } from "@/components/design-system/primitives";
-import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
+import { Btn } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { GoogleAddressInput } from "@/components/property/GoogleAddressInput";
 import type { ClientPropertyInput } from "@/hooks/useApi";
 
@@ -78,26 +78,23 @@ export function AddPropertyModal({ clientSide, onSubmit, onClose }: Props) {
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, zIndex: 100,
-        background: "rgba(11,22,41,0.45)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 24,
-      }}
+    <Drawer
+      open
+      onClose={onClose}
+      width="md"
+      title="Add property"
+      closeOnBackdrop={!busy}
+      footer={
+        <>
+          <Btn onClick={onClose} disabled={busy}>Cancel</Btn>
+          <span className="sp" />
+          <Btn variant="pri" onClick={submit} disabled={busy}>
+            {busy ? "Saving..." : "Add property"}
+          </Btn>
+        </>
+      }
     >
-      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 580 }}>
-        <Card pad={20}>
-          <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: V.ink, margin: 0, flex: 1 }}>
-              Add property
-            </h2>
-            <ModalCloseButton onClick={onClose} />
-          </div>
-
+      <div className="grid">
           {/* Side picker */}
           <Field label="Type">
             <div style={{ display: "flex", gap: 6 }}>
@@ -170,33 +167,8 @@ export function AddPropertyModal({ clientSide, onSubmit, onClose }: Props) {
             </div>
           ) : null}
 
-          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-            <button
-              onClick={submit}
-              disabled={busy}
-              style={{
-                padding: "10px 16px", fontSize: 13, fontWeight: 700,
-                borderRadius: 8, border: "none",
-                background: V.brand, color: V.inverse, cursor: "pointer",
-                opacity: busy ? 0.5 : 1,
-              }}
-            >
-              {busy ? "Saving…" : "Add property"}
-            </button>
-            <button
-              onClick={onClose}
-              style={{
-                padding: "10px 16px", fontSize: 13, fontWeight: 700,
-                borderRadius: 8, border: `1px solid ${V.line}`,
-                background: V.surface, color: V.ink, cursor: "pointer",
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </Card>
       </div>
-    </div>
+    </Drawer>
   );
 }
 

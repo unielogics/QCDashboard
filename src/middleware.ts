@@ -1,5 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { isAgreementPortalHost } from "@/lib/agreementPortal";
 
 const isAuthPage = createRouteMatcher([
@@ -95,7 +95,7 @@ function getRoleFromClaims(
   return typeof role === "string" ? role : null;
 }
 
-export default clerkMiddleware(async (auth, req) => {
+const protectedMiddleware = clerkMiddleware(async (auth, req) => {
   // agreement.qualifiedcommercial.com serves the /agreement route tree at
   // its own root — a visitor there requesting "/" should see the
   // /agreement page, "/referral-protection" should see
@@ -156,6 +156,21 @@ export default clerkMiddleware(async (auth, req) => {
     }
   }
 });
+
+export default function middleware(req: NextRequest, event: NextFetchEvent) {
+  // Clerk's development-browser handshake runs before its callback. The QA
+  // bypass therefore has to wrap clerkMiddleware itself. It is limited to a
+  // development build, a loopback host, and the explicit seeded-user cookie.
+  const isLoopback = req.nextUrl.hostname === "localhost" || req.nextUrl.hostname === "127.0.0.1";
+  if (
+    process.env.NODE_ENV === "development" &&
+    isLoopback &&
+    req.cookies.has("qc_visual_qa_user")
+  ) {
+    return NextResponse.next();
+  }
+  return protectedMiddleware(req, event);
+}
 
 export const config = {
   matcher: [

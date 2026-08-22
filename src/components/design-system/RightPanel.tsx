@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
-import { Icon } from "./Icon";
+import type { ReactNode } from "react";
+import { Drawer } from "@/components/ds/Drawer";
 
 interface RightPanelProps {
   open: boolean;
@@ -18,61 +18,30 @@ interface RightPanelProps {
 }
 
 /**
- * Right-side slide-in panel taking ~1/3 of the viewport. Replaces centered modal
- * dialogs across the app per the UX standard. The main view stays partially
- * visible behind a translucent scrim — click outside or press Esc to dismiss.
+ * Compatibility adapter for older slide-out call sites. The prototype uses a
+ * single centered dialog shape, so legacy panels inherit Drawer behavior.
  */
 export function RightPanel({
   open,
   onClose,
   title,
   eyebrow,
-  width = "min(520px, max(33vw, 420px))",
+  width: _width,
   footer,
   ariaLabel,
   children,
 }: RightPanelProps) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={ariaLabel ?? (typeof title === "string" ? title : "Panel")}
-      onClick={onClose}
-      className="sheet-scrim"
+    <Drawer
+      open={open}
+      onClose={onClose}
+      width="md"
+      title={title}
+      sub={eyebrow}
+      footer={footer}
+      ariaLabel={ariaLabel}
     >
-      {/* The slide-in keyframes used to be a <style> tag nested in here, so a
-          global at-rule was re-declared on every mount. It lives in
-          app-extras.css now, alongside the spinner's for the same reason. */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="sheet"
-        // Caller-supplied width — the only thing that varies between the seven
-        // panels that render this.
-        style={{ width }}
-      >
-        <div className="panel-h sheet-h">
-          <div className="grow">
-            {eyebrow && <div className="lbl sheet-eyebrow">{eyebrow}</div>}
-            <div className="sheet-t trunc">{title}</div>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="btn sm iconbtn">
-            <Icon name="x" size={15} />
-          </button>
-        </div>
-
-        <div className="sheet-b">{children}</div>
-
-        {footer && <div className="drawer-f sheet-f">{footer}</div>}
-      </div>
-    </div>
+      {children}
+    </Drawer>
   );
 }

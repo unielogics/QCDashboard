@@ -2,8 +2,8 @@
 
 import { useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@clerk/nextjs";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
+import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import { useActiveProfile } from "@/store/role";
 import type { NotificationList, User , LeadDscrPotentialResponse, WhatsNewResponse } from "@/lib/types";
 import type {
@@ -149,7 +149,11 @@ import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurp
 import type { ClosingCostTier } from "@/lib/fixFlip/types";
 import type {
   BucketIntakeLinkPayload,
+  BucketIntakeLinkOptions,
+  BucketIntakeLinkRead,
   BucketIntakeLinkResult,
+  OperatorBucketFile,
+  UnifiedActionDefinition,
   UnifiedFileDetail,
   UnifiedFilePage,
   UnifiedOrigin,
@@ -158,7 +162,7 @@ import type {
 } from "@/lib/unifiedOperator";
 
 export function useDevUser(): string {
-  return useActiveProfile().email;
+  return visualQaUser(useActiveProfile().email);
 }
 
 /**
@@ -200,7 +204,7 @@ function aiQueryRetry(failureCount: number, err: unknown): boolean {
 }
 
 export function useAuthedApi() {
-  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { getToken, isLoaded, isSignedIn } = useConsoleAuth();
   const devUser = useDevUser();
 
   // Live mirror of Clerk's auth state. The api callback closes over a
@@ -257,7 +261,7 @@ export function useAuthedApi() {
 export function useCurrentUser() {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useConsoleAuth();
   return useQuery({
     queryKey: ["auth-me", isSignedIn],
     queryFn: () => apiCall<User>("/auth/me"),
@@ -298,7 +302,7 @@ export type DealerChannelInbox = { items: DealerChannelInboxItem[]; total_unread
 // internal team's view across all leads (/admin). Same shape both sides.
 export function useDealerChannelInbox(enabled = true, scope: "broker" | "admin" = "broker") {
   const apiCall = useAuthedApi();
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useConsoleAuth();
   const path = scope === "admin"
     ? "/admin/ai-underwriter-leads/messages"
     : "/broker/ai-underwriter-leads/messages";
@@ -2169,7 +2173,7 @@ export function useUpdateLoan() {
 // fetch (not the JSON-typed api helper) so we get the binary blob,
 // then turns it into a Blob URL the caller can open / save.
 export function useDownloadTermSheet() {
-  const { getToken, isSignedIn } = useAuth();
+  const { getToken, isSignedIn } = useConsoleAuth();
   const devUser = useDevUser();
   return useMutation({
     mutationFn: async ({ loanId, interestOnlyMonths }: { loanId: string; interestOnlyMonths?: number }) => {
@@ -3520,7 +3524,7 @@ export type ContractStatus = {
 
 export function useContractStatus(contractType: string) {
   const apiCall = useAuthedApi();
-  const { isSignedIn } = useAuth();
+  const { isSignedIn } = useConsoleAuth();
   return useQuery({
     queryKey: ["contract-status", contractType],
     queryFn: () => apiCall<ContractStatus>(`/contracts/${contractType}/status`),
@@ -6914,11 +6918,104 @@ export function useLinkBucketIntake() {
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ["operator-files", devUser] });
       qc.invalidateQueries({ queryKey: ["operator-file", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-links", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-link-options", devUser] });
       qc.invalidateQueries({ queryKey: ["buckets"] });
       qc.invalidateQueries({ queryKey: ["ai-underwriter-leads"] });
       qc.invalidateQueries({ queryKey: ["lead-funnel"] });
       if (vars.bucket_id) qc.invalidateQueries({ queryKey: ["bucket", vars.bucket_id] });
       if (vars.intake_id) qc.invalidateQueries({ queryKey: ["ai-underwriter-lead", vars.intake_id] });
+    },
+  });
+}
+
+export function useBucketIntakeLinkOptions() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["operator-link-options", devUser],
+    queryFn: () => apiCall<BucketIntakeLinkOptions>("/operator-files/link-options"),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useBucketIntakeLinks(filters: { bucketId?: string | null; intakeId?: string | null; all?: boolean }) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const params = new URLSearchParams();
+  if (filters.bucketId) params.set("bucket_id", filters.bucketId);
+  if (filters.intakeId) params.set("intake_id", filters.intakeId);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return useQuery({
+    queryKey: ["operator-links", devUser, filters.bucketId ?? "", filters.intakeId ?? ""],
+    queryFn: () => apiCall<BucketIntakeLinkRead[]>(`/operator-files/bucket-intake-links${suffix}`),
+    enabled: Boolean(filters.all || filters.bucketId || filters.intakeId),
+  });
+}
+
+export function useOperatorBucketFiles(bucketId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["operator-bucket-files", devUser, bucketId ?? ""],
+    queryFn: async () => {
+      const detail = await apiCall<{ files: OperatorBucketFile[] }>(`/buckets/admin/${bucketId}`);
+      return detail.files.filter((file) => file.status === "uploaded" && !file.deleted_at);
+    },
+    enabled: Boolean(bucketId),
+  });
+}
+
+export function useUpdateBucketIntakeLink() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ linkId, ...body }: { linkId: string; relationship?: BucketIntakeLinkPayload["relationship"]; file_ids?: string[]; note?: string }) =>
+      apiCall<BucketIntakeLinkResult>(`/operator-files/bucket-intake-links/${linkId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["operator-files", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-file", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-links", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-link-options", devUser] });
+    },
+  });
+}
+
+export function useUnlinkBucketIntake() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (linkId: string) =>
+      apiCall<BucketIntakeLinkResult>(`/operator-files/bucket-intake-links/${linkId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["operator-files", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-file", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-links", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-link-options", devUser] });
+    },
+  });
+}
+
+export function useRunUnifiedAction() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, body }: { action: UnifiedActionDefinition; body?: Record<string, unknown> }) =>
+      apiCall<Record<string, unknown>>(action.path, {
+        method: action.method,
+        body: body ? JSON.stringify(body) : undefined,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["operator-files", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-file", devUser] });
+      qc.invalidateQueries({ queryKey: ["loans"] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
     },
   });
 }

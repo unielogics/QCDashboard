@@ -8,6 +8,7 @@ import {
   Input,
   PageHeader,
   Panel,
+  Row,
   Select,
   Table,
   Tag,
@@ -22,6 +23,8 @@ import { useCreateRate, useCurrentUser, useDeleteRate, useRates, useUpdateRate }
 import { LoanTypeOptions, Role } from "@/lib/enums.generated";
 import type { LoanType } from "@/lib/enums.generated";
 import type { RateSKU, RateSKUInput } from "@/lib/types";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 
 const EMPTY_DRAFT: RateSKUInput = {
   id: "",
@@ -50,6 +53,7 @@ export default function RatesPage() {
   const [editing, setEditing] = useState<RateSKU | null>(null);
   const [draft, setDraft] = useState<RateSKUInput>({ ...EMPTY_DRAFT });
   const [error, setError] = useState<string | null>(null);
+  const [deleteReview, setDeleteReview] = useState<RateSKU | null>(null);
 
   const canManage = user?.role === Role.SUPER_ADMIN;
   const filtered = useMemo(
@@ -146,7 +150,6 @@ export default function RatesPage() {
   }
 
   async function removeRate(rate: RateSKU) {
-    if (!window.confirm(`Delete ${rate.label}? This removes it from the published rate sheet.`)) return;
     setError(null);
     try {
       await deleteRate.mutateAsync(rate.id);
@@ -167,17 +170,17 @@ export default function RatesPage() {
                 + Add SKU
               </Btn>
             )}
-            <Select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter by loan type">
-              <option value="all">All loan types</option>
-              {LoanTypeOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </Select>
+            <PageActionMenu items={[{ label: "Market rates", href: "/market-rates" }, { label: "Reports", href: "/reports" }]} />
           </>
         }
       />
+
+      <Row>
+        <Select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter by loan type">
+          <option value="all">All loan types</option>
+          {LoanTypeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </Select>
+      </Row>
 
       {error && <ErrorLine>{error}</ErrorLine>}
 
@@ -226,7 +229,7 @@ export default function RatesPage() {
                     </Btn>
                     {/* `.c-bad` carries the danger tint; there is no danger
                         button variant on the stylesheet to reach for. */}
-                    <Btn size="sm" className="c-bad" onClick={() => removeRate(r)} disabled={deleteRate.isPending}>
+                    <Btn size="sm" className="c-bad" onClick={() => setDeleteReview(r)} disabled={deleteRate.isPending}>
                       Delete
                     </Btn>
                   </span>
@@ -250,6 +253,20 @@ export default function RatesPage() {
           )}
         </Table>
       </Panel>
+
+      <ConfirmDialog
+        open={deleteReview != null}
+        onClose={() => setDeleteReview(null)}
+        title={`Delete ${deleteReview?.label ?? "rate SKU"}`}
+        body="This removes the SKU from the published rate sheet immediately."
+        confirmLabel="Delete SKU"
+        tone="danger"
+        busy={deleteRate.isPending}
+        onConfirm={() => {
+          if (!deleteReview) return;
+          void removeRate(deleteReview).then(() => setDeleteReview(null));
+        }}
+      />
 
       <Panel title="How rates update">
         <div className="sub">

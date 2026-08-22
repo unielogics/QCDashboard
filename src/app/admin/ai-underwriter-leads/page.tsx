@@ -25,8 +25,9 @@ import {
   type ChipTone,
 } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { LENDING_INTENTS, MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
-import { Modal } from "@/components/design-system/Modal";
 import { Icon } from "@/components/design-system/Icon";
 import { TypingDots } from "@/components/design-system/TypingDots";
 import { api, ApiError } from "@/lib/api";
@@ -46,7 +47,7 @@ function apiErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 import { Role } from "@/lib/enums.generated";
-import { useCurrentUser, useBookingLink, useDriveFiles, type DriveFile } from "@/hooks/useApi";
+import { useCurrentUser, useBookingLink, useDriveFiles, useUnifiedOperatorFiles, type DriveFile } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage } from "@/components/admin/LeadCockpit";
 import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
 import { LeadContractsPanel } from "@/components/admin/LeadContractsPanel";
@@ -58,7 +59,7 @@ import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunRevi
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import type { IntakeResponse } from "@/lib/intake";
-import { useUI } from "@/store/ui";
+import { originTone, verticalTone } from "@/lib/unifiedOperator";
 
 type LeadRow = {
   id: string;
@@ -70,6 +71,9 @@ type LeadRow = {
   email: string;
   phone?: string | null;
   business_name?: string | null;
+  referral_source?: string | null;
+  opened_by_name?: string | null;
+  opened_by_role?: string | null;
   status: string;
   outcome_status: string;
   preferred_language: string;
@@ -89,6 +93,13 @@ type LeadRow = {
   delete_requested_at?: string | null;
   unseen_activity_count?: number;
   delete_requested_by?: string | null;
+};
+
+type LinkLead = {
+  id: string;
+  bucket_id: string | null;
+  business_name?: string | null;
+  full_name: string;
 };
 
 type LeadPage = {
@@ -229,12 +240,9 @@ const LIMIT = 25;
 export default function AdminAIUnderwriterLeadsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
-  // Match Sidebar.tsx widths (68 collapsed / 232 expanded) so the full-screen
-  // lead modal clears the menu and leaves it clickable.
-  const sidebarWidth = sidebarCollapsed ? 68 : 232;
   const { getToken } = useAuth();
   const { data: me, isLoading: meLoading } = useCurrentUser();
+  const { data: unifiedFiles } = useUnifiedOperatorFiles({ limit: 500 });
   const leadParam = searchParams.get("lead");
   const [rows, setRows] = useState<LeadRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -253,7 +261,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [linkLead, setLinkLead] = useState<Pick<LeadRow, "id" | "bucket_id" | "business_name" | "full_name"> | null>(null);
+  const [linkLead, setLinkLead] = useState<LinkLead | null>(null);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
@@ -614,6 +622,9 @@ export default function AdminAIUnderwriterLeadsPage() {
     booked: rows.filter((row) => row.call_booked).length,
     missing: rows.reduce((sum, row) => sum + row.missing_required_count, 0),
   }), [rows, total]);
+  const unifiedByIntake = useMemo(() => new Map(
+    (unifiedFiles?.items ?? []).filter((file) => file.intake_id).map((file) => [file.intake_id as string, file]),
+  ), [unifiedFiles]);
 
   function submitSearch(event: FormEvent) {
     event.preventDefault();
@@ -625,18 +636,21 @@ export default function AdminAIUnderwriterLeadsPage() {
 
   return (
     <div style={{ height: "calc(100dvh - 105px)", maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: 0, overflow: "hidden" }}>
-      <div style={{ flexShrink: 0 }}>
-        <PageHeader
-          title="AI Underwriter Leads"
-          lede="Dealer and real-estate funding review submissions, conversations, evidence, management packages, and vendor sends."
-          actions={
-            <>
-              <WhatsNewButton onClick={() => setWhatsNewOpen(true)} />
-              <Btn variant="pri" onClick={() => setCreateOpen(true)}>Create lead</Btn>
-              <Link href="/admin/buckets" className="btn">Buckets</Link>
-            </>
-          }
-        />
+      <div className="ckhead" style={{ flexShrink: 0 }}>
+        <div className="ckrow">
+          <h1>AI intake</h1>
+          <CellChip tone="mut">{counts.total} files</CellChip>
+          <span className="sp" />
+          <span className="sub">Every file on the board, seen from Elara&apos;s side. Same records, same refs.</span>
+          <Btn variant="pri" size="sm" onClick={() => setCreateOpen(true)}><Icon name="plus" size={13} /> Create intake</Btn>
+          <PageActionMenu label="AI intake actions" items={[
+            { label: "What changed", onSelect: () => setWhatsNewOpen(true) },
+            { label: "Open document buckets", href: "/admin/buckets" },
+          ]} />
+        </div>
+        <div className="cktabs" role="tablist" aria-label="AI intake vertical">
+          {VARIANT_FILTERS.map((item) => <button type="button" role="tab" aria-selected={variantFilter === item.value} className={variantFilter === item.value ? "on" : undefined} key={item.value} onClick={() => { setOffset(0); setVariantFilter(item.value); }}>{item.label}</button>)}
+        </div>
       </div>
 
       <div className="kpis" style={{ flexShrink: 0 }}>
@@ -646,17 +660,14 @@ export default function AdminAIUnderwriterLeadsPage() {
         <Stat title="Missing items" value={String(counts.missing)} sub="visible page" warn />
       </div>
 
-      <Card style={{ flexShrink: 0 }}>
-        <form onSubmit={submitSearch} style={{ display: "grid", gridTemplateColumns: "minmax(240px,1fr) 190px 210px 250px auto", gap: 10, alignItems: "center" }}>
+      <div className="panel" style={{ flexShrink: 0 }}>
+        <form className="panel-h" onSubmit={submitSearch} style={{ display: "grid", gridTemplateColumns: "minmax(240px,1fr) 210px 250px auto", gap: 10, alignItems: "center" }}>
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search name, email, dealership"
             aria-label="Search leads"
           />
-          <Select value={variantFilter} onChange={(event) => { setOffset(0); setVariantFilter(event.target.value); }} aria-label="Review type">
-            {VARIANT_FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </Select>
           <Select value={statusFilter} onChange={(event) => { setOffset(0); setStatusFilter(event.target.value); }} aria-label="Status">
             {STATUS_FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </Select>
@@ -665,86 +676,35 @@ export default function AdminAIUnderwriterLeadsPage() {
           </Select>
           <Btn type="submit" variant="pri">Search</Btn>
         </form>
-      </Card>
+      </div>
 
       {notice ? <WarnLine>{notice}</WarnLine> : null}
 
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr", gap: 14, alignItems: "stretch", overflow: "hidden" }}>
         <div className="panel" style={{ minHeight: 0 }}>
-          <div className="lbl" style={{ display: "grid", gridTemplateColumns: LEAD_COLS, gap: 12, padding: "12px 16px", borderBottom: "1px solid var(--line)" }}>
-            <span>Lead</span>
-            <span>AI probability</span>
-            <span>Evidence</span>
-            <span>Next step</span>
-            <span>Updated</span>
-            <span />
-          </div>
-          <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-            {loading ? (
-              <div className="panel-b sub">Loading dealer leads...</div>
-            ) : rows.map((row) => (
-              <div
-                key={row.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => openLead(row.id)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    openLead(row.id);
-                  }
-                }}
-                style={rowStyle(selectedId === row.id)}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <strong style={{ display: "flex", alignItems: "center", gap: 7, overflow: "hidden", whiteSpace: "nowrap" }}>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{row.business_name || row.full_name}</span>
-                    {row.unseen_activity_count ? (
-                      <CellChip
-                        tone="acc"
-                        title={`${row.unseen_activity_count} client/broker update${row.unseen_activity_count !== 1 ? "s" : ""} since you last opened this lead`}
-                      >
-                        NEW {row.unseen_activity_count > 9 ? "9+" : row.unseen_activity_count}
-                      </CellChip>
-                    ) : null}
-                  </strong>
-                  <span className="sub" style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{variantLabel(row.variant)} · {row.full_name} · {row.email}</span>
-                </div>
-                <div>
-                  <CellChip tone={probabilityTone(row.probability_status)}>
-                    {row.probability_status || "No screen yet"}
-                  </CellChip>
-                  <span className="sub" style={{ display: "block", marginTop: 5 }}>
-                    {row.confidence ? `${row.confidence} confidence` : row.latest_review_status || "awaiting review"}
-                  </span>
-                </div>
-                <div>
-                  <strong>{row.file_count}</strong> files · <strong>{row.missing_required_count}</strong> missing
-                  <span style={{ display: "block", marginTop: 5 }}>
-                    <CellChip tone={row.call_booked ? "ok" : row.booking_recommended ? "acc" : "mut"}>
-                      {row.call_booked ? "Call booked" : row.booking_recommended ? "Booking recommended" : "No booking yet"}
-                    </CellChip>
-                  </span>
-                </div>
-                <div style={{ overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-                  {row.one_next_step || "Awaiting AI next step."}
-                </div>
-                <div className="sub">{formatDate(row.updated_at)}</div>
-                <div>
-                  <Btn
-                    size="sm"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setLinkLead(row);
-                    }}
-                    title="Link this AI intake to a document bucket"
-                  >
-                    <Icon name="link" size={13} />
-                    Link bucket
-                  </Btn>
-                </div>
-              </div>
-            ))}
+          <div className="tblwrap" style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            <table className="tbl">
+              <thead><tr><th>File</th><th>Opened by</th><th>Referral</th><th>Vertical</th><th>Probability</th><th>Status</th><th>Evidence</th><th>Missing</th><th className="r" /></tr></thead>
+              <tbody>
+                {loading ? <tr><td colSpan={9}><div className="empty">Loading AI intake...</div></td></tr> : rows.map((row) => {
+                  const unified = unifiedByIntake.get(row.id);
+                  return (
+                    <tr key={row.id} onClick={() => openLead(row.id)} className={selectedId === row.id ? "tone-acc" : undefined}>
+                      <td><button type="button" className="linky" onClick={() => openLead(row.id)}>{row.business_name || row.full_name}</button><div className="sub num">{unified?.ref || row.id.slice(0, 8)}</div></td>
+                      <td><CellChip tone={unified ? originTone(unified.origin) : "mut"}>{row.opened_by_name || unified?.rep_name || unified?.origin_label || "House desk"}</CellChip><div className="sub">{row.opened_by_role || unified?.case_ref || "Internal"}</div></td>
+                      <td className="sub">{row.referral_source || unified?.dealer_name || "Direct"}</td>
+                      <td><CellChip tone={unified ? verticalTone(unified.vertical) : "acc"}>{unified?.vertical_label || variantLabel(row.variant)}</CellChip></td>
+                      <td><CellChip tone={probabilityTone(row.probability_status)}>{row.probability_status || "Awaiting review"}</CellChip></td>
+                      <td><CellChip tone={row.status === "completed" ? "ok" : row.status === "reviewing" ? "acc" : "warn"}>{row.status}</CellChip></td>
+                      <td><button type="button" className="cellchip c-pet" onClick={(event) => { event.stopPropagation(); setLinkLead(row); }}>{row.file_count} files · {row.bucket_name || "Bucket"}</button></td>
+                      <td className="num">{row.missing_required_count}</td>
+                      <td className="r"><Btn size="sm" onClick={(event) => { event.stopPropagation(); openLead(row.id); }}>Open</Btn></td>
+                    </tr>
+                  );
+                })}
+                {!loading && !rows.length ? <tr><td colSpan={9}><div className="empty">No AI intake files match these filters.</div></td></tr> : null}
+              </tbody>
+            </table>
           </div>
           <div className="row" style={{ flexShrink: 0, padding: "12px 16px", borderTop: "1px solid var(--line)" }}>
             <span className="sub">{total ? `${offset + 1}-${Math.min(offset + LIMIT, total)} of ${total}` : "0 leads"}</span>
@@ -767,15 +727,7 @@ export default function AdminAIUnderwriterLeadsPage() {
         }}
       />
 
-      <BucketIntakeLinkDrawer
-        open={linkLead !== null}
-        onClose={() => setLinkLead(null)}
-        initialBucketId={linkLead?.bucket_id}
-        initialIntakeId={linkLead?.id}
-        title="Link AI intake to bucket"
-      />
-
-      <Modal open={!!selectedId} onClose={closeLead} size="stage" insetLeft={sidebarWidth} bodyStyle={{ display: "flex", flexDirection: "column" }}>
+      <Drawer open={!!selectedId} onClose={closeLead} width="xl" ariaLabel="AI intake file" bodyClass="drawer-lead-detail">
         {selectedId ? (
           <LeadDetailPanel
             detail={detail}
@@ -816,7 +768,7 @@ export default function AdminAIUnderwriterLeadsPage() {
               if (detail?.intake) {
                 setLinkLead({
                   id: detail.intake.id,
-                  bucket_id: detail.intake.bucket_id,
+                  bucket_id: null,
                   business_name: detail.intake.business_name,
                   full_name: detail.intake.full_name,
                 });
@@ -829,7 +781,15 @@ export default function AdminAIUnderwriterLeadsPage() {
             onConfirmDeletion={(confirmName) => confirmLeadDeletion(selectedId, confirmName)}
           />
         ) : null}
-      </Modal>
+      </Drawer>
+
+      <BucketIntakeLinkDrawer
+        open={linkLead !== null}
+        onClose={() => setLinkLead(null)}
+        initialBucketId={linkLead?.bucket_id}
+        initialIntakeId={linkLead?.id}
+        title="Link AI intake to bucket"
+      />
 
       <RunReviewDialog
         open={rerunOpen}
@@ -930,6 +890,9 @@ function LeadDetailPanel({
   const [ingestFiles, setIngestFiles] = useState<DriveFile[]>([]);
   const [deletionBusy, setDeletionBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [prototypeView, setPrototypeView] = useState<"workflow" | "sources" | "evidence" | "rep" | "audit">("workflow");
+  const [submissionStep, setSubmissionStep] = useState(2);
+  const [sendReviewOpen, setSendReviewOpen] = useState(false);
   const result = detail?.latest_review?.result || detail?.intake.result_snapshot || null;
   const evidence = asRecord(result?.document_evidence_map);
   const missing = arrayOfRecords(result?.missing_or_incomplete_items);
@@ -940,6 +903,17 @@ function LeadDetailPanel({
   const packet = artifacts.find((artifact) => artifact.artifact_type === "lender_packet");
   const prequalification = artifacts.find((artifact) => artifact.artifact_type === "prequalification");
   const isRealEstate = detail?.intake.variant === "real_estate_dscr_v1";
+
+  useEffect(() => {
+    if (!detail) return;
+    const rows = detail.artifacts ?? [];
+    if (rows.some((item) => item.artifact_type === "lender_packet")) setSubmissionStep(5);
+    else if (rows.some((item) => item.artifact_type === "executive_summary")) setSubmissionStep(4);
+    else if (detail.latest_review?.status === "completed" || detail.intake.status === "reviewed") setSubmissionStep(3);
+    else if (detail.files.length) setSubmissionStep(2);
+    else setSubmissionStep(1);
+    setPrototypeView("workflow");
+  }, [detail?.intake.id]);
 
   async function previewEmail() {
     setBusy("preview");
@@ -1111,6 +1085,171 @@ function LeadDetailPanel({
       setDeletionBusy(false);
     }
   }
+
+  const workflowSteps = [
+    { id: 1, label: "Evidence in", sub: "Buckets, uploads, Drive" },
+    { id: 2, label: "AI review", sub: "Probability and coverage" },
+    { id: 3, label: "Executive summary", sub: "Underwriter narrative" },
+    { id: 4, label: "Lender packet", sub: "Redacted PDF build" },
+    { id: 5, label: "Ship the package", sub: "Send, then track replies" },
+  ];
+
+  const prototypeDetailEnabled = Boolean(workflowSteps.length);
+  if (prototypeDetailEnabled) return (
+    <div className="intake-file">
+      <div className="intake-file-head">
+        <div className="grid g6">
+          <Row>
+            <h3>{detail?.intake.business_name || detail?.intake.full_name || "AI intake file"}</h3>
+            {detail ? <CellChip tone={probabilityTone(String(result?.probability_status || ""))}>{String(result?.probability_status || "Awaiting review")}</CellChip> : null}
+            {detail ? <CellChip tone={detail.intake.status === "completed" ? "ok" : detail.intake.status === "reviewing" || detail.intake.status === "reviewed" ? "acc" : "warn"}>{detail.intake.status}</CellChip> : null}
+          </Row>
+          <div className="sub">
+            {detail ? `${variantLabel(detail.intake.variant)} · ${detail.intake.referral_source || "Direct"} · ${detail.intake.email}` : "Loading file..."}
+          </div>
+        </div>
+        <span className="sp" />
+        {detail ? (
+          <Btn variant="pri" onClick={submissionStep === 1 ? onLinkBucketIntake : submissionStep === 2 ? onRerun : submissionStep === 3 ? () => { setBusy("summary"); Promise.resolve(onGenerateSummary()).finally(() => setBusy("")); } : submissionStep === 4 ? () => { setBusy("packet"); Promise.resolve(onGeneratePacket()).finally(() => setBusy("")); } : () => setPrototypeView("workflow")} disabled={busy !== "" || rerunning}>
+            {submissionStep === 1 ? "Attach a bucket" : submissionStep === 2 ? (rerunning ? "Reviewing..." : "Run AI review") : submissionStep === 3 ? "Generate summary" : submissionStep === 4 ? "Build lender packet" : "Open shipment"}
+          </Btn>
+        ) : null}
+        <PageActionMenu items={[
+          { label: "Attach another bucket", onSelect: onLinkBucketIntake, hidden: !detail },
+          { label: "Dealer partner messages", onSelect: () => setPrototypeView("rep"), hidden: !detail },
+          { label: "Delete lead", onSelect: () => setConfirmDeleteOpen(true), tone: "danger", hidden: !detail },
+        ]} />
+      </div>
+
+      {loading || !detail ? <div className="empty">Loading intake file...</div> : (
+        <>
+          <div className="intake-tabs" role="tablist" aria-label="AI intake detail">
+            {([
+              ["workflow", "Workflow"],
+              ["sources", "Data sources"],
+              ["evidence", "Evidence"],
+              ["rep", "Rep channel"],
+              ["audit", "Audit trail"],
+            ] as const).map(([id, label]) => (
+              <button key={id} type="button" role="tab" aria-selected={prototypeView === id} className={prototypeView === id ? "on" : undefined} onClick={() => setPrototypeView(id)}>{label}</button>
+            ))}
+          </div>
+
+          <div className="intake-file-body">
+            <div className="grid">
+              {prototypeView === "workflow" ? (
+                <>
+                  <Panel title="Submission sequence" sub={`Step ${submissionStep} of 5`}>
+                    <div className="submission-steps">
+                      {workflowSteps.map((step) => (
+                        <button key={step.id} type="button" className={cx("submission-step", submissionStep === step.id && "on", submissionStep > step.id && "done")} onClick={() => setSubmissionStep(step.id)}>
+                          <span>{submissionStep > step.id ? <Icon name="check" size={12} /> : step.id}</span>
+                          <b>{step.label}</b>
+                          <small>{step.sub}</small>
+                        </button>
+                      ))}
+                    </div>
+                  </Panel>
+
+                  {submissionStep === 1 ? (
+                    <Panel title="Data sources" actions={<Btn onClick={onLinkBucketIntake}>Attach a bucket</Btn>}>
+                      <p className="sub">Only the buckets and selected files shown here are available to Elara. Source objects remain in their original rooms.</p>
+                      <div className="source-room mt">
+                        <div><CellChip tone="acc">Bucket</CellChip><strong>{detail.intake.bucket_name}</strong><span className="sub">{detail.files.length} files · primary evidence room</span></div>
+                        <Link href={`/admin/buckets?bucket=${detail.intake.bucket_id}`} className="btn sm">Open bucket</Link>
+                      </div>
+                    </Panel>
+                  ) : null}
+
+                  {submissionStep === 2 ? (
+                    <Panel title="AI review" actions={<Btn variant="pri" onClick={onRerun} disabled={rerunning}>{rerunning ? "Reviewing..." : "Re-run review"}</Btn>}>
+                      <div className="intake-review-grid">
+                        <div className="kpi"><div className="lbl">Probability</div><div className="knum">{String(result?.probability_status || "Awaiting evidence")}</div></div>
+                        <div className="kpi"><div className="lbl">Evidence</div><div className="knum num">{detail.files.length}</div><div className="sub">files available</div></div>
+                        <div className="kpi"><div className="lbl">Missing</div><div className="knum num">{missing.length}</div><div className="sub">blocking items</div></div>
+                      </div>
+                      <div className="hintbox mt"><div className="lbl">Next best action</div><p>{String(result?.one_next_step || result?.executive_summary || "Run the review after the evidence room is complete.")}</p></div>
+                    </Panel>
+                  ) : null}
+
+                  {submissionStep === 3 ? (
+                    <Panel title="Executive summary" actions={<Btn variant="pri" disabled={busy !== ""} onClick={() => { setBusy("summary"); Promise.resolve(onGenerateSummary()).finally(() => setBusy("")); }}>{busy === "summary" ? "Generating..." : summary ? "Regenerate" : "Generate summary"}</Btn>}>
+                      {summary ? <div className="artifact-preview"><strong>{summary.title}</strong><p>{summary.body_text || String(summary.body_json?.executive_summary || "")}</p><span className="sub">Generated {formatDateTime(summary.created_at)}</span></div> : <div className="empty">No executive summary has been generated.</div>}
+                    </Panel>
+                  ) : null}
+
+                  {submissionStep === 4 ? (
+                    <Panel title="Lender packet" actions={<Btn variant="pri" disabled={busy !== ""} onClick={() => { setBusy("packet"); Promise.resolve(onGeneratePacket()).finally(() => setBusy("")); }}>{busy === "packet" ? "Building..." : packet ? "Rebuild packet" : "Build lender packet"}</Btn>}>
+                      {packet ? <div className="source-room"><div><CellChip tone="ok">Ready</CellChip><strong>{packet.title}</strong><span className="sub">Redacted lender-facing PDF · {formatDateTime(packet.created_at)}</span></div>{packet.download_url ? <a href={packet.download_url} target="_blank" rel="noreferrer" className="btn">Preview PDF</a> : null}</div> : <div className="empty">Build the redacted lender packet after the executive summary is ready.</div>}
+                    </Panel>
+                  ) : null}
+
+                  {submissionStep === 5 ? (
+                    <Panel title="Ship the package" sub="Send from the connected desk mailbox and retain the delivery audit.">
+                      <div className="fldgrid two">
+                        <Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field>
+                        <Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field>
+                      </div>
+                      <Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field>
+                      <Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={6} placeholder="Draft the reviewed submission message" /></Field>
+                      <Row>
+                        <Btn variant="pri" disabled={busy !== ""} onClick={previewEmail}>{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn>
+                        <Btn disabled={!toEmails.trim() || !subject.trim() || !body.trim() || busy !== ""} onClick={() => setSendReviewOpen(true)}>Review and send</Btn>
+                        <Btn onClick={downloadZip} disabled={zipBusy}>{zipBusy ? "Building..." : "Download package"}</Btn>
+                      </Row>
+                    </Panel>
+                  ) : null}
+                </>
+              ) : null}
+
+              {prototypeView === "sources" ? (
+                <Panel title="Data sources" actions={<Btn onClick={onLinkBucketIntake}>Attach another bucket</Btn>}>
+                  <div className="source-room"><div><CellChip tone="acc">Primary bucket</CellChip><strong>{detail.intake.bucket_name}</strong><span className="sub">{detail.files.length} files handed to this intake</span></div><Link href={`/admin/buckets?bucket=${detail.intake.bucket_id}`} className="btn">Open bucket</Link></div>
+                  <div className="grid mt">{detail.files.map((file) => <div key={file.id} className="filerow"><span className="sp">{file.zip_entry_path || file.file_name}</span><span className="sub">{formatSize(file.size_bytes)}</span></div>)}</div>
+                </Panel>
+              ) : null}
+
+              {prototypeView === "evidence" ? (
+                <Panel title="Evidence and blockers" actions={<Btn onClick={() => setIngestPickerOpen(true)}>Add from Drive</Btn>}>
+                  <div className="grid">{detail.requested_documents.map((doc) => <div key={doc.id} className="itemrow"><CellChip tone={doc.status === "uploaded" ? "ok" : "warn"}>{doc.status}</CellChip><strong className="sp">{doc.name}</strong><span className="sub">{doc.required ? "Required" : "Optional"}</span></div>)}</div>
+                  <InfoBlock title="AI blockers"><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No blockers listed in the latest review." /></InfoBlock>
+                </Panel>
+              ) : null}
+
+              {prototypeView === "rep" ? (
+                <div className="intake-review-grid two">
+                  <Panel title="Opened on the rep desk"><Line label="Channel" value={detail.intake.referral_source || "Direct"} /><Line label="Origin" value="AI intake" /><Line label="Opened" value={formatDateTime(detail.intake.created_at)} /></Panel>
+                  <Panel title="Contact"><Line label="Principal" value={detail.intake.full_name} /><Line label="Mobile" value={detail.intake.phone || "-"} /><Line label="Email" value={detail.intake.email} /><Line label="Requested" value={formatMoney(detail.intake.requested_loan_amount)} /></Panel>
+                  <div style={{ gridColumn: "1 / -1" }}><LeadNotesPanel notes={detail.notes ?? []} onPost={postNote} posting={notesPosting} error={notesError} subtitle="Private operator and dealer-partner channel." emptyLabel="No rep-channel messages yet." /></div>
+                </div>
+              ) : null}
+
+              {prototypeView === "audit" ? (
+                <Panel title="Audit trail">
+                  <div className="grid">
+                    {(detail.artifacts ?? []).map((item) => <div key={item.id} className="itemrow"><CellChip tone="acc">Artifact</CellChip><strong className="sp">{item.title}</strong><span className="sub">{formatDateTime(item.created_at)}</span></div>)}
+                    {(detail.email_sends ?? []).map((item) => <div key={item.id} className="itemrow"><CellChip tone={item.ses_error ? "bad" : "ok"}>Email</CellChip><strong className="sp">{item.subject}</strong><span className="sub">{formatDateTime(item.created_at)}</span></div>)}
+                    {!detail.artifacts?.length && !detail.email_sends?.length ? <div className="empty">No generated artifacts or outbound deliveries yet.</div> : null}
+                  </div>
+                </Panel>
+              ) : null}
+            </div>
+
+            <aside className="grid">
+              <Panel title="Contact"><Line label="Principal" value={detail.intake.full_name} /><Line label="Mobile" value={detail.intake.phone || "-"} /><Line label="Requested" value={formatMoney(detail.intake.requested_loan_amount)} /><Line label="Vertical" value={variantLabel(detail.intake.variant)} /></Panel>
+              <Panel title="Missing and blockers"><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No blockers listed." /></Panel>
+              <Panel title="File controls"><Row><Select value={detail.intake.outcome_status} disabled={outcomeBusy} onChange={(event) => changeOutcomeStatus(event.target.value)} aria-label="Outcome status"><option value="submitted">Submitted</option><option value="closed">Closed</option><option value="denied">Denied</option></Select><Select value={detail.intake.preferred_language} disabled={languageBusy} onChange={(event) => changeLanguage(event.target.value)} aria-label="Client language"><option value="en">English</option><option value="es">Español</option></Select></Row></Panel>
+            </aside>
+          </div>
+        </>
+      )}
+
+      <Toast msg={toast.msg} />
+      <DriveFilePicker open={ingestPickerOpen} mode="ingest" busy={busy === "ingest"} maxSelect={50} onClose={() => setIngestPickerOpen(false)} selectedIds={ingestFiles.map((file) => file.id)} onPick={(file) => setIngestFiles((current) => current.some((item) => item.id === file.id) ? current : [...current, file])} onUnpick={(id) => setIngestFiles((current) => current.filter((file) => file.id !== id))} onConfirm={runIngest} />
+      {detail ? <ConfirmDeleteLeadModal open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} expectedName={detail.intake.business_name || detail.intake.full_name} onConfirm={async (name) => { await onConfirmDeletion(name); setConfirmDeleteOpen(false); }} /> : null}
+      <ConfirmDialog open={sendReviewOpen} onClose={() => setSendReviewOpen(false)} title={`Send lender package to ${toEmails || "recipient"}`} body="This sends the reviewed message and selected package from the connected desk mailbox and records the delivery result." confirmLabel="Send package" busy={busy === "send"} onConfirm={() => { void sendEmail().then(() => setSendReviewOpen(false)); }} />
+    </div>
+  );
 
   return (
     <div className="panel" style={{ minHeight: 0 }}>
@@ -1685,7 +1824,8 @@ function ConfirmDeleteLeadModal({
       open={open}
       onClose={onClose}
       width="md"
-      title="Permanently delete this lead"
+      title="Review before running"
+      sub="Permanently delete AI intake"
       footer={
         <>
           <Btn onClick={onClose} disabled={busy}>Cancel</Btn>
@@ -1696,10 +1836,12 @@ function ConfirmDeleteLeadModal({
         </>
       }
     >
-      <p>
-        This permanently erases <strong>everything</strong> for <strong>{expectedName}</strong> —
-        uploaded documents, generated PDFs, chat history, and all database records. This cannot be undone.
-      </p>
+      <div className="grid">
+        <div className="warnline">This permanently erases <strong>{expectedName}</strong>, including uploaded documents, generated artifacts, conversations, and related records.</div>
+        <div className="kv"><span>Actor</span><b>Current signed-in operator</b></div>
+        <div className="kv"><span>Execution</span><b>Immediately after confirmation</b></div>
+        <div className="kv"><span>Reversible</span><b>No</b></div>
+      </div>
     </Drawer>
   );
 }

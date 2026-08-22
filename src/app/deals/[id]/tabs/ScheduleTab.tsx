@@ -10,6 +10,7 @@
 
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import {
   Btn,
   Card,
@@ -100,6 +101,7 @@ function isoDate(d: Date): string {
 }
 
 export function ScheduleTab({ clientId, dealId }: { clientId: string; dealId: string }) {
+  const confirmAction = useConfirmAction();
   const [filter, setFilter] = useState<"all" | AgentTaskCategory>("all");
   const [anchor, setAnchor] = useState<Date>(() => startOfDay(new Date()));
   const [createOpen, setCreateOpen] = useState<{ at?: Date } | null>(null);
@@ -239,7 +241,16 @@ export function ScheduleTab({ clientId, dealId }: { clientId: string; dealId: st
                 key={task.id}
                 task={task}
                 onComplete={() => complete.mutate(task.id)}
-                onDelete={() => { if (confirm(`Delete "${task.title}"?`)) del.mutate(task.id); }}
+                onDelete={async () => {
+                  const confirmed = await confirmAction({
+                    title: `Delete ${task.title}`,
+                    body: "This scheduled task will be removed from the file calendar.",
+                    confirmLabel: "Delete task",
+                    tone: "danger",
+                    reversible: false,
+                  });
+                  if (confirmed) del.mutate(task.id);
+                }}
                 onPromote={() => promote.mutate(task.id)}
                 promoting={promote.isPending}
               />

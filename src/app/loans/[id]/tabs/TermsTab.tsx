@@ -855,7 +855,9 @@ function prettify(value: string) {
 
 function DownloadTermSheetButton({ loan, unsaved }: { loan: Loan; unsaved: boolean }) {
   const dl = useDownloadTermSheet();
+  const [error, setError] = useState<string | null>(null);
   const handle = async () => {
+    setError(null);
     try {
       const blob = await dl.mutateAsync({ loanId: loan.id });
       const url = URL.createObjectURL(blob);
@@ -868,21 +870,24 @@ function DownloadTermSheetButton({ loan, unsaved }: { loan: Loan; unsaved: boole
       window.setTimeout(() => URL.revokeObjectURL(url), 1500);
     } catch (err) {
       console.error("Term sheet PDF failed", err);
-      alert("Could not generate term sheet. Check that the loan has a rate and term configured.");
+      setError("Could not generate the term sheet. Confirm that rate and term are saved.");
     }
   };
   return (
-    <Btn
-      onClick={handle}
-      disabled={dl.isPending}
-      title={unsaved
-        ? "Save criteria first — the PDF renders from saved state, not the in-page preview."
-        : "Download a PDF term sheet + amortization schedule. Shareable with the borrower."}
-      style={{ whiteSpace: "nowrap", cursor: dl.isPending ? "wait" : undefined }}
-    >
-      <Icon name="doc" size={12} />
-      {dl.isPending ? "Generating…" : unsaved ? "PDF (saved state)" : "Download PDF"}
-    </Btn>
+    <div className="grid g4">
+      <Btn
+        onClick={handle}
+        disabled={dl.isPending}
+        title={unsaved
+          ? "Save criteria first — the PDF renders from saved state, not the in-page preview."
+          : "Download a PDF term sheet + amortization schedule. Shareable with the borrower."}
+        style={{ whiteSpace: "nowrap", cursor: dl.isPending ? "wait" : undefined }}
+      >
+        <Icon name="doc" size={12} />
+        {dl.isPending ? "Generating…" : unsaved ? "PDF (saved state)" : "Download PDF"}
+      </Btn>
+      {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
+    </div>
   );
 }
 

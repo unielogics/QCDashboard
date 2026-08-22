@@ -8,13 +8,12 @@
 // through to the file. Team <-> partner only — never the client.
 
 import { useMemo, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, BtnLink, CellChip, Panel, cx } from "@/components/ds";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { useDealerChannelInbox, type DealerChannelInboxItem } from "@/hooks/useApi";
+import { useAuthedFetch } from "@/hooks/useAuthedFetch";
 import { DealerChannelComposeDialog } from "@/components/messages/DealerChannelComposeDialog";
-import { api } from "@/lib/api";
 
 function timeAgo(iso?: string | null): string {
   if (!iso) return "";
@@ -48,7 +47,7 @@ export function DealerChannelInboxView({
   panelEmptyLabel: string;
   selfRole: "partner" | "team";
 }) {
-  const { getToken } = useAuth();
+  const authedFetch = useAuthedFetch();
   const { data, isLoading, refetch } = useDealerChannelInbox(true, scope);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -62,8 +61,7 @@ export function DealerChannelInboxView({
   const selected = items.find((it) => it.intake_id === selectedId) ?? null;
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const token = await getToken();
-    return api<T>(path, { ...init, authToken: token ?? undefined });
+    return authedFetch<T>(path, init);
   }
 
   async function openThread(item: DealerChannelInboxItem) {

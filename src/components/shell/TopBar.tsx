@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
 import { useUI } from "@/store/ui";
 import {
-  useAIChatThreads,
   useAITasks,
   useCurrentUser,
   useMarkAllNotificationsRead,
@@ -13,7 +12,6 @@ import {
   useNotifications,
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
-import { AIChatPanel } from "@/components/AIChatPanel";
 import { usePrimaryShortcutLabel } from "@/lib/platformShortcuts";
 import { cx } from "@/components/ds";
 
@@ -33,24 +31,11 @@ export default function TopBar() {
   const toggleTheme = useUI((s) => s.toggleTheme);
   const { data: user } = useCurrentUser();
   const { data: tasks = [] } = useAITasks();
-  const { data: chatThreads = [] } = useAIChatThreads();
   const { data: notificationData } = useNotifications();
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const hasUnreadChat = chatThreads.some((th) => th.unread);
   const searchShortcutLabel = usePrimaryShortcutLabel("k");
-  // Elara chat — borrower-facing entry point.
-  // Operators have the existing AIRail Elara for per-loan + AI-task
-  // workflows; this is the cross-account, conversational surface
-  // borrowers (and operators on borrower-style questions) reach for.
-  // Open state lives in the UI store so other surfaces (e.g. the
-  // /clients/[id]/workspace "Open AI Chat" button) can trigger it
-  // without local prop drilling.
-  // The chat slide-in is its own surface. It shared `aiOpen` with the Elara
-  // suggestions rail, so one press opened both, stacked.
-  const aiChatOpen = useUI((s) => s.chatOpen);
-  const setAiChatOpen = useUI((s) => s.setChatOpen);
 
   const isClient = user?.role === Role.CLIENT;
   // Dealer partners are a thin external role with no per-loan/AI-task
@@ -134,20 +119,6 @@ export default function TopBar() {
         </a>
       )}
 
-      {/* Elara chat — visible to all roles.
-          Opens a right-side panel mirroring the mobile sheet. */}
-      <button
-        type="button"
-        onClick={() => setAiChatOpen(true)}
-        aria-label={hasUnreadChat ? "Elara — new message" : "Elara"}
-        aria-pressed={aiChatOpen}
-        title={hasUnreadChat ? "New Elara message" : "Ask Elara"}
-        className={cx("btn", "sm", "iconbtn", "badged", aiChatOpen && "tone-pet")}
-      >
-        <Icon name="chat" size={14} />
-        {hasUnreadChat ? <span className="unreaddot" /> : null}
-      </button>
-
       {/* Notifications */}
       <div className="popwrap">
         <button
@@ -215,10 +186,8 @@ export default function TopBar() {
         )}
       </div>
 
-      {/* Elara toggle — only for non-client, non-dealer-partner roles, with
-          pending-task badge. Account / sign-out controls live in the
-          sidebar footer now. */}
-      {!isClient && !isDealerPartner && (
+      {/* One Elara control opens the shared chat, task, and context rail. */}
+      {!isDealerPartner && (
         <button
           type="button"
           onClick={() => setAiOpen(!aiOpen)}
@@ -231,7 +200,6 @@ export default function TopBar() {
         </button>
       )}
 
-      <AIChatPanel open={aiChatOpen} onClose={() => setAiChatOpen(false)} />
     </header>
   );
 }

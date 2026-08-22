@@ -37,6 +37,7 @@ import { LoanAgentPicker } from "@/components/LoanAgentPicker";
 import { ClientLoanChatTab } from "./components/ClientLoanChatTab";
 import { ClientTodoTab } from "./tabs/ClientTodoTab";
 import { LoanChatTab } from "./components/LoanChatTab";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
 
 const INTERNAL_TABS = [
   // Property tab merged into Funding File — property details now sit
@@ -180,196 +181,32 @@ export default function LoanDetailPage() {
 
   return (
     <div>
-      {/* Cockpit identity bar — deal chips, address, borrower/contact
-          strip, the click-to-open file-completion cluster, the compact
-          stage strip and the tab rail all live in one sticky header. */}
       <div className="ckhead">
         <div className="ckrow">
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="ckrow">
-              <span className="lbl num">{loan.deal_id}</span>
-              <StageBadge stage={stageIndex} />
-              <Pill>{loan.type.replace("_", " ")}</Pill>
-              <DealHealthPill health={loan.deal_health} />
-            </div>
-            <div className="hd">
-              <h1>{loan.address}</h1>
-            </div>
-            {/* Borrower meta strip — natural person + LLC + FICO. */}
-            <div className="ckrow">
-              {client?.name || loan.client_name ? (
-                <Chip title="Borrower">
-                  <Icon name="user" size={11} stroke={2.2} />
-                  <strong>{client?.name ?? loan.client_name}</strong>
-                </Chip>
-              ) : null}
-              {loan.entity_name ? (
-                <Chip title="Borrowing entity">
-                  <span className="lbl">LLC</span>
-                  {loan.entity_name}
-                </Chip>
-              ) : null}
-              {(() => {
-                const fico = loan.fico_override ?? client?.fico ?? null;
-                if (fico == null) return null;
-                const tone: ChipTone = fico >= 740 ? "ok" : fico >= 680 ? "warn" : "bad";
-                return <CellChip tone={tone}>FICO {fico}</CellChip>;
-              })()}
-              <PresencePill lastSeenAt={client?.last_seen_at ?? null} />
-              {isInternal ? (
-                <span className="popwrap">
-                  <Btn
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setAgentPickerOpen((v) => !v);
-                    }}
-                    title={loan.broker_id ? "Reassign agent on this file" : "Assign an agent to this file"}
-                  >
-                    <Icon name="user" size={10} stroke={2.2} />
-                    <span className="lbl">Agent</span>
-                    {/* An unassigned file is a blocker, not a detail — it keeps the
-                        danger tone it always had, now via the chip vocabulary. */}
-                    {loan.broker_id ? (
-                      <span>{loan.broker_name ?? "Not assigned"}</span>
-                    ) : (
-                      <CellChip tone="bad">{loan.broker_name ?? "Not assigned"}</CellChip>
-                    )}
-                    <Icon name="chevR" size={10} />
-                  </Btn>
-                  {agentPickerOpen ? (
-                    <LoanAgentPicker
-                      loan={loan}
-                      onClose={() => setAgentPickerOpen(false)}
-                    />
-                  ) : null}
-                </span>
-              ) : loan.broker_name ? (
-                <Chip title="Loan owner / agent">
-                  <Icon name="user" size={10} stroke={2.2} />
-                  {loan.broker_name}
-                </Chip>
-              ) : null}
-            </div>
-            {/* Contact strip — email + phone with click-to-copy / tel/mailto links. */}
-            {(client?.email || client?.phone) ? (
-              <div className="ckrow">
-                {client?.email ? (
-                  <Chip href={`mailto:${client.email}`} title="Email the borrower">
-                    <Icon name="mail" size={11} stroke={2.2} />
-                    <span>{client.email}</span>
-                  </Chip>
-                ) : null}
-                {client?.phone ? (
-                  <Chip href={`tel:${client.phone.replace(/[^+\d]/g, "")}`} title="Call the borrower">
-                    <Icon name="phone" size={11} stroke={2.2} />
-                    <span>{client.phone}</span>
-                  </Chip>
-                ) : null}
-                {canEmailClient ? (
-                  <Btn size="sm" onClick={() => setEmailClientOpen(true)}>
-                    <Icon name="mail" size={11} stroke={2.2} />
-                    <span>Email client from my Gmail</span>
-                  </Btn>
-                ) : null}
-              </div>
-            ) : null}
-            <div className="ckrow sub">
-              <span>{loan.city ?? "No city"}</span>
-              <span>/</span>
-              <span>{QC_FMT.short(Number(loan.amount))}</span>
-              <span>/</span>
-              <span>{loan.close_date ? `Close ${new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "No close date"}</span>
-              <span>/</span>
-              <span>{docsReceived}/{docs.length || 0} docs received</span>
-            </div>
-          </div>
-
-          {/* File completion is now click-to-open: the entire dial +
-              progress + tile cluster opens FileBlockersPopup so the
-              operator can see exactly what's left and jump to fix it.
-              Replaces the separate "File Command + readiness map +
-              Blockers column" the user asked us to remove. */}
-          <button
-            type="button"
-            onClick={() => setShowBlockers(true)}
-            title={totalBlockers > 0 ? `${totalBlockers} item${totalBlockers === 1 ? "" : "s"} blocking this file — click for details` : "All clear"}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "72px minmax(0, 1fr)",
-              gap: 14,
-              alignItems: "center",
-              textAlign: "left",
-              cursor: "pointer",
-              flex: "0 0 auto",
-              // 560 is not decoration: `.kpis` is auto-fit minmax(150px, 1fr),
-              // and below this the three tiles fall to a 2 + 1 ragged row.
-              width: 560,
-              maxWidth: "100%",
-            }}
-          >
-            <CompletionDial score={completion.score} label={completion.label} />
-            <div>
-              <div className="row">
-                <span className="lbl">File completion</span>
-                {totalBlockers > 0 ? (
-                  <CellChip tone={totalBlockers > 5 ? "bad" : "warn"}>⚠ {totalBlockers}</CellChip>
-                ) : null}
-                <span className="sp" />
-                <CellChip tone={completion.score >= 80 ? "ok" : completion.score >= 60 ? "warn" : "bad"}>
-                  {completion.label}
-                </CellChip>
-              </div>
-              <div className="track mt">
-                {/* width + tone are data-derived; the track/fill shape is the class. */}
-                <div
-                  className="fill"
-                  style={{
-                    width: `${completion.score}%`,
-                    background: completion.score >= 80 ? "var(--ok)" : completion.score >= 60 ? "var(--warn)" : "var(--accent)",
-                  }}
-                />
-              </div>
-              <KpiRow className="mt">
-                <HeaderStat label="Criteria" value={`${completion.criteria.ready}/${completion.criteria.total}`} />
-                <HeaderStat label="Docs" value={`${completion.docs.verified}/${completion.docs.total || 0}`} />
-                <HeaderStat label="Stage" value={`${completion.stage.index + 1}/${completion.stage.total}`} />
-              </KpiRow>
-            </div>
-          </button>
+          <h1>{loan.address}</h1>
+          <CellChip tone="mut" className="num">{loan.deal_id}</CellChip>
+          <CellChip tone="acc">{FILE_STAGE_LABELS[stageIndex] ?? loan.stage}</CellChip>
+          <CellChip tone={completion.score >= 80 ? "ok" : completion.score >= 60 ? "warn" : "bad"}>{completion.label}</CellChip>
+          <span className="sp" />
+          <span className="sub">{loan.entity_name || client?.name || loan.client_name} · {loan.type.replaceAll("_", " ")} · {QC_FMT.short(Number(loan.amount))}</span>
+          <Btn variant="pri" size="sm" onClick={() => setShowBlockers(true)}>
+            <Icon name="docCheck" size={13} /> Review readiness{totalBlockers ? ` (${totalBlockers})` : ""}
+          </Btn>
+          <PageActionMenu
+            label="Funding file actions"
+            items={[
+              { label: "Email client", onSelect: () => setEmailClientOpen(true), hidden: !canEmailClient },
+              { label: loan.broker_id ? "Reassign desk" : "Assign desk", onSelect: () => setAgentPickerOpen(true), hidden: !isInternal },
+              { label: "Open Elara", onSelect: () => setAiOpen(true) },
+              { label: "Open lender chat", onSelect: () => setTab("thread"), hidden: !isInternal },
+            ]}
+          />
+          {agentPickerOpen ? (
+            <span className="popwrap">
+              <LoanAgentPicker loan={loan} onClose={() => setAgentPickerOpen(false)} />
+            </span>
+          ) : null}
         </div>
-
-        {/* Compact stage strip + auto-status pill + action buttons.
-            Replaces the fat numbered stepper and the manual "Move file
-            stage" dropdown. Stage is now mostly auto-derived from the
-            file's own state — operators only override at the very end
-            (Funded / Did Not Process). */}
-        <CompactStageStripWrapper
-          loan={loan}
-          completion={completion}
-          docs={docs}
-          stageIndex={stageIndex}
-          canEdit={canTransitionStage}
-          stageMut={stageMut}
-          onCopilot={() => setAiOpen(true)}
-          onOpenLoanChat={() => {
-            // Switch to Elara tab and signal it to open the
-            // LoanChatSlideOut. The tab reads the ?chat=open param on
-            // mount + when activeTab flips to workspace, then strips it
-            // so a refresh doesn't re-open the chat.
-            setTab("workspace");
-            if (typeof window !== "undefined") {
-              const sp = new URLSearchParams(window.location.search);
-              sp.set("tab", "workspace");
-              sp.set("chat", "open");
-              window.history.replaceState(null, "", `?${sp.toString()}`);
-              // Same-key event so DealWorkspaceTab can listen w/o a router refetch.
-              window.dispatchEvent(new CustomEvent("qc:open-loan-chat"));
-            }
-          }}
-        />
-        {/* Tabs — one segmented rail. `as="tabs"` gives it role=tablist +
-            aria-selected, which the hand-rolled buttons never had. */}
         <div className="cktabs">
           <Seg
             as="tabs"

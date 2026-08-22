@@ -31,6 +31,7 @@ import {
 } from "@/components/ds";
 import { ClientSearchBlock } from "@/components/ClientSearchBlock";
 import { RecentAnalysisRunsCard } from "@/components/analysis/RecentAnalysisRunsCard";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { GoogleAddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
@@ -402,7 +403,23 @@ export default function FixAndFlipAnalyzerPage() {
       <PageHeader
         title="Fix & Flip Deal Analyzer"
         lede="See if the deal works before you make the offer — profit, cash to close, financing options, and downside risk."
+        actions={
+          <>
+            <Btn variant="pri" onClick={createPrequalification} disabled={!canCreatePrequal || busyPrequal}>
+              {convertAnalysis.isPending ? "Creating..." : "Create pending prequalification"}
+            </Btn>
+            <PageActionMenu label="Analyzer actions" items={[
+              { label: "Share to client", onSelect: () => { void shareToClient(); }, hidden: !canCreatePrequal || busyShare },
+              { label: "Open saved analyses", href: "/deal-analyzer/fix-and-flip" },
+              { label: "Open DSCR analyzer", href: "/deal-analyzer?new=1&product=dscr_purchase" },
+            ]} />
+          </>
+        }
       />
+
+      {prequalFlash ? (
+        prequalFlash.includes("created") || prequalFlash.includes("shared") ? <Note>{prequalFlash}</Note> : <WarnLine>{prequalFlash}</WarnLine>
+      ) : null}
 
       <RecentAnalysisRunsCard
         runs={recentRuns}
@@ -596,28 +613,6 @@ export default function FixAndFlipAnalyzerPage() {
                   ]}
                 />
               </div>
-              {canCreatePrequal ? (
-                <div className="card row">
-                  <Btn onClick={shareToClient} disabled={busyShare}>
-                    {shareAnalysis.isPending ? "Sharing..." : "Share to client"}
-                  </Btn>
-                  <Btn variant="pri" onClick={createPrequalification} disabled={busyPrequal}>
-                    {convertAnalysis.isPending ? "Creating..." : "Create pending prequalification"}
-                  </Btn>
-                  <span className="sub" style={{ flex: 1, minWidth: 220 }}>
-                    Requires a linked client and borrower FICO. Funding team approval is still required.
-                  </span>
-                  {prequalFlash ? (
-                    <div style={{ width: "100%" }}>
-                      {prequalFlash.includes("created") ? (
-                        <Note>{prequalFlash}</Note>
-                      ) : (
-                        <WarnLine>{prequalFlash}</WarnLine>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
               {/* `.seg` does not wrap, so the six-tab strip scrolls inside its
                   own box rather than widening the card on a narrow viewport. */}
               <div style={{ overflowX: "auto" }}>

@@ -1,83 +1,87 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import {
   Btn,
   CellChip,
   Field,
   IconBtn,
-  Input,
   Panel,
-  Row,
+  Seg,
   Select,
   Table,
   Td,
   Textarea,
   Tr,
-  cx,
   type ChipTone,
 } from "@/components/ds";
-import { Drawer } from "@/components/ds/Drawer";
-import { useLinkBucketIntake, useUnifiedOperatorFiles } from "@/hooks/useApi";
+import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
 import {
-  DOCUMENT_PACKS,
+  useBucketIntakeLinkOptions,
+  useBucketIntakeLinks,
+  useLinkBucketIntake,
+  useOperatorBucketFiles,
+  useUnlinkBucketIntake,
+  useUpdateBucketIntakeLink,
+} from "@/hooks/useApi";
+import {
   FUNDING_LADDER,
   ORIGIN_OPTIONS,
-  UNIFIED_ACTIONS,
   VERTICAL_OPTIONS,
   WORKING_LADDERS,
   documentPackFor,
   formatUnifiedAmount,
   operatorFileHref,
   originTone,
-  programBlueprintFor,
-  rowMatchesStage,
-  stageProgress,
-  stageTone,
   verticalTone,
   type BucketIntakeLinkPayload,
-  type UnifiedAction,
   type UnifiedFileRow,
   type UnifiedOrigin,
-  type UnifiedStageFamily,
+  type UnifiedStage,
   type UnifiedVertical,
 } from "@/lib/unifiedOperator";
 
-type UnifiedFilterState = {
+export type UnifiedFilterState = {
   vertical: UnifiedVertical | "all";
   origin: UnifiedOrigin | "all";
   q: string;
 };
 
+const NORMALIZED_WORKING = [
+  { key: "new", label: "New", sub: "Opened, not yet worked" },
+  { key: "qualifying", label: "Qualifying", sub: "Verification in progress" },
+  { key: "verified", label: "Verified", sub: "Authorizations back" },
+  { key: "ready", label: "Ready for funding", sub: "Awaiting handoff" },
+];
+
+function activeStage(row: UnifiedFileRow): UnifiedStage {
+  return row.funding_stage ?? row.working_stage ?? row.stage;
+}
+
 export function UnifiedFileTags({ row, compact = false }: { row: UnifiedFileRow; compact?: boolean }) {
-  const program = programBlueprintFor(row);
-  const tags = compact ? row.program_tags.slice(0, 2) : row.program_tags;
+  const tags = compact ? row.program_tags.slice(0, 1) : row.program_tags;
   return (
-    <span className="row" style={{ gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+    <span className="row" style={{ gap: 5, flexWrap: "wrap", minWidth: 0 }}>
       <CellChip tone={verticalTone(row.vertical)}>{row.vertical_label}</CellChip>
-      <CellChip tone={originTone(row.origin)}>{row.origin_label}</CellChip>
-      <CellChip tone={stageTone(row.stage)}>{row.stage.label}</CellChip>
-      {program ? <CellChip tone="mut">{program.label}</CellChip> : null}
-      {tags.map((tag) => (
-        <CellChip key={tag} tone="mut">{tag}</CellChip>
-      ))}
+      {row.origin === "rep" ? <CellChip tone="gold" className="repdot">{row.rep_name || "Rep desk"}</CellChip> : null}
+      {!compact ? <CellChip tone={originTone(row.origin)}>{row.origin_label}</CellChip> : null}
+      {tags.map((tag) => <CellChip key={tag} tone="mut">{tag}</CellChip>)}
     </span>
   );
 }
 
-export function UnifiedStageMeter({ row, compact = false }: { row: UnifiedFileRow; compact?: boolean }) {
-  const pct = stageProgress(row.stage);
+export function UnifiedStageMeter({ row }: { row: UnifiedFileRow }) {
+  const stage = activeStage(row);
+  const progress = stage.total ? Math.round((stage.index / stage.total) * 100) : 0;
   return (
-    <div style={{ minWidth: 0 }}>
+    <div style={{ minWidth: 110 }}>
       <div className="row split" style={{ gap: 8 }}>
-        <span className="sub trunc">{row.stage.family === "funding" ? "Funding ladder" : "Working ladder"}</span>
-        {!compact ? <b className="num">{pct}%</b> : null}
+        <span className="sub trunc">{stage.label}</span>
+        <b className="num">{progress}%</b>
       </div>
-      <div className="track" style={{ marginTop: 5 }}>
-        <div className="fill" style={{ width: `${pct}%` }} />
-      </div>
+      <div className="track" style={{ marginTop: 5 }}><div className="fill" style={{ width: `${progress}%` }} /></div>
     </div>
   );
 }
@@ -85,32 +89,12 @@ export function UnifiedStageMeter({ row, compact = false }: { row: UnifiedFileRo
 export function UnifiedDocumentPack({ row }: { row: UnifiedFileRow }) {
   const pack = documentPackFor(row);
   const progress = row.document_progress;
-  const docTone: ChipTone =
-    progress.docs_total > 0 && progress.docs_uploaded >= progress.docs_total ? "ok"
-      : progress.docs_uploaded > 0 ? "warn"
-        : "mut";
-  const sigTone: ChipTone =
-    progress.signatures_total > 0 && progress.signatures_uploaded >= progress.signatures_total ? "ok"
-      : progress.signatures_uploaded > 0 ? "warn"
-        : "mut";
+  const docsTone: ChipTone = progress.docs_total > 0 && progress.docs_uploaded >= progress.docs_total ? "ok" : progress.docs_uploaded ? "warn" : "bad";
+  const signaturesTone: ChipTone = progress.signatures_total > 0 && progress.signatures_uploaded >= progress.signatures_total ? "ok" : progress.signatures_uploaded ? "warn" : "bad";
   return (
-    <div style={{ display: "grid", gap: 8 }}>
-      <div>
-        <b>{pack.label}</b>
-        <div className="sub">
-          {pack.required.slice(0, 4).join(", ")}
-          {pack.required.length > 4 ? ` +${pack.required.length - 4} more` : ""}
-        </div>
-      </div>
-      <Row>
-        <CellChip tone={docTone}>
-          {progress.docs_uploaded}/{progress.docs_total} docs
-        </CellChip>
-        <CellChip tone={sigTone}>
-          {progress.signatures_uploaded}/{progress.signatures_total} signatures
-        </CellChip>
-        <CellChip tone="mut">{progress.bucket_progress_label}</CellChip>
-      </Row>
+    <div className="row" style={{ gap: 5 }} title={pack.required.join(", ")}>
+      <CellChip tone={docsTone}>{progress.docs_uploaded}/{progress.docs_total} docs</CellChip>
+      <CellChip tone={signaturesTone}>{progress.signatures_uploaded}/{progress.signatures_total} signatures</CellChip>
     </div>
   );
 }
@@ -118,330 +102,188 @@ export function UnifiedDocumentPack({ row }: { row: UnifiedFileRow }) {
 export function UnifiedOperatorFilters({
   value,
   onChange,
-  searchPlaceholder = "Search files, clients, buckets...",
+  rows = [],
 }: {
   value: UnifiedFilterState;
   onChange: (next: UnifiedFilterState) => void;
-  searchPlaceholder?: string;
+  rows?: UnifiedFileRow[];
 }) {
+  const verticalCount = (vertical: UnifiedVertical | "all") =>
+    vertical === "all" ? rows.length : rows.filter((row) => row.vertical === vertical).length;
+  const originCount = (origin: UnifiedOrigin | "all") =>
+    origin === "all" ? rows.length : rows.filter((row) => row.origin === origin).length;
   return (
-    <div className="pagebar">
-      <div className="field box" style={{ minWidth: 260, flex: "1 1 320px" }}>
-        <Icon name="search" size={14} />
-        <input
-          value={value.q}
-          onChange={(e) => onChange({ ...value, q: e.target.value })}
-          placeholder={searchPlaceholder}
-          aria-label="Search unified files"
+    <>
+      <div className="vfilter">
+        {VERTICAL_OPTIONS.map((option) => (
+          <button
+            type="button"
+            key={option.value}
+            className={value.vertical === option.value ? "on" : undefined}
+            onClick={() => onChange({ ...value, vertical: option.value })}
+          >
+            {option.label}<span className="tag" style={{ marginLeft: 7 }}>{verticalCount(option.value)}</span>
+          </button>
+        ))}
+        <span className="sp" />
+        <span className="lbl">Source</span>
+        <Seg
+          as="filter"
+          ariaLabel="Pipeline source"
+          value={value.origin}
+          onChange={(origin) => onChange({ ...value, origin })}
+          options={ORIGIN_OPTIONS.map((option) => ({
+            value: option.value,
+            label: <>{option.label.replace(" origins", "")}<span className="tag" style={{ marginLeft: 6 }}>{originCount(option.value)}</span></>,
+          }))}
         />
       </div>
-      <Select
-        aria-label="Vertical"
-        value={value.vertical}
-        onChange={(e) => onChange({ ...value, vertical: e.target.value as UnifiedVertical | "all" })}
-      >
-        {VERTICAL_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </Select>
-      <Select
-        aria-label="Origin"
-        value={value.origin}
-        onChange={(e) => onChange({ ...value, origin: e.target.value as UnifiedOrigin | "all" })}
-      >
-        {ORIGIN_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </Select>
-    </div>
+      <div className="pagebar" style={{ paddingTop: 2 }}>
+        <span className="sub">Working ladders change by vertical. Every file uses the same funding ladder after the gate.</span>
+        <span className="spacer" />
+        <div className="field box" style={{ width: 290 }}>
+          <Icon name="search" size={14} />
+          <input
+            value={value.q}
+            onChange={(event) => onChange({ ...value, q: event.target.value })}
+            placeholder="Search files, clients, reps..."
+            aria-label="Search pipeline"
+          />
+        </div>
+      </div>
+    </>
   );
 }
 
 export function UnifiedFilesTable({
   rows,
-  empty = "No unified files match these filters.",
+  empty = "No files match these filters.",
   onLinkBucketIntake,
-  caption = "Unified operator files",
 }: {
   rows: UnifiedFileRow[];
   empty?: string;
   onLinkBucketIntake?: (row: UnifiedFileRow) => void;
-  caption?: string;
 }) {
   return (
     <Table
-      caption={caption}
+      caption="Unified operator files"
       cols={[
-        { label: "File", width: "30%" },
-        { label: "Tags", width: "25%" },
-        { label: "Stage", width: "18%" },
-        { label: "Owner", width: "14%" },
-        { label: "Health", width: "9%" },
-        { label: "", width: 54 },
+        { label: "File", width: "25%" },
+        { label: "Vertical", width: 120 },
+        { label: "Source", width: 120 },
+        { label: "Stage", width: "17%" },
+        { label: "Program" },
+        { label: "Coverage", width: 150 },
+        { label: "Health", width: 110 },
+        { label: "", width: 44 },
       ]}
     >
-      {rows.length === 0 ? (
-        <Tr>
-          <Td colSpan={6}>
-            <div className="sub" style={{ padding: 18 }}>{empty}</div>
-          </Td>
+      {rows.length ? rows.map((row) => (
+        <Tr key={row.id} onClick={() => { window.location.href = operatorFileHref(row); }}>
+          <Td><b>{row.title || row.label}</b><div className="sub num">{row.ref || row.id} · {formatUnifiedAmount(row.amount)}</div></Td>
+          <Td><CellChip tone={verticalTone(row.vertical)}>{row.vertical_label}</CellChip></Td>
+          <Td><CellChip tone={originTone(row.origin)}>{row.origin_label}</CellChip></Td>
+          <Td><UnifiedStageMeter row={row} /></Td>
+          <Td><span className="sub">{row.program_tags.slice(0, 2).join(" · ") || "Unassigned"}</span></Td>
+          <Td><UnifiedDocumentPack row={row} /></Td>
+          <Td><CellChip tone={row.health_tone}>{row.health}</CellChip></Td>
+          <Td align="r"><UnifiedActionMenu row={row} onLinkBucketIntake={onLinkBucketIntake} /></Td>
         </Tr>
-      ) : (
-        rows.map((row) => (
-          <Tr key={row.id}>
-            <Td>
-              <Link href={operatorFileHref(row)} className="linkreset">
-                <div className="trunc" style={{ fontWeight: 700 }}>{row.label}</div>
-                <div className="sub trunc">
-                  {row.subtitle || row.business_name || row.client_name || "No file subtitle"}
-                  {row.amount != null ? ` | ${formatUnifiedAmount(row.amount)}` : ""}
-                </div>
-              </Link>
-            </Td>
-            <Td>
-              <UnifiedFileTags row={row} compact />
-            </Td>
-            <Td>
-              <UnifiedStageMeter row={row} compact />
-              <div className="sub trunc" style={{ marginTop: 4 }}>{row.stage.label}</div>
-            </Td>
-            <Td>
-              <div className="trunc">{row.owner_name || row.rep_name || row.dealer_name || "Unassigned"}</div>
-              <div className="sub trunc">
-                {row.bucket_name || row.source_kind}
-              </div>
-            </Td>
-            <Td>
-              <CellChip tone={row.health_tone}>{row.health}</CellChip>
-            </Td>
-            <Td align="r">
-              <UnifiedActionMenu row={row} onLinkBucketIntake={onLinkBucketIntake} />
-            </Td>
-          </Tr>
-        ))
+      )) : (
+        <Tr><Td colSpan={8}><div className="empty">{empty}</div></Td></Tr>
       )}
     </Table>
   );
 }
 
-export function UnifiedFileSummaryCard({
-  row,
-  onLinkBucketIntake,
-}: {
-  row: UnifiedFileRow;
-  onLinkBucketIntake?: (row: UnifiedFileRow) => void;
-}) {
+export function UnifiedFileSummaryCard({ row, onLinkBucketIntake }: { row: UnifiedFileRow; onLinkBucketIntake?: (row: UnifiedFileRow) => void }) {
+  const stage = activeStage(row);
   return (
-    <div className="kcard" style={{ display: "grid", gap: 10 }}>
-      <div className="row split">
-        <Link href={operatorFileHref(row)} className="linkreset" style={{ minWidth: 0 }}>
-          <b className="trunc">{row.label}</b>
-          <span className="sub subline trunc">{row.subtitle || row.client_name || row.source_kind}</span>
-        </Link>
+    <div className="kcard" style={{ cursor: "default" }}>
+      <div className="row" style={{ gap: 5, marginBottom: 4 }}>
+        <UnifiedFileTags row={row} compact />
+        <span className="sp" />
         <UnifiedActionMenu row={row} onLinkBucketIntake={onLinkBucketIntake} />
       </div>
-      <UnifiedFileTags row={row} compact />
-      <UnifiedStageMeter row={row} compact />
-      <UnifiedDocumentPack row={row} />
-    </div>
-  );
-}
-
-export function UnifiedKanbanBoard({
-  rows,
-  vertical,
-  onLinkBucketIntake,
-}: {
-  rows: UnifiedFileRow[];
-  vertical: UnifiedVertical | "all";
-  onLinkBucketIntake?: (row: UnifiedFileRow) => void;
-}) {
-  const workingColumns = useMemo(() => {
-    const seen = new Set<string>();
-    const source =
-      vertical === "all"
-        ? [...WORKING_LADDERS.real_estate, ...WORKING_LADDERS.main_street]
-        : WORKING_LADDERS[vertical];
-    return source.filter((stage) => {
-      if (seen.has(stage.key)) return false;
-      seen.add(stage.key);
-      return true;
-    });
-  }, [vertical]);
-
-  return (
-    <div style={{ display: "grid", gap: 14 }}>
-      <Panel title="Working ladders" sub="Vertical-specific intake and qualification before the funding gate." noPad>
-        <StageColumnRail
-          family="working"
-          stages={workingColumns}
-          rows={rows}
-          onLinkBucketIntake={onLinkBucketIntake}
-        />
-      </Panel>
-      <Panel title="Shared funding ladder" sub="All promoted files use the canonical Loan.stage sequence." noPad>
-        <StageColumnRail
-          family="funding"
-          stages={FUNDING_LADDER}
-          rows={rows}
-          onLinkBucketIntake={onLinkBucketIntake}
-        />
-      </Panel>
-    </div>
-  );
-}
-
-function StageColumnRail({
-  family,
-  stages,
-  rows,
-  onLinkBucketIntake,
-}: {
-  family: UnifiedStageFamily;
-  stages: Array<{ key: string; label: string }>;
-  rows: UnifiedFileRow[];
-  onLinkBucketIntake?: (row: UnifiedFileRow) => void;
-}) {
-  return (
-    <div className="kanban" style={{ padding: 10, overflowX: "auto" }}>
-      {stages.map((stage) => {
-        const matches = rows.filter((row) => rowMatchesStage(row, stage.key, family));
-        return (
-          <div className="kcol" key={`${family}-${stage.key}`}>
-            <div className="row split">
-              <b>{stage.label}</b>
-              <CellChip tone={matches.length ? (family === "funding" ? "gold" : "acc") : "mut"}>{matches.length}</CellChip>
-            </div>
-            <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-              {matches.slice(0, 20).map((row) => (
-                <UnifiedFileSummaryCard
-                  key={row.id}
-                  row={row}
-                  onLinkBucketIntake={onLinkBucketIntake}
-                />
-              ))}
-              {matches.length === 0 ? <div className="sub" style={{ padding: "10px 2px" }}>No files</div> : null}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-export function UnifiedActionMenu({
-  row,
-  onLinkBucketIntake,
-}: {
-  row: UnifiedFileRow;
-  onLinkBucketIntake?: (row: UnifiedFileRow) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [reviewing, setReviewing] = useState<UnifiedAction | null>(null);
-  const actions = UNIFIED_ACTIONS.filter((action) => {
-    if (action.key === "link_bucket_intake") return Boolean(row.bucket_id || row.intake_id);
-    if (action.key === "promote_to_funding") return row.stage.family === "working";
-    if (action.key === "send_external") return Boolean(row.bucket_id || row.loan_id);
-    if (action.key === "archive") return false;
-    return true;
-  });
-
-  function choose(action: UnifiedAction) {
-    setOpen(false);
-    if (action.key === "link_bucket_intake" && onLinkBucketIntake) {
-      onLinkBucketIntake(row);
-      return;
-    }
-    setReviewing(action);
-  }
-
-  function confirm(action: UnifiedAction) {
-    setReviewing(null);
-    if (action.key === "review_file") window.location.href = operatorFileHref(row);
-  }
-
-  return (
-    <span style={{ position: "relative", display: "inline-flex" }} onClick={(e) => e.stopPropagation()}>
-      <IconBtn aria-label={`Open actions for ${row.label}`} onClick={() => setOpen((v) => !v)}>
-        <Icon name="dots" size={14} />
-      </IconBtn>
-      {open ? (
-        <div className="actmenu" style={{ right: 0, top: 34, zIndex: 30 }}>
-          {actions.map((action) => (
-            <button key={action.key} type="button" onClick={() => choose(action)}>
-              <span>{action.label}</span>
-              {action.workflowChanging || action.external || action.destructive ? (
-                <CellChip tone={action.tone}>
-                  {action.destructive ? "destructive" : action.external ? "external" : "workflow"}
-                </CellChip>
-              ) : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
-      <Drawer
-        open={reviewing != null}
-        onClose={() => setReviewing(null)}
-        title={reviewing?.label ?? "Review action"}
-        sub={row.label}
-        width="md"
-        footer={
-          reviewing ? (
-            <>
-              <Btn onClick={() => setReviewing(null)}>Cancel</Btn>
-              <Btn variant="pri" onClick={() => confirm(reviewing)}>
-                {reviewing.key === "review_file" ? "Open file" : "Confirm"}
-              </Btn>
-            </>
-          ) : null
-        }
-      >
-        {reviewing ? (
-          <ActionReviewBody row={row} action={reviewing} />
-        ) : null}
-      </Drawer>
-    </span>
-  );
-}
-
-function ActionReviewBody({ row, action }: { row: UnifiedFileRow; action: UnifiedAction }) {
-  return (
-    <div style={{ display: "grid", gap: 14 }}>
-      <div className="hintbox">
-        Confirming workflow-changing or external actions writes an audit entry from the backend route handling the action.
-      </div>
-      <Panel title="File" noPad>
-        <div className="filerow" style={{ border: 0 }}>
-          <div className="grow">
-            <b>{row.label}</b>
-            <div className="sub">{row.subtitle || row.client_name || "No subtitle"}</div>
-          </div>
+      <Link href={operatorFileHref(row)} className="linkreset">
+        <div className="trunc" style={{ fontSize: 12.8, fontWeight: 640 }}>{row.title || row.label}</div>
+        <div className="sub num trunc" style={{ fontSize: 10.5, marginTop: 1 }}>{row.ref || row.id} · {stage.label}</div>
+        <div className="row split" style={{ marginTop: 8 }}>
+          <b className="num" style={{ fontSize: 12.5 }}>{formatUnifiedAmount(row.amount)}</b>
           <CellChip tone={row.health_tone}>{row.health}</CellChip>
         </div>
-      </Panel>
-      <div className="cg">
-        <div className="s6">
-          <Field label="Vertical">
-            <Input value={row.vertical_label} readOnly />
-          </Field>
-        </div>
-        <div className="s6">
-          <Field label="Origin">
-            <Input value={row.origin_label} readOnly />
-          </Field>
-        </div>
-        <div className="s12">
-          <Field label="Stage">
-            <Input value={`${row.stage.label} (${row.stage.family})`} readOnly />
-          </Field>
+      </Link>
+    </div>
+  );
+}
+
+function normalizedWorkingIndex(row: UnifiedFileRow): number {
+  const stage = row.working_stage;
+  if (!stage) return 0;
+  if (row.vertical === "real_estate") return Math.min(3, Math.max(0, stage.index - 1));
+  if (stage.index <= 1) return 0;
+  if (stage.index === 2) return 1;
+  if (stage.index === 3) return 2;
+  return 3;
+}
+
+export function UnifiedKanbanBoard({ rows, vertical, onLinkBucketIntake }: { rows: UnifiedFileRow[]; vertical: UnifiedVertical | "all"; onLinkBucketIntake?: (row: UnifiedFileRow) => void }) {
+  const workingRows = rows.filter((row) => !row.funding_stage);
+  const fundingRows = rows.filter((row) => Boolean(row.funding_stage));
+  const workingColumns = vertical === "all"
+    ? NORMALIZED_WORKING.map((column, index) => ({ ...column, rows: workingRows.filter((row) => normalizedWorkingIndex(row) === index) }))
+    : WORKING_LADDERS[vertical].map((stage) => ({ ...stage, sub: stage.label, rows: workingRows.filter((row) => row.working_stage?.key === stage.key) }));
+  const fundingColumns = FUNDING_LADDER.map((stage) => ({
+    ...stage,
+    rows: fundingRows.filter((row) => row.funding_stage?.key === stage.key),
+  }));
+  return (
+    <div className="board2">
+      <div className="bandgrp">
+        <div className="bandhd">{vertical === "real_estate" ? "Relationship sequence" : vertical === "all" ? "Working the file · normalized" : "Application sequence"}</div>
+        <div className="cols">
+          {workingColumns.map((column) => <BoardColumn key={column.key} label={column.label} sub={column.sub} rows={column.rows} onLinkBucketIntake={onLinkBucketIntake} />)}
         </div>
       </div>
-      <Row>
-        <CellChip tone={action.tone}>{action.workflowChanging ? "Workflow change" : "Review"}</CellChip>
-        {action.external ? <CellChip tone="pet">External handoff</CellChip> : null}
-        {action.destructive ? <CellChip tone="bad">Destructive</CellChip> : null}
-      </Row>
+      <div className="gatecol"><span className="ln" /><span className="tx" style={{ color: "var(--accent)" }}>Ready for funding</span><span className="ln" /></div>
+      <div className="bandgrp">
+        <div className="bandhd">Funding the file · identical for every vertical</div>
+        <div className="cols">
+          {fundingColumns.map((column) => <BoardColumn key={column.key} label={column.label} sub={column.rows.length ? formatUnifiedAmount(column.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0)) : "—"} rows={column.rows} onLinkBucketIntake={onLinkBucketIntake} />)}
+        </div>
+      </div>
     </div>
+  );
+}
+
+function BoardColumn({ label, sub, rows, onLinkBucketIntake }: { label: string; sub: string; rows: UnifiedFileRow[]; onLinkBucketIntake?: (row: UnifiedFileRow) => void }) {
+  return (
+    <div className="kcol">
+      <div className="row split" style={{ marginBottom: 4 }}><span className="lbl" style={{ fontSize: 9.6 }}>{label}</span><span className="tag num">{rows.length}</span></div>
+      <div className="sub trunc" style={{ fontSize: 10.5, marginBottom: 9 }}>{sub}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {rows.map((row) => <UnifiedFileSummaryCard key={row.id} row={row} onLinkBucketIntake={onLinkBucketIntake} />)}
+        {!rows.length ? <div className="sub" style={{ fontSize: 11, padding: "10px 2px", textAlign: "center", opacity: 0.7 }}>Nothing here</div> : null}
+      </div>
+    </div>
+  );
+}
+
+export function UnifiedActionMenu({ row, onLinkBucketIntake }: { row: UnifiedFileRow; onLinkBucketIntake?: (row: UnifiedFileRow) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="popwrap" onClick={(event) => event.stopPropagation()}>
+      <IconBtn aria-label={`Actions for ${row.title || row.label}`} onClick={() => setOpen((value) => !value)}><Icon name="dots" size={14} /></IconBtn>
+      {open ? (
+        <>
+          <span className="menu-scrim" onClick={() => setOpen(false)} />
+          <span className="actmenu">
+            <button type="button" onClick={() => { window.location.href = operatorFileHref(row); }}>Open file</button>
+            {(row.bucket_id || row.intake_id) && onLinkBucketIntake ? <button type="button" onClick={() => { setOpen(false); onLinkBucketIntake(row); }}>Manage linked evidence</button> : null}
+          </span>
+        </>
+      ) : null}
+    </span>
   );
 }
 
@@ -450,7 +292,6 @@ export function BucketIntakeLinkDrawer({
   onClose,
   initialBucketId,
   initialIntakeId,
-  title = "Link bucket and AI intake",
 }: {
   open: boolean;
   onClose: () => void;
@@ -458,189 +299,139 @@ export function BucketIntakeLinkDrawer({
   initialIntakeId?: string | null;
   title?: string;
 }) {
-  const { data, isLoading } = useUnifiedOperatorFiles({ limit: 500 });
-  const linkMutation = useLinkBucketIntake();
-  const [bucketId, setBucketId] = useState(initialBucketId ?? "");
-  const [intakeId, setIntakeId] = useState(initialIntakeId ?? "");
-  const [relationship, setRelationship] = useState<BucketIntakeLinkPayload["relationship"]>("primary");
+  const [step, setStep] = useState(1);
+  const [bucketId, setBucketId] = useState("");
+  const [intakeId, setIntakeId] = useState("");
+  const [relationship, setRelationship] = useState<BucketIntakeLinkPayload["relationship"]>("supporting");
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [completed, setCompleted] = useState<{ count: number; reviewId: string | null; unlinked?: boolean } | null>(null);
+  const [selectionKey, setSelectionKey] = useState("");
+  const options = useBucketIntakeLinkOptions();
+  const files = useOperatorBucketFiles(bucketId || null);
+  const links = useBucketIntakeLinks({ bucketId: bucketId || null, intakeId: intakeId || null });
+  const createLink = useLinkBucketIntake();
+  const updateLink = useUpdateBucketIntakeLink();
+  const unlink = useUnlinkBucketIntake();
+  const existing = links.data?.find((link) => link.bucket_id === bucketId && link.intake_id === intakeId);
+  const busy = createLink.isPending || updateLink.isPending || unlink.isPending;
 
   useEffect(() => {
     if (!open) return;
-    setBucketId(initialBucketId ?? "");
-    setIntakeId(initialIntakeId ?? "");
-    setRelationship("primary");
+    setBucketId(initialBucketId || "");
+    setIntakeId(initialIntakeId || "");
+    setStep(1);
+    setRelationship("supporting");
+    setSelectedFileIds([]);
+    setSelectionKey("");
     setNote("");
     setError(null);
-  }, [initialBucketId, initialIntakeId, open]);
+    setCompleted(null);
+  }, [open, initialBucketId, initialIntakeId]);
 
-  const bucketOptions = useMemo(() => {
-    const seen = new Map<string, UnifiedFileRow>();
-    for (const row of data?.items ?? []) {
-      if (row.bucket_id && !seen.has(row.bucket_id)) seen.set(row.bucket_id, row);
-    }
-    return Array.from(seen.values()).sort((a, b) => (a.bucket_name || a.label).localeCompare(b.bucket_name || b.label));
-  }, [data?.items]);
+  useEffect(() => {
+    const key = `${bucketId}:${intakeId}:${existing?.link_id || "new"}:${files.data?.length || 0}`;
+    if (!bucketId || !intakeId || !files.data || key === selectionKey) return;
+    setSelectedFileIds(existing?.linked_file_ids?.length ? existing.linked_file_ids : files.data.map((file) => file.id));
+    setRelationship(existing?.relationship || "supporting");
+    setNote(existing?.note || "");
+    setSelectionKey(key);
+  }, [bucketId, intakeId, existing, files.data, selectionKey]);
 
-  const intakeOptions = useMemo(() => {
-    const seen = new Map<string, UnifiedFileRow>();
-    for (const row of data?.items ?? []) {
-      if (row.intake_id && !seen.has(row.intake_id)) seen.set(row.intake_id, row);
-    }
-    return Array.from(seen.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [data?.items]);
+  const bucket = options.data?.buckets.find((item) => item.id === bucketId);
+  const intake = options.data?.intakes.find((item) => item.id === intakeId);
+  const toggleFile = (fileId: string) => setSelectedFileIds((current) => current.includes(fileId) ? current.filter((id) => id !== fileId) : [...current, fileId]);
 
-  const selectedBucket = bucketOptions.find((row) => row.bucket_id === bucketId);
-  const selectedIntake = intakeOptions.find((row) => row.intake_id === intakeId);
-  const canSubmit = Boolean(bucketId && intakeId) && !linkMutation.isPending;
-
-  async function submit() {
+  async function confirmLink() {
     if (!bucketId || !intakeId) return;
     setError(null);
     try {
-      await linkMutation.mutateAsync({
-        bucket_id: bucketId,
-        intake_id: intakeId,
-        relationship,
-        note: note.trim() || undefined,
-      });
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to link bucket and intake.");
+      const result = existing
+        ? await updateLink.mutateAsync({ linkId: existing.link_id, relationship, file_ids: selectedFileIds, note: note.trim() || undefined })
+        : await createLink.mutateAsync({ bucket_id: bucketId, intake_id: intakeId, relationship, file_ids: selectedFileIds, note: note.trim() || undefined });
+      setCompleted({ count: result.linked_file_ids?.length || 0, reviewId: result.review_id });
+      setStep(4);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to save this link.");
     }
   }
+
+  async function confirmUnlink() {
+    if (!existing) return;
+    setError(null);
+    try {
+      const result = await unlink.mutateAsync(existing.link_id);
+      setCompleted({ count: 0, reviewId: result.review_id, unlinked: true });
+      setStep(4);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to unlink these records.");
+    }
+  }
+
+  const counterpartReady = Boolean(bucketId && intakeId);
+  const footer = step === 4 ? <><span className="sp" /><Btn variant="pri" onClick={onClose}>Done</Btn></> : (
+    <>
+      {step > 1 ? <Btn onClick={() => setStep((current) => Math.max(1, current - 1))}>Back</Btn> : <Btn onClick={onClose}>Cancel</Btn>}
+      {step === 3 && existing ? <Btn className="danger" onClick={confirmUnlink} disabled={busy}>Unlink</Btn> : null}
+      <span className="sp" />
+      {step < 3 ? <Btn variant="pri" onClick={() => setStep(step + 1)} disabled={(step === 1 && !counterpartReady) || (step === 2 && files.isLoading)}>Continue</Btn> : null}
+      {step === 3 ? <Btn variant="pri" onClick={confirmLink} disabled={busy}>{busy ? "Saving..." : existing ? "Update link" : "Confirm link"}</Btn> : null}
+    </>
+  );
 
   return (
     <Drawer
       open={open}
       onClose={onClose}
-      title={title}
-      sub="Review the source records before confirming. The backend records an audit line on the bucket and intake bucket when available."
+      ariaLabel="Link bucket and AI intake"
+      title={step === 4 ? completed?.unlinked ? "Evidence unlinked" : "Evidence linked" : existing ? "Update linked evidence" : "Link bucket and AI intake"}
+      sub={step === 4 ? "The audit trail and intake review queue have been updated." : "Selected files remain in their source bucket. Elara receives read access by reference."}
       width="lg"
-      footer={
-        <>
-          <Btn onClick={onClose}>Cancel</Btn>
-          <Btn variant="pri" onClick={() => submit()} disabled={!canSubmit}>
-            {linkMutation.isPending ? "Linking..." : "Confirm link"}
-          </Btn>
-        </>
-      }
+      closeOnBackdrop={!busy}
+      footer={footer}
     >
-      <div style={{ display: "grid", gap: 14 }}>
-        {error ? <div className="warnline">{error}</div> : null}
+      {step < 4 ? <DrawerSteps steps={["Counterpart", "Files", "Review", "Complete"]} current={step} /> : null}
+      {error ? <div className="warnline" style={{ marginBottom: 14 }}>{error}</div> : null}
+      {step === 1 ? (
         <div className="cg">
-          <div className="s6">
-            <Field label="Document bucket">
-              <Select value={bucketId} onChange={(e) => setBucketId(e.target.value)} disabled={isLoading}>
-                <option value="">Select bucket</option>
-                {bucketOptions.map((row) => (
-                  <option key={row.bucket_id ?? row.id} value={row.bucket_id ?? ""}>
-                    {row.bucket_name || row.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-          <div className="s6">
-            <Field label="AI intake">
-              <Select value={intakeId} onChange={(e) => setIntakeId(e.target.value)} disabled={isLoading}>
-                <option value="">Select AI intake</option>
-                {intakeOptions.map((row) => (
-                  <option key={row.intake_id ?? row.id} value={row.intake_id ?? ""}>
-                    {row.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-          <div className="s6">
-            <Field label="Relationship">
-              <Select value={relationship} onChange={(e) => setRelationship(e.target.value as BucketIntakeLinkPayload["relationship"])}>
-                <option value="primary">Primary</option>
-                <option value="supporting">Supporting</option>
-                <option value="source">Source</option>
-              </Select>
-            </Field>
-          </div>
-          <div className="s6">
-            <Field label="Audit note" hint="Optional. Appears in the bucket activity log.">
-              <Textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why these records are being linked" />
-            </Field>
+          <div className="s6"><Field label="Document bucket"><Select aria-label="Document bucket" value={bucketId} onChange={(event) => { setBucketId(event.target.value); setSelectionKey(""); }} disabled={Boolean(initialBucketId)}><option value="">Choose bucket</option>{options.data?.buckets.map((item) => <option key={item.id} value={item.id}>{item.label} · {item.file_count} files</option>)}</Select></Field></div>
+          <div className="s6"><Field label="AI intake"><Select aria-label="AI intake" value={intakeId} onChange={(event) => { setIntakeId(event.target.value); setSelectionKey(""); }} disabled={Boolean(initialIntakeId)}><option value="">Choose intake</option>{options.data?.intakes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></Field></div>
+          <div className="s12"><Field label="Relationship"><Select aria-label="Relationship" value={relationship} onChange={(event) => setRelationship(event.target.value as BucketIntakeLinkPayload["relationship"])}><option value="supporting">Supporting evidence</option><option value="source">Source documents</option><option value="primary">Primary relationship</option></Select></Field></div>
+        </div>
+      ) : null}
+      {step === 2 ? (
+        <div>
+          <div className="row" style={{ marginBottom: 10 }}><div className="grow"><b>Select files Elara may read</b><div className="sub">{bucket?.label || "Bucket"} · {selectedFileIds.length} selected</div></div><Btn size="sm" onClick={() => setSelectedFileIds([])}>Clear</Btn><Btn size="sm" onClick={() => setSelectedFileIds(files.data?.map((file) => file.id) || [])}>Select all</Btn></div>
+          <div className="panel">
+            {files.isLoading ? <div className="empty">Loading bucket files...</div> : files.data?.length ? files.data.map((file) => (
+              <label className="filerow" key={file.id}><input type="checkbox" checked={selectedFileIds.includes(file.id)} onChange={() => toggleFile(file.id)} /><span className="grow"><b>{file.file_name}</b><span className="sub">{file.content_type} · {Math.max(1, Math.round(file.size_bytes / 1024))} KB</span></span><CellChip tone={selectedFileIds.includes(file.id) ? "ok" : "mut"}>{selectedFileIds.includes(file.id) ? "Selected" : "Excluded"}</CellChip></label>
+            )) : <div className="empty">This bucket has no active files.</div>}
           </div>
         </div>
-
-        <div className="cg">
-          <div className="s6">
-            <ReviewPick title="Bucket" row={selectedBucket} fallback={bucketId ? "Bucket not in the current filtered projection." : "Select a bucket."} />
-          </div>
-          <div className="s6">
-            <ReviewPick title="AI intake" row={selectedIntake} fallback={intakeId ? "Intake not in the current filtered projection." : "Select an intake."} />
-          </div>
+      ) : null}
+      {step === 3 ? (
+        <div className="grid">
+          <div className="hintbox"><b>Review before running</b><div className="sub">This changes AI evidence access and queues a new intake review.</div></div>
+          <Panel title="Effects">
+            <div className="kv"><span>Bucket</span><b>{bucket?.label || bucketId}</b></div>
+            <div className="kv"><span>AI intake</span><b>{intake?.label || intakeId}</b></div>
+            <div className="kv"><span>Files shared</span><b>{selectedFileIds.length}</b></div>
+            <div className="kv"><span>Actor</span><b>Current signed-in operator</b></div>
+            <div className="kv"><span>Execution</span><b>Immediately after confirmation</b></div>
+            <div className="kv"><span>Reversible</span><b>Yes · unlink keeps source files intact</b></div>
+          </Panel>
+          <Field label="Audit note"><Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional reason or context" rows={3} /></Field>
         </div>
-
-        <Panel title="Blueprint coverage">
-          <div className="cg">
-            {Object.values(DOCUMENT_PACKS).map((pack) => (
-              <div className="s6" key={pack.key}>
-                <b>{pack.label}</b>
-                <div className="sub">{pack.required.slice(0, 3).join(", ")}</div>
-                <div className="sub">{pack.signatures.join(", ")}</div>
-              </div>
-            ))}
-          </div>
-        </Panel>
-      </div>
+      ) : null}
+      {step === 4 && completed ? (
+        <div className="completed-state">
+          <span className="botmark pet"><Icon name={completed.unlinked ? "link" : "check"} size={22} /></span>
+          <h3>{completed.unlinked ? "Evidence access removed" : `${completed.count} file${completed.count === 1 ? "" : "s"} handed to Elara`}</h3>
+          <p className="sub">{completed.unlinked ? "The relationship is reversible and remains visible in audit history." : "The intake review is queued with only the selected source references."}</p>
+          {completed.reviewId ? <CellChip tone="acc">Review queued · {completed.reviewId.slice(0, 8)}</CellChip> : null}
+        </div>
+      ) : null}
     </Drawer>
   );
 }
-
-function ReviewPick({ title, row, fallback }: { title: string; row?: UnifiedFileRow; fallback: string }) {
-  if (!row) {
-    return (
-      <Panel title={title}>
-        <div className="sub">{fallback}</div>
-      </Panel>
-    );
-  }
-  return (
-    <Panel title={title}>
-      <div style={{ display: "grid", gap: 8 }}>
-        <div>
-          <b>{row.label}</b>
-          <div className="sub">{row.subtitle || row.client_name || "No subtitle"}</div>
-        </div>
-        <UnifiedFileTags row={row} compact />
-        <Row>
-          <CellChip tone={row.health_tone}>{row.health}</CellChip>
-          <CellChip tone={row.coverage === "complete" ? "ok" : row.coverage === "partial" ? "warn" : "mut"}>
-            {row.coverage}
-          </CellChip>
-        </Row>
-      </div>
-    </Panel>
-  );
-}
-
-export function UnifiedBlueprintRail() {
-  return (
-    <Panel title="Centralized blueprint" sub="Shared taxonomy for pipeline, clients, buckets, AI intake, and partner portals.">
-      <div className="cg">
-        {VERTICAL_OPTIONS.filter((option) => option.value !== "all").map((option) => {
-          const key = option.value as UnifiedVertical;
-          const pack = DOCUMENT_PACKS[key];
-          return (
-            <div className={cx("s3")} key={key}>
-              <div className="row" style={{ gap: 8 }}>
-                <CellChip tone={verticalTone(key)}>{option.label}</CellChip>
-              </div>
-              <div className="sub" style={{ marginTop: 6 }}>{pack.label}</div>
-              <div className="sub">{WORKING_LADDERS[key].length} working stages before funding</div>
-            </div>
-          );
-        })}
-      </div>
-    </Panel>
-  );
-}
-
