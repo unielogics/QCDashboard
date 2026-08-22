@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from "react";
 import MfaBanner from "@/components/MfaBanner";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "./Sidebar";
+import { MobileBottomNav } from "./MobileBottomNav";
 import TopBar from "./TopBar";
 import AIRail from "./AIRail";
 import GlobalSearch from "./GlobalSearch";
@@ -177,6 +178,7 @@ export default function AppShell({
           <AIRail />
         </div>
       </div>
+      <MobileBottomNav />
       <GlobalSearch />
     </div>
   );

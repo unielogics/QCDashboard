@@ -896,14 +896,108 @@ button.pick { width: 100%; text-align: left; }
 
 @media (max-width: 760px) {
   .app, .app.app--collapsed { display: block; height: 100vh; }
-  .app .side {
-    position: fixed; inset: 0 auto 0 0; z-index: 50; width: min(300px, 86vw);
-    height: 100vh; transform: translateX(0); transition: transform 160ms ease;
-    box-shadow: var(--sh2);
-  }
-  .app.app--collapsed .side { transform: translateX(-105%); }
+  .app .side { display: none; }
   .app > div:nth-child(2) { height: 100vh; }
   .content--wide { max-width: none; --pad-y: 14px; --pad-x: 14px; }
+  .content { padding-bottom: calc(92px + env(safe-area-inset-bottom)); }
+  .top { display: none; }
+}
+
+.mobile-bottom-nav { display: none; }
+
+@media (max-width: 760px) {
+  .mobile-bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 55;
+    display: block;
+    padding: 7px 10px calc(7px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line2);
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.18);
+  }
+  .mobile-bottom-nav-scroll {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .mobile-bottom-nav-scroll::-webkit-scrollbar { display: none; }
+  .mobile-bottom-nav a,
+  .mobile-bottom-nav button {
+    min-width: 72px;
+    flex: 0 0 auto;
+    border: 0;
+    border-radius: 14px;
+    padding: 7px 9px 6px;
+    background: transparent;
+    color: var(--muted);
+    text-decoration: none;
+    font: inherit;
+    font-size: 10.5px;
+    font-weight: 800;
+    line-height: 1.15;
+    display: grid;
+    place-items: center;
+    gap: 3px;
+    cursor: pointer;
+  }
+  .mobile-bottom-nav a.on {
+    background: var(--accent-100);
+    color: var(--accent);
+  }
+  .mobile-bottom-nav-icon {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    min-height: 20px;
+  }
+  .mobile-bottom-nav-badge {
+    position: absolute;
+    top: -7px;
+    right: -13px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 9px;
+    line-height: 16px;
+    font-weight: 900;
+  }
+}
+
+@media (min-width: 761px) {
+  .mobile-bottom-nav { display: none !important; }
+}
+
+@media (max-width: 760px) {
+  .clientfile-header { display: none !important; }
+  .clientfile-row {
+    display: grid !important;
+    grid-template-columns: 4px minmax(0, 1fr) !important;
+    gap: 7px 12px !important;
+    padding: 13px 14px 13px 10px !important;
+    align-items: start !important;
+    touch-action: manipulation;
+  }
+  .clientfile-row > :nth-child(1) { grid-row: 1 / 6; }
+  .clientfile-row > :nth-child(n+2) { grid-column: 2; }
+  .clientfile-row > :nth-child(2) { grid-row: 1; }
+  .clientfile-row > :nth-child(3) { grid-row: 2; }
+  .clientfile-row > :nth-child(4),
+  .clientfile-row > :nth-child(5) {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .clientfile-row > :nth-child(6),
+  .clientfile-row > :nth-child(7) {
+    display: none;
+  }
   .top { flex-wrap: wrap; padding: 10px 14px; gap: 8px; }
   .topsearch {
     order: 10; width: 100% !important; flex: 1 0 100%;
@@ -1038,6 +1132,8 @@ button.pick { width: 100%; text-align: left; }
 .intake-tabs button.on { border-bottom-color: var(--accent); color: var(--ink); }
 .intake-file-body { display: grid; grid-template-columns: minmax(0, 1fr) 286px; gap: 14px; padding: 14px; min-height: 0; overflow-y: auto; background: var(--bg); }
 .intake-file-body.with-sequence { grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) 286px; align-items: start; }
+.intake-file-body.is-focus { grid-template-columns: minmax(0, 1fr); overflow: hidden; }
+.intake-underwriter-stage { min-height: 620px; height: calc(100dvh - 214px); }
 .submission-rail { position: sticky; top: 14px; align-self: start; }
 .submission-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
 .submission-steps-rail { display: flex; flex-direction: column; gap: 2px; }
