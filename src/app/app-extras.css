@@ -1245,3 +1245,274 @@ a.pick { color: inherit; text-decoration: none; }
 .empty { text-align: center; padding: 22px 16px; color: var(--muted); font-size: 12.8px; line-height: 1.5; }
 .empty b { display: block; color: var(--ink2); font-size: 13.5px; font-weight: 650; margin-bottom: 3px; }
 .empty svg { width: 20px; height: 20px; color: var(--faint); margin-bottom: 7px; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   The public intake rooms (bare routes, no account)
+   ──────────────────────────────────────────────────────────────────────────
+   /mca-refinance-intake, /funding-review and /dealer-ai-underwriter are three
+   PUBLIC apps: a stranger with no login lands on one from a marketing link and
+   the page is the whole product. They do not run on the console palette. They
+   are dark-ground, gold-accented rooms, and every one of them carried its own
+   200-to-290-entry `const x: CSSProperties = {…}` factory at the bottom of a
+   single 2,000-to-4,400-line file — 622 objects between them, with the two
+   larger factories near-identical line for line.
+
+   Scoped, for the same two reasons `.qc-authshell` above is scoped:
+
+   1. This subtree runs on its own palette, not the console's. `.panel`,
+      `.card`, `.btn` and `.field` all paint `var(--surface)` — a white
+      institutional surface — and dropping one of them onto this ground
+      renders console chrome on a near-black page. `.panel { color: var(--ink) }`
+      further up this file exists because that exact bleed already happened on
+      the public upload room.
+   2. Nothing in the console can reach these rules, because nothing in the
+      console is inside a `.v-mca` or a `.v-intake`.
+
+   Palette-free layout classes (`.grid`, `.grid.g*`, `.row`, `.grow`, `.trunc`)
+   ARE used inside these rooms — they carry geometry and no colour, so they
+   cross the boundary safely. Colour-carrying console classes deliberately are
+   not.
+
+   Values are carried over verbatim from the factories they replace: this is a
+   migration of where the declarations live, not a redesign of a live public
+   funnel.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Completes the `.grid.g4 / .g6 / .g8 / .g10` family above. Three stacks in the
+   MCA room and eleven across the other two rooms sit on a 12px rhythm, which
+   was the one step the family was missing. */
+.grid.g12 { gap: 12px; }
+
+/* ---------- /mca-refinance-intake — the slim MCA room ----------
+   A borrower refinancing merchant cash advances. Deliberately the narrowest of
+   the three: one chat column, one rail, three things to collect. Its own gold
+   (#D9B64A) and its own near-black (#0B0F17), a shade warmer and lighter than
+   the funding-review room's, which is why it is a second scope rather than a
+   modifier on the first. */
+.v-mca {
+  --vm-gold: #D9B64A;
+  --vm-gold-ink: #E8CE7A;
+  --vm-ink: #E5EAF3;
+  --vm-ink-hi: #F8FAFC;
+  --vm-mut: #94A3B8;
+  --vm-mut2: #8A99B0;
+  --vm-line: rgba(148, 163, 184, 0.16);
+
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(217, 182, 74, 0.1), transparent 30%),
+    radial-gradient(circle at 92% 4%, rgba(33, 211, 199, 0.07), transparent 26%),
+    #0B0F17;
+  color: var(--vm-ink);
+  padding: 20px 18px 40px;
+  font-size: 14px;
+}
+
+/* Every control in the room dims the same way. Was a `<style>` tag injected
+   into the body on every render, alongside two `.mcaR-input` rules. */
+.v-mca button:disabled { opacity: 0.55; cursor: default; }
+
+.vm-shell { max-width: 1120px; margin: 0 auto; display: grid; gap: 22px; }
+
+/* A centred measure. Three screens, three different reading widths — the
+   language picker is the widest, the login-code card the narrowest. */
+.vm-mid { margin: 0 auto; width: 100%; }
+.vm-mid.lang { max-width: 720px; }
+/* The start screen is also the room's own stack: hero, then the one card. */
+.vm-mid.start { max-width: 640px; display: grid; gap: 22px; }
+.vm-mid.code { max-width: 460px; }
+
+.vm-brand { display: flex; align-items: center; gap: 12px; }
+.vm-brand-n { font-weight: 800; font-size: 15px; color: var(--vm-ink-hi); letter-spacing: 0.2px; }
+.vm-brand-t { font-size: 11.5px; color: var(--vm-gold); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+
+.vm-loading { min-height: 40vh; display: grid; place-items: center; color: var(--vm-mut); }
+
+.vm-herostack { display: grid; gap: 10px; text-align: center; }
+.vm-hero-t {
+  margin: 0; font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(26px, 4vw, 38px); font-weight: 600; color: var(--vm-ink-hi); line-height: 1.15;
+}
+.vm-hero-l { margin: 0 auto; max-width: 560px; color: var(--vm-mut); font-size: 14.5px; line-height: 1.6; }
+
+.vm-pillrow { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 4px; }
+.vm-pill {
+  border: 1px solid rgba(217, 182, 74, 0.35); border-radius: 999px; padding: 5px 12px;
+  font-size: 11.5px; font-weight: 700; color: var(--vm-gold-ink); background: rgba(217, 182, 74, 0.08);
+}
+
+/* The room's one surface. Everything that is a block of content is this. */
+.vm-card {
+  background: rgba(17, 24, 39, 0.72); border: 1px solid var(--vm-line); border-radius: 16px;
+  padding: 18px; display: grid; gap: 14px; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.3);
+}
+.vm-card.chat { gap: 12px; min-height: 320px; }
+.vm-card.railhead { gap: 10px; }
+
+.vm-sect-t { margin: 0; font-size: 18px; font-weight: 700; color: var(--vm-ink-hi); }
+.vm-sub { margin: 0; font-size: 12.5px; color: var(--vm-mut); line-height: 1.55; }
+
+/* Two tinted advisory blocks. `.vm-note` is the gold one — "we already have
+   some of this"; `.vm-calm` is the neutral one — "nothing is wrong, this step
+   simply is not needed". */
+.vm-note {
+  font-size: 12.5px; color: var(--vm-gold-ink); background: rgba(217, 182, 74, 0.08);
+  border: 1px solid rgba(217, 182, 74, 0.25); border-radius: 10px; padding: 8px 10px;
+}
+.vm-calm {
+  font-size: 12.5px; color: #A5B4CB; background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 10px; padding: 8px 10px; line-height: 1.5;
+}
+
+/* Form rows. Two-across on a desktop, one-across in the room's compact mode —
+   which used to be a JS `matchMedia` branch picking between two objects, so the
+   first server-rendered paint was always the wide one. */
+.vm-fg2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.vm-fg1 { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (max-width: 880px) { .vm-fg2 { grid-template-columns: 1fr; } }
+
+.vm-fld { display: grid; gap: 5px; }
+.vm-fld-l { font-size: 10.5px; font-weight: 700; color: var(--vm-mut2); text-transform: uppercase; letter-spacing: 0.6px; }
+
+.vm-in {
+  width: 100%; box-sizing: border-box; background: rgba(11, 15, 23, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.28); border-radius: 10px;
+  color: var(--vm-ink); padding: 10px 11px; font-size: 14px;
+}
+.vm-in::placeholder { color: #5B6B82; }
+.vm-in:focus { outline: 2px solid rgba(217, 182, 74, 0.55); outline-offset: 1px; }
+
+/* A consent row: a checkbox beside a sentence that wraps. The box is nudged
+   down to sit on the first line's baseline rather than in the middle of the
+   paragraph — the same problem `.row.top` and `.pick.top` solve upstream. */
+.vm-check { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; color: #B6C4D7; line-height: 1.5; cursor: pointer; }
+.vm-check > input { margin-top: 3px; }
+
+.vm-link { color: var(--vm-gold); text-decoration: underline; }
+
+/* The room's primary action. Gold, full-width by default because on a phone it
+   is the only thing to press. */
+.vm-gold {
+  border: 0; border-radius: 999px; min-height: 48px; padding: 0 20px;
+  background: linear-gradient(135deg, #F2E58F, #D8B533); color: #081122;
+  font-weight: 900; font-size: 14.5px; cursor: pointer;
+}
+.vm-gold.sm { min-height: 38px; font-size: 13px; padding: 0 16px; }
+
+.vm-ghost {
+  border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 999px; min-height: 36px; padding: 0 14px;
+  background: none; color: #B6C4D7; font-weight: 600; font-size: 12.5px; cursor: pointer;
+}
+.vm-btnrow { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+/* Text-weight action. `.linky` is the console's word for this and is scoped to
+   the console palette; this is the same idea on the dark ground. */
+.vm-linkbtn {
+  border: 0; background: none; color: var(--vm-mut2); font-size: 12.5px;
+  text-decoration: underline; cursor: pointer; justify-self: center;
+}
+.vm-linkbtn.inline { color: var(--vm-gold); font-size: 13px; padding: 0; justify-self: auto; }
+
+.vm-err { color: #FCA5A5; font-size: 12.5px; line-height: 1.45; }
+.vm-ok { color: #6EE7B7; font-size: 12.5px; font-weight: 700; }
+
+/* ---------- the chat column ---------- */
+.vm-chat-h { font-size: 12px; font-weight: 800; color: var(--vm-mut2); text-transform: uppercase; letter-spacing: 1px; }
+.vm-chat-s {
+  overflow-y: auto; display: grid; gap: 10px; align-content: start;
+  padding-right: 4px; min-height: 200px; max-height: min(62vh, 640px);
+}
+@media (max-width: 880px) { .vm-chat-s { max-height: 340px; } }
+.vm-bub {
+  border-radius: 14px; padding: 10px 13px; font-size: 13.5px; line-height: 1.55;
+  white-space: pre-wrap; max-width: 88%; word-break: break-word;
+  background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(148, 163, 184, 0.14);
+  color: var(--vm-ink); justify-self: start;
+}
+.vm-bub.me {
+  background: rgba(217, 182, 74, 0.14); border-color: rgba(217, 182, 74, 0.3);
+  color: #F4E9C8; justify-self: end;
+}
+/* The assistant's turn is being generated. */
+.vm-bub.pending { opacity: 0.6; }
+.vm-chat-f { display: flex; gap: 8px; align-items: center; }
+
+/* ---------- the rail ---------- */
+.vm-rail { display: grid; gap: 14px; align-content: start; }
+.vm-prog-r { display: flex; justify-content: space-between; align-items: baseline; }
+.vm-prog-l { font-size: 13px; font-weight: 800; color: var(--vm-ink-hi); }
+.vm-prog-t { height: 6px; border-radius: 999px; background: rgba(148, 163, 184, 0.15); overflow: hidden; }
+/* `width` is the progress figure itself and stays with the caller. */
+.vm-prog-f {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, #D9B64A, #F2E58F); transition: width 0.3s ease;
+}
+@media (prefers-reduced-motion: reduce) { .vm-prog-f { transition: none; } }
+
+.vm-rev-t { font-size: 14px; font-weight: 800; color: var(--vm-ink-hi); }
+.vm-card-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.vm-card-t { font-size: 14.5px; font-weight: 800; color: var(--vm-ink-hi); }
+.vm-card-s { font-size: 12px; color: var(--vm-mut2); margin-top: 2px; line-height: 1.45; }
+
+/* Open / done stamp on a rail card. Uppercase because it is a stamp, the same
+   reasoning as `.cellchip.caps` in the console. */
+.vm-chip {
+  border-radius: 999px; padding: 3px 10px; font-size: 10.5px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.6px; white-space: nowrap; flex-shrink: 0;
+  color: var(--vm-gold-ink); border: 1px solid rgba(217, 182, 74, 0.45); background: rgba(217, 182, 74, 0.08);
+}
+.vm-chip.done { color: #6EE7B7; border-color: rgba(52, 211, 153, 0.45); background: rgba(16, 185, 129, 0.1); }
+
+.vm-drop {
+  border: 1.5px dashed rgba(148, 163, 184, 0.35); border-radius: 12px;
+  padding: 18px 14px; text-align: center; font-size: 13px; color: var(--vm-mut);
+}
+/* A file is over the target. */
+.vm-drop.on { border-color: var(--vm-gold); background: rgba(217, 182, 74, 0.06); color: var(--vm-gold-ink); }
+
+.vm-file {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+  font-size: 12.5px; padding: 6px 10px; border-radius: 8px;
+  background: rgba(11, 15, 23, 0.5); border: 1px solid rgba(148, 163, 184, 0.12);
+}
+.vm-file-n { color: #DDE5F0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vm-file-m { color: var(--vm-mut2); font-size: 11.5px; flex-shrink: 0; }
+
+.vm-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.vm-tab {
+  border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 10px; min-height: 34px;
+  background: none; color: var(--vm-mut); font-weight: 700; font-size: 12.5px; cursor: pointer;
+}
+.vm-tab.on { border-color: var(--vm-gold); background: rgba(217, 182, 74, 0.1); color: var(--vm-gold-ink); }
+
+/* One merchant advance, as a real <fieldset> — the legend is what tells a
+   screen-reader user which advance the four fields under it belong to. */
+.vm-adv { border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 12px; padding: 10px 12px 12px; margin: 0; }
+.vm-adv-l { font-size: 11px; font-weight: 800; color: var(--vm-gold-ink); text-transform: uppercase; letter-spacing: 0.6px; padding: 0 6px; }
+
+.vm-rm {
+  border: 1px solid rgba(252, 165, 165, 0.3); border-radius: 8px; background: none;
+  color: #FCA5A5; font-size: 11.5px; font-weight: 700; padding: 5px 10px; cursor: pointer; justify-self: start;
+}
+
+.vm-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.vm-slot {
+  border: 1px solid rgba(217, 182, 74, 0.4); border-radius: 10px; min-height: 40px;
+  background: rgba(217, 182, 74, 0.08); color: #F4E9C8; font-weight: 700; font-size: 12.5px;
+  cursor: pointer; padding: 6px 8px;
+}
+
+/* The room is chat-first on a wide screen and rail-first on a narrow one; the
+   two children swap order in the markup, so this only owns the track. */
+.vm-room { display: grid; gap: 18px; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; }
+@media (max-width: 880px) { .vm-room { grid-template-columns: 1fr; } }
+
+/* The signing overlay. Its card is deliberately WHITE on this dark page: it
+   holds the text of a document the borrower is about to put their name to, and
+   a signature surface reads as paper. */
+.vm-scrim { position: fixed; inset: 0; background: rgba(3, 6, 12, 0.72); display: grid; place-items: center; padding: 16px; z-index: 60; }
+.vm-modal {
+  background: #FFFFFF; color: #111827; border-radius: 16px; padding: 20px;
+  width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.5);
+}

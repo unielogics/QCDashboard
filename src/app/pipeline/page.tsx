@@ -239,25 +239,15 @@ function OperatorPipelinePage({ role }: { role: string }) {
         <span className="spacer" />
 
         {/* Search address or ID */}
-        <div
-          className="field"
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, width: 240 }}
-        >
+        {/* `.field.box` owns the row and the bare-input reset; the 240px
+            measure is this toolbar's alone. */}
+        <div className="field box" style={{ width: 240 }}>
           <Icon name="search" size={14} />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             aria-label="Search pipeline"
             placeholder={activeMode === "funding" ? "Search address or ID..." : "Search agents, clients, files..."}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              border: "none",
-              outline: "none",
-              background: "transparent",
-              font: "inherit",
-              color: "inherit",
-            }}
           />
         </div>
 
@@ -355,16 +345,9 @@ function OperatorPipelinePage({ role }: { role: string }) {
             : "78px minmax(0, 1.55fr) 122px 96px 110px 70px 82px 104px 126px";
           return (
             <Panel className="mt" noPad>
-              <div
-                className="lbl"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: gridCols,
-                  padding: "12px 16px",
-                  borderBottom: "1px solid var(--line2)",
-                  background: "var(--sunken2)",
-                }}
-              >
+              {/* Bespoke ten-column track (rule 3); `.gridhd` owns the rest,
+                  and `.lbl` the header typography its plain cells inherit. */}
+              <div className="lbl gridhd" style={{ gridTemplateColumns: gridCols }}>
                 <SortHead label="ID" k="deal_id" current={sortKey} dir={sortDir} onClick={setSort} />
                 <SortHead label="Property" k="address" current={sortKey} dir={sortDir} onClick={setSort} />
                 {isInternal ? <div>Agent</div> : null}
@@ -394,14 +377,11 @@ function OperatorPipelinePage({ role }: { role: string }) {
                           }
                         : undefined
                     }
-                    style={{
-                      display: "grid", gridTemplateColumns: gridCols,
-                      padding: "12px 16px", borderBottom: "1px solid var(--line)", alignItems: "center",
-                      color: "var(--ink)", textDecoration: "none",
-                    }}>
+                    className="gridrow act linkreset"
+                    style={{ gridTemplateColumns: gridCols }}>
                     <div className="num"><b>{loan.deal_id}</b></div>
-                    <div style={{ minWidth: 0 }}>
-                      <b style={{ display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{loan.address}</b>
+                    <div>
+                      <div className="trunc"><b>{loan.address}</b></div>
                       <div className="sub row">
                         <span>{loan.city}</span>
                         {isInternal && loan.client_name ? (
@@ -426,10 +406,7 @@ function OperatorPipelinePage({ role }: { role: string }) {
                       </div>
                     </div>
                     {isInternal ? (
-                      <div
-                        className={loan.broker_name ? undefined : "sub"}
-                        style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-                      >
+                      <div className={cx("trunc", !loan.broker_name && "sub")}>
                         {loan.broker_name ? <b>{loan.broker_name}</b> : "Not assigned"}
                       </div>
                     ) : null}
@@ -437,11 +414,12 @@ function OperatorPipelinePage({ role }: { role: string }) {
                     <div><CellChip tone="mut">{loanTypeLabel(loan.type)}</CellChip></div>
                     <div className="align-r num"><b>{QC_FMT.short(Number(loan.amount))}</b></div>
                     <CreditCell fico={loan.fico_override ?? loan.client_fico ?? null} override={loan.fico_override != null} />
+                    {/* A tone chosen from a number — inline, per rule 2. */}
                     <div
                       className="align-r num"
-                      style={{ color: loan.dscr && loan.dscr >= 1.25 ? "var(--ok)" : loan.dscr && loan.dscr >= 1.0 ? "var(--warn)" : "var(--muted)", fontWeight: 700 }}
+                      style={{ color: loan.dscr && loan.dscr >= 1.25 ? "var(--ok)" : loan.dscr && loan.dscr >= 1.0 ? "var(--warn)" : "var(--muted)" }}
                     >
-                      {loan.dscr ? loan.dscr.toFixed(2) : "—"}
+                      <b>{loan.dscr ? loan.dscr.toFixed(2) : "—"}</b>
                     </div>
                     <ConditionCell open={openDocs.length} flagged={flaggedDocs.length} total={loanDocs.length} />
                     <PipelineActionCell action={action} />
@@ -476,15 +454,14 @@ function OperatorPipelinePage({ role }: { role: string }) {
                               }
                             : undefined
                         }
-                        className="kcard"
-                        style={{ display: "flex", flexDirection: "column", gap: 8, color: "var(--ink)", textDecoration: "none" }}>
+                        className="kcard grid g8 linkreset">
                         <div>
                           <div className="lbl">{loan.deal_id}</div>
                           <b style={{ display: "block", marginTop: 2, lineHeight: 1.25 }}>{loan.address}</b>
                           <div className="sub">{QC_FMT.short(Number(loan.amount))} / {loanTypeLabel(loan.type)}</div>
                         </div>
                         <ReadinessBar score={readiness.score} label={readiness.label} />
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                        <div className="row split">
                           <CellChip tone={openDocs.length ? "warn" : "ok"}>{openDocs.length} open</CellChip>
                           <CellChip tone={loan.dscr && loan.dscr >= 1.25 ? "ok" : loan.dscr ? "warn" : "mut"}>
                             DSCR {loan.dscr ? loan.dscr.toFixed(2) : "—"}
@@ -722,17 +699,8 @@ function AgentsPipelineView({
         title="Agents"
         sub="Latest activity, active files, assigned relationships, and volume by owner."
       >
-        <div
-          className="lbl"
-          style={{
-            display: "grid",
-            gridTemplateColumns: AGENT_GRID,
-            gap: 12,
-            padding: "12px 16px",
-            background: "var(--sunken2)",
-            borderBottom: "1px solid var(--line2)",
-          }}
-        >
+        {/* Bespoke six-column track (rule 3); `.gridhd` owns the rest. */}
+        <div className="lbl gridhd" style={{ gridTemplateColumns: AGENT_GRID }}>
           <div />
           <div>Agent</div>
           <div className="align-r">Active files</div>
@@ -744,28 +712,20 @@ function AgentsPipelineView({
         {visibleGroups.map((group) => {
           const isOpen = expanded.has(group.key);
           return (
-            <div key={group.key} style={{ borderBottom: "1px solid var(--line)" }}>
+            <div key={group.key}>
+              {/* The row IS the control, so it stays a real <button>:
+                  `.gridrow.act` carries the hover and the focus ring,
+                  `.btnreset` the four things the UA button brings with it. */}
               <button
                 type="button"
                 aria-expanded={isOpen}
                 onClick={() => toggle(group.key)}
-                style={{
-                  width: "100%",
-                  display: "grid",
-                  gridTemplateColumns: AGENT_GRID,
-                  gap: 12,
-                  padding: "14px 16px",
-                  background: isOpen ? "var(--sunken2)" : "transparent",
-                  textAlign: "left",
-                  alignItems: "center",
-                  cursor: "pointer",
-                }}
+                className={cx("gridrow", "act", "btnreset", isOpen && "on")}
+                style={{ gridTemplateColumns: AGENT_GRID }}
               >
                 <Icon name={isOpen ? "chevD" : "chevR"} size={16} />
-                <div style={{ minWidth: 0 }}>
-                  <b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {group.name}
-                  </b>
+                <div>
+                  <div className="trunc"><b>{group.name}</b></div>
                   <div className="sub row">
                     <span>{formatRelativeDays(group.latestFileAt)}</span>
                     {group.key === "unassigned" ? <CellChip tone="warn">Needs owner</CellChip> : null}
@@ -786,7 +746,9 @@ function AgentsPipelineView({
               </button>
 
               {isOpen ? (
-                <div style={{ padding: "0 16px 16px 48px", display: "grid", gap: 12 }}>
+                // Indented to clear the chevron column — a measured inset,
+                // so it stays inline; `.grid` owns the stack.
+                <div className="grid" style={{ padding: "0 16px 16px 48px" }}>
                   <div>
                     <div className="lbl" style={{ margin: "4px 0 8px" }}>
                       Active funding files
@@ -797,22 +759,19 @@ function AgentsPipelineView({
                           <Link
                             key={row.loan.id}
                             href={`/loans/${row.loan.id}`}
-                            className="kcard"
+                            className="kcard linkreset"
+                            // Bespoke six-column track (rule 3).
                             style={{
                               display: "grid",
                               gridTemplateColumns: AGENT_FILE_GRID,
                               gap: 10,
                               alignItems: "center",
-                              color: "var(--ink)",
-                              textDecoration: "none",
                             }}
                           >
                             <div className="num"><b>{row.loan.deal_id}</b></div>
                             <div style={{ minWidth: 0 }}>
-                              <b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {row.loan.address}
-                              </b>
-                              <div className="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              <div className="trunc"><b>{row.loan.address}</b></div>
+                              <div className="sub trunc">
                                 {row.loan.client_name ?? "No client"}{row.loan.city ? ` / ${row.loan.city}` : ""}
                               </div>
                             </div>
@@ -822,14 +781,14 @@ function AgentsPipelineView({
                               <div className="sub">{String(row.loan.stage).replace(/_/g, " ")}</div>
                             </div>
                             <div className="align-r num"><b>{QC_FMT.short(Number(row.loan.amount))}</b></div>
-                            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                            <div className="row end">
                               <ConditionCell open={row.openDocs.length} flagged={row.flaggedDocs.length} total={row.loanDocs.length} />
                             </div>
                           </Link>
                         ))}
                       </div>
                     ) : (
-                      <div className="card sub">No active funding files for this agent.</div>
+                      <div className="empty">No active funding files for this agent.</div>
                     )}
                   </div>
 
@@ -842,12 +801,10 @@ function AgentsPipelineView({
                         {group.clients.map((client) => {
                           const summary = summaryByClientId.get(client.id);
                           return (
-                            <div key={client.id} className="card" style={{ display: "grid", gap: 7 }}>
-                              <div style={{ minWidth: 0 }}>
-                                <b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  {client.name}
-                                </b>
-                                <div className="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <div key={client.id} className="card grid g8">
+                              <div>
+                                <div className="trunc"><b>{client.name}</b></div>
+                                <div className="sub trunc">
                                   {client.email ?? "No email"}{client.city ? ` / ${client.city}` : ""}
                                 </div>
                               </div>
@@ -866,7 +823,7 @@ function AgentsPipelineView({
                         })}
                       </div>
                     ) : (
-                      <div className="card sub">No relationships assigned to this agent.</div>
+                      <div className="empty">No relationships assigned to this agent.</div>
                     )}
                   </div>
                 </div>
@@ -876,7 +833,7 @@ function AgentsPipelineView({
         })}
 
         {visibleGroups.length === 0 ? (
-          <div className="sub" style={{ padding: 24, textAlign: "center" }}>
+          <div className="empty">
             {search ? `No agents, files, or relationships match "${search}".` : "No agents or relationships found."}
           </div>
         ) : null}
@@ -930,43 +887,42 @@ function PipelineRowContextMenu({
   // Hover feedback moved from the JS mouseover handlers to `.popmenu .mi:hover`.
   return (
     <div
+      className="popmenu atcursor"
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
-      style={{ position: "fixed", top: y, left: x, zIndex: 80, width: 212, height: 0 }}
+      style={{ top: y, left: x }}
     >
-      <div className="popmenu">
-        <div className="lbl" style={{ padding: "8px 10px 4px" }}>
-          {loan.deal_id} · {loan.broker_name ?? "Unassigned"}
-        </div>
-        {canReassign && (
-          <button
-            type="button"
-            className="mi"
-            onClick={(e) => {
-              e.stopPropagation();
-              onReassign();
-            }}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-              <Icon name="user" size={12} stroke={2.2} />
-              {loan.broker_id ? "Reassign agent…" : "Assign agent…"}
-            </span>
-          </button>
-        )}
+      <div className="lbl mhd">
+        {loan.deal_id} · {loan.broker_name ?? "Unassigned"}
+      </div>
+      {canReassign && (
         <button
           type="button"
           className="mi"
           onClick={(e) => {
             e.stopPropagation();
-            onAssignAI();
+            onReassign();
           }}
         >
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <Icon name="spark" size={12} stroke={2.2} />
-            Assign AI agent…
+          <span className="row">
+            <Icon name="user" size={12} stroke={2.2} />
+            {loan.broker_id ? "Reassign agent…" : "Assign agent…"}
           </span>
         </button>
-      </div>
+      )}
+      <button
+        type="button"
+        className="mi"
+        onClick={(e) => {
+          e.stopPropagation();
+          onAssignAI();
+        }}
+      >
+        <span className="row">
+          <Icon name="spark" size={12} stroke={2.2} />
+          Assign AI agent…
+        </span>
+      </button>
     </div>
   );
 }
@@ -1028,8 +984,11 @@ function FundingMetricsRow({
   );
 }
 
-/** Tone here colours the FIGURE, not a delta chip — which is why this is not
- *  the shared `Kpi`: the number itself is the status signal. */
+/** Tone is the status signal, so it goes on `.kpi.tone-*` — the tile carries
+ *  it on the surface AND on the figure. This band is scanned, not read: a
+ *  colour on the number alone means visiting all five tiles to find the one
+ *  that is blocking you. Not the shared `Kpi`, which reads its tone off a
+ *  delta chip this row does not have. */
 function MiniMetric({
   label, value, tone = "neutral", sub,
 }: {
@@ -1038,17 +997,15 @@ function MiniMetric({
   tone?: "ready" | "watch" | "danger" | "neutral";
   sub?: string;
 }) {
-  const color =
-    tone === "ready" ? "var(--ok)"
-      : tone === "watch" ? "var(--warn)"
-        : tone === "danger" ? "var(--danger)"
-          : "var(--ink)";
+  const toneClass =
+    tone === "ready" ? "tone-ok"
+      : tone === "watch" ? "tone-warn"
+        : tone === "danger" ? "tone-bad"
+          : null;
   return (
-    <div className="kpi">
-      <div className="lbl" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {label}
-      </div>
-      <div className="knum num" style={{ color }}>{value}</div>
+    <div className={cx("kpi", toneClass)}>
+      <div className="lbl trunc">{label}</div>
+      <div className="knum num">{value}</div>
       {sub ? <div className="sub">{sub} total</div> : null}
     </div>
   );
@@ -1063,7 +1020,7 @@ function NextClosingCard({
     return (
       <div className="card row">
         <Icon name="cal" size={16} />
-        <div style={{ minWidth: 0 }}>
+        <div className="grow">
           <div className="lbl">Next closing</div>
           <div className="sub">No close dates on any file yet.</div>
         </div>
@@ -1082,22 +1039,21 @@ function NextClosingCard({
   return (
     <Link
       href={`/loans/${item.loan.id}`}
-      className="card"
+      className="card linkreset"
+      // Bespoke three-column track (rule 3).
       style={{
         display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", gap: 10,
-        alignItems: "center", textDecoration: "none", color: "var(--ink)",
+        alignItems: "center",
       }}
     >
       <div style={{ minWidth: 64, textAlign: "center" }}>
         <div className="lbl">{overdue ? "Slipped" : "Closes"}</div>
         <CellChip tone={tone}>{daysLabel}</CellChip>
       </div>
-      <div style={{ minWidth: 0 }}>
+      <div>
         <div className="lbl">Next closing</div>
-        <b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {item.loan.address}
-        </b>
-        <div className="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div className="trunc"><b>{item.loan.address}</b></div>
+        <div className="sub trunc">
           {dateStr} · {item.loan.deal_id}
           {item.loan.client_name ? ` · ${item.loan.client_name}` : ""}
         </div>
@@ -1132,13 +1088,16 @@ function CreditCell({ fico, override }: { fico: number | null; override: boolean
 function ReadinessCell({ score, label }: { score: number; label: string }) {
   const color = readinessColor(score);
   return (
+    // minWidth stays: this cell is also rendered inside a `.kcard` grid,
+    // where nothing else zeroes the item's automatic minimum size.
     <div style={{ minWidth: 0 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+      <div className="row split">
         <b className="num" style={{ color }}>{score}%</b>
-        <span className="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+        <span className="sub trunc">{label}</span>
       </div>
       <div className="track" style={{ marginTop: 5 }}>
-        <div style={{ width: `${score}%`, height: "100%", borderRadius: 99, background: color }} />
+        {/* Width and tone are the data; `.fill` owns the rest of the bar. */}
+        <div className="fill" style={{ width: `${score}%`, background: color }} />
       </div>
     </div>
   );
@@ -1148,12 +1107,13 @@ function ReadinessBar({ score, label }: { score: number; label: string }) {
   const color = readinessColor(score);
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-        <span className="sub">{label}</span>
+      <div className="row split">
+        <span className="sub trunc">{label}</span>
         <b className="num" style={{ color }}>{score}%</b>
       </div>
       <div className="track" style={{ marginTop: 5 }}>
-        <div style={{ width: `${score}%`, height: "100%", borderRadius: 99, background: color }} />
+        {/* Width and tone are the data; `.fill` owns the rest of the bar. */}
+        <div className="fill" style={{ width: `${score}%`, background: color }} />
       </div>
     </div>
   );
@@ -1197,7 +1157,7 @@ function ConditionCell({ open, flagged, total }: { open: number; flagged: number
   const tone: ChipTone = flagged ? "bad" : open ? "warn" : total ? "ok" : "mut";
   return (
     <CellChip tone={tone}>
-      <span className="repdot" style={{ background: "currentColor" }} />
+      <span className="repdot" />
       {flagged ? `${flagged} flagged` : open ? `${open} open` : total ? "clear" : "none"}
     </CellChip>
   );
@@ -1207,23 +1167,16 @@ function SortHead({
   label, k, current, dir, onClick, align,
 }: { label: string; k: SortKey; current: SortKey; dir: "asc" | "desc"; onClick: (k: SortKey) => void; align?: "left" | "right" }) {
   const active = current === k;
-  // Inherits the `.lbl` typography of the header row it sits in; only the
-  // active-state emphasis is its own. `var(--qc-ink)` was a retired token that
-  // resolved to nothing, so the active header never actually changed colour.
+  // `.gridhd-c` is the sortable column head — the typography, the button
+  // reset and the active-state colour all live there. Alignment is
+  // per-column data, so it stays inline (same call as SortableTableHead).
   return (
     <button
       type="button"
       onClick={() => onClick(k)}
       aria-label={`Sort by ${label}`}
-      style={{
-        textAlign: align ?? "left",
-        color: active ? "var(--ink)" : "inherit",
-        fontWeight: active ? 800 : 700,
-        fontSize: "inherit",
-        letterSpacing: "inherit",
-        textTransform: "inherit",
-        cursor: "pointer",
-      }}
+      className={cx("gridhd-c", active && "on")}
+      style={align === "right" ? { justifyContent: "flex-end" } : undefined}
     >
       {label} {active ? (dir === "asc" ? "↑" : "↓") : ""}
     </button>

@@ -16,7 +16,7 @@
 // params) are stripped from the URL immediately via history.replaceState,
 // matching the security rule on the other public intake pages.
 
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { QCMark } from "@/components/QCMark";
 import { LanguagePickerScreen } from "@/components/intake/LanguagePickerScreen";
@@ -1028,42 +1028,42 @@ export default function McaRefinanceIntakePage() {
 
   // --- render ---------------------------------------------------------------
   const brandHeader = (
-    <header style={brandRow}>
+    <header className="vm-brand">
       <QCMark size={36} />
       <div>
-        <div style={brandName}>Qualified Commercial</div>
-        <div style={brandTag}>{c.eyebrow}</div>
+        <div className="vm-brand-n">Qualified Commercial</div>
+        <div className="vm-brand-t">{c.eyebrow}</div>
       </div>
     </header>
   );
 
   let content: ReactNode;
   if (phase === "boot") {
-    content = <div style={loadingWrap}>{c.loading}</div>;
+    content = <div className="vm-loading">{c.loading}</div>;
   } else if (phase === "language") {
     content = (
-      <div style={{ maxWidth: 720, margin: "0 auto", width: "100%" }}>
+      <div className="vm-mid lang">
         <LanguagePickerScreen onPick={pickLanguage} />
       </div>
     );
   } else if (phase === "start") {
     content = (
-      <div style={{ maxWidth: 640, margin: "0 auto", width: "100%", display: "grid", gap: 22 }}>
-        <div style={{ display: "grid", gap: 10, textAlign: "center" }}>
-          <h1 style={heroTitleStyle}>{c.heroTitle}</h1>
-          <p style={heroLeadStyle}>{c.heroLead}</p>
-          <div style={pillRow}>
-            <span style={pill}>{c.pillTen}</span>
-            <span style={pill}>{c.pillSoft}</span>
-            <span style={pill}>{c.pillEncrypted}</span>
+      <div className="vm-mid start">
+        <div className="vm-herostack">
+          <h1 className="vm-hero-t">{c.heroTitle}</h1>
+          <p className="vm-hero-l">{c.heroLead}</p>
+          <div className="vm-pillrow">
+            <span className="vm-pill">{c.pillTen}</span>
+            <span className="vm-pill">{c.pillSoft}</span>
+            <span className="vm-pill">{c.pillEncrypted}</span>
           </div>
         </div>
-        <section style={cardStyle} aria-label={c.startTitle}>
-          <h2 style={sectionTitle}>{c.startTitle}</h2>
+        <section className="vm-card" aria-label={c.startTitle}>
+          <h2 className="vm-sect-t">{c.startTitle}</h2>
           {seed.payback !== null || seed.months !== null || seed.freq ? (
-            <div style={noteText}>{c.seededNote}</div>
+            <div className="vm-note">{c.seededNote}</div>
           ) : null}
-          <div style={compact ? fieldGridOne : fieldGridTwo}>
+          <div className="vm-fg2">
             <Field
               label={c.fieldFullName}
               value={startForm.full_name}
@@ -1093,36 +1093,35 @@ export default function McaRefinanceIntakePage() {
               autoComplete="tel"
             />
           </div>
-          <label style={checkboxRow}>
+          <label className="vm-check">
             <input
               type="checkbox"
               checked={legalAccepted}
               onChange={(event) => setLegalAccepted(event.target.checked)}
-              style={{ marginTop: 3 }}
             />
             <span>
               {c.legalPrefix}
-              <a href="/terms" target="_blank" rel="noreferrer" style={linkStyle}>
+              <a href="/terms" target="_blank" rel="noreferrer" className="vm-link">
                 {c.legalTerms}
               </a>
               {c.legalAnd}
-              <a href="/privacy" target="_blank" rel="noreferrer" style={linkStyle}>
+              <a href="/privacy" target="_blank" rel="noreferrer" className="vm-link">
                 {c.legalPrivacy}
               </a>
               .
             </span>
           </label>
           {startError ? (
-            <div role="alert" style={errText}>
+            <div role="alert" className="vm-err">
               {startError}
             </div>
           ) : null}
-          <button type="button" onClick={startIntake} disabled={startBusy} style={goldButton}>
+          <button type="button" onClick={startIntake} disabled={startBusy} className="vm-gold">
             {startBusy ? c.startBusy : c.startButton}
           </button>
           <button
             type="button"
-            style={linkButton}
+            className="vm-linkbtn"
             onClick={() => {
               setCodeEmail(startForm.email.trim());
               setCodeSent(false);
@@ -1138,10 +1137,10 @@ export default function McaRefinanceIntakePage() {
     );
   } else if (phase === "code") {
     content = (
-      <div style={{ maxWidth: 460, margin: "0 auto", width: "100%" }}>
-        <section style={cardStyle} aria-label={c.codeTitle}>
-          <h2 style={sectionTitle}>{c.codeTitle}</h2>
-          <p style={subText}>{codeNotice ?? c.codeSub}</p>
+      <div className="vm-mid code">
+        <section className="vm-card" aria-label={c.codeTitle}>
+          <h2 className="vm-sect-t">{c.codeTitle}</h2>
+          <p className="vm-sub">{codeNotice ?? c.codeSub}</p>
           <Field
             label={c.fieldEmail}
             value={codeEmail}
@@ -1159,18 +1158,18 @@ export default function McaRefinanceIntakePage() {
             placeholder={c.codePlaceholder}
           />
           {codeError ? (
-            <div role="alert" style={errText}>
+            <div role="alert" className="vm-err">
               {codeError}
             </div>
           ) : null}
-          <button type="button" onClick={verifyLoginCode} disabled={codeBusy} style={goldButton}>
+          <button type="button" onClick={verifyLoginCode} disabled={codeBusy} className="vm-gold">
             {codeBusy ? c.codeVerifyBusy : c.codeVerify}
           </button>
-          <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-            <button type="button" onClick={sendLoginCode} disabled={codeBusy} style={ghostButton}>
+          <div className="vm-btnrow">
+            <button type="button" onClick={sendLoginCode} disabled={codeBusy} className="vm-ghost">
               {codeSent ? c.codeResend : c.codeSend}
             </button>
-            <button type="button" onClick={() => setPhase("start")} disabled={codeBusy} style={ghostButton}>
+            <button type="button" onClick={() => setPhase("start")} disabled={codeBusy} className="vm-ghost">
               {c.codeBack}
             </button>
           </div>
@@ -1180,38 +1179,37 @@ export default function McaRefinanceIntakePage() {
   } else {
     // ------ THE ROOM ------
     const chatColumn = (
-      <section style={chatCard} aria-label={c.chatTitle}>
-        <div style={chatHead}>{c.chatTitle}</div>
-        <div ref={messagesRef} style={{ ...chatScroll, maxHeight: compact ? 340 : "min(62vh, 640px)" }} aria-live="polite">
+      <section className="vm-card chat" aria-label={c.chatTitle}>
+        <div className="vm-chat-h">{c.chatTitle}</div>
+        <div ref={messagesRef} className="vm-chat-s" aria-live="polite">
           {chat.map((line) => (
-            <div key={line.id} style={line.role === "user" ? bubbleUser : bubbleAssistant}>
+            <div key={line.id} className={line.role === "user" ? "vm-bub me" : "vm-bub"}>
               {line.content}
             </div>
           ))}
-          {chatBusy ? <div style={{ ...bubbleAssistant, opacity: 0.6 }}>…</div> : null}
+          {chatBusy ? <div className="vm-bub pending">…</div> : null}
         </div>
         <form
-          style={chatForm}
+          className="vm-chat-f"
           onSubmit={(event) => {
             event.preventDefault();
             sendChat();
           }}
         >
           <input
-            className="mcaR-input"
+            className="vm-in grow"
             aria-label={c.chatPlaceholder}
             placeholder={c.chatPlaceholder}
             value={chatText}
             onChange={(event) => setChatText(event.target.value)}
             disabled={chatBusy}
-            style={{ ...inputStyle, flex: 1 }}
           />
-          <button type="submit" disabled={chatBusy || !chatText.trim()} style={goldButtonSmall}>
+          <button type="submit" disabled={chatBusy || !chatText.trim()} className="vm-gold sm">
             {c.chatSend}
           </button>
         </form>
         {chatError ? (
-          <div role="alert" style={errText}>
+          <div role="alert" className="vm-err">
             {chatError}
           </div>
         ) : null}
@@ -1224,56 +1222,57 @@ export default function McaRefinanceIntakePage() {
     const termsDone = termsDoc?.status === "uploaded" || termsSubmitted || termsAlready;
 
     const rail = (
-      <aside style={railStyle} aria-label={c.progressLabel(doneCount)}>
-        <div style={railHeadCard}>
-          <div style={progressRow}>
-            <span style={progressLabelStyle}>{c.progressLabel(doneCount)}</span>
+      <aside className="vm-rail" aria-label={c.progressLabel(doneCount)}>
+        <div className="vm-card railhead">
+          <div className="vm-prog-r">
+            <span className="vm-prog-l">{c.progressLabel(doneCount)}</span>
           </div>
-          <div style={progressTrack} role="progressbar" aria-valuemin={0} aria-valuemax={3} aria-valuenow={doneCount}>
-            <div style={{ ...progressFill, width: `${(doneCount / 3) * 100}%` }} />
+          <div className="vm-prog-t" role="progressbar" aria-valuemin={0} aria-valuemax={3} aria-valuenow={doneCount}>
+            {/* width IS the progress figure — data, not styling. */}
+            <div className="vm-prog-f" style={{ width: `${(doneCount / 3) * 100}%` }} />
           </div>
           {booked ? (
-            <div style={okText}>{c.booked}</div>
+            <div className="vm-ok">{c.booked}</div>
           ) : bookingSlots.length ? (
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={reviewTitle}>{c.bookTitle}</div>
-              <div style={slotGrid}>
+            <div className="grid g8">
+              <div className="vm-rev-t">{c.bookTitle}</div>
+              <div className="vm-slots">
                 {bookingSlots.map((slot) => (
                   <button
                     key={slot.starts_at}
                     type="button"
                     onClick={() => bookCall(slot.starts_at)}
                     disabled={bookBusyAt !== null}
-                    style={slotBtn}
+                    className="vm-slot"
                   >
                     {bookBusyAt === slot.starts_at ? c.bookBusy : slotLabel(slot, language ?? "en")}
                   </button>
                 ))}
               </div>
               {bookError ? (
-                <div role="alert" style={errText}>
+                <div role="alert" className="vm-err">
                   {bookError}
                 </div>
               ) : null}
             </div>
           ) : reviewDone ? (
-            <div style={{ display: "grid", gap: 4 }}>
-              <div style={reviewTitle}>{c.reviewDoneTitle}</div>
-              <div style={subText}>{c.reviewDoneSub}</div>
+            <div className="grid g4">
+              <div className="vm-rev-t">{c.reviewDoneTitle}</div>
+              <div className="vm-sub">{c.reviewDoneSub}</div>
             </div>
           ) : allDone ? (
-            <div style={{ display: "grid", gap: 8 }}>
-              <button type="button" onClick={runReview} disabled={reviewBusy} style={goldButton}>
+            <div className="grid g8">
+              <button type="button" onClick={runReview} disabled={reviewBusy} className="vm-gold">
                 {reviewBusy ? c.reviewRunning : c.runReview}
               </button>
               {reviewError ? (
-                <div role="alert" style={errText}>
+                <div role="alert" className="vm-err">
                   {reviewError}
                 </div>
               ) : null}
             </div>
           ) : (
-            <div style={subText}>{c.reviewLocked}</div>
+            <div className="vm-sub">{c.reviewLocked}</div>
           )}
         </div>
 
@@ -1295,12 +1294,12 @@ export default function McaRefinanceIntakePage() {
         {creditDoc ? (
           <RailCard title={c.creditTitle} sub={c.creditSub} done={creditDoc.status === "uploaded"} c={c}>
             {creditDoc.status === "uploaded" ? (
-              <div style={{ display: "grid", gap: 10 }}>
-                <div style={okText}>{c.signedBadge}</div>
+              <div className="grid g10">
+                <div className="vm-ok">{c.signedBadge}</div>
                 {pullState === "done" ? (
-                  <div style={okText}>{c.softCheckDone}</div>
+                  <div className="vm-ok">{c.softCheckDone}</div>
                 ) : pullState === "deferred" ? (
-                  <div style={calmText}>{c.softCheckDeferred}</div>
+                  <div className="vm-calm">{c.softCheckDeferred}</div>
                 ) : (
                   <>
                     {needSsn ? (
@@ -1318,12 +1317,12 @@ export default function McaRefinanceIntakePage() {
                       type="button"
                       onClick={runCreditPull}
                       disabled={pullBusy || (needSsn && onlyDigits(ssn).length < 9)}
-                      style={goldButtonSmall}
+                      className="vm-gold sm"
                     >
                       {pullBusy ? c.softCheckBusy : needSsn ? c.retrySsn : c.runSoftCheck}
                     </button>
                     {pullError ? (
-                      <div role="alert" style={errText}>
+                      <div role="alert" className="vm-err">
                         {pullError}
                       </div>
                     ) : null}
@@ -1331,8 +1330,8 @@ export default function McaRefinanceIntakePage() {
                 )}
               </div>
             ) : (
-              <div style={{ display: "grid", gap: 8 }}>
-                <button type="button" onClick={() => setSigningDoc(creditDoc)} style={goldButtonSmall}>
+              <div className="grid g8">
+                <button type="button" onClick={() => setSigningDoc(creditDoc)} className="vm-gold sm">
                   {c.readSign}
                 </button>
               </div>
@@ -1344,24 +1343,24 @@ export default function McaRefinanceIntakePage() {
         {termsDoc ? (
           <RailCard title={c.termsTitle} sub={c.termsSub} done={termsDone} c={c}>
             {termsDone ? (
-              <div style={{ display: "grid", gap: 8 }}>
-                <div style={okText}>{termsAlready ? c.termsAlready : c.termsReceived}</div>
+              <div className="grid g8">
+                <div className="vm-ok">{termsAlready ? c.termsAlready : c.termsReceived}</div>
                 {filesFor(termsDoc.id).map((file) => (
-                  <div key={file.id} style={fileRow}>
-                    <span style={fileNameStyle}>{file.file_name}</span>
-                    <span style={fileMeta}>{formatSize(file.size_bytes)}</span>
+                  <div key={file.id} className="vm-file">
+                    <span className="vm-file-n">{file.file_name}</span>
+                    <span className="vm-file-m">{formatSize(file.size_bytes)}</span>
                   </div>
                 ))}
               </div>
             ) : (
-              <div style={{ display: "grid", gap: 12 }}>
-                <div style={tabRow} role="tablist" aria-label={c.termsTitle}>
+              <div className="grid g12">
+                <div className="vm-tabs" role="tablist" aria-label={c.termsTitle}>
                   <button
                     type="button"
                     role="tab"
                     aria-selected={termsPath === "upload"}
                     onClick={() => setTermsPath("upload")}
-                    style={termsPath === "upload" ? tabBtnActive : tabBtn}
+                    className={termsPath === "upload" ? "vm-tab on" : "vm-tab"}
                   >
                     {c.pathUpload}
                   </button>
@@ -1370,7 +1369,7 @@ export default function McaRefinanceIntakePage() {
                     role="tab"
                     aria-selected={termsPath === "type"}
                     onClick={() => setTermsPath("type")}
-                    style={termsPath === "type" ? tabBtnActive : tabBtn}
+                    className={termsPath === "type" ? "vm-tab on" : "vm-tab"}
                   >
                     {c.pathType}
                   </button>
@@ -1385,14 +1384,14 @@ export default function McaRefinanceIntakePage() {
                     onFiles={(picked) => uploadFiles(termsDoc.id, picked)}
                   />
                 ) : (
-                  <div style={{ display: "grid", gap: 12 }}>
+                  <div className="grid g12">
                     <Field label={c.fieldBizLegal} value={termsBizName} onChange={setTermsBizName} autoComplete="organization" />
                     {advances.map((row, index) => (
-                      <fieldset key={row.id} style={advanceBox}>
-                        <legend style={advanceLegend}>{c.advanceN(index + 1)}</legend>
-                        <div style={{ display: "grid", gap: 10 }}>
+                      <fieldset key={row.id} className="vm-adv">
+                        <legend className="vm-adv-l">{c.advanceN(index + 1)}</legend>
+                        <div className="grid g10">
                           <Field label={c.funder} value={row.funder} onChange={(value) => patchAdvance(row.id, { funder: value })} />
-                          <div style={fieldGridTwo}>
+                          <div className="vm-fg2">
                             <Field
                               label={c.remainingPayback}
                               value={row.remaining_payback}
@@ -1406,14 +1405,13 @@ export default function McaRefinanceIntakePage() {
                               inputMode="decimal"
                             />
                           </div>
-                          <div style={fieldGridTwo}>
-                            <label style={fieldLabel}>
-                              <span style={fieldLabelText}>{c.frequency}</span>
+                          <div className="vm-fg2">
+                            <label className="vm-fld">
+                              <span className="vm-fld-l">{c.frequency}</span>
                               <select
-                                className="mcaR-input"
+                                className="vm-in"
                                 value={row.payment_frequency}
                                 onChange={(event) => patchAdvance(row.id, { payment_frequency: event.target.value as Freq })}
-                                style={inputStyle}
                               >
                                 <option value="daily">{c.freqDaily}</option>
                                 <option value="weekly">{c.freqWeekly}</option>
@@ -1431,7 +1429,7 @@ export default function McaRefinanceIntakePage() {
                           {advances.length > 1 ? (
                             <button
                               type="button"
-                              style={removeBtn}
+                              className="vm-rm"
                               onClick={() => setAdvances((current) => current.filter((item) => item.id !== row.id))}
                             >
                               {c.removeAdvance}
@@ -1441,25 +1439,24 @@ export default function McaRefinanceIntakePage() {
                       </fieldset>
                     ))}
                     {advances.length < 5 ? (
-                      <button type="button" style={ghostButton} onClick={() => setAdvances((current) => [...current, blankAdvance()])}>
+                      <button type="button" className="vm-ghost" onClick={() => setAdvances((current) => [...current, blankAdvance()])}>
                         {c.addAdvance}
                       </button>
                     ) : null}
-                    <label style={checkboxRow}>
+                    <label className="vm-check">
                       <input
                         type="checkbox"
                         checked={termsAck}
                         onChange={(event) => setTermsAck(event.target.checked)}
-                        style={{ marginTop: 3 }}
                       />
                       <span>{c.ack}</span>
                     </label>
                     {termsError ? (
-                      <div role="alert" style={errText}>
+                      <div role="alert" className="vm-err">
                         {termsError}
                       </div>
                     ) : null}
-                    <button type="button" onClick={submitTypedTerms} disabled={termsBusy} style={goldButtonSmall}>
+                    <button type="button" onClick={submitTypedTerms} disabled={termsBusy} className="vm-gold sm">
                       {termsBusy ? c.submitTermsBusy : c.submitTerms}
                     </button>
                   </div>
@@ -1472,14 +1469,7 @@ export default function McaRefinanceIntakePage() {
     );
 
     content = (
-      <main
-        style={{
-          display: "grid",
-          gap: 18,
-          gridTemplateColumns: compact ? "1fr" : "minmax(0, 3fr) minmax(0, 2fr)",
-          alignItems: "start",
-        }}
-      >
+      <main className="vm-room">
         {compact ? (
           <>
             {rail}
@@ -1496,15 +1486,15 @@ export default function McaRefinanceIntakePage() {
   }
 
   return (
-    <div className="mcaR-page" style={pageStyle}>
-      <div style={shellStyle}>
+    <div className="v-mca">
+      <div className="vm-shell">
         {brandHeader}
         {content}
       </div>
 
       {signingDoc ? (
-        <div style={overlayBackdrop} role="dialog" aria-modal="true" aria-label={signingDoc.name}>
-          <div style={overlayCard}>
+        <div className="vm-scrim" role="dialog" aria-modal="true" aria-label={signingDoc.name}>
+          <div className="vm-modal">
             <SignRequestedDocument
               doc={signingDoc}
               busy={signBusy}
@@ -1519,12 +1509,6 @@ export default function McaRefinanceIntakePage() {
           </div>
         </div>
       ) : null}
-
-      <style>{`
-        .mcaR-page .mcaR-input::placeholder { color: #5B6B82; }
-        .mcaR-page .mcaR-input:focus { outline: 2px solid rgba(217,182,74,.55); outline-offset: 1px; }
-        .mcaR-page button:disabled { opacity: .55; cursor: default; }
-      `}</style>
     </div>
   );
 }
@@ -1553,10 +1537,10 @@ function Field({
   disabled?: boolean;
 }) {
   return (
-    <label style={fieldLabel}>
-      <span style={fieldLabelText}>{label}</span>
+    <label className="vm-fld">
+      <span className="vm-fld-l">{label}</span>
       <input
-        className="mcaR-input"
+        className="vm-in"
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -1564,14 +1548,13 @@ function Field({
         inputMode={inputMode}
         autoComplete={autoComplete}
         disabled={disabled}
-        style={inputStyle}
       />
     </label>
   );
 }
 
 function StatusChip({ done, c }: { done: boolean; c: Copy }) {
-  return <span style={done ? chipDone : chipOpen}>{done ? c.chipDone : c.chipOpen}</span>;
+  return <span className={done ? "vm-chip done" : "vm-chip"}>{done ? c.chipDone : c.chipOpen}</span>;
 }
 
 function RailCard({
@@ -1588,11 +1571,11 @@ function RailCard({
   children: ReactNode;
 }) {
   return (
-    <section style={cardStyle} aria-label={title}>
-      <div style={cardHead}>
+    <section className="vm-card" aria-label={title}>
+      <div className="vm-card-h">
         <div>
-          <div style={cardTitleStyle}>{title}</div>
-          <div style={cardSubStyle}>{sub}</div>
+          <div className="vm-card-t">{title}</div>
+          <div className="vm-card-s">{sub}</div>
         </div>
         <StatusChip done={done} c={c} />
       </div>
@@ -1620,7 +1603,7 @@ function UploadArea({
   const [dragging, setDragging] = useState(false);
   const pendingRows = queue.filter((row) => row.status === "uploading" || row.status === "error");
   return (
-    <div style={{ display: "grid", gap: 8 }}>
+    <div className="grid g8">
       <div
         onDragOver={(event) => {
           event.preventDefault();
@@ -1632,10 +1615,10 @@ function UploadArea({
           setDragging(false);
           if (!disabled) onFiles(Array.from(event.dataTransfer.files));
         }}
-        style={{ ...dropzone, ...(dragging ? dropzoneActive : {}) }}
+        className={dragging ? "vm-drop on" : "vm-drop"}
       >
         <span>{c.dropHint}</span>{" "}
-        <button type="button" onClick={() => inputRef.current?.click()} disabled={disabled} style={linkButtonInline}>
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={disabled} className="vm-linkbtn inline">
           {c.browse}
         </button>
         <input
@@ -1643,7 +1626,7 @@ function UploadArea({
           type="file"
           multiple
           accept=".pdf,.png,.jpg,.jpeg,.heic,.csv,.xls,.xlsx,.zip"
-          style={{ display: "none" }}
+          className="hidden"
           onChange={(event) => {
             const list = event.target.files;
             if (list && list.length) onFiles(Array.from(list));
@@ -1651,22 +1634,22 @@ function UploadArea({
           }}
         />
       </div>
-      {busy ? <div style={subText}>{c.uploadBusy}</div> : null}
+      {busy ? <div className="vm-sub">{c.uploadBusy}</div> : null}
       {pendingRows.map((row) => (
-        <div key={row.id} style={fileRow}>
-          <span style={fileNameStyle}>{row.file.name}</span>
-          <span style={row.status === "error" ? errText : fileMeta}>
+        <div key={row.id} className="vm-file">
+          <span className="vm-file-n">{row.file.name}</span>
+          <span className={row.status === "error" ? "vm-err" : "vm-file-m"}>
             {row.status === "error" ? row.message ?? c.errGeneric : c.uploadBusy}
           </span>
         </div>
       ))}
       {files.length ? (
-        <div style={{ display: "grid", gap: 6 }}>
-          <div style={okText}>{c.filesOnFile(files.length)}</div>
+        <div className="grid g6">
+          <div className="vm-ok">{c.filesOnFile(files.length)}</div>
           {files.map((file) => (
-            <div key={file.id} style={fileRow}>
-              <span style={fileNameStyle}>{file.file_name}</span>
-              <span style={fileMeta}>{formatSize(file.size_bytes)}</span>
+            <div key={file.id} className="vm-file">
+              <span className="vm-file-n">{file.file_name}</span>
+              <span className="vm-file-m">{formatSize(file.size_bytes)}</span>
             </div>
           ))}
         </div>
@@ -1674,522 +1657,3 @@ function UploadArea({
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Styles — dark, focused cockpit; one gold accent; number-free public funnel
-// ---------------------------------------------------------------------------
-
-const ACCENT = "#D9B64A";
-
-const pageStyle: CSSProperties = {
-  minHeight: "100vh",
-  background:
-    "radial-gradient(circle at 16% 0%, rgba(217,182,74,.10), transparent 30%), radial-gradient(circle at 92% 4%, rgba(33,211,199,.07), transparent 26%), #0B0F17",
-  color: "#E5EAF3",
-  padding: "20px 18px 40px",
-  fontSize: 14,
-};
-
-const shellStyle: CSSProperties = {
-  maxWidth: 1120,
-  margin: "0 auto",
-  display: "grid",
-  gap: 22,
-};
-
-const brandRow: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-};
-
-const brandName: CSSProperties = {
-  fontWeight: 800,
-  fontSize: 15,
-  color: "#F8FAFC",
-  letterSpacing: 0.2,
-};
-
-const brandTag: CSSProperties = {
-  fontSize: 11.5,
-  color: ACCENT,
-  fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: 1,
-};
-
-const loadingWrap: CSSProperties = {
-  minHeight: "40vh",
-  display: "grid",
-  placeItems: "center",
-  color: "#94A3B8",
-};
-
-const heroTitleStyle: CSSProperties = {
-  margin: 0,
-  fontFamily: "Georgia, 'Times New Roman', serif",
-  fontSize: "clamp(26px, 4vw, 38px)",
-  fontWeight: 600,
-  color: "#F8FAFC",
-  lineHeight: 1.15,
-};
-
-const heroLeadStyle: CSSProperties = {
-  margin: "0 auto",
-  maxWidth: 560,
-  color: "#94A3B8",
-  fontSize: 14.5,
-  lineHeight: 1.6,
-};
-
-const pillRow: CSSProperties = {
-  display: "flex",
-  gap: 8,
-  justifyContent: "center",
-  flexWrap: "wrap",
-  marginTop: 4,
-};
-
-const pill: CSSProperties = {
-  border: "1px solid rgba(217,182,74,.35)",
-  borderRadius: 999,
-  padding: "5px 12px",
-  fontSize: 11.5,
-  fontWeight: 700,
-  color: "#E8CE7A",
-  background: "rgba(217,182,74,.08)",
-};
-
-const cardStyle: CSSProperties = {
-  background: "rgba(17,24,39,.72)",
-  border: "1px solid rgba(148,163,184,.16)",
-  borderRadius: 16,
-  padding: 18,
-  display: "grid",
-  gap: 14,
-  boxShadow: "0 18px 60px rgba(0,0,0,.3)",
-};
-
-const sectionTitle: CSSProperties = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 700,
-  color: "#F8FAFC",
-};
-
-const subText: CSSProperties = {
-  margin: 0,
-  fontSize: 12.5,
-  color: "#94A3B8",
-  lineHeight: 1.55,
-};
-
-const noteText: CSSProperties = {
-  fontSize: 12.5,
-  color: "#E8CE7A",
-  background: "rgba(217,182,74,.08)",
-  border: "1px solid rgba(217,182,74,.25)",
-  borderRadius: 10,
-  padding: "8px 10px",
-};
-
-const calmText: CSSProperties = {
-  fontSize: 12.5,
-  color: "#A5B4CB",
-  background: "rgba(148,163,184,.08)",
-  border: "1px solid rgba(148,163,184,.2)",
-  borderRadius: 10,
-  padding: "8px 10px",
-  lineHeight: 1.5,
-};
-
-const fieldGridTwo: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 12,
-};
-
-const fieldGridOne: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr",
-  gap: 12,
-};
-
-const fieldLabel: CSSProperties = {
-  display: "grid",
-  gap: 5,
-};
-
-const fieldLabelText: CSSProperties = {
-  fontSize: 10.5,
-  fontWeight: 700,
-  color: "#8A99B0",
-  textTransform: "uppercase",
-  letterSpacing: 0.6,
-};
-
-const inputStyle: CSSProperties = {
-  width: "100%",
-  boxSizing: "border-box",
-  background: "rgba(11,15,23,.65)",
-  border: "1px solid rgba(148,163,184,.28)",
-  borderRadius: 10,
-  color: "#E5EAF3",
-  padding: "10px 11px",
-  fontSize: 14,
-};
-
-const checkboxRow: CSSProperties = {
-  display: "flex",
-  gap: 9,
-  alignItems: "flex-start",
-  fontSize: 12.5,
-  color: "#B6C4D7",
-  lineHeight: 1.5,
-  cursor: "pointer",
-};
-
-const linkStyle: CSSProperties = {
-  color: ACCENT,
-  textDecoration: "underline",
-};
-
-const goldButton: CSSProperties = {
-  border: 0,
-  borderRadius: 999,
-  minHeight: 48,
-  padding: "0 20px",
-  background: "linear-gradient(135deg, #F2E58F, #D8B533)",
-  color: "#081122",
-  fontWeight: 900,
-  fontSize: 14.5,
-  cursor: "pointer",
-};
-
-const goldButtonSmall: CSSProperties = {
-  ...goldButton,
-  minHeight: 38,
-  fontSize: 13,
-  padding: "0 16px",
-};
-
-const ghostButton: CSSProperties = {
-  border: "1px solid rgba(148,163,184,.3)",
-  borderRadius: 999,
-  minHeight: 36,
-  padding: "0 14px",
-  background: "none",
-  color: "#B6C4D7",
-  fontWeight: 600,
-  fontSize: 12.5,
-  cursor: "pointer",
-};
-
-const linkButton: CSSProperties = {
-  border: 0,
-  background: "none",
-  color: "#8A99B0",
-  fontSize: 12.5,
-  textDecoration: "underline",
-  cursor: "pointer",
-  justifySelf: "center",
-};
-
-const linkButtonInline: CSSProperties = {
-  border: 0,
-  background: "none",
-  color: ACCENT,
-  fontSize: 13,
-  textDecoration: "underline",
-  cursor: "pointer",
-  padding: 0,
-};
-
-const errText: CSSProperties = {
-  color: "#FCA5A5",
-  fontSize: 12.5,
-  lineHeight: 1.45,
-};
-
-const okText: CSSProperties = {
-  color: "#6EE7B7",
-  fontSize: 12.5,
-  fontWeight: 700,
-};
-
-// Chat
-const chatCard: CSSProperties = {
-  ...cardStyle,
-  gap: 12,
-  minHeight: 320,
-};
-
-const chatHead: CSSProperties = {
-  fontSize: 12,
-  fontWeight: 800,
-  color: "#8A99B0",
-  textTransform: "uppercase",
-  letterSpacing: 1,
-};
-
-const chatScroll: CSSProperties = {
-  overflowY: "auto",
-  display: "grid",
-  gap: 10,
-  alignContent: "start",
-  paddingRight: 4,
-  minHeight: 200,
-};
-
-const bubbleBase: CSSProperties = {
-  borderRadius: 14,
-  padding: "10px 13px",
-  fontSize: 13.5,
-  lineHeight: 1.55,
-  whiteSpace: "pre-wrap",
-  maxWidth: "88%",
-  wordBreak: "break-word",
-};
-
-const bubbleAssistant: CSSProperties = {
-  ...bubbleBase,
-  background: "rgba(30,41,59,.7)",
-  border: "1px solid rgba(148,163,184,.14)",
-  color: "#E5EAF3",
-  justifySelf: "start",
-};
-
-const bubbleUser: CSSProperties = {
-  ...bubbleBase,
-  background: "rgba(217,182,74,.14)",
-  border: "1px solid rgba(217,182,74,.3)",
-  color: "#F4E9C8",
-  justifySelf: "end",
-};
-
-const chatForm: CSSProperties = {
-  display: "flex",
-  gap: 8,
-  alignItems: "center",
-};
-
-// Rail
-const railStyle: CSSProperties = {
-  display: "grid",
-  gap: 14,
-  alignContent: "start",
-};
-
-const railHeadCard: CSSProperties = {
-  ...cardStyle,
-  gap: 10,
-};
-
-const progressRow: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "baseline",
-};
-
-const progressLabelStyle: CSSProperties = {
-  fontSize: 13,
-  fontWeight: 800,
-  color: "#F8FAFC",
-};
-
-const progressTrack: CSSProperties = {
-  height: 6,
-  borderRadius: 999,
-  background: "rgba(148,163,184,.15)",
-  overflow: "hidden",
-};
-
-const progressFill: CSSProperties = {
-  height: "100%",
-  borderRadius: 999,
-  background: `linear-gradient(90deg, ${ACCENT}, #F2E58F)`,
-  transition: "width .3s ease",
-};
-
-const reviewTitle: CSSProperties = {
-  fontSize: 14,
-  fontWeight: 800,
-  color: "#F8FAFC",
-};
-
-const cardHead: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 10,
-};
-
-const cardTitleStyle: CSSProperties = {
-  fontSize: 14.5,
-  fontWeight: 800,
-  color: "#F8FAFC",
-};
-
-const cardSubStyle: CSSProperties = {
-  fontSize: 12,
-  color: "#8A99B0",
-  marginTop: 2,
-  lineHeight: 1.45,
-};
-
-const chipBase: CSSProperties = {
-  borderRadius: 999,
-  padding: "3px 10px",
-  fontSize: 10.5,
-  fontWeight: 800,
-  textTransform: "uppercase",
-  letterSpacing: 0.6,
-  whiteSpace: "nowrap",
-  flexShrink: 0,
-};
-
-const chipOpen: CSSProperties = {
-  ...chipBase,
-  color: "#E8CE7A",
-  border: "1px solid rgba(217,182,74,.45)",
-  background: "rgba(217,182,74,.08)",
-};
-
-const chipDone: CSSProperties = {
-  ...chipBase,
-  color: "#6EE7B7",
-  border: "1px solid rgba(52,211,153,.45)",
-  background: "rgba(16,185,129,.1)",
-};
-
-const dropzone: CSSProperties = {
-  border: "1.5px dashed rgba(148,163,184,.35)",
-  borderRadius: 12,
-  padding: "18px 14px",
-  textAlign: "center",
-  fontSize: 13,
-  color: "#94A3B8",
-};
-
-const dropzoneActive: CSSProperties = {
-  borderColor: ACCENT,
-  background: "rgba(217,182,74,.06)",
-  color: "#E8CE7A",
-};
-
-const fileRow: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "baseline",
-  gap: 10,
-  fontSize: 12.5,
-  padding: "6px 10px",
-  borderRadius: 8,
-  background: "rgba(11,15,23,.5)",
-  border: "1px solid rgba(148,163,184,.12)",
-};
-
-const fileNameStyle: CSSProperties = {
-  color: "#DDE5F0",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-const fileMeta: CSSProperties = {
-  color: "#8A99B0",
-  fontSize: 11.5,
-  flexShrink: 0,
-};
-
-const tabRow: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: 6,
-};
-
-const tabBtn: CSSProperties = {
-  border: "1px solid rgba(148,163,184,.25)",
-  borderRadius: 10,
-  minHeight: 34,
-  background: "none",
-  color: "#94A3B8",
-  fontWeight: 700,
-  fontSize: 12.5,
-  cursor: "pointer",
-};
-
-const tabBtnActive: CSSProperties = {
-  ...tabBtn,
-  border: `1px solid ${ACCENT}`,
-  background: "rgba(217,182,74,.1)",
-  color: "#E8CE7A",
-};
-
-const advanceBox: CSSProperties = {
-  border: "1px solid rgba(148,163,184,.18)",
-  borderRadius: 12,
-  padding: "10px 12px 12px",
-  margin: 0,
-};
-
-const advanceLegend: CSSProperties = {
-  fontSize: 11,
-  fontWeight: 800,
-  color: "#E8CE7A",
-  textTransform: "uppercase",
-  letterSpacing: 0.6,
-  padding: "0 6px",
-};
-
-const removeBtn: CSSProperties = {
-  border: "1px solid rgba(252,165,165,.3)",
-  borderRadius: 8,
-  background: "none",
-  color: "#FCA5A5",
-  fontSize: 11.5,
-  fontWeight: 700,
-  padding: "5px 10px",
-  cursor: "pointer",
-  justifySelf: "start",
-};
-
-const slotGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
-  gap: 8,
-};
-
-const slotBtn: CSSProperties = {
-  border: `1px solid rgba(217,182,74,.4)`,
-  borderRadius: 10,
-  minHeight: 40,
-  background: "rgba(217,182,74,.08)",
-  color: "#F4E9C8",
-  fontWeight: 700,
-  fontSize: 12.5,
-  cursor: "pointer",
-  padding: "6px 8px",
-};
-
-const overlayBackdrop: CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(3,6,12,.72)",
-  display: "grid",
-  placeItems: "center",
-  padding: 16,
-  zIndex: 60,
-};
-
-const overlayCard: CSSProperties = {
-  background: "#FFFFFF",
-  color: "#111827",
-  borderRadius: 16,
-  padding: 20,
-  width: "100%",
-  maxWidth: 560,
-  maxHeight: "90vh",
-  overflowY: "auto",
-  boxShadow: "0 30px 100px rgba(0,0,0,.5)",
-};
