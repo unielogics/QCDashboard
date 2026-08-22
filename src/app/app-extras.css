@@ -1591,3 +1591,44 @@ a.pick { color: inherit; text-decoration: none; }
    margin just nudges it off its neighbours' baseline. Two sites use `Sub`
    inline inside a `.row` on purpose. */
 .row > .subline, .pagebar > .subline, .composer-row > .subline { margin-top: 0; }
+
+/* ---------- the language gate ----------
+   The first screen of /funding-review and /dealer-ai-underwriter: a stranger
+   arrives from a marketing link and this is the entire page until they choose.
+   Scoped away from the console vocabulary for the same reason `.v-mca` is —
+   these rooms are dark-ground and gold-accented, and `.card`/`.btn` both paint
+   `var(--surface)`, a white institutional surface.
+
+   Values carried over verbatim from the CSSProperties objects they replace:
+   this moves where the declarations live, not what a live public page looks
+   like. */
+.v-gate {
+  border: 1px solid rgba(212, 175, 55, 0.38);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(10, 28, 55, 0.96), rgba(8, 20, 42, 0.95) 52%, rgba(8, 18, 36, 0.98)),
+    radial-gradient(circle at 50% 20%, rgba(33, 211, 199, 0.13), transparent 30%);
+  min-height: 320px;
+  padding: clamp(28px, 5vw, 52px);
+  display: grid;
+  gap: 20px;
+  justify-items: center;
+  text-align: center;
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.36);
+}
+.v-gate-t {
+  margin: 0; color: #f8fafc;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(24px, 3.4vw, 32px); font-weight: 600; line-height: 1.2;
+}
+.v-gate-s { margin: 0; max-width: 520px; color: #b6c4d7; font-size: 14px; line-height: 1.65; }
+.v-gate-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; width: 100%; max-width: 480px; }
+.v-gate-b {
+  border: 0; border-radius: 999px; min-height: 52px;
+  background: linear-gradient(135deg, #f2e58f, #d8b533);
+  color: #081122; font-family: inherit; font-weight: 900; font-size: 15px; cursor: pointer;
+}
+/* The gate had no focus style at all — the only two controls on a public page,
+   and a keyboard user could not see which one they were on. */
+.v-gate-b:focus-visible { outline: 3px solid #f8fafc; outline-offset: 3px; }
+.v-gate-b:hover { filter: brightness(1.06); }
