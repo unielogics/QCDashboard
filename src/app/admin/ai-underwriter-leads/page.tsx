@@ -55,7 +55,8 @@ import { LeadProgramFitPanel } from "@/components/admin/LeadProgramFitPanel";
 import { LeadDscrPanel } from "@/components/admin/LeadDscrPanel";
 import { WhatsNewButton, WhatsNewRail } from "@/components/admin/WhatsNewRail";
 import { BankerSubmissionModal } from "@/components/admin/BankerSubmissionModal";
-import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
+import { useAIReview } from "@/components/admin/AIReviewProvider";
+import { IntakeEvidenceBrowser } from "@/components/admin/IntakeEvidenceBrowser";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import type { IntakeResponse } from "@/lib/intake";
@@ -212,6 +213,17 @@ type DriveIngestResult = {
   items: { drive_file_id: string; file_name?: string | null; status: string; reason?: string | null }[];
 };
 
+type LeadContactUpdate = {
+  full_name: string;
+  email: string;
+  phone?: string | null;
+  business_name?: string | null;
+  loan_purpose?: string | null;
+  requested_loan_amount?: number | null;
+  estimated_credit_score?: number | null;
+  referral_source?: string | null;
+};
+
 const PROBABILITY_FILTERS = [
   { value: "all", label: "All probability" },
   { value: "Good probability - book call", label: "Good probability" },
@@ -241,6 +253,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { getToken } = useAuth();
+  const { requestReview, isReviewing } = useAIReview();
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const { data: unifiedFiles } = useUnifiedOperatorFiles({ limit: 500 });
   const leadParam = searchParams.get("lead");
@@ -256,7 +269,6 @@ export default function AdminAIUnderwriterLeadsPage() {
   const [detail, setDetail] = useState<LeadDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [rerunOpen, setRerunOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
@@ -389,6 +401,19 @@ export default function AdminAIUnderwriterLeadsPage() {
     if (selectedId) await openLead(selectedId);
   }
 
+  useEffect(() => {
+    const onReviewCompleted = (event: Event) => {
+      const intakeId = (event as CustomEvent<{ intakeId?: string }>).detail?.intakeId;
+      if (!intakeId || intakeId !== selectedId) return;
+      void refreshSelectedLead();
+      void loadLeads();
+      setNotice("AI review complete - showing the latest breakdown.");
+    };
+    window.addEventListener("qc-ai-review-completed", onReviewCompleted);
+    return () => window.removeEventListener("qc-ai-review-completed", onReviewCompleted);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
   async function postLeadNote(id: string, content: string) {
     await call(`/admin/ai-underwriter-leads/${id}/notes`, {
       method: "POST",
@@ -413,6 +438,16 @@ export default function AdminAIUnderwriterLeadsPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ preferred_language: language }),
+    });
+    await refreshSelectedLead();
+    await loadLeads();
+  }
+
+  async function updateLeadContact(id: string, payload: LeadContactUpdate) {
+    await call(`/admin/ai-underwriter-leads/${id}/contact`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
     await refreshSelectedLead();
     await loadLeads();
@@ -445,28 +480,12 @@ export default function AdminAIUnderwriterLeadsPage() {
     loadLeads().catch(() => undefined);
   }
 
-  // Re-run is driven by the in-app RunReviewDialog (themed confirm + live
-  // progress), not a browser confirm. The button just opens the dialog.
   function openRerun() {
-    if (selectedId) setRerunOpen(true);
-  }
-
-  async function startRerun(): Promise<{ review_id: string }> {
-    if (!selectedId) throw new Error("No lead selected.");
-    return call<{ review_id: string }>(`/admin/ai-underwriter-leads/${selectedId}/run-review`, { method: "POST" });
-  }
-
-  async function pollRerun(reviewId: string) {
-    if (!selectedId) throw new Error("No lead selected.");
-    return call<ReviewProgress>(`/admin/ai-underwriter-leads/${selectedId}/review-progress?review_id=${reviewId}`);
-  }
-
-  async function onRerunDone(completed: boolean) {
-    if (completed) {
-      await refreshSelectedLead();
-      await loadLeads();
-      setNotice("AI review re-run complete — showing the latest breakdown.");
-    }
+    if (!selectedId) return;
+    requestReview({
+      intakeId: selectedId,
+      leadName: detail?.intake.business_name || detail?.intake.full_name || "AI intake",
+    });
   }
 
   // Map the admin LeadDetail into the IntakeResponse shape the cockpit expects,
@@ -649,7 +668,7 @@ export default function AdminAIUnderwriterLeadsPage() {
       onSendEmail={(payload) => sendVendorEmail(activeLeadId, payload)}
       onIngestFromDrive={(ids) => ingestFromDrive(activeLeadId, ids)}
       onRerun={openRerun}
-      rerunning={rerunOpen}
+      rerunning={Boolean(activeLeadId && isReviewing(activeLeadId))}
       cockpitResponse={cockpitResponse}
       cockpitAdapter={cockpitAdapter}
       onCockpitResponse={(r) => {
@@ -682,6 +701,7 @@ export default function AdminAIUnderwriterLeadsPage() {
       onPostNote={(content) => postLeadNote(activeLeadId, content)}
       onUpdateOutcomeStatus={(status) => updateOutcomeStatus(activeLeadId, status)}
       onUpdateLanguage={(language) => updateLeadLanguage(activeLeadId, language)}
+      onUpdateContact={(payload) => updateLeadContact(activeLeadId, payload)}
       onCancelDeletionRequest={() => cancelLeadDeletionRequest(activeLeadId)}
       onConfirmDeletion={(confirmName) => confirmLeadDeletion(activeLeadId, confirmName)}
     />
@@ -697,13 +717,6 @@ export default function AdminAIUnderwriterLeadsPage() {
         title="Link AI intake to bucket"
       />
 
-      <RunReviewDialog
-        open={rerunOpen}
-        onClose={() => setRerunOpen(false)}
-        onStart={startRerun}
-        poll={pollRerun}
-        onDone={onRerunDone}
-      />
     </>
   );
 
@@ -845,6 +858,7 @@ function LeadDetailPanel({
   onPostNote,
   onUpdateOutcomeStatus,
   onUpdateLanguage,
+  onUpdateContact,
   onCancelDeletionRequest,
   onConfirmDeletion,
 }: {
@@ -869,6 +883,7 @@ function LeadDetailPanel({
   onPostNote: (content: string) => Promise<void>;
   onUpdateOutcomeStatus: (status: string) => Promise<void>;
   onUpdateLanguage: (language: string) => Promise<void>;
+  onUpdateContact: (payload: LeadContactUpdate) => Promise<void>;
   onCancelDeletionRequest: () => Promise<void>;
   onConfirmDeletion: (confirmName: string) => Promise<void>;
 }) {
@@ -906,6 +921,18 @@ function LeadDetailPanel({
   const [prototypeView, setPrototypeView] = useState<"workflow" | "sources" | "evidence" | "rep" | "audit">("workflow");
   const [submissionStep, setSubmissionStep] = useState(2);
   const [sendReviewOpen, setSendReviewOpen] = useState(false);
+  const [contactEditOpen, setContactEditOpen] = useState(false);
+  const [contactSaving, setContactSaving] = useState(false);
+  const [contactDraft, setContactDraft] = useState({
+    full_name: "",
+    business_name: "",
+    email: "",
+    phone: "",
+    requested_loan_amount: "",
+    loan_purpose: "",
+    estimated_credit_score: "",
+    referral_source: "",
+  });
   const result = detail?.latest_review?.result || detail?.intake.result_snapshot || null;
   const evidence = asRecord(result?.document_evidence_map);
   const missing = arrayOfRecords(result?.missing_or_incomplete_items);
@@ -926,7 +953,43 @@ function LeadDetailPanel({
     else if (detail.files.length) setSubmissionStep(2);
     else setSubmissionStep(1);
     setPrototypeView("workflow");
-  }, [detail?.intake.id]);
+    setContactDraft({
+      full_name: detail.intake.full_name || "",
+      business_name: detail.intake.business_name || "",
+      email: detail.intake.email || "",
+      phone: detail.intake.phone || "",
+      requested_loan_amount: detail.intake.requested_loan_amount == null ? "" : String(detail.intake.requested_loan_amount),
+      loan_purpose: detail.intake.loan_purpose || "",
+      estimated_credit_score: detail.intake.estimated_credit_score == null ? "" : String(detail.intake.estimated_credit_score),
+      referral_source: detail.intake.referral_source || "",
+    });
+  }, [detail]);
+
+  async function saveContact() {
+    if (!contactDraft.full_name.trim() || !contactDraft.email.trim()) {
+      toast.show("Principal name and email are required.");
+      return;
+    }
+    setContactSaving(true);
+    try {
+      await onUpdateContact({
+        full_name: contactDraft.full_name.trim(),
+        business_name: contactDraft.business_name.trim() || null,
+        email: contactDraft.email.trim(),
+        phone: contactDraft.phone.trim() || null,
+        requested_loan_amount: contactDraft.requested_loan_amount ? Number(contactDraft.requested_loan_amount) : null,
+        loan_purpose: contactDraft.loan_purpose.trim() || null,
+        estimated_credit_score: contactDraft.estimated_credit_score ? Number(contactDraft.estimated_credit_score) : null,
+        referral_source: contactDraft.referral_source.trim() || null,
+      });
+      setContactEditOpen(false);
+      toast.show("Contact details updated.");
+    } catch (error) {
+      toast.show(apiErrorMessage(error, "Could not update contact details."));
+    } finally {
+      setContactSaving(false);
+    }
+  }
 
   async function previewEmail() {
     setBusy("preview");
@@ -1099,12 +1162,19 @@ function LeadDetailPanel({
     }
   }
 
-  const workflowSteps = [
-    { id: 1, label: "Evidence in", sub: "Buckets, uploads, Drive" },
-    { id: 2, label: "AI review", sub: "Probability and coverage" },
-    { id: 3, label: "Executive summary", sub: "Underwriter narrative" },
-    { id: 4, label: "Lender packet", sub: "Redacted PDF build" },
-    { id: 5, label: "Ship the package", sub: "Send, then track replies" },
+  const requiredDocs = detail?.requested_documents.filter((document) => document.required) ?? [];
+  const requiredUploaded = requiredDocs.filter((document) => document.status === "uploaded").length;
+  const hasEvidence = Boolean(detail?.files.length);
+  const evidenceComplete = hasEvidence && (requiredDocs.length === 0 || requiredUploaded === requiredDocs.length);
+  const reviewComplete = detail?.latest_review?.status === "completed" || detail?.intake.status === "reviewed";
+  const reviewActive = detail ? rerunning || ["queued", "running"].includes(detail.latest_review?.status || "") : false;
+  const sentCount = detail?.email_sends?.filter((send) => !send.ses_error).length ?? 0;
+  const workflowSteps: Array<{ id: number; label: string; sub: string; status: "not-started" | "partial" | "complete" }> = [
+    { id: 1, label: "Evidence in", sub: "Buckets, uploads, Drive", status: evidenceComplete ? "complete" : hasEvidence ? "partial" : "not-started" },
+    { id: 2, label: "AI review", sub: "Probability and coverage", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
+    { id: 3, label: "Executive summary", sub: "Underwriter narrative", status: summary ? "complete" : reviewComplete ? "partial" : "not-started" },
+    { id: 4, label: "Lender packet", sub: "Redacted PDF build", status: packet ? "complete" : summary ? "partial" : "not-started" },
+    { id: 5, label: "Ship the package", sub: "Send, then track replies", status: sentCount > 0 ? "complete" : packet ? "partial" : "not-started" },
   ];
 
   const prototypeDetailEnabled = Boolean(workflowSteps.length);
@@ -1158,10 +1228,10 @@ function LeadDetailPanel({
                   <Panel title="Submission sequence" sub={`Step ${submissionStep} of 5`}>
                     <div className="submission-steps submission-steps-rail">
                       {workflowSteps.map((step) => (
-                        <button key={step.id} type="button" className={cx("submission-step", submissionStep === step.id && "on", submissionStep > step.id && "done")} onClick={() => setSubmissionStep(step.id)}>
-                          <span>{submissionStep > step.id ? <Icon name="check" size={12} /> : step.id}</span>
+                        <button key={step.id} type="button" className={cx("submission-step", `status-${step.status}`, submissionStep === step.id && "on")} onClick={() => setSubmissionStep(step.id)}>
+                          <span>{step.status === "complete" ? <Icon name="check" size={12} /> : step.status === "not-started" ? <Icon name="x" size={11} /> : "-"}</span>
                           <b>{step.label}</b>
-                          <small>{step.sub}</small>
+                          <small>{step.status === "complete" ? "Complete" : step.status === "partial" ? "In progress" : "Not started"} · {step.sub}</small>
                         </button>
                       ))}
                     </div>
@@ -1174,8 +1244,16 @@ function LeadDetailPanel({
                     <Panel title="Data sources" actions={<Btn onClick={onLinkBucketIntake}>Attach a bucket</Btn>}>
                       <p className="sub">Only the buckets and selected files shown here are available to Elara. Source objects remain in their original rooms.</p>
                       <div className="source-room mt">
-                        <div><CellChip tone="acc">Bucket</CellChip><strong>{detail.intake.bucket_name}</strong><span className="sub">{detail.files.length} files · primary evidence room</span></div>
+                        <div><CellChip tone="acc">Bucket</CellChip><strong>{detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"}</strong><span className="sub">{detail.files.length} files · primary evidence room</span></div>
                         <Link href={`/admin/buckets?bucket=${detail.intake.bucket_id}`} className="btn sm">Open bucket</Link>
+                      </div>
+                      <div className="mt">
+                        <IntakeEvidenceBrowser
+                          intakeId={detail.intake.id}
+                          primaryBucketId={detail.intake.bucket_id}
+                          primaryBucketName={detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"}
+                          files={detail.files}
+                        />
                       </div>
                     </Panel>
                   ) : null}
@@ -1224,7 +1302,7 @@ function LeadDetailPanel({
 
               {prototypeView === "sources" ? (
                 <Panel title="Data sources" actions={<Btn onClick={onLinkBucketIntake}>Attach another bucket</Btn>}>
-                  <div className="source-room"><div><CellChip tone="acc">Primary bucket</CellChip><strong>{detail.intake.bucket_name}</strong><span className="sub">{detail.files.length} files handed to this intake</span></div><Link href={`/admin/buckets?bucket=${detail.intake.bucket_id}`} className="btn">Open bucket</Link></div>
+                  <div className="source-room"><div><CellChip tone="acc">Primary bucket</CellChip><strong>{detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"}</strong><span className="sub">{detail.files.length} files handed to this intake</span></div><Link href={`/admin/buckets?bucket=${detail.intake.bucket_id}`} className="btn">Open bucket</Link></div>
                   <div className="grid mt">{detail.files.map((file) => <div key={file.id} className="filerow"><span className="sp">{file.zip_entry_path || file.file_name}</span><span className="sub">{formatSize(file.size_bytes)}</span></div>)}</div>
                 </Panel>
               ) : null}
@@ -1254,7 +1332,24 @@ function LeadDetailPanel({
                 </Panel>
               ) : null}
             <aside className="grid">
-              <Panel title="Contact"><Line label="Principal" value={detail.intake.full_name} /><Line label="Mobile" value={detail.intake.phone || "-"} /><Line label="Requested" value={formatMoney(detail.intake.requested_loan_amount)} /><Line label="Vertical" value={variantLabel(detail.intake.variant)} /></Panel>
+              <Panel
+                title="Contact"
+                actions={
+                  <IconBtn onClick={() => setContactEditOpen(true)} aria-label="Edit contact details" title="Edit contact details">
+                    <Icon name="pencil" size={14} />
+                  </IconBtn>
+                }
+              >
+                <Line label="Legal entity / LLC" value={detail.intake.business_name || "-"} />
+                <Line label="Principal" value={detail.intake.full_name} />
+                <Line label="Email" value={detail.intake.email} />
+                <Line label="Mobile" value={detail.intake.phone || "-"} />
+                <Line label="Requested" value={formatMoney(detail.intake.requested_loan_amount)} />
+                <Line label="Purpose" value={detail.intake.loan_purpose || "-"} />
+                <Line label="Credit" value={detail.intake.estimated_credit_score ? String(detail.intake.estimated_credit_score) : "-"} />
+                <Line label="Source" value={detail.intake.referral_source || "Direct"} />
+                <Line label="Vertical" value={variantLabel(detail.intake.variant)} />
+              </Panel>
               <Panel title="Missing and blockers"><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No blockers listed." /></Panel>
               <Panel title="File controls"><Row><Select value={detail.intake.outcome_status} disabled={outcomeBusy} onChange={(event) => changeOutcomeStatus(event.target.value)} aria-label="Outcome status"><option value="submitted">Submitted</option><option value="closed">Closed</option><option value="denied">Denied</option></Select><Select value={detail.intake.preferred_language} disabled={languageBusy} onChange={(event) => changeLanguage(event.target.value)} aria-label="Client language"><option value="en">English</option><option value="es">Español</option></Select></Row></Panel>
             </aside>
@@ -1266,6 +1361,25 @@ function LeadDetailPanel({
       <DriveFilePicker open={ingestPickerOpen} mode="ingest" busy={busy === "ingest"} maxSelect={50} onClose={() => setIngestPickerOpen(false)} selectedIds={ingestFiles.map((file) => file.id)} onPick={(file) => setIngestFiles((current) => current.some((item) => item.id === file.id) ? current : [...current, file])} onUnpick={(id) => setIngestFiles((current) => current.filter((file) => file.id !== id))} onConfirm={runIngest} />
       {detail ? <ConfirmDeleteLeadModal open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} expectedName={detail.intake.business_name || detail.intake.full_name} onConfirm={async (name) => { await onConfirmDeletion(name); setConfirmDeleteOpen(false); }} /> : null}
       <ConfirmDialog open={sendReviewOpen} onClose={() => setSendReviewOpen(false)} title={`Send lender package to ${toEmails || "recipient"}`} body="This sends the reviewed message and selected package from the connected desk mailbox and records the delivery result." confirmLabel="Send package" busy={busy === "send"} onConfirm={() => { void sendEmail().then(() => setSendReviewOpen(false)); }} />
+      <Drawer
+        open={contactEditOpen}
+        onClose={() => setContactEditOpen(false)}
+        title="Edit contact and entity"
+        sub="Update the intake record without changing other files owned by this client."
+        width="md"
+        footer={<><span className="sp" /><Btn onClick={() => setContactEditOpen(false)} disabled={contactSaving}>Cancel</Btn><Btn variant="pri" onClick={() => void saveContact()} disabled={contactSaving}>{contactSaving ? "Saving..." : "Save details"}</Btn></>}
+      >
+        <div className="fldgrid two">
+          <Field label="Principal name"><Input aria-label="Principal name" value={contactDraft.full_name} onChange={(event) => setContactDraft({ ...contactDraft, full_name: event.target.value })} /></Field>
+          <Field label="Legal entity / LLC"><Input aria-label="Legal entity / LLC" value={contactDraft.business_name} onChange={(event) => setContactDraft({ ...contactDraft, business_name: event.target.value })} /></Field>
+          <Field label="Email"><Input aria-label="Email" type="email" value={contactDraft.email} onChange={(event) => setContactDraft({ ...contactDraft, email: event.target.value })} /></Field>
+          <Field label="Mobile"><Input aria-label="Mobile" type="tel" value={contactDraft.phone} onChange={(event) => setContactDraft({ ...contactDraft, phone: event.target.value })} /></Field>
+          <Field label="Requested amount"><Input aria-label="Requested amount" type="number" min="0" value={contactDraft.requested_loan_amount} onChange={(event) => setContactDraft({ ...contactDraft, requested_loan_amount: event.target.value })} /></Field>
+          <Field label="Estimated credit"><Input aria-label="Estimated credit" type="number" min="300" max="850" value={contactDraft.estimated_credit_score} onChange={(event) => setContactDraft({ ...contactDraft, estimated_credit_score: event.target.value })} /></Field>
+          <Field label="Loan purpose"><Input aria-label="Loan purpose" value={contactDraft.loan_purpose} onChange={(event) => setContactDraft({ ...contactDraft, loan_purpose: event.target.value })} /></Field>
+          <Field label="Referral source"><Input aria-label="Referral source" value={contactDraft.referral_source} onChange={(event) => setContactDraft({ ...contactDraft, referral_source: event.target.value })} /></Field>
+        </div>
+      </Drawer>
     </div>
   );
 

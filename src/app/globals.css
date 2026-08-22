@@ -65,14 +65,16 @@ a { color: var(--accent); }
 
 /* ---------- shell ---------- */
 .app { display: grid; grid-template-columns: 242px 1fr; min-height: 100vh; }
-.app.rail { grid-template-columns: 62px 1fr; }
-.app.rail .brand > div:last-child, .app.rail .nav a span.navlbl, .app.rail .grp, .app.rail .side .ident, .app.rail .side .foot > div { display: none; }
-.app.rail .brand { padding: 18px 13px 12px; }
-.app.rail .nav a { justify-content: center; padding: 9px 0; }
-.app.rail .nav a .bdg { position: absolute; top: 2px; right: 8px; }
+.app.app--collapsed { grid-template-columns: 62px 1fr; }
+.app.app--collapsed .brand > div:last-child, .app.app--collapsed .nav a span.navlbl, .app.app--collapsed .grp, .app.app--collapsed .side .ident, .app.app--collapsed .side .foot > div { display: none; }
+.app.app--collapsed .brand { padding: 18px 13px 12px; }
+.app.app--collapsed .nav a { justify-content: center; padding: 9px 0; }
+.app.app--collapsed .nav a .bdg { position: absolute; top: 2px; right: 8px; }
+.app.app--collapsed .side .foot { padding: 5px; justify-content: center; }
+.app.app--collapsed .side .foot .disc-h { width: 30px; flex: 0 0 30px; }
 .navtoggle { margin: 4px 10px 10px; align-self: flex-end; border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 8px; width: 26px; height: 26px; display: grid; place-items: center; cursor: pointer; font-size: 12px; }
 .navtoggle:hover { background: var(--sunken2); color: var(--ink); }
-.app.rail .navtoggle { align-self: center; margin: 4px 0 10px; }
+.app.app--collapsed .navtoggle { align-self: center; margin: 4px 0 10px; }
 .side { background: var(--surface); border-right: 1px solid var(--line); position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 18px 16px 12px; }
 .brand .mark { width: 35px; height: 35px; border-radius: 10px; background: linear-gradient(150deg, var(--accent), var(--petrol)); display: grid; place-items: center; color: #fff; font-family: var(--fh); font-weight: 700; font-size: 13px; flex-shrink: 0; }
@@ -283,7 +285,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
    alone has to carry it. */
 .footlink { font-size: 12.5px; color: var(--muted); text-decoration: none; white-space: nowrap; }
 .footlink:hover { color: var(--accent); text-decoration: underline; }
-.app.rail .footlink { display: none; }
+.app.app--collapsed .footlink { display: none; }
 
 /* ---------- message thread ----------
    Vendored from the Operator Console design. Four channels share one panel and

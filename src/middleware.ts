@@ -160,12 +160,12 @@ const protectedMiddleware = clerkMiddleware(async (auth, req) => {
 export default function middleware(req: NextRequest, event: NextFetchEvent) {
   // Clerk's development-browser handshake runs before its callback. The QA
   // bypass therefore has to wrap clerkMiddleware itself. It is limited to a
-  // development build, a loopback host, and the explicit seeded-user cookie.
+  // loopback host plus an explicit QA flag or seeded-user cookie. Production
+  // domains can never enter this branch, including when a cookie is copied.
   const isLoopback = req.nextUrl.hostname === "localhost" || req.nextUrl.hostname === "127.0.0.1";
   if (
-    process.env.NODE_ENV === "development" &&
     isLoopback &&
-    req.cookies.has("qc_visual_qa_user")
+    (process.env.NEXT_PUBLIC_QC_VISUAL_QA === "1" || req.cookies.has("qc_visual_qa_user"))
   ) {
     return NextResponse.next();
   }

@@ -349,6 +349,7 @@ export default function BucketsAdminPage() {
   const { getToken } = useAuth();
   const adminFileInputRef = useRef<HTMLInputElement | null>(null);
   const shareMenuRef = useRef<HTMLDivElement | null>(null);
+  const dismissedBucketParamRef = useRef<string | null>(null);
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [detail, setDetail] = useState<BucketDetail | null>(null);
@@ -494,6 +495,14 @@ export default function BucketsAdminPage() {
     await loadBucket(bucketId);
   }
 
+  function closeBucketDetail() {
+    dismissedBucketParamRef.current = detail?.id || bucketParam;
+    setReviewFile(null);
+    setDetail(null);
+    setDetailFocus(null);
+    if (bucketParam) router.replace("/admin/buckets", { scroll: false });
+  }
+
   async function openVendorAssignment(bucketId: string) {
     const bucket = buckets.find((row) => row.id === bucketId) ?? null;
     setVendorAssignmentBucket(bucket);
@@ -545,7 +554,7 @@ export default function BucketsAdminPage() {
     setNotice(null);
     try {
       await call<void>(`/buckets/admin/${bucket.id}`, { method: "DELETE" });
-      if (detail?.id === bucket.id) setDetail(null);
+      if (detail?.id === bucket.id) closeBucketDetail();
       await loadBuckets();
       setNotice("Bucket deleted.");
       setDeleteReviewBucket(null);
@@ -592,7 +601,11 @@ export default function BucketsAdminPage() {
   }, [me?.role]);
 
   useEffect(() => {
-    if (me?.role === Role.SUPER_ADMIN && bucketParam && detail?.id !== bucketParam) {
+    if (!bucketParam) {
+      dismissedBucketParamRef.current = null;
+      return;
+    }
+    if (me?.role === Role.SUPER_ADMIN && bucketParam !== dismissedBucketParamRef.current && detail?.id !== bucketParam) {
       openBucket(bucketParam).catch((e) => setNotice(String(e)));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2121,7 +2134,7 @@ export default function BucketsAdminPage() {
         <ModalFrame
           title={detail.name}
           subtitle={`${detail.client_name || "No client"} | ${detail.purpose || "No purpose"} | ${detail.bucket_type || "Bucket"}`}
-          onClose={() => setDetail(null)}
+          onClose={closeBucketDetail}
           action={
             <div className="row">
               <IconBtn
@@ -3143,8 +3156,18 @@ export default function BucketsAdminPage() {
           title="Admin file review"
           loadReview={() => loadAdminReview(reviewFile)}
           saveAnnotation={(payload) => saveAdminAnnotation(reviewFile, payload)}
-          onDelete={() => deleteFile(reviewFile).catch(() => undefined)}
+          onDelete={() => {
+            const file = reviewFile;
+            setReviewFile(null);
+            deleteFile(file).catch(() => undefined);
+          }}
           onClose={() => setReviewFile(null)}
+          files={visibleFiles}
+          activeFileId={reviewFile.id}
+          onSelectFile={(fileId) => {
+            const next = visibleFiles.find((file) => file.id === fileId);
+            if (next) setReviewFile(next);
+          }}
         />
       ) : null}
       <EmailComposer
@@ -3559,7 +3582,7 @@ function ModalFrame({
   onClose: () => void;
 }) {
   return (
-    <Drawer open onClose={onClose} width="xl" title={title} sub={subtitle} headerActions={action} bodyClass="grid">
+    <Drawer open onClose={onClose} width="xl" fullscreen title={title} sub={subtitle} headerActions={action} bodyClass="grid">
       {children}
     </Drawer>
   );

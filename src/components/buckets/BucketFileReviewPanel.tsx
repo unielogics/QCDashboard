@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { Btn, BtnLink, Callout, cx, Empty, IconBtn, Panel, StatusLine, Sub, Textarea } from "@/components/ds";
+import { Btn, BtnLink, Callout, cx, Empty, IconBtn, Input, Panel, StatusLine, Sub, Textarea } from "@/components/ds";
 
 export type BucketReviewFile = {
   id: string;
@@ -45,6 +45,9 @@ export function BucketFileReviewPanel({
   loadReview,
   saveAnnotation,
   onClose,
+  files = [],
+  activeFileId,
+  onSelectFile,
 }: {
   title?: string;
   downloadUrl?: string | null;
@@ -53,6 +56,9 @@ export function BucketFileReviewPanel({
   loadReview: () => Promise<BucketFileReview>;
   saveAnnotation: (payload: DraftRect & { comment: string }) => Promise<BucketFileAnnotation>;
   onClose: () => void;
+  files?: BucketReviewFile[];
+  activeFileId?: string | null;
+  onSelectFile?: (fileId: string) => void;
 }) {
   const imageStageRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -69,6 +75,8 @@ export function BucketFileReviewPanel({
   const [draftComment, setDraftComment] = useState("");
   const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [fileQuery, setFileQuery] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,9 +98,11 @@ export function BucketFileReviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [loadReview]);
+  }, [loadReview, reloadKey]);
 
-  const fileType = review ? reviewFileType(review.file.content_type, review.file.file_name) : "unsupported";
+  const selectedFile = files.find((file) => file.id === activeFileId) ?? null;
+  const displayFile = review?.file ?? selectedFile;
+  const fileType = displayFile ? reviewFileType(displayFile.content_type, displayFile.file_name) : "unsupported";
   const activeAnnotation = review?.annotations.find((annotation) => annotation.id === activeAnnotationId) ?? null;
 
   useEffect(() => {
@@ -227,16 +237,12 @@ export function BucketFileReviewPanel({
   const annotationHelp = canAnnotate(fileType)
     ? "Drag over an area of the PDF or image, then add your review note."
     : "Area comments are available for PDF and image previews.";
+  const filteredFiles = files.filter((file) => file.file_name.toLowerCase().includes(fileQuery.trim().toLowerCase()));
+  const currentFileId = activeFileId || review?.file.id || "";
 
   return (
-    // Bespoke, and it has to be: this is a full-bleed reviewer, not the centred
-    // `.drawer`. z-index 500 is load-bearing — /admin/buckets opens it from
-    // inside its bucket detail modal (300) and /vendor/buckets over the AI rail
-    // (200); at the drawer's 61 it would open behind both.
-    <div style={{ position: "fixed", inset: 0, zIndex: 500, background: "rgba(15, 23, 32, 0.52)", padding: 18 }}>
-      {/* `.panel` is already a clipped flex column; only the full-height fill
-          is this overlay's own. */}
-      <section className="panel" style={{ height: "100%" }}>
+    <div className="bucket-review-shell">
+      <section className="bucket-review-workspace">
         {/* `.filehd-b` and not `.panel-h`: this is a file identity block —
             eyebrow, file name, meta on the left, actions on the right — and
             `.panel-h h2` would pin the file name to 15px, fighting
@@ -246,11 +252,11 @@ export function BucketFileReviewPanel({
         <header className="filehd-b" style={{ borderBottom: "1px solid var(--line)" }}>
           <div className="grid g4" style={{ minWidth: 0 }}>
             <span className="lbl">{title}</span>
-            <h2 className="filehd-t">{review?.file.file_name ?? "File"}</h2>
-            {review ? (
+            <h2 className="filehd-t">{displayFile?.file_name ?? "File"}</h2>
+            {displayFile ? (
               <Sub>
                 {fileTypeLabel(fileType)}
-                {typeof review.file.size_bytes === "number" ? ` | ${formatSize(review.file.size_bytes)}` : ""}
+                {typeof displayFile.size_bytes === "number" ? ` | ${formatSize(displayFile.size_bytes)}` : ""}
               </Sub>
             ) : null}
           </div>
@@ -285,9 +291,31 @@ export function BucketFileReviewPanel({
         </header>
         {/* Bespoke track: a document that wants every pixel it can get beside a
             review rail that must not fall below a readable width. */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 5fr) minmax(180px, 1fr)", minHeight: 0, flex: 1 }}>
+        <div className={cx("bucket-review-layout", files.length > 0 && "with-navigator")}>
+          {files.length > 0 ? (
+            <aside className="bucket-review-navigator">
+              <div className="grid g8">
+                <div><b>Bucket files</b><Sub>{files.length} available</Sub></div>
+                <div className="fieldwrap"><Icon name="search" size={14} /><Input value={fileQuery} onChange={(event) => setFileQuery(event.target.value)} placeholder="Find a file" aria-label="Find a bucket file" /></div>
+              </div>
+              <div className="bucket-review-file-list">
+                {filteredFiles.map((file) => (
+                  <button
+                    type="button"
+                    key={file.id}
+                    className={cx("bucket-review-file", currentFileId === file.id && "on")}
+                    onClick={() => onSelectFile?.(file.id)}
+                  >
+                    <span className="evidence-file-icon"><Icon name="file" size={14} /></span>
+                    <span className="grow trunc"><b className="trunc">{file.file_name}</b><small>{fileTypeLabel(reviewFileType(file.content_type, file.file_name))}{typeof file.size_bytes === "number" ? ` · ${formatSize(file.size_bytes)}` : ""}</small></span>
+                  </button>
+                ))}
+                {!filteredFiles.length ? <div className="empty">No files match this search.</div> : null}
+              </div>
+            </aside>
+          ) : null}
           {/* Bespoke: the scrolling document well, sunk behind the page it holds. */}
-          <main ref={viewerRef} style={{ minWidth: 0, minHeight: 0, overflow: "auto", background: "var(--sunken)", padding: 16 }}>
+          <main ref={viewerRef} className="bucket-review-document">
             {review?.preview_url && fileType === "pdf" ? (
               <>
                 {/* Bespoke: a toolbar that stays with the reader as the document
@@ -355,12 +383,12 @@ export function BucketFileReviewPanel({
                 {textPreview || "Loading preview..."}
               </pre>
             ) : (
-              <UnsupportedPreview review={review} fileType={fileType} />
+              <UnsupportedPreview review={review} fileType={fileType} onRetry={() => setReloadKey((value) => value + 1)} />
             )}
             {status ? <StatusLine tone="warn" className="mt">{status}</StatusLine> : null}
           </main>
           {/* Bespoke: the review rail. Scrolls independently of the document. */}
-          <aside className="grid g10" style={{ borderLeft: "1px solid var(--line)", background: "var(--surface)", overflowY: "auto", padding: 14, alignContent: "start" }}>
+          <aside className="bucket-review-comments grid g10">
             <Panel title="Add section comment" bodyClass="grid g8">
               <Callout tone="acc">
                 <div className="grid g4">
@@ -616,8 +644,9 @@ function CsvPreview({ text }: { text: string }) {
   );
 }
 
-function UnsupportedPreview({ review, fileType }: { review: BucketFileReview | null; fileType: ReviewFileType }) {
+function UnsupportedPreview({ review, fileType, onRetry }: { review: BucketFileReview | null; fileType: ReviewFileType; onRetry: () => void }) {
   const isSpreadsheet = fileType === "spreadsheet";
+  const loadFailed = !review && fileType !== "unsupported";
   return (
     // `.hintbox` is the dashed placeholder-with-a-reason; `minHeight` keeps the
     // well from collapsing to a strip in the middle of a tall viewer.
@@ -626,8 +655,9 @@ function UnsupportedPreview({ review, fileType }: { review: BucketFileReview | n
         <Icon name={isSpreadsheet ? "doc" : "file"} size={18} />
       </span>
       <div className="grid g6">
-        <b>{isSpreadsheet ? "Spreadsheet preview requires download." : "Preview is not available for this file type."}</b>
-        <Sub>{isSpreadsheet ? "Open Excel files locally to preserve formulas, tabs, and formatting." : "Open the original file to review it locally."}</Sub>
+        <b>{loadFailed ? "Preview could not be loaded." : isSpreadsheet ? "Spreadsheet preview requires download." : "Preview is not available for this file type."}</b>
+        <Sub>{loadFailed ? "The file remains available in this bucket. Retry or download it when storage is available." : isSpreadsheet ? "Open Excel files locally to preserve formulas, tabs, and formatting." : "Open the original file to review it locally."}</Sub>
+        {loadFailed ? <div><Btn onClick={onRetry}><Icon name="refresh" size={14} />Retry preview</Btn></div> : null}
         {review?.preview_url ? (
           <div>
             <BtnLink variant="pri" href={review.preview_url} target="_blank" rel="noopener noreferrer">

@@ -153,7 +153,7 @@ export default function AppShell({
     // `.app` ships `min-height: 100vh`; the console pins it to exactly the
     // viewport instead so <main> below can be the only scroller. That
     // correction lives in app-extras.css, not here.
-    <div className={sidebarCollapsed ? "app rail" : "app"} data-dark={theme === "dark" ? "1" : undefined}>
+    <div className={sidebarCollapsed ? "app app--collapsed" : "app"} data-dark={theme === "dark" ? "1" : undefined}>
       <Sidebar />
       {/* min-height:0 + minWidth:0 are REQUIRED on the flex column so the
           inner <main> can actually shrink and scroll instead of pushing the

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
+import { useAIReview } from "@/components/admin/AIReviewProvider";
 import {
   Btn,
   CellChip,
@@ -292,6 +293,7 @@ export function BucketIntakeLinkDrawer({
   onClose,
   initialBucketId,
   initialIntakeId,
+  title,
 }: {
   open: boolean;
   onClose: () => void;
@@ -299,6 +301,7 @@ export function BucketIntakeLinkDrawer({
   initialIntakeId?: string | null;
   title?: string;
 }) {
+  const { requestReview } = useAIReview();
   const [step, setStep] = useState(1);
   const [bucketId, setBucketId] = useState("");
   const [intakeId, setIntakeId] = useState("");
@@ -370,7 +373,24 @@ export function BucketIntakeLinkDrawer({
   }
 
   const counterpartReady = Boolean(bucketId && intakeId);
-  const footer = step === 4 ? <><span className="sp" /><Btn variant="pri" onClick={onClose}>Done</Btn></> : (
+  const footer = step === 4 ? (
+    <>
+      <span className="sp" />
+      <Btn onClick={onClose}>Done</Btn>
+      {!completed?.unlinked && intakeId ? (
+        <Btn
+          variant="pri"
+          onClick={() => {
+            onClose();
+            requestReview({ intakeId, leadName: intake?.label || "AI intake", reviewId: completed?.reviewId });
+          }}
+        >
+          <Icon name="spark" size={14} />
+          Open AI review
+        </Btn>
+      ) : null}
+    </>
+  ) : (
     <>
       {step > 1 ? <Btn onClick={() => setStep((current) => Math.max(1, current - 1))}>Back</Btn> : <Btn onClick={onClose}>Cancel</Btn>}
       {step === 3 && existing ? <Btn className="danger" onClick={confirmUnlink} disabled={busy}>Unlink</Btn> : null}
@@ -385,8 +405,8 @@ export function BucketIntakeLinkDrawer({
       open={open}
       onClose={onClose}
       ariaLabel="Link bucket and AI intake"
-      title={step === 4 ? completed?.unlinked ? "Evidence unlinked" : "Evidence linked" : existing ? "Update linked evidence" : "Link bucket and AI intake"}
-      sub={step === 4 ? "The audit trail and intake review queue have been updated." : "Selected files remain in their source bucket. Elara receives read access by reference."}
+      title={step === 4 ? completed?.unlinked ? "Evidence unlinked" : "Evidence linked" : existing ? "Update linked evidence" : title || "Link bucket and AI intake"}
+      sub={step === 4 ? "The audit trail is updated. Run the AI review now or return to it from the intake file." : "Selected files remain in their source bucket. Elara receives read access by reference."}
       width="lg"
       closeOnBackdrop={!busy}
       footer={footer}
@@ -428,8 +448,8 @@ export function BucketIntakeLinkDrawer({
         <div className="completed-state">
           <span className="botmark pet"><Icon name={completed.unlinked ? "link" : "check"} size={22} /></span>
           <h3>{completed.unlinked ? "Evidence access removed" : `${completed.count} file${completed.count === 1 ? "" : "s"} handed to Elara`}</h3>
-          <p className="sub">{completed.unlinked ? "The relationship is reversible and remains visible in audit history." : "The intake review is queued with only the selected source references."}</p>
-          {completed.reviewId ? <CellChip tone="acc">Review queued · {completed.reviewId.slice(0, 8)}</CellChip> : null}
+          <p className="sub">{completed.unlinked ? "The relationship is reversible and remains visible in audit history." : "The selected evidence is ready and the queued AI review can continue in the background."}</p>
+          {completed.reviewId ? <CellChip tone="acc">Evidence refresh · {completed.reviewId.slice(0, 8)}</CellChip> : null}
         </div>
       ) : null}
     </Drawer>

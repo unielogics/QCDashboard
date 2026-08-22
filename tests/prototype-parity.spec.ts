@@ -116,6 +116,127 @@ test("theme control swaps between light and Obsidian without shifting the page",
   expect(after?.x).toBe(before?.x);
 });
 
+test("floating page headers meet the global top bar without a ground gap", async ({ page }) => {
+  await openConsolePage(page, "/pipeline");
+  const edges = await page.evaluate(() => {
+    const top = document.querySelector<HTMLElement>(".top")?.getBoundingClientRect();
+    const pageHeader = document.querySelector<HTMLElement>(".ckhead")?.getBoundingClientRect();
+    return { topBottom: top?.bottom, pageHeaderTop: pageHeader?.top };
+  });
+  expect(edges.topBottom).toBeDefined();
+  expect(edges.pageHeaderTop).toBeDefined();
+  expect(Math.abs((edges.topBottom ?? 0) - (edges.pageHeaderTop ?? 0))).toBeLessThanOrEqual(1);
+});
+
+test("bucket deep link closes and stays closed", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "The bucket workflow is exercised at the canonical viewport.");
+  const bucketId = process.env.QC_E2E_BUCKET_ID;
+  test.skip(!bucketId, "A bucket fixture is required.");
+  await openConsolePage(page, `/admin/buckets?bucket=${bucketId}`);
+  const bucketRoom = page.getByRole("dialog");
+  await expect(bucketRoom).toBeVisible();
+  await bucketRoom.getByRole("button", { name: "Close" }).click();
+  await expect(bucketRoom).toBeHidden();
+  await expect(page).toHaveURL(/\/admin\/buckets$/);
+  await page.waitForTimeout(300);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("bucket files open in a full-screen navigable review workspace", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "The bucket workflow is exercised at the canonical viewport.");
+  const bucketId = process.env.QC_E2E_BUCKET_ID;
+  test.skip(!bucketId, "A bucket fixture is required.");
+  await openConsolePage(page, `/admin/buckets?bucket=${bucketId}`);
+  const bucketRoom = page.getByRole("dialog");
+  await bucketRoom.getByRole("button", { name: "Preview" }).first().click();
+  const reviewer = page.locator(".bucket-review-shell");
+  await expect(reviewer).toBeVisible();
+  const bounds = await reviewer.boundingBox();
+  expect(bounds?.x).toBe(0);
+  expect(bounds?.y).toBe(0);
+  expect(bounds?.width).toBe(1600);
+  expect(bounds?.height).toBe(1000);
+  await expect(reviewer.locator(".bucket-review-file")).toHaveCount(2);
+  await captureReviewImage(page, "bucket-file-review", testInfo);
+  await reviewer.getByRole("button", { name: "Close" }).click();
+  await expect(reviewer).toBeHidden();
+});
+
+test("intake evidence, contact editing, and review controls share the file workspace", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "The intake workflow is exercised at the canonical viewport.");
+  const intakeId = process.env.QC_E2E_INTAKE_ID;
+  test.skip(!intakeId, "An intake fixture is required.");
+  await openConsolePage(page, `/admin/ai-underwriter-leads?lead=${intakeId}`);
+  const intakeFile = page.locator(".ai-intake-detail-shell");
+  await expect(intakeFile).toBeVisible();
+  await expect(intakeFile.locator(".submission-step.status-complete")).toHaveCount(1);
+  await expect(intakeFile.locator(".submission-step.status-partial")).toHaveCount(1);
+  await expect(intakeFile.locator(".submission-step.status-not-started")).toHaveCount(3);
+
+  await intakeFile.getByRole("button", { name: /Evidence in/i }).click();
+  const evidenceBrowser = intakeFile.locator(".evidence-browser");
+  await expect(evidenceBrowser).toBeVisible();
+  await expect(evidenceBrowser.locator(".evidence-file-row")).toHaveCount(2);
+  await captureReviewImage(page, "intake-evidence-browser", testInfo);
+
+  await intakeFile.getByRole("button", { name: "Edit contact details" }).click();
+  const contactDrawer = page.getByRole("dialog", { name: "Edit contact and entity" });
+  await expect(contactDrawer.getByLabel("Legal entity / LLC")).toHaveValue(/Sierra Pacific Freight/i);
+  await expect(contactDrawer.getByLabel("Email")).toHaveValue("fixture0@qc.dev");
+  await contactDrawer.getByRole("button", { name: "Cancel" }).click();
+
+  await intakeFile.getByRole("button", { name: /AI review/i }).first().click();
+  await intakeFile.getByRole("button", { name: /Run AI review/i }).first().click();
+  const reviewDrawer = page.getByRole("dialog", { name: "Run AI review" });
+  await expect(reviewDrawer).toContainText("continue working anywhere in the console");
+  await reviewDrawer.getByRole("button", { name: "Cancel" }).click();
+});
+
+test("AI review minimizes, survives navigation, and returns to the completed intake", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "The background lifecycle is exercised at the canonical viewport.");
+  const intakeId = process.env.QC_E2E_INTAKE_ID;
+  test.skip(!intakeId, "An intake fixture is required.");
+  let complete = false;
+  await page.route(`**/admin/ai-underwriter-leads/${intakeId}/run-review`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ review_id: "review-background-fixture", status: "queued" }) });
+  });
+  await page.route(`**/admin/ai-underwriter-leads/${intakeId}/review-progress?**`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        review_id: "review-background-fixture",
+        status: complete ? "completed" : "running",
+        stage: complete ? "complete" : "analyzing",
+        label: complete ? "Review complete" : "Analyzing linked evidence",
+        percent: complete ? 100 : 48,
+        files_total: 2,
+        files_done: complete ? 2 : 1,
+        error: null,
+      }),
+    });
+  });
+
+  await openConsolePage(page, `/admin/ai-underwriter-leads?lead=${intakeId}`);
+  const intakeFile = page.locator(".ai-intake-detail-shell");
+  await intakeFile.getByRole("button", { name: /Run AI review/i }).first().click();
+  await page.getByRole("dialog", { name: "Run AI review" }).getByRole("button", { name: "Run review" }).click();
+  const progress = page.getByRole("dialog", { name: "Running AI review..." });
+  await expect(progress).toContainText("Analyzing linked evidence");
+  await progress.getByRole("button", { name: "Minimize" }).click();
+
+  await page.goto("/pipeline", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("h1")).toHaveText("Pipeline");
+  const dock = page.getByLabel("AI reviews");
+  await expect(dock).toContainText("Sierra Pacific Freight LLC");
+  await expect(dock).toContainText("48%");
+
+  complete = true;
+  await expect(dock.locator(".ai-review-job.done")).toBeVisible({ timeout: 6_000 });
+  await dock.locator(".ai-review-job-main").click();
+  await expect(page).toHaveURL(new RegExp(`/admin/ai-underwriter-leads\\?lead=${intakeId}`));
+});
+
 test("bucket and intake share the same reversible evidence-link workflow", async ({ page }, testInfo) => {
   test.setTimeout(60_000);
   test.skip(testInfo.project.name !== "desktop-1600", "The mutation workflow is exercised once at the canonical viewport.");

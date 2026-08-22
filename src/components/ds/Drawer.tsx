@@ -36,6 +36,7 @@ export function Drawer({
   bodyClass,
   bodyStyle,
   ariaLabel,
+  fullscreen = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -57,6 +58,7 @@ export function Drawer({
    * of what they opened. Pass the stable name here and let the title move.
    */
   ariaLabel?: string;
+  fullscreen?: boolean;
 }) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -101,8 +103,8 @@ export function Drawer({
         aria-hidden="true"
       />
       <div
-        className="drawer"
-        style={{ width: WIDTHS[width] }}
+        className={cx("drawer", fullscreen && "drawer--fullscreen")}
+        style={fullscreen ? undefined : { width: WIDTHS[width] }}
         role="dialog"
         aria-modal="true"
         // Prefer pointing at the rendered heading: it stays correct when the

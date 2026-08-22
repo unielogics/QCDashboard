@@ -51,7 +51,7 @@ export function ToolsDrawer({
           {groups.map((g) => (
             <div key={g.id}>
               {/* Was `.grp`, which globals scopes to `.nav .grp` — outside the
-                  nav it styled nothing, and `.app.rail .grp` hid these labels
+                  nav it styled nothing, and `.app.app--collapsed .grp` hid these labels
                   outright whenever the sidebar was collapsed. `.lbl` is the
                   same small-caps label and is not sidebar-scoped. */}
               <div className="lbl toolgrp">{g.label}</div>
