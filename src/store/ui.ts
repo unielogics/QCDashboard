@@ -2,7 +2,12 @@
 
 import { create } from "zustand";
 
+export type UITheme = "light" | "dark";
+
 interface UIStore {
+  theme: UITheme;
+  setTheme: (v: UITheme) => void;
+  toggleTheme: () => void;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (v: boolean) => void;
   toggleSidebar: () => void;
@@ -29,7 +34,17 @@ interface UIStore {
   closeNotes: () => void;
 }
 
+export const THEME_KEY = "qc.theme";
 export const SIDEBAR_KEY = "qc.sidebarCollapsed";
+
+function writeTheme(theme: UITheme): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    /* private mode / quota issues - ignore */
+  }
+}
 
 function writeSidebar(collapsed: boolean): void {
   if (typeof window === "undefined") return;
@@ -45,6 +60,17 @@ function writeSidebar(collapsed: boolean): void {
 // the user has previously collapsed the sidebar. The persisted value is
 // rehydrated in a useEffect inside AppShell via hydrateSidebarFromStorage().
 export const useUI = create<UIStore>((set) => ({
+  theme: "light",
+  setTheme: (v) => {
+    writeTheme(v);
+    set({ theme: v });
+  },
+  toggleTheme: () =>
+    set((s) => {
+      const next: UITheme = s.theme === "dark" ? "light" : "dark";
+      writeTheme(next);
+      return { theme: next };
+    }),
   sidebarCollapsed: false,
   setSidebarCollapsed: (v) => {
     writeSidebar(v);
@@ -67,6 +93,17 @@ export const useUI = create<UIStore>((set) => ({
   openNotes: (dealId: string) => set({ notesOpen: true, notesDealId: dealId }),
   closeNotes: () => set({ notesOpen: false }),
 }));
+
+// Read the persisted console theme. Call only from a client-side effect
+// (post-hydration), never during render or module init.
+export function readPersistedTheme(): UITheme {
+  if (typeof window === "undefined") return "light";
+  try {
+    return window.localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light";
+  } catch {
+    return "light";
+  }
+}
 
 // Read the persisted sidebar state. Call only from a client-side effect
 // (post-hydration), never during render or module init.

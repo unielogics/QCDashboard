@@ -4,10 +4,9 @@
  * two apps behind one login look like one product. Keep it diffable against its
  * source: console-only additions live in ./app-extras.css, not inline here.
  *
- * Light theme only, deliberately — same call Capital OS made. There is no
- * [data-dark] block and no prefers-color-scheme override; QC_TOKENS.light in
- * design-system/tokens.ts is a temporary second copy of this palette that exists
- * only until the last inline-styled route is migrated, and MUST track it.
+ * The light palette below is the trunk theme. Console-only additions, including
+ * the attached Operator Console prototype's Obsidian token swap, live in
+ * ./app-extras.css so this file stays diffable against its source.
  *
  * Tailwind stays for now: Preflight is what the trunk was authored against, and
  * removing it would silently restyle every route not yet migrated.
@@ -27,8 +26,9 @@
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* Dealer Capital OS — committed white theme, vendored from the QCWeb landing
-   design language (accent #1b4b9e, gold, petrol, paper ground). Matches the
-   approved v5 prototype. Single visual world by design (no dark mode). */
+   design language (accent #1b4b9e, gold, petrol, paper ground). This remains
+   the default visual world; QCDashboard's prototype-only Obsidian override
+   lives in app-extras.css. */
 :root {
   --bg: #f5f7fa; --surface: #ffffff; --sunken: #eef1f6; --sunken2: #f8fafc;
   --ink: #0f1720; --ink2: #353e4a; --muted: #5a6675; --faint: #8b97a6;
@@ -43,6 +43,7 @@
   --r: 14px; --r-sm: 10px;
   --fh: var(--font-inter-tight), "Inter Tight", var(--font-inter), "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --fb: var(--font-inter), "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); }
@@ -93,7 +94,7 @@ a { color: var(--accent); }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 99px; font-size: 11.5px; font-weight: 650; border: 1px solid var(--line); color: var(--ink2); text-decoration: none; }
 .chip .dot { width: 7px; height: 7px; border-radius: 50%; }
 .seg { display: inline-flex; background: var(--sunken); border-radius: 10px; padding: 3px; gap: 2px; }
-.seg button { border: 0; background: transparent; color: var(--muted); font-weight: 600; font-size: 12px; padding: 5.5px 12px; border-radius: 8px; cursor: pointer; font-family: var(--fb); }
+.seg button { border: 0; background: transparent; color: var(--muted); font-weight: 600; font-size: 12px; padding: 5.5px 12px; border-radius: 8px; cursor: pointer; font-family: var(--fb); white-space: nowrap; }
 .seg button.on { background: var(--surface); color: var(--ink); box-shadow: var(--sh1); }
 .content { --pad-y: 22px; --pad-x: 26px; padding: var(--pad-y) var(--pad-x) 44px; max-width: 1180px; width: 100%; margin: 0 auto; }
 /* Cockpit routes use the full viewport; the dealers list stays at 1180. */

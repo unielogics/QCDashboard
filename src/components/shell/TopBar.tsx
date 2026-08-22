@@ -29,6 +29,8 @@ export default function TopBar() {
   const setSearchOpen = useUI((s) => s.setSearchOpen);
   const aiOpen = useUI((s) => s.aiOpen);
   const setAiOpen = useUI((s) => s.setAiOpen);
+  const theme = useUI((s) => s.theme);
+  const toggleTheme = useUI((s) => s.toggleTheme);
   const { data: user } = useCurrentUser();
   const { data: tasks = [] } = useAITasks();
   const { data: chatThreads = [] } = useAIChatThreads();
@@ -103,8 +105,17 @@ export default function TopBar() {
 
       <span className="sp" />
 
-      {/* No theme toggle: this app is light-only, matching Capital OS.
-          The slot simply closes up. */}
+      <button
+        type="button"
+        onClick={toggleTheme}
+        aria-label={theme === "dark" ? "Switch to light theme" : "Switch to Obsidian theme"}
+        aria-pressed={theme === "dark"}
+        title={theme === "dark" ? "Light theme" : "Obsidian theme"}
+        className={cx("btn", "sm", "themebtn", theme === "dark" && "tone-acc")}
+      >
+        <Icon name={theme === "dark" ? "sun" : "moon"} size={14} />
+        <span className="themebtn-l">{theme === "dark" ? "Light" : "Obsidian"}</span>
+      </button>
 
       {/* Funding ⇄ Audit system switcher — operators only. Both apps share
           the same Clerk application, so one sign-in works on app. and

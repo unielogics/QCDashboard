@@ -8,7 +8,7 @@ import { Sidebar } from "./Sidebar";
 import TopBar from "./TopBar";
 import AIRail from "./AIRail";
 import GlobalSearch from "./GlobalSearch";
-import { useUI, readPersistedSidebar } from "@/store/ui";
+import { useUI, readPersistedSidebar, readPersistedTheme } from "@/store/ui";
 import { isBareRoute as computeBareRoute } from "@/lib/shellRoutes";
 import { useCurrentUser, useContractStatus } from "@/hooks/useApi";
 import { useRecordPendingConsent } from "@/hooks/useRecordPendingConsent";
@@ -36,6 +36,8 @@ export default function AppShell({
   const setAiOpen = useUI((s) => s.setAiOpen);
   const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useUI((s) => s.setSidebarCollapsed);
+  const theme = useUI((s) => s.theme);
+  const setTheme = useUI((s) => s.setTheme);
   const setSearchOpen = useUI((s) => s.setSearchOpen);
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
 
@@ -46,7 +48,8 @@ export default function AppShell({
   useEffect(() => {
     const persisted = readPersistedSidebar();
     if (persisted) setSidebarCollapsed(true);
-  }, [setSidebarCollapsed]);
+    setTheme(readPersistedTheme());
+  }, [setSidebarCollapsed, setTheme]);
   const { data: user } = useCurrentUser();
   // Flush any pending sign-up consent (from localStorage) into the
   // /legal/accept audit table once the user resolves.
@@ -146,7 +149,7 @@ export default function AppShell({
     // `.app` ships `min-height: 100vh`; the console pins it to exactly the
     // viewport instead so <main> below can be the only scroller. That
     // correction lives in app-extras.css, not here.
-    <div className={sidebarCollapsed ? "app rail" : "app"}>
+    <div className={sidebarCollapsed ? "app rail" : "app"} data-dark={theme === "dark" ? "1" : undefined}>
       <Sidebar />
       {/* min-height:0 + minWidth:0 are REQUIRED on the flex column so the
           inner <main> can actually shrink and scroll instead of pushing the
