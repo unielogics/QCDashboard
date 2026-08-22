@@ -35,6 +35,11 @@ const isPublicPage = createRouteMatcher([
   // agreement.qualifiedcommercial.com portal -- public, unauthenticated,
   // token-free fill-and-sign contract portal (see the host rewrite below).
   "/agreement(.*)",
+  // The design-system gallery. Static markup with no data behind it, and the
+  // page itself calls notFound() unless NODE_ENV is development — so this
+  // matcher can only ever match a 404 in production. It is here so the
+  // screenshot harness can reach the shared vocabulary without a session.
+  "/ds-gallery(.*)",
 ]);
 
 // Super-admin-only routes. Edge-level hard-deny so a non-super-admin who

@@ -628,8 +628,22 @@ export function Lbl({ children, className }: { children: ReactNode; className?: 
   return <div className={cx("lbl", className)}>{children}</div>;
 }
 
+/**
+ * A caption on its own line.
+ *
+ * `.sub` the CLASS is display-neutral on purpose — it is also worn by spans
+ * sitting inline beside an input, inside a `.row`, or in a composer hint.
+ * `Sub` the COMPONENT is a caption under something, which is how every one of
+ * its call sites uses it, so it carries `.subline` to actually be one.
+ *
+ * Without this, `<b>Title</b><Sub>caption</Sub>` — the single most common
+ * pattern in this migration — rendered as one run-on line: "Purchase
+ * contract1418 Northwest Fairview Terrace". Twenty-one sites did exactly that,
+ * and nothing in a typecheck, an endpoint diff or a class-token diff can see
+ * it. It took looking at the page.
+ */
 export function Sub({ children, className }: { children: ReactNode; className?: string }) {
-  return <span className={cx("sub", className)}>{children}</span>;
+  return <span className={cx("sub", "subline", className)}>{children}</span>;
 }
 
 /** Petrol-tinted explanatory callout. */

@@ -44,6 +44,9 @@ export const BARE_ROUTE_PREFIXES = [
   "/agreement",
   "/hud/share",
   "/plaid/oauth",
+  // The dev-only design-system gallery renders its own <main className="content">
+  // so it can be shot without the sidebar in frame.
+  "/ds-gallery",
 ] as const;
 
 export function isBareRoute(

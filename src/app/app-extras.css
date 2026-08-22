@@ -1582,3 +1582,12 @@ a.pick { color: inherit; text-decoration: none; }
    `.hidden` was answering this by accident; it does the wrong thing AND
    disappears when Tailwind does. */
 .hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* The `Sub` component's own line. See the comment on Sub in ds/index.tsx:
+   `.sub` stays display-neutral because spans wear it inline; the component is
+   a caption under something and has to be a block to be one. */
+.subline { display: block; margin-top: 2px; }
+/* …except as a flex item, where `display` is blockified anyway and the
+   margin just nudges it off its neighbours' baseline. Two sites use `Sub`
+   inline inside a `.row` on purpose. */
+.row > .subline, .pagebar > .subline, .composer-row > .subline { margin-top: 0; }
