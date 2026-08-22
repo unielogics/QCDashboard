@@ -1547,3 +1547,38 @@ a.pick { color: inherit; text-decoration: none; }
   --chip: #e6eaef;                    /* tokens.chip — neutral status ground */
   --glass: rgba(255, 255, 255, 0.7);  /* tokens.glass — translucent overlay */
 }
+
+/* ---------- four classes that were being used and never defined ----------
+   Found by diffing every class token in the TSX against every selector in the
+   two stylesheets. This is the same defect as `.grow`, `.trunc` and `.qc-num`
+   earlier in the migration: a className that matches no rule fails silently,
+   so the markup reads as styled and renders as nothing. Worth re-running that
+   diff before any future release. */
+
+/* A `.field` that CONTAINS its control rather than being one — a search box
+   with a glyph inside it. `.field` paints the box; this makes it a row and
+   resets the bare input inside so it does not draw a second border within the
+   first. `.csearch-in` above is the same idea with its own measure. */
+.field.box { display: flex; align-items: center; gap: 8px; padding: 0 11px; }
+.field.box > svg { flex-shrink: 0; color: var(--muted); }
+.field.box > input { flex: 1; min-width: 0; padding: 9px 0; border: 0; background: none; outline: none; font: inherit; color: var(--ink); }
+.field.box > input::placeholder { color: var(--faint); }
+
+/* The anchor half of `.btnreset`. A surface class worn by a real `<a>` picks
+   up the trunk's `a { color: var(--accent) }`, so a whole row of content
+   renders blue. Same job as `a.pick`, for the classes that are not `.pick`. */
+.linkreset { color: inherit; text-decoration: none; }
+.linkreset:hover { text-decoration: none; }
+
+/* A `.row` whose children push to opposite ends. `.row` owns gap and
+   alignment and says nothing about distribution, which left every
+   space-between row in the app writing it inline. */
+.row.split { justify-content: space-between; }
+
+/* Present to the accessibility tree, absent from the page. Used by the file
+   inputs that a styled dropzone clicks on the user's behalf — `display: none`
+   would take them out of the tab order and off the label's association, which
+   is how a keyboard user loses the ability to upload at all. Tailwind's
+   `.hidden` was answering this by accident; it does the wrong thing AND
+   disappears when Tailwind does. */
+.hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
