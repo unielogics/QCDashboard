@@ -8,7 +8,8 @@ import { MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/lib/intakeIndustr
 import { Modal } from "@/components/design-system/Modal";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Pill, SectionLabel } from "@/components/design-system/primitives";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { Btn, Callout, Field, Input, Panel, Select, Sub, cx } from "@/components/ds";
+import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
 import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
 import { EmailComposer } from "@/components/email/EmailComposer";
 import { useCurrentUser } from "@/hooks/useApi";
@@ -3040,6 +3041,34 @@ type ConvertLeadPayload = {
   notify_client: boolean;
 };
 
+/**
+ * Link a document bucket to an AI-underwriter lead.
+ *
+ * This is the same `/admin/ai-underwriter-leads/from-bucket/{id}` call the flat
+ * modal made — nothing new server-side. What changed is that it asks its three
+ * questions in the order the answers actually depend on each other, and it
+ * shows you what you are about to do before you do it.
+ *
+ * The flat form asked for the lead type in a select at the top and the client's
+ * details underneath, which put a decision that CHANGES THE REST OF THE FORM
+ * (Main Street adds two required fields) in the same visual weight as a
+ * phone number. And it buried "email the client a secure login link now" — an
+ * outward-facing action that sends real mail to a real person — as an unlabelled
+ * checkbox between the form and the submit button. Here it is a reviewed
+ * decision on the confirmation step, with the recipient address spelled out.
+ *
+ * Nothing is copied, re-uploaded or moved. The bucket keeps its files; the lead
+ * reads them where they are. That is the sentence step 3 exists to say.
+ */
+const LEAD_VARIANTS: { value: ConvertLeadVariant; label: string; blurb: string }[] = [
+  { value: "dealer", label: "Dealer", blurb: "Equipment and fleet finance through a dealer relationship." },
+  { value: "real_estate", label: "Real estate", blurb: "An investor or entity borrowing against property." },
+  { value: "main_street", label: "Main Street", blurb: "An operating business. Needs an industry and a use of funds so the AI screens it against the right programs." },
+  { value: "mca_refinance", label: "MCA refinance", blurb: "Consolidating existing merchant cash advances." },
+];
+
+const LINK_STEPS = ["Lead type", "Borrower", "Review"];
+
 function ConvertToLeadModal({
   bucket,
   busy,
@@ -3053,8 +3082,6 @@ function ConvertToLeadModal({
   onClose: () => void;
   onConvert: (payload: ConvertLeadPayload) => void | Promise<void>;
 }) {
-  const { t } = useTheme();
-  const field = inputStyle(t);
   // Guess from the bucket's own type before making the operator choose. Each
   // variant has its own bucket_type, so this is usually right.
   const bucketType = (bucket.bucket_type || "").toLowerCase();
@@ -3065,6 +3092,7 @@ function ConvertToLeadModal({
       : bucketType.includes("mca")
         ? "mca_refinance"
         : "dealer";
+  const [step, setStep] = useState(1);
   const [variant, setVariant] = useState<ConvertLeadVariant>(guessedVariant);
   const [industry, setIndustry] = useState<string>("other");
   const [intent, setIntent] = useState<string>("working_capital");
@@ -3075,11 +3103,37 @@ function ConvertToLeadModal({
   const [notifyClient, setNotifyClient] = useState(false);
   const [formError, setFormError] = useState("");
 
-  const label = (text: string) => ({ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: 1, marginBottom: 4, display: "block" });
+  const fileCount = bucket.uploaded_file_count ?? bucket.file_count ?? 0;
+  const variantLabel = LEAD_VARIANTS.find((v) => v.value === variant)?.label ?? variant;
+
+  // Step 2 is the only step that can be incomplete. Checked on the way FORWARD
+  // rather than on submit, so the operator is not told on the review screen
+  // that something four fields back is wrong.
+  function step2Problem(): string | null {
+    if (!fullName.trim()) return "Client name is required.";
+    if (!email.trim() || !email.includes("@")) return "A valid client email is required.";
+    return null;
+  }
+
+  function goNext() {
+    if (step === 2) {
+      const problem = step2Problem();
+      if (problem) {
+        setFormError(problem);
+        return;
+      }
+    }
+    setFormError("");
+    setStep((n) => Math.min(3, n + 1));
+  }
 
   function submit() {
-    if (!fullName.trim()) { setFormError("Client name is required."); return; }
-    if (!email.trim() || !email.includes("@")) { setFormError("A valid client email is required."); return; }
+    const problem = step2Problem();
+    if (problem) {
+      setFormError(problem);
+      setStep(2);
+      return;
+    }
     setFormError("");
     onConvert({
       variant,
@@ -3094,82 +3148,195 @@ function ConvertToLeadModal({
   }
 
   return (
-    <Modal open onClose={onClose} title="Convert to AI Underwriter Lead" size="md">
-      <div style={{ display: "grid", gap: 12, padding: 4 }}>
-        <p style={{ margin: 0, color: t.ink3, fontSize: 13, lineHeight: 1.45 }}>
-          Turns <strong style={{ color: t.ink }}>{bucket.name}</strong> into an AI-underwriter lead so you
-          can audit its existing files with the AI review and build a lender package. The bucket and its
-          files stay exactly as they are — nothing is copied or re-uploaded.
-        </p>
+    <Drawer
+      open
+      onClose={onClose}
+      width="md"
+      title="Link to an AI Underwriter lead"
+      sub={bucket.name}
+      // The title is stable across all three steps, so no ariaLabel override
+      // is needed here — the heading already names the dialog.
+      footer={
+        <>
+          {formError || error ? (
+            <span style={{ fontSize: 12, color: "var(--danger)" }}>{formError || error}</span>
+          ) : null}
+          <span style={{ flex: 1 }} />
+          {step > 1 ? (
+            <Btn onClick={() => { setFormError(""); setStep((n) => n - 1); }} disabled={busy}>
+              Back
+            </Btn>
+          ) : (
+            <Btn onClick={onClose} disabled={busy}>
+              Cancel
+            </Btn>
+          )}
+          {step < 3 ? (
+            <Btn variant="pri" onClick={goNext}>
+              Continue
+            </Btn>
+          ) : (
+            <Btn variant="pri" onClick={submit} disabled={busy}>
+              {busy ? "Linking…" : "Link to lead"}
+            </Btn>
+          )}
+        </>
+      }
+    >
+      <DrawerSteps steps={LINK_STEPS} current={step} />
 
-        <div>
-          <label style={label("Type")}>Lead type</label>
-          <select value={variant} onChange={(e) => setVariant(e.target.value as ConvertLeadVariant)} style={{ ...field, width: "100%" }}>
-            <option value="dealer">Dealer</option>
-            <option value="real_estate">Real estate</option>
-            <option value="main_street">Main Street (operating business)</option>
-            <option value="mca_refinance">MCA refinance</option>
-          </select>
-        </div>
+      {step === 1 ? (
+        <>
+          <Sub>
+            Picked from this bucket&apos;s own type. Change it if the file is really something else —
+            it decides how the AI reads the documents and which programs it screens against.
+          </Sub>
+          <div style={{ marginTop: 12 }}>
+            {LEAD_VARIANTS.map((v) => (
+              <label key={v.value} className={cx("pick", variant === v.value && "on")} style={{ alignItems: "flex-start" }}>
+                <input
+                  type="radio"
+                  name="lead-variant"
+                  checked={variant === v.value}
+                  onChange={() => setVariant(v.value)}
+                  style={{ marginTop: 3, accentColor: "var(--accent)" }}
+                />
+                <span style={{ minWidth: 0 }}>
+                  <b style={{ fontSize: 13 }}>{v.label}</b>
+                  <Sub>{v.blurb}</Sub>
+                </span>
+              </label>
+            ))}
+          </div>
+        </>
+      ) : null}
 
-        {variant === "main_street" ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>
-              <label style={label("Industry")}>Industry *</label>
-              <select value={industry} onChange={(e) => setIndustry(e.target.value)} style={{ ...field, width: "100%" }}>
-                {MAIN_STREET_INDUSTRIES.map((i) => (
-                  <option key={i.slug} value={i.slug}>{i.label}</option>
-                ))}
-              </select>
+      {step === 2 ? (
+        <div className="grid g10">
+          {variant === "main_street" ? (
+            <div className="fldgrid two">
+              <Field label="Industry" hint="Required for Main Street.">
+                <Select value={industry} onChange={(e) => setIndustry(e.target.value)}>
+                  {MAIN_STREET_INDUSTRIES.map((i) => (
+                    <option key={i.slug} value={i.slug}>{i.label}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="What they need" hint="Required for Main Street.">
+                <Select value={intent} onChange={(e) => setIntent(e.target.value)}>
+                  {MAIN_STREET_INTENTS.map((i) => (
+                    <option key={i.slug} value={i.slug}>{i.label}</option>
+                  ))}
+                </Select>
+              </Field>
             </div>
-            <div>
-              <label style={label("Looking for")}>What they need *</label>
-              <select value={intent} onChange={(e) => setIntent(e.target.value)} style={{ ...field, width: "100%" }}>
-                {MAIN_STREET_INTENTS.map((i) => (
-                  <option key={i.slug} value={i.slug}>{i.label}</option>
-                ))}
-              </select>
+          ) : null}
+          <div className="fldgrid two">
+            <Field label="Client full name" req={!fullName.trim()}>
+              <Input
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Jane Doe"
+                className={cx(!fullName.trim() && "bad")}
+              />
+            </Field>
+            <Field label="Client email" req={!email.trim() || !email.includes("@")}>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="client@example.com"
+                className={cx((!email.trim() || !email.includes("@")) && "bad")}
+              />
+            </Field>
+            <Field label="Phone" hint="Optional.">
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" />
+            </Field>
+            <Field
+              label={variant === "real_estate" ? "Investor / entity name" : "Business name"}
+              hint="Optional."
+            >
+              <Input
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                placeholder="Optional"
+              />
+            </Field>
+          </div>
+        </div>
+      ) : null}
+
+      {step === 3 ? (
+        <div className="grid g10">
+          <Callout tone="acc" icon={<Icon name="docCheck" size={15} stroke={2.2} />}>
+            <b style={{ fontSize: 13 }}>Nothing moves.</b>
+            <Sub>
+              The bucket keeps its {fileCount === 1 ? "file" : "files"} exactly where they are. The lead
+              reads them in place — nothing is copied, re-uploaded, or removed from{" "}
+              <strong>{bucket.name}</strong>.
+            </Sub>
+          </Callout>
+
+          <Panel title="What gets linked">
+            <div className="kv">
+              <span className="lbl">Bucket</span>
+              <span>{bucket.name}</span>
             </div>
-            <p style={{ gridColumn: "1 / -1", margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
-              These decide how the AI reads the file and which programs it is screened against.
-            </p>
-          </div>
-        ) : null}
+            <div className="kv">
+              <span className="lbl">Files the AI will read</span>
+              <span className="num">{fileCount}</span>
+            </div>
+            <div className="kv">
+              <span className="lbl">Lead type</span>
+              <span>{variantLabel}</span>
+            </div>
+            {variant === "main_street" ? (
+              <div className="kv">
+                <span className="lbl">Screened as</span>
+                <span>
+                  {MAIN_STREET_INDUSTRIES.find((i) => i.slug === industry)?.label ?? industry}
+                  {" · "}
+                  {MAIN_STREET_INTENTS.find((i) => i.slug === intent)?.label ?? intent}
+                </span>
+              </div>
+            ) : null}
+            <div className="kv">
+              <span className="lbl">Borrower</span>
+              <span>
+                {fullName.trim()}
+                {businessName.trim() ? ` · ${businessName.trim()}` : ""}
+              </span>
+            </div>
+          </Panel>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div>
-            <label style={label("Name")}>Client full name *</label>
-            <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" style={{ ...field, width: "100%" }} />
-          </div>
-          <div>
-            <label style={label("Email")}>Client email *</label>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" style={{ ...field, width: "100%" }} />
-          </div>
-          <div>
-            <label style={label("Phone")}>Phone</label>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" style={{ ...field, width: "100%" }} />
-          </div>
-          <div>
-            <label style={label("Business")}>{variant === "real_estate" ? "Investor / entity name" : "Business name"}</label>
-            <input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Optional" style={{ ...field, width: "100%" }} />
-          </div>
+          {fileCount === 0 ? (
+            <div className="warnline">
+              This bucket has no uploaded files yet. The lead will be created, but there is nothing for
+              the AI to audit until something is uploaded.
+            </div>
+          ) : null}
+
+          {/* An outward-facing action gets its own decision, not a checkbox
+              tucked between the last field and the submit button. */}
+          <label className={cx("pick", notifyClient && "on")} style={{ alignItems: "flex-start" }}>
+            <input
+              type="checkbox"
+              checked={notifyClient}
+              onChange={(e) => setNotifyClient(e.target.checked)}
+              style={{ marginTop: 3, accentColor: "var(--accent)" }}
+            />
+            <span style={{ minWidth: 0 }}>
+              <b style={{ fontSize: 13 }}>Email {email.trim() || "the client"} a secure resume link</b>
+              <Sub>
+                {notifyClient
+                  ? "A real email goes out as soon as you link. Leave this off to link quietly and send it yourself later."
+                  : "Off — nothing is sent. You can send the link from the lead afterwards."}
+              </Sub>
+            </span>
+          </label>
         </div>
-
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: t.ink2, cursor: "pointer" }}>
-          <input type="checkbox" checked={notifyClient} onChange={(e) => setNotifyClient(e.target.checked)} />
-          Email the client a secure login/resume link now
-        </label>
-
-        {(formError || error) ? <div style={{ color: t.danger, fontSize: 12 }}>{formError || error}</div> : null}
-
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
-          <button style={qcBtn(t)} onClick={onClose} disabled={busy}>Cancel</button>
-          <button style={qcBtnPrimary(t)} onClick={submit} disabled={busy}>
-            {busy ? "Converting…" : "Convert to lead"}
-          </button>
-        </div>
-      </div>
-    </Modal>
+      ) : null}
+    </Drawer>
   );
 }
 
