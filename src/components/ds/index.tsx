@@ -117,7 +117,7 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <div className={cx("ckhead", "pagehead", className)}>
+    <div className={cx("pagehead", className)}>
       {eyebrow ? <div className="lbl pagehead-eye">{eyebrow}</div> : null}
       <div className="ckrow">
         <h1>{title}</h1>

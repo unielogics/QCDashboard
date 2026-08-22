@@ -634,6 +634,89 @@ export default function AdminAIUnderwriterLeadsPage() {
 
   if (me && me.role !== Role.SUPER_ADMIN) return null;
 
+  const activeLeadId = selectedId;
+  const selectedLeadPanel = activeLeadId ? (
+    <LeadDetailPanel
+      detail={detail}
+      loading={detailLoading}
+      initialNotesOpen={searchParams.get("notes") === "1"}
+      onClose={closeLead}
+      onExport={() => exportPdf(activeLeadId)}
+      onGenerateSummary={() => generateExecutiveSummary(activeLeadId)}
+      onGeneratePacket={() => generateLenderPacket(activeLeadId)}
+      onGeneratePrequalification={() => generatePrequalification(activeLeadId)}
+      onPreviewEmail={(payload) => previewVendorEmail(activeLeadId, payload)}
+      onSendEmail={(payload) => sendVendorEmail(activeLeadId, payload)}
+      onIngestFromDrive={(ids) => ingestFromDrive(activeLeadId, ids)}
+      onRerun={openRerun}
+      rerunning={rerunOpen}
+      cockpitResponse={cockpitResponse}
+      cockpitAdapter={cockpitAdapter}
+      onCockpitResponse={(r) => {
+        // Fold every cockpit response (chat turns, uploads, re-runs) back
+        // into `detail` so switching tabs keeps the live conversation.
+        setDetail((current) =>
+          current
+            ? {
+                ...current,
+                messages: r.messages ?? current.messages,
+                files: r.files ?? current.files,
+                requested_documents: r.requested_documents ?? current.requested_documents,
+                latest_review: r.latest_review ?? current.latest_review,
+                intake: { ...current.intake, result_snapshot: r.intake?.result_snapshot ?? current.intake.result_snapshot },
+              }
+            : current,
+        );
+      }}
+      onDownloadZip={() => downloadPackageZip(activeLeadId)}
+      onLinkBucketIntake={() => {
+        if (detail?.intake) {
+          setLinkLead({
+            id: detail.intake.id,
+            bucket_id: null,
+            business_name: detail.intake.business_name,
+            full_name: detail.intake.full_name,
+          });
+        }
+      }}
+      onPostNote={(content) => postLeadNote(activeLeadId, content)}
+      onUpdateOutcomeStatus={(status) => updateOutcomeStatus(activeLeadId, status)}
+      onUpdateLanguage={(language) => updateLeadLanguage(activeLeadId, language)}
+      onCancelDeletionRequest={() => cancelLeadDeletionRequest(activeLeadId)}
+      onConfirmDeletion={(confirmName) => confirmLeadDeletion(activeLeadId, confirmName)}
+    />
+  ) : null;
+
+  const leadOverlays = (
+    <>
+      <BucketIntakeLinkDrawer
+        open={linkLead !== null}
+        onClose={() => setLinkLead(null)}
+        initialBucketId={linkLead?.bucket_id}
+        initialIntakeId={linkLead?.id}
+        title="Link AI intake to bucket"
+      />
+
+      <RunReviewDialog
+        open={rerunOpen}
+        onClose={() => setRerunOpen(false)}
+        onStart={startRerun}
+        poll={pollRerun}
+        onDone={onRerunDone}
+      />
+    </>
+  );
+
+  if (selectedLeadPanel) {
+    return (
+      <div className="ai-intake-detail-shell">
+        {notice ? <WarnLine>{notice}</WarnLine> : null}
+        {selectedLeadPanel}
+        {leadOverlays}
+      </div>
+    );
+  }
+
   return (
     <div style={{ height: "calc(100dvh - 105px)", maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: 0, overflow: "hidden" }}>
       <div className="ckhead" style={{ flexShrink: 0 }}>
@@ -727,77 +810,7 @@ export default function AdminAIUnderwriterLeadsPage() {
         }}
       />
 
-      <Drawer open={!!selectedId} onClose={closeLead} width="xl" ariaLabel="AI intake file" bodyClass="drawer-lead-detail">
-        {selectedId ? (
-          <LeadDetailPanel
-            detail={detail}
-            loading={detailLoading}
-            initialNotesOpen={searchParams.get("notes") === "1"}
-            onClose={closeLead}
-            onExport={() => exportPdf(selectedId)}
-            onGenerateSummary={() => generateExecutiveSummary(selectedId)}
-            onGeneratePacket={() => generateLenderPacket(selectedId)}
-            onGeneratePrequalification={() => generatePrequalification(selectedId)}
-            onPreviewEmail={(payload) => previewVendorEmail(selectedId, payload)}
-            onSendEmail={(payload) => sendVendorEmail(selectedId, payload)}
-            onIngestFromDrive={(ids) => ingestFromDrive(selectedId, ids)}
-            onRerun={openRerun}
-            rerunning={rerunOpen}
-            cockpitResponse={cockpitResponse}
-            cockpitAdapter={cockpitAdapter}
-            onCockpitResponse={(r) => {
-              // Fold every cockpit response (chat turns, uploads, re-runs) back
-              // into `detail` — the cockpit unmounts when the admin switches to
-              // the Workspace tab, and remounts seeded from detail.messages, so
-              // a stale detail silently drops the conversation sent since open.
-              setDetail((current) =>
-                current
-                  ? {
-                      ...current,
-                      messages: r.messages ?? current.messages,
-                      files: r.files ?? current.files,
-                      requested_documents: r.requested_documents ?? current.requested_documents,
-                      latest_review: r.latest_review ?? current.latest_review,
-                      intake: { ...current.intake, result_snapshot: r.intake?.result_snapshot ?? current.intake.result_snapshot },
-                    }
-                  : current,
-              );
-            }}
-            onDownloadZip={() => downloadPackageZip(selectedId)}
-            onLinkBucketIntake={() => {
-              if (detail?.intake) {
-                setLinkLead({
-                  id: detail.intake.id,
-                  bucket_id: null,
-                  business_name: detail.intake.business_name,
-                  full_name: detail.intake.full_name,
-                });
-              }
-            }}
-            onPostNote={(content) => postLeadNote(selectedId, content)}
-            onUpdateOutcomeStatus={(status) => updateOutcomeStatus(selectedId, status)}
-            onUpdateLanguage={(language) => updateLeadLanguage(selectedId, language)}
-            onCancelDeletionRequest={() => cancelLeadDeletionRequest(selectedId)}
-            onConfirmDeletion={(confirmName) => confirmLeadDeletion(selectedId, confirmName)}
-          />
-        ) : null}
-      </Drawer>
-
-      <BucketIntakeLinkDrawer
-        open={linkLead !== null}
-        onClose={() => setLinkLead(null)}
-        initialBucketId={linkLead?.bucket_id}
-        initialIntakeId={linkLead?.id}
-        title="Link AI intake to bucket"
-      />
-
-      <RunReviewDialog
-        open={rerunOpen}
-        onClose={() => setRerunOpen(false)}
-        onStart={startRerun}
-        poll={pollRerun}
-        onDone={onRerunDone}
-      />
+      {leadOverlays}
 
       {createOpen ? (
         <CreateLeadModal
@@ -1119,6 +1132,9 @@ function LeadDetailPanel({
           { label: "Dealer partner messages", onSelect: () => setPrototypeView("rep"), hidden: !detail },
           { label: "Delete lead", onSelect: () => setConfirmDeleteOpen(true), tone: "danger", hidden: !detail },
         ]} />
+        <IconBtn aria-label="Close" title="Close" onClick={onClose}>
+          <Icon name="x" size={16} />
+        </IconBtn>
       </div>
 
       {loading || !detail ? <div className="empty">Loading intake file...</div> : (
@@ -1135,12 +1151,12 @@ function LeadDetailPanel({
             ))}
           </div>
 
-          <div className="intake-file-body">
-            <div className="grid">
-              {prototypeView === "workflow" ? (
-                <>
+          <div className={cx("intake-file-body", prototypeView === "workflow" && "with-sequence")}>
+            {prototypeView === "workflow" ? (
+              <>
+                <aside className="submission-rail">
                   <Panel title="Submission sequence" sub={`Step ${submissionStep} of 5`}>
-                    <div className="submission-steps">
+                    <div className="submission-steps submission-steps-rail">
                       {workflowSteps.map((step) => (
                         <button key={step.id} type="button" className={cx("submission-step", submissionStep === step.id && "on", submissionStep > step.id && "done")} onClick={() => setSubmissionStep(step.id)}>
                           <span>{submissionStep > step.id ? <Icon name="check" size={12} /> : step.id}</span>
@@ -1150,6 +1166,9 @@ function LeadDetailPanel({
                       ))}
                     </div>
                   </Panel>
+                </aside>
+
+                <div className="grid">
 
                   {submissionStep === 1 ? (
                     <Panel title="Data sources" actions={<Btn onClick={onLinkBucketIntake}>Attach a bucket</Btn>}>
@@ -1199,7 +1218,8 @@ function LeadDetailPanel({
                       </Row>
                     </Panel>
                   ) : null}
-                </>
+                </div>
+              </>
               ) : null}
 
               {prototypeView === "sources" ? (
@@ -1233,8 +1253,6 @@ function LeadDetailPanel({
                   </div>
                 </Panel>
               ) : null}
-            </div>
-
             <aside className="grid">
               <Panel title="Contact"><Line label="Principal" value={detail.intake.full_name} /><Line label="Mobile" value={detail.intake.phone || "-"} /><Line label="Requested" value={formatMoney(detail.intake.requested_loan_amount)} /><Line label="Vertical" value={variantLabel(detail.intake.variant)} /></Panel>
               <Panel title="Missing and blockers"><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No blockers listed." /></Panel>

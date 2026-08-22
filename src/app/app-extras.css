@@ -156,6 +156,7 @@
 .audit-brief small { display: block; margin-top: 2px; color: var(--muted); }
 .full { width: 100%; justify-content: center; }
 
+.dashboard-head { margin: 0 0 14px; }
 .dashboard-greeting { font-size: 26px !important; margin-top: 2px; }
 .vertical-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .vertical-summary { display: flex; flex-direction: column; gap: 9px; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); color: inherit; text-decoration: none; }
@@ -441,6 +442,16 @@
    of the scroller, which is where it was always meant to sit. */
 .ckhead { top: 0; }
 .ckhead h1 { font-size: 17.5px; line-height: 1.15; letter-spacing: 0; }
+.pagehead {
+  position: static;
+  z-index: auto;
+  background: transparent;
+  border-bottom: 0;
+  margin: 0 0 16px;
+  padding: 0;
+}
+.pagehead .ckrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pagehead h1 { font-size: 23px; line-height: 1.15; letter-spacing: 0; }
 .pagehead .lede { color: var(--muted); font-size: 12.8px; min-width: 0; }
 .pagehead-eye { margin-bottom: 5px; }
 .pagehead-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 8px; }
@@ -1012,18 +1023,25 @@ button.pick { width: 100%; text-align: left; }
 .cktabs button.on, .cktabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 650; }
 
 /* AI intake file: the prototype's five-step submission workspace. */
-.intake-file { display: flex; flex-direction: column; min-height: min(760px, calc(100vh - 90px)); }
+.ai-intake-detail-shell { max-width: 1480px; margin: 0 auto; min-height: 0; }
+.intake-file { display: flex; flex-direction: column; min-height: calc(100dvh - 112px); }
 .intake-file-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .intake-file-head h3 { font-size: 18px; }
 .intake-tabs { display: flex; align-items: center; gap: 20px; padding: 0 16px; border-bottom: 1px solid var(--line); overflow-x: auto; flex-shrink: 0; }
 .intake-tabs button { appearance: none; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); padding: 11px 0 9px; font: inherit; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; }
 .intake-tabs button.on { border-bottom-color: var(--accent); color: var(--ink); }
 .intake-file-body { display: grid; grid-template-columns: minmax(0, 1fr) 286px; gap: 14px; padding: 14px; min-height: 0; overflow-y: auto; background: var(--bg); }
+.intake-file-body.with-sequence { grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) 286px; align-items: start; }
+.submission-rail { position: sticky; top: 14px; align-self: start; }
 .submission-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.submission-steps-rail { display: flex; flex-direction: column; gap: 2px; }
 .submission-step { min-width: 0; display: grid; grid-template-columns: 24px minmax(0, 1fr); grid-template-rows: auto auto; gap: 2px 7px; align-items: center; text-align: left; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 9px; border-radius: 6px; cursor: pointer; }
 .submission-step > span { grid-row: 1 / 3; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: var(--sunken); color: var(--muted); font-size: 10px; font-weight: 800; }
 .submission-step b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .submission-step small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 9.5px; }
+.submission-steps-rail .submission-step { min-height: 54px; grid-template-columns: 28px minmax(0, 1fr); border-radius: 8px; padding: 10px; }
+.submission-steps-rail .submission-step b { font-size: 13px; white-space: normal; }
+.submission-steps-rail .submission-step small { font-size: 11.5px; line-height: 1.35; white-space: normal; }
 .submission-step.on { border-color: var(--accent); background: var(--accbg); }
 .submission-step.on > span { background: var(--accent); color: #fff; }
 .submission-step.done > span { background: var(--okbg); color: var(--ok); }
@@ -1033,7 +1051,8 @@ button.pick { width: 100%; text-align: left; }
 .intake-review-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .artifact-preview { display: grid; gap: 8px; max-height: 360px; overflow-y: auto; padding: 12px 0; }
 @media (max-width: 1000px) {
-  .intake-file-body { grid-template-columns: 1fr; }
+  .intake-file-body, .intake-file-body.with-sequence { grid-template-columns: 1fr; }
+  .submission-rail { position: static; }
   .submission-steps { grid-template-columns: 1fr; }
   .submission-step b, .submission-step small { white-space: normal; }
 }

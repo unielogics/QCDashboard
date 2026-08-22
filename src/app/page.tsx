@@ -412,7 +412,7 @@ function OperatorDashboard({
 
   return (
     <div>
-      <div className="ckhead dashboard-head">
+      <div className="pagehead dashboard-head">
         <div className="ckrow">
           <div>
             <span className="lbl" style={{ color: "var(--petrol)" }}>{dateline} · {time} ET</span>

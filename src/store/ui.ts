@@ -55,10 +55,10 @@ function writeSidebar(collapsed: boolean): void {
   }
 }
 
-// Always start expanded server-side AND on first client render — reading
+// Start collapsed server-side AND on first client render. Reading
 // localStorage at module init causes SSR/CSR mismatch (React #418/#425) when
-// the user has previously collapsed the sidebar. The persisted value is
-// rehydrated in a useEffect inside AppShell via hydrateSidebarFromStorage().
+// the user has previously changed the sidebar. The persisted value is
+// rehydrated in a useEffect inside AppShell.
 export const useUI = create<UIStore>((set) => ({
   theme: "light",
   setTheme: (v) => {
@@ -71,7 +71,7 @@ export const useUI = create<UIStore>((set) => ({
       writeTheme(next);
       return { theme: next };
     }),
-  sidebarCollapsed: false,
+  sidebarCollapsed: true,
   setSidebarCollapsed: (v) => {
     writeSidebar(v);
     set({ sidebarCollapsed: v });
@@ -108,10 +108,11 @@ export function readPersistedTheme(): UITheme {
 // Read the persisted sidebar state. Call only from a client-side effect
 // (post-hydration), never during render or module init.
 export function readPersistedSidebar(): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined") return true;
   try {
-    return window.localStorage.getItem(SIDEBAR_KEY) === "1";
+    const stored = window.localStorage.getItem(SIDEBAR_KEY);
+    return stored == null ? true : stored === "1";
   } catch {
-    return false;
+    return true;
   }
 }

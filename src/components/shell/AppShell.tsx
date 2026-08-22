@@ -44,13 +44,13 @@ export default function AppShell({
   // Rehydrate the user's persisted sidebar choice once, post-mount. Doing
   // this in an effect (rather than at store init) keeps the first client
   // render identical to the server render, avoiding hydration mismatch
-  // (React #418/#425) when localStorage says "collapsed".
+  // (React #418/#425) when localStorage says "expanded".
   useEffect(() => {
     const persisted = readPersistedSidebar();
     if (window.matchMedia("(max-width: 760px)").matches) {
       useUI.setState({ sidebarCollapsed: true });
-    } else if (persisted) {
-      setSidebarCollapsed(true);
+    } else {
+      setSidebarCollapsed(persisted);
     }
     setTheme(readPersistedTheme());
   }, [setSidebarCollapsed, setTheme]);
