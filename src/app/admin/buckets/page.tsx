@@ -5,10 +5,21 @@ import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
 import { MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
-import { Modal } from "@/components/design-system/Modal";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Pill, SectionLabel } from "@/components/design-system/primitives";
-import { Btn, Callout, Field, Input, Panel, Select, Sub, cx } from "@/components/ds";
+import {
+  Btn,
+  Callout,
+  CellChip,
+  Field,
+  IconBtn,
+  Input,
+  PageHeader,
+  Panel,
+  Select,
+  StatusLine,
+  Sub,
+  Textarea,
+  cx,
+} from "@/components/ds";
 import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
 import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
 import { EmailComposer } from "@/components/email/EmailComposer";
@@ -325,7 +336,6 @@ function emptyVendorAccessDraft(): VendorAccessDraft {
 }
 
 export default function BucketsAdminPage() {
-  const { t } = useTheme();
   const router = useRouter();
   const searchParams = useSearchParams();
   const bucketParam = searchParams.get("bucket");
@@ -681,7 +691,7 @@ export default function BucketsAdminPage() {
     );
   }, [buckets, search]);
 
-  if (meLoading) return <PanelBox style={{ color: t.ink2 }}>Loading Buckets...</PanelBox>;
+  if (meLoading) return <PanelBox>Loading Buckets...</PanelBox>;
   if (me && me.role !== Role.SUPER_ADMIN) return null;
 
   async function createBucketWorkflow() {
@@ -1420,9 +1430,6 @@ export default function BucketsAdminPage() {
     setNotice("Copied.");
   }
 
-  const field = inputStyle(t);
-  const primary = buttonStyle(t, "primary");
-  const secondary = buttonStyle(t, "secondary");
   const requestedDocNameById = new Map((detail?.requested_documents ?? []).map((doc) => [doc.id, doc.name]));
 
   function renderShareFilePicker(args: {
@@ -1448,38 +1455,41 @@ export default function BucketsAdminPage() {
     });
     const selectedFiles = visibleFiles.filter((file) => args.selectedIds.includes(file.id));
     return (
-      <div style={shareFilePickerStyle(t)}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-          <strong style={{ color: t.ink, fontSize: 13 }}>{args.selectedIds.length} file{args.selectedIds.length === 1 ? "" : "s"} selected</strong>
-          <button style={miniButtonStyle(t)} onClick={() => args.onSetSelected([])}>Clear</button>
+      <div className="card grid g8">
+        <div className="row">
+          <strong className="grow">{args.selectedIds.length} file{args.selectedIds.length === 1 ? "" : "s"} selected</strong>
+          <Btn size="sm" onClick={() => args.onSetSelected([])}>Clear</Btn>
         </div>
         {selectedFiles.length ? (
-          <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div className="sub trunc">
             {selectedFiles.slice(0, 3).map((file) => file.file_name).join(", ")}{selectedFiles.length > 3 ? ` +${selectedFiles.length - 3} more` : ""}
           </div>
         ) : (
-          <div style={{ color: t.warn, fontSize: 12, fontWeight: 800 }}>Select at least one file for this viewer.</div>
+          <div className="warnline">Select at least one file for this viewer.</div>
         )}
-        <input style={field} value={args.search} onChange={(event) => args.onSearch(event.target.value)} placeholder="Search files" />
-        <div style={{ display: "flex", gap: 8 }}>
-          <button style={secondary} onClick={() => args.onSetSelected(filtered.map((file) => file.id))} disabled={!filtered.length}>Select visible</button>
+        <Input value={args.search} onChange={(event) => args.onSearch(event.target.value)} placeholder="Search files" />
+        <div className="row">
+          <Btn onClick={() => args.onSetSelected(filtered.map((file) => file.id))} disabled={!filtered.length}>Select visible</Btn>
           {selectedShareFileIds.length ? (
-            <button style={secondary} onClick={() => args.onSetSelected(selectedShareFileIds)}>Use checked files</button>
+            <Btn onClick={() => args.onSetSelected(selectedShareFileIds)}>Use checked files</Btn>
           ) : null}
         </div>
-        <div style={{ display: "grid", gap: 6, maxHeight: 180, overflowY: "auto" }}>
+        {/* Tighter than `.picklist`'s 46vh default on purpose: this list is
+            nested two scrollers deep inside the share popover, and at 46vh it
+            pushes the Create button off the bottom of the popover. */}
+        <div className="picklist sm">
           {filtered.length ? filtered.map((file) => (
-            <label key={file.id} style={shareFileOptionStyle(t)}>
+            <label key={file.id} className={cx("pick", args.selectedIds.includes(file.id) && "on")}>
               <input type="checkbox" checked={args.selectedIds.includes(file.id)} onChange={() => args.onToggle(file.id)} />
-              <span style={{ minWidth: 0 }}>
-                <span style={{ display: "block", color: t.ink, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.file_name}</span>
-                <span style={{ color: t.ink3, fontSize: 11 }}>
+              <span className="grow">
+                <strong className="trunc" style={{ display: "block" }}>{file.file_name}</strong>
+                <span className="sub">
                   {requestedDocNameById.get(file.requested_document_id || "") || "General upload"} | {formatSize(file.size_bytes)}
                 </span>
               </span>
             </label>
           )) : (
-            <div style={emptyInlineStyle(t)}>No uploaded files match this search.</div>
+            <div className="hintbox">No uploaded files match this search.</div>
           )}
         </div>
       </div>
@@ -1500,34 +1510,34 @@ export default function BucketsAdminPage() {
     });
     const selectedFiles = files.filter((file) => vendorAssignmentDraft.file_ids.includes(file.id));
     return (
-      <div style={shareFilePickerStyle(t)}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-          <strong style={{ color: t.ink, fontSize: 13 }}>{vendorAssignmentDraft.file_ids.length} file{vendorAssignmentDraft.file_ids.length === 1 ? "" : "s"} selected</strong>
-          <button style={miniButtonStyle(t)} onClick={() => setVendorAssignmentDraft({ ...vendorAssignmentDraft, file_ids: [] })}>Clear</button>
+      <div className="card grid g8">
+        <div className="row">
+          <strong className="grow">{vendorAssignmentDraft.file_ids.length} file{vendorAssignmentDraft.file_ids.length === 1 ? "" : "s"} selected</strong>
+          <Btn size="sm" onClick={() => setVendorAssignmentDraft({ ...vendorAssignmentDraft, file_ids: [] })}>Clear</Btn>
         </div>
         {selectedFiles.length ? (
-          <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div className="sub trunc">
             {selectedFiles.slice(0, 3).map((file) => file.file_name).join(", ")}{selectedFiles.length > 3 ? ` +${selectedFiles.length - 3} more` : ""}
           </div>
         ) : (
-          <div style={{ color: t.warn, fontSize: 12, fontWeight: 800 }}>Select files for this vendor or switch to all active files.</div>
+          <div className="warnline">Select files for this vendor or switch to all active files.</div>
         )}
-        <input
-          style={field}
+        <Input
           value={vendorAssignmentDraft.file_search}
           onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, file_search: event.target.value })}
           placeholder="Search files"
         />
-        <button
-          style={secondary}
+        <Btn
           onClick={() => setVendorAssignmentDraft({ ...vendorAssignmentDraft, file_ids: filtered.map((file) => file.id) })}
           disabled={!filtered.length}
         >
           Select visible
-        </button>
-        <div style={{ display: "grid", gap: 6, maxHeight: 220, overflowY: "auto" }}>
+        </Btn>
+        {/* Same reason as the share picker: bounded to the drawer it sits in
+            rather than to the viewport. */}
+        <div className="picklist sm">
           {filtered.length ? filtered.map((file) => (
-            <label key={file.id} style={shareFileOptionStyle(t)}>
+            <label key={file.id} className={cx("pick", vendorAssignmentDraft.file_ids.includes(file.id) && "on")}>
               <input
                 type="checkbox"
                 checked={vendorAssignmentDraft.file_ids.includes(file.id)}
@@ -1538,13 +1548,13 @@ export default function BucketsAdminPage() {
                     : [...vendorAssignmentDraft.file_ids, file.id],
                 })}
               />
-              <span style={{ minWidth: 0 }}>
-                <span style={{ display: "block", color: t.ink, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.file_name}</span>
-                <span style={{ color: t.ink3, fontSize: 11 }}>{docs.get(file.requested_document_id || "") || "General upload"} | {formatSize(file.size_bytes)}</span>
+              <span className="grow">
+                <strong className="trunc" style={{ display: "block" }}>{file.file_name}</strong>
+                <span className="sub">{docs.get(file.requested_document_id || "") || "General upload"} | {formatSize(file.size_bytes)}</span>
               </span>
             </label>
           )) : (
-            <div style={emptyInlineStyle(t)}>No uploaded files match this search.</div>
+            <div className="hintbox">No uploaded files match this search.</div>
           )}
         </div>
       </div>
@@ -1552,233 +1562,234 @@ export default function BucketsAdminPage() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-        <div>
-          <h1 style={{ margin: 0, color: t.ink, fontSize: 28, fontWeight: 850 }}>Buckets</h1>
-          <p style={{ margin: "5px 0 0", color: t.ink3, fontSize: 13 }}>
-            Secure document rooms for collecting and selectively sharing files.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <button style={secondary} onClick={() => setVendorDirectoryOpen(true)}>
-            <Icon name="user" size={15} />
-            Manage vendors
-          </button>
-          <button
-            style={primary}
-            onClick={() => {
-              setCreateResult(null);
-              setCreateStatus(null);
-              setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
-              setCreateInvites([]);
-              setCustomDocs([]);
-              setCustomDocDraft({ name: "", description: "", required: true, allow_multiple_files: false });
-              setCreateOpen(true);
-            }}
-          >
-            <Icon name="plus" size={15} />
-            Create bucket
-          </button>
-        </div>
-      </div>
+    // Grid, not flex-column: `.panel` is overflow:hidden, and as a flex child
+    // that zeroes its automatic minimum size and clips its own body.
+    <div className="grid">
+      <PageHeader
+        title="Buckets"
+        lede="Secure document rooms for collecting and selectively sharing files."
+        actions={
+          <>
+            <Btn onClick={() => setVendorDirectoryOpen(true)}>
+              <Icon name="user" size={15} />
+              Manage vendors
+            </Btn>
+            <Btn
+              variant="pri"
+              onClick={() => {
+                setCreateResult(null);
+                setCreateStatus(null);
+                setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
+                setCreateInvites([]);
+                setCustomDocs([]);
+                setCustomDocDraft({ name: "", description: "", required: true, allow_multiple_files: false });
+                setCreateOpen(true);
+              }}
+            >
+              <Icon name="plus" size={15} />
+              Create bucket
+            </Btn>
+          </>
+        }
+      />
 
       {notice ? (
-        <PanelBox style={{ padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, color: t.ink2 }}>
-          <Icon name="check" size={14} />
+        // One slot, two meanings: sixteen call sites pass readableError() into
+        // this same setNotice. Rendering a failed share-link creation in accent
+        // blue behind a checkmark tells the operator it worked.
+        <Callout
+          tone={noticeIsFailure(notice) ? "bad" : "acc"}
+          icon={<Icon name={noticeIsFailure(notice) ? "alert" : "check"} size={15} />}
+        >
           {notice}
-        </PanelBox>
+        </Callout>
       ) : null}
 
-      {vendorDirectoryOpen ? (
-        <ModalFrame
-          title="Vendor directory"
-          subtitle="Create vendors once, then assign them to buckets from the bucket list."
-          onClose={() => setVendorDirectoryOpen(false)}
-        >
-          <div style={{ display: "grid", gap: 12 }}>
-            <PanelBox>
-              <SectionLabel>Create vendor login</SectionLabel>
-              <div style={{ color: t.ink3, fontSize: 12.5, marginBottom: 10 }}>
-                Vendors log in with their email and only see buckets you assign to them.
+      <Drawer
+        open={vendorDirectoryOpen}
+        onClose={() => setVendorDirectoryOpen(false)}
+        width="md"
+        title="Vendor directory"
+        sub="Create vendors once, then assign them to buckets from the bucket list."
+        bodyClass="grid"
+      >
+        <Panel title="Create vendor login" sub="Vendors log in with their email and only see buckets you assign to them.">
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto", gap: 8 }}>
+            <Input
+              placeholder="Vendor name"
+              value={vendorDirectoryDraft.vendor_name}
+              onChange={(event) => setVendorDirectoryDraft({ ...vendorDirectoryDraft, vendor_name: event.target.value })}
+            />
+            <Input
+              placeholder="Vendor email"
+              value={vendorDirectoryDraft.vendor_email}
+              onChange={(event) => setVendorDirectoryDraft({ ...vendorDirectoryDraft, vendor_email: event.target.value })}
+            />
+            <Btn
+              variant="pri"
+              onClick={() => createVendorFromDirectory().catch((error) => setNotice(readableError(error)))}
+              disabled={!vendorDirectoryDraft.vendor_name.trim() || !vendorDirectoryDraft.vendor_email.trim()}
+            >
+              <Icon name="plus" size={14} />
+              Create
+            </Btn>
+          </div>
+        </Panel>
+        <Panel title="Existing vendors" actions={<span className="tag">{vendors.length} vendors</span>} bodyClass="grid g8">
+          <div className="grid g8" style={{ maxHeight: 360, overflowY: "auto" }}>
+            {vendors.length ? vendors.map((vendor) => (
+              <div key={vendor.id} className="itemrow">
+                <div className="grow">
+                  <strong>{vendor.name}</strong>
+                  <div className="sub">{vendor.email}</div>
+                </div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto", gap: 8 }}>
-                <input
-                  style={field}
+            )) : (
+              <div className="hintbox">No vendors yet. Create the first vendor above.</div>
+            )}
+          </div>
+        </Panel>
+      </Drawer>
+
+      <Drawer
+        open={vendorAssignmentBucket !== null}
+        onClose={() => {
+          setVendorAssignmentBucket(null);
+          setVendorAssignmentDetail(null);
+          setVendorAssignmentDraft(emptyVendorAccessDraft());
+        }}
+        width="lg"
+        title="Assign vendor"
+        sub={vendorAssignmentBucket ? `${vendorAssignmentBucket.name} | ${vendorAssignmentBucket.client_name || "No client"}` : undefined}
+        bodyClass="grid"
+      >
+        {vendorAssignmentBusy && !vendorAssignmentDetail ? (
+          <PanelBox>Loading vendor assignment...</PanelBox>
+        ) : (
+          <>
+            <Panel
+              title="Assign vendor to this bucket"
+              sub="Choose an existing vendor or create a new one, then decide whether they see all active files or selected files."
+              bodyClass="grid g8"
+            >
+              <Select
+                value={vendorAssignmentDraft.vendor_user_id}
+                onChange={(event) => {
+                  const vendor = vendors.find((row) => row.id === event.target.value);
+                  setVendorAssignmentDraft({
+                    ...vendorAssignmentDraft,
+                    vendor_user_id: event.target.value,
+                    vendor_name: vendor?.name ?? "",
+                    vendor_email: vendor?.email ?? "",
+                  });
+                }}
+              >
+                <option value="">New vendor or choose existing</option>
+                {vendors.map((vendor) => (
+                  <option key={vendor.id} value={vendor.id}>{vendor.name} | {vendor.email}</option>
+                ))}
+              </Select>
+              <div className="fldgrid two">
+                <Input
                   placeholder="Vendor name"
-                  value={vendorDirectoryDraft.vendor_name}
-                  onChange={(event) => setVendorDirectoryDraft({ ...vendorDirectoryDraft, vendor_name: event.target.value })}
+                  value={vendorAssignmentDraft.vendor_name}
+                  onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, vendor_user_id: "", vendor_name: event.target.value })}
                 />
-                <input
-                  style={field}
+                <Input
                   placeholder="Vendor email"
-                  value={vendorDirectoryDraft.vendor_email}
-                  onChange={(event) => setVendorDirectoryDraft({ ...vendorDirectoryDraft, vendor_email: event.target.value })}
+                  value={vendorAssignmentDraft.vendor_email}
+                  onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, vendor_user_id: "", vendor_email: event.target.value })}
                 />
-                <button
-                  style={primary}
-                  onClick={() => createVendorFromDirectory().catch((error) => setNotice(readableError(error)))}
-                  disabled={!vendorDirectoryDraft.vendor_name.trim() || !vendorDirectoryDraft.vendor_email.trim()}
-                >
-                  <Icon name="plus" size={14} />
-                  Create
-                </button>
               </div>
-            </PanelBox>
-            <PanelBox>
-              <SectionLabel action={`${vendors.length} vendors`}>Existing vendors</SectionLabel>
-              <div style={{ display: "grid", gap: 8, maxHeight: 360, overflowY: "auto" }}>
-                {vendors.length ? vendors.map((vendor) => (
-                  <div key={vendor.id} style={smallRowStyle(t)}>
-                    <div>
-                      <strong style={{ color: t.ink }}>{vendor.name}</strong>
-                      <div style={{ color: t.ink3, fontSize: 12 }}>{vendor.email}</div>
+              <div className="fldgrid two">
+                <Select
+                  value={vendorAssignmentDraft.file_scope}
+                  onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, file_scope: event.target.value as VendorAccessDraft["file_scope"] })}
+                >
+                  <option value="all_active">All active files</option>
+                  <option value="selected">Selected files</option>
+                </Select>
+                <Select
+                  value={vendorAssignmentDraft.expires_days}
+                  onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, expires_days: Number(event.target.value) })}
+                >
+                  <option value={1}>Expires 1 day</option>
+                  <option value={7}>Expires 7 days</option>
+                  <option value={14}>Expires 14 days</option>
+                  <option value={30}>Expires 30 days</option>
+                  <option value={0}>No expiration</option>
+                </Select>
+              </div>
+              {vendorAssignmentDraft.file_scope === "selected" ? renderVendorAssignmentFilePicker() : (
+                <div className="hintbox">Vendor will see all current and future active files in this bucket.</div>
+              )}
+              {/* Vendor-assignment permission matrix. Four of the five vendor
+                  flags; `can_propose_tasks` is deliberately not offered here and
+                  keeps its draft default. */}
+              <div className="fldgrid two">
+                {([
+                  ["can_preview", "Preview"],
+                  ["can_download", "Download"],
+                  ["can_add_notes", "Notes"],
+                  ["can_see_internal_notes", "Internal notes"],
+                ] as const).map(([key, label]) => (
+                  <label key={key} className={cx("pick", vendorAssignmentDraft[key] && "on")}>
+                    <span className="grow"><strong>{label}</strong></span>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(vendorAssignmentDraft[key])}
+                      onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, [key]: event.target.checked })}
+                    />
+                  </label>
+                ))}
+              </div>
+              <Btn variant="pri" onClick={assignVendorFromBucketList} disabled={vendorAssignmentBusy}>
+                <Icon name="plus" size={14} />
+                {vendorAssignmentBusy ? "Assigning..." : "Assign vendor"}
+              </Btn>
+            </Panel>
+            <Panel
+              title="Assigned vendors"
+              actions={<span className="tag">{vendorAssignmentDetail?.vendor_access?.length ?? 0} vendors</span>}
+            >
+              <div className="grid g8" style={{ maxHeight: 260, overflowY: "auto" }}>
+                {(vendorAssignmentDetail?.vendor_access ?? []).length ? (vendorAssignmentDetail?.vendor_access ?? []).map((access) => (
+                  <div key={access.id} className="itemrow">
+                    <div className="grow">
+                      <strong>{access.vendor_name || access.vendor_email || "Vendor"}</strong>
+                      <div className="sub">
+                        {access.vendor_email || "No email"} | {access.file_scope === "all_active" ? "All active files" : `${access.files?.length ?? 0} selected files`} | {statusLabel(access.status)}
+                      </div>
                     </div>
                   </div>
                 )) : (
-                  <div style={emptyInlineStyle(t)}>No vendors yet. Create the first vendor above.</div>
+                  <div className="hintbox">No vendors assigned to this bucket yet.</div>
                 )}
               </div>
-            </PanelBox>
-          </div>
-        </ModalFrame>
-      ) : null}
+            </Panel>
+          </>
+        )}
+      </Drawer>
 
-      {vendorAssignmentBucket ? (
-        <ModalFrame
-          title={`Assign vendor`}
-          subtitle={`${vendorAssignmentBucket.name} | ${vendorAssignmentBucket.client_name || "No client"}`}
-          onClose={() => {
-            setVendorAssignmentBucket(null);
-            setVendorAssignmentDetail(null);
-            setVendorAssignmentDraft(emptyVendorAccessDraft());
-          }}
-        >
-          {vendorAssignmentBusy && !vendorAssignmentDetail ? (
-            <PanelBox>Loading vendor assignment...</PanelBox>
-          ) : (
-            <div style={{ display: "grid", gap: 12 }}>
-              <PanelBox>
-                <SectionLabel>Assign vendor to this bucket</SectionLabel>
-                <div style={{ color: t.ink3, fontSize: 12.5, marginBottom: 10 }}>
-                  Choose an existing vendor or create a new one, then decide whether they see all active files or selected files.
-                </div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  <select
-                    style={field}
-                    value={vendorAssignmentDraft.vendor_user_id}
-                    onChange={(event) => {
-                      const vendor = vendors.find((row) => row.id === event.target.value);
-                      setVendorAssignmentDraft({
-                        ...vendorAssignmentDraft,
-                        vendor_user_id: event.target.value,
-                        vendor_name: vendor?.name ?? "",
-                        vendor_email: vendor?.email ?? "",
-                      });
-                    }}
-                  >
-                    <option value="">New vendor or choose existing</option>
-                    {vendors.map((vendor) => (
-                      <option key={vendor.id} value={vendor.id}>{vendor.name} | {vendor.email}</option>
-                    ))}
-                  </select>
-                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
-                    <input
-                      style={field}
-                      placeholder="Vendor name"
-                      value={vendorAssignmentDraft.vendor_name}
-                      onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, vendor_user_id: "", vendor_name: event.target.value })}
-                    />
-                    <input
-                      style={field}
-                      placeholder="Vendor email"
-                      value={vendorAssignmentDraft.vendor_email}
-                      onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, vendor_user_id: "", vendor_email: event.target.value })}
-                    />
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    <select
-                      style={field}
-                      value={vendorAssignmentDraft.file_scope}
-                      onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, file_scope: event.target.value as VendorAccessDraft["file_scope"] })}
-                    >
-                      <option value="all_active">All active files</option>
-                      <option value="selected">Selected files</option>
-                    </select>
-                    <select
-                      style={field}
-                      value={vendorAssignmentDraft.expires_days}
-                      onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, expires_days: Number(event.target.value) })}
-                    >
-                      <option value={1}>Expires 1 day</option>
-                      <option value={7}>Expires 7 days</option>
-                      <option value={14}>Expires 14 days</option>
-                      <option value={30}>Expires 30 days</option>
-                      <option value={0}>No expiration</option>
-                    </select>
-                  </div>
-                  {vendorAssignmentDraft.file_scope === "selected" ? renderVendorAssignmentFilePicker() : (
-                    <div style={emptyInlineStyle(t)}>Vendor will see all current and future active files in this bucket.</div>
-                  )}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    {([
-                      ["can_preview", "Preview"],
-                      ["can_download", "Download"],
-                      ["can_add_notes", "Notes"],
-                      ["can_see_internal_notes", "Internal notes"],
-                    ] as const).map(([key, label]) => (
-                      <label key={key} style={permissionRowStyle(t)}>
-                        <span style={{ color: t.ink, fontSize: 13, fontWeight: 850 }}>{label}</span>
-                        <input
-                          type="checkbox"
-                          checked={Boolean(vendorAssignmentDraft[key])}
-                          onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, [key]: event.target.checked })}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                  <button
-                    style={primary}
-                    onClick={assignVendorFromBucketList}
-                    disabled={vendorAssignmentBusy}
-                  >
-                    <Icon name="plus" size={14} />
-                    {vendorAssignmentBusy ? "Assigning..." : "Assign vendor"}
-                  </button>
-                </div>
-              </PanelBox>
-              <PanelBox>
-                <SectionLabel action={`${vendorAssignmentDetail?.vendor_access?.length ?? 0} vendors`}>Assigned vendors</SectionLabel>
-                <div style={{ display: "grid", gap: 8, maxHeight: 260, overflowY: "auto" }}>
-                  {(vendorAssignmentDetail?.vendor_access ?? []).length ? (vendorAssignmentDetail?.vendor_access ?? []).map((access) => (
-                    <div key={access.id} style={smallRowStyle(t)}>
-                      <div>
-                        <strong style={{ color: t.ink }}>{access.vendor_name || access.vendor_email || "Vendor"}</strong>
-                        <div style={{ color: t.ink3, fontSize: 12 }}>
-                          {access.vendor_email || "No email"} | {access.file_scope === "all_active" ? "All active files" : `${access.files?.length ?? 0} selected files`} | {statusLabel(access.status)}
-                        </div>
-                      </div>
-                    </div>
-                  )) : (
-                    <div style={emptyInlineStyle(t)}>No vendors assigned to this bucket yet.</div>
-                  )}
-                </div>
-              </PanelBox>
-            </div>
-          )}
-        </ModalFrame>
-      ) : null}
-
-      <PanelBox style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: 14, borderBottom: `1px solid ${t.line}` }}>
-          <SectionLabel style={{ margin: 0 }}>Bucket list</SectionLabel>
+      <Panel
+        title="Bucket list"
+        noPad
+        actions={
+          // The magnifier is inset INTO the field, so its offset and the text
+          // inset that clears it are geometry, not decoration.
           <div style={{ position: "relative", width: 320 }}>
-            <Icon name="search" size={14} style={{ position: "absolute", left: 11, top: 11, color: t.ink3 }} />
-            <input style={{ ...field, width: "100%", paddingLeft: 32 }} placeholder="Search buckets" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Icon name="search" size={14} style={{ position: "absolute", left: 11, top: 10, color: "var(--muted)" }} />
+            <Input
+              style={{ width: "100%", paddingLeft: 32 }}
+              placeholder="Search buckets"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-        </div>
+        }
+      >
         <BucketTable buckets={filteredBuckets} deletingId={deletingId} onSelect={(id) => openBucket(id)} onOpenVendors={openVendorAssignment} onConvertToLead={setConvertLeadBucket} onDelete={deleteBucket} />
-      </PanelBox>
+      </Panel>
 
       {convertLeadBucket ? (
         <ConvertToLeadModal
@@ -1793,236 +1804,246 @@ export default function BucketsAdminPage() {
         />
       ) : null}
 
-      {createOpen ? (
-        <ModalFrame title="Create bucket" subtitle="Set up the bucket, choose requested files, and invite uploaders." onClose={() => setCreateOpen(false)}>
-          {createResult ? (
-            <div style={{ display: "grid", gap: 14 }}>
-              {createStatus ? <CreateStatusBanner status={createStatus} /> : null}
-              <PanelBox style={{ borderColor: t.petrol }}>
-                <SectionLabel action={`${createResult.links.length} link${createResult.links.length === 1 ? "" : "s"}`}>Upload invites created</SectionLabel>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {createResult.links.map((link) => (
-                    <div key={link.id} style={smallRowStyle(t)}>
-                      <div style={{ minWidth: 0 }}>
-                        <strong style={{ color: t.ink }}>{link.name}</strong>
-                        <div style={{ color: t.ink3, fontSize: 12 }}>{link.email || "No email entered"}</div>
-                        <div style={{ color: t.ink2, fontSize: 13, marginTop: 4 }}>Upload access code: <strong>{link.passcode}</strong></div>
-                        <code style={{ display: "block", color: t.ink2, overflowWrap: "anywhere", fontSize: 12, marginTop: 4 }}>{link.url}</code>
-                      </div>
-                      <button style={secondary} onClick={() => copyText(`Upload link: ${link.url}\nAccess code: ${link.passcode}`)}>Copy</button>
+      <Drawer
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        width="xl"
+        title="Create bucket"
+        sub="Set up the bucket, choose requested files, and invite uploaders."
+        bodyClass="grid"
+        // The ModalFrame this replaced had no backdrop-close and no Escape, so
+        // adopting Drawer's defaults made a stray click on the scrim discard
+        // the whole form — including upload access codes that have already been
+        // generated and cannot be re-derived. Close it deliberately.
+        closeOnBackdrop={false}
+      >
+        {createResult ? (
+          <>
+            {createStatus ? <CreateStatusBanner status={createStatus} /> : null}
+            <Panel
+              title="Upload invites created"
+              actions={<span className="tag">{createResult.links.length} link{createResult.links.length === 1 ? "" : "s"}</span>}
+            >
+              <div className="grid g8">
+                {createResult.links.map((link) => (
+                  <div key={link.id} className="itemrow">
+                    <div className="grow">
+                      <strong>{link.name}</strong>
+                      <div className="sub">{link.email || "No email entered"}</div>
+                      <div style={{ marginTop: 4 }}>Upload access code: <strong>{link.passcode}</strong></div>
+                      <code className="sub" style={{ display: "block", overflowWrap: "anywhere", marginTop: 4 }}>{link.url}</code>
                     </div>
-                  ))}
-                </div>
-              </PanelBox>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                <button style={secondary} onClick={() => copyText(createResult.links.map((link) => `${link.name}: ${link.url}\nAccess code: ${link.passcode}`).join("\n\n"))}>Copy all</button>
-                <button style={primary} onClick={() => setCreateOpen(false)}>Done</button>
+                    <Btn onClick={() => copyText(`Upload link: ${link.url}\nAccess code: ${link.passcode}`)}>Copy</Btn>
+                  </div>
+                ))}
               </div>
+            </Panel>
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <Btn onClick={() => copyText(createResult.links.map((link) => `${link.name}: ${link.url}\nAccess code: ${link.passcode}`).join("\n\n"))}>Copy all</Btn>
+              <Btn variant="pri" onClick={() => setCreateOpen(false)}>Done</Btn>
             </div>
-          ) : (
-            <div style={{ display: "grid", gap: 16 }}>
-              {createStatus ? <CreateStatusBanner status={createStatus} /> : null}
-              <PanelBox>
-                <WorkflowHeader step="1" title="Bucket details" />
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
-                  <input style={field} placeholder="Bucket name" value={bucketForm.name} onChange={(e) => setBucketForm({ ...bucketForm, name: e.target.value })} />
-                  <input style={field} placeholder="Client / borrower" value={bucketForm.client_name} onChange={(e) => setBucketForm({ ...bucketForm, client_name: e.target.value })} />
-                  <select style={field} value={bucketForm.bucket_type} onChange={(e) => setBucketForm({ ...bucketForm, bucket_type: e.target.value })}>
-                    {BUCKET_TYPES.map((type) => <option key={type}>{type}</option>)}
-                  </select>
-                  <input style={field} placeholder="Purpose, deal, or package" value={bucketForm.purpose} onChange={(e) => setBucketForm({ ...bucketForm, purpose: e.target.value })} />
-                  <textarea
-                    style={{ ...field, gridColumn: "1 / -1", minHeight: 74, paddingTop: 10, resize: "vertical" }}
-                    placeholder="Description optional"
-                    value={bucketForm.description}
-                    onChange={(e) => setBucketForm({ ...bucketForm, description: e.target.value })}
-                  />
-                </div>
-              </PanelBox>
+          </>
+        ) : (
+          <>
+            {createStatus ? <CreateStatusBanner status={createStatus} /> : null}
+            <Panel>
+              <WorkflowHeader step="1" title="Bucket details" />
+              <div className="fldgrid two mt">
+                <Input placeholder="Bucket name" value={bucketForm.name} onChange={(e) => setBucketForm({ ...bucketForm, name: e.target.value })} />
+                <Input placeholder="Client / borrower" value={bucketForm.client_name} onChange={(e) => setBucketForm({ ...bucketForm, client_name: e.target.value })} />
+                <Select value={bucketForm.bucket_type} onChange={(e) => setBucketForm({ ...bucketForm, bucket_type: e.target.value })}>
+                  {BUCKET_TYPES.map((type) => <option key={type}>{type}</option>)}
+                </Select>
+                <Input placeholder="Purpose, deal, or package" value={bucketForm.purpose} onChange={(e) => setBucketForm({ ...bucketForm, purpose: e.target.value })} />
+                <Textarea
+                  style={{ gridColumn: "1 / -1", minHeight: 74 }}
+                  placeholder="Description optional"
+                  value={bucketForm.description}
+                  onChange={(e) => setBucketForm({ ...bucketForm, description: e.target.value })}
+                />
+              </div>
+            </Panel>
 
-              <PanelBox>
-                <WorkflowHeader step="2" title="Request files" />
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 10, marginTop: 12, alignItems: "center" }}>
-                  <select
-                    style={field}
-                    value={createPackage}
-                    onChange={(e) => {
-                      setCreatePackage(e.target.value as PackageKey);
-                      setCreateChecked({});
-                    }}
-                  >
-                    <option value="standard">Standard Lending File</option>
-                    <option value="urchoice">UrChoice Dealer Funding</option>
-                  </select>
-                  <button style={secondary} onClick={() => setCustomDocOpen((value) => !value)}>
-                    <Icon name="plus" size={14} />
-                    Other
-                  </button>
-                  <div style={{ color: t.ink3, fontSize: 12, alignSelf: "center" }}>
-                    {selectedCreateDocs.length} selected
-                  </div>
-                </div>
-                {customDocOpen ? (
-                  <div style={{ ...panelStyle(t), padding: 12, marginTop: 12, background: t.surface2 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 10, alignItems: "center" }}>
+            <Panel>
+              <WorkflowHeader step="2" title="Request files" />
+              <div className="mt" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 10, alignItems: "center" }}>
+                <Select
+                  value={createPackage}
+                  onChange={(e) => {
+                    setCreatePackage(e.target.value as PackageKey);
+                    setCreateChecked({});
+                  }}
+                >
+                  <option value="standard">Standard Lending File</option>
+                  <option value="urchoice">UrChoice Dealer Funding</option>
+                </Select>
+                <Btn onClick={() => setCustomDocOpen((value) => !value)} aria-expanded={customDocOpen}>
+                  <Icon name="plus" size={14} />
+                  Other
+                </Btn>
+                <span className="sub">{selectedCreateDocs.length} selected</span>
+              </div>
+              {customDocOpen ? (
+                <div className="card mt">
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 10, alignItems: "center" }}>
+                    <Input
+                      placeholder="Other document option"
+                      value={customDocDraft.name}
+                      onChange={(e) => setCustomDocDraft({ ...customDocDraft, name: e.target.value })}
+                    />
+                    <label className={cx("pick", customDocDraft.allow_multiple_files && "on")} style={{ whiteSpace: "nowrap" }}>
                       <input
-                        style={field}
-                        placeholder="Other document option"
-                        value={customDocDraft.name}
-                        onChange={(e) => setCustomDocDraft({ ...customDocDraft, name: e.target.value })}
+                        type="checkbox"
+                        checked={customDocDraft.allow_multiple_files}
+                        onChange={(e) => setCustomDocDraft({ ...customDocDraft, allow_multiple_files: e.target.checked })}
                       />
-                      <label style={toggleLabelStyle(t)}>
-                        <input
-                          type="checkbox"
-                          checked={customDocDraft.allow_multiple_files}
-                          onChange={(e) => setCustomDocDraft({ ...customDocDraft, allow_multiple_files: e.target.checked })}
-                        />
-                        Multi-file
-                      </label>
-                      <button style={secondary} onClick={addCustomDoc} disabled={!customDocDraft.name.trim()}>
-                        <Icon name="plus" size={14} />
-                        Add option
-                      </button>
-                      <textarea
-                        style={{ ...field, gridColumn: "1 / -1", minHeight: 70, paddingTop: 10, resize: "vertical" }}
-                        placeholder="Description optional"
-                        value={customDocDraft.description}
-                        onChange={(e) => setCustomDocDraft({ ...customDocDraft, description: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", marginTop: 12 }}>
-                  <div style={{ position: "relative" }}>
-                    <Icon name="search" size={14} style={{ position: "absolute", left: 11, top: 12, color: t.ink3 }} />
-                    <input
-                      style={{ ...field, width: "100%", paddingLeft: 32 }}
-                      placeholder="Search request options"
-                      value={createDocSearch}
-                      onChange={(e) => setCreateDocSearch(e.target.value)}
+                      Multi-file
+                    </label>
+                    <Btn onClick={addCustomDoc} disabled={!customDocDraft.name.trim()}>
+                      <Icon name="plus" size={14} />
+                      Add option
+                    </Btn>
+                    <Textarea
+                      style={{ gridColumn: "1 / -1", minHeight: 70 }}
+                      placeholder="Description optional"
+                      value={customDocDraft.description}
+                      onChange={(e) => setCustomDocDraft({ ...customDocDraft, description: e.target.value })}
                     />
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <button
-                      style={iconButtonStyle(t)}
-                      onClick={() => setCreateDocPage((page) => Math.max(0, page - 1))}
-                      disabled={safeCreateDocPage === 0}
-                      aria-label="Previous request options page"
-                      title="Previous"
-                    >
-                      <Icon name="chevL" size={14} />
-                    </button>
-                    <span style={{ color: t.ink3, fontSize: 12, fontWeight: 800, minWidth: 46, textAlign: "center" }}>
-                      {safeCreateDocPage + 1} / {createDocPageCount}
-                    </span>
-                    <button
-                      style={iconButtonStyle(t)}
-                      onClick={() => setCreateDocPage((page) => Math.min(createDocPageCount - 1, page + 1))}
-                      disabled={safeCreateDocPage >= createDocPageCount - 1}
-                      aria-label="Next request options page"
-                      title="Next"
-                    >
-                      <Icon name="chevR" size={14} />
-                    </button>
-                  </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gridAutoRows: "minmax(108px, auto)", gap: 8, marginTop: 12 }}>
-                  {filteredCreateDocs.length === 0 ? (
-                    <div style={{ ...emptyInlineStyle(t), gridColumn: "1 / -1" }}>
-                      No request options match your search.
-                    </div>
-                  ) : pagedCreateDocs.map((doc) => (
-                    <div
-                      key={doc.id}
-                      role="checkbox"
-                      aria-checked={!!createChecked[doc.id]}
-                      tabIndex={0}
-                      style={checkRowStyle(t, !!createChecked[doc.id])}
-                      onClick={() => toggleCreateDoc(doc.id)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          toggleCreateDoc(doc.id);
-                        }
-                      }}
-                    >
-                      <input type="checkbox" checked={!!createChecked[doc.id]} readOnly tabIndex={-1} />
-                      <span>
-                        <span style={{ display: "block", color: t.ink, fontWeight: 750 }}>{doc.name}</span>
-                        <span style={{ color: t.ink3, fontSize: 12 }}>{doc.category || "Standard Lending File"}</span>
-                        {doc.description ? <span style={{ display: "block", color: t.ink3, fontSize: 12, marginTop: 4 }}>{doc.description}</span> : null}
-                        {doc.allow_multiple_files ? <span style={{ display: "block", color: t.ink2, fontSize: 12, marginTop: 4 }}>Multiple files allowed</span> : null}
-                      </span>
+              ) : null}
+              <div className="mt" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center" }}>
+                {/* Inset magnifier again: the icon's offset and the text
+                    inset that clears it are geometry, not decoration. */}
+                <div style={{ position: "relative" }}>
+                  <Icon name="search" size={14} style={{ position: "absolute", left: 11, top: 10, color: "var(--muted)" }} />
+                  <Input
+                    style={{ width: "100%", paddingLeft: 32 }}
+                    placeholder="Search request options"
+                    value={createDocSearch}
+                    onChange={(e) => setCreateDocSearch(e.target.value)}
+                  />
+                </div>
+                <div className="row">
+                  <IconBtn
+                    onClick={() => setCreateDocPage((page) => Math.max(0, page - 1))}
+                    disabled={safeCreateDocPage === 0}
+                    aria-label="Previous request options page"
+                    title="Previous"
+                  >
+                    <Icon name="chevL" size={14} />
+                  </IconBtn>
+                  <span className="sub num" style={{ minWidth: 46, textAlign: "center" }}>
+                    {safeCreateDocPage + 1} / {createDocPageCount}
+                  </span>
+                  <IconBtn
+                    onClick={() => setCreateDocPage((page) => Math.min(createDocPageCount - 1, page + 1))}
+                    disabled={safeCreateDocPage >= createDocPageCount - 1}
+                    aria-label="Next request options page"
+                    title="Next"
+                  >
+                    <Icon name="chevR" size={14} />
+                  </IconBtn>
+                </div>
+              </div>
+              {/* Five-across tile grid with a floor on the row height, so a
+                  document with a description does not make its row twice the
+                  height of the four beside it. */}
+              <div className="mt pickgrid" style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gridAutoRows: "minmax(108px, auto)", gap: 8 }}>
+                {filteredCreateDocs.length === 0 ? (
+                  <div className="hintbox" style={{ gridColumn: "1 / -1" }}>
+                    No request options match your search.
+                  </div>
+                ) : pagedCreateDocs.map((doc) => (
+                  <div
+                    key={doc.id}
+                    role="checkbox"
+                    aria-checked={!!createChecked[doc.id]}
+                    tabIndex={0}
+                    className={cx("pick top", createChecked[doc.id] && "on")}
+                    onClick={() => toggleCreateDoc(doc.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        toggleCreateDoc(doc.id);
+                      }
+                    }}
+                  >
+                    <input type="checkbox" checked={!!createChecked[doc.id]} readOnly tabIndex={-1} />
+                    <span className="grow">
+                      <span style={{ display: "block", fontWeight: 650 }}>{doc.name}</span>
+                      <span className="sub">{doc.category || "Standard Lending File"}</span>
+                      {doc.description ? <span className="sub" style={{ display: "block", marginTop: 4 }}>{doc.description}</span> : null}
+                      {doc.allow_multiple_files ? <span className="sub" style={{ display: "block", marginTop: 4 }}>Multiple files allowed</span> : null}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+
+            <Panel>
+              <WorkflowHeader
+                step="3"
+                title="Invite uploaders"
+                subtitle="Add the people who should receive upload links for this bucket. You can add more than one."
+              />
+              <div className="mt" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto", gap: 10 }}>
+                <Input placeholder="Person or company name" value={createInviteDraft.recipient_name} onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, recipient_name: e.target.value })} />
+                <Input placeholder="Email optional" value={createInviteDraft.recipient_email} onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, recipient_email: e.target.value })} />
+                <Input placeholder="Upload access code" value={createInviteDraft.passcode} onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, passcode: e.target.value })} />
+                <Btn onClick={() => setCreateInviteDraft({ ...createInviteDraft, passcode: generateAccessCode() })}>
+                  Generate code
+                </Btn>
+                <Btn onClick={addCreateInvite} disabled={!createInviteDraft.recipient_name.trim()}>
+                  <Icon name="plus" size={14} />
+                  Add invite
+                </Btn>
+                <span className="sub" style={{ alignSelf: "center" }}>Send this code with the upload link.</span>
+              </div>
+              {createInvites.length ? (
+                <div className="grid g8 mt">
+                  {createInvites.map((invite) => (
+                    <div key={invite.id} className="itemrow">
+                      <div className="grow">
+                        <strong>{invite.recipient_name}</strong>
+                        <div className="sub">{invite.recipient_email || "No email entered"}</div>
+                        <div style={{ marginTop: 2 }}>Upload access code: <strong>{invite.passcode}</strong></div>
+                      </div>
+                      <IconBtn
+                        onClick={() => setCreateInvites((rows) => rows.filter((row) => row.id !== invite.id))}
+                        aria-label={`Remove ${invite.recipient_name}`}
+                        title="Remove invite"
+                      >
+                        <Icon name="x" size={14} />
+                      </IconBtn>
                     </div>
                   ))}
                 </div>
-              </PanelBox>
-
-              <PanelBox>
-                <WorkflowHeader
-                  step="3"
-                  title="Invite uploaders"
-                  subtitle="Add the people who should receive upload links for this bucket. You can add more than one."
-                />
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto", gap: 10, marginTop: 12 }}>
-                  <input style={field} placeholder="Person or company name" value={createInviteDraft.recipient_name} onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, recipient_name: e.target.value })} />
-                  <input style={field} placeholder="Email optional" value={createInviteDraft.recipient_email} onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, recipient_email: e.target.value })} />
-                  <input style={field} placeholder="Upload access code" value={createInviteDraft.passcode} onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, passcode: e.target.value })} />
-                  <button style={secondary} onClick={() => setCreateInviteDraft({ ...createInviteDraft, passcode: generateAccessCode() })}>
-                    Generate code
-                  </button>
-                  <button style={secondary} onClick={addCreateInvite} disabled={!createInviteDraft.recipient_name.trim()}>
-                    <Icon name="plus" size={14} />
-                    Add invite
-                  </button>
-                  <div style={{ color: t.ink3, fontSize: 12, alignSelf: "center" }}>Send this code with the upload link.</div>
-                </div>
-                {createInvites.length ? (
-                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                    {createInvites.map((invite) => (
-                      <div key={invite.id} style={smallRowStyle(t)}>
-                        <div style={{ minWidth: 0 }}>
-                          <strong style={{ color: t.ink }}>{invite.recipient_name}</strong>
-                          <div style={{ color: t.ink3, fontSize: 12 }}>{invite.recipient_email || "No email entered"}</div>
-                          <div style={{ color: t.ink2, fontSize: 13, marginTop: 2 }}>Upload access code: <strong>{invite.passcode}</strong></div>
-                        </div>
-                        <button
-                          style={iconButtonStyle(t)}
-                          onClick={() => setCreateInvites((rows) => rows.filter((row) => row.id !== invite.id))}
-                          aria-label={`Remove ${invite.recipient_name}`}
-                          title="Remove invite"
-                        >
-                          <Icon name="x" size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                <div style={{ color: t.ink3, fontSize: 12.5, marginTop: 10 }}>
-                  Upload links are created after the bucket is created. Leave this blank if you only want to set up the bucket for now.
-                </div>
-              </PanelBox>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                <button style={secondary} onClick={() => setCreateOpen(false)} disabled={busy}>Cancel</button>
-                <button style={{ ...primary, minWidth: 142, opacity: busy || !bucketForm.name.trim() ? 0.72 : 1 }} onClick={createBucketWorkflow} disabled={busy || !bucketForm.name.trim()}>
-                  {busy ? (
-                    <>
-                      <Icon name="refresh" size={14} />
-                      Creating...
-                    </>
-                  ) : (
-                    <>
-                      <Icon name="plus" size={14} />
-                      Create bucket
-                    </>
-                  )}
-                </button>
+              ) : null}
+              <div className="sub mt">
+                Upload links are created after the bucket is created. Leave this blank if you only want to set up the bucket for now.
               </div>
+            </Panel>
+
+            <div className="row" style={{ justifyContent: "flex-end" }}>
+              <Btn onClick={() => setCreateOpen(false)} disabled={busy}>Cancel</Btn>
+              <Btn variant="pri" style={{ minWidth: 142, justifyContent: "center" }} onClick={createBucketWorkflow} disabled={busy || !bucketForm.name.trim()}>
+                {busy ? (
+                  <>
+                    <Icon name="refresh" size={14} />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="plus" size={14} />
+                    Create bucket
+                  </>
+                )}
+              </Btn>
             </div>
-          )}
-        </ModalFrame>
-      ) : null}
+          </>
+        )}
+      </Drawer>
 
       {detail ? (
         <ModalFrame
@@ -2030,40 +2051,30 @@ export default function BucketsAdminPage() {
           subtitle={`${detail.client_name || "No client"} | ${detail.purpose || "No purpose"} | ${detail.bucket_type || "Bucket"}`}
           onClose={() => setDetail(null)}
           action={
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-              <button
-                style={{
-                  ...iconButtonStyle(t),
-                  borderColor: detailFocus === "vendors" ? t.petrol : t.line,
-                  background: detailFocus === "vendors" ? t.petrolSoft : t.surface,
-                  color: detailFocus === "vendors" ? t.petrol : t.ink2,
-                }}
+            <div className="row">
+              <IconBtn
+                className={cx(detailFocus === "vendors" && "pri")}
+                aria-pressed={detailFocus === "vendors"}
                 onClick={showVendorSettings}
                 aria-label="Open vendor access settings"
                 title="Vendor access - login required"
               >
                 <Icon name="user" size={16} />
-              </button>
-              <button
-                style={{ ...iconButtonStyle(t), width: "auto", padding: "0 12px", gap: 6 }}
+              </IconBtn>
+              <Btn
+                size="sm"
                 onClick={() => detail && setConvertLeadBucket(detail)}
                 aria-label="Convert to AI Underwriter Lead"
                 title="Convert this bucket into an AI Underwriter Lead"
               >
                 <Icon name="bolt" size={16} />
-                <span style={{ fontSize: 12, fontWeight: 900 }}>AI Lead</span>
-              </button>
-              <div ref={shareMenuRef} style={{ position: "relative" }}>
-                <button
-                  style={{
-                    ...iconButtonStyle(t),
-                    width: "auto",
-                    padding: "0 12px",
-                    borderColor: sharePopupOpen ? t.petrol : t.line,
-                    background: sharePopupOpen ? t.petrolSoft : t.surface,
-                    color: sharePopupOpen ? t.petrol : t.ink2,
-                    gap: 6,
-                  }}
+                AI Lead
+              </Btn>
+              <div ref={shareMenuRef} className="popwrap">
+                <Btn
+                  size="sm"
+                  variant={sharePopupOpen ? "pri" : "default"}
+                  aria-expanded={sharePopupOpen}
                   onClick={() => {
                     setSharePopupOpen((value) => !value);
                   }}
@@ -2071,121 +2082,129 @@ export default function BucketsAdminPage() {
                   title="Third-party share link - no login"
                 >
                   <Icon name="link" size={16} />
-                  <span style={{ fontSize: 12, fontWeight: 900 }}>Bank share</span>
-                </button>
+                  Bank share
+                </Btn>
                 {sharePopupOpen ? (
-                  <div style={sharePopupStyle(t)}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", paddingBottom: 10, borderBottom: `1px solid ${t.line}` }}>
-                    <div>
-                      <div style={{ color: t.ink, fontWeight: 900, fontSize: 14 }}>Bank / third-party share link</div>
-                      <div style={{ color: t.ink3, fontSize: 12, marginTop: 2 }}>No account login. Send a secure link plus access code.</div>
+                  <div
+                    className="panel"
+                    // Anchored geometry, plus a lifted shadow: this panel floats
+                    // over the page rather than sitting in it, and `.panel`'s
+                    // in-flow elevation is not enough to separate it.
+                    style={{
+                      position: "absolute",
+                      top: 40,
+                      right: 0,
+                      width: "min(560px, calc(100vw - 32px))",
+                      maxHeight: "calc(100vh - 128px)",
+                      zIndex: 5,
+                      boxShadow: "var(--sh2)",
+                    }}
+                  >
+                    <div className="panel-h">
+                      <div className="grow">
+                        <b>Bank / third-party share link</b>
+                        <div className="sub">No account login. Send a secure link plus access code.</div>
+                      </div>
+                      <IconBtn onClick={() => setSharePopupOpen(false)} aria-label="Close share popup">
+                        <Icon name="x" size={14} />
+                      </IconBtn>
                     </div>
-                    <button style={iconButtonStyle(t)} onClick={() => setSharePopupOpen(false)} aria-label="Close share popup">
-                      <Icon name="x" size={14} />
-                    </button>
-                  </div>
-
-                  <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                    <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface2, padding: 10, display: "grid", gap: 7 }}>
-                      <strong style={{ color: t.ink, fontSize: 12 }}>This creates a share link, not a vendor account.</strong>
-                      <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.35 }}>
-                        Use this for banks, lenders, and one-time third parties. For account-based vendor access, use the Vendors section.
-                      </span>
-                    </div>
-                    {createdShareLinks.length ? (
-                      <div style={{ border: `1px solid ${t.profit}`, borderRadius: 12, background: t.profitBg, padding: 10, display: "grid", gap: 8 }}>
-                        <strong style={{ color: t.profit, fontSize: 12 }}>Share link ready</strong>
-                        {createdShareLinks.map((share) => (
-                          <div key={share.id} style={{ display: "grid", gap: 7, borderTop: `1px solid ${t.line}`, paddingTop: 8 }}>
-                            <div style={{ color: t.ink, fontWeight: 900, fontSize: 13 }}>
-                              {share.recipient_name}
+                    <div className="panel-b grid g10" style={{ overflowY: "auto" }}>
+                      <Callout tone="acc">
+                        <b>This creates a share link, not a vendor account.</b>
+                        <div className="sub">
+                          Use this for banks, lenders, and one-time third parties. For account-based vendor access, use the Vendors section.
+                        </div>
+                      </Callout>
+                      {createdShareLinks.length ? (
+                        <PanelBox className="tone-ok grid g8">
+                          <b>Share link ready</b>
+                          {createdShareLinks.map((share) => (
+                            <div key={share.id} className="grid g6" style={{ borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+                              <b>{share.recipient_name}</b>
+                              <div className="sub">
+                                {share.files?.length ?? 0} files | {share.can_download ? "download allowed" : "view only"} | no login required
+                              </div>
+                              <div className="row">
+                                <Btn size="sm" onClick={() => copyShareLink(share)}>Copy link</Btn>
+                                <Btn size="sm" onClick={() => copyShareInvite(share)}>Copy link + access code</Btn>
+                                <Btn size="sm" onClick={() => openEmailShare(share)}>Email from my Gmail</Btn>
+                              </div>
                             </div>
-                            <div style={{ color: t.ink3, fontSize: 12 }}>
-                              {share.files?.length ?? 0} files | {share.can_download ? "download allowed" : "view only"} | no login required
+                          ))}
+                          <Btn onClick={() => setCreatedShareLinks([])}>
+                            Create another share
+                          </Btn>
+                        </PanelBox>
+                      ) : null}
+                      {visibleFiles.length === 0 ? (
+                        <div className="hintbox">Upload files before creating share links.</div>
+                      ) : null}
+                      <div className="grid g8" style={{ maxHeight: 560, overflowY: "auto" }}>
+                        {shareViewers.map((viewer, index) => (
+                          <div key={viewer.id} className="card grid g8">
+                            <div className="row">
+                              <strong className="grow">Viewer {index + 1}</strong>
+                              <IconBtn onClick={() => removeShareViewer(viewer.id)} disabled={shareViewers.length === 1} aria-label={`Remove viewer ${index + 1}`}>
+                                <Icon name="x" size={13} />
+                              </IconBtn>
                             </div>
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                              <button style={secondary} onClick={() => copyShareLink(share)}>Copy link</button>
-                              <button style={secondary} onClick={() => copyShareInvite(share)}>Copy link + access code</button>
-                              <button style={secondary} onClick={() => openEmailShare(share)}>Email from my Gmail</button>
+                            <Input placeholder="Viewer name" value={viewer.recipient_name} onChange={(event) => updateShareViewer(viewer.id, { recipient_name: event.target.value })} />
+                            <Input placeholder="Viewer email optional" value={viewer.recipient_email} onChange={(event) => updateShareViewer(viewer.id, { recipient_email: event.target.value })} />
+                            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
+                              <Input placeholder="Access code" value={viewer.passcode} onChange={(event) => updateShareViewer(viewer.id, { passcode: event.target.value })} />
+                              <Btn onClick={() => generateShareCode(viewer.id)}>Generate</Btn>
                             </div>
+                            {/* Passcode-share permissions: `can_download` only.
+                                A passcode share has no notes and no task
+                                proposals — those belong to vendor access. */}
+                            <div className="fldgrid two">
+                              <label className={cx("pick", viewer.can_download && "on")}>
+                                <span className="grow">
+                                  <strong style={{ display: "block" }}>Allow download</strong>
+                                  <span className="sub">Otherwise preview only.</span>
+                                </span>
+                                <input type="checkbox" checked={viewer.can_download} onChange={(event) => updateShareViewer(viewer.id, { can_download: event.target.checked })} />
+                              </label>
+                              <label className="pick">
+                                <span className="grow">
+                                  <strong style={{ display: "block" }}>Expires</strong>
+                                  <span className="sub">Default 7 days.</span>
+                                </span>
+                                <Select style={{ width: 92 }} value={viewer.expires_days} onChange={(event) => updateShareViewer(viewer.id, { expires_days: Number(event.target.value) })}>
+                                  <option value={1}>1 day</option>
+                                  <option value={7}>7 days</option>
+                                  <option value={14}>14 days</option>
+                                  <option value={30}>30 days</option>
+                                </Select>
+                              </label>
+                            </div>
+                            {renderShareFilePicker({
+                              selectedIds: viewer.file_ids,
+                              search: viewer.file_search,
+                              onSearch: (value) => updateShareViewer(viewer.id, { file_search: value }),
+                              onToggle: (fileId) => toggleShareViewerFile(viewer.id, fileId),
+                              onSetSelected: (fileIds) => setShareViewerFileIds(viewer.id, fileIds),
+                            })}
                           </div>
                         ))}
-                        <button style={secondary} onClick={() => setCreatedShareLinks([])}>
-                          Create another share
-                        </button>
                       </div>
-                    ) : null}
-                    {visibleFiles.length === 0 ? (
-                      <div style={emptyInlineStyle(t)}>Upload files before creating share links.</div>
-                    ) : null}
-                    <div style={{ display: "grid", gap: 8, maxHeight: 560, overflowY: "auto" }}>
-                      {shareViewers.map((viewer, index) => (
-                        <div key={viewer.id} style={shareViewerRowStyle(t)}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                            <strong style={{ color: t.ink, fontSize: 13 }}>Viewer {index + 1}</strong>
-                            <button style={iconButtonStyle(t)} onClick={() => removeShareViewer(viewer.id)} disabled={shareViewers.length === 1} aria-label={`Remove viewer ${index + 1}`}>
-                              <Icon name="x" size={13} />
-                            </button>
-                          </div>
-                          <input style={field} placeholder="Viewer name" value={viewer.recipient_name} onChange={(event) => updateShareViewer(viewer.id, { recipient_name: event.target.value })} />
-                          <input style={field} placeholder="Viewer email optional" value={viewer.recipient_email} onChange={(event) => updateShareViewer(viewer.id, { recipient_email: event.target.value })} />
-                          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
-                            <input style={field} placeholder="Access code" value={viewer.passcode} onChange={(event) => updateShareViewer(viewer.id, { passcode: event.target.value })} />
-                            <button style={secondary} onClick={() => generateShareCode(viewer.id)}>Generate</button>
-                          </div>
-                          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
-                            <label style={permissionRowStyle(t)}>
-                              <span>
-                                <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Allow download</strong>
-                                <span style={{ color: t.ink3, fontSize: 12 }}>Otherwise preview only.</span>
-                              </span>
-                              <input type="checkbox" checked={viewer.can_download} onChange={(event) => updateShareViewer(viewer.id, { can_download: event.target.checked })} />
-                            </label>
-                            <label style={permissionRowStyle(t)}>
-                              <span>
-                                <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Expires</strong>
-                                <span style={{ color: t.ink3, fontSize: 12 }}>Default 7 days.</span>
-                              </span>
-                              <select style={{ ...field, width: 92 }} value={viewer.expires_days} onChange={(event) => updateShareViewer(viewer.id, { expires_days: Number(event.target.value) })}>
-                                <option value={1}>1 day</option>
-                                <option value={7}>7 days</option>
-                                <option value={14}>14 days</option>
-                                <option value={30}>30 days</option>
-                              </select>
-                            </label>
-                          </div>
-                          {renderShareFilePicker({
-                            selectedIds: viewer.file_ids,
-                            search: viewer.file_search,
-                            onSearch: (value) => updateShareViewer(viewer.id, { file_search: value }),
-                            onToggle: (fileId) => toggleShareViewerFile(viewer.id, fileId),
-                            onSetSelected: (fileIds) => setShareViewerFileIds(viewer.id, fileIds),
-                          })}
-                        </div>
-                      ))}
+                      <Btn onClick={addShareViewer}>
+                        <Icon name="plus" size={14} />
+                        Add another user
+                      </Btn>
+                      <Btn variant="pri" style={{ width: "100%", justifyContent: "center" }} onClick={() => createShareLinks().catch((e) => setNotice(readableError(e)))} disabled={!canCreateShareLinks}>
+                        {busy ? "Creating links..." : "Create share links"}
+                      </Btn>
                     </div>
-                    <button style={secondary} onClick={addShareViewer}>
-                      <Icon name="plus" size={14} />
-                      Add another user
-                    </button>
-                    <button style={{ ...primary, width: "100%", opacity: canCreateShareLinks ? 1 : 0.68 }} onClick={() => createShareLinks().catch((e) => setNotice(readableError(e)))} disabled={!canCreateShareLinks}>
-                      {busy ? "Creating links..." : "Create share links"}
-                    </button>
-                  </div>
                   </div>
                 ) : null}
               </div>
-              <div ref={publicShareMenuRef} style={{ position: "relative" }}>
-                <button
-                  style={{
-                    ...iconButtonStyle(t),
-                    width: "auto",
-                    padding: "0 12px",
-                    borderColor: publicSharePopupOpen ? t.petrol : t.line,
-                    background: publicSharePopupOpen ? t.petrolSoft : t.surface,
-                    color: publicSharePopupOpen ? t.petrol : t.ink2,
-                    gap: 6,
-                  }}
+              <div ref={publicShareMenuRef} className="popwrap">
+                <Btn
+                  size="sm"
+                  variant={publicSharePopupOpen ? "pri" : "default"}
+                  aria-expanded={publicSharePopupOpen}
                   onClick={() => {
                     setPublicSharePopupOpen((value) => !value);
                   }}
@@ -2193,159 +2212,180 @@ export default function BucketsAdminPage() {
                   title="Public link - no login, no code"
                 >
                   <Icon name="link" size={16} />
-                  <span style={{ fontSize: 12, fontWeight: 900 }}>Public link</span>
-                </button>
+                  Public link
+                </Btn>
                 {publicSharePopupOpen ? (
-                  <div style={sharePopupStyle(t)}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", paddingBottom: 10, borderBottom: `1px solid ${t.line}` }}>
-                    <div>
-                      <div style={{ color: t.ink, fontWeight: 900, fontSize: 14 }}>Public link</div>
-                      <div style={{ color: t.ink3, fontSize: 12, marginTop: 2 }}>No login, no access code. Opens immediately for anyone with the link.</div>
+                  <div
+                    className="panel"
+                    // Same anchored, lifted geometry as the bank-share popover.
+                    style={{
+                      position: "absolute",
+                      top: 40,
+                      right: 0,
+                      width: "min(560px, calc(100vw - 32px))",
+                      maxHeight: "calc(100vh - 128px)",
+                      zIndex: 5,
+                      boxShadow: "var(--sh2)",
+                    }}
+                  >
+                    <div className="panel-h">
+                      <div className="grow">
+                        <b>Public link</b>
+                        <div className="sub">No login, no access code. Opens immediately for anyone with the link.</div>
+                      </div>
+                      <IconBtn onClick={() => setPublicSharePopupOpen(false)} aria-label="Close public link popup">
+                        <Icon name="x" size={14} />
+                      </IconBtn>
                     </div>
-                    <button style={iconButtonStyle(t)} onClick={() => setPublicSharePopupOpen(false)} aria-label="Close public link popup">
-                      <Icon name="x" size={14} />
-                    </button>
-                  </div>
-
-                  <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                    <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface2, padding: 10, display: "grid", gap: 7 }}>
-                      <strong style={{ color: t.ink, fontSize: 12 }}>Use this only for trusted recipients.</strong>
-                      <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.35 }}>
-                        Anyone with this link can view/download the selected files — there is no access code. Intended for sending files to other banks or lenders.
-                      </span>
-                    </div>
-                    {createdPublicShareLinks.length ? (
-                      <div style={{ border: `1px solid ${t.profit}`, borderRadius: 12, background: t.profitBg, padding: 10, display: "grid", gap: 8 }}>
-                        <strong style={{ color: t.profit, fontSize: 12 }}>Public link ready</strong>
-                        {createdPublicShareLinks.map((share) => (
-                          <div key={share.id} style={{ display: "grid", gap: 7, borderTop: `1px solid ${t.line}`, paddingTop: 8 }}>
-                            <div style={{ color: t.ink, fontWeight: 900, fontSize: 13 }}>
-                              {share.recipient_name || "Public link"}
+                    <div className="panel-b grid g10" style={{ overflowY: "auto" }}>
+                      <Callout tone="warn">
+                        <b>Use this only for trusted recipients.</b>
+                        <div className="sub">
+                          Anyone with this link can view/download the selected files — there is no access code. Intended for sending files to other banks or lenders.
+                        </div>
+                      </Callout>
+                      {createdPublicShareLinks.length ? (
+                        <PanelBox className="tone-ok grid g8">
+                          <b>Public link ready</b>
+                          {createdPublicShareLinks.map((share) => (
+                            <div key={share.id} className="grid g6" style={{ borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+                              <b>{share.recipient_name || "Public link"}</b>
+                              <div className="sub">
+                                {share.files?.length ?? 0} files | {share.can_download ? "download allowed" : "view only"} | no login or code required
+                              </div>
+                              {share.share_url ? (
+                                <a
+                                  className="linky trunc"
+                                  style={{ display: "block" }}
+                                  href={share.share_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {share.share_url}
+                                </a>
+                              ) : null}
+                              <div className="row">
+                                <Btn size="sm" onClick={() => copyPublicShareLink(share).catch(() => undefined)}>
+                                  {copiedPublicShareId === share.id ? (
+                                    <>
+                                      <Icon name="check" size={13} />
+                                      Copied
+                                    </>
+                                  ) : (
+                                    "Copy link"
+                                  )}
+                                </Btn>
+                              </div>
                             </div>
-                            <div style={{ color: t.ink3, fontSize: 12 }}>
-                              {share.files?.length ?? 0} files | {share.can_download ? "download allowed" : "view only"} | no login or code required
+                          ))}
+                          <Btn onClick={() => setCreatedPublicShareLinks([])}>
+                            Create another public link
+                          </Btn>
+                        </PanelBox>
+                      ) : null}
+                      {visibleFiles.length === 0 ? (
+                        <div className="hintbox">Upload files before creating public links.</div>
+                      ) : null}
+                      <div className="grid g8" style={{ maxHeight: 560, overflowY: "auto" }}>
+                        {publicShareViewers.map((viewer, index) => (
+                          <div key={viewer.id} className="card grid g8">
+                            <div className="row">
+                              <strong className="grow">Link {index + 1}</strong>
+                              <IconBtn onClick={() => removePublicShareViewer(viewer.id)} disabled={publicShareViewers.length === 1} aria-label={`Remove link ${index + 1}`}>
+                                <Icon name="x" size={13} />
+                              </IconBtn>
                             </div>
-                            {share.share_url ? (
-                              <a
-                                href={share.share_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{ color: t.petrol, fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: "underline" }}
-                              >
-                                {share.share_url}
-                              </a>
-                            ) : null}
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                              <button style={secondary} onClick={() => copyPublicShareLink(share).catch(() => undefined)}>
-                                {copiedPublicShareId === share.id ? (
-                                  <>
-                                    <Icon name="check" size={13} />
-                                    Copied
-                                  </>
-                                ) : (
-                                  "Copy link"
-                                )}
-                              </button>
+                            <Input placeholder="Recipient label, optional (e.g. First National Bank)" value={viewer.recipient_name} onChange={(event) => updatePublicShareViewer(viewer.id, { recipient_name: event.target.value })} />
+                            {/* Public-link permissions: `can_download` only, and
+                                no passcode at all — this is the mechanism with
+                                the fewest controls, deliberately. */}
+                            <div className="fldgrid two">
+                              <label className={cx("pick", viewer.can_download && "on")}>
+                                <span className="grow">
+                                  <strong style={{ display: "block" }}>Allow download</strong>
+                                  <span className="sub">Otherwise preview only.</span>
+                                </span>
+                                <input type="checkbox" checked={viewer.can_download} onChange={(event) => updatePublicShareViewer(viewer.id, { can_download: event.target.checked })} />
+                              </label>
+                              <label className="pick">
+                                <span className="grow">
+                                  <strong style={{ display: "block" }}>Expires</strong>
+                                  <span className="sub">Default 7 days.</span>
+                                </span>
+                                <Select style={{ width: 92 }} value={viewer.expires_days} onChange={(event) => updatePublicShareViewer(viewer.id, { expires_days: Number(event.target.value) })}>
+                                  <option value={1}>1 day</option>
+                                  <option value={7}>7 days</option>
+                                  <option value={14}>14 days</option>
+                                  <option value={30}>30 days</option>
+                                </Select>
+                              </label>
                             </div>
+                            {renderShareFilePicker({
+                              selectedIds: viewer.file_ids,
+                              search: viewer.file_search,
+                              onSearch: (value) => updatePublicShareViewer(viewer.id, { file_search: value }),
+                              onToggle: (fileId) => togglePublicShareViewerFile(viewer.id, fileId),
+                              onSetSelected: (fileIds) => setPublicShareViewerFileIds(viewer.id, fileIds),
+                            })}
                           </div>
                         ))}
-                        <button style={secondary} onClick={() => setCreatedPublicShareLinks([])}>
-                          Create another public link
-                        </button>
                       </div>
-                    ) : null}
-                    {visibleFiles.length === 0 ? (
-                      <div style={emptyInlineStyle(t)}>Upload files before creating public links.</div>
-                    ) : null}
-                    <div style={{ display: "grid", gap: 8, maxHeight: 560, overflowY: "auto" }}>
-                      {publicShareViewers.map((viewer, index) => (
-                        <div key={viewer.id} style={shareViewerRowStyle(t)}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                            <strong style={{ color: t.ink, fontSize: 13 }}>Link {index + 1}</strong>
-                            <button style={iconButtonStyle(t)} onClick={() => removePublicShareViewer(viewer.id)} disabled={publicShareViewers.length === 1} aria-label={`Remove link ${index + 1}`}>
-                              <Icon name="x" size={13} />
-                            </button>
-                          </div>
-                          <input style={field} placeholder="Recipient label, optional (e.g. First National Bank)" value={viewer.recipient_name} onChange={(event) => updatePublicShareViewer(viewer.id, { recipient_name: event.target.value })} />
-                          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
-                            <label style={permissionRowStyle(t)}>
-                              <span>
-                                <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Allow download</strong>
-                                <span style={{ color: t.ink3, fontSize: 12 }}>Otherwise preview only.</span>
-                              </span>
-                              <input type="checkbox" checked={viewer.can_download} onChange={(event) => updatePublicShareViewer(viewer.id, { can_download: event.target.checked })} />
-                            </label>
-                            <label style={permissionRowStyle(t)}>
-                              <span>
-                                <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Expires</strong>
-                                <span style={{ color: t.ink3, fontSize: 12 }}>Default 7 days.</span>
-                              </span>
-                              <select style={{ ...field, width: 92 }} value={viewer.expires_days} onChange={(event) => updatePublicShareViewer(viewer.id, { expires_days: Number(event.target.value) })}>
-                                <option value={1}>1 day</option>
-                                <option value={7}>7 days</option>
-                                <option value={14}>14 days</option>
-                                <option value={30}>30 days</option>
-                              </select>
-                            </label>
-                          </div>
-                          {renderShareFilePicker({
-                            selectedIds: viewer.file_ids,
-                            search: viewer.file_search,
-                            onSearch: (value) => updatePublicShareViewer(viewer.id, { file_search: value }),
-                            onToggle: (fileId) => togglePublicShareViewerFile(viewer.id, fileId),
-                            onSetSelected: (fileIds) => setPublicShareViewerFileIds(viewer.id, fileIds),
-                          })}
-                        </div>
-                      ))}
+                      <Btn onClick={addPublicShareViewer}>
+                        <Icon name="plus" size={14} />
+                        Add another link
+                      </Btn>
+                      <Btn variant="pri" style={{ width: "100%", justifyContent: "center" }} onClick={() => createPublicShareLinks().catch((e) => setNotice(readableError(e)))} disabled={!canCreatePublicShareLinks}>
+                        {busy ? "Creating links..." : "Create public link"}
+                      </Btn>
                     </div>
-                    <button style={secondary} onClick={addPublicShareViewer}>
-                      <Icon name="plus" size={14} />
-                      Add another link
-                    </button>
-                    <button style={{ ...primary, width: "100%", opacity: canCreatePublicShareLinks ? 1 : 0.68 }} onClick={() => createPublicShareLinks().catch((e) => setNotice(readableError(e)))} disabled={!canCreatePublicShareLinks}>
-                      {busy ? "Creating links..." : "Create public link"}
-                    </button>
-                  </div>
                   </div>
                 ) : null}
               </div>
             </div>
           }
         >
+          {/* Two working columns. Grid rather than flex, so a `.panel` inside
+              either column cannot shrink below its own content. */}
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.35fr) minmax(320px, .65fr)", gap: 12, alignItems: "start" }}>
-            <div style={{ display: "grid", gap: 12 }}>
-              <PanelBox style={{ borderColor: isAdminUploadDragging ? t.petrol : t.line }}>
-                <SectionLabel action={`${adminUploadFiles.length} queued${adminUploadDraftStatus ? ` | ${adminUploadDraftStatus === "saving" ? "saving" : "saved"}` : ""}`}>Upload on behalf</SectionLabel>
+            <div className="grid">
+              <Panel
+                title="Upload on behalf"
+                actions={
+                  <span className="tag">
+                    {adminUploadFiles.length} queued{adminUploadDraftStatus ? ` | ${adminUploadDraftStatus === "saving" ? "saving" : "saved"}` : ""}
+                  </span>
+                }
+              >
                 <input ref={adminFileInputRef} type="file" multiple hidden onChange={(event) => event.target.files && addAdminUploadFiles(event.target.files)} />
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto", gap: 8 }}>
-                  <input
-                    style={field}
+                  <Input
                     placeholder="Uploaded for"
                     value={adminUploadForm.uploader_name}
                     onChange={(event) => setAdminUploadForm({ ...adminUploadForm, uploader_name: event.target.value })}
                   />
-                  <input
-                    style={field}
+                  <Input
                     placeholder="Email optional"
                     value={adminUploadForm.uploader_email}
                     onChange={(event) => setAdminUploadForm({ ...adminUploadForm, uploader_email: event.target.value })}
                   />
-                  <button style={secondary} onClick={() => adminFileInputRef.current?.click()} disabled={adminUploading}>
+                  <Btn onClick={() => adminFileInputRef.current?.click()} disabled={adminUploading}>
                     <Icon name="upload" size={14} />
                     Choose files
-                  </button>
-                  <textarea
-                    style={{ ...field, gridColumn: "1 / -1", minHeight: 62, paddingTop: 10, resize: "vertical" }}
+                  </Btn>
+                  <Textarea
+                    style={{ gridColumn: "1 / -1", minHeight: 62 }}
                     placeholder="Internal note optional"
                     value={adminUploadForm.note}
                     onChange={(event) => setAdminUploadForm({ ...adminUploadForm, note: event.target.value })}
                   />
                 </div>
-                <div style={{ color: t.ink3, fontSize: 12, marginTop: 7 }}>
+                <div className="sub" style={{ marginTop: 7 }}>
                   Upload-on-behalf details autosave for this bucket and are applied to every queued file when uploaded.
                 </div>
+                {/* Drag state is a class modifier, not an inline branch:
+                    `.dropzone.drag` is the same treatment the hover state gets. */}
                 <div
-                  style={adminUploadDropZoneStyle(t, isAdminUploadDragging)}
+                  className={cx("dropzone", "mt", isAdminUploadDragging && "drag")}
                   onClick={() => adminFileInputRef.current?.click()}
                   onDragOver={onAdminUploadDragOver}
                   onDragLeave={onAdminUploadDragLeave}
@@ -2359,24 +2399,26 @@ export default function BucketsAdminPage() {
                     }
                   }}
                 >
-                  <Icon name="upload" size={18} />
-                  <div>
-                    <strong style={{ display: "block", color: t.ink }}>Drop files here or choose files</strong>
-                    <span style={{ color: t.ink3, fontSize: 12 }}>Leave a file as General upload when it does not match a requested task.</span>
+                  <div className="row" style={{ justifyContent: "center" }}>
+                    <Icon name="upload" size={18} />
+                    <div style={{ textAlign: "left" }}>
+                      <b style={{ display: "block" }}>Drop files here or choose files</b>
+                      <span className="sub">Leave a file as General upload when it does not match a requested task.</span>
+                    </div>
                   </div>
                 </div>
                 {adminUploadFiles.length ? (
-                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                  <div className="grid g8 mt">
                     {adminUploadFiles.map((item) => (
-                      <div key={item.id} style={adminUploadRowStyle(t)}>
-                        <div style={{ minWidth: 0 }}>
-                          <strong style={{ display: "block", color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.file.name}</strong>
-                          <span style={{ color: item.status === "error" ? t.danger : t.ink3, fontSize: 12 }}>
+                      <div key={item.id} className={cx("itemrow", item.status === "error" && "tone-bad")}>
+                        <div className="grow">
+                          <strong className="trunc" style={{ display: "block" }}>{item.file.name}</strong>
+                          <span className="sub">
                             {formatSize(item.file.size)} | {item.message || statusLabel(item.status)}
                           </span>
                         </div>
-                        <select
-                          style={field}
+                        <Select
+                          style={{ width: 190 }}
                           value={item.requested_document_id}
                           onChange={(event) => updateAdminUploadFile(item.id, { requested_document_id: event.target.value, status: "ready", message: undefined })}
                           disabled={adminUploading || item.status === "uploaded"}
@@ -2389,197 +2431,205 @@ export default function BucketsAdminPage() {
                             const disabled = alreadyUploaded || (!doc.allow_multiple_files && linkedByQueuedFile);
                             return <option key={doc.id} value={doc.id} disabled={disabled}>{doc.name}{disabled ? " - already used" : ""}</option>;
                           })}
-                        </select>
-                        <button style={iconButtonStyle(t)} onClick={() => removeAdminUploadFile(item.id)} disabled={adminUploading || item.status === "uploaded"} aria-label={`Remove ${item.file.name}`} title="Remove file">
+                        </Select>
+                        <IconBtn onClick={() => removeAdminUploadFile(item.id)} disabled={adminUploading || item.status === "uploaded"} aria-label={`Remove ${item.file.name}`} title="Remove file">
                           <Icon name="x" size={14} />
-                        </button>
+                        </IconBtn>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div style={emptyInlineStyle(t)}>Choose files from your computer and assign them to a requested item or leave them as general uploads.</div>
+                  <div className="hintbox mt">Choose files from your computer and assign them to a requested item or leave them as general uploads.</div>
                 )}
-                {adminUploadStatus ? <CreateStatusBanner status={adminUploadStatus} /> : null}
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-                  <button style={{ ...primary, minWidth: 148, opacity: canAdminUpload ? 1 : 0.68 }} onClick={submitAdminUploads} disabled={!canAdminUpload}>
+                {adminUploadStatus ? <div className="mt"><CreateStatusBanner status={adminUploadStatus} /></div> : null}
+                <div className="row mt" style={{ justifyContent: "flex-end" }}>
+                  <Btn variant="pri" style={{ minWidth: 148, justifyContent: "center" }} onClick={submitAdminUploads} disabled={!canAdminUpload}>
                     {adminUploading ? "Uploading..." : "Upload files"}
-                  </button>
+                  </Btn>
                 </div>
-              </PanelBox>
+              </Panel>
 
-              <PanelBox>
-                <SectionLabel action={`${visibleFiles.length} uploaded`}>Files</SectionLabel>
+              <Panel title="Files" actions={<span className="tag">{visibleFiles.length} uploaded</span>}>
                 {visibleFiles.length === 0 ? (
                   <EmptyInline icon="file" title="No files uploaded yet" body="Files uploaded through request links will appear here." />
                 ) : (
-                  <div style={{ display: "grid", gap: 8 }}>
+                  <div className="grid g8">
                     {visibleFiles.map((file) => (
-                      <div key={file.id} style={fileRowStyle(t)}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <div key={file.id} className="itemrow">
+                        <label className="row grow" style={{ cursor: "pointer" }}>
                           <input type="checkbox" checked={!!shareFiles[file.id]} onChange={(e) => setShareFiles({ ...shareFiles, [file.id]: e.target.checked })} />
-                          <span style={{ minWidth: 0 }}>
-                            <span style={{ display: "block", color: t.ink, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.file_name}</span>
-                            <span style={{ color: t.ink3, fontSize: 12 }}>
+                          <span className="grow">
+                            <strong className="trunc" style={{ display: "block" }}>{file.file_name}</strong>
+                            <span className="sub">
                               {file.uploaded_by_name || "Unknown"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}
                             </span>
                           </span>
                         </label>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <button style={secondary} onClick={() => openFile(file, false)}>
+                        <div className="row">
+                          <Btn size="sm" onClick={() => openFile(file, false)}>
                             <Icon name="eye" size={13} />
                             Preview
-                          </button>
-                          <button style={secondary} onClick={() => openFile(file, true)}>
+                          </Btn>
+                          <Btn size="sm" onClick={() => openFile(file, true)}>
                             <Icon name="download" size={13} />
                             Download
-                          </button>
-                          <button
-                            style={{ ...secondary, color: t.danger, borderColor: t.danger }}
+                          </Btn>
+                          <Btn
+                            size="sm"
+                            className="danger"
                             onClick={() => deleteFile(file).catch(() => undefined)}
                             disabled={deletingFileId === file.id}
                           >
                             <Icon name="x" size={13} />
                             {deletingFileId === file.id ? "Deleting..." : "Delete"}
-                          </button>
+                          </Btn>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
-              </PanelBox>
+              </Panel>
 
-              <PanelBox>
-                <SectionLabel action={`${detail.requested_documents.length} items`}>Tasks</SectionLabel>
-                <div style={{ display: "grid", gap: 8 }}>
+              <Panel title="Tasks" actions={<span className="tag">{detail.requested_documents.length} items</span>}>
+                <div className="grid g8">
                   {detail.requested_documents.length === 0 ? (
                     <EmptyInline icon="docCheck" title="No requested-file tasks" body="Tasks are created from requested documents." />
                   ) : detail.requested_documents.map((doc) => (
-                    <div key={doc.id} style={smallRowStyle(t)}>
-                      <div style={{ minWidth: 0 }}>
-                        <strong style={{ color: t.ink }}>{doc.name}</strong>
-                        <div style={{ color: t.ink3, fontSize: 12 }}>
+                    <div key={doc.id} className="itemrow">
+                      <div className="grow">
+                        <strong>{doc.name}</strong>
+                        <div className="sub">
                           {doc.category || "General"}{doc.required ? " | Required" : ""}{doc.allow_multiple_files ? " | Multiple files" : ""}
                         </div>
-                        {doc.description ? <div style={{ color: t.ink3, fontSize: 12, marginTop: 3 }}>{doc.description}</div> : null}
+                        {doc.description ? <div className="sub" style={{ marginTop: 3 }}>{doc.description}</div> : null}
                       </div>
-                      <Pill color={doc.status === "uploaded" ? t.profit : undefined} bg={doc.status === "uploaded" ? t.profitBg : undefined}>
+                      <CellChip tone={doc.status === "uploaded" ? "ok" : "mut"}>
                         {statusLabel(doc.status)}
-                      </Pill>
+                      </CellChip>
                     </div>
                   ))}
                 </div>
-              </PanelBox>
+              </Panel>
             </div>
 
-            <div style={{ display: "grid", gap: 12 }}>
-              <PanelBox>
-                <SectionLabel>Notes</SectionLabel>
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
-                  <input style={field} placeholder="Add admin note" value={adminNote} onChange={(e) => setAdminNote(e.target.value)} />
-                  <button style={secondary} onClick={addNote} disabled={!adminNote.trim()}>Add</button>
-                </div>
-                <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+            <div className="grid">
+              <Panel title="Notes">
+                <div className="thr">
                   {detail.notes.length === 0 ? (
-                    <div style={{ color: t.ink3, fontSize: 13 }}>No notes yet.</div>
+                    <div className="thr-empty">No notes yet.</div>
                   ) : detail.notes.map((note) => (
-                    <div key={note.id} style={{ borderTop: `1px solid ${t.line}`, paddingTop: 8, color: t.ink2, fontSize: 13 }}>
-                      <strong>{note.author_name || "Admin"}</strong> | {formatDate(note.created_at)}
-                      <div style={{ marginTop: 3 }}>{note.content}</div>
+                    // `.msg.internal` — dashed rather than tinted, because an
+                    // internal note is the same person speaking off the record,
+                    // not a fourth kind of participant.
+                    <div key={note.id} className="msg internal">
+                      <div className="msg-h">
+                        <span className="msg-who">{note.author_name || "Admin"}</span>
+                        <span className="msg-when">{formatDate(note.created_at)}</span>
+                      </div>
+                      <div className="msg-b">{note.content}</div>
                     </div>
                   ))}
                 </div>
-              </PanelBox>
-
-              <PanelBox>
-                <SectionLabel action={`${detail.upload_links?.length ?? 0} invites`}>Client Upload Invites</SectionLabel>
-                <div style={{ color: t.ink3, fontSize: 12.5, marginBottom: 8 }}>
-                  For clients or upload parties to add documents. Uses an upload link and access code.
-                </div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
-                    <input
-                      style={field}
-                      placeholder="Client/uploader name"
-                      value={uploadLinkDraft.recipient_name}
-                      onChange={(event) => setUploadLinkDraft({ ...uploadLinkDraft, recipient_name: event.target.value })}
-                    />
-                    <input
-                      style={field}
-                      placeholder="Email optional"
-                      value={uploadLinkDraft.recipient_email}
-                      onChange={(event) => setUploadLinkDraft({ ...uploadLinkDraft, recipient_email: event.target.value })}
-                    />
-                    <input
-                      style={field}
-                      placeholder="Upload access code"
-                      value={uploadLinkDraft.passcode}
-                      onChange={(event) => setUploadLinkDraft({ ...uploadLinkDraft, passcode: event.target.value })}
-                    />
-                    <div style={{ display: "grid", gridTemplateColumns: "auto auto", gap: 8 }}>
-                      <button style={secondary} onClick={() => setUploadLinkDraft({ ...uploadLinkDraft, passcode: generateAccessCode() })}>Generate</button>
-                      <button style={primary} onClick={() => createBucketUploadLink().catch((e) => setNotice(String(e)))} disabled={!uploadLinkDraft.recipient_name.trim()}>
-                        Create
-                      </button>
-                    </div>
+                <div className="composer">
+                  <div className="composer-row">
+                    <Input grow placeholder="Add admin note" value={adminNote} onChange={(e) => setAdminNote(e.target.value)} />
+                    <Btn onClick={addNote} disabled={!adminNote.trim()}>Add</Btn>
                   </div>
-                  {(detail.upload_links ?? []).length === 0 ? (
-                    <div style={emptyInlineStyle(t)}>No upload links yet. Create one here to invite a client after bucket creation.</div>
-                  ) : (detail.upload_links ?? []).map((link) => {
-                    const isOpen = expandedUploadLinkId === link.id;
-                    const passcodeAvailable = Boolean(uploadLinkPasscodes[link.id] || link.passcode);
-                    const isExpired = Boolean(link.expires_at && new Date(link.expires_at).getTime() <= Date.now());
-                    const effectiveStatus = isExpired ? "Expired" : statusLabel(link.status);
-                    return (
-                      <div key={link.id} style={{ ...compactExpandableStyle(t, isOpen), display: "grid", gap: isOpen ? 10 : 0 }}>
-                        <button
-                          type="button"
-                          onClick={() => setExpandedUploadLinkId(isOpen ? null : link.id)}
-                          style={compactHeaderButtonStyle(t)}
-                          aria-expanded={isOpen}
-                        >
-                          <div style={{ minWidth: 0, textAlign: "left" }}>
-                            <strong style={{ color: t.ink }}>{link.recipient_name}</strong>
-                            <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              Client upload invite | {link.recipient_email || "No email"} | {link.completed_at ? "submitted" : "open"}
-                            </div>
-                          </div>
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                            <Pill color={isExpired ? t.danger : undefined} bg={isExpired ? t.dangerBg : undefined}>{effectiveStatus}</Pill>
-                            <Icon name={isOpen ? "chevU" : "chevD"} size={14} />
-                          </div>
-                        </button>
-                        {isOpen ? (
-                          <div style={{ display: "grid", gap: 8, paddingTop: 8, borderTop: `1px solid ${t.line}` }}>
-                            <div style={{ color: t.ink3, fontSize: 12 }}>
-                              Upload link with access code | Created {formatDate(link.created_at)} | Expires {formatDate(link.expires_at)} | Completed {formatDateTime(link.completed_at)}
-                            </div>
-                            {link.upload_url ? <code style={{ color: t.ink2, fontSize: 12, overflowWrap: "anywhere" }}>{link.upload_url}</code> : null}
-                            {!passcodeAvailable ? (
-                              <div style={emptyInlineStyle(t)}>Access code is secured. Regenerate to copy a new invite.</div>
-                            ) : null}
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                              <button style={secondary} onClick={() => copyUploadLink(link)}>Copy link</button>
-                              <button style={secondary} onClick={() => regenerateUploadLinkPasscode(link).catch((e) => setNotice(String(e)))}>Regenerate code</button>
-                              <button style={secondary} onClick={() => copyUploadInvite(link)} disabled={!passcodeAvailable}>Copy invite</button>
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
                 </div>
-              </PanelBox>
+              </Panel>
 
-              <div id="bucket-vendors-panel" style={{ scrollMarginTop: 18 }}>
-              <PanelBox style={{ borderColor: detailFocus === "vendors" ? t.petrol : t.line }}>
-                <SectionLabel action={`${detail.vendor_access?.length ?? 0} vendors`}>Vendor Accounts</SectionLabel>
-                <div style={{ color: t.ink3, fontSize: 12.5, marginBottom: 8 }}>
-                  For recurring vendors who log in and see assigned buckets. This is not the bank share link workflow.
+              <Panel
+                title="Client Upload Invites"
+                actions={<span className="tag">{detail.upload_links?.length ?? 0} invites</span>}
+                bodyClass="grid g8"
+              >
+                <div className="sub">For clients or upload parties to add documents. Uses an upload link and access code.</div>
+                <div className="fldgrid two">
+                  <Input
+                    placeholder="Client/uploader name"
+                    value={uploadLinkDraft.recipient_name}
+                    onChange={(event) => setUploadLinkDraft({ ...uploadLinkDraft, recipient_name: event.target.value })}
+                  />
+                  <Input
+                    placeholder="Email optional"
+                    value={uploadLinkDraft.recipient_email}
+                    onChange={(event) => setUploadLinkDraft({ ...uploadLinkDraft, recipient_email: event.target.value })}
+                  />
+                  <Input
+                    placeholder="Upload access code"
+                    value={uploadLinkDraft.passcode}
+                    onChange={(event) => setUploadLinkDraft({ ...uploadLinkDraft, passcode: event.target.value })}
+                  />
+                  <div className="row">
+                    <Btn onClick={() => setUploadLinkDraft({ ...uploadLinkDraft, passcode: generateAccessCode() })}>Generate</Btn>
+                    <Btn variant="pri" onClick={() => createBucketUploadLink().catch((e) => setNotice(String(e)))} disabled={!uploadLinkDraft.recipient_name.trim()}>
+                      Create
+                    </Btn>
+                  </div>
                 </div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  <div style={{ display: "grid", gap: 8, padding: 10, border: `1px solid ${t.line}`, borderRadius: 8, background: t.surface2 }}>
-                    <select
-                      style={field}
+                {(detail.upload_links ?? []).length === 0 ? (
+                  <div className="hintbox">No upload links yet. Create one here to invite a client after bucket creation.</div>
+                ) : (detail.upload_links ?? []).map((link) => {
+                  const isOpen = expandedUploadLinkId === link.id;
+                  const passcodeAvailable = Boolean(uploadLinkPasscodes[link.id] || link.passcode);
+                  const isExpired = Boolean(link.expires_at && new Date(link.expires_at).getTime() <= Date.now());
+                  const effectiveStatus = isExpired ? "Expired" : statusLabel(link.status);
+                  return (
+                    <div key={link.id} className={cx("disc", isOpen && "on", isExpired && "tone-bad")}>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedUploadLinkId(isOpen ? null : link.id)}
+                        className="disc-h"
+                        aria-expanded={isOpen}
+                      >
+                        <span className="grow">
+                          <strong>{link.recipient_name}</strong>
+                          <span className="sub trunc" style={{ display: "block" }}>
+                            Client upload invite | {link.recipient_email || "No email"} | {link.completed_at ? "submitted" : "open"}
+                          </span>
+                        </span>
+                        <CellChip tone={isExpired ? "bad" : "mut"}>{effectiveStatus}</CellChip>
+                        <Icon name={isOpen ? "chevU" : "chevD"} size={14} />
+                      </button>
+                      {isOpen ? (
+                        <div className="disc-b grid g8">
+                          <div className="sub">
+                            Upload link with access code | Created {formatDate(link.created_at)} | Expires {formatDate(link.expires_at)} | Completed {formatDateTime(link.completed_at)}
+                          </div>
+                          {link.upload_url ? <code className="sub" style={{ overflowWrap: "anywhere" }}>{link.upload_url}</code> : null}
+                          {!passcodeAvailable ? (
+                            <div className="hintbox">Access code is secured. Regenerate to copy a new invite.</div>
+                          ) : null}
+                          <div className="row">
+                            <Btn size="sm" onClick={() => copyUploadLink(link)}>Copy link</Btn>
+                            <Btn size="sm" onClick={() => regenerateUploadLinkPasscode(link).catch((e) => setNotice(String(e)))}>Regenerate code</Btn>
+                            <Btn size="sm" onClick={() => copyUploadInvite(link)} disabled={!passcodeAvailable}>Copy invite</Btn>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </Panel>
+
+              <div
+                id="bucket-vendors-panel"
+                // Data-derived: the header's vendor button scrolls you here, and
+                // a ring is what tells you that you have arrived.
+                style={{
+                  scrollMarginTop: 18,
+                  borderRadius: "var(--r)",
+                  boxShadow: detailFocus === "vendors" ? "0 0 0 2px var(--accent)" : undefined,
+                }}
+              >
+                <Panel
+                  title="Vendor Accounts"
+                  actions={<span className="tag">{detail.vendor_access?.length ?? 0} vendors</span>}
+                  bodyClass="grid g8"
+                >
+                  <div className="sub">For recurring vendors who log in and see assigned buckets. This is not the bank share link workflow.</div>
+                  <div className="card grid g8">
+                    <Select
                       value={vendorDraft.vendor_user_id}
                       onChange={(event) => {
                         const vendor = vendors.find((row) => row.id === event.target.value);
@@ -2595,33 +2645,31 @@ export default function BucketsAdminPage() {
                       {vendors.map((vendor) => (
                         <option key={vendor.id} value={vendor.id}>{vendor.name} | {vendor.email}</option>
                       ))}
-                    </select>
-                    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8 }}>
-                      <input
-                        style={field}
+                    </Select>
+                    <div className="fldgrid two">
+                      <Input
                         placeholder="Vendor name"
                         value={vendorDraft.vendor_name}
                         onChange={(event) => setVendorDraft({ ...vendorDraft, vendor_user_id: "", vendor_name: event.target.value })}
                       />
-                      <input
-                        style={field}
+                      <Input
                         placeholder="Vendor email"
                         value={vendorDraft.vendor_email}
                         onChange={(event) => setVendorDraft({ ...vendorDraft, vendor_user_id: "", vendor_email: event.target.value })}
                       />
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      <select style={field} value={vendorDraft.file_scope} onChange={(event) => setVendorDraft({ ...vendorDraft, file_scope: event.target.value as VendorAccessDraft["file_scope"] })}>
+                    <div className="fldgrid two">
+                      <Select value={vendorDraft.file_scope} onChange={(event) => setVendorDraft({ ...vendorDraft, file_scope: event.target.value as VendorAccessDraft["file_scope"] })}>
                         <option value="all_active">All active files</option>
                         <option value="selected">Selected files</option>
-                      </select>
-                      <select style={field} value={vendorDraft.expires_days} onChange={(event) => setVendorDraft({ ...vendorDraft, expires_days: Number(event.target.value) })}>
+                      </Select>
+                      <Select value={vendorDraft.expires_days} onChange={(event) => setVendorDraft({ ...vendorDraft, expires_days: Number(event.target.value) })}>
                         <option value={1}>Expires 1 day</option>
                         <option value={7}>Expires 7 days</option>
                         <option value={14}>Expires 14 days</option>
                         <option value={30}>Expires 30 days</option>
                         <option value={0}>No expiration</option>
-                      </select>
+                      </Select>
                     </div>
                     {vendorDraft.file_scope === "selected" ? renderShareFilePicker({
                       selectedIds: vendorDraft.file_ids,
@@ -2635,53 +2683,55 @@ export default function BucketsAdminPage() {
                       }),
                       onSetSelected: (fileIds) => setVendorDraft({ ...vendorDraft, file_ids: fileIds }),
                     }) : (
-                      <div style={emptyInlineStyle(t)}>Vendor will see all current and future active files in this bucket.</div>
+                      <div className="hintbox">Vendor will see all current and future active files in this bucket.</div>
                     )}
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      <label style={permissionRowStyle(t)}>
-                        <span>
-                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Preview</strong>
-                          <span style={{ color: t.ink3, fontSize: 12 }}>Allow file previews.</span>
+                    {/* New-vendor permission matrix: all five vendor flags, each
+                        wired to its own key on `vendorDraft`. */}
+                    <div className="fldgrid two">
+                      <label className={cx("pick", vendorDraft.can_preview && "on")}>
+                        <span className="grow">
+                          <strong style={{ display: "block" }}>Preview</strong>
+                          <span className="sub">Allow file previews.</span>
                         </span>
                         <input type="checkbox" checked={vendorDraft.can_preview} onChange={(event) => setVendorDraft({ ...vendorDraft, can_preview: event.target.checked })} />
                       </label>
-                      <label style={permissionRowStyle(t)}>
-                        <span>
-                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Download</strong>
-                          <span style={{ color: t.ink3, fontSize: 12 }}>Allow file downloads.</span>
+                      <label className={cx("pick", vendorDraft.can_download && "on")}>
+                        <span className="grow">
+                          <strong style={{ display: "block" }}>Download</strong>
+                          <span className="sub">Allow file downloads.</span>
                         </span>
                         <input type="checkbox" checked={vendorDraft.can_download} onChange={(event) => setVendorDraft({ ...vendorDraft, can_download: event.target.checked })} />
                       </label>
-                      <label style={permissionRowStyle(t)}>
-                        <span>
-                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Notes</strong>
-                          <span style={{ color: t.ink3, fontSize: 12 }}>Allow comments.</span>
+                      <label className={cx("pick", vendorDraft.can_add_notes && "on")}>
+                        <span className="grow">
+                          <strong style={{ display: "block" }}>Notes</strong>
+                          <span className="sub">Allow comments.</span>
                         </span>
                         <input type="checkbox" checked={vendorDraft.can_add_notes} onChange={(event) => setVendorDraft({ ...vendorDraft, can_add_notes: event.target.checked })} />
                       </label>
-                      <label style={permissionRowStyle(t)}>
-                        <span>
-                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Internal notes</strong>
-                          <span style={{ color: t.ink3, fontSize: 12 }}>Show admin/internal notes.</span>
+                      <label className={cx("pick", vendorDraft.can_see_internal_notes && "on")}>
+                        <span className="grow">
+                          <strong style={{ display: "block" }}>Internal notes</strong>
+                          <span className="sub">Show admin/internal notes.</span>
                         </span>
                         <input type="checkbox" checked={vendorDraft.can_see_internal_notes} onChange={(event) => setVendorDraft({ ...vendorDraft, can_see_internal_notes: event.target.checked })} />
                       </label>
-                      <label style={permissionRowStyle(t)}>
-                        <span>
-                          <strong style={{ display: "block", color: t.ink, fontSize: 13 }}>Propose tasks</strong>
-                          <span style={{ color: t.ink3, fontSize: 12 }}>Requires admin approval.</span>
+                      <label className={cx("pick", vendorDraft.can_propose_tasks && "on")}>
+                        <span className="grow">
+                          <strong style={{ display: "block" }}>Propose tasks</strong>
+                          <span className="sub">Requires admin approval.</span>
                         </span>
                         <input type="checkbox" checked={vendorDraft.can_propose_tasks} onChange={(event) => setVendorDraft({ ...vendorDraft, can_propose_tasks: event.target.checked })} />
                       </label>
                     </div>
-                    <button style={primary} onClick={() => createVendorAccess().catch((e) => setNotice(readableError(e)))}>
+                    <Btn variant="pri" onClick={() => createVendorAccess().catch((e) => setNotice(readableError(e)))}>
                       <Icon name="plus" size={14} />
                       Invite / assign vendor
-                    </button>
+                    </Btn>
                   </div>
 
                   {(detail.vendor_access ?? []).length === 0 ? (
-                    <div style={emptyInlineStyle(t)}>No vendors assigned. Vendors log in and see assigned buckets without passcodes.</div>
+                    <div className="hintbox">No vendors assigned. Vendors log in and see assigned buckets without passcodes.</div>
                   ) : (detail.vendor_access ?? []).map((access) => {
                     const files = vendorFilesFor(access);
                     const isOpen = expandedVendorAccessId === access.id;
@@ -2689,54 +2739,57 @@ export default function BucketsAdminPage() {
                     const isRevoked = access.status === "revoked";
                     const effectiveStatus = isRevoked ? "Revoked" : isExpired ? "Expired" : statusLabel(access.status);
                     return (
-                      <div key={access.id} style={{ ...compactExpandableStyle(t, isOpen), display: "grid", gap: isOpen ? 10 : 0 }}>
+                      // The row itself carries the dead state. A revoked vendor
+                      // in a list of live ones has to be findable without
+                      // reading every badge in the column.
+                      <div key={access.id} className={cx("disc", isOpen && "on", (isRevoked || isExpired) && "tone-bad")}>
                         <button
                           type="button"
                           onClick={() => setExpandedVendorAccessId(isOpen ? null : access.id)}
-                          style={compactHeaderButtonStyle(t)}
+                          className="disc-h"
                           aria-expanded={isOpen}
                         >
-                          <div style={{ minWidth: 0, textAlign: "left" }}>
-                            <strong style={{ color: t.ink }}>{access.vendor_name || access.vendor_email || "Vendor"}</strong>
-                            <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <span className="grow">
+                            <strong>{access.vendor_name || access.vendor_email || "Vendor"}</strong>
+                            <span className="sub trunc" style={{ display: "block" }}>
                               Vendor login | {access.file_scope === "all_active" ? "All active files" : `${files.length} selected files`} | {access.can_download ? "downloads on" : "view only"}
-                            </div>
-                          </div>
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                            <Pill color={isRevoked || isExpired ? t.danger : undefined} bg={isRevoked || isExpired ? t.dangerBg : undefined}>{effectiveStatus}</Pill>
-                            <Icon name={isOpen ? "chevU" : "chevD"} size={14} />
-                          </div>
+                            </span>
+                          </span>
+                          <CellChip tone={isRevoked || isExpired ? "bad" : "mut"}>{effectiveStatus}</CellChip>
+                          <Icon name={isOpen ? "chevU" : "chevD"} size={14} />
                         </button>
                         {isOpen ? (
-                          <div style={{ display: "grid", gap: 8, paddingTop: 8, borderTop: `1px solid ${t.line}` }}>
-                            <div style={{ color: t.ink3, fontSize: 12 }}>
+                          <div className="disc-b grid g8">
+                            <div className="sub">
                               {access.vendor_email || "No email"} | Downloads {access.download_count} | Expires {formatDate(access.expires_at)} | Last access {formatDateTime(access.last_accessed_at)}
                             </div>
-                            <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface2, padding: 10, display: "grid", gap: 7 }}>
-                              <div style={{ color: t.ink3, fontSize: 12, lineHeight: 1.35 }}>
+                            <Callout tone="acc">
+                              <div className="sub">
                                 Vendor login link is reusable. Vendor access uses their app email login; there is no bucket password to retrieve.
                               </div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button style={secondary} onClick={() => copyVendorLoginLink(access)}>Copy login link</button>
-                                <button style={secondary} onClick={() => copyVendorInvite(access)}>Copy invite</button>
+                              <div className="row mt">
+                                <Btn size="sm" onClick={() => copyVendorLoginLink(access)}>Copy login link</Btn>
+                                <Btn size="sm" onClick={() => copyVendorInvite(access)}>Copy invite</Btn>
                               </div>
-                            </div>
+                            </Callout>
                             {files.length ? (
-                              <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              <div className="sub trunc">
                                 {files.slice(0, 3).map((file) => file.file_name).join(", ")}{files.length > 3 ? ` +${files.length - 3} more` : ""}
                               </div>
                             ) : null}
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                              <button style={secondary} onClick={() => resendVendorInvite(access).catch((e) => setNotice(readableError(e)))}>Resend invite</button>
-                              <button style={secondary} onClick={() => openEditVendorFiles(access)}>Edit files</button>
-                              <button style={secondary} onClick={() => patchVendorAccess(access, { file_scope: "all_active", file_ids: [] }).then(() => setNotice("Vendor now sees all active files.")).catch((e) => setNotice(readableError(e)))}>Use all files</button>
+                            <div className="row">
+                              <Btn size="sm" onClick={() => resendVendorInvite(access).catch((e) => setNotice(readableError(e)))}>Resend invite</Btn>
+                              <Btn size="sm" onClick={() => openEditVendorFiles(access)}>Edit files</Btn>
+                              <Btn size="sm" onClick={() => patchVendorAccess(access, { file_scope: "all_active", file_ids: [] }).then(() => setNotice("Vendor now sees all active files.")).catch((e) => setNotice(readableError(e)))}>Use all files</Btn>
                               {isRevoked ? (
-                                <button style={secondary} onClick={() => setVendorStatus(access, "active").catch((e) => setNotice(readableError(e)))} disabled={isExpired}>Reactivate</button>
+                                <Btn size="sm" onClick={() => setVendorStatus(access, "active").catch((e) => setNotice(readableError(e)))} disabled={isExpired}>Reactivate</Btn>
                               ) : (
-                                <button style={{ ...secondary, color: t.danger }} onClick={() => setVendorStatus(access, "revoked").catch((e) => setNotice(readableError(e)))}>Revoke</button>
+                                <Btn size="sm" className="danger" onClick={() => setVendorStatus(access, "revoked").catch((e) => setNotice(readableError(e)))}>Revoke</Btn>
                               )}
                             </div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            {/* Live vendor-access matrix: the same five flags,
+                                each PATCHed onto THIS access row by key. */}
+                            <div className="fldgrid two">
                               {([
                                 ["can_preview", "Preview"],
                                 ["can_download", "Download"],
@@ -2744,8 +2797,8 @@ export default function BucketsAdminPage() {
                                 ["can_see_internal_notes", "Internal notes"],
                                 ["can_propose_tasks", "Propose tasks"],
                               ] as const).map(([key, label]) => (
-                                <label key={key} style={permissionRowStyle(t)}>
-                                  <span style={{ color: t.ink, fontSize: 13, fontWeight: 850 }}>{label}</span>
+                                <label key={key} className={cx("pick", access[key] && "on")}>
+                                  <span className="grow"><strong>{label}</strong></span>
                                   <input
                                     type="checkbox"
                                     checked={Boolean(access[key])}
@@ -2755,8 +2808,8 @@ export default function BucketsAdminPage() {
                               ))}
                             </div>
                             {editingVendorAccessId === access.id ? (
-                              <div style={{ display: "grid", gap: 8, paddingTop: 8, borderTop: `1px solid ${t.line}` }}>
-                                <strong style={{ color: t.ink, fontSize: 13 }}>Edit vendor visible files</strong>
+                              <div className="grid g8" style={{ paddingTop: 8, borderTop: "1px solid var(--line)" }}>
+                                <strong>Edit vendor visible files</strong>
                                 {renderShareFilePicker({
                                   selectedIds: editingVendorFileIds,
                                   search: editingVendorFileSearch,
@@ -2764,9 +2817,9 @@ export default function BucketsAdminPage() {
                                   onToggle: (fileId) => setEditingVendorFileIds((ids) => ids.includes(fileId) ? ids.filter((id) => id !== fileId) : [...ids, fileId]),
                                   onSetSelected: setEditingVendorFileIds,
                                 })}
-                                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                                  <button style={secondary} onClick={() => setEditingVendorAccessId(null)}>Cancel</button>
-                                  <button style={primary} onClick={() => saveEditedVendorFiles(access).catch((e) => setNotice(readableError(e)))} disabled={!editingVendorFileIds.length}>Save selected files</button>
+                                <div className="row" style={{ justifyContent: "flex-end" }}>
+                                  <Btn onClick={() => setEditingVendorAccessId(null)}>Cancel</Btn>
+                                  <Btn variant="pri" onClick={() => saveEditedVendorFiles(access).catch((e) => setNotice(readableError(e)))} disabled={!editingVendorFileIds.length}>Save selected files</Btn>
                                 </div>
                               </div>
                             ) : null}
@@ -2775,230 +2828,224 @@ export default function BucketsAdminPage() {
                       </div>
                     );
                   })}
-                </div>
-              </PanelBox>
+                </Panel>
               </div>
 
-              <PanelBox>
-                <SectionLabel action={`${detail.shares.length} links`}>Share Links - No Login</SectionLabel>
-                <div style={{ color: t.ink3, fontSize: 12.5, marginBottom: 8 }}>
-                  For banks, lenders, and one-time third parties. Send the secure link plus access code.
+              <Panel
+                title="Share Links - No Login"
+                actions={<span className="tag">{detail.shares.length} links</span>}
+                bodyClass="grid g8"
+              >
+                <div className="sub">For banks, lenders, and one-time third parties. Send the secure link plus access code.</div>
+                {detail.shares.length === 0 ? (
+                  <div className="hintbox">No share links yet.</div>
+                ) : detail.shares.map((share) => {
+                  const files = shareFilesFor(share);
+                  const isExpired = Boolean(share.expires_at && new Date(share.expires_at).getTime() <= Date.now());
+                  const isRevoked = share.status === "revoked";
+                  const effectiveStatus = isRevoked ? "Revoked" : isExpired ? "Expired" : statusLabel(share.status);
+                  const passcodeAvailable = Boolean(sharePasscodes[share.id] || share.passcode);
+                  const isOpen = expandedShareId === share.id;
+                  return (
+                    <div key={share.id} className={cx("disc", isOpen && "on", (isRevoked || isExpired) && "tone-bad")}>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedShareId(isOpen ? null : share.id)}
+                        className="disc-h"
+                        aria-expanded={isOpen}
+                      >
+                        <span className="grow">
+                          <strong>{share.recipient_name}</strong>
+                          <span className="sub trunc" style={{ display: "block" }}>
+                            No login | access code required | {files.length} file{files.length === 1 ? "" : "s"} | {share.can_download ? "downloads on" : "view only"}
+                          </span>
+                        </span>
+                        <CellChip tone={isRevoked || isExpired ? "bad" : "mut"}>{effectiveStatus}</CellChip>
+                        <Icon name={isOpen ? "chevU" : "chevD"} size={14} />
+                      </button>
+                      {isOpen ? (
+                        <div className="disc-b grid g8">
+                          <div className="row top">
+                            <div className="grow">
+                              <div className="sub">No-login third-party share | {share.recipient_email || "No email"} | {files.length} file{files.length === 1 ? "" : "s"}</div>
+                              <div className="sub">
+                                {share.view_count} views | {share.download_count} downloads | {share.can_download ? "downloads on" : "view only"}
+                              </div>
+                              <div className="sub">
+                                Expires {formatDate(share.expires_at)} | Last access {formatDateTime(share.last_accessed_at)}
+                              </div>
+                            </div>
+                            {/* No status chip here: the collapsed row header
+                                above already carries it, so expanding a share
+                                showed the same word twice. The other two lists
+                                (vendor access, upload links) show it once. */}
+                          </div>
+                          {files.length ? (
+                            <div className="sub trunc">
+                              {files.slice(0, 3).map((file) => file.file_name).join(", ")}{files.length > 3 ? ` +${files.length - 3} more` : ""}
+                            </div>
+                          ) : null}
+                          <div className="row">
+                            <Btn size="sm" onClick={() => copyShareLink(share)}>Copy link</Btn>
+                            <Btn size="sm" onClick={() => regenerateSharePasscode(share)}>Regenerate code</Btn>
+                            <Btn size="sm" onClick={() => copyShareInvite(share)} disabled={!passcodeAvailable}>Copy invite</Btn>
+                            <Btn size="sm" onClick={() => openEmailShare(share)} disabled={!passcodeAvailable}>Email from my Gmail</Btn>
+                            <Btn size="sm" onClick={() => openEditShareFiles(share)}>Edit files</Btn>
+                            <Select
+                              style={{ width: 118 }}
+                              defaultValue=""
+                              aria-label={`Extend the expiry of the share for ${share.recipient_name}`}
+                              onChange={(event) => {
+                                const days = Number(event.target.value);
+                                if (days) void patchShare(share, { expires_at: shareExpiryDate(days) }).then(() => setNotice("Share expiration updated."));
+                                event.currentTarget.value = "";
+                              }}
+                            >
+                              <option value="">Extend</option>
+                              <option value={1}>1 day</option>
+                              <option value={7}>7 days</option>
+                              <option value={14}>14 days</option>
+                              <option value={30}>30 days</option>
+                            </Select>
+                            {isRevoked ? (
+                              <Btn size="sm" onClick={() => setShareStatus(share, "active")} disabled={isExpired}>Reactivate</Btn>
+                            ) : (
+                              <Btn size="sm" className="danger" onClick={() => setShareStatus(share, "revoked")}>Revoke</Btn>
+                            )}
+                          </div>
+                          {editingShareId === share.id ? (
+                            <div className="grid g8" style={{ paddingTop: 8, borderTop: "1px solid var(--line)" }}>
+                              <strong>Edit visible files</strong>
+                              {renderShareFilePicker({
+                                selectedIds: editingShareFileIds,
+                                search: editingShareSearch,
+                                onSearch: setEditingShareSearch,
+                                onToggle: (fileId) => setEditingShareFileIds((ids) => ids.includes(fileId) ? ids.filter((id) => id !== fileId) : [...ids, fileId]),
+                                onSetSelected: setEditingShareFileIds,
+                              })}
+                              <div className="row" style={{ justifyContent: "flex-end" }}>
+                                <Btn onClick={() => setEditingShareId(null)}>Cancel</Btn>
+                                <Btn variant="pri" onClick={() => saveEditedShareFiles(share)} disabled={!editingShareFileIds.length}>Save files</Btn>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </Panel>
+
+              <Panel title="Activity" actions={<span className="tag">{activityTotal} total</span>} bodyClass="grid g8">
+                <Input
+                  value={activityFilters.q}
+                  onChange={(event) => updateActivityFilters({ q: event.target.value })}
+                  placeholder="Search activity"
+                  aria-label="Search activity"
+                />
+                <div className="fldgrid two">
+                  <Select value={activityFilters.action} onChange={(event) => updateActivityFilters({ action: event.target.value })} aria-label="Filter by action">
+                    <option value="">All actions</option>
+                    {ACTIVITY_ACTION_OPTIONS.map((action) => (
+                      <option key={action} value={action}>{activityLabel(action)}</option>
+                    ))}
+                  </Select>
+                  <Select value={activityFilters.actor_role} onChange={(event) => updateActivityFilters({ actor_role: event.target.value })} aria-label="Filter by role">
+                    <option value="">All roles</option>
+                    {ACTIVITY_ROLE_OPTIONS.map((role) => (
+                      <option key={role} value={role}>{statusLabel(role)}</option>
+                    ))}
+                  </Select>
                 </div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {detail.shares.length === 0 ? (
-                    <div style={{ color: t.ink3, fontSize: 13 }}>No share links yet.</div>
-                  ) : detail.shares.map((share) => {
-                    const files = shareFilesFor(share);
-                    const isExpired = Boolean(share.expires_at && new Date(share.expires_at).getTime() <= Date.now());
-                    const isRevoked = share.status === "revoked";
-                    const effectiveStatus = isRevoked ? "Revoked" : isExpired ? "Expired" : statusLabel(share.status);
-                    const passcodeAvailable = Boolean(sharePasscodes[share.id] || share.passcode);
-                    const isOpen = expandedShareId === share.id;
+                <Select value={activityFilters.target_type} onChange={(event) => updateActivityFilters({ target_type: event.target.value })} aria-label="Filter by target">
+                  <option value="">All targets</option>
+                  {ACTIVITY_TARGET_OPTIONS.map((target) => (
+                    <option key={target} value={target}>{statusLabel(target)}</option>
+                  ))}
+                </Select>
+                <div className="fldgrid two">
+                  <Input
+                    type="date"
+                    value={activityFilters.date_from}
+                    onChange={(event) => updateActivityFilters({ date_from: event.target.value })}
+                    aria-label="Activity from date"
+                  />
+                  <Input
+                    type="date"
+                    value={activityFilters.date_to}
+                    onChange={(event) => updateActivityFilters({ date_to: event.target.value })}
+                    aria-label="Activity to date"
+                  />
+                </div>
+                <Btn
+                  onClick={() => {
+                    const filters = emptyActivityFilters();
+                    setActivityFilters(filters);
+                    void loadBucketActivity(detail.id, 0, filters);
+                  }}
+                >
+                  Clear filters
+                </Btn>
+                {/* A floor on the list height so paging does not make the panel
+                    — and the pager under it — jump up the page. */}
+                <div className="grid g8" style={{ minHeight: 360, alignContent: "start" }}>
+                  {activityLoading && activityRows.length === 0 ? (
+                    <div className="hintbox">Loading activity...</div>
+                  ) : activityRows.length === 0 ? (
+                    <div className="hintbox">No activity matches these filters.</div>
+                  ) : activityRows.map((item) => {
+                    const isOpen = expandedActivityId === item.id;
                     return (
-                      <div key={share.id} style={{ ...compactExpandableStyle(t, isOpen), display: "grid", gap: isOpen ? 10 : 0 }}>
+                      <div key={item.id} className={cx("disc", isOpen && "on")}>
                         <button
                           type="button"
-                          onClick={() => setExpandedShareId(isOpen ? null : share.id)}
-                          style={compactHeaderButtonStyle(t)}
+                          onClick={() => setExpandedActivityId(isOpen ? null : item.id)}
+                          className="disc-h"
                           aria-expanded={isOpen}
                         >
-                          <div style={{ minWidth: 0, textAlign: "left" }}>
-                            <strong style={{ color: t.ink }}>{share.recipient_name}</strong>
-                            <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              No login | access code required | {files.length} file{files.length === 1 ? "" : "s"} | {share.can_download ? "downloads on" : "view only"}
-                            </div>
-                          </div>
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                            <Pill color={isRevoked || isExpired ? t.danger : undefined} bg={isRevoked || isExpired ? t.dangerBg : undefined}>{effectiveStatus}</Pill>
-                            <Icon name={isOpen ? "chevU" : "chevD"} size={14} />
-                          </div>
+                          <span className="grow">
+                            <strong>{activityLabel(item.action)}</strong>
+                            <span className="sub trunc" style={{ display: "block" }}>
+                              {activityActor(item)} | {formatDateTime(item.created_at)}
+                            </span>
+                          </span>
+                          <Icon name={isOpen ? "chevU" : "chevD"} size={14} />
                         </button>
                         {isOpen ? (
-                          <>
-                        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, alignItems: "start", paddingTop: 8, borderTop: `1px solid ${t.line}` }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ color: t.ink3, fontSize: 12 }}>No-login third-party share | {share.recipient_email || "No email"} | {files.length} file{files.length === 1 ? "" : "s"}</div>
-                            <div style={{ color: t.ink3, fontSize: 12 }}>
-                              {share.view_count} views | {share.download_count} downloads | {share.can_download ? "downloads on" : "view only"}
+                          <div className="disc-b">
+                            {item.detail ? <div style={{ marginBottom: 6 }}>{item.detail}</div> : null}
+                            <div className="sub">
+                              {[item.target_type ? statusLabel(item.target_type) : null, item.target_id, item.ip_address].filter(Boolean).join(" | ")}
                             </div>
-                            <div style={{ color: t.ink3, fontSize: 12 }}>
-                              Expires {formatDate(share.expires_at)} | Last access {formatDateTime(share.last_accessed_at)}
-                            </div>
+                            {item.user_agent ? <div className="sub" style={{ marginTop: 4, overflowWrap: "anywhere" }}>{item.user_agent}</div> : null}
                           </div>
-                          <Pill color={isRevoked || isExpired ? t.danger : undefined} bg={isRevoked || isExpired ? t.dangerBg : undefined}>{effectiveStatus}</Pill>
-                        </div>
-                        {files.length ? (
-                          <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {files.slice(0, 3).map((file) => file.file_name).join(", ")}{files.length > 3 ? ` +${files.length - 3} more` : ""}
-                          </div>
-                        ) : null}
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          <button style={secondary} onClick={() => copyShareLink(share)}>Copy link</button>
-                          <button style={secondary} onClick={() => regenerateSharePasscode(share)}>Regenerate code</button>
-                          <button style={secondary} onClick={() => copyShareInvite(share)} disabled={!passcodeAvailable}>Copy invite</button>
-                          <button style={secondary} onClick={() => openEmailShare(share)} disabled={!passcodeAvailable}>Email from my Gmail</button>
-                          <button style={secondary} onClick={() => openEditShareFiles(share)}>Edit files</button>
-                          <select
-                            style={{ ...field, width: 118, height: 34, paddingTop: 0, paddingBottom: 0 }}
-                            defaultValue=""
-                            onChange={(event) => {
-                              const days = Number(event.target.value);
-                              if (days) void patchShare(share, { expires_at: shareExpiryDate(days) }).then(() => setNotice("Share expiration updated."));
-                              event.currentTarget.value = "";
-                            }}
-                          >
-                            <option value="">Extend</option>
-                            <option value={1}>1 day</option>
-                            <option value={7}>7 days</option>
-                            <option value={14}>14 days</option>
-                            <option value={30}>30 days</option>
-                          </select>
-                          {isRevoked ? (
-                            <button style={secondary} onClick={() => setShareStatus(share, "active")} disabled={isExpired}>Reactivate</button>
-                          ) : (
-                            <button style={{ ...secondary, color: t.danger }} onClick={() => setShareStatus(share, "revoked")}>Revoke</button>
-                          )}
-                        </div>
-                        {editingShareId === share.id ? (
-                          <div style={{ display: "grid", gap: 8, paddingTop: 8, borderTop: `1px solid ${t.line}` }}>
-                            <strong style={{ color: t.ink, fontSize: 13 }}>Edit visible files</strong>
-                            {renderShareFilePicker({
-                              selectedIds: editingShareFileIds,
-                              search: editingShareSearch,
-                              onSearch: setEditingShareSearch,
-                              onToggle: (fileId) => setEditingShareFileIds((ids) => ids.includes(fileId) ? ids.filter((id) => id !== fileId) : [...ids, fileId]),
-                              onSetSelected: setEditingShareFileIds,
-                            })}
-                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                              <button style={secondary} onClick={() => setEditingShareId(null)}>Cancel</button>
-                              <button style={primary} onClick={() => saveEditedShareFiles(share)} disabled={!editingShareFileIds.length}>Save files</button>
-                            </div>
-                          </div>
-                          ) : null}
-                          </>
                         ) : null}
                       </div>
                     );
                   })}
                 </div>
-              </PanelBox>
-
-              <PanelBox>
-                <SectionLabel action={`${activityTotal} total`}>Activity</SectionLabel>
-                <div style={{ display: "grid", gap: 8 }}>
-                  <input
-                    style={field}
-                    value={activityFilters.q}
-                    onChange={(event) => updateActivityFilters({ q: event.target.value })}
-                    placeholder="Search activity"
-                  />
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    <select style={field} value={activityFilters.action} onChange={(event) => updateActivityFilters({ action: event.target.value })}>
-                      <option value="">All actions</option>
-                      {ACTIVITY_ACTION_OPTIONS.map((action) => (
-                        <option key={action} value={action}>{activityLabel(action)}</option>
-                      ))}
-                    </select>
-                    <select style={field} value={activityFilters.actor_role} onChange={(event) => updateActivityFilters({ actor_role: event.target.value })}>
-                      <option value="">All roles</option>
-                      {ACTIVITY_ROLE_OPTIONS.map((role) => (
-                        <option key={role} value={role}>{statusLabel(role)}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <select style={field} value={activityFilters.target_type} onChange={(event) => updateActivityFilters({ target_type: event.target.value })}>
-                    <option value="">All targets</option>
-                    {ACTIVITY_TARGET_OPTIONS.map((target) => (
-                      <option key={target} value={target}>{statusLabel(target)}</option>
-                    ))}
-                  </select>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    <input
-                      style={field}
-                      type="date"
-                      value={activityFilters.date_from}
-                      onChange={(event) => updateActivityFilters({ date_from: event.target.value })}
-                      aria-label="Activity from date"
-                    />
-                    <input
-                      style={field}
-                      type="date"
-                      value={activityFilters.date_to}
-                      onChange={(event) => updateActivityFilters({ date_to: event.target.value })}
-                      aria-label="Activity to date"
-                    />
-                  </div>
-                  <button
-                    style={secondary}
-                    onClick={() => {
-                      const filters = emptyActivityFilters();
-                      setActivityFilters(filters);
-                      void loadBucketActivity(detail.id, 0, filters);
-                    }}
+                <div className="row" style={{ justifyContent: "space-between" }}>
+                  <IconBtn
+                    disabled={!canPageActivityBack}
+                    onClick={() => detail && loadBucketActivity(detail.id, Math.max(0, activityOffset - ACTIVITY_PAGE_SIZE), activityFilters)}
+                    aria-label="Previous activity page"
+                    title="Previous"
                   >
-                    Clear filters
-                  </button>
-                  <div style={{ display: "grid", gap: 8, minHeight: 360 }}>
-                    {activityLoading && activityRows.length === 0 ? (
-                      <div style={emptyInlineStyle(t)}>Loading activity...</div>
-                    ) : activityRows.length === 0 ? (
-                      <div style={emptyInlineStyle(t)}>No activity matches these filters.</div>
-                    ) : activityRows.map((item) => {
-                      const isOpen = expandedActivityId === item.id;
-                      return (
-                        <div key={item.id} style={compactExpandableStyle(t, isOpen)}>
-                          <button
-                            type="button"
-                            onClick={() => setExpandedActivityId(isOpen ? null : item.id)}
-                            style={compactHeaderButtonStyle(t)}
-                            aria-expanded={isOpen}
-                          >
-                            <div style={{ minWidth: 0, textAlign: "left" }}>
-                              <strong style={{ color: t.ink }}>{activityLabel(item.action)}</strong>
-                              <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {activityActor(item)} | {formatDateTime(item.created_at)}
-                              </div>
-                            </div>
-                            <Icon name={isOpen ? "chevU" : "chevD"} size={14} />
-                          </button>
-                          {isOpen ? (
-                            <div style={{ borderTop: `1px solid ${t.line}`, paddingTop: 8, color: t.ink2, fontSize: 13 }}>
-                              {item.detail ? <div style={{ marginBottom: 6 }}>{item.detail}</div> : null}
-                              <div style={{ color: t.ink3, fontSize: 12 }}>
-                                {[item.target_type ? statusLabel(item.target_type) : null, item.target_id, item.ip_address].filter(Boolean).join(" | ")}
-                              </div>
-                              {item.user_agent ? <div style={{ color: t.ink3, fontSize: 12, marginTop: 4, overflowWrap: "anywhere" }}>{item.user_agent}</div> : null}
-                            </div>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <button
-                      style={iconButtonStyle(t)}
-                      disabled={!canPageActivityBack}
-                      onClick={() => detail && loadBucketActivity(detail.id, Math.max(0, activityOffset - ACTIVITY_PAGE_SIZE), activityFilters)}
-                      aria-label="Previous activity page"
-                      title="Previous"
-                    >
-                      <Icon name="chevL" size={15} />
-                    </button>
-                    <div style={{ color: t.ink3, fontSize: 12, fontWeight: 800 }}>
-                      {activityPage} / {activityPageCount}
-                    </div>
-                    <button
-                      style={iconButtonStyle(t)}
-                      disabled={!canPageActivityForward}
-                      onClick={() => detail && loadBucketActivity(detail.id, activityOffset + ACTIVITY_PAGE_SIZE, activityFilters)}
-                      aria-label="Next activity page"
-                      title="Next"
-                    >
-                      <Icon name="chevR" size={15} />
-                    </button>
-                  </div>
+                    <Icon name="chevL" size={15} />
+                  </IconBtn>
+                  <span className="sub num">
+                    {activityPage} / {activityPageCount}
+                  </span>
+                  <IconBtn
+                    disabled={!canPageActivityForward}
+                    onClick={() => detail && loadBucketActivity(detail.id, activityOffset + ACTIVITY_PAGE_SIZE, activityFilters)}
+                    aria-label="Next activity page"
+                    title="Next"
+                  >
+                    <Icon name="chevR" size={15} />
+                  </IconBtn>
                 </div>
-              </PanelBox>
+              </Panel>
             </div>
           </div>
         </ModalFrame>
@@ -3193,7 +3240,7 @@ function ConvertToLeadModal({
           </Sub>
           <div style={{ marginTop: 12 }}>
             {LEAD_VARIANTS.map((v) => (
-              <label key={v.value} className={cx("pick", variant === v.value && "on")} style={{ alignItems: "flex-start" }}>
+              <label key={v.value} className={cx("pick top", variant === v.value && "on")}>
                 <input
                   type="radio"
                   name="lead-variant"
@@ -3318,7 +3365,7 @@ function ConvertToLeadModal({
 
           {/* An outward-facing action gets its own decision, not a checkbox
               tucked between the last field and the submit button. */}
-          <label className={cx("pick", notifyClient && "on")} style={{ alignItems: "flex-start" }}>
+          <label className={cx("pick top", notifyClient && "on")}>
             <input
               type="checkbox"
               checked={notifyClient}
@@ -3355,25 +3402,39 @@ function BucketTable({
   onConvertToLead: (bucket: Bucket) => void;
   onDelete: (bucket: Bucket) => void;
 }) {
-  const { t } = useTheme();
   if (buckets.length === 0) {
-    return <div style={{ padding: 18, color: t.ink3, fontSize: 13 }}>No buckets yet. Use Create bucket to start.</div>;
+    return <div className="sub" style={{ padding: 18 }}>No buckets yet. Use Create bucket to start.</div>;
   }
+  // A bespoke nine-column track, not `.cg`: these are list columns sized to
+  // their contents (a 70px file count, a 44px delete), not spans of the
+  // twelve-column page grid.
   const columns = "minmax(220px, 1.35fr) minmax(130px, .75fr) minmax(150px, .72fr) 70px minmax(150px, .65fr) 112px 130px 84px 44px";
   return (
     <div>
-      <div style={{ display: "grid", gridTemplateColumns: columns, gap: 12, padding: "10px 14px", color: t.ink3, background: t.surface2, borderBottom: `1px solid ${t.line}`, fontSize: 11, fontWeight: 800, letterSpacing: 1.1, textTransform: "uppercase" }}>
-        <div>Bucket</div>
-        <div>Client</div>
-        <div>Type</div>
-        <div>Files</div>
-        <div>Status</div>
-        <div>Access</div>
-        <div></div>
-        <div>Updated</div>
-        <div></div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: columns,
+          gap: 12,
+          padding: "10px 14px",
+          background: "var(--sunken2)",
+          borderBottom: "1px solid var(--line2)",
+        }}
+      >
+        <div className="lbl">Bucket</div>
+        <div className="lbl">Client</div>
+        <div className="lbl">Type</div>
+        <div className="lbl">Files</div>
+        <div className="lbl">Status</div>
+        <div className="lbl">Access</div>
+        <div />
+        <div className="lbl">Updated</div>
+        <div />
       </div>
       {buckets.map((bucket) => (
+        // Stays a role="button" div rather than a <tr>: a table row is neither
+        // focusable nor Enter-activatable, and this row IS the way into a
+        // bucket. Converting it would cost keyboard access outright.
         <div
           key={bucket.id}
           role="button"
@@ -3386,29 +3447,27 @@ function BucketTable({
             }
           }}
           style={{
-            boxSizing: "border-box",
-            width: "100%",
             display: "grid",
             gridTemplateColumns: columns,
             gap: 12,
             alignItems: "center",
             padding: "13px 14px",
-            borderBottom: `1px solid ${t.line}`,
-            background: t.surface,
+            borderBottom: "1px solid var(--line)",
+            background: "var(--surface)",
             cursor: "pointer",
-            outline: "none",
           }}
         >
           <div style={{ minWidth: 0 }}>
-            <div style={{ color: t.ink, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bucket.name}</div>
-            <div style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bucket.purpose || "No purpose"}</div>
+            <div className="trunc" style={{ fontWeight: 650 }}>{bucket.name}</div>
+            <div className="sub trunc">{bucket.purpose || "No purpose"}</div>
           </div>
-          <div style={{ color: t.ink2, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bucket.client_name || "No client"}</div>
-          <div style={{ color: t.ink2, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bucket.bucket_type || "Bucket"}</div>
-          <div style={{ color: t.ink2, fontSize: 13, fontWeight: 800 }}>{bucket.uploaded_file_count ?? 0}</div>
-          <div style={{ minWidth: 0 }}><Pill>{statusLabel(bucket.status)}</Pill></div>
-          <button
-            style={{ ...miniButtonStyle(t), minHeight: 32, justifySelf: "start", display: "inline-flex", alignItems: "center", gap: 6 }}
+          <div className="trunc">{bucket.client_name || "No client"}</div>
+          <div className="trunc">{bucket.bucket_type || "Bucket"}</div>
+          <div className="num">{bucket.uploaded_file_count ?? 0}</div>
+          <div style={{ minWidth: 0 }}><CellChip>{statusLabel(bucket.status)}</CellChip></div>
+          <Btn
+            size="sm"
+            style={{ justifySelf: "start" }}
             onClick={(event) => {
               event.stopPropagation();
               onOpenVendors(bucket.id);
@@ -3417,9 +3476,10 @@ function BucketTable({
           >
             <Icon name="user" size={13} />
             Vendors
-          </button>
-          <button
-            style={{ ...miniButtonStyle(t), minHeight: 32, justifySelf: "start", display: "inline-flex", alignItems: "center", gap: 6 }}
+          </Btn>
+          <Btn
+            size="sm"
+            style={{ justifySelf: "start" }}
             onClick={(event) => {
               event.stopPropagation();
               onConvertToLead(bucket);
@@ -3428,10 +3488,10 @@ function BucketTable({
           >
             <Icon name="spark" size={13} />
             AI Lead
-          </button>
-          <div style={{ color: t.ink3, fontSize: 13 }}>{formatDate(bucket.updated_at)}</div>
-          <button
-            style={{ ...iconButtonStyle(t), color: t.danger }}
+          </Btn>
+          <div className="sub">{formatDate(bucket.updated_at)}</div>
+          <IconBtn
+            className="danger"
             onClick={(event) => {
               event.stopPropagation();
               onDelete(bucket);
@@ -3441,13 +3501,22 @@ function BucketTable({
             title="Delete bucket"
           >
             <Icon name="x" size={14} />
-          </button>
+          </IconBtn>
         </div>
       ))}
     </div>
   );
 }
 
+/**
+ * The full-bleed working surface this page opens things into.
+ *
+ * Not a `Drawer`: the bucket detail is the page's main workspace — upload,
+ * files, tasks, notes, three sharing mechanisms and an activity log at once —
+ * and an 86vh centred box would put three independent scrollers on screen
+ * together. This keeps the full-height overlay and takes its surface, header
+ * and hairline from the class system instead of a palette object.
+ */
 function ModalFrame({
   title,
   subtitle,
@@ -3461,369 +3530,95 @@ function ModalFrame({
   children: React.ReactNode;
   onClose: () => void;
 }) {
-  const { t } = useTheme();
   const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
+  // Data-derived geometry: the overlay begins where the app sidebar ends, and
+  // the sidebar's width is state rather than a constant.
   const sidebarOffset = sidebarCollapsed ? 68 : 232;
   return (
-    <div style={{ ...modalBackdropStyle, left: sidebarOffset }}>
+    // zIndex 59 sits one under `.drawer-scrim` (60) ON PURPOSE. A ds Drawer
+    // opened from inside this surface — the AI-lead link in the header — is at
+    // 61, so it lands on top. At the old 200 it was buried behind this scrim
+    // and appeared not to open at all.
+    <div className="drawer-scrim" style={{ left: sidebarOffset, zIndex: 59, display: "flex" }}>
+      {/* `.panel` owns the surface, the hairline and the elevation. The four
+          zeroes squared off against the viewport edges are the one thing a
+          full-bleed frame has to take back from it. */}
       <div
-        style={{
-          ...panelStyle(t),
-          width: "100%",
-          height: "100%",
-          borderRadius: 0,
-          borderTop: 0,
-          borderRight: 0,
-          borderBottom: 0,
-          padding: 0,
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-        }}
+        className="panel"
+        style={{ flex: 1, minWidth: 0, borderRadius: 0, borderTop: 0, borderRight: 0, borderBottom: 0 }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${t.line}` }}>
+        <div className="panel-h">
           <div style={{ minWidth: 0 }}>
-            <h2 style={{ margin: 0, color: t.ink, fontSize: 20, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</h2>
-            {subtitle ? <div style={{ color: t.ink3, fontSize: 13, marginTop: 3 }}>{subtitle}</div> : null}
+            <h2 className="trunc frame-t">{title}</h2>
+            {subtitle ? <div className="sub trunc">{subtitle}</div> : null}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {action}
-            <button style={iconButtonStyle(t)} onClick={onClose} aria-label="Close">
-              <Icon name="x" size={16} />
-            </button>
-          </div>
+          <span className="sp" />
+          {action}
+          <IconBtn onClick={onClose} aria-label="Close">
+            <Icon name="x" size={16} />
+          </IconBtn>
         </div>
-        <div style={{ padding: 22, overflowY: "auto", flex: 1 }}>{children}</div>
+        <div className="panel-b" style={{ overflowY: "auto" }}>{children}</div>
       </div>
     </div>
   );
 }
 
 function WorkflowHeader({ step, title, subtitle }: { step: string; title: string; subtitle?: string }) {
-  const { t } = useTheme();
   return (
-    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-      <div style={{ width: 28, height: 28, borderRadius: 8, background: t.ink, color: t.inverse, display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 900, flexShrink: 0 }}>{step}</div>
+    <div className="row">
+      <span className="stepdot on">
+        <i>{step}</i>
+      </span>
       <div>
-        <h3 style={{ margin: 0, color: t.ink, fontSize: 16, fontWeight: 850 }}>{title}</h3>
-        {subtitle ? <div style={{ color: t.ink3, fontSize: 12.5, marginTop: 3 }}>{subtitle}</div> : null}
+        {/* h3, not <b>. These are the three step titles of the create-bucket
+            drawer, whose only other heading is the drawer's own h2. As <b> they
+            left the document outline, and a screen-reader user navigating by
+            heading got one undifferentiated run of form. */}
+        <h3 className="wfh-t">{title}</h3>
+        {subtitle ? <div className="sub">{subtitle}</div> : null}
       </div>
     </div>
   );
 }
 
 function EmptyInline({ icon, title, body }: { icon: string; title: string; body: string }) {
-  const { t } = useTheme();
   return (
-    <div style={{ ...smallRowStyle(t), justifyContent: "flex-start" }}>
-      <Icon name={icon} size={15} style={{ color: t.ink3 }} />
+    <div className="hintbox">
+      <span className="hintbox-i">
+        <Icon name={icon} size={16} />
+      </span>
       <div>
-        <div style={{ color: t.ink, fontWeight: 800 }}>{title}</div>
-        <div style={{ color: t.ink3, fontSize: 12.5 }}>{body}</div>
+        <b>{title}</b>
+        <div className="sub">{body}</div>
       </div>
     </div>
   );
 }
 
 function CreateStatusBanner({ status }: { status: { kind: "working" | "success" | "error"; message: string } }) {
-  const { t } = useTheme();
   const isError = status.kind === "error";
   const isSuccess = status.kind === "success";
+  // A sentence, not a word — `StatusLine` wraps where a `CellChip` would be
+  // clipped by the panel it sits in.
   return (
-    <PanelBox
-      style={{
-        borderColor: isError ? t.danger : isSuccess ? t.profit : t.petrol,
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        color: isError ? t.danger : isSuccess ? t.profit : t.ink2,
-      }}
-    >
-      <Icon name={isError ? "alert" : isSuccess ? "check" : "refresh"} size={15} />
-      <span style={{ fontSize: 13, fontWeight: 800 }}>{status.message}</span>
-    </PanelBox>
+    <StatusLine tone={isError ? "bad" : isSuccess ? "ok" : "acc"}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+        <Icon name={isError ? "alert" : isSuccess ? "check" : "refresh"} size={15} />
+        {status.message}
+      </span>
+    </StatusLine>
   );
 }
 
-function PanelBox({ children, style }: { children: React.ReactNode; style?: CSSProperties }) {
-  const { t } = useTheme();
-  return <div style={{ ...panelStyle(t), padding: 14, ...style }}>{children}</div>;
+/** A bordered surface with no header row. `Panel` is the one that has one. */
+function PanelBox({ children, className, style }: { children: React.ReactNode; className?: string; style?: CSSProperties }) {
+  return (
+    <div className={cx("card", className)} style={style}>
+      {children}
+    </div>
+  );
 }
-
-function panelStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return { background: t.surface, border: `1px solid ${t.line}`, borderRadius: 10, boxShadow: t.shadow };
-}
-
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    height: 38,
-    border: `1px solid ${t.lineStrong}`,
-    borderRadius: 8,
-    padding: "0 10px",
-    font: "inherit",
-    fontSize: 13,
-    background: t.surface,
-    color: t.ink,
-    outline: "none",
-    minWidth: 0,
-    boxSizing: "border-box",
-  };
-}
-
-function buttonStyle(t: ReturnType<typeof useTheme>["t"], variant: "primary" | "secondary"): CSSProperties {
-  const primary = variant === "primary";
-  return {
-    minHeight: 36,
-    border: `1px solid ${primary ? t.ink : t.lineStrong}`,
-    borderRadius: 8,
-    padding: "0 12px",
-    font: "inherit",
-    fontSize: 13,
-    fontWeight: 800,
-    background: primary ? t.ink : t.surface,
-    color: primary ? t.inverse : t.ink,
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    whiteSpace: "nowrap",
-  };
-}
-
-function checkRowStyle(t: ReturnType<typeof useTheme>["t"], selected = false): CSSProperties {
-  return {
-    display: "grid",
-    gridTemplateColumns: "18px minmax(0, 1fr)",
-    gap: 9,
-    alignItems: "start",
-    padding: 10,
-    border: `1px solid ${selected ? t.petrol : t.line}`,
-    borderRadius: 8,
-    background: selected ? t.petrolSoft : t.surface2,
-    color: t.ink2,
-    fontSize: 13,
-    cursor: "pointer",
-    outline: "none",
-  };
-}
-
-function toggleLabelStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    height: 38,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 7,
-    padding: "0 10px",
-    border: `1px solid ${t.lineStrong}`,
-    borderRadius: 8,
-    background: t.surface,
-    color: t.ink2,
-    fontSize: 12,
-    fontWeight: 800,
-    whiteSpace: "nowrap",
-  };
-}
-
-function emptyInlineStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    padding: 12,
-    border: `1px dashed ${t.lineStrong}`,
-    borderRadius: 8,
-    background: t.surface2,
-    color: t.ink3,
-    fontSize: 13,
-  };
-}
-
-function smallRowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    padding: 10,
-    border: `1px solid ${t.line}`,
-    borderRadius: 8,
-    background: t.surface2,
-  };
-}
-
-function compactExpandableStyle(t: ReturnType<typeof useTheme>["t"], open: boolean): CSSProperties {
-  return {
-    border: `1px solid ${open ? t.lineStrong : t.line}`,
-    borderRadius: 8,
-    background: open ? t.surface2 : t.surface,
-    padding: open ? 10 : 8,
-    transition: "background .15s ease, border-color .15s ease",
-  };
-}
-
-function compactHeaderButtonStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    width: "100%",
-    border: 0,
-    background: "transparent",
-    padding: 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    color: t.ink,
-    cursor: "pointer",
-    font: "inherit",
-  };
-}
-
-function fileRowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto",
-    gap: 10,
-    alignItems: "center",
-    padding: 10,
-    border: `1px solid ${t.line}`,
-    borderRadius: 8,
-    background: t.surface2,
-  };
-}
-
-function adminUploadRowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) minmax(190px, .8fr) 32px",
-    gap: 8,
-    alignItems: "center",
-    padding: 10,
-    border: `1px solid ${t.line}`,
-    borderRadius: 8,
-    background: t.surface2,
-  };
-}
-
-function adminUploadDropZoneStyle(t: ReturnType<typeof useTheme>["t"], active: boolean): CSSProperties {
-  return {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    minHeight: 82,
-    marginTop: 10,
-    padding: 14,
-    border: `1.5px dashed ${active ? t.petrol : t.lineStrong}`,
-    borderRadius: 8,
-    background: active ? t.petrolSoft : t.surface2,
-    color: active ? t.petrol : t.ink2,
-    cursor: "pointer",
-    textAlign: "left",
-  };
-}
-
-function shareFilePickerStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    display: "grid",
-    gap: 8,
-    padding: 10,
-    border: `1px solid ${t.line}`,
-    borderRadius: 8,
-    background: t.surface,
-  };
-}
-
-function shareFileOptionStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    display: "flex",
-    alignItems: "center",
-    gap: 9,
-    minWidth: 0,
-    padding: "7px 8px",
-    border: `1px solid ${t.line}`,
-    borderRadius: 8,
-    background: t.surface2,
-    cursor: "pointer",
-  };
-}
-
-function miniButtonStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    border: `1px solid ${t.line}`,
-    borderRadius: 7,
-    background: t.surface2,
-    color: t.ink2,
-    padding: "4px 7px",
-    fontSize: 11,
-    fontWeight: 850,
-    cursor: "pointer",
-  };
-}
-
-function sharePopupStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    position: "absolute",
-    top: 40,
-    right: 0,
-    width: "min(560px, calc(100vw - 32px))",
-    maxHeight: "calc(100vh - 128px)",
-    overflowY: "auto",
-    padding: 14,
-    border: `1px solid ${t.line}`,
-    borderRadius: 10,
-    background: t.surface,
-    boxShadow: "0 22px 60px rgba(0,0,0,.28)",
-    zIndex: 260,
-  };
-}
-
-function shareViewerRowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    display: "grid",
-    gap: 8,
-    padding: 10,
-    border: `1px solid ${t.line}`,
-    borderRadius: 8,
-    background: t.surface2,
-  };
-}
-
-function permissionRowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    padding: 10,
-    border: `1px solid ${t.line}`,
-    borderRadius: 8,
-    background: t.surface2,
-  };
-}
-
-function iconButtonStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    width: 32,
-    height: 32,
-    border: `1px solid ${t.line}`,
-    borderRadius: 8,
-    background: t.surface,
-    color: t.ink2,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
-  };
-}
-
-const modalBackdropStyle: CSSProperties = {
-  position: "fixed",
-  top: 0,
-  right: 0,
-  bottom: 0,
-  background: "rgba(0,0,0,.36)",
-  zIndex: 200,
-  display: "flex",
-  alignItems: "stretch",
-  justifyContent: "stretch",
-};
 
 function normalizedUploadInvites(invites: UploadInvite[], draft: { recipient_name: string; recipient_email: string; passcode: string }): UploadInvite[] {
   const rows = [...invites];
@@ -4005,6 +3800,21 @@ function generateAccessCode() {
   let code = "";
   for (let i = 0; i < 8; i += 1) code += alphabet[Math.floor(Math.random() * alphabet.length)];
   return code;
+}
+
+/**
+ * Is this notice a failure?
+ *
+ * `notice` is a single string slot written by both success paths ("Bucket
+ * deleted.") and sixteen failure paths (`readableError(...)`, `String(e)`).
+ * Rather than thread a kind through every call site during a styling pass,
+ * this reads the string — deliberately conservative: anything it is not sure
+ * about renders as success, which is how the page behaved before.
+ */
+function noticeIsFailure(notice: string): boolean {
+  return /\b(fail|failed|error|could\s*not|couldn't|unable|denied|invalid|expired|rejected)\b/i.test(
+    notice,
+  );
 }
 
 function readableError(error: unknown) {

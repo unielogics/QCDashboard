@@ -5,7 +5,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 import { TypingDots } from "@/components/design-system/TypingDots";
 import { FileDropzone } from "@/components/design-system/FileDropzone";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { Btn, Callout, CellChip, cx, IconBtn, ItemRow, Lbl, type ChipTone } from "@/components/ds";
 import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
 import {
   buildIntelligenceModel,
@@ -356,35 +356,41 @@ export function LeadCockpit({
   const files = current.files ?? [];
 
   return (
+    // Bespoke track (rule 3) — and load-bearing: the parent Modal is size="stage"
+    // and this height:100% + minHeight:0 chain is what lets both panels scroll
+    // inside it instead of growing the dialog. Do not swap this for `.cg`.
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(0,0.85fr)", gap: 14, minHeight: 0, height: "100%" }}>
       {/* CHAT + UPLOAD */}
       <section
+        className="panel"
         style={
           fullScreen
-            ? { display: "flex", flexDirection: "column", minHeight: 0, border: `1px solid ${t.line}`, borderRadius: 0, background: t.surface2, overflow: "hidden", position: "fixed", inset: 0, zIndex: 400, height: "100vh", width: "100vw" }
-            : { display: "flex", flexDirection: "column", minHeight: 0, border: `1px solid ${t.line}`, borderRadius: 14, background: t.surface2, overflow: "hidden" }
+            ? // Full-bleed override: the panel IS the viewport in this state, so
+              // its rounding goes with its place in the grid. `.panel` owns
+              // border-radius; this is the one state where it has to lose.
+              { minHeight: 0, position: "fixed", inset: 0, zIndex: 400, height: "100vh", width: "100vw", borderRadius: 0 }
+            : { minHeight: 0 }
         }
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", borderBottom: `1px solid ${t.line}` }}>
+        <div className="panel-h">
           <Icon name="spark" size={14} />
-          <strong style={{ color: t.ink, fontSize: 13 }}>Underwriter conversation</strong>
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-            {fundability ? <span style={pill(t, bannerTone(fundability.tone))}>{fundability.label}</span> : null}
-            <button
-              type="button"
-              onClick={() => setFullScreen((v) => !v)}
-              aria-label={fullScreen ? "Exit full screen" : "Full screen"}
-              title={fullScreen ? "Exit full screen" : "Full screen"}
-              style={{ all: "unset", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", width: 26, height: 26, borderRadius: 8, color: t.ink3 }}
-            >
-              <Icon name={fullScreen ? "minimize" : "maximize"} size={14} />
-            </button>
-          </div>
+          <strong>Underwriter conversation</strong>
+          <span className="grow" />
+          {fundability ? <CellChip tone={chipTone(fundability.tone)}>{fundability.label}</CellChip> : null}
+          <IconBtn
+            onClick={() => setFullScreen((v) => !v)}
+            aria-label={fullScreen ? "Exit full screen" : "Full screen"}
+            title={fullScreen ? "Exit full screen" : "Full screen"}
+          >
+            <Icon name={fullScreen ? "minimize" : "maximize"} size={14} />
+          </IconBtn>
         </div>
 
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+        {/* The scroller: `.panel-b` supplies the padding and `flex: 1`; the rest
+            is the height chain this cockpit depends on. */}
+        <div className="panel-b" style={{ minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
           {chat.length === 0 ? (
-            <div style={{ color: t.ink3, fontSize: 13, textAlign: "center", margin: "auto", maxWidth: 320, lineHeight: 1.5 }}>
+            <div className="thr-empty" style={{ margin: "auto", maxWidth: 320, textAlign: "center" }}>
               Ask the AI underwriter about this file, or attach documents and re-run the review. This thread is internal — the client does not see it.
             </div>
           ) : (
@@ -402,12 +408,7 @@ export function LeadCockpit({
               const out: React.ReactNode[] = [];
               if (!showHistory && older.length > 0) {
                 out.push(
-                  <button
-                    key="hist"
-                    type="button"
-                    onClick={() => setShowHistory(true)}
-                    style={{ all: "unset", cursor: "pointer", alignSelf: "center", color: t.brand, fontSize: 12, fontWeight: 700, padding: "4px 10px", border: `1px solid ${t.line}`, borderRadius: 999 }}
-                  >
+                  <button key="hist" type="button" className="btn sm" style={{ alignSelf: "center" }} onClick={() => setShowHistory(true)}>
                     Show earlier conversation ({older.length} message{older.length === 1 ? "" : "s"})
                   </button>,
                 );
@@ -417,62 +418,68 @@ export function LeadCockpit({
                 if (d && d !== lastDay) {
                   lastDay = d;
                   out.push(
-                    <div key={`day-${d}`} style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0" }}>
-                      <div style={{ flex: 1, height: 1, background: t.line }} />
-                      <span style={{ color: t.ink3, fontSize: 11, fontWeight: 700 }}>
-                        {new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                      </span>
-                      <div style={{ flex: 1, height: 1, background: t.line }} />
+                    <div key={`day-${d}`} className="thr-day">
+                      {new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                     </div>,
                   );
                 }
                 out.push(
-                  line.role === "assistant" ? (
-                    <div key={line.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                      <div style={{ width: 26, height: 26, borderRadius: 8, background: t.brand, color: t.inverse, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900, flexShrink: 0 }}>QC</div>
-                      <div style={{ ...bubble(t), background: t.surface, color: t.ink2 }}>{line.content}</div>
+                  <div key={line.id} className={cx("msg", line.role === "assistant" ? "ai" : "mine")}>
+                    <div className="msg-h">
+                      <span className="msg-who">{line.role === "assistant" ? "Underwriter AI" : "You"}</span>
                     </div>
-                  ) : (
-                    <div key={line.id} style={{ display: "flex", justifyContent: "flex-end" }}>
-                      <div style={{ ...bubble(t), background: t.brandSoft, color: t.ink }}>{line.content}</div>
-                    </div>
-                  ),
+                    <div className="msg-b">{line.content}</div>
+                  </div>,
                 );
               }
               return out;
             })()
           )}
           {busy && !uploading ? (
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-              <div style={{ width: 26, height: 26, borderRadius: 8, background: t.brand, color: t.inverse, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900, flexShrink: 0 }}>QC</div>
-              <div style={{ ...bubble(t), background: t.surface }}><TypingDots label="Underwriter AI is thinking" /></div>
+            <div className="msg ai">
+              <div className="msg-h">
+                <span className="msg-who">Underwriter AI</span>
+              </div>
+              <div className="msg-b"><TypingDots label="Underwriter AI is thinking" /></div>
             </div>
           ) : null}
-          {reviewing ? <div style={{ color: t.ink3, fontSize: 12, fontStyle: "italic" }}>Running AI review over the latest uploads…</div> : null}
+          {reviewing ? <div className="sub" style={{ fontStyle: "italic" }}>Running AI review over the latest uploads…</div> : null}
           <div ref={endRef} />
         </div>
 
         {queue.length > 0 ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "8px 14px", borderTop: `1px solid ${t.line}` }}>
+          // Bottom band of a height:100% panel — the padding and hairline are
+          // this strip's own geometry, not something `.row` describes.
+          <div className="row" style={{ padding: "8px 14px", borderTop: "1px solid var(--line)" }}>
             {queue.map((i) => (
-              <span key={i.id} style={{ ...pill(t, i.status === "error" ? "danger" : "neutral"), display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <CellChip key={i.id} tone={i.status === "error" ? "bad" : "mut"}>
                 {i.file.name}
                 <span style={{ opacity: 0.7 }}>{i.status === "ready" ? "" : i.status}</span>
                 {!uploading ? (
-                  <button type="button" onClick={() => setQueue((q) => q.filter((x) => x.id !== i.id))} style={{ all: "unset", cursor: "pointer", color: t.ink3 }}>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${i.file.name} from the upload queue`}
+                    onClick={() => setQueue((q) => q.filter((x) => x.id !== i.id))}
+                    style={{ all: "unset", cursor: "pointer", display: "inline-flex" }}
+                  >
                     <Icon name="x" size={11} />
                   </button>
                 ) : null}
-              </span>
+              </CellChip>
             ))}
           </div>
         ) : null}
 
-        <div style={{ padding: "10px 14px", borderTop: `1px solid ${t.line}`, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ padding: "10px 14px", borderTop: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: 8 }}>
           <FileDropzone onFiles={addFiles} disabled={uploading || busy} title="Drop files or click to attach" compact />
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+            {/* A bare <textarea class="field grow"> rather than the <Textarea>
+                wrapper: React 18 function components do not forward refs, and
+                this one is ref-driven (auto-grow). Same classes either way. */}
             <textarea
               ref={textareaRef}
+              className="field grow"
+              aria-label="Message the AI underwriter"
               value={chatText}
               onChange={(e) => setChatText(e.target.value)}
               onKeyDown={(e) => {
@@ -484,66 +491,69 @@ export function LeadCockpit({
               }}
               rows={1}
               placeholder="Ask the AI underwriter…  (Enter to send, Shift+Enter for a new line)"
-              style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, fontSize: 13, outline: "none", resize: "none", minHeight: 40, maxHeight: 160, overflowY: "auto", fontFamily: "inherit", lineHeight: 1.45 }}
+              // Script-controlled geometry: the auto-grow effect writes
+              // el.style.height directly, so the box is measured, not styled —
+              // and a drag handle would fight it, which is why `resize: none`
+              // deliberately overrides `textarea.field { resize: vertical }`.
+              style={{ resize: "none", minHeight: 40, maxHeight: 160, overflowY: "auto", lineHeight: 1.45 }}
             />
-            <button
-              type="button"
+            <Btn
+              variant="pri"
               onClick={handleSend}
               disabled={busy || (!chatText.trim() && queue.length === 0)}
-              style={{ ...qcBtnPrimary(t), opacity: busy || (!chatText.trim() && queue.length === 0) ? 0.6 : 1 }}
             >
               {busy ? "Sending…" : queue.length > 0 ? (chatText.trim() ? "Upload & send" : "Upload") : "Send"}
-            </button>
+            </Btn>
           </div>
-          {status ? <div style={{ color: t.warn, fontSize: 12 }}>{status}</div> : null}
+          {status ? <div className="warnline">{status}</div> : null}
         </div>
       </section>
 
       {/* INTELLIGENCE */}
-      <section style={{ display: "flex", flexDirection: "column", minHeight: 0, border: `${intelligence?.lendingReady ? 2 : 1}px solid ${intelligence?.lendingReady ? t.profit : t.line}`, borderRadius: 14, background: t.surface, overflow: "hidden", boxShadow: intelligence?.lendingReady ? `0 0 0 3px ${t.profitBg}` : "none" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", borderBottom: `1px solid ${t.line}` }}>
+      <section className={cx("panel", intelligence?.lendingReady && "ring-ok")} style={{ minHeight: 0 }}>
+        <div className="panel-h">
           <Icon name="spark" size={14} />
-          <strong style={{ color: t.ink, fontSize: 13 }}>Live intelligence</strong>
+          <strong>Live intelligence</strong>
           {intelligence?.lendingReady ? (
-            <span style={{ ...pill(t, "profit"), display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <CellChip tone="ok">
               <Icon name="check" size={11} /> Ready for lending
-            </span>
+            </CellChip>
           ) : null}
-          <button
-            type="button"
-            onClick={onRequestRerun ?? handleRunReview}
-            disabled={reviewing}
-            style={{ ...qcBtn(t), marginLeft: "auto", opacity: reviewing ? 0.6 : 1 }}
-          >
+          <span className="grow" />
+          <Btn onClick={onRequestRerun ?? handleRunReview} disabled={reviewing}>
             {reviewing ? "Re-running…" : "Re-run review"}
-          </button>
+          </Btn>
         </div>
 
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div className="panel-b" style={{ minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
           {!intelligence ? (
-            <div style={{ color: t.ink3, fontSize: 13, textAlign: "center", margin: "auto", maxWidth: 300, lineHeight: 1.5 }}>
+            <div className="thr-empty" style={{ margin: "auto", maxWidth: 300, textAlign: "center" }}>
               No AI screen yet. Attach the baseline documents and run the review to see the underwriting breakdown.
             </div>
           ) : (
             <>
               {intelligence.status ? (
-                <div style={{ ...banner(t, bannerTone(intelligence.status.tone)) }}>
-                  <strong style={{ display: "block", fontSize: 13 }}>{intelligence.status.label}</strong>
-                  {intelligence.status.detail ? <span style={{ fontSize: 12, opacity: 0.9 }}>{intelligence.status.detail}</span> : null}
-                </div>
+                <Callout tone={chipTone(intelligence.status.tone)}>
+                  <div className="grid g4">
+                    <strong>{intelligence.status.label}</strong>
+                    {intelligence.status.detail ? <span className="sub">{intelligence.status.detail}</span> : null}
+                  </div>
+                </Callout>
               ) : null}
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+              <div className="kpis">
                 {[intelligence.requestedAmount, intelligence.annualizedRevenue, intelligence.dscr, intelligence.ltv, intelligence.equity, intelligence.debtBurden].map((m, i) => (
                   <IntelligenceKpi key={i} metric={m} />
                 ))}
               </div>
 
               {intelligence.oneNextStep ? (
-                <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: 12, background: t.surface2 }}>
-                  <div style={sectionLabel(t)}>Next best action</div>
-                  <p style={{ margin: "6px 0 0", color: t.ink2, fontSize: 13, lineHeight: 1.5 }}>{intelligence.oneNextStep}</p>
-                </div>
+                <Callout tone="acc">
+                  <div className="grid g6">
+                    <Lbl>Next best action</Lbl>
+                    <p className="sub">{intelligence.oneNextStep}</p>
+                  </div>
+                </Callout>
               ) : null}
 
               <div style={chartGrid}>
@@ -564,7 +574,7 @@ export function LeadCockpit({
                 <div style={chartCardWide(t)}>
                   <div style={chartHeader}>
                     <strong>Cash flow stack</strong>
-                    <span style={{ color: t.ink3, fontSize: 12 }}>Revenue / cash flow / debt service</span>
+                    <span className="sub">Revenue / cash flow / debt service</span>
                   </div>
                   <CashFlowBars bars={intelligence.cashFlowBars} />
                 </div>
@@ -572,7 +582,7 @@ export function LeadCockpit({
                 <div style={chartCard(t)}>
                   <div style={chartHeader}>
                     <strong>Year-to-year performance</strong>
-                    <span style={{ color: t.ink3, fontSize: 12 }}>Tax / P&amp;L trend</span>
+                    <span className="sub">Tax / P&amp;L trend</span>
                   </div>
                   <MiniBarChart series={intelligence.yearlySeries} emptyLabel="Awaiting tax returns and YTD P&L figures." />
                 </div>
@@ -580,7 +590,7 @@ export function LeadCockpit({
                 <div style={chartCard(t)}>
                   <div style={chartHeader}>
                     <strong>Month-to-month cash flow</strong>
-                    <span style={{ color: t.ink3, fontSize: 12 }}>Bank statement trend</span>
+                    <span className="sub">Bank statement trend</span>
                   </div>
                   <MiniBarChart series={intelligence.monthlySeries} emptyLabel="Awaiting six months of main operating bank statements." />
                 </div>
@@ -590,14 +600,14 @@ export function LeadCockpit({
                 <div style={chartCard(t)}>
                   <div style={chartHeader}>
                     <strong>Evidence coverage</strong>
-                    <span style={{ color: t.ink3, fontSize: 12 }}>{current.files.length} files</span>
+                    <span className="sub">{current.files.length} files</span>
                   </div>
                   <EvidenceCoverageTable rows={intelligence.coverage} />
                 </div>
                 <div style={chartCard(t)}>
                   <div style={chartHeader}>
                     <strong>Still needed</strong>
-                    <span style={{ color: t.ink3, fontSize: 12 }}>{intelligence.missing.length} items</span>
+                    <span className="sub">{intelligence.missing.length} items</span>
                   </div>
                   <MissingTable rows={intelligence.missing} />
                 </div>
@@ -617,40 +627,43 @@ export function LeadCockpit({
             <div style={chartCard(t)}>
               <div style={chartHeader}>
                 <strong>Financial forms</strong>
-                <span style={{ color: t.ink3, fontSize: 12 }}>{missingPfsOrDebtDocs.length} open</span>
+                <span className="sub">{missingPfsOrDebtDocs.length} open</span>
               </div>
-              <div style={{ display: "grid", gap: 8 }}>
-                <p style={{ margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
+              <div className="grid g8">
+                <p className="sub">
                   Request a Personal Financial Statement or Debt Schedule from the client, or fill one out on
                   their behalf right here.
                 </p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <div className="row">
                   {adapter.requestPfs ? (
-                    <button type="button" style={qcBtn(t)} onClick={requestPfs} disabled={requestingDoc}>
+                    <Btn onClick={requestPfs} disabled={requestingDoc}>
                       {requestingDoc ? "Requesting…" : "Request PFS"}
-                    </button>
+                    </Btn>
                   ) : null}
                   {adapter.requestDebtSchedule ? (
-                    <button type="button" style={qcBtn(t)} onClick={requestDebtSchedule} disabled={requestingDoc}>
+                    <Btn onClick={requestDebtSchedule} disabled={requestingDoc}>
                       {requestingDoc ? "Requesting…" : "Request debt schedule"}
-                    </button>
+                    </Btn>
                   ) : null}
                 </div>
                 {missingPfsOrDebtDocs.length ? (
-                  <div style={{ display: "grid", gap: 6 }}>
+                  <div className="grid g6">
                     {missingPfsOrDebtDocs.map((doc) => (
-                      <div key={doc.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, border: `1px solid ${t.line}`, borderRadius: 10, padding: "8px 10px" }}>
-                        <span style={{ color: t.ink2, fontSize: 12.5 }}>{doc.name}</span>
-                        {adapter.submitPfs || adapter.submitDebtSchedule ? (
-                          <button
-                            type="button"
-                            style={{ ...qcBtn(t), fontSize: 11.5, padding: "5px 10px" }}
-                            onClick={() => setDraftingDocKind(doc.category === "Personal Financials" ? "pfs" : "debt_schedule")}
-                          >
-                            Fill out online
-                          </button>
-                        ) : null}
-                      </div>
+                      <ItemRow
+                        key={doc.id}
+                        right={
+                          adapter.submitPfs || adapter.submitDebtSchedule ? (
+                            <Btn
+                              size="sm"
+                              onClick={() => setDraftingDocKind(doc.category === "Personal Financials" ? "pfs" : "debt_schedule")}
+                            >
+                              Fill out online
+                            </Btn>
+                          ) : null
+                        }
+                      >
+                        {doc.name}
+                      </ItemRow>
                     ))}
                   </div>
                 ) : null}
@@ -683,6 +696,20 @@ export function LeadCockpit({
     </div>
   );
 }
+
+// Map the shared banner tone (green/red/amber) onto the chip/callout tone
+// vocabulary. Sibling of bannerTone() below, which maps the same three onto the
+// retired inline pill/banner names; both are kept while other callers migrate.
+function chipTone(tone: "green" | "red" | "amber"): ChipTone {
+  if (tone === "green") return "ok";
+  if (tone === "red") return "bad";
+  return "warn";
+}
+
+// ── retired inline-style helpers ────────────────────────────────────────────
+// Superseded by the classes above (.msg-b, .lbl, .cellchip, .callout). Kept
+// rather than deleted: removing them is a separate call, and `bannerTone` is
+// still the documented mapping for the pill/banner names.
 
 function bubble(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
   return {

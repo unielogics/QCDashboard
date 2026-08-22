@@ -47,7 +47,23 @@
 .pick { display: flex; align-items: center; gap: 11px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; background: var(--surface); }
 .pick:hover { background: var(--sunken2); }
 .pick.on { border-color: var(--accent); background: var(--accent-100); }
+/* A bare stack of picks has no container spacing, so the sibling margin has to
+   stay — 38 call sites rely on it. But when a container ALREADY owns the
+   spacing, this stacks on top of the gap and drops every item but the first by
+   7px, which is what six grid call sites were quietly doing. The container
+   wins wherever there is one. */
 .pick + .pick { margin-top: 7px; }
+.grid > .pick + .pick,
+.cg > .pick + .pick,
+.row > .pick + .pick,
+.kpis > .pick + .pick,
+.fldgrid > .pick + .pick,
+.picklist > .pick + .pick,
+.pickgrid > .pick + .pick { margin-top: 0; }
+
+/* Marks a container that already provides the spacing between its picks. It
+   sets nothing else — a bespoke grid track stays inline, per rule 3, and this
+   class exists only to stop the sibling margin doubling up on the gap. */
 
 /* File row with a checkbox, used by the link flow and document lists. */
 .filerow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12.8px; }
@@ -197,7 +213,9 @@
 .mb { margin-bottom: 14px; }
 
 /* An item row the AI has flagged. */
-.itemrow.flagged { border-color: rgba(161, 92, 7, 0.3); background: var(--warn-tint); }
+/* `.flagged` predates `.tone-warn` and means the same thing. Aliased rather
+   than left as a second name with a disagreeing border alpha. */
+.itemrow.flagged { border-color: rgba(161, 92, 7, 0.26); background: var(--warn-tint); }
 
 /* ---------- month calendar ----------
    A real grid, not a table: cells are targets you click to create on a date,
@@ -252,7 +270,11 @@
 
 /* A scrollable list of .pick rows. Bounded so a 60-item playbook does not push
    the drawer footer — and its Add button — off the bottom of the screen. */
-.picklist { max-height: 46vh; overflow-y: auto; padding: 2px; }
+.picklist { display: grid; gap: 7px; max-height: 46vh; overflow-y: auto; padding: 2px; }
+/* Two pickers sit two scrollers deep inside the share popover, where 46vh
+   pushes the Create button off the bottom. A modifier, not an inline
+   max-height — an inline value silently kills the viewport guard entirely. */
+.picklist.sm { max-height: 190px; }
 .picklist .pick input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; flex: 0 0 auto; }
 
 /* Elara's mark in a header strip. */
@@ -345,3 +367,182 @@
    white-space: nowrap and 26px, which is correct for "$1.2M" and overflows
    the tile for "Auto-approve under $50k". */
 .kpi .knum.prose { white-space: normal; font-size: 15px; line-height: 1.3; font-weight: 620; }
+
+/* ---------- two utilities the home dashboard needed eight times over ----------
+
+   `.grow` — the growing middle of a flex row. It already exists, but only as
+   `.itemrow > .grow` and `.callout > .grow`, so every OTHER flex row in the app
+   (a `.pick` link, a `.row` header strip, a stacked list item) hand-rolled
+   `style={{ flex: 1, minWidth: 0 }}`. That appears six times in the home
+   dashboard alone and dozens more across the routes. Declared bare so it works
+   in any flex container; `.field.grow` (0,2,0) still out-specifies it, so text
+   inputs keep their 180px minimum rather than collapsing to 0. */
+.grow { flex: 1; min-width: 0; }
+
+/* `.trunc` — one line, clipped with an ellipsis. The same three declarations
+   were written inline on every address, property name and action title on the
+   dashboard; `.filehd-t` and `.cal-ev` each bake their own copy in because
+   there was nothing to reuse. Includes min-width:0 so it also truncates when it
+   is itself a flex or grid child, which is the case that silently fails. */
+.trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* ---------- disclosure row ----------
+   A collapsed one-line summary you can open in place: the shape /admin/buckets
+   uses for upload invites, vendor access, share links and the activity log —
+   four hand-rolled copies of the same border/background/padding pair before it
+   was named. Distinct from `.rung` (a flex ROW, so it cannot hold a body under
+   its header) and from `.itemrow`, which does not claim to be interactive.
+
+   Pair with `.tone-bad` on the same element for a revoked or expired row. A
+   list like this is scanned, and a status chip inside each row means reading
+   every row in turn to find the dead one. */
+.disc { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); padding: 8px 10px; }
+.disc.on { border-color: var(--line2); background: var(--sunken2); padding: 10px; }
+.disc.tone-bad { border-color: rgba(178, 42, 42, 0.28); background: var(--danger-tint); }
+
+/* The summary line is a real button: it is the control that opens the row, and
+   a div with an onClick is neither focusable nor Enter-activatable. */
+.disc-h { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.disc-b { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+
+/* A `.field` textarea grows vertically only.
+   `.field` describes the box — border, radius, padding, type — and says
+   nothing about resize, because a single-line input has no resize behaviour
+   to name. So every migrated textarea outside `.composer` (which bakes its
+   own copy in) was carrying `style={{ resize: "vertical" }}` back: the lender
+   notes scratchpad, the prequal outcome note and the client AI custom
+   instructions, three in the top-level components alone. Horizontal resize on
+   a field inside a drawer or a card drags it straight out of its container. */
+textarea.field { resize: vertical; }
+
+/* `.card.tone-*` and `.rung.tone-*` above already say why a stateful surface
+   has to carry its own state; `.itemrow` is the third list row in the set and
+   was missing it. The upload queue on /admin/buckets is the case: one file in
+   ten failed, and a muted message inside the row means reading all ten. */
+.itemrow.tone-warn { border-color: rgba(161, 92, 7, 0.26); background: var(--warn-tint); }
+.itemrow.tone-bad { border-color: rgba(178, 42, 42, 0.28); background: var(--danger-tint); }
+
+/* ---------- indeterminate ring spinner ----------
+   Four hand-rolled copies existed before this — BankerSubmissionModal,
+   RunReviewDialog, /admin/ai-underwriter-leads and CreditPullModal — and each
+   one shipped its OWN `<style>{"@keyframes …"}</style>` tag nested inside the
+   spinning <span>, under three different keyframes names. That is a global
+   at-rule injected mid-body, re-declared on every mount.
+
+   Sized in `em` and drawn in `currentColor` so an inline spinner inherits the
+   size and colour of the button it sits in, which is what the four copies were
+   each approximating with a hard-coded px value. */
+.spinner {
+  width: 1em; height: 1em; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent;
+  display: inline-block; flex: 0 0 auto; vertical-align: -0.15em;
+  animation: qc-spin 0.7s linear infinite;
+}
+@keyframes qc-spin { to { transform: rotate(360deg); } }
+/* Slowed rather than stopped: a progress dialog with a frozen spinner reads as
+   a hung process, which is worse than the motion it was meant to spare. */
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+
+/* Standalone progress spinner beside a heading, rather than inside a button:
+   bigger, and accent-coloured because it is the only moving thing on the line
+   and has no button tint to inherit. */
+.spinner.solo { width: 18px; height: 18px; border-width: 2.5px; color: var(--accent); }
+
+/* `.callout` shipped tones for bad / warn / acc but not ok, so a success
+   callout fell back to the neutral surface — and because globals.css loads
+   FIRST, `.callout` beat a bare `.c-ok` on the same element and the green
+   went away silently. Completes the tone set the component's `tone` prop
+   already advertises. */
+.callout.c-ok { border-left-color: var(--ok); background: var(--ok-tint); color: inherit; }
+
+/* A panel whose CONTENTS have reached a good state — the Lead Cockpit's
+   intelligence panel once the file is lending-ready. Deliberately unlike
+   `.card.tone-ok`, which tints the whole surface: a card that small IS the
+   state, whereas a panel is a container of charts and tinting it green would
+   recolour every one of them. Border plus a ring, surface left alone. */
+/* NOT `.panel.tone-ok`. `.card.tone-ok` tints the whole surface; this one
+   deliberately leaves the surface alone and rings the edge, because it marks
+   "you were scrolled here", not "this is in a good state". Two treatments
+   under one modifier name is a coin toss at the call site, so this one gets
+   its own word. */
+.panel.ring-ok { border-color: rgba(20, 105, 72, 0.35); box-shadow: 0 0 0 3px var(--ok-tint), var(--sh1); }
+
+/* An unread `.filerow`. Same reasoning as `.itemrow.tone-*` and `.disc.tone-bad`
+   above: the What's-new rail is SCANNED for what is new, and a "new" badge
+   inside each row means reading every row to find them. `.filerow` had no tone
+   variant at all, and accent (not warn/bad) because unread is not a problem.
+   The leading icon takes the tint too, so the row reads as one object. */
+.filerow.tone-acc { background: var(--accent-100); }
+.filerow > svg { flex-shrink: 0; color: var(--muted); }
+.filerow.tone-acc > svg { color: var(--accent); }
+
+/* A `.disc-h` that cannot be opened — a What's-new group with no lead behind
+   it. `.disc-h` sets cursor:pointer unconditionally, which survives `disabled`
+   and promises a click that does nothing. */
+.disc-h:disabled { cursor: default; }
+
+/* ---------- the client-facing room (bare routes) ---------- */
+
+/* A control that spans its container.
+   `.btn` is inline-flex and sizes to its label, which is right inside a
+   toolbar and wrong on the signing portal, where the primary action is the
+   full width of the card and the client is holding a phone. Written out by
+   hand three times in ContractSigner alone — "Ready — go to signing", "Sign
+   the agreement", and the `.linky` under it — before it was named. Sets only
+   display/width/justify, so `.btn` keeps its own padding, radius and type;
+   this file loads after globals.css, so the display swap wins. */
+.ctrl-block { display: flex; width: 100%; justify-content: center; }
+
+/* `.pick` rendered as a real button.
+   `.pick` is THE selectable row, and the only way to make a row focusable and
+   Enter-activatable is a <button> — which then arrives with the UA's centred
+   text and shrink-to-fit width, so the row stops being a row. Every site that
+   got this right hand-wrote `style={{ width: "100%", textAlign: "left" }}`
+   (messages/, clients/[id], vendor/buckets, booking-settings); the sites that
+   did not, silently render a centred pill instead of a list row — the starter
+   prompts in ThreadChatView were one of them. Same reasoning as `.disc-h`
+   above, which is the disclosure row's version of this. */
+button.pick { width: 100%; text-align: left; }
+
+/* A panel whose title has to be an <h2>.
+   <Panel> hard-codes <h3>, which is correct inside the console: the page has
+   an <h1> and the panels sit under it. The public upload room is not that
+   shape — buckets/request/[token] heads its own sections with <h2> under one
+   <h1>, and a component dropping to <h3> among them leaves a page whose
+   outline skips a level for a client who may be reading it with a screen
+   reader. This lets a hand-written `.panel-h` carry an <h2> at the size the
+   component's <h3> uses (a touch larger — that page is read on a phone),
+   instead of the 23px `h2` in the trunk. */
+/* Panel's own title is an h3. An h2 inside a panel header is a page that has
+   made the panel its main surface — the public document room, and the
+   bucket-detail frame. Sized to sit level with `.panel-h h3` rather than
+   inheriting the 2em UA default and shoving the header's chips onto a second
+   row. `.frame-t` opts a full-bleed frame back up to a page-title size. */
+.panel-h h2 { font-size: 15px; }
+.panel-h h2.frame-t { font-size: 18px; }
+
+/* Step title inside the create-bucket flow. An h3 for the document outline,
+   sized as body text because the drawer's own h2 is the real heading. */
+.wfh-t { font-size: 13.5px; font-weight: 700; margin: 0; }
+
+/* A `.panel` carries its own text colour.
+   `.panel` paints a white surface and never set `color`, so every unclassed
+   string inside one — a title, a file name, a `<b>` — inherits whatever the
+   page around it decided. Inside the console that is `var(--ink)` from body
+   and this rule changes nothing. On the public upload room
+   (buckets/request/[token]) the page element sets `color: #F1F5F9` for its
+   dark ground, and that near-white inherits straight into the white cards:
+   RoomActions' section headings and document names are white-on-white there
+   today. A surface that owns its background has to own its foreground.
+   (`.card` has the same latent hole; left alone here because nothing in this
+   pass puts a `.card` on a bare route.) */
+.panel { color: var(--ink); }
+
+/* Top-aligned variants. `.row` and `.pick` both own `align-items: center`,
+   which is right when the row is one line tall and wrong the moment a child
+   wraps to two — the checkbox drifts to the middle of the text beside it.
+   A modifier rather than an inline override, because a property with two
+   owners is a coin toss. */
+.row.top { align-items: flex-start; }
+.pick.top { align-items: flex-start; }
+.callout.top { align-items: flex-start; }
