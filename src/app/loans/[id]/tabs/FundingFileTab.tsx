@@ -608,7 +608,9 @@ function CriterionTile({
     <button
       type="button"
       onClick={onClick}
-      className={cx("card", className)}
+      // Same reason as ConditionRow: four tiles side by side, and "which one
+      // is not ready" has to survive being glanced at.
+      className={cx("card", !ready && "tone-warn", className)}
       style={{ width: "100%", textAlign: "left", font: "inherit", cursor: "pointer" }}
     >
       <div className="kv">
@@ -632,7 +634,10 @@ function ConditionRow({ doc, onClick, className }: { doc: Document; onClick: () 
     <button
       type="button"
       onClick={onClick}
-      className={cx("rung", className)}
+      // The tone is on the ROW, not only on the badge. A stack of conditions is
+      // scanned for the one that is blocking you; a badge inside each row makes
+      // you read every row to find it.
+      className={cx("rung", doc.status === "flagged" && "tone-bad", className)}
       style={{ width: "100%", textAlign: "left", font: "inherit", cursor: "pointer" }}
     >
       <span style={{ minWidth: 0, flex: 1, display: "grid" }}>

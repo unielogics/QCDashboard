@@ -4,13 +4,31 @@ import { FormEvent, useEffect, useMemo, useState, type CSSProperties } from "rea
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, useToast, Toast } from "@/components/design-system/primitives";
+import { Card, useToast, Toast } from "@/components/design-system/primitives";
+import {
+  Btn,
+  CellChip,
+  cx,
+  Field,
+  IconBtn,
+  Input,
+  Lbl,
+  Linky,
+  PageHeader,
+  Panel,
+  Row,
+  Seg,
+  Select,
+  StatusLine,
+  Textarea,
+  WarnLine,
+  type ChipTone,
+} from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { LENDING_INTENTS, MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
 import { Modal } from "@/components/design-system/Modal";
 import { Icon } from "@/components/design-system/Icon";
 import { TypingDots } from "@/components/design-system/TypingDots";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { api, ApiError } from "@/lib/api";
 
 // Surface a FastAPI 422/400 `detail` (string or [{msg}]) instead of the bare
@@ -208,7 +226,6 @@ const VARIANT_FILTERS = [
 const LIMIT = 25;
 
 export default function AdminAIUnderwriterLeadsPage() {
-  const { t } = useTheme();
   const router = useRouter();
   const searchParams = useSearchParams();
   const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
@@ -606,53 +623,53 @@ export default function AdminAIUnderwriterLeadsPage() {
 
   return (
     <div style={{ height: "calc(100dvh - 105px)", maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: 0, overflow: "hidden" }}>
-      <div style={{ flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ margin: 0, color: t.ink, fontSize: 24, letterSpacing: -0.5 }}>AI Underwriter Leads</h1>
-          <p style={{ margin: "4px 0 0", color: t.ink3, lineHeight: 1.35, fontSize: 13 }}>
-            Dealer and real-estate funding review submissions, conversations, evidence, management packages, and vendor sends.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <WhatsNewButton onClick={() => setWhatsNewOpen(true)} />
-          <button style={qcBtnPrimary(t)} onClick={() => setCreateOpen(true)}>Create lead</button>
-          <Link href="/admin/buckets" style={{ ...qcBtn(t), textDecoration: "none" }}>Buckets</Link>
-        </div>
+      <div style={{ flexShrink: 0 }}>
+        <PageHeader
+          title="AI Underwriter Leads"
+          lede="Dealer and real-estate funding review submissions, conversations, evidence, management packages, and vendor sends."
+          actions={
+            <>
+              <WhatsNewButton onClick={() => setWhatsNewOpen(true)} />
+              <Btn variant="pri" onClick={() => setCreateOpen(true)}>Create lead</Btn>
+              <Link href="/admin/buckets" className="btn">Buckets</Link>
+            </>
+          }
+        />
       </div>
 
-      <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
-        <Stat title="Total leads" value={String(counts.total)} sub="all matching filters" t={t} />
-        <Stat title="Good probability" value={String(counts.good)} sub="visible page" t={t} good />
-        <Stat title="Booked calls" value={String(counts.booked)} sub="visible page" t={t} />
-        <Stat title="Missing items" value={String(counts.missing)} sub="visible page" t={t} warn />
+      <div className="kpis" style={{ flexShrink: 0 }}>
+        <Stat title="Total leads" value={String(counts.total)} sub="all matching filters" />
+        <Stat title="Good probability" value={String(counts.good)} sub="visible page" good />
+        <Stat title="Booked calls" value={String(counts.booked)} sub="visible page" />
+        <Stat title="Missing items" value={String(counts.missing)} sub="visible page" warn />
       </div>
 
-      <Card pad={12} style={{ flexShrink: 0 }}>
+      <Card style={{ flexShrink: 0 }}>
         <form onSubmit={submitSearch} style={{ display: "grid", gridTemplateColumns: "minmax(240px,1fr) 190px 210px 250px auto", gap: 10, alignItems: "center" }}>
-          <input
+          <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search name, email, dealership"
-            style={inputStyle(t)}
+            aria-label="Search leads"
           />
-          <select value={variantFilter} onChange={(event) => { setOffset(0); setVariantFilter(event.target.value); }} style={inputStyle(t)}>
+          <Select value={variantFilter} onChange={(event) => { setOffset(0); setVariantFilter(event.target.value); }} aria-label="Review type">
             {VARIANT_FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
-          <select value={statusFilter} onChange={(event) => { setOffset(0); setStatusFilter(event.target.value); }} style={inputStyle(t)}>
+          </Select>
+          <Select value={statusFilter} onChange={(event) => { setOffset(0); setStatusFilter(event.target.value); }} aria-label="Status">
             {STATUS_FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
-          <select value={probabilityFilter} onChange={(event) => { setOffset(0); setProbabilityFilter(event.target.value); }} style={inputStyle(t)}>
+          </Select>
+          <Select value={probabilityFilter} onChange={(event) => { setOffset(0); setProbabilityFilter(event.target.value); }} aria-label="Probability">
             {PROBABILITY_FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
-          <button type="submit" style={qcBtnPrimary(t)}>Search</button>
+          </Select>
+          <Btn type="submit" variant="pri">Search</Btn>
         </form>
       </Card>
 
-      {notice ? <div style={{ color: t.warn, fontSize: 13, fontWeight: 700 }}>{notice}</div> : null}
+      {notice ? <WarnLine>{notice}</WarnLine> : null}
 
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr", gap: 14, alignItems: "stretch", overflow: "hidden" }}>
-        <Card pad={0} style={{ minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          <div style={gridHeader(t)}>
+        <div className="panel" style={{ minHeight: 0 }}>
+          <div className="lbl" style={{ display: "grid", gridTemplateColumns: LEAD_COLS, gap: 12, padding: "12px 16px", borderBottom: "1px solid var(--line)" }}>
             <span>Lead</span>
             <span>AI probability</span>
             <span>Evidence</span>
@@ -661,52 +678,53 @@ export default function AdminAIUnderwriterLeadsPage() {
           </div>
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
             {loading ? (
-              <div style={{ padding: 24, color: t.ink3 }}>Loading dealer leads...</div>
+              <div className="panel-b sub">Loading dealer leads...</div>
             ) : rows.map((row) => (
-              <button key={row.id} type="button" onClick={() => openLead(row.id)} style={rowStyle(t, selectedId === row.id)}>
+              <button key={row.id} type="button" onClick={() => openLead(row.id)} style={rowStyle(selectedId === row.id)}>
                 <div style={{ minWidth: 0 }}>
-                  <strong style={{ color: t.ink, display: "flex", alignItems: "center", gap: 7, overflow: "hidden", whiteSpace: "nowrap" }}>
+                  <strong style={{ display: "flex", alignItems: "center", gap: 7, overflow: "hidden", whiteSpace: "nowrap" }}>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{row.business_name || row.full_name}</span>
                     {row.unseen_activity_count ? (
-                      <span
+                      <CellChip
+                        tone="acc"
                         title={`${row.unseen_activity_count} client/broker update${row.unseen_activity_count !== 1 ? "s" : ""} since you last opened this lead`}
-                        style={{ flexShrink: 0, background: t.brand, color: "#fff", borderRadius: 999, fontSize: 10, fontWeight: 800, padding: "2px 7px", letterSpacing: 0.4 }}
                       >
                         NEW {row.unseen_activity_count > 9 ? "9+" : row.unseen_activity_count}
-                      </span>
+                      </CellChip>
                     ) : null}
                   </strong>
-                  <span style={{ color: t.ink3, fontSize: 12, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{variantLabel(row.variant)} · {row.full_name} · {row.email}</span>
+                  <span className="sub" style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{variantLabel(row.variant)} · {row.full_name} · {row.email}</span>
                 </div>
                 <div>
-                  <Pill bg={probabilityTone(t, row.probability_status).bg} color={probabilityTone(t, row.probability_status).fg}>
+                  <CellChip tone={probabilityTone(row.probability_status)}>
                     {row.probability_status || "No screen yet"}
-                  </Pill>
-                  <span style={{ color: t.ink3, fontSize: 12, display: "block", marginTop: 5 }}>
+                  </CellChip>
+                  <span className="sub" style={{ display: "block", marginTop: 5 }}>
                     {row.confidence ? `${row.confidence} confidence` : row.latest_review_status || "awaiting review"}
                   </span>
                 </div>
-                <div style={{ color: t.ink2, fontSize: 13 }}>
+                <div>
                   <strong>{row.file_count}</strong> files · <strong>{row.missing_required_count}</strong> missing
-                  <span style={{ display: "block", color: row.call_booked ? t.profit : t.ink3, marginTop: 5 }}>
-                    {row.call_booked ? "Call booked" : row.booking_recommended ? "Booking recommended" : "No booking yet"}
+                  <span style={{ display: "block", marginTop: 5 }}>
+                    <CellChip tone={row.call_booked ? "ok" : row.booking_recommended ? "acc" : "mut"}>
+                      {row.call_booked ? "Call booked" : row.booking_recommended ? "Booking recommended" : "No booking yet"}
+                    </CellChip>
                   </span>
                 </div>
-                <div style={{ color: t.ink2, fontSize: 13, lineHeight: 1.35, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                <div style={{ overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
                   {row.one_next_step || "Awaiting AI next step."}
                 </div>
-                <div style={{ color: t.ink3, fontSize: 12 }}>{formatDate(row.updated_at)}</div>
+                <div className="sub">{formatDate(row.updated_at)}</div>
               </button>
             ))}
           </div>
-          <div style={{ flexShrink: 0, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${t.line}` }}>
-            <span style={{ color: t.ink3, fontSize: 12 }}>{total ? `${offset + 1}-${Math.min(offset + LIMIT, total)} of ${total}` : "0 leads"}</span>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button style={qcBtn(t)} disabled={offset === 0 || loading} onClick={() => loadLeads(Math.max(0, offset - LIMIT))}>Previous</button>
-              <button style={qcBtn(t)} disabled={offset + LIMIT >= total || loading} onClick={() => loadLeads(offset + LIMIT)}>Next</button>
-            </div>
+          <div className="row" style={{ flexShrink: 0, padding: "12px 16px", borderTop: "1px solid var(--line)" }}>
+            <span className="sub">{total ? `${offset + 1}-${Math.min(offset + LIMIT, total)} of ${total}` : "0 leads"}</span>
+            <span className="sp" />
+            <Btn disabled={offset === 0 || loading} onClick={() => loadLeads(Math.max(0, offset - LIMIT))}>Previous</Btn>
+            <Btn disabled={offset + LIMIT >= total || loading} onClick={() => loadLeads(offset + LIMIT)}>Next</Btn>
           </div>
-        </Card>
+        </div>
 
       </div>
 
@@ -833,7 +851,6 @@ function LeadDetailPanel({
   onCancelDeletionRequest: () => Promise<void>;
   onConfirmDeletion: (confirmName: string) => Promise<void>;
 }) {
-  const { t } = useTheme();
   const toast = useToast();
   const bookingLink = useBookingLink();
   const [activeTab, setActiveTab] = useState<"conversation" | "workspace">("conversation");
@@ -1048,127 +1065,105 @@ function LeadDetailPanel({
   }
 
   return (
-    <Card pad={0} style={{ minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-      <div style={{ flexShrink: 0, padding: 16, borderBottom: `1px solid ${t.line}`, display: "flex", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <h2 style={{ margin: 0, color: t.ink, fontSize: 18 }}>{detail?.intake.business_name || detail?.intake.full_name || "AI lead"}</h2>
-          <p style={{ margin: "4px 0 0", color: t.ink3, fontSize: 12 }}>
+    <div className="panel" style={{ minHeight: 0 }}>
+      <div className="panel-h" style={{ flexShrink: 0 }}>
+        <div style={{ minWidth: 0 }}>
+          <h3>{detail?.intake.business_name || detail?.intake.full_name || "AI lead"}</h3>
+          <p className="sub">
             {detail ? `${variantLabel(detail.intake.variant)} · ${detail.intake.email}` : "Loading"}
           </p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button
-            type="button"
-            aria-label="Messages with the dealer partner"
-            title="Messages with the dealer partner"
-            onClick={() => setNotesOpen(true)}
-            style={{
-              all: "unset", cursor: "pointer", position: "relative", minHeight: 34, padding: "0 10px",
-              borderRadius: 8, border: `1px solid ${t.line}`, background: t.surface2, color: t.ink2,
-              display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700,
-            }}
+        <span className="sp" />
+        <Btn
+          aria-label="Messages with the dealer partner"
+          title="Messages with the dealer partner"
+          onClick={() => setNotesOpen(true)}
+        >
+          <Icon name="chat" size={14} /> Messages
+          {detail?.notes && detail.notes.length > 0 ? (
+            <span className="cnt sm">{detail.notes.length}</span>
+          ) : null}
+        </Btn>
+        {detail ? (
+          <Select
+            value={detail.intake.outcome_status}
+            disabled={outcomeBusy}
+            onChange={(e) => changeOutcomeStatus(e.target.value)}
+            aria-label="Outcome status"
           >
-            <Icon name="chat" size={14} /> Messages
-            {detail?.notes && detail.notes.length > 0 ? (
-              <span style={{ background: t.brand, color: t.inverse, borderRadius: 999, fontSize: 10, fontWeight: 800, padding: "1px 6px" }}>
-                {detail.notes.length}
-              </span>
-            ) : null}
-          </button>
-          {detail ? (
-            <select
-              value={detail.intake.outcome_status}
-              disabled={outcomeBusy}
-              onChange={(e) => changeOutcomeStatus(e.target.value)}
-              style={{ ...inputStyle(t), minHeight: 34, fontSize: 12, padding: "0 8px" }}
-            >
-              <option value="submitted">Submitted</option>
-              <option value="closed">Closed</option>
-              <option value="denied">Denied</option>
-            </select>
-          ) : null}
-          {detail ? (
-            <select
-              value={detail.intake.preferred_language}
-              disabled={languageBusy}
-              onChange={(e) => changeLanguage(e.target.value)}
-              style={{ ...inputStyle(t), minHeight: 34, fontSize: 12, padding: "0 8px" }}
-              title="Client language"
-            >
-              <option value="en">English</option>
-              <option value="es">Español</option>
-            </select>
-          ) : null}
-          {detail?.intake.delete_requested_at ? (
-            <span title={`Requested by ${detail.intake.delete_requested_by || "unknown"} on ${new Date(detail.intake.delete_requested_at).toLocaleString()}`}>
-              <Pill bg={t.warnBg} color={t.warn}>Partner requested delete</Pill>
-            </span>
-          ) : null}
-          <button style={{ ...qcBtnPrimary(t), background: t.danger }} disabled={deletionBusy} onClick={() => setConfirmDeleteOpen(true)}>Delete lead</button>
-          {detail?.intake.delete_requested_at ? (
-            <button style={qcBtn(t)} disabled={deletionBusy} onClick={handleCancelDeletionRequest}>Keep</button>
-          ) : null}
-          <button
-            aria-label="Close"
-            title="Close"
-            onClick={onClose}
-            style={{ all: "unset", cursor: "pointer", width: 32, height: 32, borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", color: t.ink2 }}
+            <option value="submitted">Submitted</option>
+            <option value="closed">Closed</option>
+            <option value="denied">Denied</option>
+          </Select>
+        ) : null}
+        {detail ? (
+          <Select
+            value={detail.intake.preferred_language}
+            disabled={languageBusy}
+            onChange={(e) => changeLanguage(e.target.value)}
+            title="Client language"
+            aria-label="Client language"
           >
-            <Icon name="x" size={16} />
-          </button>
-        </div>
+            <option value="en">English</option>
+            <option value="es">Español</option>
+          </Select>
+        ) : null}
+        {detail?.intake.delete_requested_at ? (
+          <CellChip tone="warn" title={`Requested by ${detail.intake.delete_requested_by || "unknown"} on ${new Date(detail.intake.delete_requested_at).toLocaleString()}`}>
+            Partner requested delete
+          </CellChip>
+        ) : null}
+        <Btn className="danger" disabled={deletionBusy} onClick={() => setConfirmDeleteOpen(true)}>Delete lead</Btn>
+        {detail?.intake.delete_requested_at ? (
+          <Btn disabled={deletionBusy} onClick={handleCancelDeletionRequest}>Keep</Btn>
+        ) : null}
+        <IconBtn aria-label="Close" title="Close" onClick={onClose}>
+          <Icon name="x" size={16} />
+        </IconBtn>
       </div>
       {loading || !detail ? (
-        <div style={{ padding: 20, color: t.ink3 }}>Loading lead detail...</div>
+        <div className="panel-b sub">Loading lead detail...</div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ flexShrink: 0, padding: "12px 16px 0", display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 8 }}>
-            {[
-              ["conversation", "Conversation"],
-              ["workspace", "Workspace"],
-            ].map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setActiveTab(value as typeof activeTab)}
-                style={{ ...qcBtn(t), background: activeTab === value ? t.brandSoft : t.surface2, color: activeTab === value ? t.brand : t.ink2 }}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="row" style={{ flexShrink: 0, padding: "12px 16px 0" }}>
+            <Seg
+              value={activeTab}
+              onChange={setActiveTab}
+              ariaLabel="Lead view"
+              options={[
+                { value: "conversation", label: "Conversation" },
+                { value: "workspace", label: "Workspace" },
+              ]}
+            />
           </div>
           {activeTab === "workspace" ? (
-            <div style={{ flexShrink: 0, padding: "10px 16px 12px", display: "flex", gap: 6, borderBottom: `1px solid ${t.line}`, flexWrap: "wrap" }}>
-              {[
-                ["overview", "Overview"],
-                ["documents", "Documents"],
-                ["client", "Client conversation"],
-                ["credit", "Credit"],
-                ["contracts", "Contracts"],
-                ["package", "Package"],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setWorkspaceSub(value as typeof workspaceSub)}
-                  style={{ ...qcBtn(t), fontSize: 12, padding: "6px 12px", background: workspaceSub === value ? t.brand : t.surface2, color: workspaceSub === value ? t.inverse : t.ink2 }}
-                >
-                  {label}
-                </button>
-              ))}
+            <div className="row" style={{ flexShrink: 0, padding: "10px 16px 12px", borderBottom: "1px solid var(--line)" }}>
+              <Seg
+                value={workspaceSub}
+                onChange={setWorkspaceSub}
+                ariaLabel="Workspace section"
+                options={[
+                  { value: "overview", label: "Overview" },
+                  { value: "documents", label: "Documents" },
+                  { value: "client", label: "Client conversation" },
+                  { value: "credit", label: "Credit" },
+                  { value: "contracts", label: "Contracts" },
+                  { value: "package", label: "Package" },
+                ]}
+              />
             </div>
           ) : (
-            <div style={{ flexShrink: 0, borderBottom: `1px solid ${t.line}`, marginTop: 12 }} />
+            <div style={{ flexShrink: 0, borderBottom: "1px solid var(--line)", marginTop: 12 }} />
           )}
           <div style={{ flex: 1, minHeight: 0, padding: 16, display: "grid", gap: 14, overflowY: "auto" }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Pill bg={probabilityTone(t, String(result?.probability_status || "")).bg} color={probabilityTone(t, String(result?.probability_status || "")).fg}>
+          <Row>
+            <CellChip tone={probabilityTone(String(result?.probability_status || ""))}>
               {String(result?.probability_status || "No screen yet")}
-            </Pill>
-            <Pill bg={detail.intake.call_booked ? t.profitBg : t.surface2} color={detail.intake.call_booked ? t.profit : t.ink2}>
+            </CellChip>
+            <CellChip tone={detail.intake.call_booked ? "ok" : "mut"}>
               {detail.intake.call_booked ? "Call booked" : "Call not booked"}
-            </Pill>
-          </div>
+            </CellChip>
+          </Row>
 
           {activeTab === "conversation" ? (
             cockpitResponse && cockpitAdapter ? (
@@ -1183,6 +1178,7 @@ function LeadDetailPanel({
                 />
                 <button
                   type="button"
+                  className="btn"
                   onClick={() => setNotesOpen((v) => !v)}
                   aria-label={notesOpen ? "Hide internal notes" : "Show internal notes"}
                   style={{
@@ -1191,24 +1187,12 @@ function LeadDetailPanel({
                     right: notesOpen ? 360 : 0,
                     transform: "translateY(-50%)",
                     zIndex: 21,
-                    display: "flex",
                     flexDirection: "column",
-                    alignItems: "center",
-                    gap: 4,
-                    padding: "10px 6px",
-                    borderRadius: "10px 0 0 10px",
-                    border: `1px solid ${t.line}`,
-                    borderRight: notesOpen ? `1px solid ${t.line}` : "none",
-                    background: t.surface,
-                    color: t.ink2,
-                    cursor: "pointer",
-                    fontSize: 11,
-                    fontWeight: 700,
                     transition: "right 200ms ease",
                   }}
                 >
                   <Icon name={notesOpen ? "chevR" : "chevL"} size={12} />
-                  <span style={{ writingMode: "vertical-rl", letterSpacing: 0.5 }}>
+                  <span style={{ writingMode: "vertical-rl" }}>
                     Notes{detail.notes?.length ? ` (${detail.notes.length})` : ""}
                   </span>
                 </button>
@@ -1237,7 +1221,7 @@ function LeadDetailPanel({
                 </div>
               </div>
             ) : (
-              <span style={{ color: t.ink3 }}>Loading conversation…</span>
+              <span className="sub">Loading conversation…</span>
             )
           ) : null}
 
@@ -1253,24 +1237,24 @@ function LeadDetailPanel({
               </InfoBlock>
 
               <InfoBlock title="Actions">
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <button style={{ ...qcBtnPrimary(t), opacity: rerunning ? 0.6 : 1, cursor: rerunning ? "wait" : "pointer" }} onClick={onRerun} disabled={rerunning}>
+                <Row>
+                  <Btn variant="pri" onClick={onRerun} disabled={rerunning}>
                     {rerunning ? "Re-running AI review…" : "Re-run AI review on latest uploads"}
-                  </button>
-                  <button style={qcBtn(t)} onClick={onExport}>Export intelligence PDF</button>
-                  <Link href={`/admin/buckets`} style={{ ...qcBtn(t), textDecoration: "none" }}>Open Buckets</Link>
-                  <button style={qcBtn(t)} onClick={() => navigator.clipboard.writeText(detail.intake.bucket_id)}>Copy bucket ID</button>
-                </div>
+                  </Btn>
+                  <Btn onClick={onExport}>Export intelligence PDF</Btn>
+                  <Link href={`/admin/buckets`} className="btn">Open Buckets</Link>
+                  <Btn onClick={() => navigator.clipboard.writeText(detail.intake.bucket_id)}>Copy bucket ID</Btn>
+                </Row>
                 {detail.latest_review?.status ? (
-                  <span style={{ display: "block", marginTop: 8, fontSize: 12, color: detail.latest_review.status === "failed" ? t.danger : t.ink3 }}>
+                  <StatusLine className="mt" tone={detail.latest_review.status === "failed" ? "bad" : "mut"}>
                     Latest review: {detail.latest_review.status}
                     {detail.latest_review.error ? ` — ${detail.latest_review.error}` : ""}
-                  </span>
+                  </StatusLine>
                 ) : null}
               </InfoBlock>
 
               <InfoBlock title="AI next step">
-                <p style={{ margin: 0, color: t.ink2, lineHeight: 1.45 }}>{String(result?.one_next_step || result?.executive_summary || "Awaiting AI review.")}</p>
+                <p>{String(result?.one_next_step || result?.executive_summary || "Awaiting AI review.")}</p>
               </InfoBlock>
 
               <InfoBlock title="Evidence coverage">
@@ -1292,27 +1276,26 @@ function LeadDetailPanel({
 
           {activeTab === "workspace" && workspaceSub === "documents" ? (
             <InfoBlock title={`Uploaded files (${detail.files.length})`}>
-              <div style={{ display: "grid", gap: 10 }}>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.45, flex: 1, minWidth: 200 }}>
+              <div className="grid g10">
+                <Row>
+                  <span className="sub" style={{ flex: 1, minWidth: 200 }}>
                     Import files from your Google Drive so the AI reads and learns from them — imported files are analyzed and folded into the review, just like uploads.
                   </span>
-                  <button
-                    style={qcBtn(t)}
+                  <Btn
                     disabled={busy !== ""}
                     title="Pick files from your connected Google Drive to analyze with the AI"
                     onClick={() => setIngestPickerOpen(true)}
                   >
                     {busy === "ingest" ? <><Spinner /> Importing…</> : `Add from Google Drive${ingestFiles.length ? ` (${ingestFiles.length})` : ""}`}
-                  </button>
-                </div>
-                <div style={{ display: "grid", gap: 7 }}>
+                  </Btn>
+                </Row>
+                <div>
                   {detail.files.length ? detail.files.slice(0, 60).map((file) => (
-                    <div key={file.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${t.line}`, paddingBottom: 7 }}>
-                      <span style={{ color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.zip_entry_path || file.file_name}</span>
-                      <span style={{ color: t.ink3, fontSize: 12 }}>{formatSize(file.size_bytes)}</span>
+                    <div key={file.id} className="filerow">
+                      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.zip_entry_path || file.file_name}</span>
+                      <span className="sub">{formatSize(file.size_bytes)}</span>
                     </div>
-                  )) : <span style={{ color: t.ink3 }}>No uploaded files yet.</span>}
+                  )) : <span className="sub">No uploaded files yet.</span>}
                 </div>
               </div>
             </InfoBlock>
@@ -1323,7 +1306,7 @@ function LeadDetailPanel({
           ) : null}
 
           {activeTab === "workspace" && workspaceSub === "credit" ? (
-            <div style={{ display: "grid", gap: 14 }}>
+            <div className="grid">
               <LeadCreditPanel intakeId={detail.intake.id} />
               {!isRealEstate ? <LeadProgramFitPanel intakeId={detail.intake.id} /> : null}
               {isRealEstate ? <LeadDscrPanel intakeId={detail.intake.id} /> : null}
@@ -1341,79 +1324,79 @@ function LeadDetailPanel({
                   this button lets an admin draft or redraft it manually). */}
               {isRealEstate ? (
                 <InfoBlock title="0 · Prequalification draft">
-                  <div style={{ display: "grid", gap: 10 }}>
-                    <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
+                  <div className="grid g10">
+                    <span className="sub">
                       A borrower-facing preliminary prequalification — program fit, sizing, and next step. The AI also generates this automatically in chat once baseline documents, the credit pull, and the down payment/prior-ownership/property-type details are all on file.
                     </span>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                      <button style={qcBtnPrimary(t)} onClick={async () => { setBusy("prequal"); try { await onGeneratePrequalification(); toast.show("Prequalification drafted"); } finally { setBusy(""); } }} disabled={busy !== ""}>
+                    <Row>
+                      <Btn variant="pri" onClick={async () => { setBusy("prequal"); try { await onGeneratePrequalification(); toast.show("Prequalification drafted"); } finally { setBusy(""); } }} disabled={busy !== ""}>
                         {busy === "prequal" ? <><Spinner /> Drafting…</> : prequalification ? "Redraft prequalification" : "Draft prequalification"}
-                      </button>
-                      <Pill bg={prequalification ? t.profitBg : t.surface2} color={prequalification ? t.profit : t.ink3}>{prequalification ? "Ready" : "Not started"}</Pill>
-                      {prequalification ? <button style={qcBtn(t)} onClick={() => copyText("Prequalification", prequalification.body_text || String(prequalification.body_json?.prequalification_summary || ""))}>Copy text</button> : null}
-                    </div>
+                      </Btn>
+                      <CellChip tone={prequalification ? "ok" : "mut"}>{prequalification ? "Ready" : "Not started"}</CellChip>
+                      {prequalification ? <Btn onClick={() => copyText("Prequalification", prequalification.body_text || String(prequalification.body_json?.prequalification_summary || ""))}>Copy text</Btn> : null}
+                    </Row>
                     {prequalification ? (
-                      <div style={{ display: "grid", gap: 6, border: `1px solid ${t.line}`, borderRadius: 10, padding: 12, background: t.surface, maxHeight: 260, overflowY: "auto" }}>
-                        <strong style={{ color: t.ink }}>{prequalification.title}</strong>
-                        <p style={{ margin: 0, color: t.ink2, whiteSpace: "pre-wrap", lineHeight: 1.5, fontSize: 13 }}>{prequalification.body_text || String(prequalification.body_json?.prequalification_summary || "")}</p>
-                        <span style={{ color: t.ink3, fontSize: 12 }}>Generated {formatDateTime(prequalification.created_at)}</span>
+                      <div className="card grid g6" style={{ maxHeight: 260, overflowY: "auto" }}>
+                        <strong>{prequalification.title}</strong>
+                        <p style={{ whiteSpace: "pre-wrap" }}>{prequalification.body_text || String(prequalification.body_json?.prequalification_summary || "")}</p>
+                        <span className="sub">Generated {formatDateTime(prequalification.created_at)}</span>
                       </div>
-                    ) : <span style={{ color: t.ink3, fontSize: 13 }}>Draft a preliminary prequalification from the analyzed evidence.</span>}
+                    ) : <span className="sub">Draft a preliminary prequalification from the analyzed evidence.</span>}
                   </div>
                 </InfoBlock>
               ) : null}
 
               {/* Step 1 — Executive summary (short on-screen narrative) */}
               <InfoBlock title="1 · Executive summary">
-                <div style={{ display: "grid", gap: 10 }}>
-                  <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
+                <div className="grid g10">
+                  <span className="sub">
                     A short credit-officer memo in plain prose — read it here and copy it into notes or a message. It also becomes the opening of the lender packet PDF in step 2.
                   </span>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <button style={qcBtnPrimary(t)} onClick={async () => { setBusy("summary"); try { await onGenerateSummary(); toast.show("Executive summary ready"); } finally { setBusy(""); } }} disabled={busy !== ""}>
+                  <Row>
+                    <Btn variant="pri" onClick={async () => { setBusy("summary"); try { await onGenerateSummary(); toast.show("Executive summary ready"); } finally { setBusy(""); } }} disabled={busy !== ""}>
                       {busy === "summary" ? <><Spinner /> Generating…</> : summary ? "Regenerate summary" : "Generate executive summary"}
-                    </button>
-                    <Pill bg={summary ? t.profitBg : t.surface2} color={summary ? t.profit : t.ink3}>{summary ? "Ready" : "Not started"}</Pill>
-                    {summary ? <button style={qcBtn(t)} onClick={() => copyText("Summary", summary.body_text || String(summary.body_json?.executive_summary || ""))}>Copy summary</button> : null}
-                    {summary?.title ? <button style={qcBtn(t)} onClick={() => copyText("Title", summary.title)}>Copy title</button> : null}
-                  </div>
+                    </Btn>
+                    <CellChip tone={summary ? "ok" : "mut"}>{summary ? "Ready" : "Not started"}</CellChip>
+                    {summary ? <Btn onClick={() => copyText("Summary", summary.body_text || String(summary.body_json?.executive_summary || ""))}>Copy summary</Btn> : null}
+                    {summary?.title ? <Btn onClick={() => copyText("Title", summary.title)}>Copy title</Btn> : null}
+                  </Row>
                   {summary ? (
-                    <div style={{ display: "grid", gap: 6, border: `1px solid ${t.line}`, borderRadius: 10, padding: 12, background: t.surface, maxHeight: 260, overflowY: "auto" }}>
-                      <strong style={{ color: t.ink }}>{summary.title}</strong>
-                      <p style={{ margin: 0, color: t.ink2, whiteSpace: "pre-wrap", lineHeight: 1.5, fontSize: 13 }}>{summary.body_text || String(summary.body_json?.executive_summary || "")}</p>
-                      <span style={{ color: t.ink3, fontSize: 12 }}>Generated {formatDateTime(summary.created_at)}</span>
+                    <div className="card grid g6" style={{ maxHeight: 260, overflowY: "auto" }}>
+                      <strong>{summary.title}</strong>
+                      <p style={{ whiteSpace: "pre-wrap" }}>{summary.body_text || String(summary.body_json?.executive_summary || "")}</p>
+                      <span className="sub">Generated {formatDateTime(summary.created_at)}</span>
                     </div>
-                  ) : <span style={{ color: t.ink3, fontSize: 13 }}>Generate a polished underwriter summary from the analyzed evidence.</span>}
+                  ) : <span className="sub">Generate a polished underwriter summary from the analyzed evidence.</span>}
                 </div>
               </InfoBlock>
 
               {/* Step 2 — Lender packet PDF (the full branded document) */}
               <InfoBlock title="2 · Lender packet PDF">
-                <div style={{ display: "grid", gap: 10 }}>
-                  <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
+                <div className="grid g10">
+                  <span className="sub">
                     The full branded document for a bank underwriter — landscape, white background, month-over-month bank charts (deposits, withdrawals, ending balance), a 2-year tax summary, Excel-style tables, our logo, and a CONFIDENTIAL watermark. Sensitive account and ID numbers are redacted.
                   </span>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <button style={qcBtnPrimary(t)} onClick={async () => { setBusy("packet"); try { await onGeneratePacket(); toast.show("Lender packet ready"); } finally { setBusy(""); } }} disabled={busy !== ""}>
+                  <Row>
+                    <Btn variant="pri" onClick={async () => { setBusy("packet"); try { await onGeneratePacket(); toast.show("Lender packet ready"); } finally { setBusy(""); } }} disabled={busy !== ""}>
                       {busy === "packet" ? <><Spinner /> Generating…</> : packet ? "Regenerate packet" : "Generate lender packet PDF"}
-                    </button>
-                    <Pill bg={packet ? t.profitBg : t.surface2} color={packet ? t.profit : t.ink3}>{packet ? "Ready" : "Not started"}</Pill>
-                    {packet?.download_url ? <a href={packet.download_url} target="_blank" rel="noreferrer" style={{ ...qcBtn(t), textDecoration: "none" }}>Download / preview PDF</a> : null}
-                    {packet ? <span style={{ color: t.ink3, fontSize: 12 }}>{formatDateTime(packet.created_at)}</span> : null}
-                  </div>
+                    </Btn>
+                    <CellChip tone={packet ? "ok" : "mut"}>{packet ? "Ready" : "Not started"}</CellChip>
+                    {packet?.download_url ? <a href={packet.download_url} target="_blank" rel="noreferrer" className="btn">Download / preview PDF</a> : null}
+                    {packet ? <span className="sub">{formatDateTime(packet.created_at)}</span> : null}
+                  </Row>
                 </div>
               </InfoBlock>
 
               {/* Step 3 — Ship it: full package + copy affordances */}
               <InfoBlock title="3 · Ship the package">
-                <div style={{ display: "grid", gap: 10 }}>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <button style={qcBtnPrimary(t)} onClick={downloadZip} disabled={zipBusy}>
+                <div className="grid g10">
+                  <Row>
+                    <Btn variant="pri" onClick={downloadZip} disabled={zipBusy}>
                       {zipBusy ? <><Spinner /> Building ZIP…</> : "Download full package (.zip)"}
-                    </button>
-                    <button style={qcBtn(t)} onClick={() => copyText("Bucket ID", detail.intake.bucket_id)}>Copy bucket ID</button>
-                  </div>
-                  <p style={{ margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.4 }}>
+                    </Btn>
+                    <Btn onClick={() => copyText("Bucket ID", detail.intake.bucket_id)}>Copy bucket ID</Btn>
+                  </Row>
+                  <p className="sub">
                     The ZIP bundles every uploaded document, the lender packet PDF, the executive summary, and an editable email template — ready to attach, upload, or archive anywhere.
                   </p>
                 </div>
@@ -1421,114 +1404,110 @@ function LeadDetailPanel({
 
               {/* Step 4 — Draft, then either copy to your inbox OR send from your connected Gmail */}
               <InfoBlock title="4 · Email — draft, then copy or send">
-                <div style={{ display: "grid", gap: 10 }}>
-                  <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
+                <div className="grid g10">
+                  <span className="sub">
                     Draft a lender/vendor email from the analyzed evidence. Copy the subject and body into your own mail client, or add recipients below and send it straight from your connected Gmail with the lender packet plus any Google Drive files attached.
                   </span>
 
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Subject</label>
-                    <div style={{ position: "relative" }}>
-                      <input value={subject} maxLength={512} onChange={(event) => setSubject(event.target.value)} placeholder="Email subject line" style={{ ...inputStyle(t), width: "100%", paddingRight: 40 }} />
-                      <CopyIconButton t={t} disabled={!subject.trim()} onCopy={() => copyText("Subject", subject)} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }} />
-                    </div>
+                  <div className="grid g6">
+                    <Row>
+                      <Lbl>Subject</Lbl>
+                      <span className="sp" />
+                      <CopyIconButton disabled={!subject.trim()} onCopy={() => copyText("Subject", subject)} />
+                    </Row>
+                    <Input value={subject} maxLength={512} onChange={(event) => setSubject(event.target.value)} placeholder="Email subject line" aria-label="Email subject line" />
                   </div>
 
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Body</label>
-                    <div style={{ position: "relative" }}>
-                      <textarea value={body} maxLength={12000} onChange={(event) => setBody(event.target.value)} placeholder="Prepare a draft, or write the email body here" style={{ ...inputStyle(t), width: "100%", minHeight: 200, paddingTop: 10, paddingRight: 40, resize: "vertical", lineHeight: 1.5 }} />
-                      <CopyIconButton t={t} disabled={!body.trim()} onCopy={() => copyText("Body", body)} style={{ position: "absolute", right: 8, top: 8 }} />
-                    </div>
+                  <div className="grid g6">
+                    <Row>
+                      <Lbl>Body</Lbl>
+                      <span className="sp" />
+                      <CopyIconButton disabled={!body.trim()} onCopy={() => copyText("Body", body)} />
+                    </Row>
+                    <Textarea value={body} maxLength={12000} onChange={(event) => setBody(event.target.value)} placeholder="Prepare a draft, or write the email body here" aria-label="Email body" style={{ minHeight: 200, resize: "vertical" }} />
                   </div>
 
                   {/* Recipients — only used by the "Send via your Gmail" path. */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    <div style={{ display: "grid", gap: 6 }}>
-                      <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>To</label>
-                      <input value={toEmails} onChange={(e) => setToEmails(e.target.value)} placeholder="lender@bank.com" style={{ ...inputStyle(t), width: "100%" }} />
-                    </div>
-                    <div style={{ display: "grid", gap: 6 }}>
-                      <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Cc <span style={{ textTransform: "none", fontWeight: 500 }}>(optional)</span></label>
-                      <input value={ccEmails} onChange={(e) => setCcEmails(e.target.value)} placeholder="comma-separated" style={{ ...inputStyle(t), width: "100%" }} />
-                    </div>
+                  <div className="fldgrid two">
+                    <Field label="To">
+                      <Input value={toEmails} onChange={(e) => setToEmails(e.target.value)} placeholder="lender@bank.com" />
+                    </Field>
+                    <Field label="Cc (optional)">
+                      <Input value={ccEmails} onChange={(e) => setCcEmails(e.target.value)} placeholder="comma-separated" />
+                    </Field>
                   </div>
 
                   {/* Selected Google Drive attachments */}
                   {driveFiles.length > 0 ? (
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <Row>
                       {driveFiles.map((f) => (
-                        <span key={f.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: t.surface2, border: `1px solid ${t.line}`, borderRadius: 999, padding: "4px 8px 4px 10px", fontSize: 12, color: t.ink }}>
+                        <span key={f.id} className="chip">
                           <span style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-                          <button
+                          <Linky
                             aria-label={`Remove ${f.name}`}
                             onClick={() => setDriveFiles((prev) => prev.filter((x) => x.id !== f.id))}
-                            style={{ border: "none", background: "transparent", color: t.ink3, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0 }}
                           >
                             ×
-                          </button>
+                          </Linky>
                         </span>
                       ))}
-                    </div>
+                    </Row>
                   ) : null}
 
                   {/* Attachments + secure-bucket access — controls what actually
                       goes out when "Send via your Gmail" is used. */}
-                  <div style={{ display: "grid", gap: 8, border: `1px solid ${t.line}`, borderRadius: 10, padding: "10px 12px" }}>
-                    <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Attach to the email</label>
-                    <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-                      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: t.ink, cursor: "pointer" }}>
+                  <div className="card grid g8">
+                    <Lbl>Attach to the email</Lbl>
+                    <div>
+                      <label className={cx("pick", attachPacket && "on")}>
                         <input type="checkbox" checked={attachPacket} onChange={(e) => setAttachPacket(e.target.checked)} /> Lender packet PDF
                       </label>
-                      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: t.ink, cursor: "pointer" }}>
+                      <label className={cx("pick", attachSummary && "on")}>
                         <input type="checkbox" checked={attachSummary} onChange={(e) => setAttachSummary(e.target.checked)} /> Executive summary (.txt)
                       </label>
-                      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: t.ink, cursor: "pointer" }}>
+                      <label className={cx("pick", attachZip && "on")}>
                         <input type="checkbox" checked={attachZip} onChange={(e) => setAttachZip(e.target.checked)} /> Full package (.zip)
                       </label>
                     </div>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 2 }}>
-                      <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Bucket access</label>
-                      <select value={bucketAccess} onChange={(e) => setBucketAccess(e.target.value as BucketAccessMode)} style={{ ...inputStyle(t), padding: "4px 8px", minWidth: 210 }}>
+                    <Row>
+                      <Lbl>Bucket access</Lbl>
+                      <Select value={bucketAccess} onChange={(e) => setBucketAccess(e.target.value as BucketAccessMode)} aria-label="Bucket access" style={{ minWidth: 210 }}>
                         <option value="login">Vendor login link (invited email)</option>
                         <option value="passcode">Link + access code (no login)</option>
                         <option value="none">No bucket access</option>
-                      </select>
-                      <span style={{ color: t.ink3, fontSize: 12 }}>
+                      </Select>
+                      <span className="sub">
                         {bucketAccess === "passcode"
                           ? "A one-time access code is generated and included in the email."
                           : bucketAccess === "login"
                             ? "Recipient logs in with their invited vendor email."
                             : "The email carries only the attachments above."}
                       </span>
-                    </div>
-                    <span style={{ color: t.ink3, fontSize: 11.5, lineHeight: 1.4 }}>
+                    </Row>
+                    <span className="sub">
                       Files over 8&nbsp;MB (or a combined set over ~18&nbsp;MB) fall back to the secure bucket link instead of attaching.
                     </span>
                   </div>
 
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <button style={qcBtnPrimary(t)} onClick={async () => { setBusy("preview"); try { await previewEmail(); toast.show("Draft ready"); } finally { setBusy(""); } }} disabled={busy !== ""}>
+                  <Row>
+                    <Btn variant="pri" onClick={async () => { setBusy("preview"); try { await previewEmail(); toast.show("Draft ready"); } finally { setBusy(""); } }} disabled={busy !== ""}>
                       {busy === "preview" ? <><Spinner /> Drafting…</> : (subject || body) ? "Regenerate draft" : "Draft email with AI"}
-                    </button>
-                    <button
-                      style={qcBtn(t)}
+                    </Btn>
+                    <Btn
                       disabled={busy !== "" || !subject.trim() || !body.trim() || !toEmails.trim()}
                       title={!subject.trim() || !body.trim() ? "Draft a subject and body first" : !toEmails.trim() ? "Add at least one recipient in the To field" : "Send from your connected Gmail (falls back to firm email)"}
                       onClick={sendEmail}
                     >
                       {busy === "send" ? <><Spinner /> Sending…</> : "Send via your Gmail"}
-                    </button>
-                    <button
-                      style={qcBtn(t)}
+                    </Btn>
+                    <Btn
                       disabled={busy !== ""}
                       title="Attach files from your connected Google Drive"
                       onClick={() => setDrivePickerOpen(true)}
                     >
                       Attach from Drive{driveFiles.length ? ` (${driveFiles.length})` : ""}
-                    </button>
-                    <button
-                      style={qcBtn(t)}
+                    </Btn>
+                    <Btn
                       disabled={!bookingLink.data?.url}
                       title={bookingLink.data?.url ? "Append your booking link to the body" : "Enable your Booking Page first (Booking Page in the sidebar)"}
                       onClick={() => {
@@ -1539,8 +1518,8 @@ function LeadDetailPanel({
                       }}
                     >
                       Insert booking link
-                    </button>
-                  </div>
+                    </Btn>
+                  </Row>
                 </div>
               </InfoBlock>
 
@@ -1549,16 +1528,16 @@ function LeadDetailPanel({
                   Program Fit panel's dealer-only gate. */}
               {!isRealEstate ? (
                 <InfoBlock title="Prepare banker submission">
-                  <div style={{ display: "grid", gap: 10 }}>
-                    <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
+                  <div className="grid g10">
+                    <span className="sub">
                       Assemble a normalized JSON payload — borrower, entity, key metrics, and program fit — for
                       an admin to hand to the banker's own intake system. SSN / personal Tax ID are collected
                       transiently in the modal and never stored.
                     </span>
                     <div>
-                      <button style={qcBtnPrimary(t)} onClick={() => setBankerModalOpen(true)}>
+                      <Btn variant="pri" onClick={() => setBankerModalOpen(true)}>
                         Open banker submission
-                      </button>
+                      </Btn>
                     </div>
                   </div>
                 </InfoBlock>
@@ -1615,7 +1594,7 @@ function LeadDetailPanel({
           }}
         />
       ) : null}
-    </Card>
+    </div>
   );
 }
 
@@ -1630,7 +1609,6 @@ function ConfirmDeleteLeadModal({
   expectedName: string;
   onConfirm: (confirmName: string) => Promise<void>;
 }) {
-  const { t } = useTheme();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
 
@@ -1647,24 +1625,26 @@ function ConfirmDeleteLeadModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Permanently delete this lead" icon="alert" size="md">
-      <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
-        <p style={{ margin: 0, color: t.ink, fontSize: 13, lineHeight: 1.5 }}>
-          This permanently erases <strong>everything</strong> for <strong style={{ color: t.ink }}>{expectedName}</strong> —
-          uploaded documents, generated PDFs, chat history, and all database records. This cannot be undone.
-        </p>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 6 }}>
-          <button style={qcBtn(t)} onClick={onClose} disabled={busy}>Cancel</button>
-          <button
-            style={{ ...qcBtnPrimary(t), background: t.danger, opacity: busy ? 0.6 : 1 }}
-            disabled={busy}
-            onClick={handleConfirm}
-          >
+    <Drawer
+      open={open}
+      onClose={onClose}
+      width="md"
+      title="Permanently delete this lead"
+      footer={
+        <>
+          <Btn onClick={onClose} disabled={busy}>Cancel</Btn>
+          <span className="sp" />
+          <Btn className="danger" disabled={busy} onClick={handleConfirm}>
             {busy ? <><Spinner /> Deleting…</> : "Delete permanently"}
-          </button>
-        </div>
-      </div>
-    </Modal>
+          </Btn>
+        </>
+      }
+    >
+      <p>
+        This permanently erases <strong>everything</strong> for <strong>{expectedName}</strong> —
+        uploaded documents, generated PDFs, chat history, and all database records. This cannot be undone.
+      </p>
+    </Drawer>
   );
 }
 
@@ -1689,7 +1669,6 @@ function DriveFilePicker({
   maxSelect?: number;
   onConfirm?: () => void;
 }) {
-  const { t } = useTheme();
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState("");
   // Only fetch once the picker is open; hitting /google/drive/files when the
@@ -1707,82 +1686,86 @@ function DriveFilePicker({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={ingest ? "Add from Google Drive" : "Attach from Google Drive"} icon="paperclip" size="md">
-      <div style={{ display: "grid", gap: 12, padding: 16 }}>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") setSubmitted(query.trim()); }}
-            placeholder="Search your Drive files by name…"
-            style={{ ...inputStyle(t), flex: 1 }}
-          />
-          <button style={qcBtn(t)} onClick={() => setSubmitted(query.trim())}>Search</button>
-        </div>
-        <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.4 }}>
-          {ingest
-            ? "Only files you open or create with Qualified Commercial are visible here (Drive “file” scope). Selected files are imported into this file’s document set and analyzed by the AI. Files over 25 MB are skipped."
-            : "Only files you open or create with Qualified Commercial are visible here (Drive “file” scope). Files over 8 MB, or a combined attachment set over ~18 MB, are shared via the secure bucket instead of attached."}
-        </span>
-        {isLoading || isFetching ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, color: t.ink3, fontSize: 13, padding: "12px 0" }}>
-            <Spinner /> Loading Drive files…
-          </div>
-        ) : isError ? (
-          <div style={{ display: "grid", gap: 8 }}>
-            <span style={{ color: t.ink3, fontSize: 13 }}>Couldn’t reach Google Drive. Make sure your Google account is connected in Settings → Connections.</span>
-            <button style={qcBtn(t)} onClick={() => refetch()}>Retry</button>
-          </div>
-        ) : files.length === 0 ? (
-          <span style={{ color: t.ink3, fontSize: 13, padding: "12px 0" }}>
-            {submitted ? "No matching Drive files." : "No Drive files found. Connect Google Drive in Settings → Connections, or search by name."}
-          </span>
+    <Drawer
+      open={open}
+      onClose={onClose}
+      width="md"
+      title={ingest ? "Add from Google Drive" : "Attach from Google Drive"}
+      bodyClass="grid g10"
+      footer={
+        ingest ? (
+          <>
+            <Btn onClick={onClose} disabled={busy}>Cancel</Btn>
+            <span className="sp" />
+            <Btn variant="pri" onClick={() => onConfirm?.()} disabled={busy || selectedIds.length === 0}>
+              {busy ? <><Spinner /> Importing…</> : `Import & analyze${selectedIds.length ? ` (${selectedIds.length})` : ""}`}
+            </Btn>
+          </>
         ) : (
-          <div style={{ display: "grid", gap: 4, maxHeight: 360, overflow: "auto" }}>
-            {files.map((f) => {
-              const picked = selectedIds.includes(f.id);
-              const atCap = maxSelect !== undefined && !picked && selectedIds.length >= maxSelect;
-              return (
-                <button
-                  key={f.id}
-                  disabled={atCap}
-                  title={atCap ? `Up to ${maxSelect} files per import` : undefined}
-                  onClick={() => (picked ? onUnpick(f.id) : onPick(f))}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 10, textAlign: "left",
-                    padding: "8px 10px", borderRadius: 8, cursor: atCap ? "not-allowed" : "pointer",
-                    opacity: atCap ? 0.5 : 1,
-                    border: `1px solid ${picked ? t.brand : t.line}`,
-                    background: picked ? t.brandSoft : "transparent",
-                  }}
-                >
-                  <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: t.ink, fontSize: 13 }}>{f.name}</span>
-                  <span style={{ color: t.ink3, fontSize: 11 }}>{fmtSize(f.size)}</span>
-                  <span style={{ color: picked ? t.brand : t.ink3, fontSize: 12, fontWeight: 800 }}>{picked ? "Added" : "Add"}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          {ingest ? (
-            <>
-              <button style={qcBtn(t)} onClick={onClose} disabled={busy}>Cancel</button>
-              <button style={qcBtnPrimary(t)} onClick={() => onConfirm?.()} disabled={busy || selectedIds.length === 0}>
-                {busy ? <><Spinner /> Importing…</> : `Import & analyze${selectedIds.length ? ` (${selectedIds.length})` : ""}`}
-              </button>
-            </>
-          ) : (
-            <button style={qcBtnPrimary(t)} onClick={onClose}>Done{selectedIds.length ? ` (${selectedIds.length})` : ""}</button>
-          )}
+          <>
+            <span className="sp" />
+            <Btn variant="pri" onClick={onClose}>Done{selectedIds.length ? ` (${selectedIds.length})` : ""}</Btn>
+          </>
+        )
+      }
+    >
+      <Row>
+        <Input
+          grow
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") setSubmitted(query.trim()); }}
+          placeholder="Search your Drive files by name…"
+          aria-label="Search your Drive files by name"
+        />
+        <Btn onClick={() => setSubmitted(query.trim())}>Search</Btn>
+      </Row>
+      <span className="sub">
+        {ingest
+          ? "Only files you open or create with Qualified Commercial are visible here (Drive “file” scope). Selected files are imported into this file’s document set and analyzed by the AI. Files over 25 MB are skipped."
+          : "Only files you open or create with Qualified Commercial are visible here (Drive “file” scope). Files over 8 MB, or a combined attachment set over ~18 MB, are shared via the secure bucket instead of attached."}
+      </span>
+      {isLoading || isFetching ? (
+        <div className="row sub">
+          <Spinner /> Loading Drive files…
         </div>
-      </div>
-    </Modal>
+      ) : isError ? (
+        <div className="grid g8">
+          <span className="sub">Couldn’t reach Google Drive. Make sure your Google account is connected in Settings → Connections.</span>
+          <div><Btn onClick={() => refetch()}>Retry</Btn></div>
+        </div>
+      ) : files.length === 0 ? (
+        <span className="sub">
+          {submitted ? "No matching Drive files." : "No Drive files found. Connect Google Drive in Settings → Connections, or search by name."}
+        </span>
+      ) : (
+        <div className="picklist">
+          {files.map((f) => {
+            const picked = selectedIds.includes(f.id);
+            const atCap = maxSelect !== undefined && !picked && selectedIds.length >= maxSelect;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                className={cx("pick", picked && "on")}
+                disabled={atCap}
+                title={atCap ? `Up to ${maxSelect} files per import` : undefined}
+                onClick={() => (picked ? onUnpick(f.id) : onPick(f))}
+                style={{ textAlign: "left", opacity: atCap ? 0.5 : 1, cursor: atCap ? "not-allowed" : undefined }}
+              >
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                <span className="sub">{fmtSize(f.size)}</span>
+                <CellChip tone={picked ? "acc" : "mut"}>{picked ? "Added" : "Add"}</CellChip>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </Drawer>
   );
 }
 
 function ClientConversation({ adapter, clientName }: { adapter: LeadCockpitAdapter; clientName?: string | null }) {
-  const { t } = useTheme();
   const [messages, setMessages] = useState<ClientThreadMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
@@ -1817,65 +1800,63 @@ function ClientConversation({ adapter, clientName }: { adapter: LeadCockpitAdapt
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ border: `1px solid ${t.warn}`, background: t.warnBg, borderRadius: 10, padding: "9px 12px", color: t.warn, fontSize: 12, lineHeight: 1.45 }}>
+    <div className="grid g10">
+      <WarnLine>
         This is the <strong>client-facing</strong> conversation{clientName ? ` with ${clientName}` : ""}. Anything you send here is visible to the client and is attributed to you as their underwriter. Your private notes stay in the Conversation tab.
-      </div>
+      </WarnLine>
 
-      <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface, maxHeight: 420, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-        {loading ? (
-          <span style={{ color: t.ink3, fontSize: 13 }}>Loading client conversation…</span>
-        ) : messages.length === 0 ? (
-          <span style={{ color: t.ink3, fontSize: 13 }}>No messages in the client conversation yet.</span>
-        ) : (
-          messages.map((m) => {
-            const isClient = m.role === "user" && !(m.author_name || "").toLowerCase().startsWith("underwriter");
-            const isAI = m.role === "assistant";
-            const align = isClient ? "flex-start" : "flex-end";
-            const bg = isAI ? t.surface2 : isClient ? t.surface2 : t.brandSoft;
-            const label = isAI ? "AI" : m.author_name || (isClient ? clientName || "Client" : "You");
-            return (
-              <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: align }}>
-                <span style={{ color: t.ink3, fontSize: 10, marginBottom: 2 }}>{label}</span>
-                <div style={{ maxWidth: "82%", background: bg, color: t.ink, borderRadius: 10, padding: "8px 11px", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap", border: `1px solid ${t.line}` }}>
-                  {m.content}
+      <div className="card">
+        <div className="thr">
+          {loading ? (
+            <span className="thr-empty">Loading client conversation…</span>
+          ) : messages.length === 0 ? (
+            <span className="thr-empty">No messages in the client conversation yet.</span>
+          ) : (
+            messages.map((m) => {
+              const isClient = m.role === "user" && !(m.author_name || "").toLowerCase().startsWith("underwriter");
+              const isAI = m.role === "assistant";
+              const label = isAI ? "AI" : m.author_name || (isClient ? clientName || "Client" : "You");
+              return (
+                <div key={m.id} className={cx("msg", isAI ? "ai" : isClient ? "client-ch" : "mine")}>
+                  <div className="msg-h"><span className="msg-who">{label}</span></div>
+                  <div className="msg-b">{m.content}</div>
                 </div>
+              );
+            })
+          )}
+          {sending ? (
+            <div className="msg ai">
+              <div className="msg-h"><span className="msg-who">AI</span></div>
+              <div className="msg-b">
+                <TypingDots label="Client AI is responding" />
               </div>
-            );
-          })
-        )}
-        {sending ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-            <span style={{ color: t.ink3, fontSize: 10, marginBottom: 2 }}>AI</span>
-            <div style={{ background: t.surface2, borderRadius: 10, padding: "8px 11px", border: `1px solid ${t.line}` }}>
-              <TypingDots label="Client AI is responding" />
             </div>
+          ) : null}
+        </div>
+
+        {error ? <StatusLine tone="bad" className="mt">{error}</StatusLine> : null}
+
+        <div className="composer">
+          <Lbl>Reply on behalf (as underwriter)</Lbl>
+          <Textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter sends; Shift+Enter inserts a newline.
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            placeholder="Answer the client here — Enter to send, Shift+Enter for a new line. They will see this and the AI will respond."
+            aria-label="Reply on behalf (as underwriter)"
+          />
+          <div className="composer-row">
+            <Btn variant="pri" onClick={send} disabled={sending || !draft.trim()}>
+              {sending ? <><Spinner /> Sending…</> : "Send to client"}
+            </Btn>
+            <span className="hint">Visible to the client · attributed to you</span>
           </div>
-        ) : null}
-      </div>
-
-      {error ? <div style={{ color: t.danger, fontSize: 12 }}>{error}</div> : null}
-
-      <div style={{ display: "grid", gap: 6 }}>
-        <label style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>Reply on behalf (as underwriter)</label>
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter sends; Shift+Enter inserts a newline.
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-          placeholder="Answer the client here — Enter to send, Shift+Enter for a new line. They will see this and the AI will respond."
-          style={{ ...inputStyle(t), minHeight: 90, paddingTop: 10, resize: "vertical", lineHeight: 1.5 }}
-        />
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button style={qcBtnPrimary(t)} onClick={send} disabled={sending || !draft.trim()}>
-            {sending ? <><Spinner /> Sending…</> : "Send to client"}
-          </button>
-          <span style={{ color: t.ink3, fontSize: 12 }}>Visible to the client · attributed to you</span>
         </div>
       </div>
     </div>
@@ -1915,7 +1896,6 @@ function CreateLeadModal({
   onCreate: (payload: CreateLeadPayload) => void | Promise<void>;
   creating: boolean;
 }) {
-  const { t } = useTheme();
   const [variant, setVariant] = useState<LeadVariant>("dealer");
   const [industry, setIndustry] = useState<string>("other");
   const [intent, setIntent] = useState<string>("working_capital");
@@ -1936,7 +1916,6 @@ function CreateLeadModal({
 
   const isRE = variant === "real_estate";
   const isMS = variant === "main_street";
-  const label = (text: string) => ({ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: 1, marginBottom: 4, display: "block" });
   const num = (s: string) => (s.trim() === "" ? undefined : Number(s));
 
   function submit() {
@@ -1964,164 +1943,153 @@ function CreateLeadModal({
   }
 
   return (
-    <Modal open onClose={onClose} title="Create AI underwriter lead" size="md">
-      <div style={{ display: "grid", gap: 12, padding: 4 }}>
-        <p style={{ margin: 0, color: t.ink3, fontSize: 13, lineHeight: 1.45 }}>
-          Create a lead on behalf of a client and start underwriting now. The client can log in later with this email (they receive a secure code by email).
-        </p>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div>
-            <label style={label("Type")}>Lead type</label>
-            <select value={variant} onChange={(e) => setVariant(e.target.value as LeadVariant)} style={{ ...inputStyle(t), width: "100%" }}>
-              <option value="dealer">Dealer</option>
-              <option value="real_estate">Real estate</option>
-              <option value="main_street">Main Street (operating business)</option>
-              <option value="mca_refinance">MCA refinance</option>
-            </select>
-          </div>
-          <div>
-            <label style={label("Language")}>Preferred language (client)</label>
-            <select value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value as "en" | "es")} style={{ ...inputStyle(t), width: "100%" }}>
-              <option value="en">English</option>
-              <option value="es">Español (Spanish)</option>
-            </select>
-          </div>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div>
-            <label style={label("Name")}>Client full name *</label>
-            <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" style={{ ...inputStyle(t), width: "100%" }} />
-          </div>
-          <div>
-            <label style={label("Email")}>Client email *</label>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" style={{ ...inputStyle(t), width: "100%" }} />
-          </div>
-          <div>
-            <label style={label("Phone")}>Phone</label>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" style={{ ...inputStyle(t), width: "100%" }} />
-          </div>
-          {!isRE ? (
-            <div>
-              <label style={label("Business")}>Business name</label>
-              <input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Dealership / business" style={{ ...inputStyle(t), width: "100%" }} />
-            </div>
-          ) : (
-            <div>
-              <label style={label("Investor")}>Investor / entity name</label>
-              <input value={investorName} onChange={(e) => setInvestorName(e.target.value)} placeholder="Holdings LLC" style={{ ...inputStyle(t), width: "100%" }} />
-            </div>
-          )}
-        </div>
-
-        {isMS ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div>
-              <label style={label("Industry")}>Industry *</label>
-              <select value={industry} onChange={(e) => setIndustry(e.target.value)} style={{ ...inputStyle(t), width: "100%" }}>
-                {MAIN_STREET_INDUSTRIES.map((i) => (
-                  <option key={i.slug} value={i.slug}>{i.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label style={label("Looking for")}>What they need *</label>
-              <select value={intent} onChange={(e) => setIntent(e.target.value)} style={{ ...inputStyle(t), width: "100%" }}>
-                {MAIN_STREET_INTENTS.map((i) => (
-                  <option key={i.slug} value={i.slug}>{i.label}</option>
-                ))}
-              </select>
-            </div>
-            <p style={{ gridColumn: "1 / -1", margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
-              {LENDING_INTENTS.has(intent)
-                ? "These decide the document checklist and which programs get screened, so they are worth getting right at creation."
-                : "This is a qualification conversation, not a loan file — no documents will be requested and no fundability verdict is computed."}
-            </p>
-            <p style={{ gridColumn: "1 / -1", margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>
-              Operating-business leads have no client-facing room yet, so no login link is sent. Work the file from here.
-            </p>
-          </div>
-        ) : null}
-
-        {isRE ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div style={{ gridColumn: "1 / -1" }}>
-              <label style={label("Property")}>Target property address</label>
-              <input value={propertyAddress} onChange={(e) => setPropertyAddress(e.target.value)} placeholder="123 Main St, City ST" style={{ ...inputStyle(t), width: "100%" }} />
-            </div>
-            <div>
-              <label style={label("Transaction")}>Transaction type</label>
-              <input value={transactionType} onChange={(e) => setTransactionType(e.target.value)} placeholder="purchase / refinance / cash-out" style={{ ...inputStyle(t), width: "100%" }} />
-            </div>
-            <div>
-              <label style={label("Credit")}>Estimated credit tier</label>
-              <input value={creditTier} onChange={(e) => setCreditTier(e.target.value)} placeholder="e.g. 700+" style={{ ...inputStyle(t), width: "100%" }} />
-            </div>
-            <div>
-              <label style={label("Amount")}>Requested amount ($)</label>
-              <input value={requestedAmount} onChange={(e) => setRequestedAmount(e.target.value)} inputMode="numeric" placeholder="500000" style={{ ...inputStyle(t), width: "100%" }} />
-            </div>
-            <div>
-              <label style={label("Value")}>Property value / price ($)</label>
-              <input value={propertyValue} onChange={(e) => setPropertyValue(e.target.value)} inputMode="numeric" placeholder="800000" style={{ ...inputStyle(t), width: "100%" }} />
-            </div>
-            <div>
-              <label style={label("Rent")}>Monthly rent ($)</label>
-              <input value={monthlyRent} onChange={(e) => setMonthlyRent(e.target.value)} inputMode="numeric" placeholder="4500" style={{ ...inputStyle(t), width: "100%" }} />
-            </div>
-          </div>
-        ) : null}
-
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: t.ink2, cursor: "pointer" }}>
-          <input type="checkbox" checked={notifyClient} onChange={(e) => setNotifyClient(e.target.checked)} />
-          Email the client a secure login/resume link now
-        </label>
-
-        {error ? <div style={{ color: t.danger, fontSize: 12 }}>{error}</div> : null}
-
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
-          <button style={qcBtn(t)} onClick={onClose} disabled={creating}>Cancel</button>
-          <button style={qcBtnPrimary(t)} onClick={submit} disabled={creating}>
+    <Drawer
+      open
+      onClose={onClose}
+      width="md"
+      title="Create AI underwriter lead"
+      bodyClass="grid g10"
+      footer={
+        <>
+          <Btn onClick={onClose} disabled={creating}>Cancel</Btn>
+          <span className="sp" />
+          <Btn variant="pri" onClick={submit} disabled={creating}>
             {creating ? <><Spinner /> Creating…</> : "Create lead"}
-          </button>
-        </div>
+          </Btn>
+        </>
+      }
+    >
+      <p className="sub">
+        Create a lead on behalf of a client and start underwriting now. The client can log in later with this email (they receive a secure code by email).
+      </p>
+
+      <div className="fldgrid two">
+        <Field label="Lead type">
+          <Select value={variant} onChange={(e) => setVariant(e.target.value as LeadVariant)}>
+            <option value="dealer">Dealer</option>
+            <option value="real_estate">Real estate</option>
+            <option value="main_street">Main Street (operating business)</option>
+            <option value="mca_refinance">MCA refinance</option>
+          </Select>
+        </Field>
+        <Field label="Preferred language (client)">
+          <Select value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value as "en" | "es")}>
+            <option value="en">English</option>
+            <option value="es">Español (Spanish)</option>
+          </Select>
+        </Field>
       </div>
-    </Modal>
+
+      <div className="fldgrid two">
+        <Field label="Client full name *">
+          <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" />
+        </Field>
+        <Field label="Client email *">
+          <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" />
+        </Field>
+        <Field label="Phone">
+          <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" />
+        </Field>
+        {!isRE ? (
+          <Field label="Business name">
+            <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Dealership / business" />
+          </Field>
+        ) : (
+          <Field label="Investor / entity name">
+            <Input value={investorName} onChange={(e) => setInvestorName(e.target.value)} placeholder="Holdings LLC" />
+          </Field>
+        )}
+      </div>
+
+      {isMS ? (
+        <div className="fldgrid two">
+          <Field label="Industry *">
+            <Select value={industry} onChange={(e) => setIndustry(e.target.value)}>
+              {MAIN_STREET_INDUSTRIES.map((i) => (
+                <option key={i.slug} value={i.slug}>{i.label}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="What they need *">
+            <Select value={intent} onChange={(e) => setIntent(e.target.value)}>
+              {MAIN_STREET_INTENTS.map((i) => (
+                <option key={i.slug} value={i.slug}>{i.label}</option>
+              ))}
+            </Select>
+          </Field>
+          <p className="sub" style={{ gridColumn: "1 / -1" }}>
+            {LENDING_INTENTS.has(intent)
+              ? "These decide the document checklist and which programs get screened, so they are worth getting right at creation."
+              : "This is a qualification conversation, not a loan file — no documents will be requested and no fundability verdict is computed."}
+          </p>
+          <p className="sub" style={{ gridColumn: "1 / -1" }}>
+            Operating-business leads have no client-facing room yet, so no login link is sent. Work the file from here.
+          </p>
+        </div>
+      ) : null}
+
+      {isRE ? (
+        <div className="fldgrid two">
+          <div style={{ gridColumn: "1 / -1" }}>
+            <Field label="Target property address">
+              <Input value={propertyAddress} onChange={(e) => setPropertyAddress(e.target.value)} placeholder="123 Main St, City ST" />
+            </Field>
+          </div>
+          <Field label="Transaction type">
+            <Input value={transactionType} onChange={(e) => setTransactionType(e.target.value)} placeholder="purchase / refinance / cash-out" />
+          </Field>
+          <Field label="Estimated credit tier">
+            <Input value={creditTier} onChange={(e) => setCreditTier(e.target.value)} placeholder="e.g. 700+" />
+          </Field>
+          <Field label="Requested amount ($)">
+            <Input value={requestedAmount} onChange={(e) => setRequestedAmount(e.target.value)} inputMode="numeric" placeholder="500000" />
+          </Field>
+          <Field label="Property value / price ($)">
+            <Input value={propertyValue} onChange={(e) => setPropertyValue(e.target.value)} inputMode="numeric" placeholder="800000" />
+          </Field>
+          <Field label="Monthly rent ($)">
+            <Input value={monthlyRent} onChange={(e) => setMonthlyRent(e.target.value)} inputMode="numeric" placeholder="4500" />
+          </Field>
+        </div>
+      ) : null}
+
+      <label className={cx("pick", notifyClient && "on")}>
+        <input type="checkbox" checked={notifyClient} onChange={(e) => setNotifyClient(e.target.checked)} />
+        Email the client a secure login/resume link now
+      </label>
+
+      {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
+    </Drawer>
   );
 }
 
-function Stat({ title, value, sub, t, good, warn }: { title: string; value: string; sub: string; t: ReturnType<typeof useTheme>["t"]; good?: boolean; warn?: boolean }) {
+function Stat({ title, value, sub, good, warn }: { title: string; value: string; sub: string; good?: boolean; warn?: boolean }) {
   return (
-    <Card pad={12}>
-      <div style={{ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1 }}>{title}</div>
-      <div style={{ marginTop: 6, color: good ? t.profit : warn ? t.warn : t.ink, fontSize: 24, fontWeight: 900 }}>{value}</div>
-      <div style={{ color: t.ink3, fontSize: 12 }}>{sub}</div>
-    </Card>
+    <div className="kpi">
+      <div className="lbl">{title}</div>
+      {/* Tone is data-derived (good / warn), so it stays an inline value. */}
+      <div className="knum num" style={good ? { color: "var(--ok)" } : warn ? { color: "var(--warn)" } : undefined}>{value}</div>
+      <div className="sub">{sub}</div>
+    </div>
   );
 }
 
-function CopyIconButton({ t, onCopy, disabled, style }: { t: ReturnType<typeof useTheme>["t"]; onCopy: () => void; disabled?: boolean; style?: CSSProperties }) {
+// `t` and `style` are still accepted (and ignored) so existing call sites keep
+// compiling; the button is now the shared `.btn.sm.iconbtn`.
+function CopyIconButton({ onCopy, disabled, style }: { t?: unknown; onCopy: () => void; disabled?: boolean; style?: CSSProperties }) {
   return (
-    <button
-      type="button"
+    <IconBtn
       onClick={onCopy}
       disabled={disabled}
       title="Copy"
       aria-label="Copy"
-      style={{
-        display: "inline-flex", alignItems: "center", justifyContent: "center",
-        width: 28, height: 28, borderRadius: 7, border: `1px solid ${t.line}`,
-        background: t.surface2, color: disabled ? t.ink4 : t.ink2,
-        cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, padding: 0,
-        ...style,
-      }}
+      style={style}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
       </svg>
-    </button>
+    </IconBtn>
   );
 }
 
@@ -2146,91 +2114,63 @@ function Spinner() {
 }
 
 function InfoBlock({ title, children }: { title: string; children: React.ReactNode }) {
-  const { t } = useTheme();
-  return (
-    <section style={{ display: "grid", gap: 8 }}>
-      <h3 style={{ margin: 0, color: t.ink, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>{title}</h3>
-      <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: 12, background: t.surface2 }}>{children}</div>
-    </section>
-  );
+  return <Panel title={title}>{children}</Panel>;
 }
 
 function Line({ label, value }: { label: string; value: string }) {
-  const { t } = useTheme();
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "140px minmax(0,1fr)", gap: 10, padding: "4px 0" }}>
-      <span style={{ color: t.ink3, fontSize: 12 }}>{label}</span>
-      <strong style={{ color: t.ink, fontSize: 13, overflowWrap: "anywhere" }}>{value}</strong>
+    <div className="kv">
+      <span className="sub">{label}</span>
+      <b style={{ overflowWrap: "anywhere" }}>{value}</b>
     </div>
   );
 }
 
 function CompactList({ rows, empty }: { rows: Array<{ title: string; body: string }>; empty: string }) {
-  const { t } = useTheme();
-  if (!rows.length) return <div style={{ color: t.ink3, fontSize: 13 }}>{empty}</div>;
+  if (!rows.length) return <div className="sub">{empty}</div>;
   return (
-    <div style={{ display: "grid", gap: 8 }}>
+    <div className="grid g8">
       {rows.slice(0, 10).map((row, index) => (
-        <div key={`${row.title}-${index}`} style={{ display: "grid", gap: 2 }}>
-          <strong style={{ color: t.ink, fontSize: 13 }}>{row.title}</strong>
-          <span style={{ color: t.ink2, fontSize: 12, lineHeight: 1.4 }}>{row.body}</span>
+        <div key={`${row.title}-${index}`} className="grid g4">
+          <strong>{row.title}</strong>
+          <span className="sub">{row.body}</span>
         </div>
       ))}
     </div>
   );
 }
 
-function gridHeader(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    display: "grid",
-    gridTemplateColumns: "minmax(220px,1.2fr) minmax(190px,.9fr) 170px minmax(240px,1.2fr) 100px",
-    gap: 12,
-    padding: "12px 16px",
-    borderBottom: `1px solid ${t.line}`,
-    color: t.ink3,
-    fontSize: 11,
-    fontWeight: 900,
-    textTransform: "uppercase" as const,
-    letterSpacing: 1,
-  };
-}
+// The lead list is a grid of <button> rows rather than a <table>: each row has
+// to stay focusable and Enter-activatable, which a <tr onClick> is not. The
+// column track is bespoke, so it stays an inline value.
+// minmax(0,…) on the text columns so they shrink + ellipsize instead of forcing
+// horizontal overflow when the sidebar is expanded / on smaller screens (a
+// fixed floor here clipped the name column).
+const LEAD_COLS = "minmax(0,1.3fr) minmax(0,1fr) minmax(120px,150px) minmax(0,1.3fr) 90px";
 
-function rowStyle(t: ReturnType<typeof useTheme>["t"], active: boolean) {
+function rowStyle(active: boolean) {
   return {
     width: "100%",
     display: "grid",
-    // minmax(0,…) on the text columns so they shrink + ellipsize instead of
-    // forcing horizontal overflow when the sidebar is expanded / on smaller
-    // screens (a fixed floor here clipped the name column).
-    gridTemplateColumns: "minmax(0,1.3fr) minmax(0,1fr) minmax(120px,150px) minmax(0,1.3fr) 90px",
+    gridTemplateColumns: LEAD_COLS,
     gap: 12,
     alignItems: "center",
     padding: "15px 16px",
     border: 0,
-    borderBottom: `1px solid ${t.line}`,
-    background: active ? t.brandSoft : "transparent",
+    borderBottom: "1px solid var(--line)",
+    background: active ? "var(--accent-100)" : "transparent",
     textAlign: "left" as const,
     cursor: "pointer",
+    color: "inherit",
+    font: "inherit",
   };
 }
 
-function inputStyle(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    minHeight: 42,
-    border: `1px solid ${t.line}`,
-    borderRadius: 12,
-    background: t.surface,
-    color: t.ink,
-    padding: "0 12px",
-    outline: "none",
-  };
-}
-
-function probabilityTone(t: ReturnType<typeof useTheme>["t"], value?: string | null) {
-  if (value === "Good probability - book call") return { bg: t.profitBg, fg: t.profit };
-  if (value === "Poor probability based on current file") return { bg: t.dangerBg, fg: t.danger };
-  if (value === "Promising but needs one clarification") return { bg: t.warnBg, fg: t.warn };
-  return { bg: t.surface2, fg: t.ink2 };
+function probabilityTone(value?: string | null): ChipTone {
+  if (value === "Good probability - book call") return "ok";
+  if (value === "Poor probability based on current file") return "bad";
+  if (value === "Promising but needs one clarification") return "warn";
+  return "mut";
 }
 
 function variantLabel(value?: string | null) {

@@ -8,18 +8,47 @@
 //   GET  /admin/capital-partner-applications/{id}
 //   POST /admin/capital-partner-applications/{id}/decision
 //
-// Single-page UI: status filter pills + list. Clicking a row opens an
-// inline detail/decision panel (modal-style overlay) where the operator
-// reviews the full application, adds notes, and approves or denies. On
-// approval, an optional "Promote to lender roster" checkbox stamps a
-// row in the existing `lenders` table so deals can route immediately.
+// Single-page UI: status filter pills + list. Clicking a row opens the
+// detail/decision drawer where the operator reviews the full application,
+// adds notes, and approves or denies. On approval, an optional "Promote to
+// lender roster" checkbox stamps a row in the existing `lenders` table so
+// deals can route immediately.
+//
+// Styling: migrated off the inline token objects onto the plain-CSS design
+// system in globals.css / app-extras.css. Every control, endpoint, permission
+// gate, keyboard affordance and empty state from the inline version survives;
+// only the surface vocabulary changed:
+//   hand-rolled filter pills   → Seg (as="filter", counts kept in the labels)
+//   CSS-grid faux table        → Table/Tr/Td, with the row's Enter/Space
+//                                affordance carried by a real button on the
+//                                company name (a <tr> cannot be role="button"
+//                                without destroying the table semantics)
+//   hand-rolled modal overlay  → ds/Drawer, which additionally brings Escape,
+//                                body scroll lock and focus restore
+//   status stripe + Pill       → CellChip tone (the stripe was a second copy
+//                                of the same signal)
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
+import {
+  Btn,
+  Card,
+  CellChip,
+  Field,
+  Linky,
+  PageHeader,
+  Panel,
+  Seg,
+  StatusLine,
+  Table,
+  Td,
+  Textarea,
+  Tr,
+  cx,
+  type ChipTone,
+} from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
 import {
@@ -30,7 +59,6 @@ import {
   type CapitalPartnerApp,
   type CapitalPartnerStatus,
 } from "@/hooks/useApi";
-import { withAlpha } from "@/components/design-system/tokens";
 
 type FilterId = CapitalPartnerStatus | "all";
 
@@ -41,10 +69,11 @@ const FILTERS: { id: FilterId; label: string }[] = [
   { id: "denied", label: "Denied" },
 ];
 
-function statusAccent(t: ReturnType<typeof useTheme>["t"], s: CapitalPartnerStatus) {
-  if (s === "approved") return { label: "Approved", bg: t.profitBg, fg: t.profit };
-  if (s === "denied") return { label: "Denied", bg: t.dangerBg, fg: t.danger };
-  return { label: "Pending", bg: t.warnBg, fg: t.warn };
+/** Status → the chip vocabulary. Was a palette lookup off the theme object. */
+function statusMeta(s: CapitalPartnerStatus): { label: string; tone: ChipTone } {
+  if (s === "approved") return { label: "Approved", tone: "ok" };
+  if (s === "denied") return { label: "Denied", tone: "bad" };
+  return { label: "Pending", tone: "warn" };
 }
 
 const fmtUsd = (n: number | null | undefined) => {
@@ -57,7 +86,6 @@ const fmtUsd = (n: number | null | undefined) => {
 };
 
 export default function CapitalPartnerApplicationsPage() {
-  const { t } = useTheme();
   const profile = useActiveProfile();
   const router = useRouter();
   const [filter, setFilter] = useState<FilterId>("pending");
@@ -93,293 +121,134 @@ export default function CapitalPartnerApplicationsPage() {
 
   if (profile.role !== Role.SUPER_ADMIN) {
     return (
-      <div style={{ padding: 24, maxWidth: 720, margin: "0 auto" }}>
-        <Card pad={28}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>
-            Super-admin only
-          </div>
-          <div style={{ fontSize: 13, color: t.ink2, marginTop: 6, lineHeight: 1.5 }}>
-            Capital partner applications can only be reviewed by super-admin.
-          </div>
-          <button onClick={() => router.push("/")} style={{ ...qcBtn(t), marginTop: 14 }}>
-            Back to dashboard
-          </button>
-        </Card>
-      </div>
+      <Panel title="Super-admin only">
+        <div className="sub">
+          Capital partner applications can only be reviewed by super-admin.
+        </div>
+        <div className="row mt">
+          <Btn onClick={() => router.push("/")}>Back to dashboard</Btn>
+        </div>
+      </Panel>
     );
   }
 
   return (
-    <div
-      style={{
-        padding: 24,
-        maxWidth: 1400,
-        margin: "0 auto",
-        display: "flex",
-        flexDirection: "column",
-        gap: 16,
-      }}
-    >
-      <div>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 24,
-            fontWeight: 800,
-            color: t.ink,
-            letterSpacing: -0.4,
-          }}
-        >
-          Capital partner applications
-        </h1>
-        <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
-          Submissions from qualifiedcommercial.com/lenders/apply. Click a row to
-          review and approve / deny. Approval can optionally promote the
-          firm into the lender roster.
-        </div>
-      </div>
-
-      {/* Filter pills */}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {FILTERS.map((f) => {
-          const active = filter === f.id;
-          const count = f.id === "all" ? rows.length : counts[f.id] ?? 0;
-          const accent =
-            f.id === "approved"
-              ? { fg: t.profit, bg: t.profitBg }
-              : f.id === "denied"
-                ? { fg: t.danger, bg: t.dangerBg }
-                : f.id === "pending"
-                  ? { fg: t.warn, bg: t.warnBg }
-                  : { fg: t.ink, bg: t.surface2 };
-          return (
-            <button
-              key={f.id}
-              onClick={() => setFilter(f.id)}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                padding: "8px 14px",
-                borderRadius: 999,
-                background: active ? accent.bg : "transparent",
-                border: `1px solid ${active ? withAlpha(accent.fg, 0.19) : t.line}`,
-                color: active ? accent.fg : t.ink2,
-                fontSize: 12,
-                fontWeight: 700,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 7,
-              }}
-            >
-              <span>{f.label}</span>
-              <span
-                style={{
-                  fontSize: 10.5,
-                  fontWeight: 800,
-                  fontFeatureSettings: '"tnum"',
-                  padding: "1px 6px",
-                  borderRadius: 999,
-                  background: active ? withAlpha(accent.fg, 0.13) : t.surface2,
-                  color: active ? accent.fg : t.ink3,
-                  minWidth: 18,
-                  textAlign: "center",
-                }}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+    <div className="grid">
+      <PageHeader
+        title="Capital partner applications"
+        lede="Submissions from qualifiedcommercial.com/lenders/apply. Click a row to review and approve / deny. Approval can optionally promote the firm into the lender roster."
+        actions={
+          <Seg
+            as="filter"
+            ariaLabel="Filter by status"
+            value={filter}
+            onChange={setFilter}
+            options={FILTERS.map((f) => ({
+              value: f.id,
+              label: (
+                <>
+                  {f.label} <span className="num">{f.id === "all" ? rows.length : counts[f.id] ?? 0}</span>
+                </>
+              ),
+            }))}
+          />
+        }
+      />
 
       {isLoading ? (
-        <Card pad={28}>
-          <div style={{ fontSize: 12.5, color: t.ink3 }}>Loading applications…</div>
+        <Card>
+          <span className="sub">Loading applications…</span>
         </Card>
       ) : visible.length === 0 ? (
-        <Card pad={28}>
-          <div style={{ fontSize: 13, color: t.ink2 }}>
-            No applications in this status.
-          </div>
+        <Card>
+          <span className="sub">No applications in this status.</span>
         </Card>
       ) : (
-        <Card pad={0}>
-          <Header t={t} />
-          {visible.map((r) => (
-            <Row key={r.id} row={r} t={t} onClick={() => setOpenId(r.id)} />
-          ))}
-        </Card>
+        <Panel noPad>
+          <Table
+            caption="Capital partner applications"
+            cols={[
+              { label: "Status" },
+              { label: "Company" },
+              { label: "Contact" },
+              { label: "Loan types" },
+              { label: "Monthly volume" },
+              { label: "Submitted" },
+            ]}
+          >
+            {visible.map((r) => (
+              <ApplicationRow key={r.id} row={r} onOpen={() => setOpenId(r.id)} />
+            ))}
+          </Table>
+        </Panel>
       )}
 
-      {openId ? (
-        <ReviewModal id={openId} onClose={() => setOpenId(null)} />
-      ) : null}
+      {openId ? <ReviewDrawer id={openId} onClose={() => setOpenId(null)} /> : null}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Row + header
+// Row
 // ---------------------------------------------------------------------------
 
-const GRID = "4px 110px minmax(0, 1.6fr) minmax(0, 1.2fr) minmax(0, 1fr) 140px 110px";
-
-function Header({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
-  const cell = (label: string) => (
-    <div
-      style={{
-        fontSize: 11,
-        fontWeight: 700,
-        letterSpacing: 1.2,
-        textTransform: "uppercase",
-        color: t.ink3,
-      }}
-    >
-      {label}
-    </div>
-  );
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: GRID,
-        gap: 12,
-        padding: "12px 16px 12px 12px",
-        borderBottom: `1px solid ${t.line}`,
-        background: t.surface2,
-      }}
-    >
-      <div />
-      {cell("Status")}
-      {cell("Company")}
-      {cell("Contact")}
-      {cell("Loan types")}
-      {cell("Monthly volume")}
-      {cell("Submitted")}
-    </div>
-  );
-}
-
-function Row({
+function ApplicationRow({
   row,
-  t,
-  onClick,
+  onOpen,
 }: {
   row: CapitalPartnerAppListRow;
-  t: ReturnType<typeof useTheme>["t"];
-  onClick: () => void;
+  onOpen: () => void;
 }) {
-  const s = statusAccent(t, row.status);
-  const stripe =
-    row.status === "approved" ? t.profit : row.status === "denied" ? t.danger : t.warn;
+  const s = statusMeta(row.status);
   const created = new Date(row.created_at);
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      style={{
-        display: "grid",
-        gridTemplateColumns: GRID,
-        gap: 12,
-        padding: "14px 16px 14px 12px",
-        borderBottom: `1px solid ${t.line}`,
-        alignItems: "center",
-        fontSize: 13,
-        color: t.ink,
-        cursor: "pointer",
-        transition: "background .12s",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLDivElement).style.background = t.surface2;
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLDivElement).style.background = "transparent";
-      }}
-    >
-      <div style={{ alignSelf: "stretch", background: stripe, borderRadius: 2 }} />
-      <div>
-        <Pill bg={s.bg} color={s.fg}>
-          {s.label}
-        </Pill>
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 14,
-            fontWeight: 700,
-            color: t.ink,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {row.company_name}
-        </div>
-        {row.promoted_lender_id ? (
-          <div
-            style={{
-              fontSize: 10,
-              fontWeight: 800,
-              color: t.brand,
-              marginTop: 3,
-              letterSpacing: 0.6,
-              textTransform: "uppercase",
+    <Tr onClick={onOpen}>
+      <Td>
+        <CellChip tone={s.tone}>{s.label}</CellChip>
+      </Td>
+      <Td>
+        {/* The whole row is clickable with a mouse; this button is what makes
+            the same action reachable from the keyboard, which the old
+            role="button" div carried via its own Enter/Space handler. */}
+        <div className="row">
+          <Linky
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen();
             }}
           >
-            ↗ promoted to lender roster
-          </div>
-        ) : null}
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 12.5, color: t.ink2 }}>{row.contact_name}</div>
-        <div
-          style={{
-            fontSize: 11,
-            color: t.ink3,
-            marginTop: 2,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {row.contact_email}
+            {row.company_name}
+          </Linky>
+          {row.promoted_lender_id ? (
+            <CellChip tone="acc">↗ promoted to lender roster</CellChip>
+          ) : null}
         </div>
-      </div>
-      <div
-        style={{
-          fontSize: 11.5,
-          color: t.ink2,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {row.loan_types.length > 0 ? row.loan_types.join(", ") : "—"}
-      </div>
-      <div style={{ fontSize: 12, color: t.ink2 }}>
-        {row.monthly_origination_band ?? "—"}
-      </div>
-      <div style={{ fontSize: 12, color: t.ink3, fontFeatureSettings: '"tnum"' }}>
-        {created.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" })}
-      </div>
-    </div>
+      </Td>
+      <Td>
+        <div className="grid g4">
+          <span>{row.contact_name}</span>
+          <span className="sub">{row.contact_email}</span>
+        </div>
+      </Td>
+      <Td>{row.loan_types.length > 0 ? row.loan_types.join(", ") : "—"}</Td>
+      <Td>{row.monthly_origination_band ?? "—"}</Td>
+      <Td className="num">
+        {created.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "2-digit",
+        })}
+      </Td>
+    </Tr>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Review modal — full detail + decision form
+// Review drawer — full detail + decision form
 // ---------------------------------------------------------------------------
 
-function ReviewModal({ id, onClose }: { id: string; onClose: () => void }) {
-  const { t } = useTheme();
-  // Defer to query — re-fetches whenever the modal mounts so the operator
+function ReviewDrawer({ id, onClose }: { id: string; onClose: () => void }) {
+  // Defer to query — re-fetches whenever the drawer mounts so the operator
   // gets the freshest copy if multiple super-admins are reviewing.
   const { data: detail, isLoading } = useCapitalPartnerApplication(id);
   const decide = useDecideCapitalPartnerApplication();
@@ -408,479 +277,201 @@ function ReviewModal({ id, onClose }: { id: string; onClose: () => void }) {
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.55)",
-        zIndex: 200,
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "center",
-        padding: "60px 16px",
-        overflowY: "auto",
-      }}
+    <Drawer
+      open
+      onClose={onClose}
+      width="lg"
+      // The visible title is the applicant's name and changes as the fetch
+      // lands; the announced name has to stay put.
+      ariaLabel="Capital partner application"
+      title={detail?.company_name ?? (isLoading ? "Loading…" : "—")}
+      sub="Capital partner application"
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%",
-          maxWidth: 880,
-          background: t.surface,
-          border: `1px solid ${t.line}`,
-          borderRadius: 14,
-          boxShadow: t.shadowLg,
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            padding: "16px 20px",
-            borderBottom: `1px solid ${t.line}`,
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 800,
-                color: t.ink3,
-                letterSpacing: 1.2,
-                textTransform: "uppercase",
-              }}
-            >
-              Capital partner application
-            </div>
-            <div
-              style={{
-                fontSize: 19,
-                fontWeight: 800,
-                color: t.ink,
-                marginTop: 2,
-                letterSpacing: -0.2,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {detail?.company_name ?? (isLoading ? "Loading…" : "—")}
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              display: "grid",
-              placeItems: "center",
-              color: t.ink3,
-            }}
-          >
-            <Icon name="x" size={16} />
-          </button>
+      {!detail ? (
+        <span className="sub">{isLoading ? "Loading application…" : "Not found"}</span>
+      ) : (
+        <div className="grid">
+          <ReviewStatusBanner detail={detail} />
+
+          <Panel title="Company" bodyClass="grid cols-auto">
+            <Fld label="Entity type" value={detail.legal_entity_type} />
+            <Fld label="Formation state" value={detail.formation_state} />
+            <Fld label="EIN" value={detail.ein} />
+            <Fld label="Years in business" value={detail.years_in_business?.toString() ?? null} />
+            <Fld
+              label="Website"
+              value={
+                detail.website ? (
+                  <a href={detail.website} target="_blank" rel="noopener noreferrer">
+                    {detail.website}
+                  </a>
+                ) : null
+              }
+            />
+          </Panel>
+
+          <Panel title="Lending appetite" bodyClass="grid cols-auto">
+            <Fld
+              label="Loan types"
+              value={detail.loan_types.length ? detail.loan_types.join(", ") : null}
+            />
+            <Fld
+              label="Loan size"
+              value={
+                detail.loan_size_min || detail.loan_size_max
+                  ? `${fmtUsd(detail.loan_size_min)} – ${fmtUsd(detail.loan_size_max)}`
+                  : null
+              }
+            />
+            <Fld
+              label="States"
+              value={detail.geographic_states.length ? detail.geographic_states.join(", ") : null}
+            />
+            <Fld
+              label="Asset classes"
+              value={detail.asset_classes.length ? detail.asset_classes.join(", ") : null}
+            />
+          </Panel>
+
+          <Panel title="Capital & volume" bodyClass="grid cols-auto">
+            <Fld label="Capital source" value={detail.capital_source} />
+            <Fld label="AUM" value={detail.aum_band} />
+            <Fld label="Monthly origination" value={detail.monthly_origination_band} />
+          </Panel>
+
+          <Panel title="Underwriting box" bodyClass="grid cols-auto">
+            <Fld
+              label="Max LTV"
+              value={detail.max_ltv != null ? `${(detail.max_ltv * 100).toFixed(1)}%` : null}
+            />
+            <Fld
+              label="Max LTC"
+              value={detail.max_ltc != null ? `${(detail.max_ltc * 100).toFixed(1)}%` : null}
+            />
+            <Fld
+              label="Min DSCR"
+              value={detail.min_dscr != null ? `${detail.min_dscr.toFixed(2)}x` : null}
+            />
+            <Fld label="Min FICO" value={detail.min_fico?.toString() ?? null} />
+            <Fld label="Rate range" value={detail.rate_range} />
+          </Panel>
+
+          <Panel title="Contact & submission" bodyClass="grid cols-auto">
+            <Fld label="Name" value={detail.contact_name} />
+            <Fld label="Title" value={detail.contact_title} />
+            <Fld
+              label="Email"
+              value={<a href={`mailto:${detail.contact_email}`}>{detail.contact_email}</a>}
+            />
+            <Fld label="Phone" value={detail.contact_phone} />
+            <Fld label="Submission email" value={detail.submission_email} />
+            <Fld
+              label="Submission portal"
+              value={
+                detail.submission_portal_url ? (
+                  <a href={detail.submission_portal_url} target="_blank" rel="noopener noreferrer">
+                    {detail.submission_portal_url}
+                  </a>
+                ) : null
+              }
+            />
+            <Fld label="Avg response time" value={detail.average_response_time} />
+          </Panel>
+
+          {detail.notes ? (
+            <Panel title="Notes from applicant">
+              {/* .msg-b is the app's pre-wrapped block of authored text — the
+                  same shape this was hand-rolling. */}
+              <div className="msg-b">{detail.notes}</div>
+            </Panel>
+          ) : null}
+
+          {/* Decision form (only when pending) */}
+          {!isDecided ? (
+            <Panel title="Decision" bodyClass="grid g10">
+              {/* A real <label> wrapper, not a detached caption: it is what
+                  makes clicking the label focus the textarea. */}
+              <label className="grid g6">
+                <span className="lbl">Review notes (internal)</span>
+                <Textarea
+                  value={reviewNotes}
+                  onChange={(e) => setReviewNotes(e.target.value)}
+                  rows={4}
+                  placeholder="Why approve or deny — visible to other operators only."
+                  style={{ resize: "vertical" }}
+                />
+              </label>
+              <label className={cx("pick", promote && "on")}>
+                <input
+                  type="checkbox"
+                  checked={promote}
+                  onChange={(e) => setPromote(e.target.checked)}
+                />
+                <span>
+                  On approval, also create a row in the lender roster so we can route deals
+                  immediately.
+                </span>
+              </label>
+              {err ? <StatusLine tone="bad">{err}</StatusLine> : null}
+              <div className="row">
+                <Btn variant="pri" onClick={() => fire("approved")} disabled={decide.isPending}>
+                  <Icon name="check" size={13} stroke={3} />
+                  Approve
+                </Btn>
+                <Btn
+                  className="danger"
+                  onClick={() => fire("denied")}
+                  disabled={decide.isPending}
+                >
+                  <Icon name="x" size={13} stroke={3} />
+                  Deny
+                </Btn>
+                <Btn onClick={onClose}>Cancel</Btn>
+              </div>
+            </Panel>
+          ) : null}
         </div>
-
-        {/* Body */}
-        <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 22 }}>
-          {!detail ? (
-            <div style={{ fontSize: 13, color: t.ink3 }}>
-              {isLoading ? "Loading application…" : "Not found"}
-            </div>
-          ) : (
-            <>
-              <ReviewStatusBanner detail={detail} t={t} />
-
-              <Section title="Company" t={t}>
-                <Field label="Entity type" value={detail.legal_entity_type} t={t} />
-                <Field label="Formation state" value={detail.formation_state} t={t} />
-                <Field label="EIN" value={detail.ein} t={t} />
-                <Field
-                  label="Years in business"
-                  value={detail.years_in_business?.toString() ?? null}
-                  t={t}
-                />
-                <Field
-                  label="Website"
-                  value={
-                    detail.website ? (
-                      <a
-                        href={detail.website}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: t.brand, textDecoration: "none" }}
-                      >
-                        {detail.website}
-                      </a>
-                    ) : null
-                  }
-                  t={t}
-                />
-              </Section>
-
-              <Section title="Lending appetite" t={t}>
-                <Field
-                  label="Loan types"
-                  value={detail.loan_types.length ? detail.loan_types.join(", ") : null}
-                  t={t}
-                />
-                <Field
-                  label="Loan size"
-                  value={
-                    detail.loan_size_min || detail.loan_size_max
-                      ? `${fmtUsd(detail.loan_size_min)} – ${fmtUsd(detail.loan_size_max)}`
-                      : null
-                  }
-                  t={t}
-                />
-                <Field
-                  label="States"
-                  value={
-                    detail.geographic_states.length
-                      ? detail.geographic_states.join(", ")
-                      : null
-                  }
-                  t={t}
-                />
-                <Field
-                  label="Asset classes"
-                  value={
-                    detail.asset_classes.length ? detail.asset_classes.join(", ") : null
-                  }
-                  t={t}
-                />
-              </Section>
-
-              <Section title="Capital & volume" t={t}>
-                <Field label="Capital source" value={detail.capital_source} t={t} />
-                <Field label="AUM" value={detail.aum_band} t={t} />
-                <Field
-                  label="Monthly origination"
-                  value={detail.monthly_origination_band}
-                  t={t}
-                />
-              </Section>
-
-              <Section title="Underwriting box" t={t}>
-                <Field
-                  label="Max LTV"
-                  value={
-                    detail.max_ltv != null ? `${(detail.max_ltv * 100).toFixed(1)}%` : null
-                  }
-                  t={t}
-                />
-                <Field
-                  label="Max LTC"
-                  value={
-                    detail.max_ltc != null ? `${(detail.max_ltc * 100).toFixed(1)}%` : null
-                  }
-                  t={t}
-                />
-                <Field
-                  label="Min DSCR"
-                  value={detail.min_dscr != null ? `${detail.min_dscr.toFixed(2)}x` : null}
-                  t={t}
-                />
-                <Field
-                  label="Min FICO"
-                  value={detail.min_fico?.toString() ?? null}
-                  t={t}
-                />
-                <Field label="Rate range" value={detail.rate_range} t={t} />
-              </Section>
-
-              <Section title="Contact & submission" t={t}>
-                <Field label="Name" value={detail.contact_name} t={t} />
-                <Field label="Title" value={detail.contact_title} t={t} />
-                <Field
-                  label="Email"
-                  value={
-                    <a
-                      href={`mailto:${detail.contact_email}`}
-                      style={{ color: t.brand, textDecoration: "none" }}
-                    >
-                      {detail.contact_email}
-                    </a>
-                  }
-                  t={t}
-                />
-                <Field label="Phone" value={detail.contact_phone} t={t} />
-                <Field label="Submission email" value={detail.submission_email} t={t} />
-                <Field
-                  label="Submission portal"
-                  value={
-                    detail.submission_portal_url ? (
-                      <a
-                        href={detail.submission_portal_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: t.brand, textDecoration: "none" }}
-                      >
-                        {detail.submission_portal_url}
-                      </a>
-                    ) : null
-                  }
-                  t={t}
-                />
-                <Field
-                  label="Avg response time"
-                  value={detail.average_response_time}
-                  t={t}
-                />
-              </Section>
-
-              {detail.notes ? (
-                <Section title="Notes from applicant" t={t}>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: t.ink2,
-                      lineHeight: 1.55,
-                      whiteSpace: "pre-wrap",
-                      background: t.surface2,
-                      padding: 14,
-                      borderRadius: 10,
-                    }}
-                  >
-                    {detail.notes}
-                  </div>
-                </Section>
-              ) : null}
-
-              {/* Decision form (only when pending) */}
-              {!isDecided ? (
-                <Section title="Decision" t={t}>
-                  <div style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 10 }}>
-                    <label>
-                      <span
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 700,
-                          letterSpacing: 0.8,
-                          color: t.ink3,
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Review notes (internal)
-                      </span>
-                      <textarea
-                        value={reviewNotes}
-                        onChange={(e) => setReviewNotes(e.target.value)}
-                        rows={4}
-                        placeholder="Why approve or deny — visible to other operators only."
-                        style={{
-                          width: "100%",
-                          marginTop: 6,
-                          padding: "10px 12px",
-                          borderRadius: 10,
-                          background: t.surface2,
-                          border: `1px solid ${t.line}`,
-                          color: t.ink,
-                          fontSize: 13,
-                          fontFamily: "inherit",
-                          outline: "none",
-                          resize: "vertical",
-                        }}
-                      />
-                    </label>
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        fontSize: 12.5,
-                        color: t.ink2,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={promote}
-                        onChange={(e) => setPromote(e.target.checked)}
-                      />
-                      On approval, also create a row in the lender roster so we
-                      can route deals immediately.
-                    </label>
-                    {err ? (
-                      <div style={{ fontSize: 12.5, color: t.danger, fontWeight: 600 }}>{err}</div>
-                    ) : null}
-                    <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-                      <button
-                        onClick={() => fire("approved")}
-                        disabled={decide.isPending}
-                        style={{
-                          ...qcBtnPrimary(t),
-                          opacity: decide.isPending ? 0.6 : 1,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                        }}
-                      >
-                        <Icon name="check" size={13} stroke={3} />
-                        Approve
-                      </button>
-                      <button
-                        onClick={() => fire("denied")}
-                        disabled={decide.isPending}
-                        style={{
-                          ...qcBtn(t),
-                          color: t.danger,
-                          borderColor: withAlpha(t.danger, 0.25),
-                          opacity: decide.isPending ? 0.6 : 1,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                        }}
-                      >
-                        <Icon name="x" size={13} stroke={3} />
-                        Deny
-                      </button>
-                      <button onClick={onClose} style={qcBtn(t)}>
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                </Section>
-              ) : null}
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+      )}
+    </Drawer>
   );
 }
 
-function ReviewStatusBanner({
-  detail,
-  t,
-}: {
-  detail: CapitalPartnerApp;
-  t: ReturnType<typeof useTheme>["t"];
-}) {
-  const s = statusAccent(t, detail.status);
+function ReviewStatusBanner({ detail }: { detail: CapitalPartnerApp }) {
+  const s = statusMeta(detail.status);
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        padding: "10px 14px",
-        borderRadius: 10,
-        background: s.bg,
-        border: `1px solid ${s.fg}30`,
-      }}
-    >
-      <Pill bg={s.bg} color={s.fg}>
-        {s.label}
-      </Pill>
-      <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: t.ink2 }}>
-        Submitted{" "}
-        {new Date(detail.created_at).toLocaleString("en-US", {
-          dateStyle: "medium",
-          timeStyle: "short",
-        })}
-        {detail.reviewed_at ? (
-          <>
-            {" · "}
-            decided{" "}
-            {new Date(detail.reviewed_at).toLocaleString("en-US", {
-              dateStyle: "medium",
-              timeStyle: "short",
-            })}
-          </>
-        ) : null}
-        {detail.promoted_lender_id ? (
-          <>
-            {" · "}
-            <span style={{ color: t.brand, fontWeight: 700 }}>
-              promoted to lender roster
-            </span>
-          </>
-        ) : null}
-      </div>
-    </div>
+    <StatusLine tone={s.tone}>
+      <b>{s.label}</b>
+      {" · Submitted "}
+      {new Date(detail.created_at).toLocaleString("en-US", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })}
+      {detail.reviewed_at ? (
+        <>
+          {" · decided "}
+          {new Date(detail.reviewed_at).toLocaleString("en-US", {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })}
+        </>
+      ) : null}
+      {detail.promoted_lender_id ? <>{" · promoted to lender roster"}</> : null}
+    </StatusLine>
   );
 }
 
-function Section({
-  title,
-  t,
-  children,
-}: {
-  title: string;
-  t: ReturnType<typeof useTheme>["t"];
-  children: React.ReactNode;
-}) {
+/**
+ * One read-only label/value pair inside a detail panel.
+ *
+ * Named `Fld` because `Field` is the design-system component it renders — the
+ * only thing this adds is the em-dash placeholder and long-value wrapping.
+ */
+function Fld({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div>
-      <div
-        style={{
-          fontSize: 10.5,
-          fontWeight: 800,
-          letterSpacing: 1.4,
-          textTransform: "uppercase",
-          color: t.ink3,
-          marginBottom: 10,
-        }}
-      >
-        {title}
-      </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: 14,
-        }}
-      >
-        {children}
-      </div>
-    </div>
+    <Field label={label}>
+      {/* Emails, URLs and joined state lists have no spaces to break on, and
+          .panel is overflow:hidden — without this they are clipped silently. */}
+      <div style={{ wordBreak: "break-word" }}>{value ?? <span className="sub">—</span>}</div>
+    </Field>
   );
 }
-
-function Field({
-  label,
-  value,
-  t,
-}: {
-  label: string;
-  value: React.ReactNode;
-  t: ReturnType<typeof useTheme>["t"];
-}) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 10.5,
-          fontWeight: 700,
-          color: t.ink3,
-          letterSpacing: 0.8,
-          textTransform: "uppercase",
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 13,
-          color: t.ink,
-          marginTop: 4,
-          wordBreak: "break-word",
-        }}
-      >
-        {value ?? <span style={{ color: t.ink4 }}>—</span>}
-      </div>
-    </div>
-  );
-}
-

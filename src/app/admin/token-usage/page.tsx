@@ -1,12 +1,37 @@
 "use client";
 
 // /admin/token-usage — canonical Elara AI usage and controls surface.
+//
+// Styling: migrated off inline token objects onto the plain-CSS design system
+// in globals.css / app-extras.css. Every control, endpoint, permission gate and
+// empty state from the inline version is preserved verbatim; only the surface
+// vocabulary changed (Card+SectionLabel → Panel, hand-rolled pills → CellChip,
+// hand-rolled tables → Table/Tr/Td, hand-rolled segmented buttons → Seg).
+//
+// The only inline styles left are genuinely dynamic: the daily-spend chart
+// geometry, computed bar widths, the disabled-control opacity, and the
+// data-derived trend colour.
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, KPI, SectionLabel } from "@/components/design-system/primitives";
+import {
+  Card,
+  CellChip,
+  CG,
+  Input,
+  Kpi,
+  KpiRow,
+  PageHeader,
+  Panel,
+  Seg,
+  StatusLine,
+  Table,
+  Td,
+  Tr,
+  cx,
+  type ChipTone,
+} from "@/components/ds";
 import {
   useAdminAIUsageToday,
   useCurrentUser,
@@ -63,7 +88,6 @@ function isoDaysAgo(days: number): string {
 }
 
 export default function TokenUsagePage() {
-  const { t } = useTheme();
   const router = useRouter();
   const { data: me, isLoading: meLoading } = useCurrentUser();
 
@@ -97,8 +121,8 @@ export default function TokenUsagePage() {
   }, [meLoading, me, router]);
   if (meLoading) {
     return (
-      <Card pad={20}>
-        <span style={{ color: t.ink3, fontSize: 13 }}>Loading…</span>
+      <Card>
+        <span className="sub">Loading…</span>
       </Card>
     );
   }
@@ -111,7 +135,9 @@ export default function TokenUsagePage() {
   const canToggleMaster = isSuperAdmin && (me?.email || "").toLowerCase() === "franco@qualifiedcommercial.com";
   const canEditControls = isSuperAdmin;
   const masterEnabled = spend.master_enabled !== false;
-  const alertColor = todayData?.alert_level === "critical" ? t.danger : todayData?.alert_level === "warning" ? t.warn : t.profit;
+  // Was an inline colour; now the chip tone vocabulary carries the same signal.
+  const alertTone: ChipTone =
+    todayData?.alert_level === "critical" ? "bad" : todayData?.alert_level === "warning" ? "warn" : "ok";
   const rows = breakdown.data ?? [];
   const points = series.data ?? [];
   const maxCost = Math.max(1, ...points.map((p) => p.cost_usd));
@@ -121,71 +147,57 @@ export default function TokenUsagePage() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: t.ink }}>
-            Elara AI Usage & Controls
-          </h1>
-          <p style={{ fontSize: 13, color: t.ink3, margin: "6px 0 0", maxWidth: 620 }}>
-            Review AI spend across Elara, monitor current Bedrock usage, and control which paid model calls are allowed.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          {RANGES.map((r) => (
-            <button
-              key={r.key}
-              onClick={() => setRangeDays(r.days)}
-              style={{
-                padding: "7px 12px",
-                borderRadius: 8,
-                fontSize: 12.5,
-                fontWeight: 700,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                border: `1px solid ${rangeDays === r.days ? t.ink : t.lineStrong}`,
-                background: rangeDays === r.days ? t.ink : t.surface,
-                color: rangeDays === r.days ? t.inverse : t.ink2,
-              }}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-      </div>
+    <div className="grid">
+      <PageHeader
+        title="Elara AI Usage & Controls"
+        lede="Review AI spend across Elara, monitor current Bedrock usage, and control which paid model calls are allowed."
+        actions={
+          <Seg
+            ariaLabel="Reporting window"
+            as="filter"
+            value={String(rangeDays)}
+            onChange={(v) => setRangeDays(RANGES.find((r) => r.key === v)?.days ?? 30)}
+            options={RANGES.map((r) => ({ value: r.key, label: r.label }))}
+          />
+        }
+      />
 
       {today.isLoading || !todayData ? (
-        <Card pad={16}>Loading AI controls...</Card>
+        <Card>
+          <span className="sub">Loading AI controls...</span>
+        </Card>
       ) : (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-            <KPI label="Today spend" value={fmtUsd(todayData.total_estimated_cost_usd)} />
-            <KPI label="Today calls" value={fmtInt(todayData.total_calls)} />
-            <KPI label="Avg/client today" value={fmtUsd(todayData.avg_cost_per_client_usd)} />
-            <KPI label="Avg/file today" value={fmtUsd(todayData.avg_cost_per_loan_file_usd)} />
-          </div>
+          <KpiRow>
+            <Kpi label="Today spend" value={fmtUsd(todayData.total_estimated_cost_usd)} />
+            <Kpi label="Today calls" value={fmtInt(todayData.total_calls)} />
+            <Kpi label="Avg/client today" value={fmtUsd(todayData.avg_cost_per_client_usd)} />
+            <Kpi label="Avg/file today" value={fmtUsd(todayData.avg_cost_per_loan_file_usd)} />
+          </KpiRow>
 
-          <Card pad={16} style={{ borderRadius: 8, borderColor: masterEnabled ? t.line : t.danger, background: masterEnabled ? t.surface : t.dangerBg }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
-              <div>
-                <SectionLabel>Admin AI controls</SectionLabel>
-                <div style={{ fontSize: 12, color: masterEnabled ? t.ink3 : t.danger, marginTop: 4 }}>
-                  {masterEnabled
-                    ? "Controls paid Bedrock model calls across chat, automations, summaries, scanning, and lender workflows."
-                    : "AI is disabled system-wide. Deterministic app workflows continue, but model calls are blocked."}
-                </div>
-                {!canEditControls ? (
-                  <div style={{ fontSize: 12, color: t.ink3, marginTop: 4 }}>Read-only for loan executives.</div>
-                ) : !canToggleMaster ? (
-                  <div style={{ fontSize: 12, color: t.ink3, marginTop: 4 }}>Only franco@qualifiedcommercial.com can change the master switch.</div>
-                ) : null}
+          <Panel
+            title="Admin AI controls"
+            actions={<CellChip tone={alertTone}>{todayData.alert_level}</CellChip>}
+          >
+            {masterEnabled ? (
+              <div className="sub">
+                Controls paid Bedrock model calls across chat, automations, summaries, scanning, and lender workflows.
               </div>
-              <div style={{ fontSize: 12, fontWeight: 900, color: alertColor, textTransform: "uppercase" }}>
-                {todayData.alert_level}
-              </div>
-            </div>
+            ) : (
+              // The whole card used to turn red. The signal now lives in a
+              // block-level status line, which says the same thing and does not
+              // need the card to own a data-derived background.
+              <StatusLine tone="bad">
+                AI is disabled system-wide. Deterministic app workflows continue, but model calls are blocked.
+              </StatusLine>
+            )}
+            {!canEditControls ? (
+              <div className="sub mt">Read-only for loan executives.</div>
+            ) : !canToggleMaster ? (
+              <div className="sub mt">Only franco@qualifiedcommercial.com can change the master switch.</div>
+            ) : null}
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10, marginBottom: 12 }}>
+            <div className="grid cols-auto mt">
               <Toggle
                 label={`AI System ${masterEnabled ? "Enabled" : "Disabled"}`}
                 value={masterEnabled}
@@ -199,18 +211,18 @@ export default function TokenUsagePage() {
               <Toggle label="Lender/Funding AI" value={spend.lender_ai_enabled} disabled={!canEditControls || !masterEnabled} onChange={(v) => saveSpend({ lender_ai_enabled: v })} />
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+            <div className="fldgrid four mt">
               <NumberControl label="Daily warning" value={spend.daily_warning_usd} disabled={!canEditControls} onChange={(v) => saveSpend({ daily_warning_usd: v })} />
               <NumberControl label="Daily critical" value={spend.daily_critical_usd} disabled={!canEditControls} onChange={(v) => saveSpend({ daily_critical_usd: v })} />
               <NumberControl label="Avg/file warning" value={spend.avg_client_file_warning_usd} disabled={!canEditControls} onChange={(v) => saveSpend({ avg_client_file_warning_usd: v })} />
               <NumberControl label="Avg/file critical" value={spend.avg_client_file_critical_usd} disabled={!canEditControls} onChange={(v) => saveSpend({ avg_client_file_critical_usd: v })} />
             </div>
-          </Card>
+          </Panel>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
+          <CG>
             <BucketTable title="Today by category" rows={todayData.by_category} />
             <BucketTable title="Today by feature" rows={todayData.by_feature} />
-          </div>
+          </CG>
         </>
       )}
 
@@ -228,22 +240,20 @@ export default function TokenUsagePage() {
         isLoading={attribution.isLoading}
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, alignItems: "start" }}>
+      <CG>
         <SourceAttributionTable rows={sourceRows} loading={attribution.isLoading} />
         <FeatureCostBars rows={featureRows} loading={attribution.isLoading} />
-      </div>
+      </CG>
 
       <RecentUsageEvents rows={recentEvents} loading={attribution.isLoading} />
 
       {/* Daily spend bar */}
-      <Card pad={18}>
-        <SectionLabel>Actual daily spend</SectionLabel>
+      <Panel title="Actual daily spend">
         {points.length === 0 ? (
-          <div style={{ fontSize: 13, color: t.ink3, marginTop: 10 }}>
-            No usage logged in this window yet.
-          </div>
+          <div className="sub">No usage logged in this window yet.</div>
         ) : (
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 120, marginTop: 14 }}>
+          // Chart geometry: bespoke by definition, so it stays inline.
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 120 }}>
             {points.map((p) => (
               <div
                 key={p.day}
@@ -255,7 +265,7 @@ export default function TokenUsagePage() {
                     width: "100%",
                     maxWidth: 28,
                     height: `${Math.max(3, (p.cost_usd / maxCost) * 100)}%`,
-                    background: t.petrol ?? t.ink,
+                    background: "var(--petrol)",
                     borderRadius: 4,
                   }}
                 />
@@ -263,59 +273,54 @@ export default function TokenUsagePage() {
             ))}
           </div>
         )}
-      </Card>
+      </Panel>
 
       {/* Breakdown */}
-      <Card pad={18}>
-        <SectionLabel>Supplemental dimensions</SectionLabel>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
-          {DIMENSIONS.map((d) => (
-            <button
-              key={d.key}
-              onClick={() => setDimension(d.key)}
-              style={{
-                padding: "7px 12px",
-                borderRadius: 999,
-                fontSize: 12.5,
-                fontWeight: 600,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                border: `1px solid ${dimension === d.key ? t.ink : t.lineStrong}`,
-                background: dimension === d.key ? t.ink : t.surface,
-                color: dimension === d.key ? t.inverse : t.ink2,
-              }}
-            >
-              {d.label}
-            </button>
-          ))}
-        </div>
+      <Panel
+        title="Supplemental dimensions"
+        actions={
+          <Seg
+            ariaLabel="Breakdown dimension"
+            as="filter"
+            value={dimension}
+            onChange={setDimension}
+            options={DIMENSIONS.map((d) => ({ value: d.key, label: d.label }))}
+          />
+        }
+        noPad
+      >
         {rows.length === 0 ? (
-          <div style={{ fontSize: 13, color: t.ink3 }}>Nothing in this window.</div>
+          <div className="panel-b">
+            <span className="sub">Nothing in this window.</span>
+          </div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ textAlign: "left", color: t.ink3, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                <th style={{ padding: "6px 8px" }}>{DIMENSIONS.find((d) => d.key === dimension)?.label.replace("By ", "")}</th>
-                <th style={{ padding: "6px 8px", textAlign: "right" }}>Calls</th>
-                <th style={{ padding: "6px 8px", textAlign: "right" }}>Tokens</th>
-                <th style={{ padding: "6px 8px", textAlign: "right" }}>Est. cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.key} style={{ borderTop: `1px solid ${t.line}` }}>
-                  <td style={{ padding: "8px", color: t.ink, fontWeight: 600 }}>
-                    {r.label.replace(/_/g, " ")}
-                  </td>
-                  <td style={{ padding: "8px", textAlign: "right", color: t.ink3 }}>{fmtInt(r.calls)}</td>
-                  <td style={{ padding: "8px", textAlign: "right", color: t.ink3 }}>{fmtInt(r.tokens)}</td>
-                  <td style={{ padding: "8px", textAlign: "right", color: t.ink, fontWeight: 700 }}>{fmtUsd(r.cost_usd)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Table
+            cols={[
+              { label: DIMENSIONS.find((d) => d.key === dimension)?.label.replace("By ", "") },
+              { label: "Calls", align: "r" },
+              { label: "Tokens", align: "r" },
+              { label: "Est. cost", align: "r" },
+            ]}
+          >
+            {rows.map((r) => (
+              <Tr key={r.key}>
+                <Td>
+                  <b>{r.label.replace(/_/g, " ")}</b>
+                </Td>
+                <Td align="r" className="num">
+                  {fmtInt(r.calls)}
+                </Td>
+                <Td align="r" className="num">
+                  {fmtInt(r.tokens)}
+                </Td>
+                <Td align="r" className="num">
+                  <b>{fmtUsd(r.cost_usd)}</b>
+                </Td>
+              </Tr>
+            ))}
+          </Table>
         )}
-      </Card>
+      </Panel>
     </div>
   );
 }
@@ -345,32 +350,28 @@ function ActualSpendPanel({
   documentSpend: number;
   isLoading: boolean;
 }) {
-  const { t } = useTheme();
-  const trendColor = trendDirection === "up" ? t.danger : trendDirection === "down" ? t.profit : t.ink3;
+  const trendColor =
+    trendDirection === "up" ? "var(--danger)" : trendDirection === "down" ? "var(--ok)" : "var(--muted)";
   const trendArrow = trendDirection === "up" ? "▲" : trendDirection === "down" ? "▼" : "■";
-  const trendText = trendPct == null ? "No previous baseline" : `${trendArrow} ${Math.abs(trendPct).toFixed(1)}% vs previous ${rangeDays} days`;
+  // The comparison window moved from the headline into the caption so the
+  // figure fits a `.kpi` tile; nothing was dropped.
+  const trendValue = trendPct == null ? "No baseline" : `${trendArrow} ${Math.abs(trendPct).toFixed(1)}%`;
+  const trendDetail =
+    trendPct == null
+      ? `No previous baseline · previous period: ${fmtUsd(previousCost)}`
+      : `vs previous ${rangeDays} days · previous period: ${fmtUsd(previousCost)}`;
   return (
-    <Card
-      pad={18}
-      style={{
-        borderRadius: 14,
-        background: `linear-gradient(135deg, ${t.surface}, ${t.chip})`,
-        borderColor: t.lineStrong,
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 14, flexWrap: "wrap" }}>
-        <div>
-          <SectionLabel style={{ padding: 0, marginBottom: 4 }}>Actual ledger focus</SectionLabel>
-          <div style={{ color: t.ink3, fontSize: 12.5 }}>
-            Real recorded usage is emphasized. Run-rate projections are isolated in amber so they are not confused with posted cost.
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+    <Panel
+      title="Actual ledger focus"
+      sub="Real recorded usage is emphasized. Run-rate projections are isolated in amber so they are not confused with posted cost."
+      actions={
+        <>
           <BasisPill label="Actual" tone="actual" />
           <BasisPill label="Projection" tone="projected" />
-        </div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
+        </>
+      }
+    >
+      <div className="kpis">
         <SpendMetric
           label={`${rangeDays}-day actual spend`}
           value={isLoading ? "Loading..." : fmtUsd(actualCost)}
@@ -380,8 +381,8 @@ function ActualSpendPanel({
         />
         <SpendMetric
           label="Trend"
-          value={isLoading ? "Loading..." : trendText}
-          detail={`Previous period: ${fmtUsd(previousCost)}`}
+          value={isLoading ? "Loading..." : trendValue}
+          detail={trendDetail}
           tone={trendDirection === "up" ? "danger" : trendDirection === "down" ? "profit" : "neutral"}
           color={trendColor}
         />
@@ -398,33 +399,12 @@ function ActualSpendPanel({
           tone="projected"
         />
       </div>
-    </Card>
+    </Panel>
   );
 }
 
 function BasisPill({ label, tone }: { label: string; tone: "actual" | "projected" }) {
-  const { t } = useTheme();
-  const actual = tone === "actual";
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "5px 9px",
-        borderRadius: 999,
-        color: actual ? t.profit : t.warn,
-        background: actual ? t.profitBg : t.warnBg,
-        border: `1px solid ${actual ? t.profit : t.warn}`,
-        fontSize: 11,
-        fontWeight: 900,
-        textTransform: "uppercase",
-      }}
-    >
-      <span style={{ width: 6, height: 6, borderRadius: 99, background: actual ? t.profit : t.warn }} />
-      {label}
-    </span>
-  );
+  return <CellChip tone={tone === "actual" ? "ok" : "warn"}>{label}</CellChip>;
 }
 
 function SpendMetric({
@@ -439,130 +419,136 @@ function SpendMetric({
   value: string;
   detail: string;
   tone: "actual" | "projected" | "danger" | "profit" | "neutral";
+  /** Kept in the signature: emphasis is now carried by `.big` vs `.knum`. */
   large?: boolean;
   color?: string;
 }) {
-  const { t } = useTheme();
-  const toneMap = {
-    actual: { bg: t.petrolSoft, border: t.petrol, color: t.ink },
-    projected: { bg: t.warnBg, border: t.warn, color: t.warn },
-    danger: { bg: t.dangerBg, border: t.danger, color: t.danger },
-    profit: { bg: t.profitBg, border: t.profit, color: t.profit },
-    neutral: { bg: t.chip, border: t.lineStrong, color: t.ink2 },
+  // The tile used to be tinted by tone. The tone now rides on the basis chip,
+  // which is the same vocabulary the legend pills above the row use.
+  const chip: { tone: ChipTone; text: string } = {
+    actual: { tone: "ok" as ChipTone, text: "Actual" },
+    projected: { tone: "warn" as ChipTone, text: "Projection" },
+    danger: { tone: "bad" as ChipTone, text: "Actual" },
+    profit: { tone: "ok" as ChipTone, text: "Actual" },
+    neutral: { tone: "mut" as ChipTone, text: "Actual" },
   }[tone];
   return (
-    <div
-      style={{
-        minHeight: large ? 124 : 110,
-        border: `1px solid ${toneMap.border}`,
-        background: toneMap.bg,
-        borderRadius: 12,
-        padding: 14,
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        gap: 12,
-      }}
-    >
-      <div style={{ fontSize: 10.5, fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>{label}</div>
-      <div style={{ fontSize: large ? 30 : 17, fontWeight: 950, color: color ?? toneMap.color, lineHeight: 1.05 }}>{value}</div>
-      <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.35 }}>{detail}</div>
+    <div className="kpi">
+      <div className="lbl">{label}</div>
+      {/* `.knum` is white-space:nowrap; `.big` is not, which is why the emphasised
+          tile uses it. Colour is data-derived (trend direction) and no class owns
+          it on these elements. */}
+      <div className={cx(large ? "big" : "knum", "num")} style={color ? { color } : undefined}>
+        {value}
+      </div>
+      <div className="sub">{detail}</div>
+      <div className="kdelta">
+        <CellChip tone={chip.tone}>{chip.text}</CellChip>
+      </div>
     </div>
   );
 }
 
 function SourceAttributionTable({ rows, loading }: { rows: TokenUsageAttributionRow[]; loading: boolean }) {
-  const { t } = useTheme();
   const top = rows.slice(0, 12);
   return (
-    <Card pad={18} style={{ borderRadius: 14 }}>
-      <SectionLabel>Top spend by who / what</SectionLabel>
-      <div style={{ fontSize: 12.5, color: t.ink3, margin: "-4px 4px 12px" }}>
-        Links take you to the client, loan, bucket, dealer AI lead, or file area that caused the usage.
-      </div>
+    <Panel
+      className="s6"
+      title="Top spend by who / what"
+      sub="Links take you to the client, loan, bucket, dealer AI lead, or file area that caused the usage."
+      noPad
+    >
       {loading ? (
-        <div style={{ color: t.ink3, fontSize: 13 }}>Resolving source attribution...</div>
-      ) : top.length === 0 ? (
-        <div style={{ color: t.ink3, fontSize: 13 }}>No attributed usage in this window.</div>
-      ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720, fontSize: 13 }}>
-            <thead>
-              <tr style={{ textAlign: "left", color: t.ink3, fontSize: 10.5, textTransform: "uppercase", letterSpacing: 1 }}>
-                <th style={{ padding: "8px 8px" }}>Source</th>
-                <th style={{ padding: "8px 8px" }}>Area</th>
-                <th style={{ padding: "8px 8px" }}>Main feature</th>
-                <th style={{ padding: "8px 8px", textAlign: "right" }}>Calls</th>
-                <th style={{ padding: "8px 8px", textAlign: "right" }}>Tokens</th>
-                <th style={{ padding: "8px 8px", textAlign: "right" }}>Actual cost</th>
-                <th style={{ padding: "8px 8px", textAlign: "right" }}>Open</th>
-              </tr>
-            </thead>
-            <tbody>
-              {top.map((row) => (
-                <tr key={row.key} style={{ borderTop: `1px solid ${t.line}` }}>
-                  <td style={{ padding: "10px 8px", color: t.ink, fontWeight: 850, maxWidth: 280 }}>
-                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.label}</div>
-                    <div style={{ color: t.ink3, fontSize: 11, marginTop: 3 }}>{row.id || "No object id"}</div>
-                  </td>
-                  <td style={{ padding: "10px 8px" }}><KindBadge kind={row.kind} /></td>
-                  <td style={{ padding: "10px 8px", color: t.ink2 }}>{(row.top_feature || "unknown").replace(/_/g, " ")}</td>
-                  <td style={{ padding: "10px 8px", textAlign: "right", color: t.ink3 }}>{fmtInt(row.calls)}</td>
-                  <td style={{ padding: "10px 8px", textAlign: "right", color: t.ink3 }}>{fmtInt(row.tokens)}</td>
-                  <td style={{ padding: "10px 8px", textAlign: "right", color: t.ink, fontWeight: 950 }}>{fmtUsd(row.cost_usd)}</td>
-                  <td style={{ padding: "10px 8px", textAlign: "right" }}>
-                    {row.href ? (
-                      <Link href={row.href} style={{ color: t.petrol, fontWeight: 900, textDecoration: "none" }}>Open</Link>
-                    ) : (
-                      <span style={{ color: t.ink3 }}>—</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="panel-b">
+          <span className="sub">Resolving source attribution...</span>
         </div>
+      ) : top.length === 0 ? (
+        <div className="panel-b">
+          <span className="sub">No attributed usage in this window.</span>
+        </div>
+      ) : (
+        <Table
+          cols={[
+            { label: "Source" },
+            { label: "Area" },
+            { label: "Main feature" },
+            { label: "Calls", align: "r" },
+            { label: "Tokens", align: "r" },
+            { label: "Actual cost", align: "r" },
+            { label: "Open", align: "r" },
+          ]}
+        >
+          {top.map((row) => (
+            <Tr key={row.key}>
+              <Td>
+                <b>{row.label}</b>
+                <div className="sub">{row.id || "No object id"}</div>
+              </Td>
+              <Td>
+                <KindBadge kind={row.kind} />
+              </Td>
+              <Td>{(row.top_feature || "unknown").replace(/_/g, " ")}</Td>
+              <Td align="r" className="num">
+                {fmtInt(row.calls)}
+              </Td>
+              <Td align="r" className="num">
+                {fmtInt(row.tokens)}
+              </Td>
+              <Td align="r" className="num">
+                <b>{fmtUsd(row.cost_usd)}</b>
+              </Td>
+              <Td align="r">
+                {row.href ? (
+                  <Link href={row.href} className="linky">
+                    Open
+                  </Link>
+                ) : (
+                  <span className="sub">—</span>
+                )}
+              </Td>
+            </Tr>
+          ))}
+        </Table>
       )}
-    </Card>
+    </Panel>
   );
 }
 
 function KindBadge({ kind }: { kind: string }) {
-  const { t } = useTheme();
-  const tone = kind === "dealer_ai_lead" || kind === "bucket" ? t.petrol : kind === "legacy" ? t.warn : t.ink2;
-  const bg = kind === "dealer_ai_lead" || kind === "bucket" ? t.petrolSoft : kind === "legacy" ? t.warnBg : t.chip;
-  return (
-    <span style={{ display: "inline-flex", padding: "4px 8px", borderRadius: 999, background: bg, color: tone, fontSize: 11, fontWeight: 900 }}>
-      {kind.replace(/_/g, " ")}
-    </span>
-  );
+  const tone: ChipTone =
+    kind === "dealer_ai_lead" || kind === "bucket" ? "pet" : kind === "legacy" ? "warn" : "mut";
+  return <CellChip tone={tone}>{kind.replace(/_/g, " ")}</CellChip>;
 }
 
 function FeatureCostBars({ rows, loading }: { rows: TokenUsageAttributionRow[]; loading: boolean }) {
-  const { t } = useTheme();
   const top = rows.slice(0, 9);
   const max = Math.max(0.01, ...top.map((row) => row.cost_usd));
   return (
-    <Card pad={18} style={{ borderRadius: 14 }}>
-      <SectionLabel>Premium feature cost</SectionLabel>
+    <Panel className="s6" title="Premium feature cost">
       {loading ? (
-        <div style={{ color: t.ink3, fontSize: 13 }}>Loading feature costs...</div>
+        <span className="sub">Loading feature costs...</span>
       ) : top.length === 0 ? (
-        <div style={{ color: t.ink3, fontSize: 13 }}>No feature spend in this window.</div>
+        <span className="sub">No feature spend in this window.</span>
       ) : (
-        <div style={{ display: "grid", gap: 12 }}>
+        <div className="grid g10">
           {top.map((row) => {
             const pct = Math.max(4, (row.cost_usd / max) * 100);
+            const isDoc = row.kind === "feature" && /document|scan/i.test(row.key);
             return (
               <div key={row.key}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, marginBottom: 5 }}>
-                  <span style={{ color: t.ink, fontWeight: 850 }}>{row.label.replace(/_/g, " ")}</span>
-                  <span style={{ color: t.ink, fontWeight: 950 }}>{fmtUsd(row.cost_usd)}</span>
+                <div className="row">
+                  <span>
+                    <b>{row.label.replace(/_/g, " ")}</b>
+                  </span>
+                  <span className="sp" />
+                  <b className="num">{fmtUsd(row.cost_usd)}</b>
                 </div>
-                <div style={{ height: 8, borderRadius: 999, background: t.line, overflow: "hidden" }}>
-                  <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: row.kind === "feature" && /document|scan/i.test(row.key) ? t.warn : t.petrol }} />
+                <div className="track">
+                  {/* Width is computed; the amber is data-derived (document work
+                      is called out separately in the ledger copy above). */}
+                  <div className="fill" style={{ width: `${pct}%`, background: isDoc ? "var(--warn)" : undefined }} />
                 </div>
-                <div style={{ color: t.ink3, fontSize: 11, marginTop: 4 }}>
+                <div className="sub">
                   {fmtInt(row.calls)} calls · {fmtInt(row.tokens)} tokens · {row.top_provider || "provider unknown"}
                 </div>
               </div>
@@ -570,55 +556,67 @@ function FeatureCostBars({ rows, loading }: { rows: TokenUsageAttributionRow[]; 
           })}
         </div>
       )}
-    </Card>
+    </Panel>
   );
 }
 
 function RecentUsageEvents({ rows, loading }: { rows: TokenUsageEventRow[]; loading: boolean }) {
-  const { t } = useTheme();
   const top = rows.slice(0, 20);
   return (
-    <Card pad={18} style={{ borderRadius: 14 }}>
-      <SectionLabel>Recent expensive events</SectionLabel>
+    <Panel title="Recent expensive events" noPad>
       {loading ? (
-        <div style={{ color: t.ink3, fontSize: 13 }}>Loading ledger events...</div>
-      ) : top.length === 0 ? (
-        <div style={{ color: t.ink3, fontSize: 13 }}>No event-level usage in this window.</div>
-      ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760, fontSize: 12.5 }}>
-            <thead>
-              <tr style={{ textAlign: "left", color: t.ink3, fontSize: 10.5, textTransform: "uppercase", letterSpacing: 1 }}>
-                <th style={{ padding: "8px" }}>When</th>
-                <th style={{ padding: "8px" }}>Source</th>
-                <th style={{ padding: "8px" }}>Feature</th>
-                <th style={{ padding: "8px" }}>Model</th>
-                <th style={{ padding: "8px" }}>Ledger</th>
-                <th style={{ padding: "8px", textAlign: "right" }}>Tokens</th>
-                <th style={{ padding: "8px", textAlign: "right" }}>Actual cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {top.map((row) => (
-                <tr key={row.id} style={{ borderTop: `1px solid ${t.line}` }}>
-                  <td style={{ padding: "9px 8px", color: t.ink3 }}>{formatDateTime(row.created_at)}</td>
-                  <td style={{ padding: "9px 8px", color: t.ink, fontWeight: 800 }}>
-                    {row.source.href ? (
-                      <Link href={row.source.href} style={{ color: t.ink, textDecoration: "none" }}>{row.source.label}</Link>
-                    ) : row.source.label}
-                  </td>
-                  <td style={{ padding: "9px 8px", color: t.ink2 }}>{row.feature.replace(/_/g, " ")}</td>
-                  <td style={{ padding: "9px 8px", color: t.ink3, maxWidth: 210, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.model}</td>
-                  <td style={{ padding: "9px 8px" }}><BasisPill label={row.ledger === "legacy" ? "Legacy actual" : "Actual"} tone={row.ledger === "legacy" ? "projected" : "actual"} /></td>
-                  <td style={{ padding: "9px 8px", textAlign: "right", color: t.ink3 }}>{fmtInt(row.tokens)}</td>
-                  <td style={{ padding: "9px 8px", textAlign: "right", color: t.ink, fontWeight: 950 }}>{fmtUsd(row.cost_usd)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="panel-b">
+          <span className="sub">Loading ledger events...</span>
         </div>
+      ) : top.length === 0 ? (
+        <div className="panel-b">
+          <span className="sub">No event-level usage in this window.</span>
+        </div>
+      ) : (
+        <Table
+          cols={[
+            { label: "When" },
+            { label: "Source" },
+            { label: "Feature" },
+            { label: "Model" },
+            { label: "Ledger" },
+            { label: "Tokens", align: "r" },
+            { label: "Actual cost", align: "r" },
+          ]}
+        >
+          {top.map((row) => (
+            <Tr key={row.id}>
+              <Td>
+                <span className="sub">{formatDateTime(row.created_at)}</span>
+              </Td>
+              <Td>
+                {row.source.href ? (
+                  <Link href={row.source.href} className="linky">
+                    {row.source.label}
+                  </Link>
+                ) : (
+                  <b>{row.source.label}</b>
+                )}
+              </Td>
+              <Td>{row.feature.replace(/_/g, " ")}</Td>
+              <Td>{row.model}</Td>
+              <Td>
+                <BasisPill
+                  label={row.ledger === "legacy" ? "Legacy actual" : "Actual"}
+                  tone={row.ledger === "legacy" ? "projected" : "actual"}
+                />
+              </Td>
+              <Td align="r" className="num">
+                {fmtInt(row.tokens)}
+              </Td>
+              <Td align="r" className="num">
+                <b>{fmtUsd(row.cost_usd)}</b>
+              </Td>
+            </Tr>
+          ))}
+        </Table>
       )}
-    </Card>
+    </Panel>
   );
 }
 
@@ -630,27 +628,26 @@ function formatDateTime(value?: string | null): string {
 }
 
 function NumberControl({ label, value, disabled = false, onChange }: { label: string; value: number; disabled?: boolean; onChange: (value: number) => void }) {
-  const { t } = useTheme();
+  // Stays a <label> wrapping its input: clicking the caption focuses the field,
+  // which a <div>-based Field wrapper would silently drop.
   return (
-    <label style={{ display: "grid", gap: 5, opacity: disabled ? 0.65 : 1 }}>
-      <span style={{ fontSize: 11, fontWeight: 850, color: t.ink3, textTransform: "uppercase" }}>{label}</span>
-      <input
+    <label className="grid g6" style={disabled ? { opacity: 0.65 } : undefined}>
+      <span className="lbl">{label}</span>
+      <Input
         type="number"
         min={0}
         step={0.25}
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value || 0))}
-        style={{ height: 34, borderRadius: 6, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, padding: "0 9px", fontWeight: 800 }}
       />
     </label>
   );
 }
 
 function Toggle({ label, value, disabled = false, onChange }: { label: string; value: boolean; disabled?: boolean; onChange: (value: boolean) => void }) {
-  const { t } = useTheme();
   return (
-    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 850, color: disabled ? t.ink3 : t.ink, opacity: disabled ? 0.68 : 1 }}>
+    <label className="row" style={disabled ? { opacity: 0.68 } : undefined}>
       <input type="checkbox" checked={value} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       {label}
     </label>
@@ -658,23 +655,23 @@ function Toggle({ label, value, disabled = false, onChange }: { label: string; v
 }
 
 function BucketTable({ title, rows }: { title: string; rows: AIUsageBucket[] }) {
-  const { t } = useTheme();
   return (
-    <Card pad={14} style={{ borderRadius: 8 }}>
-      <div style={{ fontSize: 13, fontWeight: 900, color: t.ink, marginBottom: 10 }}>{title}</div>
-      <div style={{ display: "grid", gap: 8 }}>
-        {rows.length === 0 ? (
-          <div style={{ color: t.ink3, fontSize: 12 }}>No usage recorded today.</div>
-        ) : rows.map((row) => (
-          <div key={row.key} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 850, color: t.ink }}>{row.key.replace(/_/g, " ")}</div>
-              <div style={{ fontSize: 11, color: t.ink3 }}>{fmtInt(row.calls)} calls · {fmtInt(row.input_tokens + row.output_tokens)} tokens</div>
+    <Panel className="s6" title={title}>
+      {rows.length === 0 ? (
+        <span className="sub">No usage recorded today.</span>
+      ) : (
+        rows.map((row) => (
+          <div key={row.key} className="kv">
+            <div>
+              <b>{row.key.replace(/_/g, " ")}</b>
+              <div className="sub">
+                {fmtInt(row.calls)} calls · {fmtInt(row.input_tokens + row.output_tokens)} tokens
+              </div>
             </div>
-            <div style={{ fontSize: 12, fontWeight: 900, color: t.ink }}>{fmtUsd(row.estimated_cost_usd)}</div>
+            <b className="num">{fmtUsd(row.estimated_cost_usd)}</b>
           </div>
-        ))}
-      </div>
-    </Card>
+        ))
+      )}
+    </Panel>
   );
 }

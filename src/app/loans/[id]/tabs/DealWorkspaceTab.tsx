@@ -882,9 +882,11 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       title={hint}
-      // .c-warn is the same "needs attention" tone the chips use — it wins over
-      // .btn's own background/colour because it is declared later.
-      className={cx(attention && "c-warn")}
+      // `.btn.tone-warn`, not a bare `.c-warn`: `.btn:hover` out-specifies a
+      // single class, so the chip tone dropped off the moment you pointed at
+      // the button — the attention signal disappearing exactly when someone
+      // reaches for it.
+      className={cx(attention && "tone-warn")}
     >
       <Icon name={icon} size={13} />
       {label}

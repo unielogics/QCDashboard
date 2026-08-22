@@ -13,15 +13,37 @@
 // are new keys on the same row. Agent-level config overrides this;
 // this row is the firm-wide fallback applied when an agent hasn't
 // configured a value.
+//
+// Styling is the shared class system (globals.css + app-extras.css) via the
+// wrappers in @/components/ds. The page no longer sets its own padding or
+// max-width: the shell's `.content` owns both, and the page setting them again
+// was double-padding inside it.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 import { DscrPricingSection } from "@/components/admin/DscrPricingSection";
+import {
+  Btn,
+  CG,
+  Card,
+  CellChip,
+  IconBtn,
+  Input,
+  ItemRow,
+  KpiRow,
+  Note,
+  PageHeader,
+  Panel,
+  Row,
+  Select,
+  Tag,
+  Textarea,
+  cx,
+  type ChipTone,
+} from "@/components/ds";
 import {
   isAINotDeployed,
   useCurrentUser,
@@ -106,10 +128,7 @@ const SUGGESTED_RULES = [
   "Always escalate to a human if the borrower expresses anger or distress",
 ];
 
-const PAGE_MAX_WIDTH = 1440;
-
 export default function LendingAISettingsPage() {
-  const { t } = useTheme();
   const router = useRouter();
   // Lending AI settings are operator-only (super-admin or loan-exec), matching
   // the backend _require_admin gate. Bounce anyone else instead of rendering
@@ -156,8 +175,8 @@ export default function LendingAISettingsPage() {
 
   if (isAINotDeployed(error)) {
     return (
-      <div style={{ padding: 24, maxWidth: PAGE_MAX_WIDTH, margin: "0 auto" }}>
-        <PageHeader t={t} dirty={false} saving={false} onClose={() => router.push("/settings")} onSave={save} />
+      <div className="grid">
+        <SettingsHeader dirty={false} saving={false} onClose={() => router.push("/settings")} onSave={save} />
         <AINotDeployedBanner surface="Lending AI" />
       </div>
     );
@@ -166,9 +185,8 @@ export default function LendingAISettingsPage() {
   if (me && !isOperator) return null;
 
   return (
-    <div style={{ padding: 24, maxWidth: PAGE_MAX_WIDTH, margin: "0 auto" }}>
-      <PageHeader
-        t={t}
+    <div className="grid">
+      <SettingsHeader
         dirty={dirty}
         saving={patch.isPending}
         onClose={() => router.push("/settings")}
@@ -176,7 +194,6 @@ export default function LendingAISettingsPage() {
       />
 
       <Snapshot
-        t={t}
         aiName={identity.ai_name || "—"}
         playbookCount={(playbooks.data || []).filter((p) => p.status === "published").length}
         approvalMode={outreach.approval_mode ?? "draft_first"}
@@ -184,32 +201,30 @@ export default function LendingAISettingsPage() {
       />
 
       {isLoading ? (
-        <Card pad={20}><div style={{ color: t.ink3 }}>Loading firm settings…</div></Card>
+        <Card><div className="sub">Loading firm settings…</div></Card>
       ) : (
-        <div style={{ display: "grid", gap: 14 }}>
-          <Section t={t} kicker="Step 1" title="Firm AI identity"
+        <div className="grid">
+          <Section kicker="Step 1" title="Firm AI identity"
             copy="The global persona layered into every borrower-facing AI message. Agents inherit this voice unless they override their tone in Agent AI Settings.">
             <FirmIdentitySection
-              t={t}
               identity={identity}
               onChange={(next) => mutate({ ...draft, identity: next })}
             />
           </Section>
 
-          <Section t={t} kicker="Step 2" title="Lending playbooks"
+          <Section kicker="Step 2" title="Lending playbooks"
             copy="Default requirements per loan product. Funding-locked items appear on every new deal and cannot be disabled by agents.">
-            <LendingPlaybooksSection t={t} />
+            <LendingPlaybooksSection />
           </Section>
 
-          <Section t={t} kicker="Step 3" title="Document verification rules"
+          <Section kicker="Step 3" title="Document verification rules"
             copy="What Elara may complete on its own vs. what an underwriter must verify. Per-document detail lives in the verification editor.">
-            <VerificationSummarySection t={t} />
+            <VerificationSummarySection />
           </Section>
 
-          <Section t={t} kicker="Step 4" title="Default outreach and working schedule"
+          <Section kicker="Step 4" title="Default outreach and working schedule"
             copy="The firm-wide fallback when an agent has not configured their own. Agent settings and per-deal overrides can still be stricter.">
             <OutreachAndScheduleSection
-              t={t}
               outreach={outreach}
               wh={wh}
               onOutreach={(next) => mutate({ ...draft, outreach_defaults: next })}
@@ -217,30 +232,29 @@ export default function LendingAISettingsPage() {
             />
           </Section>
 
-          <Section t={t} kicker="Step 5" title="Compliance guardrails"
+          <Section kicker="Step 5" title="Compliance guardrails"
             copy="Hard rules Elara follows on every conversation. These take precedence over per-agent or per-client overrides.">
             <GuardrailsSection
-              t={t}
               identity={identity}
               onChange={(next) => mutate({ ...draft, identity: next })}
             />
           </Section>
 
-          <Section t={t} kicker="Step 6" title="AI training per task"
+          <Section kicker="Step 6" title="AI training per task"
             copy="Tune the instructions and tone for each borrower-facing AI task — document nudges, Nurture AI chat, re-engagement — and review what operators have flagged.">
-            <Link href="/admin/lending-ai/training" style={linkButton(t)}>
+            <Link href="/admin/lending-ai/training" className="btn">
               Open AI training →
             </Link>
           </Section>
 
-          <Section t={t} kicker="Step 7" title="DSCR pricing (real-estate leads)"
+          <Section kicker="Step 7" title="DSCR pricing (real-estate leads)"
             copy="Rate assumptions for the deterministic DSCR-potential screen. The lead's credit signal picks a tier; changes apply within a minute, no deploy needed.">
             <DscrPricingSection />
           </Section>
 
-          <Section t={t} kicker="Step 8" title="Elara AI usage and controls"
+          <Section kicker="Step 8" title="Elara AI usage and controls"
             copy="Review AI cost, average spend per client file, category-level alerts, and manual controls for paid Bedrock calls.">
-            <Link href="/admin/token-usage" style={linkButton(t)}>
+            <Link href="/admin/token-usage" className="btn">
               Open Elara AI Usage & Controls →
             </Link>
           </Section>
@@ -254,64 +268,40 @@ export default function LendingAISettingsPage() {
 // ─── Page chrome ─────────────────────────────────────────────────────
 
 
-function PageHeader({
-  t, dirty, saving, onClose, onSave,
+// Named for what it is rather than `PageHeader`, which is now the shared
+// `.hd` wrapper this renders.
+function SettingsHeader({
+  dirty, saving, onClose, onSave,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   dirty: boolean;
   saving: boolean;
   onClose: () => void;
   onSave: () => void;
 }) {
   return (
-    <div style={{
-      position: "relative",
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "flex-start",
-      gap: 16,
-      marginBottom: 16,
-    }}>
-      <div style={{ minWidth: 0 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: t.ink, margin: "0 0 6px" }}>
-          Super Admin AI Settings
-        </h1>
-        <p style={{ fontSize: 13, color: t.ink3, margin: 0, maxWidth: 720 }}>
-          Firm-wide controls for Elara — brand identity, lending
-          playbooks, verification policy, outreach defaults, working schedule,
-          and compliance boundaries. Agents may customize their own settings;
-          these are the rules every conversation falls back to.
-        </p>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={saving || !dirty}
-          style={{
-            padding: "8px 14px", fontSize: 13, fontWeight: 700,
-            borderRadius: 6, border: `1px solid ${t.line}`,
-            background: dirty ? t.petrol : t.surface2,
-            color: dirty ? "#fff" : t.ink3,
-            cursor: saving || !dirty ? "default" : "pointer",
-            opacity: saving ? 0.7 : 1,
-          }}
-        >
-          {saving ? "Publishing…" : dirty ? "Publish settings" : "Published"}
-        </button>
-        <button
-          type="button"
-          aria-label="Close"
-          onClick={onClose}
-          style={{
-            width: 36, height: 36, borderRadius: 8,
-            border: `1px solid ${t.line}`, background: t.surface,
-            color: t.ink2, cursor: "pointer",
-            display: "inline-flex", alignItems: "center", justifyContent: "center",
-          }}
-        >
-          <Icon name="x" size={16} stroke={2.4} />
-        </button>
+    <div>
+      <PageHeader
+        title="Super Admin AI Settings"
+        actions={
+          <>
+            {/* `.btn.pri` + `.btn:disabled` carry what the inline petrol/greyed
+                pair used to: enabled means there is something to publish. */}
+            <Btn variant="pri" onClick={onSave} disabled={saving || !dirty}>
+              {saving ? "Publishing…" : dirty ? "Publish settings" : "Published"}
+            </Btn>
+            <IconBtn aria-label="Close" onClick={onClose}>
+              <Icon name="x" size={16} stroke={2.4} />
+            </IconBtn>
+          </>
+        }
+      />
+      {/* Too long to sit on the `.hd` baseline as a lede, so it keeps its own
+          line. `h2 + .sub` does not match an h1 inside `.hd`, hence the width. */}
+      <div className="sub" style={{ maxWidth: 760, marginTop: 4 }}>
+        Firm-wide controls for Elara — brand identity, lending
+        playbooks, verification policy, outreach defaults, working schedule,
+        and compliance boundaries. Agents may customize their own settings;
+        these are the rules every conversation falls back to.
       </div>
     </div>
   );
@@ -319,9 +309,8 @@ function PageHeader({
 
 
 function Snapshot({
-  t, aiName, playbookCount, approvalMode, wh,
+  aiName, playbookCount, approvalMode, wh,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   aiName: string;
   playbookCount: number;
   approvalMode: ApprovalMode;
@@ -334,59 +323,33 @@ function Snapshot({
     { label: "Working hours", body: formatScheduleSummary(wh) },
   ];
   return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-      gap: 8,
-      marginBottom: 18,
-    }}>
+    <KpiRow>
       {items.map((item) => (
-        <div key={item.label} style={{
-          border: `1px solid ${t.line}`,
-          borderRadius: 8,
-          padding: 12,
-          background: t.surface2,
-        }}>
-          <div style={{
-            fontSize: 11, fontWeight: 900, color: t.petrol,
-            marginBottom: 4, textTransform: "uppercase",
-          }}>
-            {item.label}
-          </div>
-          <div style={{ fontSize: 12, color: t.ink, lineHeight: 1.4 }}>{item.body}</div>
+        // Not `<Kpi>`: `.knum` is 26px and `white-space: nowrap`, and two of
+        // these four values are sentences ("Mon–Fri, 9:00–18:00 ET").
+        <div key={item.label} className="kpi">
+          <div className="lbl">{item.label}</div>
+          <div>{item.body}</div>
         </div>
       ))}
-    </div>
+    </KpiRow>
   );
 }
 
 
 function Section({
-  t, kicker, title, copy, children,
+  kicker, title, copy, children,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   kicker: string;
   title: string;
   copy: string;
   children: React.ReactNode;
 }) {
   return (
-    <Card pad={20}>
-      <div style={{ marginBottom: 14 }}>
-        <div style={{
-          fontSize: 11, fontWeight: 900, color: t.petrol,
-          textTransform: "uppercase", letterSpacing: 0.8,
-          marginBottom: 4,
-        }}>
-          {kicker}
-        </div>
-        <SectionLabel>{title}</SectionLabel>
-        <p style={{ margin: "6px 0 0", fontSize: 13, color: t.ink3, lineHeight: 1.55, maxWidth: 740 }}>
-          {copy}
-        </p>
-      </div>
+    <Panel title={title} actions={<Tag>{kicker}</Tag>}>
+      <div className="sub mb" style={{ maxWidth: 740 }}>{copy}</div>
       {children}
-    </Card>
+    </Panel>
   );
 }
 
@@ -395,66 +358,65 @@ function Section({
 
 
 function FirmIdentitySection({
-  t, identity, onChange,
+  identity, onChange,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   identity: FirmIdentity;
   onChange: (next: FirmIdentity) => void;
 }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-      <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <FieldBlock label="AI name" t={t}>
-            <input
+    // A genuine 1fr 1fr — editor beside preview — so 6 + 6 of the page grid.
+    <CG>
+      <div className="s6 grid g10">
+        <div className="fldgrid two">
+          <FieldBlock label="AI name">
+            <Input
               value={identity.ai_name || ""}
               onChange={(e) => onChange({ ...identity, ai_name: e.target.value })}
               placeholder="e.g. Quinn"
-              style={inputStyle(t)}
             />
           </FieldBlock>
-          <FieldBlock label="Greeting style" t={t}>
-            <select
+          <FieldBlock label="Greeting style">
+            <Select
               value={identity.greeting_style || "friendly"}
               onChange={(e) => onChange({ ...identity, greeting_style: e.target.value as GreetingStyle })}
-              style={inputStyle(t)}
             >
               <option value="formal">Formal</option>
               <option value="friendly">Friendly</option>
               <option value="concise">Concise</option>
-            </select>
+            </Select>
           </FieldBlock>
         </div>
-        <FieldBlock label="Voice summary" t={t}>
-          <textarea
+        <FieldBlock label="Voice summary">
+          {/* `resize` is not on `.field`; vertical-only is the affordance the
+              original shipped, and the min height keeps the box usable. */}
+          <Textarea
             value={identity.voice_summary || ""}
             onChange={(e) => onChange({ ...identity, voice_summary: e.target.value })}
             placeholder="Direct, knowledgeable about commercial real estate lending. References concrete numbers, never vague generalities."
             rows={3}
-            style={{ ...inputStyle(t), resize: "vertical", minHeight: 84 }}
+            style={{ resize: "vertical", minHeight: 84 }}
           />
         </FieldBlock>
-        <FieldBlock label="Brand signature" t={t}>
-          <input
+        <FieldBlock label="Brand signature">
+          <Input
             value={identity.brand_signature || ""}
             onChange={(e) => onChange({ ...identity, brand_signature: e.target.value })}
             placeholder="— Qualified Commercial Lending Team"
-            style={inputStyle(t)}
           />
         </FieldBlock>
       </div>
 
-      <IdentityPreview t={t} identity={identity} />
-    </div>
+      <IdentityPreview className="s6" identity={identity} />
+    </CG>
   );
 }
 
 
 function IdentityPreview({
-  t, identity,
+  identity, className,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   identity: FirmIdentity;
+  className?: string;
 }) {
   const greeting =
     identity.greeting_style === "formal" ? "Hello Jordan,"
@@ -462,34 +424,27 @@ function IdentityPreview({
     : "Hi Jordan,";
   const name = identity.ai_name?.trim() || "—";
   return (
-    <div style={{
-      border: `1px solid ${t.line}`, borderRadius: 12,
-      background: t.surface, padding: 16,
-    }}>
-      <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 10 }}>
-        Borrower-facing preview
+    <Panel className={className} title="Borrower-facing preview">
+      {/* A sunken quote block. `.msg-b` is the closest class but it is
+          `white-space: pre-wrap`, which would render the JSX indentation. */}
+      <div style={{ background: "var(--sunken2)", border: "1px solid var(--line)", borderRadius: 10, padding: 14 }}>
+        <div className="grid g8">
+          <b>{name}</b>
+          <div>{greeting}</div>
+          <div>
+            I am following up to help keep your lending file moving. Please upload the
+            missing purchase contract when available.
+          </div>
+          {identity.voice_summary ? (
+            <div className="sub">Voice: {identity.voice_summary}</div>
+          ) : null}
+          <div>
+            Best,<br />
+            {identity.brand_signature?.trim() || "Qualified Commercial Lending Team"}
+          </div>
+        </div>
       </div>
-      <div style={{
-        padding: 14, borderRadius: 10,
-        background: t.surface2, fontSize: 13, lineHeight: 1.55, color: t.ink,
-      }}>
-        <p style={{ margin: "0 0 8px", fontWeight: 700 }}>{name}</p>
-        <p style={{ margin: "0 0 8px" }}>{greeting}</p>
-        <p style={{ margin: "0 0 8px" }}>
-          I am following up to help keep your lending file moving. Please upload the
-          missing purchase contract when available.
-        </p>
-        {identity.voice_summary ? (
-          <p style={{ margin: "0 0 8px", fontSize: 12, color: t.ink3 }}>
-            Voice: {identity.voice_summary}
-          </p>
-        ) : null}
-        <p style={{ margin: 0 }}>
-          Best,<br />
-          {identity.brand_signature?.trim() || "Qualified Commercial Lending Team"}
-        </p>
-      </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -497,7 +452,7 @@ function IdentityPreview({
 // ─── Step 2: Lending playbooks summary ───────────────────────────────
 
 
-function LendingPlaybooksSection({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
+function LendingPlaybooksSection() {
   const { data, isLoading, error } = useLendingPlaybooks();
   if (isAINotDeployed(error)) return <AINotDeployedBanner surface="Lending AI" />;
   const playbooks = (data || []).filter((p) => p.owner_type === "funding" || p.owner_type === "platform");
@@ -505,45 +460,38 @@ function LendingPlaybooksSection({ t }: { t: ReturnType<typeof useTheme>["t"] })
   return (
     <div>
       {isLoading ? (
-        <div style={{ color: t.ink3, fontSize: 13 }}>Loading playbooks…</div>
+        <div className="sub">Loading playbooks…</div>
       ) : playbooks.length === 0 ? (
-        <div style={{ color: t.ink3, fontSize: 13, padding: 12 }}>
+        <div className="sub">
           No funding playbooks yet — create one to lock in firm-required documents per product.
         </div>
       ) : (
-        <div style={{ display: "grid", gap: 10 }}>
+        // `.itemrow + .itemrow` owns the spacing between rows.
+        <div>
           {playbooks.map((pb) => (
-            <div
+            <ItemRow
               key={pb.id}
-              style={{
-                display: "grid", gridTemplateColumns: "1fr auto",
-                gap: 12, alignItems: "center", padding: "12px 14px",
-                border: `1px solid ${t.line}`, borderRadius: 12,
-                background: t.surface,
-              }}
+              right={
+                <span className="row">
+                  <CellChip tone={pb.status === "published" ? "ok" : "warn"}>
+                    {pb.status}
+                  </CellChip>
+                  <CellChip>
+                    {pb.owner_type === "funding" ? "Funding" : "Platform"}
+                  </CellChip>
+                </span>
+              }
             >
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 2 }}>
-                  {pb.name}
-                </div>
-                <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.4 }}>
-                  {pb.description || "Default requirements per loan product."}
-                </div>
+              <div><b>{pb.name}</b></div>
+              <div className="sub">
+                {pb.description || "Default requirements per loan product."}
               </div>
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <Chip t={t} tone={pb.status === "published" ? "good" : "warn"}>
-                  {pb.status}
-                </Chip>
-                <Chip t={t}>
-                  {pb.owner_type === "funding" ? "Funding" : "Platform"}
-                </Chip>
-              </div>
-            </div>
+            </ItemRow>
           ))}
         </div>
       )}
-      <div style={{ marginTop: 12 }}>
-        <Link href="/admin/lending-ai/playbooks" style={linkButton(t)}>
+      <div className="mt">
+        <Link href="/admin/lending-ai/playbooks" className="btn">
           Edit lending playbooks →
         </Link>
       </div>
@@ -555,31 +503,37 @@ function LendingPlaybooksSection({ t }: { t: ReturnType<typeof useTheme>["t"] })
 // ─── Step 3: Document verification summary ───────────────────────────
 
 
-function VerificationSummarySection({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
+function VerificationSummarySection() {
   const { data, isLoading, error } = useFundingMetaRules("verification");
-  if (isAINotDeployed(error)) return <AINotDeployedBanner surface="Lending AI" />;
 
+  // Above the early return, not below it. React counts hooks per render: when
+  // `error` flips to a 404 the component returns before reaching useMemo, the
+  // hook count changes between renders, and React throws "rendered fewer hooks
+  // than expected" — taking the whole page down rather than showing the
+  // not-deployed banner it was trying to show.
   const docTypes = useMemo(() => {
     const raw = data?.rules as { doc_types?: Record<string, unknown> } | undefined;
     return raw?.doc_types && typeof raw.doc_types === "object" ? Object.keys(raw.doc_types) : [];
   }, [data?.rules]);
 
-  const buckets = [
+  if (isAINotDeployed(error)) return <AINotDeployedBanner surface="Lending AI" />;
+
+  const buckets: { title: string; tone: ChipTone; body: string; examples: string[] }[] = [
     {
       title: "AI can complete",
-      tone: "good" as const,
+      tone: "ok",
       body: "Low-risk items where upload presence or simple structured data is enough.",
       examples: ["Proof of funds received", "Property photos received", "Borrower questionnaire complete"],
     },
     {
       title: "Requires human verify",
-      tone: "warn" as const,
+      tone: "warn",
       body: "Material underwriting items that should never be fully approved by Elara.",
       examples: ["Purchase contract", "Entity documents", "Scope of work"],
     },
     {
       title: "Borrower self-attest",
-      tone: "blue" as const,
+      tone: "acc",
       body: "Answers the borrower can provide directly, reviewable later by a human.",
       examples: ["Exit strategy", "Project timeline", "Property use"],
     },
@@ -587,44 +541,33 @@ function VerificationSummarySection({ t }: { t: ReturnType<typeof useTheme>["t"]
 
   return (
     <div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+      {/* Three equal columns — 4 + 4 + 4 of the page grid. */}
+      <CG>
         {buckets.map((b) => (
-          <div
-            key={b.title}
-            style={{
-              border: `1px solid ${t.line}`, borderRadius: 12,
-              background: t.surface, padding: 14,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-              <Chip t={t} tone={b.tone}>{b.title}</Chip>
-            </div>
-            <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, marginBottom: 8 }}>
-              {b.body}
-            </div>
-            <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12, color: t.ink, lineHeight: 1.6 }}>
+          <Card key={b.title} className="s4">
+            <div className="mb"><CellChip tone={b.tone}>{b.title}</CellChip></div>
+            <div className="sub">{b.body}</div>
+            <ul style={{ margin: "10px 0 0", paddingLeft: 18 }}>
               {b.examples.map((ex) => <li key={ex}>{ex}</li>)}
             </ul>
-          </div>
+          </Card>
         ))}
-      </div>
+      </CG>
 
-      <div style={{
-        marginTop: 12, padding: 12,
-        border: `1px solid ${t.line}`, borderRadius: 10,
-        background: t.surface2, fontSize: 13, color: t.ink3, lineHeight: 1.45,
-      }}>
-        <b style={{ color: t.ink }}>Recommended rule:</b> AI may collect and organize
-        documents, but material lending approval stays with a human operator.
-        {isLoading ? null : (
-          <span style={{ display: "block", marginTop: 4, color: t.ink2 }}>
-            {docTypes.length} document type{docTypes.length === 1 ? "" : "s"} configured.
-          </span>
-        )}
-      </div>
+      <Note>
+        <div>
+          <b>Recommended rule:</b> AI may collect and organize
+          documents, but material lending approval stays with a human operator.
+          {isLoading ? null : (
+            <div className="sub">
+              {docTypes.length} document type{docTypes.length === 1 ? "" : "s"} configured.
+            </div>
+          )}
+        </div>
+      </Note>
 
-      <div style={{ marginTop: 10 }}>
-        <Link href="/admin/lending-ai/verification" style={linkButton(t)}>
+      <div className="mt">
+        <Link href="/admin/lending-ai/verification" className="btn">
           Edit per-document checks →
         </Link>
       </div>
@@ -637,9 +580,8 @@ function VerificationSummarySection({ t }: { t: ReturnType<typeof useTheme>["t"]
 
 
 function OutreachAndScheduleSection({
-  t, outreach, wh, onOutreach, onWorkingHours,
+  outreach, wh, onOutreach, onWorkingHours,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   outreach: FirmOutreachDefaults;
   wh: WorkingHours;
   onOutreach: (next: FirmOutreachDefaults) => void;
@@ -647,28 +589,21 @@ function OutreachAndScheduleSection({
 }) {
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <div style={{
-          border: `1px solid ${t.line}`, borderRadius: 12,
-          background: t.surface, padding: 16,
-        }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 10 }}>
-            Sending and escalation
-          </div>
-          <div style={{ display: "grid", gap: 10 }}>
-            <FieldBlock label="Default approval mode" t={t}>
-              <select
+      <CG>
+        <Panel className="s6" title="Sending and escalation">
+          <div className="grid g10">
+            <FieldBlock label="Default approval mode">
+              <Select
                 value={outreach.approval_mode || "draft_first"}
                 onChange={(e) => onOutreach({ ...outreach, approval_mode: e.target.value as ApprovalMode })}
-                style={inputStyle(t)}
               >
                 {(Object.keys(APPROVAL_MODE_LABEL) as ApprovalMode[]).map((k) => (
                   <option key={k} value={k}>{APPROVAL_MODE_LABEL[k]}</option>
                 ))}
-              </select>
+              </Select>
             </FieldBlock>
-            <FieldBlock label="Max AI attempts before human task" t={t}>
-              <input
+            <FieldBlock label="Max AI attempts before human task">
+              <Input
                 type="number"
                 min={1}
                 max={8}
@@ -677,81 +612,71 @@ function OutreachAndScheduleSection({
                   ...outreach,
                   max_attempts: Math.max(1, Math.min(8, parseInt(e.target.value || "3", 10))),
                 })}
-                style={inputStyle(t)}
               />
             </FieldBlock>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <FieldBlock label="Default channel" t={t}>
-                <select
+            <div className="fldgrid two">
+              <FieldBlock label="Default channel">
+                <Select
                   value={outreach.default_channel || "portal"}
                   onChange={(e) => onOutreach({ ...outreach, default_channel: e.target.value as DefaultChannel })}
-                  style={inputStyle(t)}
                 >
                   {(Object.keys(DEFAULT_CHANNEL_LABEL) as DefaultChannel[]).map((k) => (
                     <option key={k} value={k}>{DEFAULT_CHANNEL_LABEL[k]}</option>
                   ))}
-                </select>
+                </Select>
               </FieldBlock>
-              <FieldBlock label="Quiet hour behavior" t={t}>
-                <select
+              <FieldBlock label="Quiet hour behavior">
+                <Select
                   value={outreach.quiet_window_behavior || "no_initiate"}
                   onChange={(e) => onOutreach({ ...outreach, quiet_window_behavior: e.target.value as QuietWindowBehavior })}
-                  style={inputStyle(t)}
                 >
                   {(Object.keys(QUIET_WINDOW_LABEL) as QuietWindowBehavior[]).map((k) => (
                     <option key={k} value={k}>{QUIET_WINDOW_LABEL[k]}</option>
                   ))}
-                </select>
+                </Select>
               </FieldBlock>
             </div>
           </div>
-        </div>
+        </Panel>
 
-        <div style={{
-          border: `1px solid ${t.line}`, borderRadius: 12,
-          background: t.surface, padding: 16,
-        }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
-            Working schedule
-          </div>
-          <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, marginBottom: 12 }}>
+        <Panel className="s6" title="Working schedule">
+          <div className="sub mb">
             Elara can prepare messages anytime, but it only initiates borrower outreach during this schedule.
           </div>
 
-          <div style={{ display: "grid", gap: 10 }}>
-            <FieldBlock label="Timezone" t={t}>
-              <select
+          <div className="grid g10">
+            <FieldBlock label="Timezone">
+              <Select
                 value={wh.timezone}
                 onChange={(e) => onWorkingHours({ ...wh, timezone: e.target.value })}
-                style={inputStyle(t)}
               >
                 {TIMEZONE_OPTIONS.map((tz) => (
                   <option key={tz.value} value={tz.value}>{tz.label}</option>
                 ))}
-              </select>
+              </Select>
             </FieldBlock>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <FieldBlock label="Start time" t={t}>
-                <input
+            <div className="fldgrid two">
+              <FieldBlock label="Start time">
+                <Input
                   type="time"
                   value={wh.start_time}
                   onChange={(e) => onWorkingHours({ ...wh, start_time: e.target.value })}
-                  style={inputStyle(t)}
                 />
               </FieldBlock>
-              <FieldBlock label="End time" t={t}>
-                <input
+              <FieldBlock label="End time">
+                <Input
                   type="time"
                   value={wh.end_time}
                   onChange={(e) => onWorkingHours({ ...wh, end_time: e.target.value })}
-                  style={inputStyle(t)}
                 />
               </FieldBlock>
             </div>
 
-            <FieldBlock label="Working days" t={t}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+            <FieldBlock label="Working days">
+              {/* Seven equal columns is a day-of-week strip, not a page-grid
+                  span: `.fldgrid` owns display and gap, the template is its own. */}
+              <div className="fldgrid" style={{ gridTemplateColumns: "repeat(7, 1fr)" }}>
                 {WEEKDAYS_ORDER.map((d) => {
                   const active = wh.working_days.includes(d);
                   return (
@@ -766,14 +691,9 @@ function OutreachAndScheduleSection({
                             : ([...wh.working_days, d] as WeekdayCode[]),
                         })
                       }
-                      style={{
-                        padding: "8px 0", fontSize: 12, fontWeight: 800,
-                        borderRadius: 9,
-                        border: `1px solid ${active ? t.petrol : t.line}`,
-                        background: active ? t.petrolSoft : t.surface,
-                        color: active ? t.petrol : t.ink3,
-                        cursor: "pointer",
-                      }}
+                      aria-pressed={active}
+                      className={cx("btn", "sm", active && "pri")}
+                      style={{ justifyContent: "center" }}
                     >
                       {d.charAt(0)}
                     </button>
@@ -782,8 +702,8 @@ function OutreachAndScheduleSection({
               </div>
             </FieldBlock>
 
-            <FieldBlock label="After-hours rule" t={t}>
-              <select
+            <FieldBlock label="After-hours rule">
+              <Select
                 value={wh.after_hours_rule}
                 onChange={(e) =>
                   onWorkingHours({
@@ -791,27 +711,25 @@ function OutreachAndScheduleSection({
                     after_hours_rule: e.target.value as AfterHoursRule,
                   })
                 }
-                style={inputStyle(t)}
               >
                 {(Object.keys(AFTER_HOURS_LABEL) as AfterHoursRule[]).map((rule) => (
                   <option key={rule} value={rule}>{AFTER_HOURS_LABEL[rule]}</option>
                 ))}
-              </select>
+              </Select>
             </FieldBlock>
           </div>
-        </div>
-      </div>
+        </Panel>
+      </CG>
 
-      <ScheduleSummary t={t} outreach={outreach} wh={wh} />
+      <ScheduleSummary outreach={outreach} wh={wh} />
     </>
   );
 }
 
 
 function ScheduleSummary({
-  t, outreach, wh,
+  outreach, wh,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   outreach: FirmOutreachDefaults;
   wh: WorkingHours;
 }) {
@@ -820,22 +738,19 @@ function ScheduleSummary({
   const attempts = outreach.max_attempts ?? 3;
   const quiet = QUIET_WINDOW_LABEL[outreach.quiet_window_behavior || "no_initiate"];
   return (
-    <div style={{
-      marginTop: 14, padding: 14,
-      border: `1px solid ${t.petrol}`, borderRadius: 12,
-      background: t.petrolSoft, color: t.petrol,
-      fontSize: 13, lineHeight: 1.55,
-    }}>
+    <Note>
       <div>
-        <b style={{ color: t.ink }}>Firm default:</b> {approval}, {attempts} AI attempts then a human task. Default channel: {channel}.
+        <div>
+          <b>Firm default:</b> {approval}, {attempts} AI attempts then a human task. Default channel: {channel}.
+        </div>
+        <div>
+          <b>Working schedule:</b> {formatScheduleSummary(wh)}
+        </div>
+        <div>
+          <b>After hours:</b> {AFTER_HOURS_LABEL[wh.after_hours_rule]} Quiet behavior: {quiet}.
+        </div>
       </div>
-      <div style={{ marginTop: 4 }}>
-        <b style={{ color: t.ink }}>Working schedule:</b> {formatScheduleSummary(wh)}
-      </div>
-      <div style={{ marginTop: 4 }}>
-        <b style={{ color: t.ink }}>After hours:</b> {AFTER_HOURS_LABEL[wh.after_hours_rule]} Quiet behavior: {quiet}.
-      </div>
-    </div>
+    </Note>
   );
 }
 
@@ -844,9 +759,8 @@ function ScheduleSummary({
 
 
 function GuardrailsSection({
-  t, identity, onChange,
+  identity, onChange,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   identity: FirmIdentity;
   onChange: (next: FirmIdentity) => void;
 }) {
@@ -864,104 +778,52 @@ function GuardrailsSection({
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-      <div style={{
-        border: `1px solid ${t.line}`, borderRadius: 12,
-        background: t.surface, padding: 16,
-      }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
-          Global rules
-        </div>
-        <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, marginBottom: 12 }}>
+    <CG>
+      <Panel className="s6" title="Global rules">
+        <div className="sub mb">
           Plain-English &quot;never&quot; / &quot;always&quot; statements. Honored regardless of any per-agent override.
         </div>
 
-        <div style={{ display: "grid", gap: 6 }}>
+        <div>
           {rules.map((r, i) => (
-            <div key={i} style={{
-              display: "grid", gridTemplateColumns: "1fr auto",
-              gap: 8, alignItems: "center", padding: "10px 11px",
-              border: `1px solid ${t.line}`, borderRadius: 10,
-              background: t.surface2, fontSize: 13, color: t.ink,
-            }}>
-              <span>{r}</span>
-              <button
-                type="button"
-                onClick={() => removeRule(i)}
-                style={{
-                  padding: "4px 10px", fontSize: 11, fontWeight: 700,
-                  border: `1px solid ${t.line}`, borderRadius: 7,
-                  background: t.surface, color: t.ink3, cursor: "pointer",
-                }}
-              >
-                Remove
-              </button>
-            </div>
+            <ItemRow
+              key={i}
+              right={<Btn size="sm" onClick={() => removeRule(i)}>Remove</Btn>}
+            >
+              {r}
+            </ItemRow>
           ))}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginTop: 10 }}>
-          <input
+        <Row className="mt">
+          <Input
+            grow
             value={newRule}
             onChange={(e) => setNewRule(e.target.value)}
             placeholder="Add a new global rule"
             onKeyDown={(e) => { if (e.key === "Enter") addRule(newRule); }}
-            style={inputStyle(t)}
           />
-          <button
-            type="button"
-            onClick={() => addRule(newRule)}
-            style={{
-              padding: "10px 14px", fontSize: 13, fontWeight: 700,
-              borderRadius: 8, border: `1px solid ${t.line}`,
-              background: t.brandSoft, color: t.brand, cursor: "pointer",
-            }}
-          >
-            Add
-          </button>
-        </div>
+          <Btn variant="pri" onClick={() => addRule(newRule)}>Add</Btn>
+        </Row>
 
-        <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${t.line}` }}>
-          <div style={{
-            fontSize: 11, fontWeight: 700, color: t.ink3,
-            marginBottom: 8, textTransform: "uppercase",
-          }}>
-            Suggested (click to add)
-          </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <div className="mt" style={{ paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+          <div className="lbl">Suggested (click to add)</div>
+          <Row className="mt">
             {SUGGESTED_RULES.filter((s) => !rules.includes(s)).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => addRule(s)}
-                style={{
-                  padding: "6px 10px", fontSize: 12,
-                  borderRadius: 999, border: `1px solid ${t.line}`,
-                  background: t.surface, color: t.ink2, cursor: "pointer",
-                  textAlign: "left",
-                }}
-              >
-                + {s}
-              </button>
+              <Btn key={s} size="sm" onClick={() => addRule(s)}>+ {s}</Btn>
             ))}
-          </div>
+          </Row>
         </div>
-      </div>
+      </Panel>
 
-      <div style={{
-        border: `1px solid ${t.line}`, borderRadius: 12,
-        background: t.surface, padding: 16,
-      }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, marginBottom: 4 }}>
-          Forbidden topics and redirect
-        </div>
-        <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45, marginBottom: 12 }}>
+      <Panel className="s6" title="Forbidden topics and redirect">
+        <div className="sub mb">
           Elara refuses to engage on these and offers the redirect template instead.
         </div>
 
-        <div style={{ display: "grid", gap: 10 }}>
-          <FieldBlock label="Forbidden topics (comma-separated)" t={t}>
-            <textarea
+        <div className="grid g10">
+          <FieldBlock label="Forbidden topics (comma-separated)">
+            <Textarea
               value={(identity.forbidden_topics || []).join(", ")}
               onChange={(e) =>
                 onChange({
@@ -974,21 +836,21 @@ function GuardrailsSection({
               }
               placeholder="exact rate quotes, legal advice, tax advice, competitor pricing"
               rows={3}
-              style={{ ...inputStyle(t), resize: "vertical", minHeight: 78 }}
+              style={{ resize: "vertical", minHeight: 78 }}
             />
           </FieldBlock>
-          <FieldBlock label="Redirect template" t={t}>
-            <textarea
+          <FieldBlock label="Redirect template">
+            <Textarea
               value={identity.redirect_template || ""}
               onChange={(e) => onChange({ ...identity, redirect_template: e.target.value })}
               placeholder="That's something the funding team will confirm directly with you. I can flag it and they'll follow up — would that work?"
               rows={4}
-              style={{ ...inputStyle(t), resize: "vertical", minHeight: 100 }}
+              style={{ resize: "vertical", minHeight: 100 }}
             />
           </FieldBlock>
         </div>
-      </div>
-    </div>
+      </Panel>
+    </CG>
   );
 }
 
@@ -996,59 +858,13 @@ function GuardrailsSection({
 // ─── Shared primitives ───────────────────────────────────────────────
 
 
-function FieldBlock({ label, children, t }: { label: string; children: React.ReactNode; t: ReturnType<typeof useTheme>["t"] }) {
+// Stays a <label> rather than becoming `ds/Field`: wrapping the control means
+// clicking the caption focuses it, and that is an affordance, not decoration.
+function FieldBlock({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <span style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>
-        {label}
-      </span>
+    <label className="grid g6">
+      <span className="lbl">{label}</span>
       {children}
     </label>
   );
-}
-
-
-function Chip({
-  children, t, tone,
-}: {
-  children: React.ReactNode;
-  t: ReturnType<typeof useTheme>["t"];
-  tone?: "good" | "warn" | "blue";
-}) {
-  const palette =
-    tone === "good" ? { bg: t.profitBg, fg: t.profit }
-    : tone === "warn" ? { bg: t.warnBg, fg: t.warn }
-    : tone === "blue" ? { bg: t.brandSoft, fg: t.brand }
-    : { bg: t.surface2, fg: t.ink3 };
-  return (
-    <span style={{
-      fontSize: 10, fontWeight: 800,
-      padding: "3px 8px", borderRadius: 999,
-      background: palette.bg, color: palette.fg,
-      textTransform: "uppercase", letterSpacing: 0.4,
-    }}>
-      {children}
-    </span>
-  );
-}
-
-
-function inputStyle(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    padding: "10px 12px", fontSize: 13, fontFamily: "inherit",
-    borderRadius: 8, border: `1px solid ${t.line}`,
-    background: t.surface, color: t.ink, width: "100%",
-    outline: "none",
-  } as const;
-}
-
-
-function linkButton(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    display: "inline-block",
-    padding: "8px 13px", fontSize: 12, fontWeight: 700,
-    borderRadius: 8, border: `1px solid ${t.line}`,
-    background: t.surface2, color: t.ink2,
-    textDecoration: "none", cursor: "pointer",
-  } as const;
 }

@@ -299,3 +299,49 @@
    warning — a placeholder with a reason. */
 .hintbox { padding: 18px; background: var(--surface); border-radius: var(--r); border: 1px dashed var(--line2); display: flex; align-items: center; gap: 14px; }
 .hintbox-i { width: 36px; height: 36px; border-radius: 50%; background: var(--accent-100); color: var(--accent); display: inline-grid; place-items: center; flex-shrink: 0; }
+
+/* ---------- corrections to the vendored sheet ----------
+   These override globals.css rather than editing it, so globals.css stays
+   byte-diffable against QCDealerOS/src/app/globals.css. Each one is a value
+   that is right there and wrong here, and says why. */
+
+/* `.ckhead` ships as `top: 51px`, sized for a layout where the document
+   scrolls under a fixed topbar. Here the topbar is a flex SIBLING of the
+   scroller — `main.content` is `overflow-y: auto` (AppShell) — so 51px parks
+   the sticky identity bar 51px down from the top of its own scroll box and
+   page content scrolls visibly through the gap above it. Anchored to the top
+   of the scroller, which is where it was always meant to sit. */
+.ckhead { top: 0; }
+
+/* `.ckhead` is also hidden by the print stylesheet alongside `.side` and
+   `.top`. Those two are app chrome and should go. This one is not: on
+   /loans/[id] it carries the property address and the deal id, and a printed
+   lender package with no identity on it is a stack of numbers about nothing.
+   Print it, without the sticky positioning or the app background. */
+@media print {
+  .ckhead { display: block !important; position: static; margin: 0 0 14px; padding: 0 0 10px; background: none; z-index: auto; }
+}
+
+/* ---------- tone variants for stateful surfaces ----------
+   A grid of condition tiles is scanned, not read. When the only marker of
+   "this one is blocking you" is a badge inside the tile, the eye has to visit
+   every tile in turn to find it. The surface has to carry the state too. */
+.card.tone-ok { border-color: rgba(20, 105, 72, 0.24); background: var(--ok-tint); }
+.card.tone-warn { border-color: rgba(161, 92, 7, 0.26); background: var(--warn-tint); }
+.card.tone-bad { border-color: rgba(178, 42, 42, 0.28); background: var(--danger-tint); }
+.rung.tone-warn { border-color: rgba(161, 92, 7, 0.26); background: var(--warn-tint); }
+.rung.tone-bad { border-color: rgba(178, 42, 42, 0.28); background: var(--danger-tint); }
+
+/* A button that is asking for attention. `.btn:hover` out-specifies a bare
+   `.c-warn`, so a tone chip class on a button loses its tint exactly when the
+   pointer is on it — the signal vanishes at the moment of interest. This
+   keeps it through hover and deepens it slightly instead. */
+.btn.tone-warn { background: var(--warn-tint); border-color: rgba(161, 92, 7, 0.26); color: var(--warn); }
+.btn.tone-warn:hover { background: rgba(161, 92, 7, 0.16); }
+.btn.tone-bad { background: var(--danger-tint); border-color: rgba(178, 42, 42, 0.28); color: var(--danger); }
+.btn.tone-bad:hover { background: rgba(178, 42, 42, 0.14); }
+
+/* A KPI whose value is a sentence rather than a figure. `.knum` is
+   white-space: nowrap and 26px, which is correct for "$1.2M" and overflows
+   the tile for "Auto-approve under $50k". */
+.kpi .knum.prose { white-space: normal; font-size: 15px; line-height: 1.3; font-weight: 620; }

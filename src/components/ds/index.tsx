@@ -139,6 +139,7 @@ export function Kpi({
   sub,
   delta,
   tone = "mut",
+  prose,
   className,
 }: {
   label: ReactNode;
@@ -149,12 +150,20 @@ export function Kpi({
   sub?: ReactNode;
   delta?: ReactNode;
   tone?: ChipTone;
+  /**
+   * The value is a sentence, not a figure.
+   *
+   * `.knum` is 26px and `white-space: nowrap`, which is right for "$1.2M" and
+   * overflows the tile for "Auto-approve under $50k". Routes were hand-rolling
+   * `.kpi` markup to escape this rather than using the component.
+   */
+  prose?: boolean;
   className?: string;
 }) {
   return (
     <div className={cx("kpi", className)}>
       <div className="lbl">{label}</div>
-      <div className="knum num">{value}</div>
+      <div className={cx("knum", !prose && "num", prose && "prose")}>{value}</div>
       {sub != null && (
         <div className="sub" style={{ marginTop: 4 }}>
           {sub}
