@@ -11,12 +11,32 @@
 // (alembic 0017 partial unique on (user, loan), 0018 partial
 // unique on (user) WHERE loan_id IS NULL) prevent duplicates at
 // the DB level no matter how the panel is poked.
+//
+// ── Design-system migration note ──────────────────────────────────────
+// Restyled onto globals.css/app-extras.css classes: the thread uses the shared
+// message vocabulary (`.msg` / `.msg-b` / `.msg.mine` / `.msg.ai` /
+// `.thr-empty`), the composer uses `.composer` + `.composer-row`, and the
+// conversation rows, starter prompts, chips and buttons use `.pick`,
+// `.cellchip`, `.chip` and `.btn`.
+//
+// The SHELL stays inline on purpose, and this is the one deliberate departure
+// from "everything onto classes". This is not a dialog with a body — it is a
+// docked full-height panel with its own 280px rail, a flexible middle that
+// scrolls, and a composer pinned to the bottom edge. ds/Drawer is a centred
+// box whose `.drawer-b` owns padding and scrolling, and `.thr` caps itself at
+// 56vh, which inside a 100vh docked panel leaves the composer floating in
+// whitespace. Bespoke geometry stays inline (and is commented at each site)
+// rather than being forced onto the wrong word.
+//
+// Every hook, every action case, every disabled predicate, both title
+// tooltips, the Enter-to-send handler, the auto-scroll ref, the mark-seen
+// effect and all seven empty/loading/error states are the ones that were here
+// before. Public props (`open`, `onClose`) are untouched.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import { Btn, CellChip, IconBtn, Input, Linky, StatusLine, cx } from "@/components/ds";
 import {
   useAIChatThread,
   useAIChatThreads,
@@ -46,7 +66,6 @@ interface Props {
 }
 
 export function AIChatPanel({ open, onClose }: Props) {
-  const { t } = useTheme();
   const router = useRouter();
   const { data: loans = [] } = useLoans();
   const threadsQ = useAIChatThreads();
@@ -262,6 +281,9 @@ export function AIChatPanel({ open, onClose }: Props) {
       role="dialog"
       aria-modal="true"
       aria-label="Elara chat"
+      // Scrim geometry. `.drawer-scrim` is the sheet's word for this, but it is
+      // half of a pair whose other half is a centred `.drawer`; this panel is
+      // docked to the right edge instead, so the two stay together here.
       style={{
         position: "fixed",
         inset: 0,
@@ -273,6 +295,8 @@ export function AIChatPanel({ open, onClose }: Props) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
+      {/* Docked panel: full viewport height, right edge, rounded on the inside
+          corners only. Bespoke geometry — see the note at the top of the file. */}
       <div
         style={{
           position: "absolute",
@@ -280,87 +304,66 @@ export function AIChatPanel({ open, onClose }: Props) {
           right: 0,
           bottom: 0,
           width: "min(820px, 95vw)",
-          background: t.bg,
-          boxShadow: t.shadowLg,
+          background: "var(--bg)",
+          boxShadow: "var(--sh2)",
           borderTopLeftRadius: 18,
           borderBottomLeftRadius: 18,
           display: "flex",
           flexDirection: "row",
         }}
       >
-        {/* Conversation sidebar — derived, never raw */}
+        {/* Conversation sidebar — derived, never raw. A fixed 280px rail; NOT
+            `.side` (that is the app sidebar and carries height:100vh plus its
+            own border) and not `.withrail > .railcol` (that is a page-level
+            sticky column inside `.content`). */}
         <div
           style={{
             width: 280,
-            borderRight: `1px solid ${t.line}`,
-            background: t.surface2,
+            flex: "0 0 auto",
+            borderRight: "1px solid var(--line)",
+            background: "var(--sunken2)",
             display: "flex",
             flexDirection: "column",
             borderTopLeftRadius: 18,
             borderBottomLeftRadius: 18,
+            minWidth: 0,
           }}
         >
           <div
             style={{
               flex: "0 0 auto",
               padding: "16px 16px 12px",
-              borderBottom: `1px solid ${t.line}`,
+              borderBottom: "1px solid var(--line)",
             }}
           >
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: 1.6,
-                textTransform: "uppercase",
-                color: t.petrol,
-              }}
-            >
-              Conversations
-            </div>
-            <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 4, lineHeight: 1.5 }}>
+            <div className="lbl">Conversations</div>
+            <div className="sub">
               {`1 account thread · ${loans.length} loan${loans.length === 1 ? "" : "s"}`}
             </div>
           </div>
-          <div style={{ flex: "1 1 auto", overflowY: "auto", padding: 8 }}>
+          {/* The rail's own scroller. */}
+          <div style={{ flex: "1 1 auto", overflowY: "auto", padding: 8, minHeight: 0 }}>
             <SidebarRow
-              t={t}
               title="Account questions"
               subtitle={accountThread?.last_message_preview ?? "General questions about your portfolio."}
               timestamp={accountThread?.last_message_at ?? null}
-              accent="petrol"
               empty={!accountThread}
               isActive={!!accountThread && activeThreadId === accountThread.id}
               unread={!!accountThread?.unread}
               onClick={() => openThread(null)}
             />
 
-            {loans.length > 0 ? (
-              <div
-                style={{
-                  fontSize: 10.5,
-                  fontWeight: 700,
-                  color: t.ink3,
-                  letterSpacing: 1.4,
-                  textTransform: "uppercase",
-                  margin: "12px 4px 6px",
-                }}
-              >
-                Loans
-              </div>
-            ) : null}
+            {loans.length > 0 ? <div className="lbl mt mb">Loans</div> : null}
 
             {loans.map((loan: Loan) => {
               const th = loanThreadMap.get(loan.id);
               return (
                 <SidebarRow
                   key={loan.id}
-                  t={t}
                   title={loan.deal_id}
                   subtitleHeader={loan.address ?? ""}
                   subtitle={th?.last_message_preview ?? "No conversation yet — tap to start."}
                   timestamp={th?.last_message_at ?? null}
-                  accent="brand"
                   empty={!th}
                   isActive={!!th && activeThreadId === th.id}
                   unread={!!th?.unread}
@@ -370,140 +373,81 @@ export function AIChatPanel({ open, onClose }: Props) {
             })}
 
             {threadsQ.isLoading && (threadsQ.data ?? []).length === 0 ? (
-              <div style={{ padding: 12, fontSize: 12, color: t.ink3 }}>Loading…</div>
+              <div className="thr-empty">Loading…</div>
             ) : null}
           </div>
         </div>
 
         {/* Active conversation */}
-        <div
-          style={{
-            flex: 1,
-            minWidth: 0,
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
           {/* Header */}
           <div
             style={{
               flex: "0 0 auto",
               display: "flex",
               alignItems: "center",
-              justifyContent: "space-between",
+              gap: 10,
               padding: "16px 22px",
-              borderBottom: `1px solid ${t.line}`,
+              borderBottom: "1px solid var(--line)",
             }}
           >
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: 1.6,
-                  textTransform: "uppercase",
-                  color: t.petrol,
-                }}
-              >
-                Elara
-              </div>
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 800,
-                  color: t.ink,
-                  marginTop: 2,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {activeThreadQ.data?.title ?? "Pick a conversation"}
-              </div>
+            <div className="grow">
+              <div className="lbl">Elara</div>
+              <h3 className="trunc">{activeThreadQ.data?.title ?? "Pick a conversation"}</h3>
               {activeThreadQ.data?.loan_deal_id ? (
-                <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>
+                <div className="sub trunc">
                   {activeThreadQ.data.loan_deal_id}
                   {activeThreadQ.data.loan_address ? ` · ${activeThreadQ.data.loan_address}` : ""}
                 </div>
               ) : null}
             </div>
-            <button
-              onClick={onClose}
-              aria-label="Close"
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                width: 32,
-                height: 32,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 8,
-                color: t.ink2,
-              }}
-            >
+            <IconBtn onClick={onClose} aria-label="Close">
               <Icon name="x" size={16} />
-            </button>
+            </IconBtn>
           </div>
 
-          {/* Thread */}
+          {/* Thread. The scroller is the flexible middle of a docked panel, so
+              it cannot be `.thr` — that caps itself at 56vh and would leave the
+              composer floating above a band of empty space. The messages inside
+              it are the shared `.msg` vocabulary. */}
           <div
             ref={scrollRef}
             style={{
               flex: "1 1 auto",
+              minHeight: 0,
               overflowY: "auto",
               padding: "16px 22px",
               display: "flex",
               flexDirection: "column",
-              gap: 10,
+              gap: 14,
             }}
           >
             {!activeThreadId ? (
-              <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.55 }}>
+              <div className="thr-empty">
                 Pick a conversation on the left to start chatting. Elara sees the
                 full context for whichever scope you choose — account-wide for
                 general questions, loan-specific for deal-level questions.
               </div>
             ) : messages.length === 0 ? (
               <>
-                <div
-                  style={{
-                    fontSize: 12.5,
-                    color: t.ink3,
-                    lineHeight: 1.55,
-                    marginBottom: 6,
-                  }}
-                >
+                <div className="thr-empty">
                   Ask about your pipeline, outstanding documents, what&apos;s next on a
                   deal, or anything else underwriting-related.
                 </div>
-                <div
-                  style={{
-                    fontSize: 10.5,
-                    fontWeight: 700,
-                    color: t.ink3,
-                    letterSpacing: 1.2,
-                    textTransform: "uppercase",
-                    marginTop: 8,
-                  }}
-                >
-                  Try asking
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div className="lbl">Try asking</div>
+                {/* No gap wrapper: `.pick + .pick` already carries the 7px
+                    stacking rhythm, and a grid gap on top would double it. */}
+                <div>
                   {STARTER_PROMPTS.map((p) => (
                     <button
                       key={p}
+                      type="button"
+                      className="pick"
                       onClick={() => send(p)}
-                      style={{
-                        all: "unset",
-                        cursor: "pointer",
-                        padding: 12,
-                        borderRadius: 12,
-                        border: `1px solid ${t.line}`,
-                        fontSize: 13,
-                        color: t.ink2,
-                        lineHeight: 1.5,
-                      }}
+                      // `.pick` was written for a `<label>`; on a `<button>`
+                      // the UA still centres the text and no class owns
+                      // text-align.
+                      style={{ textAlign: "left" }}
                     >
                       {p}
                     </button>
@@ -514,40 +458,27 @@ export function AIChatPanel({ open, onClose }: Props) {
               messages.map((m) => (
                 <div
                   key={m.id}
+                  className={cx("msg", m.role === "user" ? "mine" : "ai")}
+                  // Which side the bubble hangs off is derived from the
+                  // message's role, so it stays at the site.
                   style={{
                     alignSelf: m.role === "user" ? "flex-end" : "flex-start",
                     maxWidth: "85%",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
                   }}
                 >
-                  <div
-                    style={{
-                      padding: 11,
-                      borderRadius: 14,
-                      background: m.role === "user" ? t.brandSoft : t.surface2,
-                      color: m.role === "user" ? t.brand : t.ink,
-                      fontSize: 13,
-                      lineHeight: 1.5,
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {m.body}
-                  </div>
+                  <div className="msg-b">{m.body}</div>
                   {m.attachments && m.attachments.length > 0 ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div className="row">
                       {m.attachments.map((att) => (
-                        <PanelAttachmentChip key={att.document_id} t={t} attachment={att} />
+                        <PanelAttachmentChip key={att.document_id} attachment={att} />
                       ))}
                     </div>
                   ) : null}
                   {m.role === "assistant" && m.actions && m.actions.length > 0 ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div className="row">
                       {m.actions.map((a, idx) => (
                         <PanelActionButton
                           key={idx}
-                          t={t}
                           action={a}
                           onClick={() => onAction(a)}
                           busy={routeDocument.isPending}
@@ -559,162 +490,89 @@ export function AIChatPanel({ open, onClose }: Props) {
               ))
             )}
             {sendMessage.isPending ? (
-              <div
-                style={{
-                  alignSelf: "flex-start",
-                  padding: 11,
-                  borderRadius: 14,
-                  background: t.surface2,
-                  fontSize: 12,
-                  color: t.ink3,
-                }}
-              >
-                Thinking…
+              <div className="msg ai" style={{ alignSelf: "flex-start", maxWidth: "85%" }}>
+                <div className="msg-b">Thinking…</div>
               </div>
             ) : null}
-            {error ? <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill> : null}
+            {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
           </div>
 
           {/* Staged attachments preview */}
           {staged.length > 0 ? (
-            <div
-              style={{
-                flex: "0 0 auto",
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 6,
-                padding: "8px 22px 0",
-              }}
-            >
+            <div className="row" style={{ flex: "0 0 auto", padding: "8px 22px 0" }}>
               {staged.map((s) => (
-                <div
-                  key={s.document_id}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "6px 10px",
-                    borderRadius: 999,
-                    background: t.petrolSoft,
-                    color: t.petrol,
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                  }}
-                >
+                <CellChip key={s.document_id} tone="pet">
                   <Icon name="doc" size={12} />
-                  <span style={{ maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {s.name}
-                  </span>
-                  <button
+                  <span className="trunc" style={{ maxWidth: 200 }}>{s.name}</span>
+                  <Linky
                     onClick={() => setStaged((prev) => prev.filter((x) => x.document_id !== s.document_id))}
                     aria-label="Remove attachment"
-                    style={{
-                      all: "unset",
-                      cursor: "pointer",
-                      padding: 2,
-                      display: "inline-flex",
-                      alignItems: "center",
-                    }}
                   >
                     <Icon name="x" size={11} />
-                  </button>
-                </div>
+                  </Linky>
+                </CellChip>
               ))}
             </div>
           ) : null}
 
-          {/* Input */}
+          {/* Input. `.composer` owns the top hairline and the vertical rhythm;
+              only the panel's 22px side gutter is set here, and no class owns
+              that. */}
           <div
-            style={{
-              flex: "0 0 auto",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "12px 22px",
-              borderTop: `1px solid ${t.line}`,
-            }}
+            className="composer"
+            style={{ flex: "0 0 auto", paddingLeft: 22, paddingRight: 22, paddingBottom: 12 }}
           >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/pdf,image/*"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onPickFile(f);
-                e.target.value = "";
-              }}
-              style={{ display: "none" }}
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={!activeThreadLoanId || attachmentInit.isPending}
-              aria-label="Attach file"
-              title={activeThreadLoanId ? "Attach file" : "Attachments require a loan-scoped thread"}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 10,
-                border: "none",
-                background: "transparent",
-                color: activeThreadLoanId ? t.ink2 : t.ink4,
-                cursor: activeThreadLoanId ? "pointer" : "not-allowed",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: activeThreadLoanId ? 1 : 0.5,
-              }}
-            >
-              <Icon name="paperclip" size={18} />
-            </button>
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={
-                staged.length > 0
-                  ? "Add a note (optional)…"
-                  : activeThreadId
-                    ? "Type your question…"
-                    : "Pick a conversation first"
-              }
-              disabled={!activeThreadId}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  send(input);
+            <div className="composer-row">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/pdf,image/*"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onPickFile(f);
+                  e.target.value = "";
+                }}
+                style={{ display: "none" }}
+              />
+              <IconBtn
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!activeThreadLoanId || attachmentInit.isPending}
+                aria-label="Attach file"
+                title={activeThreadLoanId ? "Attach file" : "Attachments require a loan-scoped thread"}
+              >
+                <Icon name="paperclip" size={18} />
+              </IconBtn>
+              <Input
+                grow
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={
+                  staged.length > 0
+                    ? "Add a note (optional)…"
+                    : activeThreadId
+                      ? "Type your question…"
+                      : "Pick a conversation first"
                 }
-              }}
-              style={{
-                flex: 1,
-                padding: "11px 14px",
-                borderRadius: 12,
-                background: t.surface2,
-                border: `1px solid ${t.line}`,
-                color: t.ink,
-                fontSize: 14,
-                fontFamily: "inherit",
-                outline: "none",
-                opacity: activeThreadId ? 1 : 0.6,
-              }}
-            />
-            <button
-              onClick={() => send(input)}
-              disabled={(!input.trim() && staged.length === 0) || sendMessage.isPending || !activeThreadId}
-              aria-label="Send"
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 12,
-                border: "none",
-                background: (input.trim() || staged.length > 0) && !sendMessage.isPending && activeThreadId ? t.petrol : t.chip,
-                color: (input.trim() || staged.length > 0) && !sendMessage.isPending && activeThreadId ? "#fff" : t.ink4,
-                cursor: (input.trim() || staged.length > 0) && !sendMessage.isPending && activeThreadId ? "pointer" : "not-allowed",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Icon name="arrowR" size={18} />
-            </button>
+                disabled={!activeThreadId}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    send(input);
+                  }
+                }}
+                // Nothing in the sheet dims a disabled `.field`, and without
+                // the dim there is no sign the box is inert until you click it.
+                style={{ opacity: activeThreadId ? 1 : 0.6 }}
+              />
+              <IconBtn
+                className="pri"
+                onClick={() => send(input)}
+                disabled={(!input.trim() && staged.length === 0) || sendMessage.isPending || !activeThreadId}
+                aria-label="Send"
+              >
+                <Icon name="arrowR" size={16} />
+              </IconBtn>
+            </div>
           </div>
         </div>
       </div>
@@ -723,12 +581,10 @@ export function AIChatPanel({ open, onClose }: Props) {
 }
 
 interface SidebarRowProps {
-  t: ReturnType<typeof useTheme>["t"];
   title: string;
   subtitleHeader?: string;
   subtitle: string;
   timestamp: string | null;
-  accent: "petrol" | "brand";
   empty: boolean;
   isActive: boolean;
   unread?: boolean;
@@ -736,111 +592,65 @@ interface SidebarRowProps {
 }
 
 function SidebarRow({
-  t,
   title,
   subtitleHeader,
   subtitle,
   timestamp,
-  accent,
   empty,
   isActive,
   unread,
   onClick,
 }: SidebarRowProps) {
-  const accentColor = accent === "petrol" ? t.petrol : t.brand;
-  const accentBg = accent === "petrol" ? t.petrolSoft : t.brandSoft;
   return (
     <button
       type="button"
       onClick={onClick}
-      style={{
-        all: "unset",
-        cursor: "pointer",
-        display: "block",
-        width: "100%",
-        boxSizing: "border-box",
-        padding: "10px 12px",
-        borderRadius: 10,
-        marginBottom: 4,
-        background: isActive ? accentBg : "transparent",
-        border: isActive ? `1px solid ${accentColor}` : "1px solid transparent",
-      }}
+      aria-current={isActive ? "true" : undefined}
+      className={cx("pick", isActive && "on")}
+      // `.pick` owns `display` (flex) — the stack goes in a single `.grow`
+      // child rather than being forced on top of it. Only text-align is set
+      // here: `.pick` was written for a `<label>` and the UA centres a
+      // `<button>`'s text.
+      style={{ textAlign: "left" }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 1 }}>
-          {unread ? (
-            <span
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: 999,
-                background: t.danger,
-                flex: "0 0 auto",
-              }}
-            />
+      <div className="grow">
+        <div className="row">
+          {/* An unread marker. `.repdot` owns the shape; the colour says which
+              kind of attention it is. */}
+          {unread ? <span className="repdot" style={{ background: "var(--danger)" }} /> : null}
+          <b className="trunc grow">{title}</b>
+          {timestamp ? (
+            <span className="sub">
+              {new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+            </span>
           ) : null}
-          <div
-            style={{
-              fontSize: 12.5,
-              fontWeight: unread ? 800 : 700,
-              color: isActive ? accentColor : t.ink,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              minWidth: 0,
-              flex: 1,
-            }}
-          >
-            {title}
-          </div>
         </div>
-        {timestamp ? (
-          <div style={{ fontSize: 10, color: t.ink4, flex: "0 0 auto" }}>
-            {new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-          </div>
-        ) : null}
-      </div>
-      {subtitleHeader ? (
+        {subtitleHeader ? <div className="sub trunc">{subtitleHeader}</div> : null}
         <div
+          className="sub"
+          // Two-line clamp. `.trunc` is the one-line form; the -webkit-box trio
+          // is written out here because this is the only two-line clamp in the
+          // app and a class for a single site is a class nobody finds.
           style={{
-            fontSize: 10.5,
-            color: t.ink3,
-            marginTop: 1,
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
             overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            fontStyle: empty ? "italic" : "normal",
           }}
         >
-          {subtitleHeader}
+          {subtitle}
         </div>
-      ) : null}
-      <div
-        style={{
-          fontSize: 11,
-          color: empty ? t.ink4 : t.ink3,
-          fontStyle: empty ? "italic" : "normal",
-          marginTop: 4,
-          lineHeight: 1.4,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          display: "-webkit-box",
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: "vertical",
-        }}
-      >
-        {subtitle}
       </div>
     </button>
   );
 }
 
 function PanelActionButton({
-  t,
   action,
   onClick,
   busy,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   action: ChatAction;
   onClick: () => void;
   busy: boolean;
@@ -855,61 +665,22 @@ function PanelActionButton({
           ? "check"
           : "chevR";
   return (
-    <button
-      onClick={onClick}
-      disabled={busy}
-      style={{
-        all: "unset",
-        cursor: busy ? "not-allowed" : "pointer",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "10px 14px",
-        borderRadius: 12,
-        background: isPrimary ? t.petrol : t.surface2,
-        border: isPrimary ? "none" : `1px solid ${t.line}`,
-        color: isPrimary ? "#fff" : t.ink,
-        fontSize: 12.5,
-        fontWeight: 700,
-        opacity: busy ? 0.6 : 1,
-      }}
-    >
+    <Btn variant={isPrimary ? "pri" : "default"} onClick={onClick} disabled={busy}>
       <Icon name={iconName} size={14} />
       <span>{action.label}</span>
-    </button>
+    </Btn>
   );
 }
 
-function PanelAttachmentChip({
-  t,
-  attachment,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  attachment: ChatAttachment;
-}) {
+function PanelAttachmentChip({ attachment }: { attachment: ChatAttachment }) {
   const status = attachment.status ?? "received";
-  const statusColor =
-    status === "verified" ? t.profit : status === "flagged" ? t.warn : t.ink3;
+  // Tone is derived from the document's status, so the class is picked here.
+  const statusTone = status === "verified" ? "ok" : status === "flagged" ? "warn" : "mut";
   return (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "6px 10px",
-        borderRadius: 12,
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        fontSize: 11.5,
-      }}
-    >
+    <span className="chip">
       <Icon name="doc" size={12} />
-      <span style={{ color: t.ink, fontWeight: 600, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {attachment.name}
-      </span>
-      <span style={{ color: statusColor, textTransform: "uppercase", letterSpacing: 0.6, fontSize: 10.5 }}>
-        {status}
-      </span>
-    </div>
+      <span className="trunc" style={{ maxWidth: 220 }}>{attachment.name}</span>
+      <CellChip tone={statusTone}>{status}</CellChip>
+    </span>
   );
 }

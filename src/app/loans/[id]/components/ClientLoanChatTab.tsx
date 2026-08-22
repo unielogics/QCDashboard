@@ -14,9 +14,11 @@
 // chat surface at all (CLIENT_TABS = Overview / Simulator / Documents
 // / Activity, no chat tab). Operator-to-client messages were
 // invisible on desktop entirely.
+//
+// Restyled onto `.panel` + `.composer`; only the 60vh floor stays inline.
 
 import { useRef, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { Btn, IconBtn, Panel, StatusLine, Sub, Textarea } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useDealChat, useDealWorkspace, useSendDealChat, useUploadDocument } from "@/hooks/useApi";
 import { DealChatMode, DealChatRole } from "@/lib/enums.generated";
@@ -29,7 +31,6 @@ interface Props {
 }
 
 export function ClientLoanChatTab({ loanId, user }: Props) {
-  const { t } = useTheme();
   const { data: workspace, isLoading } = useDealWorkspace(loanId);
   const { data: messages = [] } = useDealChat(loanId);
   const send = useSendDealChat();
@@ -87,209 +88,104 @@ export function ClientLoanChatTab({ loanId, user }: Props) {
 
   if (isLoading || !workspace) {
     return (
-      <div
-        style={{
-          padding: 24,
-          background: t.surface,
-          borderRadius: 14,
-          border: `1px solid ${t.line}`,
-          color: t.ink3,
-          fontSize: 13,
-        }}
-      >
-        Loading conversation…
-      </div>
+      <Panel>
+        <Sub>Loading conversation…</Sub>
+      </Panel>
     );
   }
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateRows: "auto 1fr auto",
-        gap: 12,
-        background: t.surface,
-        borderRadius: 14,
-        border: `1px solid ${t.line}`,
-        boxShadow: t.shadow,
-        minHeight: "60vh",
-      }}
-    >
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "12px 14px",
-          borderBottom: `1px solid ${t.line}`,
-          background: t.surface2,
-          borderTopLeftRadius: 14,
-          borderTopRightRadius: 14,
-        }}
-      >
-        <Icon name="chat" size={14} />
-        <span style={{ fontSize: 13, fontWeight: 900, color: t.ink }}>Messages</span>
-        <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>
-          {isPaused
+    // Bespoke floor: the panel stretches to fill it so the composer sits low
+    // rather than riding up under a short thread.
+    <div style={{ minHeight: "60vh", display: "grid" }}>
+      <Panel
+        title={
+          <>
+            <Icon name="chat" size={14} /> Messages
+          </>
+        }
+        sub={
+          isPaused
             ? `Your operator is handling this directly (AI back in ~${pauseRemainingMin} min)`
-            : "AI ↔ you about this loan"}
-        </span>
-        {/* AI disclosure microcopy — Disclosure §2 ("AI can make mistakes")
-            on a borrower-facing AI surface. */}
-        <span
-          style={{
-            marginLeft: "auto",
-            fontSize: 10.5,
-            color: t.ink4,
-            fontStyle: "italic",
-            fontWeight: 500,
-          }}
-        >
-          Nurture AI can make mistakes — anything material is reviewed before action.
-        </span>
-      </header>
-
-      <div style={{ minHeight: 0, overflow: "auto", padding: 12 }}>
-        <DealChatThread
-          loanId={loanId}
-          user={user}
-          messages={messages}
-          pausedUntil={pausedUntil}
-        />
-      </div>
-
-      <div
-        style={{
-          padding: 12,
-          borderTop: `1px solid ${t.line}`,
-          background: t.surface2,
-          borderBottomLeftRadius: 14,
-          borderBottomRightRadius: 14,
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-        }}
+            : "AI ↔ you about this loan"
+        }
+        actions={
+          /* AI disclosure microcopy — Disclosure §2 ("AI can make mistakes")
+             on a borrower-facing AI surface. */
+          <span className="sub" style={{ fontStyle: "italic" }}>
+            Nurture AI can make mistakes — anything material is reviewed before action.
+          </span>
+        }
+        noPad
       >
-        {flash && (
-          <div
-            style={{
-              padding: "6px 10px",
-              borderRadius: 8,
-              background: t.warnBg,
-              color: t.warn,
-              fontSize: 11.5,
-              fontWeight: 600,
-            }}
-          >
-            {flash}
-          </div>
-        )}
-        {staged && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "6px 10px",
-              borderRadius: 8,
-              background: t.surface,
-              border: `1px solid ${t.line}`,
-            }}
-          >
-            <Icon name="paperclip" size={13} />
-            <span style={{ flex: 1, fontSize: 12, color: t.ink2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {staged.name}
-            </span>
-            <button
-              onClick={() => setStaged(null)}
-              style={{ all: "unset", cursor: "pointer", color: t.ink3 }}
-              aria-label="Remove attachment"
-            >
-              <Icon name="x" size={13} />
-            </button>
-          </div>
-        )}
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/pdf,image/*"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = "";
-              if (f) void onPickFile(f);
-            }}
+        <div className="grow" style={{ minHeight: 0, overflow: "auto", padding: 12 }}>
+          <DealChatThread
+            loanId={loanId}
+            user={user}
+            messages={messages}
+            pausedUntil={pausedUntil}
           />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploadDoc.isPending}
-            aria-label="Attach a file"
-            title="Attach a file"
-            style={{
-              all: "unset",
-              cursor: uploadDoc.isPending ? "not-allowed" : "pointer",
-              padding: "10px 12px",
-              borderRadius: 9,
-              border: `1px solid ${t.line}`,
-              background: t.surface,
-              color: t.ink2,
-              display: "inline-flex",
-              alignItems: "center",
-              opacity: uploadDoc.isPending ? 0.6 : 1,
-            }}
-          >
-            <Icon name="paperclip" size={14} />
-          </button>
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void submit();
-              }
-            }}
-            placeholder="Ask about your loan — pricing, missing docs, next steps…"
-            rows={2}
-            style={{
-              flex: 1,
-              padding: "10px 12px",
-              borderRadius: 9,
-              border: `1px solid ${t.line}`,
-              background: t.surface,
-              color: t.ink,
-              fontSize: 13,
-              fontFamily: "inherit",
-              resize: "vertical",
-              minHeight: 44,
-              maxHeight: 200,
-              outline: "none",
-            }}
-          />
-          <button
-            onClick={() => void submit()}
-            disabled={!draft.trim() && !staged}
-            style={{
-              all: "unset",
-              cursor: !draft.trim() && !staged ? "not-allowed" : "pointer",
-              padding: "10px 16px",
-              borderRadius: 9,
-              background: !draft.trim() && !staged ? t.chip : t.brand,
-              color: !draft.trim() && !staged ? t.ink3 : "#fff",
-              fontSize: 13,
-              fontWeight: 800,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              opacity: send.isPending ? 0.6 : 1,
-            }}
-          >
-            <Icon name="send" size={13} />
-            {send.isPending ? "Sending…" : "Send"}
-          </button>
         </div>
-      </div>
+
+        <div
+          className="grid g8"
+          style={{ padding: 12, borderTop: "1px solid var(--line)", background: "var(--sunken2)" }}
+        >
+          {flash && <StatusLine tone="warn">{flash}</StatusLine>}
+          {staged && (
+            <div className="itemrow">
+              <Icon name="paperclip" size={13} />
+              <span className="grow trunc">{staged.name}</span>
+              <IconBtn onClick={() => setStaged(null)} aria-label="Remove attachment">
+                <Icon name="x" size={13} />
+              </IconBtn>
+            </div>
+          )}
+          <div className="composer-row">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf,image/*"
+              // Functional, not decorative: the picker is opened
+              // programmatically and this control is never laid out.
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) void onPickFile(f);
+              }}
+            />
+            <Btn
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadDoc.isPending}
+              aria-label="Attach a file"
+              title="Attach a file"
+            >
+              <Icon name="paperclip" size={14} />
+            </Btn>
+            <Textarea
+              className="grow"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void submit();
+                }
+              }}
+              placeholder="Ask about your loan — pricing, missing docs, next steps…"
+              rows={2}
+              // Bespoke bounds for a two-line composer that may be dragged
+              // taller; `textarea.field` owns only `resize: vertical`.
+              style={{ minHeight: 44, maxHeight: 200 }}
+            />
+            <Btn variant="pri" onClick={() => void submit()} disabled={!draft.trim() && !staged}>
+              <Icon name="send" size={13} />
+              {send.isPending ? "Sending…" : "Send"}
+            </Btn>
+          </div>
+        </div>
+      </Panel>
     </div>
   );
 }

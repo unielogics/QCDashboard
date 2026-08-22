@@ -11,12 +11,27 @@
 // or reset everything to the default cadence. "Send reminders now"
 // fires the AI evaluator scoped to this loan and surfaces what got
 // posted in a toast.
+//
+// Styling lives in globals.css / app-extras.css. The list is a `.gridrow`
+// stack (a grid pretending to be a table — the 8-column track is data about
+// this screen and stays inline); the add-custom dialog is ds/Drawer, which
+// carries Escape, backdrop click, body-scroll lock and focus restore that the
+// hand-rolled overlay it replaced did not have.
 
 import { useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
+import {
+  Btn,
+  CellChip,
+  Field,
+  IconBtn,
+  Input,
+  Panel,
+  StatusLine,
+  cx,
+  type ChipTone,
+} from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import {
   useAddCustomDocument,
   useLoanWorkflow,
@@ -28,18 +43,25 @@ import {
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import type { Loan } from "@/lib/types";
 
-// Maps each scenario to a (label, fg, bg) tuple. heads_up + due_today
-// are calm/neutral; just_late warns; week_late + escalating signal
-// blocking. Matches the chat-message tone gradient.
-const SCENARIO_STYLE = (
-  t: ReturnType<typeof useTheme>["t"],
-): Record<string, { label: string; fg: string; bg: string }> => ({
-  heads_up: { label: "Heads-up", fg: t.petrol, bg: t.petrolSoft },
-  due_today: { label: "Due today", fg: t.brand, bg: t.brandSoft },
-  just_late: { label: "1-3d late", fg: t.warn, bg: t.warnBg },
-  week_late: { label: "Week late", fg: t.danger, bg: t.dangerBg },
-  escalating: { label: "Escalating", fg: t.danger, bg: t.dangerBg },
-});
+// Maps each scenario to a (label, tone) pair. heads_up + due_today are
+// calm/neutral; just_late warns; week_late + escalating signal blocking.
+// Matches the chat-message tone gradient. The tones are the sheet's chip
+// vocabulary rather than a second set of hex pairs, so "escalating" is the
+// same red here as it is in a table cell.
+const SCENARIO_META: Record<string, { label: string; tone: ChipTone }> = {
+  heads_up: { label: "Heads-up", tone: "pet" },
+  due_today: { label: "Due today", tone: "acc" },
+  just_late: { label: "1-3d late", tone: "warn" },
+  week_late: { label: "Week late", tone: "bad" },
+  escalating: { label: "Escalating", tone: "bad" },
+};
+
+// Which side of the transaction the doc belongs to. Same reasoning as above:
+// buyer reads accent, seller reads gold, unknown stays muted.
+const SIDE_TONE: Record<string, ChipTone> = {
+  buyer: "acc",
+  seller: "gold",
+};
 
 export function WorkflowTab({
   loan,
@@ -48,13 +70,11 @@ export function WorkflowTab({
   loan: Loan;
   canEdit: boolean;
 }) {
-  const { t } = useTheme();
   const workflowQ = useLoanWorkflow(loan.id);
   const patchDoc = usePatchDocument();
   const runReminders = useRunDocReminders();
   const addCustom = useAddCustomDocument();
   const markVerified = useMarkDocumentVerified();
-  const styles = SCENARIO_STYLE(t);
   const ctxMenu = useContextMenu<WorkflowDoc>();
 
   const [shiftDays, setShiftDays] = useState<number>(7);
@@ -195,164 +215,116 @@ export function WorkflowTab({
   };
 
   return (
-    <Card pad={0}>
-      <div
-        style={{
-          padding: 16,
-          borderBottom: `1px solid ${t.line}`,
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-            <SectionLabel>AI Collection Schedule · {requestedDocs.length} open</SectionLabel>
-            {Object.entries(counts).map(([key, n]) => {
-              const sty = styles[key];
-              if (!sty) {
-                return (
-                  <Pill key={key} bg={t.surface2} color={t.ink3}>
-                    {key}: {n}
-                  </Pill>
-                );
-              }
-              return (
-                <Pill key={key} bg={sty.bg} color={sty.fg}>
-                  {sty.label}: {n}
-                </Pill>
-              );
-            })}
-          </div>
-          {canEdit && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button
-                onClick={() => setShowAddModal(true)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 9,
-                  background: t.surface2,
-                  color: t.ink,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  border: `1px solid ${t.line}`,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  cursor: "pointer",
-                }}
-              >
-                <Icon name="plus" size={13} /> Add custom item
-              </button>
-              <button
-                onClick={onRunNow}
-                disabled={runReminders.isPending}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 9,
-                  background: t.petrol,
-                  color: "#fff",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  border: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  cursor: runReminders.isPending ? "wait" : "pointer",
-                }}
-              >
-                <Icon name="bell" size={13} />
-                {runReminders.isPending ? "Sending…" : "Send reminders now"}
-              </button>
-            </div>
-          )}
-        </div>
-        {canEdit && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 11.5, color: t.ink3, fontWeight: 600 }}>Bulk shift all due dates:</span>
-            <input
-              type="number"
-              value={shiftDays}
-              onChange={(e) => setShiftDays(Number(e.target.value) || 0)}
-              style={{
-                width: 60,
-                padding: "5px 8px",
-                borderRadius: 6,
-                border: `1px solid ${t.line}`,
-                background: t.surface2,
-                color: t.ink,
-                fontSize: 12,
-                textAlign: "center",
-              }}
-            />
-            <span style={{ fontSize: 11.5, color: t.ink3 }}>days</span>
-            <button
-              onClick={() => onShiftAll(-Math.abs(shiftDays))}
-              disabled={patchDoc.isPending || requestedDocs.length === 0}
-              style={shiftBtn(t)}
-            >
-              Accelerate
-            </button>
-            <button
-              onClick={() => onShiftAll(Math.abs(shiftDays))}
-              disabled={patchDoc.isPending || requestedDocs.length === 0}
-              style={shiftBtn(t)}
-            >
-              Delay
-            </button>
-            <button
-              onClick={onResetAll}
-              disabled={patchDoc.isPending || requestedDocs.length === 0}
-              style={shiftBtn(t)}
-            >
-              Reset all to defaults
-            </button>
-            {skippedCount > 0 && (
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: "auto", fontSize: 11.5, color: t.ink3, cursor: "pointer" }}>
+    <Panel
+      title={`AI Collection Schedule · ${requestedDocs.length} open`}
+      sub={
+        <>
+          {Object.entries(counts).map(([key, n]) => {
+            const meta = SCENARIO_META[key];
+            return (
+              <CellChip key={key} tone={meta?.tone ?? "mut"}>
+                {(meta?.label ?? key)}: {n}
+              </CellChip>
+            );
+          })}
+        </>
+      }
+      actions={
+        canEdit ? (
+          <>
+            <Btn onClick={() => setShowAddModal(true)}>
+              <Icon name="plus" size={13} /> Add custom item
+            </Btn>
+            <Btn variant="pri" onClick={onRunNow} disabled={runReminders.isPending}>
+              <Icon name="bell" size={13} />
+              {runReminders.isPending ? "Sending…" : "Send reminders now"}
+            </Btn>
+          </>
+        ) : undefined
+      }
+      noPad
+    >
+      {canEdit && (
+        // A second header strip under the title row — same padding and
+        // hairline, so the bulk controls read as part of the panel's head
+        // rather than as the first row of the list.
+        <div className="panel-h">
+          <span className="lbl">Bulk shift all due dates</span>
+          <Input
+            type="number"
+            value={shiftDays}
+            onChange={(e) => setShiftDays(Number(e.target.value) || 0)}
+            aria-label="Days to shift"
+            // Bespoke: a two-digit spinner, not a text field. `.field` owns
+            // everything else about the box.
+            style={{ width: 68, textAlign: "center" }}
+          />
+          <span className="sub">days</span>
+          <Btn
+            size="sm"
+            onClick={() => onShiftAll(-Math.abs(shiftDays))}
+            disabled={patchDoc.isPending || requestedDocs.length === 0}
+          >
+            Accelerate
+          </Btn>
+          <Btn
+            size="sm"
+            onClick={() => onShiftAll(Math.abs(shiftDays))}
+            disabled={patchDoc.isPending || requestedDocs.length === 0}
+          >
+            Delay
+          </Btn>
+          <Btn
+            size="sm"
+            onClick={onResetAll}
+            disabled={patchDoc.isPending || requestedDocs.length === 0}
+          >
+            Reset all to defaults
+          </Btn>
+          {skippedCount > 0 && (
+            <>
+              <span className="grow" />
+              <label className="row sub">
                 <input
                   type="checkbox"
                   checked={showSkipped}
                   onChange={(e) => setShowSkipped(e.target.checked)}
-                  style={{ width: 13, height: 13, cursor: "pointer" }}
                 />
                 Show skipped ({skippedCount})
               </label>
-            )}
-          </div>
-        )}
-        {feedback && (
-          <div style={{ fontSize: 12, color: t.ink3, padding: "6px 10px", background: t.surface2, borderRadius: 8 }}>
-            {feedback}
-          </div>
-        )}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column" }}>
-        {workflowQ.isLoading && (
-          <div style={{ padding: 20, fontSize: 13, color: t.ink3 }}>Loading…</div>
-        )}
-        {!workflowQ.isLoading && visibleDocs.length === 0 && (
-          <div style={{ padding: 20, fontSize: 13, color: t.ink3 }}>
-            {docs.length === 0
-              ? "No documents on file yet."
-              : "Everything's been skipped — toggle \"Show skipped\" to see them."}
-          </div>
-        )}
-        {visibleDocs.map((d) => (
-          <WorkflowRow
-            key={d.document_id}
-            doc={d}
-            canEdit={canEdit}
-            onSetDate={(v) => onSetDate(d, v)}
-            onToggleSkip={() => onToggleSkip(d)}
-            onContextMenu={canEdit ? (e) => ctxMenu.open(e, d) : undefined}
-            t={t}
-            styles={styles}
-          />
-        ))}
-      </div>
+            </>
+          )}
+        </div>
+      )}
+      {feedback && (
+        <div className="panel-b">
+          <StatusLine tone="mut">{feedback}</StatusLine>
+        </div>
+      )}
+      {workflowQ.isLoading && <div className="panel-b sub">Loading…</div>}
+      {!workflowQ.isLoading && visibleDocs.length === 0 && (
+        <div className="panel-b sub">
+          {docs.length === 0
+            ? "No documents on file yet."
+            : "Everything's been skipped — toggle \"Show skipped\" to see them."}
+        </div>
+      )}
+      {visibleDocs.map((d) => (
+        <WorkflowRow
+          key={d.document_id}
+          doc={d}
+          canEdit={canEdit}
+          onSetDate={(v) => onSetDate(d, v)}
+          onToggleSkip={() => onToggleSkip(d)}
+          onContextMenu={canEdit ? (e) => ctxMenu.open(e, d) : undefined}
+        />
+      ))}
+      {/* Mounted only while open, exactly as the modal it replaces was: the
+          drawer's own state (name, due date) has to start empty each time it
+          is opened, and a component that stays mounted keeps the last entry. */}
       {showAddModal && (
-        <AddCustomModal
-          t={t}
+        <AddCustomDrawer
+          open
           busy={addCustom.isPending}
           onClose={() => setShowAddModal(false)}
           onSave={onAddCustom}
@@ -380,17 +352,17 @@ export function WorkflowTab({
           ];
         }}
       />
-    </Card>
+    </Panel>
   );
 }
 
-function AddCustomModal({
-  t,
+function AddCustomDrawer({
+  open,
   busy,
   onClose,
   onSave,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
+  open: boolean;
   busy: boolean;
   onClose: () => void;
   onSave: (name: string, dueDate: string | null) => void;
@@ -399,98 +371,36 @@ function AddCustomModal({
   const [dueDate, setDueDate] = useState<string>("");
   const canSave = name.trim().length > 0 && !busy;
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)",
-        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60,
-      }}
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Add custom doc to this loan"
+      width="md"
+      footer={
+        <>
+          <span className="grow" />
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn variant="pri" onClick={() => onSave(name.trim(), dueDate || null)} disabled={!canSave}>
+            {busy ? "Adding…" : "Add"}
+          </Btn>
+        </>
+      }
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: t.surface, borderRadius: 12, padding: 20,
-          width: 460, maxWidth: "90vw",
-          boxShadow: `0 20px 50px ${t.line}`,
-          display: "flex", flexDirection: "column", gap: 14,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: t.ink }}>Add custom doc to this loan</div>
-          <ModalCloseButton onClick={onClose} />
-        </div>
-        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>
-            Name (what the borrower sees)
-          </span>
-          <input
+      <div className="grid g10">
+        <Field label="Name (what the borrower sees)">
+          <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. HOA Estoppel Letter"
             autoFocus
-            style={{
-              padding: "8px 10px", borderRadius: 7, border: `1px solid ${t.line}`,
-              background: t.surface2, color: t.ink, fontSize: 13, outline: "none",
-            }}
           />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase", color: t.ink3 }}>
-            Due date (optional — defaults to firm cadence)
-          </span>
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            style={{
-              padding: "8px 10px", borderRadius: 7, border: `1px solid ${t.line}`,
-              background: t.surface2, color: t.ink, fontSize: 13, outline: "none",
-              fontFamily: "inherit",
-            }}
-          />
-        </label>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: "7px 12px", borderRadius: 7, border: `1px solid ${t.line}`,
-              background: t.surface2, color: t.ink, fontSize: 12, fontWeight: 600, cursor: "pointer",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onSave(name.trim(), dueDate || null)}
-            disabled={!canSave}
-            style={{
-              padding: "7px 14px", borderRadius: 7, border: "none",
-              background: canSave ? t.brand : t.chip,
-              color: canSave ? t.inverse : t.ink4,
-              fontSize: 12, fontWeight: 700,
-              cursor: canSave ? "pointer" : "not-allowed",
-            }}
-          >
-            {busy ? "Adding…" : "Add"}
-          </button>
-        </div>
+        </Field>
+        <Field label="Due date (optional — defaults to firm cadence)">
+          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </Field>
       </div>
-    </div>
+    </Drawer>
   );
-}
-
-function shiftBtn(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    padding: "5px 10px",
-    borderRadius: 7,
-    border: `1px solid ${t.line}`,
-    background: t.surface2,
-    color: t.ink,
-    fontSize: 12,
-    fontWeight: 600,
-    cursor: "pointer",
-  };
 }
 
 function WorkflowRow({
@@ -499,18 +409,14 @@ function WorkflowRow({
   onSetDate,
   onToggleSkip,
   onContextMenu,
-  t,
-  styles,
 }: {
   doc: WorkflowDoc;
   canEdit: boolean;
   onSetDate: (value: string | null) => void;
   onToggleSkip: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
-  t: ReturnType<typeof useTheme>["t"];
-  styles: ReturnType<typeof SCENARIO_STYLE>;
 }) {
-  const sty = doc.scenario ? styles[doc.scenario] : null;
+  const meta = doc.scenario ? SCENARIO_META[doc.scenario] : null;
   const dueValue = doc.effective_due_date ?? "";
   const isSkipped = doc.status === "skipped";
 
@@ -523,26 +429,20 @@ function WorkflowRow({
 
   const nextLine =
     doc.next_scenario && doc.next_scenario_in_days !== null
-      ? `Next: ${styles[doc.next_scenario]?.label ?? doc.next_scenario} in ${doc.next_scenario_in_days}d`
+      ? `Next: ${SCENARIO_META[doc.next_scenario]?.label ?? doc.next_scenario} in ${doc.next_scenario_in_days}d`
       : null;
 
   const isOverridden = !!doc.due_date;
 
   return (
     <div
+      // `.gridrow.done` carries the dimmed, sunken surface a skipped row had
+      // as an inline opacity + background pair.
+      className={cx("gridrow", isSkipped && "done")}
       onContextMenu={onContextMenu}
-      style={{
-        display: "grid",
-        gridTemplateColumns: "30px 1.1fr 95px 95px 95px 1fr 110px 80px",
-        alignItems: "center",
-        gap: 10,
-        padding: "11px 16px",
-        borderBottom: `1px solid ${t.line}`,
-        fontSize: 12.5,
-        opacity: isSkipped ? 0.55 : 1,
-        background: isSkipped ? t.surface2 : "transparent",
-        cursor: onContextMenu ? "context-menu" : "default",
-      }}
+      // Bespoke 8-column track: this is data about this screen, not a page
+      // grid, so it stays inline (`.cg` is the 12-column PAGE grid).
+      style={{ gridTemplateColumns: "30px 1.1fr 95px 95px 95px 1fr 110px 80px" }}
       title={onContextMenu ? "Right-click for actions" : undefined}
     >
       <input
@@ -551,91 +451,54 @@ function WorkflowRow({
         onChange={onToggleSkip}
         disabled={!canEdit}
         title={isSkipped ? "Re-enable AI collection" : "Skip — AI won't chase this doc"}
-        style={{ width: 16, height: 16, cursor: canEdit ? "pointer" : "not-allowed" }}
       />
-      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-        <Icon name="doc" size={14} style={{ color: t.ink3, flex: "0 0 auto" }} />
-        <div style={{ minWidth: 0 }}>
-          <div style={{
-            fontWeight: 700, color: t.ink,
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-            textDecoration: isSkipped ? "line-through" : "none",
-          }}>
-            {doc.name}
+      <div className="row">
+        <Icon name="doc" size={14} />
+        <div className="grow">
+          <div
+            className="trunc"
+            // Struck through because the AI has been told to stop chasing it —
+            // derived from the row's own status, so it lives at the site.
+            style={{ textDecoration: isSkipped ? "line-through" : undefined }}
+          >
+            <strong>{doc.name}</strong>
           </div>
-          <div style={{ fontSize: 11, color: t.ink3, marginTop: 1 }}>
+          <div className="sub">
             {doc.status} {doc.checklist_key ? `· ${doc.checklist_key}` : doc.is_other ? "· custom" : ""}
           </div>
         </div>
       </div>
       <div>
-        <Pill
-          bg={
-            doc.side === "buyer" ? t.brandSoft :
-            doc.side === "seller" ? t.goldSoft :
-            t.surface2
-          }
-          color={
-            doc.side === "buyer" ? t.brand :
-            doc.side === "seller" ? t.gold :
-            t.ink3
-          }
-        >
-          {doc.side ?? "both"}
-        </Pill>
+        <CellChip tone={SIDE_TONE[doc.side ?? ""] ?? "mut"}>{doc.side ?? "both"}</CellChip>
       </div>
       <div>
         {isSkipped ? (
-          <Pill bg={t.surface2} color={t.ink3}>skipped</Pill>
-        ) : sty ? (
-          <Pill bg={sty.bg} color={sty.fg}>
-            {sty.label}
-          </Pill>
+          <CellChip tone="mut">skipped</CellChip>
+        ) : meta ? (
+          <CellChip tone={meta.tone}>{meta.label}</CellChip>
         ) : (
-          <Pill bg={t.surface2} color={t.ink3}>
-            {doc.scenario ?? "scheduled"}
-          </Pill>
+          <CellChip tone="mut">{doc.scenario ?? "scheduled"}</CellChip>
         )}
       </div>
-      <div style={{ color: t.ink2, fontFeatureSettings: '"tnum"' }}>{timeline}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <input
+      <div className="num">{timeline}</div>
+      <div className="row">
+        <Input
           type="date"
           value={dueValue}
           onChange={(e) => onSetDate(e.target.value || null)}
           disabled={!canEdit || doc.status !== "requested"}
-          style={{
-            padding: "5px 8px",
-            borderRadius: 6,
-            border: `1px solid ${isOverridden ? t.gold : t.line}`,
-            background: t.surface2,
-            color: t.ink,
-            fontSize: 12,
-            fontFamily: "inherit",
-          }}
+          // Gold rim = an operator has pinned this date. Paired with the
+          // OVERRIDE label in the last column so the signal is not colour alone.
+          className={cx(isOverridden && "tone-gold")}
         />
         {isOverridden && canEdit && doc.status === "requested" && (
-          <button
-            onClick={() => onSetDate(null)}
-            title="Clear override (back to default cadence)"
-            style={{
-              border: "none",
-              background: "transparent",
-              color: t.ink3,
-              cursor: "pointer",
-              padding: 4,
-              display: "inline-flex",
-              alignItems: "center",
-            }}
-          >
+          <IconBtn onClick={() => onSetDate(null)} title="Clear override (back to default cadence)">
             <Icon name="x" size={11} />
-          </button>
+          </IconBtn>
         )}
       </div>
-      <div style={{ fontSize: 10.5, color: t.ink3 }}>{nextLine ?? ""}</div>
-      <div style={{ fontSize: 10.5, color: t.ink4, textAlign: "right" }}>
-        {isOverridden ? "OVERRIDE" : "default"}
-      </div>
+      <div className="sub">{nextLine ?? ""}</div>
+      <div className="lbl align-r">{isOverridden ? "OVERRIDE" : "default"}</div>
     </div>
   );
 }

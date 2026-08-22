@@ -16,6 +16,12 @@
 // Per-row chips use plain language: Required / Recommended / Optional /
 // Locked by Funding / Waived / Needed Later. No backend vocabulary
 // (required_level / source / blocks_stage / playbook_id) on this surface.
+//
+// Restyled onto the plain-CSS design system: the card is a `.panel` whose
+// header carries the status line, each block is a `.fldsec`, requirement rows
+// are `.itemrow`, and the hand-picked chip hexes in `chipFor` are now the
+// shared `.cellchip` tone vocabulary — same five plain-language labels, same
+// five distinctions, one palette.
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -27,8 +33,17 @@ import {
   usePreviewAIPlan,
   type ClientAIPlanItem,
 } from "@/hooks/useApi";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, SectionLabel } from "@/components/design-system/primitives";
+import {
+  Btn,
+  Callout,
+  CellChip,
+  ItemRow,
+  Note,
+  Panel,
+  Sub,
+  Textarea,
+  type ChipTone,
+} from "@/components/ds";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 
 interface Props {
@@ -39,7 +54,6 @@ interface Props {
 
 
 export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
-  const { t } = useTheme();
   const { data: plan, isLoading, error: planErr } = useClientAIPlan(clientId, loanId ?? null);
   const { data: client } = useClient(clientId);
   const patch = usePatchClientAIPlan();
@@ -67,16 +81,16 @@ export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
   }
   if (isLoading) {
     return (
-      <Card pad={16}>
-        <div style={{ color: t.ink3, fontSize: 13 }}>Loading AI plan…</div>
-      </Card>
+      <Panel title="Client AI Plan">
+        <Sub>Loading AI plan…</Sub>
+      </Panel>
     );
   }
   if (!plan) {
     return (
-      <Card pad={16}>
-        <div style={{ color: t.ink3, fontSize: 13 }}>No AI plan yet for this client.</div>
-      </Card>
+      <Panel title="Client AI Plan">
+        <Sub>No AI plan yet for this client.</Sub>
+      </Panel>
     );
   }
 
@@ -121,157 +135,126 @@ export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
     : "Lead";
 
   return (
-    <Card pad={16}>
-      {/* ── Block 1: Status ─────────────────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-        <SectionLabel>Client AI Plan</SectionLabel>
-        <span style={{
-          fontSize: 12, fontWeight: 600, color: t.ink3,
-        }}>
-          {leadKind} · {phaseLabel} · {plan.readiness_score ?? 0}% Ready
-        </span>
-      </div>
-
+    /* ── Block 1: Status ─────────────────────────────────────── */
+    <Panel
+      title="Client AI Plan"
+      sub={`${leadKind} · ${phaseLabel} · ${plan.readiness_score ?? 0}% Ready`}
+    >
       {/* ── Block 2: AI's Next Move ─────────────────────────────── */}
       {plan.next_best_question ? (
-        <div style={{
-          padding: 12, marginBottom: 16, borderRadius: 8,
-          background: t.surface2,
-        }}>
-          <div style={{
-            fontSize: 11, fontWeight: 700, color: t.ink3, marginBottom: 6,
-            textTransform: "uppercase",
-          }}>
-            AI&apos;s Next Move
-          </div>
-          <div style={{ fontSize: 14, color: t.ink, lineHeight: 1.5 }}>
-            {plan.next_best_question}
-          </div>
+        <Callout tone="acc" className="mb">
+          <div className="lbl">AI&apos;s Next Move</div>
+          <div>{plan.next_best_question}</div>
           {onOpenChat ? (
-            <button onClick={onOpenChat} style={{ ...btnGhost(t), marginTop: 8 }}>
+            <Btn size="sm" className="mt" onClick={onOpenChat}>
               Open AI chat →
-            </button>
+            </Btn>
           ) : null}
-        </div>
+        </Callout>
       ) : null}
 
       {/* ── Block 3: What We Know ───────────────────────────────── */}
       {known.length > 0 ? (
-        <Bucket title="What We Know" t={t}>
-          {known.map((k, i) => (
-            <div key={i} style={{ fontSize: 13, color: t.ink, padding: "4px 0" }}>
-              · {k}
-            </div>
-          ))}
+        <Bucket title="What We Know">
+          <div className="grid g4">
+            {known.map((k, i) => (
+              <div key={i}>· {k}</div>
+            ))}
+          </div>
         </Bucket>
       ) : null}
 
       {/* ── Block 4: What We Still Need ─────────────────────────── */}
       {facts.length > 0 ? (
-        <Bucket title="What We Still Need" t={t}>
+        <Bucket title="What We Still Need">
           {facts.map(item => (
-            <PlainRow key={item.requirement_key} item={item} t={t} onToggleWaiver={toggleWaiver} />
+            <PlainRow key={item.requirement_key} item={item} onToggleWaiver={toggleWaiver} />
           ))}
         </Bucket>
       ) : null}
 
       {/* ── Block 5: Documents ──────────────────────────────────── */}
       {docs.length > 0 ? (
-        <Bucket title="Documents" t={t}>
+        <Bucket title="Documents">
           {docs.map(item => (
-            <PlainRow key={item.requirement_key} item={item} t={t} onToggleWaiver={toggleWaiver} />
+            <PlainRow key={item.requirement_key} item={item} onToggleWaiver={toggleWaiver} />
           ))}
         </Bucket>
       ) : null}
 
       {/* ── Block 6: Appointments ───────────────────────────────── */}
       {appts.length > 0 ? (
-        <Bucket title="Appointments" t={t}>
+        <Bucket title="Appointments">
           {appts.map(item => (
-            <PlainRow key={item.requirement_key} item={item} t={t} onToggleWaiver={toggleWaiver} />
+            <PlainRow key={item.requirement_key} item={item} onToggleWaiver={toggleWaiver} />
           ))}
         </Bucket>
       ) : null}
 
       {/* Waived items, if any */}
       {(plan.waived_items || []).length > 0 ? (
-        <Bucket title="Waived for this client" t={t}>
+        <Bucket title="Waived for this client">
           {plan.waived_items.map(w => (
-            <div key={w.requirement_key} style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: "4px 0", fontSize: 13, color: t.ink3,
-            }}>
-              <span style={{ flex: 1, textDecoration: "line-through" }}>{w.label}</span>
-              <button
-                onClick={() => toggleWaiver(w)}
-                style={btnGhost(t)}
-              >
-                Un-waive
-              </button>
-            </div>
+            <ItemRow
+              key={w.requirement_key}
+              right={
+                <Btn size="sm" onClick={() => toggleWaiver(w)}>
+                  Un-waive
+                </Btn>
+              }
+            >
+              <s>{w.label}</s>
+            </ItemRow>
           ))}
         </Bucket>
       ) : null}
 
       {/* ── Block 7: Custom Instructions ────────────────────────── */}
-      <Bucket title="Custom Instructions" t={t}>
-        <textarea
-          value={instr}
-          onChange={e => setInstr(e.target.value)}
-          rows={3}
-          placeholder='e.g. "For this client, don&apos;t push prequal too hard yet."'
-          style={{
-            width: "100%", padding: 10, fontSize: 13,
-            borderRadius: 8, border: `1px solid ${t.line}`,
-            background: t.surface, color: t.ink, fontFamily: "inherit",
-            resize: "vertical",
-          }}
-        />
+      <Bucket title="Custom Instructions">
+        <div className="grid">
+          <Textarea
+            value={instr}
+            onChange={e => setInstr(e.target.value)}
+            rows={3}
+            placeholder='e.g. "For this client, don&apos;t push prequal too hard yet."'
+          />
+        </div>
       </Bucket>
 
       {/* Preview output */}
       {previewQuestion ? (
-        <div style={{
-          marginTop: 12, padding: 10, borderRadius: 8,
-          border: `1px dashed ${t.line}`, fontSize: 13, color: t.ink,
-        }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, marginBottom: 4, textTransform: "uppercase" }}>
-            AI Preview
+        <Note>
+          <div>
+            <div className="lbl">AI Preview</div>
+            {previewQuestion}
           </div>
-          {previewQuestion}
-        </div>
+        </Note>
       ) : null}
 
       {/* ── Block 8: Buttons ────────────────────────────────────── */}
-      <div style={{
-        display: "flex", gap: 8, flexWrap: "wrap",
-        marginTop: 16, paddingTop: 14, borderTop: `1px solid ${t.line}`,
-      }}>
-        <button
+      {/* Bespoke: a footer action row separated by a hairline. `.row` owns the
+          flex box and `.mt` the top margin; neither owns a border. */}
+      <div className="row mt" style={{ borderTop: "1px solid var(--line)", paddingTop: 14 }}>
+        <Btn
+          variant="pri"
           onClick={saveInstr}
           disabled={patch.isPending || instr === (plan.custom_instructions || "")}
-          style={btnPrimary(t)}
         >
           {patch.isPending ? "Saving…" : "Save Instructions"}
-        </button>
-        <button
-          onClick={testNextMove}
-          disabled={preview.isPending}
-          style={btnSecondary(t)}
-        >
+        </Btn>
+        <Btn onClick={testNextMove} disabled={preview.isPending}>
           {preview.isPending ? "Testing…" : "Test AI Next Move"}
-        </button>
+        </Btn>
         {plan.current_phase === "realtor" ? (
-          <button
-            onClick={onMarkReady}
-            disabled={markReady.isPending}
-            style={{ ...btnSecondary(t), marginLeft: "auto" }}
-          >
-            {markReady.isPending ? "Sending…" : "Mark Ready for Lending"}
-          </button>
+          <>
+            <span className="sp" />
+            <Btn onClick={onMarkReady} disabled={markReady.isPending}>
+              {markReady.isPending ? "Sending…" : "Mark Ready for Lending"}
+            </Btn>
+          </>
         ) : null}
       </div>
-    </Card>
+    </Panel>
   );
 }
 
@@ -280,54 +263,50 @@ export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
 
 
 function PlainRow({
-  item, t, onToggleWaiver,
+  item, onToggleWaiver,
 }: {
   item: ClientAIPlanItem;
-  t: ReturnType<typeof useTheme>["t"];
   onToggleWaiver: (i: ClientAIPlanItem) => Promise<void>;
 }) {
   const chip = chipFor(item);
   return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 10,
-      padding: "6px 0", borderBottom: `1px solid ${t.line}`,
-    }}>
-      <span style={{ flex: 1, fontSize: 13, color: t.ink }}>{item.label}</span>
-      <span style={{
-        fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
-        background: chip.bg, color: chip.color, textTransform: "uppercase",
-      }}>
-        {chip.label}
-      </span>
-      {item.can_agent_override ? (
-        <button
-          onClick={() => onToggleWaiver(item)}
-          style={{
-            background: "transparent", border: `1px solid ${t.line}`,
-            padding: "2px 8px", borderRadius: 4, color: t.ink3,
-            cursor: "pointer", fontSize: 11,
-          }}
-          title="Don't ask for this item on this client"
-        >
-          Waive
-        </button>
-      ) : null}
-    </div>
+    <ItemRow
+      right={
+        <>
+          <CellChip tone={chip.tone}>{chip.label}</CellChip>
+          {item.can_agent_override ? (
+            <Btn
+              size="sm"
+              onClick={() => onToggleWaiver(item)}
+              title="Don't ask for this item on this client"
+            >
+              Waive
+            </Btn>
+          ) : null}
+        </>
+      }
+    >
+      {item.label}
+    </ItemRow>
   );
 }
 
 
 /** Plain-language chip for one requirement row. The chip rolls up
  * source + required_level into the simplest label the agent should
- * read. */
-function chipFor(item: ClientAIPlanItem): { label: string; bg: string; color: string } {
-  if (item.status === "needed_later") return { label: "Needed Later", bg: "#f0e5d0", color: "#7a5e22" };
+ * read.
+ *
+ * The five hand-picked hex pairs this used to return are now the five
+ * `.cellchip` tones, so a "Required" row here matches a "Required" marker
+ * anywhere else in the console. */
+function chipFor(item: ClientAIPlanItem): { label: string; tone: ChipTone } {
+  if (item.status === "needed_later") return { label: "Needed Later", tone: "gold" };
   if (item.source === "funding_required" && !item.can_agent_override) {
-    return { label: "🔒 Locked by Funding", bg: "#fff2dd", color: "#a06000" };
+    return { label: "🔒 Locked by Funding", tone: "warn" };
   }
-  if (item.required_level === "required") return { label: "Required", bg: "#fde0e0", color: "#c14444" };
-  if (item.required_level === "recommended") return { label: "Recommended", bg: "#e0e8fd", color: "#3a55b8" };
-  return { label: "Optional", bg: "#eee", color: "#666" };
+  if (item.required_level === "required") return { label: "Required", tone: "bad" };
+  if (item.required_level === "recommended") return { label: "Recommended", tone: "acc" };
+  return { label: "Optional", tone: "mut" };
 }
 
 
@@ -364,48 +343,23 @@ function collectKnown(profile: unknown, plan: { required_items?: ClientAIPlanIte
 }
 
 
-function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    padding: "8px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.petrol, color: "#fff", cursor: "pointer",
-  } as const;
-}
-
-
-function btnSecondary(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    padding: "8px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.surface, color: t.ink, cursor: "pointer",
-  } as const;
-}
-
-
-function btnGhost(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    padding: "4px 10px", fontSize: 11, fontWeight: 600,
-    borderRadius: 4, border: `1px solid ${t.line}`,
-    background: "transparent", color: t.ink3, cursor: "pointer",
-  } as const;
-}
-
-
+/**
+ * One labelled block inside the card.
+ *
+ * Was a hand-rolled label + margin pair; it is now `.fldsec`, which already
+ * owns the block spacing (`.fldsec + .fldsec`) and the label's block display.
+ * Kept as a component because the three requirement buckets, the known-facts
+ * list, the waived list and the instructions box all read as the same object.
+ */
 function Bucket({
-  title, children, t,
+  title, children,
 }: {
   title: string;
   children: React.ReactNode;
-  t: ReturnType<typeof useTheme>["t"];
 }) {
   return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{
-        fontSize: 11, fontWeight: 700, color: t.ink3,
-        marginBottom: 6, textTransform: "uppercase",
-      }}>
-        {title}
-      </div>
+    <div className="fldsec">
+      <span className="lbl">{title}</span>
       {children}
     </div>
   );

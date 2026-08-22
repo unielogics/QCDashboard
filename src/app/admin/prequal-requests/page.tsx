@@ -5,14 +5,42 @@
 // Defaults to PENDING-first (the underwriter inbox) but the column
 // headers are sortable and the whole row is clickable to open the
 // review panel — no need to find the small Open button.
+//
+// Styling migrated off the inline token objects onto the plain-CSS design
+// system (globals.css + app-extras.css) via the wrappers in @/components/ds.
+// Every role gate, sort key, keyboard affordance, context-menu item and empty
+// state survives; only the surface vocabulary moved:
+//   hand-rolled filter pills → Seg as="filter" (it narrows the list; it does
+//                              not switch which view you are on)
+//   CSS-grid faux table      → `.gridhd` / `.gridrow`, which is exactly what
+//                              those classes are for. The nine-column track is
+//                              data, so it stays inline (rule 3), and the row
+//                              stays a role="button" div rather than becoming a
+//                              <tr>, because it carries BOTH Enter/Space and a
+//                              right-click menu that a table row cannot.
+//   JS mouseenter/mouseleave → `.gridrow.act`, which also gives the row a
+//                              focus ring it never had despite being tabbable
+//   hand-rolled cursor menu  → `.popmenu.atcursor` + `.mhd` + `.mi`
+//   status Pill + stripe     → CellChip tone; the stripe keeps its computed
+//                              colour inline (rule 2)
+// The page no longer sets its own padding or max-width — the shell's
+// `.content` owns both.
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
+import {
+  Btn,
+  CellChip,
+  PageHeader,
+  Panel,
+  Row,
+  Seg,
+  Sub,
+  cx,
+  type ChipTone,
+} from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
-import { QC_FMT, withAlpha } from "@/components/design-system/tokens";
+import { QC_FMT } from "@/components/design-system/tokens";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
 import { useAdminPrequalQueue } from "@/hooks/useApi";
@@ -44,16 +72,16 @@ const STATUS_RANK: Record<PrequalStatus, number> = {
   offer_declined: 4,
 };
 
-function statusInfo(t: ReturnType<typeof useTheme>["t"], s: PrequalStatus) {
-  if (s === "approved") return { label: "Approved", bg: t.profitBg, fg: t.profit };
-  if (s === "offer_accepted") return { label: "Loan opened", bg: t.brandSoft, fg: t.brand };
-  if (s === "offer_declined") return { label: "Closed", bg: t.surface2, fg: t.ink3 };
-  if (s === "rejected") return { label: "Rejected", bg: t.dangerBg, fg: t.danger };
-  return { label: "Pending", bg: t.warnBg, fg: t.warn };
+/** Status → the chip vocabulary. Was a palette lookup off the theme object. */
+function statusInfo(s: PrequalStatus): { label: string; tone: ChipTone } {
+  if (s === "approved") return { label: "Approved", tone: "ok" };
+  if (s === "offer_accepted") return { label: "Loan opened", tone: "acc" };
+  if (s === "offer_declined") return { label: "Closed", tone: "mut" };
+  if (s === "rejected") return { label: "Rejected", tone: "bad" };
+  return { label: "Pending", tone: "warn" };
 }
 
 export default function AdminPrequalQueuePage() {
-  const { t } = useTheme();
   const profile = useActiveProfile();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -197,18 +225,15 @@ export default function AdminPrequalQueuePage() {
   // Borrower-only or unknown role → kick to home.
   if (profile.role === Role.CLIENT) {
     return (
-      <div style={{ padding: 24, maxWidth: 720, margin: "0 auto" }}>
-        <Card pad={28}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: t.ink }}>Operator-only</div>
-          <div style={{ fontSize: 13, color: t.ink2, marginTop: 6, lineHeight: 1.5 }}>
-            Prequalifications are for agents and the funding team. Borrowers should submit
-            requests from their file view.
-          </div>
-          <button onClick={() => router.push("/")} style={{ ...qcBtn(t), marginTop: 14 }}>
-            Back to dashboard
-          </button>
-        </Card>
-      </div>
+      <Panel title="Operator-only">
+        <Sub>
+          Prequalifications are for agents and the funding team. Borrowers should submit
+          requests from their file view.
+        </Sub>
+        <Row className="mt">
+          <Btn onClick={() => router.push("/")}>Back to dashboard</Btn>
+        </Row>
+      </Panel>
     );
   }
 
@@ -224,98 +249,62 @@ export default function AdminPrequalQueuePage() {
   };
 
   return (
-    <div style={{ padding: 24, maxWidth: 1500, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>Prequalifications</h1>
-          <div style={{ fontSize: 13, color: t.ink3, marginTop: 4 }}>
-            {canUnderwrite
-              ? "Click a row to open the review panel. Right-click for quick actions (open, print the latest letter). Headers sort the queue; pending always groups to the top."
-              : "Create and track pending prequalification requests for your clients. The funding team reviews and issues letters."}
-          </div>
-        </div>
-        {canCreatePrequal ? (
-          <button
-            onClick={() => setCreateOpen(true)}
-            style={{ ...qcBtnPrimary(t), display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}
-          >
-            <Icon name="plus" size={13} stroke={3} />
-            Create prequalification
-          </button>
-        ) : null}
-      </div>
+    <div className="grid">
+      <PageHeader
+        title="Prequalifications"
+        lede={
+          canUnderwrite
+            ? "Click a row to open the review panel. Right-click for quick actions (open, print the latest letter). Headers sort the queue; pending always groups to the top."
+            : "Create and track pending prequalification requests for your clients. The funding team reviews and issues letters."
+        }
+        actions={
+          canCreatePrequal ? (
+            <Btn variant="pri" onClick={() => setCreateOpen(true)}>
+              <Icon name="plus" size={13} stroke={3} />
+              Create prequalification
+            </Btn>
+          ) : null
+        }
+      />
 
-      {/* Filter bar — counts live inside each pill so the toolbar carries
-          both navigation and status-at-a-glance without duplicating chrome.
-          Active pill: full status accent fill; inactive: subdued surface. */}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {FILTERS.map((f) => {
-          const active = filter === f.id;
-          const count = f.id === "all" ? allRequests.length : (counts[f.id as PrequalStatus] ?? 0);
-          const accent = (() => {
-            if (f.id === "approved") return { fg: t.profit, bg: t.profitBg };
-            if (f.id === "pending") return { fg: t.warn, bg: t.warnBg };
-            if (f.id === "offer_accepted") return { fg: t.brand, bg: t.brandSoft };
-            if (f.id === "rejected") return { fg: t.danger, bg: t.dangerBg };
-            if (f.id === "offer_declined") return { fg: t.ink3, bg: t.surface2 };
-            return { fg: t.ink, bg: t.surface2 };
-          })();
-          return (
-            <button
-              key={f.id}
-              onClick={() => setFilter(f.id)}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                padding: "8px 14px",
-                borderRadius: 999,
-                background: active ? accent.bg : "transparent",
-                border: `1px solid ${active ? withAlpha(accent.fg, 0.19) : t.line}`,
-                color: active ? accent.fg : t.ink2,
-                fontSize: 12,
-                fontWeight: 700,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 7,
-                transition: "background .12s, color .12s, border-color .12s",
-              }}
-            >
-              <span>{f.label}</span>
-              <span style={{
-                fontSize: 10.5,
-                fontWeight: 800,
-                fontFeatureSettings: '"tnum"',
-                padding: "1px 6px",
-                borderRadius: 999,
-                background: active ? withAlpha(accent.fg, 0.13) : t.surface2,
-                color: active ? accent.fg : t.ink3,
-                minWidth: 18,
-                textAlign: "center",
-              }}>{count}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* Filter bar — counts live inside each segment so the toolbar carries
+          both navigation and status-at-a-glance without duplicating chrome. */}
+      <Row>
+        <Seg
+          as="filter"
+          ariaLabel="Filter by status"
+          value={filter}
+          onChange={setFilter}
+          options={FILTERS.map((f) => ({
+            value: f.id,
+            label: (
+              <>
+                {f.label}{" "}
+                <span className="num">
+                  {f.id === "all" ? allRequests.length : (counts[f.id as PrequalStatus] ?? 0)}
+                </span>
+              </>
+            ),
+          }))}
+        />
+      </Row>
 
       {/* Table */}
       {isLoading ? (
-        <Card pad={28}>
-          <div style={{ fontSize: 12.5, color: t.ink3 }}>Loading queue…</div>
-        </Card>
+        <Panel><Sub>Loading queue…</Sub></Panel>
       ) : visible.length === 0 ? (
-        <Card pad={28}>
-          <div style={{ fontSize: 13, color: t.ink2 }}>
+        <Panel>
+          <Sub>
             No requests in this status. {filter !== "all" && "Try changing the filter."}
-          </div>
-        </Card>
+          </Sub>
+        </Panel>
       ) : (
-        <Card pad={0}>
-          <HeaderRow t={t} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+        <Panel noPad>
+          <HeaderRow sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
           {visible.map((r) => (
-            <Row
+            <QueueRow
               key={r.id}
               req={r}
-              t={t}
               hydrated={hydrated}
               onOpen={() => {
                 if (canUnderwrite) setSelected(r);
@@ -326,7 +315,7 @@ export default function AdminPrequalQueuePage() {
               }}
             />
           ))}
-        </Card>
+        </Panel>
       )}
 
       {canUnderwrite ? (
@@ -344,7 +333,6 @@ export default function AdminPrequalQueuePage() {
 
       {menu ? (
         <ContextMenu
-          t={t}
           x={menu.x}
           y={menu.y}
           req={menu.req}
@@ -363,7 +351,6 @@ export default function AdminPrequalQueuePage() {
 // mousedown listener in the parent. The menu items are status-aware so
 // the operator never sees an action that won't work on this row.
 function ContextMenu({
-  t,
   x,
   y,
   req,
@@ -372,7 +359,6 @@ function ContextMenu({
   onOpenLatest,
   onPrintLatest,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   x: number;
   y: number;
   req: PrequalRequest;
@@ -392,30 +378,25 @@ function ContextMenu({
   return (
     <div
       role="menu"
+      className="popmenu atcursor"
       onMouseDown={(e) => e.stopPropagation()}
-      style={{
-        position: "fixed",
-        left,
-        top,
-        width: MENU_W,
-        background: t.surface,
-        border: `1px solid ${t.line}`,
-        borderRadius: 10,
-        boxShadow: t.shadowLg,
-        zIndex: 300,
-        padding: 6,
-        display: "flex",
-        flexDirection: "column",
-        gap: 2,
-      }}
+      // Measured geometry: the cursor position, clamped against the viewport.
+      // `.popmenu.atcursor` exists precisely to hand these three over and keep
+      // everything the menu LOOKS like in the stylesheet (rule 2).
+      style={{ left, top, width: MENU_W }}
     >
-      <MenuHeader t={t} req={req} />
-      <MenuItem t={t} icon="docCheck" label={isSuperseded ? "Open this version" : "Open"} onClick={onOpen} />
+      <div className="mhd">
+        <div className="lbl">
+          {req.quote_number ?? "Pre-qualification"}
+          {(req.version_num ?? 1) > 1 ? <span className="c-pet"> · v{req.version_num}</span> : null}
+        </div>
+        <div className="trunc"><b>{req.target_property_address}</b></div>
+      </div>
+      <MenuItem icon="docCheck" label={isSuperseded ? "Open this version" : "Open"} onClick={onOpen} />
       {isSuperseded ? (
-        <MenuItem t={t} icon="arrowR" label={`Open latest (v${head.version_num})`} onClick={onOpenLatest} />
+        <MenuItem icon="arrowR" label={`Open latest (v${head.version_num})`} onClick={onOpenLatest} />
       ) : null}
       <MenuItem
-        t={t}
         icon="docCheck"
         label="Print latest letter"
         sublabel={head.pdf_url ? head.quote_number ?? undefined : "no PDF yet"}
@@ -426,33 +407,13 @@ function ContextMenu({
   );
 }
 
-function MenuHeader({ t, req }: { t: ReturnType<typeof useTheme>["t"]; req: PrequalRequest }) {
-  return (
-    <div style={{
-      padding: "6px 10px 8px",
-      borderBottom: `1px solid ${t.line}`,
-      marginBottom: 4,
-    }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
-        {req.quote_number ?? "Pre-qualification"}
-        {(req.version_num ?? 1) > 1 ? <span style={{ color: t.petrol, marginLeft: 6 }}>· v{req.version_num}</span> : null}
-      </div>
-      <div style={{ fontSize: 12, fontWeight: 700, color: t.ink, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {req.target_property_address}
-      </div>
-    </div>
-  );
-}
-
 function MenuItem({
-  t,
   icon,
   label,
   sublabel,
   onClick,
   disabled,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   icon: React.ComponentProps<typeof Icon>["name"];
   label: string;
   sublabel?: string;
@@ -461,28 +422,15 @@ function MenuItem({
 }) {
   return (
     <button
+      type="button"
       role="menuitem"
+      className="mi"
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
-      style={{
-        all: "unset",
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "8px 10px",
-        borderRadius: 6,
-        fontSize: 13,
-        fontWeight: 600,
-        color: disabled ? t.ink3 : t.ink,
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
-      }}
-      onMouseEnter={(e) => { if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = t.surface2; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
     >
       <Icon name={icon} size={14} />
-      <span style={{ flex: 1 }}>{label}</span>
-      {sublabel ? <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600 }}>{sublabel}</span> : null}
+      {" "}{label}
+      {sublabel ? <small>{sublabel}</small> : null}
     </button>
   );
 }
@@ -492,12 +440,14 @@ function MenuItem({
 // pill so the stripe carries the at-a-glance signal.
 const GRID_COLS = "4px 110px minmax(0, 2fr) minmax(0, 1fr) 130px 130px 110px 100px 90px";
 
-function statusStripe(t: ReturnType<typeof useTheme>["t"], s: PrequalStatus): string {
-  if (s === "approved") return t.profit;
-  if (s === "offer_accepted") return t.brand;
-  if (s === "rejected") return t.danger;
-  if (s === "offer_declined") return t.ink4;
-  return t.warn;
+/** Stripe colour per status. A discrete lookup, but it paints a bare 4px
+ *  column that no class owns, so it is passed inline (rule 2). */
+function statusStripe(s: PrequalStatus): string {
+  if (s === "approved") return "var(--ok)";
+  if (s === "offer_accepted") return "var(--accent)";
+  if (s === "rejected") return "var(--danger)";
+  if (s === "offer_declined") return "var(--faint)";
+  return "var(--warn)";
 }
 
 // Friendly short relative-time. "in 8 days" / "today" / "2 wks ago".
@@ -537,12 +487,10 @@ function shortDateLabel(iso: string | null | undefined): string | null {
 }
 
 function HeaderRow({
-  t,
   sortKey,
   sortDir,
   onSort,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   sortKey: SortKey;
   sortDir: SortDir;
   onSort: (k: SortKey) => void;
@@ -551,37 +499,22 @@ function HeaderRow({
     const active = sortKey === key;
     return (
       <button
+        type="button"
+        className={cx("gridhd-c", active && "on")}
         onClick={() => onSort(key)}
-        style={{
-          all: "unset",
-          cursor: "pointer",
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: 1.2,
-          textTransform: "uppercase",
-          color: active ? t.brand : t.ink3,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 4,
-        }}
+        aria-label={`Sort by ${label}`}
       >
         {label}
-        {active ? <span style={{ fontSize: 9 }}>{sortDir === "asc" ? "▲" : "▼"}</span> : null}
+        {active ? (
+          <span className="sortarr" aria-hidden="true">{sortDir === "asc" ? "▲" : "▼"}</span>
+        ) : null}
       </button>
     );
   };
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: GRID_COLS,
-        gap: 12,
-        padding: "12px 16px 12px 12px",
-        borderBottom: `1px solid ${t.line}`,
-        background: t.surface2,
-      }}
-    >
+    // Bespoke nine-column track (rule 3); `.gridhd` owns everything else.
+    <div className="gridhd" style={{ gridTemplateColumns: GRID_COLS }}>
       <div />
       <div>{cell("Status", "status")}</div>
       <div>{cell("Property", "address")}</div>
@@ -595,15 +528,13 @@ function HeaderRow({
   );
 }
 
-function Row({
+function QueueRow({
   req,
-  t,
   hydrated,
   onOpen,
   onContextMenu,
 }: {
   req: PrequalRequest;
-  t: ReturnType<typeof useTheme>["t"];
   hydrated: boolean;
   onOpen: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
@@ -617,17 +548,18 @@ function Row({
   const ltv = purchase > 0 ? (ltvBase / purchase) * 100 : 0;
   const ltvCap = PREQUAL_LTV_CAPS[req.loan_type] * 100;
   const ltvPctOfCap = ltvCap > 0 ? Math.min(1, ltv / ltvCap) : 0;
-  // Green well within cap, amber close, red over.
+  // Green well within cap, amber close, red over. A tone chosen from a
+  // number — inline, per rule 2.
   const ltvColor = ltv > ltvCap + 0.05
-    ? t.danger
+    ? "var(--danger)"
     : ltv > ltvCap * 0.92
-      ? t.warn
-      : t.profit;
+      ? "var(--warn)"
+      : "var(--ok)";
 
-  const s = statusInfo(t, req.status);
+  const s = statusInfo(req.status);
   const isSuperseded = req.superseded_by_id != null;
   const isRevision = (req.version_num ?? 1) > 1;
-  const stripe = isSuperseded ? t.ink4 : statusStripe(t, req.status);
+  const stripe = isSuperseded ? "var(--faint)" : statusStripe(req.status);
   const closingRel = hydrated ? relativeDays(req.expected_closing_date) : null;
   const closingAbs = shortDateLabel(req.expected_closing_date);
   const submittedRel = hydrated ? relativeDays(req.created_at) : null;
@@ -637,140 +569,90 @@ function Row({
     <div
       role="button"
       tabIndex={0}
+      // Both affordances stay: click / Enter / Space to open, right-click for
+      // the quick-actions menu. This is why the row is not a <tr>.
       onClick={onOpen}
       onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
-      style={{
-        display: "grid",
-        gridTemplateColumns: GRID_COLS,
-        gap: 12,
-        padding: "16px 16px 16px 12px",
-        borderBottom: `1px solid ${t.line}`,
-        alignItems: "center",
-        fontSize: 13,
-        color: isSuperseded ? t.ink3 : t.ink,
-        cursor: "pointer",
-        transition: "background 0.12s",
-        opacity: isSuperseded ? 0.55 : 1,
-      }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = t.surface2; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
+      className={cx("gridrow", "act", isSuperseded && "done")}
+      // Bespoke nine-column track (rule 3).
+      style={{ gridTemplateColumns: GRID_COLS }}
     >
       {/* Status stripe — colored left border. Carries the status signal
-          even when the operator is scanning quickly without reading pills. */}
-      <div style={{ alignSelf: "stretch", background: stripe, borderRadius: 2 }} />
+          even when the operator is scanning quickly without reading pills.
+          Colour is computed per row, so it is inline (rule 2). */}
+      {/* Bespoke 4px rail spanning the row's height (rule 3) plus a computed
+          colour (rule 2). No class owns either. */}
+      <div style={{ alignSelf: "stretch", borderRadius: 2, background: stripe }} />
 
       <div>
-        <Pill bg={s.bg} color={s.fg}>{s.label}</Pill>
+        <CellChip tone={s.tone}>{s.label}</CellChip>
         {req.quote_number ? (
-          <div style={{ fontSize: 10, color: t.ink3, fontWeight: 600, marginTop: 6, fontFeatureSettings: '"tnum"', display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ textDecoration: isSuperseded ? "line-through" : undefined }}>
-              {req.quote_number}
+          <Row>
+            <span className="sub num">
+              {isSuperseded ? <s>{req.quote_number}</s> : req.quote_number}
             </span>
-            {isRevision ? (
-              <span style={{
-                fontSize: 9,
-                fontWeight: 800,
-                color: t.petrol,
-                background: t.petrolSoft,
-                padding: "1px 5px",
-                borderRadius: 4,
-                letterSpacing: 0.4,
-              }}>
-                v{req.version_num}
-              </span>
-            ) : null}
-          </div>
+            {isRevision ? <CellChip tone="pet">v{req.version_num}</CellChip> : null}
+          </Row>
         ) : null}
       </div>
 
-      <div style={{ minWidth: 0 }}>
-        <div style={{
-          fontSize: 14.5,
-          fontWeight: 700,
-          color: isSuperseded ? t.ink3 : t.ink,
-          letterSpacing: -0.1,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}>
-          {req.target_property_address}
-        </div>
-        <div style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600, marginTop: 3, textTransform: "uppercase", letterSpacing: 0.7 }}>
+      <div>
+        <div className="trunc"><b>{req.target_property_address}</b></div>
+        <div className="lbl">
           {PREQUAL_LOAN_TYPE_LABELS[req.loan_type]?.title ?? req.loan_type}
         </div>
       </div>
 
-      <div style={{ fontSize: 12, color: req.borrower_entity ? t.ink2 : t.ink4, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontStyle: req.borrower_entity ? "normal" : "italic" }}>
-        {req.borrower_entity ?? "Entity TBD"}
+      <div className="trunc">
+        {req.borrower_entity ?? <Sub><em>Entity TBD</em></Sub>}
       </div>
 
-      <div style={{ fontSize: 13, fontFeatureSettings: '"tnum"', color: t.ink2 }}>
-        {QC_FMT.usd(requested, 0)}
-      </div>
+      <div className="num">{QC_FMT.usd(requested, 0)}</div>
 
-      <div style={{ fontSize: 13, fontFeatureSettings: '"tnum"' }}>
+      <div className="num">
         {approved != null ? (
-          <span style={{
-            color: approved !== requested ? t.profit : t.ink,
-            fontWeight: approved !== requested ? 800 : 600,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-          }}>
-            {approved > requested ? <Icon name="arrowR" size={11} /> : null}
-            {QC_FMT.usd(approved, 0)}
-          </span>
+          approved !== requested ? (
+            // Differs from what was asked for — worth the eye stopping on it.
+            <CellChip tone="ok">
+              {approved > requested ? <Icon name="arrowR" size={11} /> : null}
+              {QC_FMT.usd(approved, 0)}
+            </CellChip>
+          ) : (
+            QC_FMT.usd(approved, 0)
+          )
         ) : (
-          <span style={{ color: t.ink4 }}>—</span>
+          <Sub>—</Sub>
         )}
       </div>
 
-      {/* LTV bar — width is share of the matrix cap; color stages green→amber→red. */}
-      <div style={{ minWidth: 0 }}>
-        <div style={{
-          fontSize: 11.5,
-          fontWeight: 700,
-          fontFeatureSettings: '"tnum"',
-          color: ltvColor,
-          marginBottom: 4,
-        }}>
-          {ltv.toFixed(1)}%
-        </div>
-        <div style={{
-          height: 5,
-          width: "100%",
-          background: t.surface2,
-          borderRadius: 3,
-          overflow: "hidden",
-        }}>
-          <div style={{
-            height: "100%",
-            width: `${Math.max(2, Math.round(ltvPctOfCap * 100))}%`,
-            background: ltvColor,
-            transition: "width .25s ease, background .25s",
-          }} />
+      {/* LTV bar — width is share of the matrix cap; colour stages
+          green→amber→red. Both are computed from the number (rule 2). */}
+      <div>
+        <div className="num" style={{ color: ltvColor }}>{ltv.toFixed(1)}%</div>
+        <div className="track">
+          <div
+            className="fill"
+            style={{
+              width: `${Math.max(2, Math.round(ltvPctOfCap * 100))}%`,
+              background: ltvColor,
+            }}
+          />
         </div>
       </div>
 
-      <div style={{ minWidth: 0 }}>
+      <div>
         {req.expected_closing_date ? (
           <>
-            <div style={{ fontSize: 12, color: t.ink2, fontWeight: 700 }}>
-              {closingRel ?? closingAbs}
-            </div>
-            <div style={{ fontSize: 10.5, color: t.ink3, marginTop: 2, fontFeatureSettings: '"tnum"' }}>
-              {closingAbs}
-            </div>
+            <b>{closingRel ?? closingAbs}</b>
+            <div className="sub num">{closingAbs}</div>
           </>
         ) : (
-          <span style={{ color: t.ink4 }}>—</span>
+          <Sub>—</Sub>
         )}
       </div>
 
-      <div style={{ fontSize: 12, color: t.ink3, fontFeatureSettings: '"tnum"' }}>
-        {submittedRel ?? submittedAbs ?? "—"}
-      </div>
+      <div className="sub num">{submittedRel ?? submittedAbs ?? "—"}</div>
     </div>
   );
 }

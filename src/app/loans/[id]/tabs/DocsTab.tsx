@@ -1,15 +1,20 @@
 "use client";
 
+// DocsTab — the loan file's document vault.
+//
+// Styling lives in globals.css / app-extras.css. Rows are `.itemrow` (the
+// read-only list row); the empty state is `.hintbox`, which is the sheet's
+// "a placeholder with a reason" surface rather than an error or a warning.
+
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { DocRequestModal } from "@/app/documents/components/DocRequestModal";
 import { DocUploadButton } from "@/app/documents/components/DocUploadButton";
 import { useDocuments, useMarkDocumentVerified } from "@/hooks/useApi";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import { UploadOnBehalfModal } from "../components/UploadOnBehalfModal";
+import { Btn, CellChip, Panel, type ChipTone } from "@/components/ds";
 import type { Document, Loan } from "@/lib/types";
 
 export function DocsTab({
@@ -27,7 +32,6 @@ export function DocsTab({
   canRequest: boolean;
   canUpload?: boolean;
 }) {
-  const { t } = useTheme();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: docs = [] } = useDocuments(loan.id);
@@ -81,74 +85,51 @@ export function DocsTab({
   };
 
   return (
-    <Card pad={0}>
-      <div style={{ padding: 16, borderBottom: `1px solid ${t.line}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
-          <SectionLabel>Document Vault · {docs.length} items</SectionLabel>
-          <Counter label="Received" count={counts.received} color={t.profit} t={t} />
-          <Counter label="Requested" count={counts.requested} color={t.brand} t={t} />
-          <Counter label="Pending" count={counts.pending} color={t.warn} t={t} />
-          <Counter label="Flagged" count={counts.flagged} color={t.danger} t={t} />
-        </div>
-        {canRequest ? (
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <button
-              onClick={() => setUploadOpen(true)}
-              style={{
-                padding: "8px 12px", borderRadius: 9,
-                background: t.surface, color: t.ink,
-                fontSize: 13, fontWeight: 700,
-                border: `1px solid ${t.lineStrong}`,
-                display: "inline-flex", alignItems: "center", gap: 6,
-                cursor: "pointer", fontFamily: "inherit",
-              }}
-            >
+    <Panel
+      title={`Document Vault · ${docs.length} items`}
+      sub={
+        <>
+          <CellChip tone="ok">Received {counts.received}</CellChip>{" "}
+          <CellChip tone="acc">Requested {counts.requested}</CellChip>{" "}
+          <CellChip tone="warn">Pending {counts.pending}</CellChip>{" "}
+          <CellChip tone="bad">Flagged {counts.flagged}</CellChip>
+        </>
+      }
+      actions={
+        canRequest ? (
+          <>
+            <Btn onClick={() => setUploadOpen(true)}>
+              {/* The download glyph, turned over — there is no upload glyph in
+                  the icon set, and the rotation is geometry, not palette. */}
               <Icon name="download" size={13} style={{ transform: "rotate(180deg)" }} />
               Upload on behalf
-            </button>
-            <button
-              onClick={() => setRequestOpen(true)}
-              style={{
-                padding: "8px 12px", borderRadius: 9, background: t.brand, color: t.inverse,
-                fontSize: 13, fontWeight: 700, border: "none",
-                display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer",
-              }}
-            >
+            </Btn>
+            <Btn variant="pri" onClick={() => setRequestOpen(true)}>
               <Icon name="plus" size={13} /> Request doc
-            </button>
-          </div>
+            </Btn>
+          </>
         ) : canUpload ? (
           // Non-operator viewer (borrower) — a general upload entry so
           // they can always attach a file, even with nothing requested.
           <DocUploadButton loanId={loan.id} label="Upload a document" />
-        ) : null}
-      </div>
-
+        ) : undefined
+      }
+      noPad
+    >
       {canRequest ? (
-        <div style={{
-          padding: "8px 16px",
-          background: t.surface2,
-          borderBottom: `1px solid ${t.line}`,
-          fontSize: 11.5, color: t.ink3, fontWeight: 700,
-          display: "flex", alignItems: "center", gap: 8,
-        }}>
+        <div className="panel-h">
           <Icon name="ai" size={12} stroke={2.2} />
-          <span>
+          <span className="sub">
             AI scans every upload — operator or client. Right-click a row to mark complete, override, or open details.
           </span>
         </div>
       ) : null}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 16 }}>
+      <div className="panel-b grid g8">
         {docs.length === 0 && (
-          <div
-            style={{
-              display: "flex", flexDirection: "column", alignItems: "center",
-              gap: 12, padding: "28px 16px", textAlign: "center",
-            }}
-          >
-            <Icon name="doc" size={26} style={{ color: t.ink4 }} />
-            <div style={{ fontSize: 13, color: t.ink3, maxWidth: 360, lineHeight: 1.5 }}>
+          <div className="hintbox">
+            <span className="hintbox-i"><Icon name="doc" size={18} /></span>
+            <div className="grow">
               No documents on file yet.
               {canUpload
                 ? " Upload anything we'll need — bank statements, tax returns, the purchase contract — and we'll sort it."
@@ -161,35 +142,29 @@ export function DocsTab({
           const showUpload = canUpload && (d.status === "requested" || d.status === "pending" || d.status === "flagged");
           const showMarkComplete = canRequest && d.status !== "verified";
           return (
+            // `.itemrow` is the read-only list row. The right-click target is
+            // the whole row, so onContextMenu and its title stay on it rather
+            // than on ItemRow, which forwards neither.
             <div
               key={d.id}
+              className="itemrow"
               onContextMenu={(e) => { if (canRequest) ctxMenu.open(e, d); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 12,
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: `1px solid ${t.line}`,
-                cursor: canRequest ? "context-menu" : "default",
-              }}
               title={canRequest ? "Right-click for actions" : undefined}
+              // No class owns `cursor` on `.itemrow`; the row is only a
+              // right-click target when the viewer can act on it.
+              style={canRequest ? { cursor: "context-menu" } : undefined}
             >
-              <Icon name="doc" size={16} style={{ color: t.ink3 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{d.name}</div>
-                <div style={{ fontSize: 11.5, color: t.ink3 }}>
+              <Icon name="doc" size={16} />
+              <div className="grow">
+                <div className="trunc"><strong>{d.name}</strong></div>
+                <div className="sub">
                   {d.category ?? "uncategorized"}
                   {d.requested_on && ` · requested ${new Date(d.requested_on).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
                   {d.received_on && ` · received ${new Date(d.received_on).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
                 </div>
               </div>
-              <AIScanBadge status={d.ai_scan_status} t={t} />
-              <Pill bg={
-                d.status === "verified" ? t.profitBg : d.status === "received" ? t.brandSoft : d.status === "flagged" ? t.dangerBg : t.warnBg
-              } color={
-                d.status === "verified" ? t.profit : d.status === "received" ? t.brand : d.status === "flagged" ? t.danger : t.warn
-              }>
-                {d.status}
-              </Pill>
+              <AIScanBadge status={d.ai_scan_status} />
+              <CellChip tone={docTone(d.status)}>{d.status}</CellChip>
               {showUpload && (
                 <DocUploadButton
                   loanId={loan.id}
@@ -202,23 +177,14 @@ export function DocsTab({
                 />
               )}
               {showMarkComplete && !showUpload ? (
-                <button
-                  type="button"
+                <Btn
+                  size="sm"
                   onClick={() => markVerified.mutate({ documentId: d.id, loanId: loan.id })}
                   disabled={markVerified.isPending}
                   title="Force-mark this document complete (operator override)"
-                  style={{
-                    padding: "5px 9px", borderRadius: 7,
-                    border: `1px solid ${t.line}`,
-                    background: t.surface2, color: t.ink2,
-                    fontSize: 11, fontWeight: 800,
-                    cursor: markVerified.isPending ? "wait" : "pointer",
-                    fontFamily: "inherit",
-                    whiteSpace: "nowrap",
-                  }}
                 >
                   <Icon name="check" size={11} /> Mark complete
-                </button>
+                </Btn>
               ) : null}
             </div>
           );
@@ -232,55 +198,39 @@ export function DocsTab({
         docs={docs}
       />
       <ContextMenu state={ctxMenu.state} onClose={ctxMenu.close} items={menuItems} />
-    </Card>
+    </Panel>
   );
 }
 
 
-function AIScanBadge({ status, t }: { status?: string | null; t: ReturnType<typeof useTheme>["t"] }) {
+/** Document status → the sheet's chip tone. */
+function docTone(status: string): ChipTone {
+  if (status === "verified") return "ok";
+  if (status === "received") return "acc";
+  if (status === "flagged") return "bad";
+  return "warn";
+}
+
+
+function AIScanBadge({ status }: { status?: string | null }) {
   if (!status || status === "unscanned") return null;
   let label = "";
-  let fg = t.ink3;
-  let bg = t.surface2;
+  let tone: ChipTone = "mut";
   if (status === "queued" || status === "scanning") {
     label = "AI scanning";
-    fg = t.brand;
-    bg = t.brandSoft;
+    tone = "acc";
   } else if (status === "verified") {
     label = "AI ✓";
-    fg = t.profit;
-    bg = t.profitBg;
+    tone = "ok";
   } else if (status === "flagged") {
     label = "AI ⚠ flagged";
-    fg = t.danger;
-    bg = t.dangerBg;
+    tone = "bad";
   } else if (status === "failed") {
     label = "AI scan failed";
-    fg = t.warn;
-    bg = t.warnBg;
+    tone = "warn";
   } else {
     return null;
   }
-  return (
-    <span style={{
-      fontSize: 9.5, fontWeight: 900,
-      padding: "2px 7px", borderRadius: 4,
-      background: bg, color: fg,
-      whiteSpace: "nowrap",
-      letterSpacing: 0.3, textTransform: "uppercase",
-    }}>
-      {label}
-    </span>
-  );
-}
-
-
-function Counter({ t, label, count, color }: { t: ReturnType<typeof useTheme>["t"]; label: string; count: number; color: string }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-      <span style={{ width: 8, height: 8, borderRadius: 999, background: color }} />
-      <span style={{ fontSize: 12, color: t.ink3, fontWeight: 600 }}>{label}</span>
-      <span style={{ fontSize: 13, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"' }}>{count}</span>
-    </div>
-  );
+  // `.caps` is the stamp variant of `.cellchip` — a badge that shouts.
+  return <CellChip tone={tone} className="caps">{label}</CellChip>;
 }

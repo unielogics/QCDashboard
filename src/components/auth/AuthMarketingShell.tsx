@@ -13,6 +13,11 @@
 // system; these surfaces follow it. All the colour lives in the .qc-*
 // classes in globals.css, scoped to .qc-marketing.
 //
+// The layout classes below are `.qc-authshell …` in app-extras.css and are
+// scoped to this subtree on purpose: this page runs on the MARKETING palette
+// (--ms-*), so the console's .row / .grid / .card vocabulary — which reads the
+// console palette — must not appear anywhere inside it.
+//
 // The Clerk widget itself is themed via its `appearance` prop on the
 // individual page so SignIn / SignUp can each pass it. This component
 // just renders the chrome and the children slot.
@@ -31,26 +36,12 @@ const TICKER_ROWS = [
 
 export function AuthMarketingShell({ children }: { children: ReactNode }) {
   return (
-    <div className="qc-marketing" style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+    <div className="qc-marketing qc-authshell">
       <TopNav />
 
       {/* Hero — sign-in widget sits centered here */}
-      <div
-        className="qc-hero-grid-bg"
-        style={{
-          flex: 1,
-          paddingTop: 64,
-          paddingBottom: 96,
-          paddingLeft: 20,
-          paddingRight: 20,
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "center",
-        }}
-      >
-        <div style={{ position: "relative", zIndex: 2, maxWidth: 480, width: "100%" }}>
-          {children}
-        </div>
+      <div className="qc-hero-grid-bg qc-hero">
+        <div className="qc-authslot">{children}</div>
       </div>
 
       <Footer />
@@ -86,45 +77,13 @@ function TickerBar() {
 function TopNav() {
   return (
     <nav className="qc-nav">
-      <div
-        style={{
-          maxWidth: 1280,
-          margin: "0 auto",
-          padding: "18px 22px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-        }}
-      >
-        <a
-          href="https://qualifiedcommercial.com"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 11,
-            fontWeight: 800,
-            letterSpacing: "-0.03em",
-            fontSize: 18,
-            color: "var(--ms-text)",
-          }}
-        >
+      <div className="qc-band">
+        <a href="https://qualifiedcommercial.com" className="qc-brandlink">
           <LogoBadge />
           <span>Qualified Commercial</span>
         </a>
-        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <a
-            href="https://qualifiedcommercial.com"
-            style={{
-              color: "var(--ms-muted)",
-              fontSize: 13,
-              fontWeight: 600,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-            
-          >
+        <div className="qc-navacts">
+          <a href="https://qualifiedcommercial.com" className="qc-navlink">
             ← Back to site
           </a>
           <a href="https://qualifiedcommercial.com/start" className="qc-btn-primary">
@@ -147,10 +106,7 @@ function LogoBadge() {
       width={34}
       height={34}
       aria-hidden="true"
-      style={{
-        display: "block",
-        borderRadius: 11,
-      }}
+      className="qc-mark"
     >
       <defs>
         <linearGradient id="qcLogoBg" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -194,39 +150,29 @@ function LogoBadge() {
 
 function Footer() {
   return (
-    <footer className="qc-footer-bg" style={{ padding: "32px 22px 48px" }}>
-      <div
-        style={{
-          maxWidth: 1280,
-          margin: "0 auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 18,
-          alignItems: "center",
-          textAlign: "center",
-        }}
-      >
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 10, fontWeight: 800, color: "var(--ms-text)" }}>
+    <footer className="qc-footer-bg qc-foot">
+      <div className="qc-footcol">
+        <div className="qc-footbrand">
           <LogoBadge />
           <span>Qualified Commercial</span>
         </div>
-        <p style={{ fontSize: 12, color: "var(--ms-muted)", lineHeight: 1.6, maxWidth: 720, margin: 0 }}>
+        <p className="qc-fineprint qc-legal">
           © 2026 Qualified Commercial LLC. All rights reserved. Qualified Commercial LLC is a
           commercial real estate technology platform. All rates displayed are estimates based on
           live API data and do not constitute a binding commitment to lend. Final terms are
           subject to formal underwriting, lender approval, documentation, market conditions, and
           program availability.
         </p>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
-          <span style={chipStyle}>Soft-pull estimates</span>
-          <span style={chipStyle}>Encrypted document vault</span>
-          <span style={chipStyle}>Institutional capital routing</span>
+        <div className="qc-chiprow">
+          <span className="qc-fchip">Soft-pull estimates</span>
+          <span className="qc-fchip">Encrypted document vault</span>
+          <span className="qc-fchip">Institutional capital routing</span>
         </div>
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center", fontSize: 13 }}>
-          <a href="https://qualifiedcommercial.com/industries/auto" style={{ color: "var(--ms-accent-700)", fontWeight: 600 }}>
+        <div className="qc-linkrow">
+          <a href="https://qualifiedcommercial.com/industries/auto">
             Auto &amp; dealer capital
           </a>
-          <a href="/dealer-ai-underwriter" style={{ color: "var(--ms-accent-700)", fontWeight: 600 }}>
+          <a href="/dealer-ai-underwriter">
             Use our AI Underwriter
           </a>
         </div>
@@ -234,13 +180,3 @@ function Footer() {
     </footer>
   );
 }
-
-const chipStyle: React.CSSProperties = {
-  padding: "6px 12px",
-  borderRadius: 999,
-  border: "1px solid var(--ms-divider)",
-  background: "var(--ms-sunken)",
-  color: "var(--ms-muted)",
-  fontSize: 12,
-  whiteSpace: "nowrap",
-};

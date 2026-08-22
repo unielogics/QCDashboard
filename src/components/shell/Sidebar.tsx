@@ -103,6 +103,9 @@ export function Sidebar() {
             const items = visible(g.items);
             if (!items.length) return null;
             return (
+              // `display: contents` so the group's items are direct flex
+              // children of `.nav` and pick up its 1px gap. Structural, and
+              // nothing in the sheet names it.
               <div key={g.id} style={{ display: "contents" }}>
                 <div className="grp">{g.label}</div>
                 {items.map((n) => {
@@ -130,7 +133,7 @@ export function Sidebar() {
 
           {nav.tools.length > 0 && (
             <>
-              <div style={{ height: 1, background: "var(--line)", margin: "12px 10px 8px" }} />
+              <div className="hr" role="separator" />
               <button type="button" className="toollink" onClick={() => setToolsOpen(true)}>
                 <Icon name="layers" size={17} />
                 {!collapsed && <span>All tools</span>}
@@ -139,61 +142,33 @@ export function Sidebar() {
           )}
 
           {nav.scopeNote && !collapsed && (
-            <div
-              style={{
-                margin: "12px 10px 0",
-                padding: "10px 11px",
-                border: "1px solid var(--line)",
-                borderRadius: 10,
-                background: "var(--sunken2)",
-              }}
-            >
-              <span className="lbl" style={{ fontSize: 9.4 }}>
-                Scoped account
-              </span>
-              <div className="sub" style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.45 }}>
-                {nav.scopeNote}
+            // A card that has something to say — which is exactly what
+            // `.callout` is for. `.c-acc` because a scoped account is
+            // context, not a warning.
+            <div className="callout c-acc navnote">
+              <div className="grow">
+                <span className="lbl">Scoped account</span>
+                <div className="sub">{nav.scopeNote}</div>
               </div>
             </div>
           )}
         </nav>
 
-        <div className="foot" ref={menuRef} style={{ position: "relative" }}>
+        <div className="foot" ref={menuRef}>
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 9,
-              background: "none",
-              border: 0,
-              padding: 0,
-              cursor: "pointer",
-              width: "100%",
-              textAlign: "left",
-              minWidth: 0,
-            }}
+            // `.disc-h` is the sheet's "this summary line is a real button"
+            // reset: full width, left aligned, inherited font, no chrome.
+            className="disc-h"
           >
             <div className="avatar">{initials}</div>
             {!collapsed && (
-              <div className="ident" style={{ minWidth: 0, flex: 1 }}>
-                <b style={{ fontSize: 12.5, display: "block", lineHeight: 1.2 }}>
-                  {user?.name || user?.email || "Signed in"}
-                </b>
-                <span
-                  className="sub"
-                  style={{
-                    fontSize: 10.5,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
-                    fontWeight: 640,
-                  }}
-                >
-                  {nav.roleLabel}
-                </span>
+              <div className="ident grow">
+                <b>{user?.name || user?.email || "Signed in"}</b>
+                <span className="sub">{nav.roleLabel}</span>
               </div>
             )}
           </button>
@@ -201,10 +176,11 @@ export function Sidebar() {
           {menuOpen && (
             <div
               role="menu"
-              className="popmenu"
               // Opens upward: this card sits at the bottom of the sidebar, so a
-              // downward menu would clip outside the viewport.
-              style={{ bottom: "calc(100% + 8px)", top: "auto", left: 0, right: 0 }}
+              // downward menu would clip outside the viewport. `.popmenu` owns
+              // `top` and `right`, so the variant has to be a class — inline
+              // would leave two owners for the same edges.
+              className="popmenu up"
             >
               <button
                 type="button"
@@ -230,7 +206,7 @@ export function Sidebar() {
                   Settings
                 </button>
               )}
-              <div style={{ height: 1, background: "var(--line)", margin: "3px 4px" }} />
+              <div className="hr" role="separator" />
               {/* Legal links live here now rather than in a sidebar footer row.
                   They must stay reachable — app store review checks for them. */}
               <Link className="mi" href="/terms" role="menuitem" onClick={() => setMenuOpen(false)}>
@@ -247,13 +223,15 @@ export function Sidebar() {
               >
                 Disclosures
               </Link>
-              <div style={{ height: 1, background: "var(--line)", margin: "3px 4px" }} />
+              <div className="hr" role="separator" />
+              {/* `.popmenu .mi` is a two-class selector and out-specifies a
+                  bare `.danger`, so the destructive item needs its own rule
+                  rather than an inline colour. */}
               <button
                 type="button"
-                className="mi"
+                className="mi danger"
                 role="menuitem"
                 onClick={handleSignOut}
-                style={{ color: "var(--danger)" }}
               >
                 Sign out
               </button>

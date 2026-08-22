@@ -12,10 +12,8 @@
 // copy/download.
 
 import { useEffect, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Modal } from "@/components/design-system/Modal";
-import { Pill } from "@/components/design-system/primitives";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { Btn, CellChip, Field, Input, Lbl, StatusLine, Sub } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { usePrepareBankerSubmission } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api";
 import type { BankerSubmissionPayload } from "@/lib/types";
@@ -29,7 +27,6 @@ export function BankerSubmissionModal({
   onClose: () => void;
   intakeId: string;
 }) {
-  const { t } = useTheme();
   const prepare = usePrepareBankerSubmission(intakeId);
   const [ssn, setSsn] = useState("");
   const [personalTaxId, setPersonalTaxId] = useState("");
@@ -75,71 +72,77 @@ export function BankerSubmissionModal({
   }
 
   return (
-    <Modal
+    <Drawer
       open={open}
       onClose={onClose}
       title="Prepare banker submission"
-      size="lg"
+      width="lg"
       footer={
         <>
-          <button type="button" style={qcBtn(t)} onClick={onClose}>Close</button>
-          <button type="button" style={qcBtnPrimary(t)} onClick={onGenerate} disabled={prepare.isPending}>
-            {prepare.isPending ? <><Spinner /> Generating…</> : payload ? "Regenerate payload" : "Generate payload"}
-          </button>
+          {/* `.drawer-f` is a left-aligned flex row; the old Modal footer was
+              right-aligned, so this keeps the actions where they were. */}
+          <span className="grow" />
+          <Btn onClick={onClose}>Close</Btn>
+          <Btn variant="pri" onClick={onGenerate} disabled={prepare.isPending}>
+            {prepare.isPending ? (
+              <>
+                <Spinner /> Generating…
+              </>
+            ) : payload ? (
+              "Regenerate payload"
+            ) : (
+              "Generate payload"
+            )}
+          </Btn>
         </>
       }
     >
-      <div style={{ padding: 18, display: "grid", gap: 14 }}>
-        <p style={{ margin: 0, color: t.ink2, fontSize: 12.5, lineHeight: 1.5 }}>
+      <div className="grid">
+        <p className="sub">
           SSN and personal Tax ID are sent once to assemble this payload and are never stored on our servers or
-          in this lead's record — re-enter them each time you prepare a submission. Both fields are optional;
-          fill in either, neither, or both depending on what the banker's program requires.
+          in this lead&apos;s record — re-enter them each time you prepare a submission. Both fields are
+          optional; fill in either, neither, or both depending on what the banker&apos;s program requires.
         </p>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <label style={{ display: "block" }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 5 }}>
-              SSN (optional)
-            </div>
-            <input
+        <div className="fldgrid two">
+          <Field label="SSN (optional)">
+            {/* aria-label because `Field` renders a <span class="lbl">, not a
+                <label for>; the old markup wrapped the control in a <label>. */}
+            <Input
+              aria-label="SSN (optional)"
               value={ssn}
               onChange={(e) => setSsn(e.target.value.replace(/\D/g, "").slice(0, 9))}
               placeholder="9 digits, no dashes"
               type="password"
               autoComplete="off"
               inputMode="numeric"
-              style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: `1px solid ${t.line}`, background: t.surface2, color: t.ink, fontSize: 13 }}
             />
-          </label>
-          <label style={{ display: "block" }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 5 }}>
-              Personal Tax ID / ITIN (optional)
-            </div>
-            <input
+          </Field>
+          <Field label="Personal Tax ID / ITIN (optional)">
+            <Input
+              aria-label="Personal Tax ID / ITIN (optional)"
               value={personalTaxId}
               onChange={(e) => setPersonalTaxId(e.target.value.replace(/\D/g, "").slice(0, 9))}
               placeholder="9 digits, no dashes"
               type="password"
               autoComplete="off"
               inputMode="numeric"
-              style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: `1px solid ${t.line}`, background: t.surface2, color: t.ink, fontSize: 13 }}
             />
-          </label>
+          </Field>
         </div>
 
-        {error ? <div style={{ color: t.danger, fontSize: 12.5 }}>{error}</div> : null}
+        {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
 
         {payload ? (
-          <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <span style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                Assembled payload
-              </span>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {copied ? <Pill bg={t.profitBg} color={t.profit}>Copied</Pill> : null}
-                <button type="button" style={qcBtn(t)} onClick={onCopy}>Copy JSON</button>
-              </div>
+          <div className="grid g8">
+            <div className="row">
+              <Lbl className="grow">Assembled payload</Lbl>
+              {copied ? <CellChip tone="ok">Copied</CellChip> : null}
+              <Btn onClick={onCopy}>Copy JSON</Btn>
             </div>
+            {/* Bespoke surface (rule 3): a scrolling JSON preview. The
+                vocabulary has no code-block word, and every property here is
+                specific to reading raw JSON in a fixed-height well. */}
             <pre
               style={{
                 margin: 0,
@@ -147,9 +150,9 @@ export function BankerSubmissionModal({
                 overflow: "auto",
                 padding: 12,
                 borderRadius: 10,
-                border: `1px solid ${t.line}`,
-                background: t.surface,
-                color: t.ink,
+                border: "1px solid var(--line)",
+                background: "var(--sunken2)",
+                color: "var(--ink)",
                 fontSize: 12,
                 lineHeight: 1.5,
                 whiteSpace: "pre-wrap",
@@ -160,34 +163,18 @@ export function BankerSubmissionModal({
             </pre>
           </div>
         ) : (
-          <span style={{ color: t.ink3, fontSize: 13 }}>
+          <Sub>
             Generate the payload to review borrower, entity, key-metrics, and program-fit data assembled for the
             banker before handing it off.
-          </span>
+          </Sub>
         )}
       </div>
-    </Modal>
+    </Drawer>
   );
 }
 
 function Spinner() {
-  return (
-    <span
-      style={{
-        width: 13,
-        height: 13,
-        borderRadius: 999,
-        border: "2px solid currentColor",
-        borderTopColor: "transparent",
-        display: "inline-block",
-        verticalAlign: "-2px",
-        marginRight: 6,
-        animation: "qc-banker-spin 0.7s linear infinite",
-      }}
-    >
-      <style>{"@keyframes qc-banker-spin{to{transform:rotate(360deg)}}"}</style>
-    </span>
-  );
+  return <span className="spinner" />;
 }
 
 function readErrorMessage(err: unknown): string {

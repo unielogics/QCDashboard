@@ -12,11 +12,31 @@
 //
 // Operators get the existing TermsTab editor (full edit including ARV/LTV
 // sliders + covenants + Save).
+//
+// Styling is the shared class system (globals.css + app-extras.css):
+//   • the two-column split is `.withrail` — the results column is the rail,
+//     so it stays in view while the left column scrolls and it collapses
+//     under the form on a narrow window;
+//   • the locked terms are a `.kpis` band of prose KPIs (the values are
+//     phrases and short figures, not 26px headline numbers);
+//   • the slider is the vendored `.scen` scenario-studio pattern, which owns
+//     the accent colour and the full-width track;
+//   • the simulated terms are `.kv` rows and the HUD-1 is a real `.tbl`.
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, SectionLabel } from "@/components/design-system/primitives";
+import {
+  CellChip,
+  Kpi,
+  KpiRow,
+  Lbl,
+  Panel,
+  StatusLine,
+  Table,
+  Td,
+  Tr,
+  type ChipTone,
+} from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { useFredSeries, useLoans, useMyCredit } from "@/hooks/useApi";
@@ -56,7 +76,6 @@ function productKeyFor(loanType: string): SimulatorInputs["productKey"] {
 }
 
 export function LoanSimulator({ loan }: { loan: Loan }) {
-  const { t } = useTheme();
   const router = useRouter();
   const { data: credit } = useMyCredit();
   const { data: loans = [] } = useLoans();
@@ -103,271 +122,162 @@ export function LoanSimulator({ loan }: { loan: Loan }) {
   }, [arvNum, ltvFraction, points, productKey, baseRatePct]);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 20 }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div className="withrail">
+      <div className="grid">
         {eligibility.banner ? <EligibilityBanner banner={eligibility.banner} /> : null}
 
-        {/* Locked terms — read-only chips that mirror the loan record */}
-        <Card pad={20}>
-          <SectionLabel>Locked terms</SectionLabel>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
-            <LockedChip
+        {/* Locked terms — read-only figures that mirror the loan record.
+            The padlock moved from each of the four tiles to one chip in the
+            band header: it says the same thing once instead of four times,
+            and `.cellchip` is a flex box so the glyph sits on the text. */}
+        <div>
+          <div className="row">
+            <Lbl>Locked terms</Lbl>
+            <CellChip tone="mut" title="Set when this loan was started. Only your loan executive can change them.">
+              <Icon name="lock" size={11} stroke={2.4} />
+              Locked
+            </CellChip>
+          </div>
+          <KpiRow className="mt">
+            <Kpi
               label="Product"
               value={PRODUCT_LABEL[productKey]}
               sub={PRODUCT_TERM[productKey]}
+              prose
             />
-            <LockedChip label="ARV" value={QC_FMT.usd(arvNum, 0)} />
-            <LockedChip label="LTV" value={`${ltvPct}%`} sub={ltvLabel(ltvFraction)} />
-            <LockedChip
+            <Kpi label="ARV" value={QC_FMT.usd(arvNum, 0)} prose />
+            <Kpi label="LTV" value={`${ltvPct}%`} sub={ltvLabel(ltvFraction)} prose />
+            <Kpi
               label="Base rate"
               value={baseRatePct != null ? `${baseRatePct.toFixed(3)}%` : "—"}
               sub={liveRate ? `${liveRate.label} +${liveRate.spread_bps} bps` : "Locked at intake"}
+              prose
             />
+          </KpiRow>
+          <div className="sub mt">
+            These were set when this loan was started. Your loan executive can adjust them — you&apos;ll
+            see updates here automatically.
           </div>
-          <div style={{ fontSize: 12, color: t.ink3, marginTop: 12, lineHeight: 1.5 }}>
-            These were set when this loan was started. Your loan executive can adjust them — you'll see
-            updates here automatically.
-          </div>
-        </Card>
+        </div>
 
         {/* Discount points — the only interactive input */}
-        <Card pad={20}>
-          <SectionLabel>Discount points</SectionLabel>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "baseline",
-              justifyContent: "space-between",
-              marginBottom: 8,
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 12, color: t.ink2, fontWeight: 600 }}>0–2 pts</div>
-              <div style={{ fontSize: 10.5, color: t.ink4, marginTop: 1 }}>
-                {points > 0 ? `−${Math.round(points * 25)} bps off base rate` : "No buy-down · base rate"}
+        <Panel title="Discount points">
+          <div className="scen">
+            <div className="sl">
+              <div className="slh">
+                <span>0–2 pts</span>
+                <b>{points.toFixed(2)} pts</b>
               </div>
-            </div>
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 800,
-                color: t.ink,
-                fontFeatureSettings: '"tnum"',
-                letterSpacing: -0.4,
-              }}
-            >
-              {points.toFixed(2)} pts
+              <input
+                type="range"
+                min={0}
+                max={2}
+                step={0.25}
+                value={points}
+                aria-label="Discount points"
+                onChange={(e) => setPoints(Number(e.target.value))}
+              />
             </div>
           </div>
-          <input
-            type="range"
-            min={0}
-            max={2}
-            step={0.25}
-            value={points}
-            onChange={(e) => setPoints(Number(e.target.value))}
-            style={{ width: "100%", accentColor: t.petrol }}
-          />
-          <div style={{ fontSize: 11, color: t.ink3, marginTop: 8 }}>
-            Buying points reduces your rate but adds upfront cost.
+          <div className="sub mt">
+            {points > 0 ? `−${Math.round(points * 25)} bps off base rate` : "No buy-down · base rate"}
           </div>
-        </Card>
+          <div className="sub">Buying points reduces your rate but adds upfront cost.</div>
+        </Panel>
       </div>
 
       {/* Result KPIs + HUD breakdown */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <Card pad={16}>
-          <SectionLabel>Simulated terms</SectionLabel>
+      <div className="railcol">
+        <Panel title="Simulated terms">
           {sim ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div>
               <ResultRow label="Loan amount" value={QC_FMT.usd(sim.loanAmount, 0)} />
-              <ResultRow
-                label="Final rate"
-                value={`${(sim.rate * 100).toFixed(3)}%`}
-                accent={t.brand}
-              />
+              <ResultRow label="Final rate" value={`${(sim.rate * 100).toFixed(3)}%`} tone="acc" />
               <ResultRow label="Monthly P&I" value={QC_FMT.usd(sim.monthlyPI, 0)} />
               {productKey === "dscr" && sim.dscr != null ? (
                 <ResultRow
                   label="DSCR"
                   value={sim.dscr.toFixed(2)}
-                  accent={sim.dscr > 1.25 ? t.profit : sim.dscr > 1 ? t.warn : t.danger}
+                  // Tone is read off the ratio — the one thing on this panel
+                  // that is genuinely data-derived. It picks a class, not a
+                  // colour, so the palette stays in the stylesheet.
+                  tone={sim.dscr > 1.25 ? "ok" : sim.dscr > 1 ? "warn" : "bad"}
                 />
               ) : null}
               <ResultRow label="Discount points cost" value={QC_FMT.usd(sim.pointsCost, 0)} />
               <ResultRow label="Cash to close" value={QC_FMT.usd(sim.totalToClose, 0)} bold />
             </div>
           ) : (
-            <div style={{ fontSize: 12.5, color: t.ink3 }}>
+            <StatusLine tone="warn">
               Loan ARV missing — please contact your loan executive.
-            </div>
+            </StatusLine>
           )}
-        </Card>
+        </Panel>
 
         {sim ? (
-          <Card pad={0} style={{ overflow: "hidden" }}>
-            <div
-              style={{
-                padding: "12px 16px",
-                background: t.surface2,
-                borderBottom: `1px solid ${t.line}`,
-              }}
+          <Panel title="HUD-1 estimated closing" sub="Estimate · subject to verification" noPad>
+            <Table
+              cols={[{ label: "Line item" }, { label: "Amount", align: "r" }]}
+              caption="Estimated closing costs"
             >
-              <div
-                style={{
-                  fontSize: 9.5,
-                  fontWeight: 700,
-                  letterSpacing: 1.2,
-                  color: t.ink3,
-                  textTransform: "uppercase",
-                }}
-              >
-                HUD-1 estimated closing
-              </div>
-              <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
-                Estimate · subject to verification
-              </div>
-            </div>
-            {[
-              { l: "801 · Origination Fee", sub: "0.75% of loan amount", v: sim.origination },
-              { l: "802 · Discount Points", sub: `${points.toFixed(2)} pts`, v: sim.pointsCost, hl: true },
-              { l: "804 · Appraisal", sub: "Standard residential", v: sim.appraisal },
-              { l: "811/812 · Processing + UW", sub: "", v: sim.fixedFees },
-              { l: "1108 · Title Insurance", sub: "Lender + owner", v: sim.titleIns },
-              { l: "1201 · Recording Fees", sub: "", v: sim.recording },
-            ].map((row, i, arr) => (
-              <div
-                key={row.l}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "10px 16px",
-                  borderBottom: i < arr.length - 1 ? `1px solid ${t.line}` : "none",
-                  background: row.hl ? t.brandSoft : "transparent",
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: 12.5, fontWeight: row.hl ? 700 : 500, color: t.ink }}>
-                    {row.l}
-                  </div>
-                  {row.sub ? (
-                    <div style={{ fontSize: 10.5, color: t.ink3, marginTop: 1 }}>{row.sub}</div>
-                  ) : null}
-                </div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: t.ink }}>
-                  {QC_FMT.usd(row.v, 0)}
-                </div>
-              </div>
-            ))}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "14px 16px",
-                background: t.surface2,
-                borderTop: `1px solid ${t.lineStrong}`,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  letterSpacing: 0.4,
-                  color: t.ink,
-                  textTransform: "uppercase",
-                }}
-              >
-                Total to close
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.3, color: t.ink }}>
-                {QC_FMT.usd(sim.totalToClose, 0)}
-              </div>
-            </div>
-          </Card>
+              {[
+                { l: "801 · Origination Fee", sub: "0.75% of loan amount", v: sim.origination },
+                { l: "802 · Discount Points", sub: `${points.toFixed(2)} pts`, v: sim.pointsCost, hl: true },
+                { l: "804 · Appraisal", sub: "Standard residential", v: sim.appraisal },
+                { l: "811/812 · Processing + UW", sub: "", v: sim.fixedFees },
+                { l: "1108 · Title Insurance", sub: "Lender + owner", v: sim.titleIns },
+                { l: "1201 · Recording Fees", sub: "", v: sim.recording },
+              ].map((row) => (
+                <Tr key={row.l}>
+                  {/* The buy-down line is the one the slider moves — it keeps
+                      the tint the old highlighted row had, as a tone class. */}
+                  <Td className={row.hl ? "c-acc" : undefined}>
+                    <div>{row.hl ? <b>{row.l}</b> : row.l}</div>
+                    {row.sub ? <div className="sub">{row.sub}</div> : null}
+                  </Td>
+                  <Td align="r" className={row.hl ? "c-acc num" : "num"}>
+                    {QC_FMT.usd(row.v, 0)}
+                  </Td>
+                </Tr>
+              ))}
+              <Tr>
+                <Td>
+                  <Lbl>Total to close</Lbl>
+                </Td>
+                <Td align="r" className="num">
+                  <b>{QC_FMT.usd(sim.totalToClose, 0)}</b>
+                </Td>
+              </Tr>
+            </Table>
+          </Panel>
         ) : null}
       </div>
     </div>
   );
 }
 
+/** One label/figure line of the simulated-terms panel. `.kv` owns the split,
+ *  the hairline and the type size; `tone` (when set) renders the figure as a
+ *  chip instead of plain bold text. */
 function ResultRow({
   label,
   value,
-  accent,
+  tone,
   bold,
 }: {
   label: string;
   value: string;
-  accent?: string;
+  tone?: ChipTone;
   bold?: boolean;
 }) {
-  const { t } = useTheme();
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "baseline",
-        paddingTop: 4,
-        paddingBottom: 4,
-        borderBottom: `1px solid ${t.line}`,
-      }}
-    >
-      <div style={{ fontSize: 12.5, color: t.ink2 }}>{label}</div>
-      <div
-        style={{
-          fontSize: bold ? 16 : 14,
-          fontWeight: bold ? 800 : 700,
-          color: accent ?? t.ink,
-          fontFeatureSettings: '"tnum"',
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function LockedChip({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  const { t } = useTheme();
-  return (
-    <div
-      style={{
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        borderRadius: 11,
-        padding: 10,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <Icon name="lock" size={10} stroke={2.4} />
-        <div
-          style={{
-            fontSize: 9.5,
-            fontWeight: 700,
-            letterSpacing: 0.8,
-            color: t.ink3,
-            textTransform: "uppercase",
-          }}
-        >
-          {label}
-        </div>
-      </div>
-      <div
-        style={{
-          fontSize: 15,
-          fontWeight: 700,
-          color: t.ink,
-          marginTop: 4,
-          letterSpacing: -0.2,
-          fontFeatureSettings: '"tnum"',
-        }}
-      >
-        {value}
-      </div>
-      {sub ? <div style={{ fontSize: 10.5, color: t.ink3, marginTop: 1 }}>{sub}</div> : null}
+    <div className="kv">
+      <span>{bold ? <b>{label}</b> : label}</span>
+      {tone ? (
+        <CellChip tone={tone}>{value}</CellChip>
+      ) : (
+        <b className="num">{value}</b>
+      )}
     </div>
   );
 }

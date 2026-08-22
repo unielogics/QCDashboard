@@ -9,9 +9,13 @@
 // State is owned by the parent so other affordances can open/close it
 // programmatically (e.g. the AIQuestionsPopover answering a question
 // jumps the operator into the chat).
+//
+// Restyled onto the shared `RightPanel` — the edge-anchored sheet shape the
+// design system already carries (`.sheet` / `.sheet-h` / `.sheet-b`). It owns
+// the Escape handler and the backdrop click, so the hand-rolled copies of
+// both are gone; the affordance is unchanged.
 
-import { useEffect, useRef } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { RightPanel } from "@/components/design-system/RightPanel";
 import { Icon } from "@/components/design-system/Icon";
 import { DealChatThread } from "./DealChatThread";
 import { DealChatInput } from "./DealChatInput";
@@ -26,95 +30,35 @@ interface Props {
 }
 
 export function LoanChatSlideOut({ open, onClose, loanId, user, workspace }: Props) {
-  const { t } = useTheme();
-  const panelRef = useRef<HTMLDivElement | null>(null);
-
-  // ESC closes.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        right: 0,
-        bottom: 0,
-        left: 0,
-        background: "rgba(0,0,0,0.18)",
-        zIndex: 60,
-        display: "flex",
-        justifyContent: "flex-end",
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        ref={panelRef}
-        style={{
-          width: "min(420px, 38vw)",
-          background: t.surface,
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          boxShadow: "-12px 0 32px rgba(0,0,0,0.18)",
-          borderLeft: `1px solid ${t.line}`,
-        }}
-      >
-        <header style={{
-          display: "flex", alignItems: "center", gap: 10,
-          padding: "12px 14px",
-          borderBottom: `1px solid ${t.line}`,
-          background: t.surface2,
-        }}>
-          <Icon name="chat" size={14} />
-          <span style={{ fontSize: 13, fontWeight: 900, color: t.ink }}>
-            Chat
-          </span>
-          <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>
-            AI ↔ client conversation
-          </span>
-          <div style={{ flex: 1 }} />
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close loan chat"
-            style={{
-              all: "unset", cursor: "pointer",
-              padding: 6, borderRadius: 6,
-              color: t.ink3, fontSize: 16, fontWeight: 900, lineHeight: 1,
-            }}
-          >
-            ×
-          </button>
-        </header>
-
-        <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 12 }}>
-          <DealChatThread
-            loanId={loanId}
-            user={user}
-            messages={workspace.chat_messages}
-            pausedUntil={workspace.ai_paused_until}
-          />
-        </div>
-
-        <div style={{ padding: 12, borderTop: `1px solid ${t.line}`, background: t.surface2 }}>
+    <RightPanel
+      open={open}
+      onClose={onClose}
+      // The visible title is one word; name the dialog for what it is.
+      ariaLabel="Loan chat"
+      eyebrow={
+        <>
+          <Icon name="chat" size={12} /> AI ↔ client conversation
+        </>
+      }
+      title="Chat"
+      width="min(420px, 38vw)"
+      footer={
+        <div className="grow">
           <DealChatInput
             loanId={loanId}
             user={user}
             pausedUntil={workspace.ai_paused_until}
           />
         </div>
-      </div>
-    </div>
+      }
+    >
+      <DealChatThread
+        loanId={loanId}
+        user={user}
+        messages={workspace.chat_messages}
+        pausedUntil={workspace.ai_paused_until}
+      />
+    </RightPanel>
   );
 }

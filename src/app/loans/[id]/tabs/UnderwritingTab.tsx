@@ -1,15 +1,25 @@
 "use client";
 
+// UnderwritingTab — risk model, borrower financials, validation warnings and
+// the underwriting metric stack.
+//
+// Styling lives in globals.css / app-extras.css. The score dial is `.gauge`,
+// which is the sheet's own ring-with-a-number-in-it (the arc length is
+// data-derived and stays inline); metrics are `.kv` rows.
+
 import { useEffect } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, KPI, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { useClient, useRecalc } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
+import { Callout, Kpi, KpiRow, Panel } from "@/components/ds";
 import type { Loan } from "@/lib/types";
 
+// `.gauge` is a 148px square; the ring is drawn to fit it.
+const GAUGE = 148;
+const R = 62;
+const C = 2 * Math.PI * R;
+
 export function UnderwritingTab({ loan }: { loan: Loan }) {
-  const { t } = useTheme();
   const recalc = useRecalc();
   const { data: client } = useClient(loan.client_id);
 
@@ -34,92 +44,86 @@ export function UnderwritingTab({ loan }: { loan: Loan }) {
   }, [loan.id]);
 
   const score = loan.risk_score ?? 0;
-  const ringColor = score >= 80 ? t.profit : score >= 70 ? t.warn : t.danger;
-  const dashFraction = score / 100;
-  const C = 2 * Math.PI * 46; // circumference for r=46
-  const dash = `${C * dashFraction} ${C}`;
+  // Ring colour and arc length are both computed from the score, so both stay
+  // at the site. The palette values are the sheet's variables, not a second
+  // copy of the numbers.
+  const ringColor = score >= 80 ? "var(--ok)" : score >= 70 ? "var(--warn)" : "var(--danger)";
+  const dash = `${C * (score / 100)} ${C}`;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-      <Card pad={16}>
-        <SectionLabel>Risk model</SectionLabel>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ position: "relative", width: 110, height: 110, flexShrink: 0 }}>
-            <svg width={110} height={110}>
-              <circle cx={55} cy={55} r={46} fill="none" stroke={t.line} strokeWidth={10} />
-              <circle cx={55} cy={55} r={46} fill="none" stroke={ringColor} strokeWidth={10}
-                strokeDasharray={dash} strokeLinecap="round" transform="rotate(-90 55 55)" />
+    <div className="cg">
+      <Panel className="s6" title="Risk model">
+        <div className="row">
+          <div className="gauge">
+            <svg width={GAUGE} height={GAUGE}>
+              <circle cx={GAUGE / 2} cy={GAUGE / 2} r={R} fill="none" stroke="var(--line)" strokeWidth={10} />
+              <circle
+                cx={GAUGE / 2} cy={GAUGE / 2} r={R} fill="none"
+                stroke={ringColor} strokeWidth={10}
+                strokeDasharray={dash} strokeLinecap="round"
+                transform={`rotate(-90 ${GAUGE / 2} ${GAUGE / 2})`}
+              />
             </svg>
-            <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-              <div style={{ fontSize: 26, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"' }}>{loan.risk_score ?? "—"}</div>
-              <div style={{ fontSize: 9.5, fontWeight: 700, color: t.ink3, letterSpacing: 1, textTransform: "uppercase" }}>Risk</div>
+            <div className="val">
+              <b>{loan.risk_score ?? "—"}</b>
+              <span>Risk</span>
             </div>
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.6 }}>
-              {score >= 80 ? "Auto-approve eligible. Strong borrower, clean comps." :
-                score >= 70 ? "Manual review required." :
+          <div className="grow">
+            {score >= 80 ? "Auto-approve eligible. Strong borrower, clean comps." :
+              score >= 70 ? "Manual review required." :
                 "High-touch UW required. Multiple risk factors detected."}
-            </div>
           </div>
         </div>
-      </Card>
+      </Panel>
 
-      <Card pad={16}>
-        <SectionLabel>Borrower financials</SectionLabel>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <KPI label="FICO" value={client?.fico ?? "—"} />
-          <KPI label="Funded total" value={client ? QC_FMT.short(Number(client.funded_total)) : "—"} />
-          <KPI label="Funded count" value={client?.funded_count ?? "—"} />
-          <KPI label="Tier" value={client?.tier ?? "—"} />
-        </div>
-      </Card>
+      <Panel className="s6" title="Borrower financials">
+        <KpiRow>
+          <Kpi label="FICO" value={client?.fico ?? "—"} />
+          <Kpi label="Funded total" value={client ? QC_FMT.short(Number(client.funded_total)) : "—"} />
+          <Kpi label="Funded count" value={client?.funded_count ?? "—"} />
+          <Kpi label="Tier" value={client?.tier ?? "—"} />
+        </KpiRow>
+      </Panel>
 
-      <Card pad={16}>
-        <SectionLabel>Validation warnings</SectionLabel>
-        {recalc.isPending && <div style={{ fontSize: 12.5, color: t.ink3 }}>Running…</div>}
+      <Panel className="s6" title="Validation warnings">
+        {recalc.isPending && <span className="sub">Running…</span>}
         {recalc.data?.warnings && recalc.data.warnings.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="grid g8">
             {recalc.data.warnings.map((w) => (
-              <div key={w.code} style={{
-                display: "flex", alignItems: "flex-start", gap: 10, padding: 10, borderRadius: 9,
-                background: w.severity === "block" ? t.dangerBg : t.warnBg,
-                color: w.severity === "block" ? t.danger : t.warn,
-              }}>
-                <Icon name="bell" size={14} stroke={2.5} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700 }}>{w.message}</div>
-                  <div style={{ fontSize: 10.5, marginTop: 2, fontFamily: "ui-monospace, SF Mono, monospace", opacity: 0.75 }}>{w.code} · {w.severity}</div>
-                </div>
-              </div>
+              <Callout
+                key={w.code}
+                tone={w.severity === "block" ? "bad" : "warn"}
+                icon={<Icon name="bell" size={14} stroke={2.5} />}
+              >
+                <div><strong>{w.message}</strong></div>
+                <div className="sub mono">{w.code} · {w.severity}</div>
+              </Callout>
             ))}
           </div>
         ) : (
-          <div style={{ fontSize: 12.5, color: t.ink3 }}>No validation warnings — clean against lender matrix.</div>
+          <span className="sub">No validation warnings — clean against lender matrix.</span>
         )}
-      </Card>
+      </Panel>
 
-      <Card pad={16}>
-        <SectionLabel>Underwriting metrics</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <Row t={t} label="LTV" value={loan.ltv ? `${(loan.ltv * 100).toFixed(1)}%` : "—"} />
-          {loan.ltc && <Row t={t} label="LTC" value={`${(loan.ltc * 100).toFixed(1)}%`} />}
-          {loan.arv && <Row t={t} label="ARV" value={QC_FMT.usd(Number(loan.arv))} />}
-          <Row t={t} label="DSCR" value={loan.dscr ? loan.dscr.toFixed(2) : "—"} />
-          {loan.monthly_rent && <Row t={t} label="Monthly rent" value={QC_FMT.usd(Number(loan.monthly_rent))} />}
-          <Row t={t} label="Annual taxes" value={QC_FMT.usd(Number(loan.annual_taxes))} />
-          <Row t={t} label="Annual insurance" value={QC_FMT.usd(Number(loan.annual_insurance))} />
-        </div>
-      </Card>
+      <Panel className="s6" title="Underwriting metrics">
+        <KvRow label="LTV" value={loan.ltv ? `${(loan.ltv * 100).toFixed(1)}%` : "—"} />
+        {loan.ltc && <KvRow label="LTC" value={`${(loan.ltc * 100).toFixed(1)}%`} />}
+        {loan.arv && <KvRow label="ARV" value={QC_FMT.usd(Number(loan.arv))} />}
+        <KvRow label="DSCR" value={loan.dscr ? loan.dscr.toFixed(2) : "—"} />
+        {loan.monthly_rent && <KvRow label="Monthly rent" value={QC_FMT.usd(Number(loan.monthly_rent))} />}
+        <KvRow label="Annual taxes" value={QC_FMT.usd(Number(loan.annual_taxes))} />
+        <KvRow label="Annual insurance" value={QC_FMT.usd(Number(loan.annual_insurance))} />
+      </Panel>
     </div>
   );
 }
 
-function Row({ t, label, value }: { t: ReturnType<typeof useTheme>["t"]; label: string; value: string }) {
+function KvRow({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${t.line}` }}>
-      <span style={{ fontSize: 12, color: t.ink3, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase" }}>{label}</span>
-      <span style={{ fontSize: 13, fontWeight: 700, color: t.ink, fontFeatureSettings: '"tnum"' }}>{value}</span>
+    <div className="kv">
+      <span className="lbl">{label}</span>
+      <b className="num">{value}</b>
     </div>
   );
 }

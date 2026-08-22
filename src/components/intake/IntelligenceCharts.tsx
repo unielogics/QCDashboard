@@ -196,9 +196,9 @@ export function GaugeChart({ value, language = "en" }: { value: number | null | 
     <div style={s.gaugeWrap}>
       <svg viewBox="0 0 200 120" style={s.gaugeSvg} aria-label="DSCR gauge">
         <path d="M30 92 A70 70 0 0 1 170 92" fill="none" stroke={s.gaugeTrackStroke} strokeWidth="16" strokeLinecap="round" />
-        <path d="M30 92 A70 70 0 0 1 73 28" fill="none" stroke="#EF4444" strokeWidth="16" strokeLinecap="round" />
-        <path d="M73 28 A70 70 0 0 1 116 28" fill="none" stroke="#F59E0B" strokeWidth="16" strokeLinecap="round" />
-        <path d="M116 28 A70 70 0 0 1 170 92" fill="none" stroke="#12A150" strokeWidth="16" strokeLinecap="round" />
+        <path d="M30 92 A70 70 0 0 1 73 28" fill="none" stroke="var(--danger)" strokeWidth="16" strokeLinecap="round" />
+        <path d="M73 28 A70 70 0 0 1 116 28" fill="none" stroke="var(--warn)" strokeWidth="16" strokeLinecap="round" />
+        <path d="M116 28 A70 70 0 0 1 170 92" fill="none" stroke="var(--ok)" strokeWidth="16" strokeLinecap="round" />
         <line x1="100" y1="92" x2={x} y2={y} stroke={s.gaugeNeedle} strokeWidth="4" strokeLinecap="round" />
         <circle cx="100" cy="92" r="8" fill={s.gaugeNeedle} />
       </svg>
@@ -217,6 +217,7 @@ export function EquityChart({ equity, ltv, language = "en" }: { equity: number |
   return (
     <div style={s.equityChartWrap}>
       <div style={s.equityTrack}>
+        {/* Widths are the data. */}
         <div style={{ ...s.equityDebtFill, width: `${ltvPct ?? 0}%` }} />
         <div style={{ ...s.equityValueFill, width: `${equityPct ?? 0}%` }} />
       </div>
@@ -245,6 +246,7 @@ export function CashFlowBars({ bars, language = "en" }: { bars: IntelligenceMode
               <strong>{value === null ? cc.awaitingEvidence : formatMoneyCompactLocal(value)}</strong>
             </div>
             <div style={s.cashFlowTrack}>
+              {/* Width and tone are both derived from the bar's value. */}
               <div style={{ ...s.cashFlowFill, width: `${width}%`, background: value !== null && value < 0 ? s.cashFlowNeg : s.cashFlowPos }} />
             </div>
           </div>
@@ -268,6 +270,7 @@ export function MiniBarChart({ series, emptyLabel }: { series: Array<{ label: st
         return (
           <div key={item.label} style={s.miniChartColumn}>
             <div style={s.miniChartBarWrap}>
+              {/* Height is the data; the dim marks "no value at all". */}
               <div style={{ ...s.miniChartBar, height: `${height}%`, opacity: value === null ? 0.22 : 1 }} />
             </div>
             <span>{item.label}</span>

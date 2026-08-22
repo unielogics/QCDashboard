@@ -7,10 +7,24 @@
 //
 // Replaces the earlier 5-tab layout. The data model is unchanged —
 // requirements still carry blocks_stage; this UI just buckets them.
+//
+// Styling migrated off the inline token objects onto the plain-CSS design
+// system (globals.css + app-extras.css) via the wrappers in @/components/ds.
+// Every mutation, permission predicate, confirm() and tooltip survives; only
+// the surface vocabulary moved:
+//   local OutcomeNote helper   → Note (`.note` is the petrol explanatory block)
+//   product picker buttons     → Seg as="tabs" (it switches which playbook you
+//                                are looking at, so tablist is correct)
+//   local StatusPill helper    → CellChip + `.caps`
+//   hard-coded amber blocks    → Callout tone="warn" / Panel, which take their
+//                                colour from the sheet instead of hex literals
+//   "▸ Advanced" text toggle   → `.disc` / `.disc-h` / `.disc-b`, a real button
+//   local btnPrimary/Secondary → Btn
+// The page no longer sets its own padding or max-width — the shell's
+// `.content` owns both.
 
 import { useEffect, useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, SectionLabel } from "@/components/design-system/primitives";
+import { Btn, Callout, CellChip, Note, Panel, Row, Seg, Sub, Textarea, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { StageChecklist } from "@/components/StageChecklist";
@@ -43,7 +57,6 @@ const PRODUCT_LABELS: Record<string, string> = {
 
 
 export default function LendingPlaybooksPage() {
-  const { t } = useTheme();
   const { data: allLoanProducts = [], error: lpError } = useLendingPlaybooks("loan_product");
 
   // For each product key, prefer the funding-owned version; fall back
@@ -73,7 +86,7 @@ export default function LendingPlaybooksPage() {
   const activePb = slot?.funding ?? slot?.platform ?? null;
 
   return (
-    <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
+    <div className="grid">
       <LendingAIHeader
         title="Lending Playbooks"
         subtitle="What the AI collects on every loan, organized by the stage that item blocks. Funding-required items are locked from the agent side; everything else can be overridden per agent or per client."
@@ -83,12 +96,7 @@ export default function LendingPlaybooksPage() {
         <AINotDeployedBanner surface="Lending AI" />
       ) : null}
 
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-        gap: 10,
-        marginBottom: 20,
-      }}>
+      <div className="grid cols-auto">
         <OutcomeNote
           icon="doc"
           title="External document items"
@@ -107,23 +115,20 @@ export default function LendingPlaybooksPage() {
       </div>
 
       {/* Loan product picker */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
-        {productKeys.map(key => (
-          <button
-            key={key}
-            onClick={() => setActiveKey(key)}
-            style={{
-              padding: "8px 14px", fontSize: 13, fontWeight: 600,
-              borderRadius: 8, border: `1px solid ${activeKey === key ? t.petrol : t.line}`,
-              background: activeKey === key ? t.petrol : t.surface,
-              color: activeKey === key ? "#fff" : t.ink,
-              cursor: "pointer",
-            }}
-          >
-            {PRODUCT_LABELS[key] || key}
-          </button>
-        ))}
-      </div>
+      {productKeys.length > 0 ? (
+        <Row>
+          <Seg
+            as="tabs"
+            ariaLabel="Loan product"
+            value={activeKey}
+            onChange={setActiveKey}
+            options={productKeys.map((key) => ({
+              value: key,
+              label: PRODUCT_LABELS[key] || key,
+            }))}
+          />
+        </Row>
+      ) : null}
 
       {activePb ? (
         <PlaybookPanel
@@ -133,22 +138,21 @@ export default function LendingPlaybooksPage() {
         />
       ) : null}
 
-      <div style={{ marginTop: 20 }}>
-        <AIPreviewPanel mode="plan" />
-      </div>
+      <AIPreviewPanel mode="plan" />
     </div>
   );
 }
 
 
 function PlaybookPanel({
-  playbook, slot, productKey,
+  playbook, slot, productKey: _productKey,
 }: {
   playbook: LendingPlaybook;
   slot: { funding: LendingPlaybook | null; platform: LendingPlaybook | null } | undefined;
+  /** Carried from the picker. Unused by the render today; kept so the panel
+   *  keeps the identity of the product it was opened for. */
   productKey: string;
 }) {
-  const { t } = useTheme();
   const { data: reqs = [] } = useLendingPlaybookRequirements(playbook.id);
   const upsert = useUpsertLendingRequirement(playbook.id);
   const del = useDeleteLendingRequirement(playbook.id);
@@ -170,66 +174,56 @@ function PlaybookPanel({
   );
 
   return (
-    <Card pad={20}>
-      {/* Status bar */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
-        <SectionLabel>{playbook.name}</SectionLabel>
-        <StatusPill status={playbook.status} version={playbook.version} t={t} />
-        <span style={{ fontSize: 11, color: t.ink3, marginLeft: 4 }}>
-          {isPlatform ? "Platform default — read-only" : "Funding-owned"}
-        </span>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+    <Panel
+      title={
+        <>
+          {playbook.name}{" "}
+          <StatusPill status={playbook.status} version={playbook.version} />
+        </>
+      }
+      sub={isPlatform ? "Platform default — read-only" : "Funding-owned"}
+      bodyClass="grid"
+      actions={
+        <>
           {editable && reqs.length > 0 ? (
-            <button
+            <Btn
               onClick={() => {
                 if (confirm("Run AI inference to suggest task dependencies + grouping for this playbook? This overwrites previous suggestions but never your manual depends_on / parent_key.")) {
                   inferDeps.mutate();
                 }
               }}
               disabled={inferDeps.isPending}
-              style={btnSecondary(t)}
               title="Ask Claude to suggest task dependencies + parent grouping. Suggestions land in a review panel below — nothing is applied until you confirm per row."
             >
               {inferDeps.isPending ? "Inferring…" : "Run AI inference"}
-            </button>
+            </Btn>
           ) : null}
           {isPlatform && !fundingExists ? (
-            <button
-              onClick={() => dup.mutate({ platformPlaybookId: playbook.id })}
-              style={btnPrimary(t)}
-            >
+            <Btn variant="pri" onClick={() => dup.mutate({ platformPlaybookId: playbook.id })}>
               {dup.isPending ? "Duplicating…" : "Duplicate to edit"}
-            </button>
+            </Btn>
           ) : null}
           {!isPlatform && playbook.status === "draft" ? (
-            <button
-              onClick={() => publish.mutate(playbook.id)}
-              style={btnPrimary(t)}
-            >
+            <Btn variant="pri" onClick={() => publish.mutate(playbook.id)}>
               {publish.isPending ? "Publishing…" : "Publish"}
-            </button>
+            </Btn>
           ) : null}
           {!isPlatform && playbook.status === "published" ? (
-            <button
+            <Btn
               onClick={() => update.mutate({ id: playbook.id, fork: true })}
-              style={btnSecondary(t)}
               title="Fork a new draft from this version"
             >
               {update.isPending ? "Forking…" : "Fork to draft"}
-            </button>
+            </Btn>
           ) : null}
-        </div>
-      </div>
-
+        </>
+      }
+    >
       {isPlatform ? (
-        <div style={{
-          padding: 12, marginBottom: 20, borderRadius: 8,
-          background: "#fff8e0", border: "1px solid #d4a02488",
-          fontSize: 12, color: "#7a5e22", display: "flex", gap: 8, alignItems: "flex-start",
-        }}>
-          <Icon name="lock" size={14} stroke={2.4} />
-          <span>Platform defaults are read-only. Click <strong>Duplicate to edit</strong> above to fork a funding-owned copy you can customize.</span>
-        </div>
+        <Callout tone="warn" icon={<Icon name="lock" size={14} stroke={2.4} />}>
+          Platform defaults are read-only. Click <strong>Duplicate to edit</strong> above to fork a
+          funding-owned copy you can customize.
+        </Callout>
       ) : null}
 
       <StageChecklist
@@ -245,148 +239,105 @@ function PlaybookPanel({
           allRequirements={reqs}
           onAccept={(key) => confirmInferred.mutate({ requirement_key: key, accept_depends_on: true, accept_parent_key: true })}
           onDismiss={(key) => confirmInferred.mutate({ requirement_key: key, accept_depends_on: false, accept_parent_key: false })}
-          t={t}
         />
       ) : null}
 
       {/* Advanced disclosure — escalations / communication / raw conditions */}
-      <Advanced playbookId={playbook.id} t={t} />
-    </Card>
+      <Advanced playbookId={playbook.id} />
+    </Panel>
   );
 }
 
 function ReviewSuggestionsPanel({
-  rows, allRequirements, onAccept, onDismiss, t,
+  rows, allRequirements, onAccept, onDismiss,
 }: {
   rows: PlaybookRequirement[];
   allRequirements: PlaybookRequirement[];
   onAccept: (requirement_key: string) => void;
   onDismiss: (requirement_key: string) => void;
-  t: ReturnType<typeof useTheme>["t"];
 }) {
   const labelOf = (k: string) => allRequirements.find(r => r.requirement_key === k)?.label || k;
+  // Not a nested Panel: this block already sits inside the playbook's panel
+  // body, and a panel inside a panel is the card-in-card nesting the design
+  // system exists to remove. The warn callout carries the heading instead.
   return (
-    <div style={{
-      marginTop: 20,
-      padding: 14,
-      borderRadius: 10,
-      border: `1px solid #d4a02488`,
-      background: "#fffae0",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-        <Icon name="bolt" size={14} stroke={2.4} />
-        <span style={{ fontSize: 13, fontWeight: 800, color: "#7a5e22" }}>
-          AI suggestions — {rows.length} row{rows.length === 1 ? "" : "s"} pending review
-        </span>
-      </div>
-      <div style={{ fontSize: 12, color: "#7a5e22", marginBottom: 10 }}>
-        Claude proposed dependencies + parent groupings based on each task&apos;s objective and completion criteria.
-        Nothing is applied to the live playbook until you click <strong>Accept</strong> per row.
-      </div>
-      <div style={{ display: "grid", gap: 8 }}>
-        {rows.map(r => (
-          <div key={r.id} style={{
-            background: t.surface,
-            border: `1px solid ${t.line}`,
-            borderRadius: 8,
-            padding: 10,
-            display: "grid",
-            gap: 6,
-          }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{r.label}</div>
+    <div className="grid g8">
+      <Callout tone="warn" icon={<Icon name="bolt" size={14} stroke={2.4} />}>
+        <b>AI suggestions — {rows.length} row{rows.length === 1 ? "" : "s"} pending review</b>
+        <div className="sub">
+          Claude proposed dependencies + parent groupings based on each task&apos;s objective and
+          completion criteria. Nothing is applied to the live playbook until you click{" "}
+          <strong>Accept</strong> per row.
+        </div>
+      </Callout>
+      {rows.map(r => (
+        <div key={r.id} className="itemrow">
+          <div className="grow">
+            <b>{r.label}</b>
             {(r.inferred_depends_on || []).length > 0 ? (
-              <div style={{ fontSize: 12, color: t.ink3 }}>
+              <div className="sub">
                 Suggest <strong>after</strong>: {(r.inferred_depends_on || []).map(labelOf).join(", ")}
               </div>
             ) : null}
             {r.parent_key && !(r.depends_on || []).length ? (
-              <div style={{ fontSize: 12, color: t.ink3 }}>
+              <div className="sub">
                 Suggest grouping <strong>under</strong>: {labelOf(r.parent_key)}
               </div>
             ) : null}
-            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <button onClick={() => onAccept(r.requirement_key)} style={pillAccept(t)}>Accept</button>
-              <button onClick={() => onDismiss(r.requirement_key)} style={pillDismiss(t)}>Dismiss</button>
-            </div>
           </div>
-        ))}
-      </div>
+          <Row>
+            <Btn variant="pri" size="sm" onClick={() => onAccept(r.requirement_key)}>Accept</Btn>
+            <Btn size="sm" onClick={() => onDismiss(r.requirement_key)}>Dismiss</Btn>
+          </Row>
+        </div>
+      ))}
     </div>
   );
-}
-
-function pillAccept(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    padding: "4px 12px", fontSize: 12, fontWeight: 700,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.petrol, color: "#fff", cursor: "pointer",
-  } as const;
-}
-function pillDismiss(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    padding: "4px 12px", fontSize: 12, fontWeight: 700,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: "transparent", color: t.ink3, cursor: "pointer",
-  } as const;
 }
 
 
 function OutcomeNote({ icon, title, body }: { icon: string; title: string; body: string }) {
-  const { t } = useTheme();
   return (
-    <div style={{
-      display: "flex",
-      gap: 10,
-      padding: 12,
-      borderRadius: 8,
-      border: `1px solid ${t.line}`,
-      background: t.surface2,
-    }}>
-      <span style={{ color: t.petrol, display: "inline-flex", paddingTop: 1 }}>
-        <Icon name={icon} size={16} />
-      </span>
+    <Note>
+      <Icon name={icon} size={16} />
       <div>
-        <div style={{ fontSize: 12, fontWeight: 800, color: t.ink, marginBottom: 3 }}>{title}</div>
-        <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45 }}>{body}</div>
+        <b>{title}</b>
+        <div className="sub">{body}</div>
       </div>
-    </div>
+    </Note>
   );
 }
 
 
-function StatusPill({ status, version, t }: { status: string; version: number; t: ReturnType<typeof useTheme>["t"] }) {
+function StatusPill({ status, version }: { status: string; version: number }) {
   const pub = status === "published";
   return (
-    <span style={{
-      fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6,
-      background: pub ? "#e0f3e3" : "#fff2dd",
-      color: pub ? "#1a8c2a" : "#a06000",
-      textTransform: "uppercase",
-    }}>
+    <CellChip tone={pub ? "ok" : "warn"} className="caps">
       {status} v{version}
-    </span>
+    </CellChip>
   );
 }
 
 
-function Advanced({ t }: { playbookId: string; t: ReturnType<typeof useTheme>["t"] }) {
+function Advanced({ playbookId: _playbookId }: { playbookId: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${t.line}` }}>
+    <div className={cx("disc", open && "on")}>
       <button
+        type="button"
+        className="disc-h"
+        aria-expanded={open}
         onClick={() => setOpen(o => !o)}
-        style={{
-          background: "transparent", border: "none",
-          padding: 0, color: t.ink3, fontSize: 12, fontWeight: 700,
-          cursor: "pointer",
-        }}
       >
-        {open ? "▾" : "▸"} Advanced — escalation rules · borrower communication tone · raw conditions
+        <span className="lbl">
+          Advanced — escalation rules · borrower communication tone · raw conditions
+        </span>
+        <span aria-hidden="true">{open ? "▾" : "▸"}</span>
       </button>
       {open ? (
-        <div style={{ marginTop: 12 }}>
-          <EscalationEditor t={t} />
-          <CommunicationEditor t={t} />
+        <div className="disc-b grid">
+          <EscalationEditor />
+          <CommunicationEditor />
         </div>
       ) : null}
     </div>
@@ -394,44 +345,41 @@ function Advanced({ t }: { playbookId: string; t: ReturnType<typeof useTheme>["t
 }
 
 
-function EscalationEditor({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
+function EscalationEditor() {
   const { data, isLoading } = useFundingMetaRules("escalation");
   const patch = usePatchFundingMetaRules("escalation");
   const [text, setText] = useState<string>("");
   useEffect(() => { if (data) setText(JSON.stringify(data.rules || {}, null, 2)); }, [data]);
 
   return (
-    <div style={{ marginBottom: 18 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: t.ink, marginBottom: 6 }}>
-        Underwriter escalation rules
-      </div>
-      <div style={{ fontSize: 12, color: t.ink3, marginBottom: 6 }}>
+    <div className="grid g6">
+      <b>Underwriter escalation rules</b>
+      <Sub>
         When the AI should escalate vs. continue collecting (DSCR below min, LTV exceeds max, doc contradiction, etc.).
-      </div>
+      </Sub>
       {isLoading ? (
-        <div style={{ color: t.ink3, fontSize: 12 }}>Loading…</div>
+        <Sub>Loading…</Sub>
       ) : (
         <>
-          <textarea
+          <Textarea
+            className="mono"
+            aria-label="Escalation rules, raw JSON"
             value={text}
             onChange={e => setText(e.target.value)}
             rows={10}
-            style={{
-              width: "100%", fontFamily: "ui-monospace, SF Mono, monospace", fontSize: 12,
-              padding: 10, borderRadius: 8, border: `1px solid ${t.line}`,
-              background: t.surface, color: t.ink, resize: "vertical",
-            }}
           />
-          <button
-            onClick={async () => {
-              try { await patch.mutateAsync(JSON.parse(text || "{}")); }
-              catch { alert("Invalid JSON"); }
-            }}
-            disabled={patch.isPending}
-            style={{ ...btnPrimary(t), marginTop: 8 }}
-          >
-            {patch.isPending ? "Saving…" : "Save escalation rules"}
-          </button>
+          <Row>
+            <Btn
+              variant="pri"
+              onClick={async () => {
+                try { await patch.mutateAsync(JSON.parse(text || "{}")); }
+                catch { alert("Invalid JSON"); }
+              }}
+              disabled={patch.isPending}
+            >
+              {patch.isPending ? "Saving…" : "Save escalation rules"}
+            </Btn>
+          </Row>
         </>
       )}
     </div>
@@ -439,64 +387,43 @@ function EscalationEditor({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
 }
 
 
-function CommunicationEditor({ t }: { t: ReturnType<typeof useTheme>["t"] }) {
+function CommunicationEditor() {
   const { data, isLoading } = useFundingMetaRules("communication");
   const patch = usePatchFundingMetaRules("communication");
   const [text, setText] = useState<string>("");
   useEffect(() => { if (data) setText(JSON.stringify(data.rules || {}, null, 2)); }, [data]);
 
   return (
-    <div>
-      <div style={{ fontSize: 12, fontWeight: 700, color: t.ink, marginBottom: 6 }}>
-        Borrower communication tone + templates
-      </div>
-      <div style={{ fontSize: 12, color: t.ink3, marginBottom: 6 }}>
+    <div className="grid g6">
+      <b>Borrower communication tone + templates</b>
+      <Sub>
         Tone, opening line templates, when to copy the agent on a borrower message.
-      </div>
+      </Sub>
       {isLoading ? (
-        <div style={{ color: t.ink3, fontSize: 12 }}>Loading…</div>
+        <Sub>Loading…</Sub>
       ) : (
         <>
-          <textarea
+          <Textarea
+            className="mono"
+            aria-label="Communication rules, raw JSON"
             value={text}
             onChange={e => setText(e.target.value)}
             rows={10}
-            style={{
-              width: "100%", fontFamily: "ui-monospace, SF Mono, monospace", fontSize: 12,
-              padding: 10, borderRadius: 8, border: `1px solid ${t.line}`,
-              background: t.surface, color: t.ink, resize: "vertical",
-            }}
           />
-          <button
-            onClick={async () => {
-              try { await patch.mutateAsync(JSON.parse(text || "{}")); }
-              catch { alert("Invalid JSON"); }
-            }}
-            disabled={patch.isPending}
-            style={{ ...btnPrimary(t), marginTop: 8 }}
-          >
-            {patch.isPending ? "Saving…" : "Save communication rules"}
-          </button>
+          <Row>
+            <Btn
+              variant="pri"
+              onClick={async () => {
+                try { await patch.mutateAsync(JSON.parse(text || "{}")); }
+                catch { alert("Invalid JSON"); }
+              }}
+              disabled={patch.isPending}
+            >
+              {patch.isPending ? "Saving…" : "Save communication rules"}
+            </Btn>
+          </Row>
         </>
       )}
     </div>
   );
-}
-
-
-function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    padding: "6px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.petrol, color: "#fff", cursor: "pointer",
-  } as const;
-}
-
-
-function btnSecondary(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    padding: "6px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.surface, color: t.ink, cursor: "pointer",
-  } as const;
 }

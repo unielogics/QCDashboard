@@ -8,11 +8,13 @@
 //
 // Calls POST /loans/{id}/lender-thread/preview — that endpoint writes
 // nothing; it just computes the EmailMessage.
+//
+// Restyled onto `Drawer`, which adds Escape-to-close, focus return and a
+// body scroll lock the hand-rolled overlay never had.
 
 import { useEffect } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
-import { Icon } from "@/components/design-system/Icon";
+import { Btn, Callout, Panel, StatusLine, Sub } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import type {
   LenderThreadPreviewResponse,
   LenderThreadReplyMode,
@@ -38,7 +40,6 @@ export function LenderThreadPreviewModal({
   onConfirm,
   confirming,
 }: Props) {
-  const { t } = useTheme();
   const preview = useLenderThreadPreview();
 
   useEffect(() => {
@@ -55,250 +56,84 @@ export function LenderThreadPreviewModal({
     preview.error instanceof Error ? preview.error.message : null;
 
   return (
-    <div
-      onClick={onCancel}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(11, 22, 41, 0.5)",
-        zIndex: 70,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "min(640px, 100%)",
-          maxHeight: "90vh",
-          overflowY: "auto",
-          background: t.surface,
-          borderRadius: 14,
-          padding: 24,
-          display: "flex",
-          flexDirection: "column",
-          gap: 14,
-          border: `1px solid ${t.line}`,
-          boxShadow: "0 12px 40px rgba(11, 22, 41, 0.18)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 10.5,
-                fontWeight: 700,
-                letterSpacing: 1.6,
-                textTransform: "uppercase",
-                color: t.petrol,
-              }}
-            >
-              Preview {modeLabel(mode)}
-            </div>
-            <h2
-              style={{
-                margin: "2px 0 0",
-                fontSize: 18,
-                fontWeight: 800,
-                color: t.ink,
-                letterSpacing: -0.4,
-              }}
-            >
-              What will be sent
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={confirming}
-            style={{
-              all: "unset",
-              cursor: confirming ? "wait" : "pointer",
-              padding: 8,
-              borderRadius: 8,
-              border: `1px solid ${t.line}`,
-              color: t.ink2,
-            }}
-          >
-            <Icon name="close" size={12} stroke={3} />
-          </button>
-        </div>
-
-        {preview.isPending ? (
-          <Card pad={18}>
-            <div style={{ fontSize: 12.5, color: t.ink3 }}>
-              Building the email…
-              {mode === "instruct_ai"
-                ? " (Instruct Elara runs the LLM to draft the body — give it a moment.)"
-                : ""}
-            </div>
-          </Card>
-        ) : errMsg ? (
-          <Card pad={18}>
-            <div style={{ fontSize: 12.5, color: t.danger }}>
-              Preview failed: {errMsg}
-            </div>
-          </Card>
-        ) : data ? (
+    <Drawer
+      open={open}
+      onClose={onCancel}
+      title="What will be sent"
+      sub={`Preview ${modeLabel(mode)}`}
+      width="md"
+      bodyClass="grid"
+      footer={
+        data ? (
           <>
-            <GmailReadinessBanner t={t} data={data} />
-
-            <Card pad={0}>
-              <div
-                style={{
-                  padding: "12px 16px",
-                  display: "grid",
-                  gridTemplateColumns: "80px 1fr",
-                  gap: 8,
-                  fontSize: 12.5,
-                  color: t.ink,
-                }}
-              >
-                <FieldLabel t={t}>From</FieldLabel>
-                <div style={{ color: t.ink2 }}>
-                  {data.gmail_payload.from_email || (
-                    <span style={{ color: t.warn }}>
-                      (no GMAIL_DELEGATED_USER configured)
-                    </span>
-                  )}
-                </div>
-
-                <FieldLabel t={t}>To</FieldLabel>
-                <div>{data.to_email}</div>
-
-                <FieldLabel t={t}>Subject</FieldLabel>
-                <div>{data.subject}</div>
-              </div>
-              <div
-                style={{
-                  padding: "12px 16px",
-                  borderTop: `1px solid ${t.line}`,
-                  background: t.surface2,
-                  fontSize: 12.5,
-                  color: t.ink,
-                  lineHeight: 1.55,
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                {data.body}
-              </div>
-            </Card>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                justifyContent: "flex-end",
-                marginTop: 6,
-              }}
+            <span className="grow" />
+            <Btn onClick={onCancel} disabled={confirming}>Cancel</Btn>
+            <Btn
+              // Blue when Gmail will actually deliver; amber when the confirm
+              // only writes a local record. `.btn.tone-warn` rather than a
+              // bare tone chip, which `.btn:hover` would out-specify.
+              variant={data.gmail_ready ? "pri" : "default"}
+              className={data.gmail_ready ? undefined : "tone-warn"}
+              onClick={() => onConfirm(data)}
+              disabled={confirming}
             >
-              <button
-                type="button"
-                onClick={onCancel}
-                disabled={confirming}
-                style={{
-                  all: "unset",
-                  cursor: confirming ? "wait" : "pointer",
-                  padding: "10px 16px",
-                  borderRadius: 10,
-                  border: `1px solid ${t.line}`,
-                  fontSize: 13,
-                  color: t.ink2,
-                  background: t.surface,
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => onConfirm(data)}
-                disabled={confirming}
-                style={{
-                  all: "unset",
-                  cursor: confirming ? "wait" : "pointer",
-                  padding: "10px 18px",
-                  borderRadius: 10,
-                  background: data.gmail_ready ? t.petrol : t.warn,
-                  color: "#fff",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  opacity: confirming ? 0.6 : 1,
-                }}
-              >
-                {confirming
-                  ? "Working…"
-                  : data.gmail_ready
-                  ? `Confirm — send to ${data.to_email}`
-                  : "Confirm — save locally (Gmail NOT configured)"}
-              </button>
-            </div>
+              {confirming
+                ? "Working…"
+                : data.gmail_ready
+                ? `Confirm — send to ${data.to_email}`
+                : "Confirm — save locally (Gmail NOT configured)"}
+            </Btn>
           </>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function GmailReadinessBanner({
-  t,
-  data,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  data: LenderThreadPreviewResponse;
-}) {
-  const bg = data.gmail_ready ? t.profitBg : t.warnBg;
-  const fg = data.gmail_ready ? t.profit : t.warn;
-  return (
-    <div
-      style={{
-        padding: "10px 14px",
-        borderRadius: 10,
-        background: bg,
-        border: `1px solid ${fg}33`,
-        display: "flex",
-        gap: 10,
-        alignItems: "flex-start",
-      }}
+        ) : undefined
+      }
     >
-      <Pill bg={bg} color={fg}>
-        {data.gmail_ready ? "Gmail ready" : "Saved-only mode"}
-      </Pill>
-      <div style={{ fontSize: 12, color: fg, lineHeight: 1.5 }}>
-        {data.gmail_status_note}
-      </div>
-    </div>
-  );
-}
+      {preview.isPending ? (
+        <Sub>
+          Building the email…
+          {mode === "instruct_ai"
+            ? " (Instruct Elara runs the LLM to draft the body — give it a moment.)"
+            : ""}
+        </Sub>
+      ) : errMsg ? (
+        <StatusLine tone="bad">Preview failed: {errMsg}</StatusLine>
+      ) : data ? (
+        <>
+          <Callout tone={data.gmail_ready ? "ok" : "warn"}>
+            <div className="lbl">{data.gmail_ready ? "Gmail ready" : "Saved-only mode"}</div>
+            <div>{data.gmail_status_note}</div>
+          </Callout>
 
-function FieldLabel({
-  t,
-  children,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        fontSize: 10.5,
-        fontWeight: 700,
-        letterSpacing: 1.2,
-        textTransform: "uppercase",
-        color: t.ink3,
-        paddingTop: 2,
-      }}
-    >
-      {children}
-    </div>
+          <Panel noPad>
+            {/* Bespoke definition list: a fixed 80px label column. */}
+            <div
+              className="panel-b"
+              style={{ display: "grid", gridTemplateColumns: "80px 1fr", gap: 8 }}
+            >
+              <div className="lbl">From</div>
+              <div>
+                {data.gmail_payload.from_email || (
+                  <span style={{ color: "var(--warn)" }}>
+                    (no GMAIL_DELEGATED_USER configured)
+                  </span>
+                )}
+              </div>
+
+              <div className="lbl">To</div>
+              <div>{data.to_email}</div>
+
+              <div className="lbl">Subject</div>
+              <div>{data.subject}</div>
+            </div>
+            <div
+              className="panel-b pretext"
+              style={{ borderTop: "1px solid var(--line)", background: "var(--sunken2)" }}
+            >
+              {data.body}
+            </div>
+          </Panel>
+        </>
+      ) : null}
+    </Drawer>
   );
 }
 

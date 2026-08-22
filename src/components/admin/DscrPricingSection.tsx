@@ -7,7 +7,7 @@
 // can slot into any admin page as a section body.
 
 import { useEffect, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { Btn, Field, Input, Lbl, Sub } from "@/components/ds";
 import { useSettings, useUpdateSettings } from "@/hooks/useApi";
 import type { DscrPricingSettings, DscrRateTier } from "@/lib/types";
 
@@ -32,7 +32,6 @@ function fromPercentText(text: string): number | null {
 }
 
 export function DscrPricingSection() {
-  const { t } = useTheme();
   const settings = useSettings();
   const update = useUpdateSettings();
   const [draft, setDraft] = useState<DscrPricingSettings | null>(null);
@@ -45,7 +44,7 @@ export function DscrPricingSection() {
   }, [settings.data, draft]);
 
   if (settings.isLoading || !draft) {
-    return <span style={{ color: t.ink3, fontSize: 13 }}>Loading DSCR pricing…</span>;
+    return <Sub>Loading DSCR pricing…</Sub>;
   }
 
   const setTier = (index: number, patch: Partial<DscrRateTier>) => {
@@ -65,50 +64,52 @@ export function DscrPricingSection() {
     }
   };
 
-  const input = {
-    border: `1px solid ${t.line}`,
-    borderRadius: 8,
-    padding: "6px 10px",
-    background: t.surface,
-    color: t.ink,
-    width: 110,
-    fontSize: 13,
-  } as const;
-  const label = { color: t.ink3, fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: 0.4 };
+  // Bespoke width (rule 3): these are 3-to-4-character numeric fields laid out
+  // in a reading line ("FICO ≥ [760] → [6.75] % APR"). `.field.grow` would give
+  // them a 180px minimum and break the sentence.
+  const narrow = { width: 110 } as const;
 
   return (
-    <div style={{ display: "grid", gap: 14 }}>
-      <div style={{ display: "grid", gap: 8 }}>
-        <span style={label}>Rate tiers by credit (FICO floor → annual rate %)</span>
-        {draft.rate_tiers.map((tier, index) => (
-          <div key={index} style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <span style={{ color: t.ink2, fontSize: 13, width: 60 }}>FICO ≥</span>
-            <input
-              style={input}
-              inputMode="numeric"
-              value={String(tier.min_fico)}
-              onChange={(e) => setTier(index, { min_fico: Number(e.target.value) || 0 })}
-            />
-            <span style={{ color: t.ink2, fontSize: 13 }}>→</span>
-            <input
-              style={input}
-              inputMode="decimal"
-              value={toPercentText(tier.annual_rate)}
-              onChange={(e) => {
-                const rate = fromPercentText(e.target.value);
-                if (rate !== null) setTier(index, { annual_rate: rate });
-              }}
-            />
-            <span style={{ color: t.ink3, fontSize: 13 }}>% APR</span>
-          </div>
-        ))}
+    <div className="grid">
+      <div className="fldsec">
+        <Lbl>Rate tiers by credit (FICO floor → annual rate %)</Lbl>
+        <div className="grid g8">
+          {draft.rate_tiers.map((tier, index) => (
+            <div className="row" key={index}>
+              {/* Fixed 60px so the three rows' inputs line up under each other. */}
+              <span style={{ width: 60 }}>FICO ≥</span>
+              <Input
+                className="num"
+                style={narrow}
+                aria-label={`Tier ${index + 1} minimum FICO`}
+                inputMode="numeric"
+                value={String(tier.min_fico)}
+                onChange={(e) => setTier(index, { min_fico: Number(e.target.value) || 0 })}
+              />
+              <span>→</span>
+              <Input
+                className="num"
+                style={narrow}
+                aria-label={`Tier ${index + 1} annual rate, percent`}
+                inputMode="decimal"
+                value={toPercentText(tier.annual_rate)}
+                onChange={(e) => {
+                  const rate = fromPercentText(e.target.value);
+                  if (rate !== null) setTier(index, { annual_rate: rate });
+                }}
+              />
+              <Sub>% APR</Sub>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-        <div style={{ display: "grid", gap: 6 }}>
-          <span style={label}>Sensitivity spread (±%)</span>
-          <input
-            style={input}
+      <div className="row">
+        <Field label="Sensitivity spread (±%)">
+          <Input
+            className="num"
+            style={narrow}
+            aria-label="Sensitivity spread, percent"
             inputMode="decimal"
             value={toPercentText(draft.band_spread)}
             onChange={(e) => {
@@ -116,20 +117,22 @@ export function DscrPricingSection() {
               if (spread !== null) setDraft({ ...draft, band_spread: spread });
             }}
           />
-        </div>
-        <div style={{ display: "grid", gap: 6 }}>
-          <span style={label}>Amortization (months)</span>
-          <input
-            style={input}
+        </Field>
+        <Field label="Amortization (months)">
+          <Input
+            className="num"
+            style={narrow}
+            aria-label="Amortization in months"
             inputMode="numeric"
             value={String(draft.amortization_months)}
             onChange={(e) => setDraft({ ...draft, amortization_months: Number(e.target.value) || 360 })}
           />
-        </div>
-        <div style={{ display: "grid", gap: 6 }}>
-          <span style={label}>Taxes+insurance (%/yr of value)</span>
-          <input
-            style={input}
+        </Field>
+        <Field label="Taxes+insurance (%/yr of value)">
+          <Input
+            className="num"
+            style={narrow}
+            aria-label="Taxes and insurance, percent per year of value"
             inputMode="decimal"
             value={toPercentText(draft.tax_insurance_annual_pct_of_value)}
             onChange={(e) => {
@@ -137,30 +140,17 @@ export function DscrPricingSection() {
               if (pct !== null) setDraft({ ...draft, tax_insurance_annual_pct_of_value: pct });
             }}
           />
-        </div>
+        </Field>
       </div>
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <button
-          type="button"
-          onClick={save}
-          disabled={update.isPending}
-          style={{
-            border: 0,
-            borderRadius: 999,
-            padding: "9px 18px",
-            background: t.brand,
-            color: "#fff",
-            fontWeight: 800,
-            cursor: update.isPending ? "wait" : "pointer",
-            fontSize: 13,
-          }}
-        >
+      <div className="row">
+        <Btn variant="pri" onClick={save} disabled={update.isPending}>
           {update.isPending ? "Saving…" : "Save DSCR pricing"}
-        </button>
-        {notice ? <span style={{ color: t.ink3, fontSize: 12 }}>{notice}</span> : null}
+        </Btn>
+        {notice ? <Sub>{notice}</Sub> : null}
       </div>
-      <p style={{ margin: 0, color: t.ink3, fontSize: 12, lineHeight: 1.5 }}>
+
+      <p className="sub">
         Used by the DSCR-potential screen on real-estate leads: the file&apos;s soft-pull FICO (or stated credit
         tier) picks its tier, and the screen shows that rate ± the sensitivity spread. Deterministic screen
         assumptions only — never quoted to the borrower.

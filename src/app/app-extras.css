@@ -546,3 +546,702 @@ button.pick { width: 100%; text-align: left; }
 .row.top { align-items: flex-start; }
 .pick.top { align-items: flex-start; }
 .callout.top { align-items: flex-start; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Shell, design-system primitives and intake forms
+   ──────────────────────────────────────────────────────────────────────────
+   Added while migrating src/components/shell, src/components/design-system
+   and src/components/intake off inline style objects. Several of these serve
+   ONE component rather than three call sites — that is the same call this
+   file already makes for `.rail`, `.navmore-p`, `.toollink`, `.kanban` and
+   `.wbench`: a shared shell component's chrome is vocabulary, and leaving it
+   inline is how `t.line` ends up hand-copied into forty files.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ---------- chip / button tones ---------- */
+
+/* An ALL-CAPS status chip. `.cellchip` is a terse word at 10.8px and does not
+   shout; a badge that reads as a stamp — VERIFIED, PENDING, FLAGGED, a
+   pipeline stage, "borrower view · read-only" — does. Four sites hand-rolled
+   the same two declarations on top of a `c-*` tone. */
+.cellchip.caps { text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* Completes the `.btn.tone-*` family started above by tone-warn / tone-bad,
+   for the same documented reason: `.btn:hover` out-specifies a bare `.c-acc`
+   or `.c-pet`, so a chip tone on a button loses its tint exactly when the
+   pointer lands on it. tone-acc marks a button that is ON or emphasised
+   (IconButton's `active` and `brand` tones, TopButton's `active`); tone-pet
+   is the topbar's three Elara/notification toggles, which are petrol because
+   Elara is petrol everywhere else in the app. */
+.btn.tone-acc { background: var(--accent-100); border-color: var(--accent-200); color: var(--accent); }
+.btn.tone-acc:hover { background: var(--accent-200); }
+.btn.tone-pet { background: var(--petrol-100); border-color: rgba(13, 110, 99, 0.28); color: var(--petrol); }
+.btn.tone-pet:hover { background: rgba(13, 110, 99, 0.16); }
+
+/* `.iconbtn` used to carry its focus ring in four JS handlers that mutated
+   `style` on mouseenter/leave/focus/blur. Those repainted the button after an
+   unmount mid-hover and fired for every focus, not just keyboard focus. */
+.iconbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* A badge pinned to the corner of a button — the topbar's unread dot and its
+   notification count. `.cnt` and `.repdot` are the badges themselves and say
+   nothing about placement, and `.btn` sets no `position`, so without this the
+   badge escapes to the nearest positioned ancestor (the popover wrapper) and
+   lands in the wrong corner entirely. The ring is `--surface` so the badge
+   reads as sitting ON the button rather than being part of it. */
+.btn.badged { position: relative; }
+.btn.badged > .cnt { position: absolute; top: -6px; right: -6px; border: 1.5px solid var(--surface); }
+.btn.badged > .unreaddot {
+  position: absolute; top: 4px; right: 4px; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--danger); border: 1.5px solid var(--surface);
+}
+
+/* `.cnt` is a danger-red count. A queue depth is not a problem, so Elara's
+   pending-task badge takes the petrol it wears everywhere else. */
+.cnt.pet { background: var(--petrol); }
+
+/* A keyboard key. `.tag` is a pill and reads as a label, not a key. The
+   topbar search trigger and the ⌘K palette's footer render five of these
+   between them and each hand-rolled the same bordered mono box. */
+.kbd {
+  display: inline-block; padding: 1px 6px; border-radius: 4px;
+  border: 1px solid var(--line); background: var(--surface);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 10px; font-weight: 700; color: var(--ink2); line-height: 1.7;
+}
+
+/* `.row` and `.pick` own `align-items`; nothing owns `justify-content`, so a
+   right-hugging action row was inline in half a dozen dialogs. */
+.row.end { justify-content: flex-end; }
+
+/* Hairline separator that is a standalone ITEM in a list rather than a border
+   on a neighbour — between the sidebar nav and All tools, and twice inside
+   the identity menu. Three hand-rolled `<div style={{height:1,…}}>` copies. */
+.hr { height: 1px; border: 0; background: var(--line); margin: 3px 4px; }
+.nav > .hr { margin: 12px 10px 8px; }
+
+/* ---------- design-system primitives ---------- */
+
+/* SectionLabel: a small-caps label with an optional action on the same
+   baseline. `.panel-h` is the same idea for a panel; this one floats above
+   arbitrary content and carries no hairline or surface. */
+.seclbl { display: flex; align-items: baseline; justify-content: space-between; padding: 0 4px; margin-bottom: 10px; }
+.seclbl-a { font-size: 13px; font-weight: 600; color: var(--ink2); }
+
+/* A grid pretending to be a table — SortableTableHead / TableRow. `.tbl` is
+   the class for this look but only applies inside a real `<table>`, and these
+   two build their column track from a `cols` array, so the track itself stays
+   inline as data. Everything that is NOT the track lives here. */
+.gridhd {
+  display: grid; gap: 10px; padding: 10px 14px;
+  border-bottom: 1px solid var(--line); background: var(--sunken2);
+  position: sticky; top: 0; z-index: 1;
+}
+.gridhd-c {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.11em; text-transform: uppercase;
+  color: var(--muted); background: none; border: 0; padding: 0; font-family: inherit;
+  cursor: pointer; user-select: none; text-align: left;
+}
+.gridhd-c:disabled { cursor: default; }
+.gridhd-c.on { color: var(--ink); }
+.sortarr { display: inline-flex; flex-direction: column; line-height: 0.6; font-size: 9px; }
+.gridrow {
+  display: grid; gap: 10px; padding: 12px 14px;
+  border-bottom: 1px solid var(--line); align-items: center; font-size: 13px;
+}
+.gridrow.on { background: var(--accent-100); }
+
+/* Toast: a transient confirmation over everything else. Deliberately not a
+   `.callout` — that is a block in the page, this is chrome above it. */
+.toast {
+  position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+  z-index: 200; display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 16px; border-radius: 10px;
+  background: var(--ink); color: #fff; font-size: 13px; font-weight: 600;
+  box-shadow: var(--sh2);
+}
+
+/* ---------- Modal ----------
+   The pre-Drawer dialog. `.drawer` supersedes it, but 13 routes still render
+   Modal and it can do one thing `.drawer` cannot: `insetLeft`, which holds
+   the overlay clear of the app sidebar so the menu stays clickable behind a
+   full-screen `size="stage"` dialog. `.drawer` is translate-centred and has
+   no way to express that, so Modal keeps its own scrim. The PANEL, though, is
+   just `.panel` with a dialog's elevation. */
+.mscrim {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 300;
+  background: rgba(15, 23, 32, 0.42);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  /* `left` is deliberately absent — insetLeft owns it. */
+}
+.mscrim.stage { align-items: stretch; justify-content: stretch; padding: 16px; }
+.mpanel { box-shadow: 0 24px 64px rgba(15, 23, 32, 0.26); border-color: var(--line2); }
+.mpanel > .panel-h, .mpanel > .drawer-f { flex-wrap: nowrap; flex-shrink: 0; }
+.mtitle { font-family: var(--fh); font-size: 15px; font-weight: 680; letter-spacing: -0.02em; color: var(--ink); min-width: 0; }
+.mbody { flex: 1; min-height: 0; overflow: auto; }
+.mfoot { justify-content: flex-end; }
+
+/* The sentence a confirm turns on. Deliberately NOT `.sub`: that is 12px
+   caption grey, and this is the thing the user is being asked to agree to.
+   Modal's body is unpadded by design, so the prose brings its own. */
+.dlg-prose { padding: 16px 18px; color: var(--ink2); font-size: 13.5px; line-height: 1.55; }
+
+/* ---------- RightPanel ----------
+   An edge-anchored full-height sheet — the third dialog shape, and the one
+   `.drawer` genuinely cannot express (it is translate-centred). The slide-in
+   keyframes were a `<style>` tag nested inside the panel, so a global at-rule
+   was re-declared on every mount; same fix as the spinner above. */
+.sheet-scrim {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(15, 23, 32, 0.32); backdrop-filter: blur(2px);
+  display: flex; justify-content: flex-end;
+}
+.sheet {
+  height: 100%; background: var(--surface); border-left: 1px solid var(--line);
+  box-shadow: var(--sh2); display: flex; flex-direction: column;
+  animation: qc-sheet-in 180ms ease-out;
+}
+@keyframes qc-sheet-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .sheet { animation: none; } }
+.sheet-h { flex-wrap: nowrap; flex-shrink: 0; }
+.sheet-eyebrow { color: var(--petrol); }
+.sheet-t { font-size: 16px; font-weight: 750; color: var(--ink); }
+.sheet-eyebrow + .sheet-t { margin-top: 2px; }
+.sheet-b { flex: 1; min-height: 0; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.sheet-f { justify-content: flex-end; flex-shrink: 0; }
+
+/* `.seg` is inline-flex. The `fill` variant spreads across its container, and
+   `display` cannot have two owners, so it is a modifier rather than a style. */
+.seg.fill { display: flex; }
+.seg.fill > button { flex: 1; justify-content: center; }
+
+/* ---------- FileDropzone ----------
+   `.dropzone` is the documents-hub HERO: clamp(24px,4vw,46px) of padding on a
+   white surface. The shared FileDropzone sits inside a form or beside a chat
+   composer, where that is three times too tall, and it ships a `compact` prop
+   for the tightest of those. Two densities, same object.
+   `.off` is load-bearing, not decoration: `.dropzone` sets `cursor: pointer`
+   and a `:hover` highlight unconditionally, and a disabled dropzone that
+   still lights up under the pointer promises a click that is dropped on the
+   floor by the component's own `disabled` guard. */
+.dropzone.inline {
+  padding: 18px 16px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px;
+  background: var(--sunken2); color: var(--muted);
+}
+.dropzone.inline.compact { padding: 12px 16px; gap: 4px; }
+.dropzone.inline > b { font-size: 13px; font-weight: 700; color: var(--ink2); }
+.dropzone.off { cursor: not-allowed; opacity: 0.6; }
+.dropzone.off:hover { border-color: var(--line2); background: var(--sunken2); }
+
+/* ---------- TypingDots ----------
+   Three bouncing dots. Same story as `.spinner` and `.sheet` above: this
+   component injected its own `<style>` tag carrying a global @keyframes on
+   every mount. Drawn in `currentColor` so one colour on the wrapper tints all
+   three, which is what the `color` prop does. */
+.tdots { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.tdots-d { display: inline-flex; gap: 3px; }
+.tdots i {
+  width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+  display: inline-block; animation: qc-typing 1.2s ease-in-out infinite;
+}
+.tdots-l { font-style: italic; }
+@keyframes qc-typing {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+/* Held still rather than slowed: unlike the spinner, these dots say "someone
+   is typing", and a frozen frame still reads as that. */
+@media (prefers-reduced-motion: reduce) { .tdots i { animation: none; opacity: 0.7; } }
+
+/* Signature canvas. `height` stays inline because it also sizes the bitmap.
+   `.dark` is unreachable today (ThemeProvider is a light-only shim) and is
+   kept so the branch in the component is not a lie. */
+.sigpad { width: 100%; border-radius: 12px; border: 1px solid var(--line); background: var(--sunken2); touch-action: none; }
+.sigpad.dark { background: #080a10; }
+
+/* ---------- topbar ---------- */
+
+/* The one button in the app that has to read as a field. */
+.topsearch { font-weight: 500; color: var(--muted); background: var(--sunken2); }
+.topsearch:hover { background: var(--sunken); }
+.topsearch > .grow { text-align: left; }
+
+/* A popover holding a PANEL rather than a list of menu items — the
+   notification tray. `.popmenu` bakes in 5px of padding and a 1px gap for its
+   `.mi` rows, which frames a scrolling list and its sticky header in a
+   permanent inset. Same anchoring and elevation, no list padding. */
+.popcard {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;
+  width: 360px; max-width: calc(100vw - 32px);
+  background: var(--surface); border: 1px solid var(--line2); border-radius: 12px;
+  box-shadow: var(--sh2); overflow: hidden;
+}
+
+/* A notification is a `.filerow` (with `.tone-acc` carrying "unread" across
+   the whole row, because this list is SCANNED) that is also a button, and it
+   sits in an unpadded popover so it has to bring its own gutters. Declared
+   after `.filerow` so the padding override has one winner, not two. */
+.notifrow { width: 100%; text-align: left; cursor: pointer; padding: 10px 12px; align-items: flex-start; }
+.notifrow > .grow > b { display: block; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+.notifrow > .grow > .sub { display: block; margin-top: 3px; line-height: 1.35; overflow-wrap: anywhere; }
+.notifrow > .grow > .lbl { display: block; margin-top: 6px; }
+.notifrow > .repdot { margin-top: 5px; }
+
+/* ---------- ⌘K command palette ----------
+   A dialog that hangs from the TOP of the viewport rather than its middle, at
+   a z-index above `.drawer-scrim` so it can be opened from inside a drawer.
+   Same shape of exception as `.navmore-p` above. */
+.cmdk { box-shadow: var(--sh2); }
+.cmdk-in { font-size: 15px; background: transparent; outline: none; color: var(--ink); }
+.cmdk-b { flex: 1; min-height: 0; overflow-y: auto; padding: 8px; }
+.cmdk-empty { padding: 24px; text-align: center; }
+.cmdk-empty > svg { color: var(--faint); margin-bottom: 8px; }
+.cmdk-empty-t { font-size: 13px; font-weight: 600; color: var(--ink2); margin-bottom: 4px; }
+.cmdk-grp { padding: 12px 8px 4px; }
+.cmdk-grp > .lbl { margin-bottom: 6px; }
+.cmdk-hit { width: 100%; text-align: left; }
+.cmdk-hit-t { font-size: 13px; font-weight: 700; color: var(--ink); }
+.cmdk-f { padding: 10px 16px; border-top: 1px solid var(--line); background: var(--sunken2); }
+.cmdk-f-note { margin-left: auto; font-style: italic; }
+/* `.row` is a 10px gap; a key and its caption belong closer together. */
+.kbdhint { gap: 6px; }
+
+/* ---------- sidebar ---------- */
+
+/* `.side .foot` is the identity card the account menu hangs off. globals.css
+   gives it its border, padding and background but no `position`, so the menu
+   had nothing to anchor to. */
+.side .foot { position: relative; }
+
+/* globals.css styles `.brand` (the product name at the top of the sidebar)
+   but never `.ident` (the person at the bottom), so both of its lines were
+   inline. Truncation matters here: the fallback identity is an email address
+   in a 242px rail. */
+.ident b { display: block; font-size: 12.5px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ident .sub { display: block; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 640; }
+
+/* The "scoped account" note is a `.callout` — a card with something to say —
+   pulled in to the nav's gutter. */
+.navnote { margin: 12px 10px 0; }
+
+/* `.popmenu` hard-codes `top` and `right`. The account menu sits at the
+   BOTTOM of the sidebar and must open upward, and two owners for the same
+   edge is exactly the bug this migration is trying to stop. */
+.popmenu.up { top: auto; bottom: calc(100% + 8px); left: 0; right: 0; }
+
+/* `.popmenu .mi` is a two-class selector and out-specifies a bare `.danger`,
+   so the destructive item in a menu had no way to colour itself but inline. */
+.popmenu .mi.danger { color: var(--danger); }
+.popmenu .mi.danger:hover { background: var(--danger-tint); }
+
+/* All-tools drawer: the label above each group, and the two-line link body.
+   `.toollink` already lives here; its label stack never did. */
+.toolgrp { margin-bottom: 6px; }
+.toollink b { display: block; font-weight: 600; }
+
+/* ---------- app shell ---------- */
+
+/* The ground under a route that skips the app chrome (sign-in, the agreement
+   portal, the public upload room). Written out three times in AppShell. */
+.bareshell { min-height: 100vh; background: var(--bg); }
+
+/* Correction to the vendored sheet: `.app` ships `min-height: 100vh`, which
+   lets the document grow past the viewport and scroll as a whole. The console
+   pins the shell to exactly the viewport so `main.content` is the only
+   scroller — otherwise the sticky topbar and `.ckhead` scroll away with it. */
+.app { height: 100vh; }
+
+/* Elara's mark, in her own colour. `.botmark` is the neutral form. */
+.botmark.pet { background: var(--petrol-100); border-color: rgba(13, 110, 99, 0.2); color: var(--petrol); }
+
+/* ---------- intake ---------- */
+
+/* The text of a document you are about to sign, in a bounded scroller (the
+   cap is the caller's, so it stays inline). `.msg-b` is the same box but
+   belongs to a chat message and would drag that meaning along; this is a
+   compliance surface where what is on screen is the record. */
+.docwell {
+  overflow: auto; padding: 12px;
+  border: 1px solid var(--line2); border-radius: var(--r-sm); background: var(--sunken2);
+  font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; color: var(--ink2);
+}
+
+/* ---------- property · analysis · broker · email · buckets ---------- */
+
+/* `.pick` rendered as a LINK.
+   `button.pick` above fixes the UA button reset; this is the other half. The
+   trunk styles every `a` with `color: var(--accent)` and Preflight leaves
+   `text-decoration` alone, so a `<Link className="pick">` row renders as a
+   block of blue underlined text instead of a list row. Three sites already do
+   this — the home dashboard's task and shortcut lists and the client file's
+   loan list — and each of them is currently blue. */
+a.pick { color: inherit; text-decoration: none; }
+
+/* Same reasoning as `.grid > .pick + .pick` above, for the read-only sibling.
+   `.itemrow + .itemrow` gives a bare stack its 6px, but inside a container
+   that already owns the spacing it stacks on top of the gap and drops every
+   row but the first. The container wins wherever there is one. */
+.grid > .itemrow + .itemrow,
+.cg > .itemrow + .itemrow,
+.row > .itemrow + .itemrow,
+.kpis > .itemrow + .itemrow,
+.fldgrid > .itemrow + .itemrow { margin-top: 0; }
+
+/* A `.toollink` you cannot pick.
+   `.btn:disabled`, `.popmenu .mi:disabled` and `.disc-h:disabled` all exist;
+   `.toollink` is the fourth control in the set and had nothing, so the saved-
+   run Actions menu was carrying the dim-and-block pair inline. Kept at
+   `not-allowed` rather than the sheet's usual `default`: this row is disabled
+   with a stated reason under it, and the cursor is what makes people read it. */
+.toollink:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* A `.field` you cannot type in.
+   `.field` describes an editable box and gives a locked one the identical
+   look, so a fixed recipient — the client's address on "Email the client" —
+   reads as an empty editable input the user simply failed to click into.
+   Sunk and muted, which is how every other read-only surface in the sheet
+   (`.tbl th`, `.itemrow`, `.datetile`) says the same thing. Not `:disabled`:
+   a readonly field is still focusable, selectable and submitted. */
+.field[readonly] { background: var(--sunken); color: var(--muted); }
+
+/* ---------- document review marks ----------
+   The rectangle a reviewer drags over a region of a PDF or an image. Its
+   position is a fraction of the rendered page and stays inline — everything
+   it LOOKS like is here, because the three variants (saved, selected, still
+   being dragged) were three copies of the same six declarations differing in
+   two of them. Petrol rather than the raw teal the copies used: a mark is an
+   annotation, and petrol is what the sheet already uses for that. */
+.marklayer { position: absolute; inset: 0; }
+.mark {
+  position: absolute; padding: 0; border-radius: 3px; cursor: pointer;
+  border: 2px solid var(--petrol); background: rgba(13, 110, 99, 0.16);
+}
+.mark.on { border-color: var(--accent); background: var(--accent-200); }
+/* Not yet a comment, and not clickable while the mouse is still down. */
+.mark.draft { border-style: dashed; pointer-events: none; }
+
+/* A `.tbl` whose cells must not wrap.
+   `.tbl th` is already `white-space: nowrap`; `td` is not, which is right for
+   a console table of names and amounts and wrong for a raw CSV preview, where
+   a 40-column export turns every cell into a paragraph and the row grid
+   disappears. A modifier on the table, not a style on every cell. */
+.tbl.nowrap td { white-space: nowrap; }
+
+/* ---------- the unauthenticated shell (/sign-in, /sign-up, /forgot-password) ----------
+
+   Everything below is scoped to `.qc-authshell`, which is the root of the
+   marketing chrome AND carries `.qc-marketing`. Two reasons for the scope and
+   not a set of bare utilities:
+
+   1. This subtree runs on the MARKETING palette (`--ms-*`, declared by
+      `.qc-marketing` in globals.css), not the console's. `.row`, `.grid`,
+      `.btn` and friends read `--line`, `--surface`, `--ink` — dropping one of
+      them in here would paint console chrome onto the marketing page and the
+      two would drift apart the next time either palette moved.
+   2. Nothing here can reach the app, because nothing in the app is inside a
+      `.qc-authshell`.
+
+   `.qc-marketing` itself is untouched: these are additional rules on the
+   subtree, not edits to the token block. */
+
+.qc-authshell { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* The hero band the Clerk widget sits in. `flex: 1` is what pins the footer to
+   the bottom on a short viewport. */
+.qc-authshell .qc-hero { flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: 64px 20px 96px; }
+/* The measure of the auth card. z-index keeps it above the ground the hero
+   paints, which used to carry a radial wash and may again. */
+.qc-authshell .qc-authslot { position: relative; z-index: 2; width: 100%; max-width: 480px; }
+
+/* The 1280px band shared by the masthead and the footer — the marketing site's
+   content measure, written out twice before it was named. */
+.qc-authshell .qc-band { max-width: 1280px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 22px; }
+
+.qc-authshell .qc-brandlink { display: inline-flex; align-items: center; gap: 11px; font-family: inherit; font-size: 18px; font-weight: 800; letter-spacing: -0.03em; color: var(--ms-text); text-decoration: none; }
+.qc-authshell .qc-navlink { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ms-muted); text-decoration: none; }
+.qc-authshell .qc-navacts { display: flex; align-items: center; gap: 18px; }
+
+/* The inlined qc-icon.svg mark. `display: block` kills the inline-baseline gap
+   under it; the radius matches the file's own rounded plate. */
+.qc-authshell .qc-mark { display: block; border-radius: 11px; }
+
+.qc-authshell .qc-foot { padding: 32px 22px 48px; }
+.qc-authshell .qc-footcol { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; }
+.qc-authshell .qc-footbrand { display: inline-flex; align-items: center; gap: 10px; font-weight: 800; color: var(--ms-text); }
+/* `.qc-fineprint` in globals sets the type; the reading measure is this
+   layout's. */
+.qc-authshell .qc-legal { max-width: 720px; margin: 0; }
+.qc-authshell .qc-chiprow { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+/* Not `.qc-tag`, which is the accent-tinted marketing badge — these are
+   neutral capability labels on the footer's own sunken ground. */
+.qc-authshell .qc-fchip { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--ms-divider); background: var(--ms-sunken); color: var(--ms-muted); font-size: 12px; white-space: nowrap; }
+.qc-authshell .qc-linkrow { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; font-size: 13px; }
+.qc-authshell .qc-linkrow a { color: var(--ms-accent-700); font-weight: 600; }
+
+/* A status dot INSIDE a chip is smaller than one beside a name, and takes its
+   colour from the chip's tone rather than naming a second one. `.repdot` owns
+   width/height/background, so this had to be a rule and not two inline
+   overrides fighting it. */
+.cellchip > .repdot { width: 6px; height: 6px; background: currentColor; }
+
+/* ---------- a panel header that is itself the control ----------
+   The lender thread's right column is a stack of collapsible panels: the
+   header row is what opens and closes each one, so it has to be a real
+   <button>, not a div with an onClick.
+
+   `.disc-h` already exists for exactly that ("the summary line is a real
+   button"), but it hard-codes `padding: 0` for the `.disc` row it was
+   written against, and that erases `.panel-h`'s inset when the two are
+   combined. So this is the button reset ONLY — every bit of geometry stays
+   with `.panel-h`. `border-bottom` is restated because `border: 0` would
+   otherwise take `.panel-h`'s hairline with it. */
+.panel-h.toggler {
+  width: 100%; border: 0; border-bottom: 1px solid var(--line);
+  background: transparent; color: inherit; font: inherit;
+  text-align: left; cursor: pointer;
+}
+/* Collapsed, the header is the panel's only child, so its hairline lands
+   directly on `.panel`'s own bottom border and reads as a 2px rule. */
+.panel > .panel-h:last-child { border-bottom: 0; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   The loan file's remaining tabs (loans/[id]/tabs/*)
+   ──────────────────────────────────────────────────────────────────────────
+   Workflow, Property, Prequal, Overview, Activity, Docs, Underwriting,
+   Wire & Closing and the agent mirror. Each addition below replaced a set of
+   declarations that only work together, written out at more than one site.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* A row that is out of play.
+   `.rung.done` already says this for the ladder (opacity 0.68, still legible,
+   still there). Two more list shapes needed the same word and had it as an
+   inline opacity + background pair: a Workflow doc the operator has told the
+   AI to stop chasing, and a prequal request a later version superseded.
+   Dimmed rather than hidden — both are still openable, and the superseded
+   letter is still printable. */
+.gridrow.done { opacity: 0.62; background: var(--sunken2); }
+.tbl tr.done > td { opacity: 0.62; }
+
+/* The hairline between `.gridrow`s is a SEPARATOR, so the last one in a stack
+   draws a second bottom border directly on top of the container's own. A real
+   table gets this right from `.tbl td`; the grid-table was threading an
+   `isLast` boolean through every row to fake it. */
+.gridrow:last-child { border-bottom: 0; }
+
+/* `.gridrow` owns `align-items: center`, which is right for a row of chips and
+   figures and wrong the moment a cell is a stack two or three lines tall — the
+   38px icon plate and the timestamp drift to the middle of the entry beside
+   them. Same modifier, same reasoning, as `.row.top` / `.pick.top` above. */
+.gridrow.top { align-items: flex-start; }
+
+/* A stat tile that carries its own state.
+   `.card.tone-*`, `.rung.tone-*` and `.itemrow.tone-*` above already give the
+   reason — a band of tiles is SCANNED, and a badge inside one means reading
+   every tile in turn to find the one that is blocking you. `.kpi` is the
+   fourth surface in that set and had nothing, so the loan file's Health band
+   (four tiles) and the agent mirror's conditions band were each painting the
+   tile background AND re-colouring the label AND re-colouring the figure by
+   hand, per tile, from a theme lookup. */
+.kpi.tone-ok { border-color: rgba(20, 105, 72, 0.24); background: var(--ok-tint); }
+.kpi.tone-ok > .lbl, .kpi.tone-ok > .knum { color: var(--ok); }
+.kpi.tone-warn { border-color: rgba(161, 92, 7, 0.26); background: var(--warn-tint); }
+.kpi.tone-warn > .lbl, .kpi.tone-warn > .knum { color: var(--warn); }
+.kpi.tone-bad { border-color: rgba(178, 42, 42, 0.28); background: var(--danger-tint); }
+.kpi.tone-bad > .lbl, .kpi.tone-bad > .knum { color: var(--danger); }
+
+/* `.botmark` in a tone.
+   The mark already has one variant (`.botmark.pet`, Elara's petrol plate).
+   The activity feed marks ten event families with the same plate in six
+   different tones and was building each one from its own (background,
+   foreground) pair off the theme. Same tone words as the chips, so "AI" is the
+   same blue on the plate as it is on the chip beside it. */
+.botmark.acc  { background: var(--accent-100); border-color: var(--accent-200); color: var(--accent); }
+.botmark.ok   { background: var(--ok-tint); border-color: rgba(20, 105, 72, 0.24); color: var(--ok); }
+.botmark.warn { background: var(--warn-tint); border-color: rgba(161, 92, 7, 0.26); color: var(--warn); }
+.botmark.bad  { background: var(--danger-tint); border-color: rgba(178, 42, 42, 0.28); color: var(--danger); }
+
+/* `.repdot` in petrol. `.repdot` deliberately owns no background — inside a
+   chip `.cellchip > .repdot` takes `currentColor` — but a bullet standing on
+   its own in a feed has no colour to inherit, so every such site named one
+   inline. `.cnt.pet` and `.botmark.pet` are the same modifier on the two other
+   marks; this completes the set. */
+.repdot.pet { background: var(--petrol); }
+
+/* A `.popmenu` anchored to the POINTER rather than to a trigger.
+   `.popmenu` is `position: absolute; top: calc(100% + 6px); right: 0` — it
+   hangs off the button that opened it. A right-click menu opens where the
+   cursor is, in viewport coordinates, and those coordinates are measured data
+   that cannot live in a stylesheet. This hands `top`/`left` (and the width, in
+   the one case that clamps against it) to the caller and keeps everything the
+   menu LOOKS like here. z-index matches the shared ContextMenu so the two
+   cannot open at different depths. */
+.popmenu.atcursor { position: fixed; top: auto; left: auto; right: auto; z-index: 100; }
+
+/* A heading inside a `.popmenu` — what the menu is about, above its items.
+   `.popmenu` pads itself to 5px and its `.mi` rows carry the remaining 10px,
+   so a heading dropped in bare sits half a gutter to the left of every item
+   under it. */
+.popmenu .mhd { padding: 4px 10px 7px; }
+
+/* A `.field` with a fixed unit adornment inside it — the `$` on a money input.
+   `.field` owns its own padding, so the adornment cannot be a sibling that
+   pushes it aside: it has to overlap, and the input has to give up the space
+   on that edge. Three declarations that only work as a set, written out three
+   times in the property form alone (annual taxes, annual insurance, monthly
+   HOA), each with the padding hard-coded inline on the input — which is a
+   second owner for a property `.field` already has. */
+.fieldpre { position: relative; display: flex; align-items: center; }
+.fieldpre > .pre { position: absolute; left: 11px; font-size: 12.5px; font-weight: 600; color: var(--muted); pointer-events: none; }
+.fieldpre > .field { padding-left: 23px; width: 100%; }
+
+/* A `.field` an operator has pinned by hand.
+   `.field.bad` says "what you typed is wrong" and `.fld-req` says "the system
+   is still waiting on this"; neither fits a due date that has been overridden
+   away from the firm's default cadence, which is not a problem — it is a
+   decision. Gold, which is what the sheet already uses for an operator
+   override elsewhere, and paired with the OVERRIDE label in the same row so
+   the signal is never colour alone. */
+.field.tone-gold { border-color: var(--gold); }
+
+/* Text typed by a person, rendered as typed.
+   A listing narrative, a lender note, an AI summary: the line breaks in them
+   are content, and a plain block element collapses every one. `.msg-b` and
+   `.docwell` both carry `white-space: pre-wrap` and each drags a whole surface
+   along with it (a chat bubble; a bordered compliance scroller). This is the
+   text alone, for the case where the surface is already the panel it sits in. */
+.pretext { white-space: pre-wrap; line-height: 1.55; }
+
+/* Machine text — an event kind, a timestamp column, a log id.
+   The sheet has `.kbd` (a bordered key cap) and `.num` (tabular figures) and
+   nothing that is simply monospace, so four sites across the loan file's
+   activity feed, its overview and its validation warnings hand-copied the same
+   font stack inline. Same stack as `.kbd`, so the two never drift. */
+.mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* An `.itemrow` whose middle is more than one line.
+   Exactly the same reasoning as `.row.top` / `.pick.top` / `.callout.top`
+   above, and `.itemrow` was simply missing from that family: it owns
+   `align-items: center`, which is right for "icon · name · chip" and wrong
+   the moment the middle wraps — the chip beside a three-line action item
+   floats to the middle of it. Four rows in the loan workbench (lender action
+   items, an AI question, a next-actions list, an instruction card) were
+   reaching for `.top` and silently getting nothing. */
+.itemrow.top { align-items: flex-start; }
+
+/* A `.gridrow` that is itself the control.
+   `.gridrow` is the grid-table's data row and says nothing about interaction,
+   because most of them are not interactive. The prequalification queue's rows
+   are: each one is `role="button" tabIndex={0}` and opens the review panel on
+   click or Enter. That row was carrying its hover as two JS handlers mutating
+   `style` on mouseenter/leave — the same pattern `.iconbtn:focus-visible`
+   above replaced — which repaints after an unmount mid-hover and, more to the
+   point, gives a keyboard user NO indication of where they are: the row was
+   tabbable with no focus ring at all. `.gridrow.done` still out-specifies the
+   hover tint on a superseded row, which is correct — a dead row should not
+   light up like a live one. */
+.gridrow.act { cursor: pointer; }
+.gridrow.act:hover { background: var(--sunken2); }
+.gridrow.act:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* A `.gridrow` / `.gridhd` cell may shrink below its content.
+   `.cg` already ships `.cg > * { min-width: 0 }` for exactly this reason, and
+   the grid-table — which is the SAME construct one level down — never got it.
+   A grid item defaults to `min-width: auto`, so a cell holding a long address
+   or an unbroken email refuses to go below its intrinsic width and drags the
+   whole declared track with it, which is how a five-column list quietly stops
+   lining up with its own header. Every call site was writing
+   `style={{ minWidth: 0 }}` on the cell by hand — six times across
+   /admin/prequal-requests, /admin/agreements and the cadence editor alone —
+   and the ones that forgot are the ones whose columns drift. */
+.gridhd > *, .gridrow > * { min-width: 0; }
+
+/* A `.field` inside a data cell.
+   `.field` is sized for a form — 13px on 8px/11px padding — which is right in
+   a `.fldgrid` and two lines too tall in a `.tbl` cell, where the control is
+   standing in for a single line of text and the row height is the whole point
+   of the grid. There is a `.btn.sm` and an `.iconbtn` for exactly this reason
+   and no small field to sit beside them. Three controls in the public HUD
+   share grid (label, payee, category) plus its currency editor were each
+   hand-rolling the same smaller box inline. */
+.field.sm { padding: 4px 7px; font-size: 12px; border-radius: 7px; }
+
+/* A disabled segment.
+   `.btn`, `.popmenu .mi`, `.toollink` and `.disc-h` all carry a disabled state
+   and `.seg button` carries none, so a segment that cannot currently be
+   reached looks exactly like one that can — on a control whose whole job is to
+   say which slice you are looking at. Four call sites (/inbox's thread filter,
+   /clients/[id], /deals/[id] documents, /settings) were each re-inventing the
+   same `style={{ opacity: .5, cursor: "not-allowed" }}` inline. Matches
+   `.btn:disabled`'s opacity so the two read as one state, and `default` rather
+   than `not-allowed` for the same reason `.btn:disabled` uses it: the cursor
+   should say "nothing here", not scold. */
+.seg button:disabled { opacity: 0.55; cursor: default; }
+
+/* A surface class worn by a real <button>.
+   `.pick`, `.card`, `.kcard`, `.itemrow` and `.gridrow` are all authored for a
+   <div>: they set surface, border and padding and say nothing about the four
+   things a <button> brings with it from the UA stylesheet — a content-width
+   box, centred text, the control font, and the control text colour. So every
+   clickable one of them repeats the same reset inline, twenty-two times across
+   the console today. Keeping a row a real <button> is what keeps it reachable
+   by Tab and activatable by Enter, so this is the class that makes the
+   accessible choice the cheap one. Tailwind's Preflight currently neutralises
+   the font and colour halves; they are declared anyway because Preflight is
+   scheduled to leave (see the header of globals.css) and this must not be the
+   thing that breaks when it does. */
+.btnreset { width: 100%; text-align: left; font: inherit; color: inherit; }
+
+/* The Callout tones the sheet never painted.
+   `Callout`'s `tone` prop is typed ChipTone — all seven — and only four of them
+   (ok / warn / bad / acc) have a `.callout.c-*` rule. The other three do not
+   fail loudly, which is the problem: `.callout` sets `background:
+   var(--surface)` and this file loads AFTER globals.css, so for `c-pet` the
+   tint loses and the ink wins, leaving petrol text on a white card with a plain
+   grey rule — a tone that looks like a rendering bug rather than a missing
+   style. A component that advertises seven tones has to honour seven. */
+.callout.c-pet  { border-left-color: var(--petrol); background: var(--petrol-100); color: inherit; }
+.callout.c-gold { border-left-color: var(--gold);   background: var(--gold-100);   color: inherit; }
+.callout.c-mut  { border-left-color: var(--line2);  background: var(--sunken2);    color: inherit; }
+
+/* ---------- KPI tile header ----------
+   The label and a glyph on one baseline. The primitive `.kpi` replaced drew
+   this glyph in the corner and the migration dropped it: on a wall of eight
+   near-identical tiles it is what lets you find the one you want without
+   reading every label. Tone comes from the chip vocabulary, so the icon says
+   the same thing here as a chip does anywhere else. */
+.kpi-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kpi-i { display: inline-flex; color: var(--muted); flex-shrink: 0; }
+.kpi-i.c-ok { background: none; color: var(--ok); }
+.kpi-i.c-warn { background: none; color: var(--warn); }
+.kpi-i.c-bad { background: none; color: var(--danger); }
+.kpi-i.c-acc { background: none; color: var(--accent); }
+.kpi-i.c-pet { background: none; color: var(--petrol); }
+.kpi-i.c-gold { background: none; color: var(--gold); }
+.kpi-i.c-mut { background: none; color: var(--muted); }
+
+/* ---------- a destructive action that is also the primary one ----------
+   `.btn.tone-bad` is the quiet form: a danger-tinted secondary. It is the
+   right weight for "Delete" sitting in a row of other actions, and the wrong
+   weight for the one button a whole dialog exists to reach — "I Authorize ·
+   Run Soft Pull", or the conversion CTA on a locked dashboard. Those were
+   solid-filled before the migration and became tints, which quietly demoted
+   the most consequential control on the screen.
+
+   Declared as a single two-class selector rather than `.btn.pri` + a tone, so
+   `background` has exactly one owner. */
+.btn.pri-bad { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn.pri-bad:hover { background: #8f2020; border-color: #8f2020; }
+.btn.pri-bad:disabled { opacity: 0.55; }
+
+/* ---------- empty state ----------
+   The centred, generously padded block that says a list has nothing in it.
+   The migration flattened a dozen of these to a left-aligned `.sub` line,
+   which reads as a caption that failed to load rather than as an answer. */
+.empty { text-align: center; padding: 22px 16px; color: var(--muted); font-size: 12.8px; line-height: 1.5; }
+.empty b { display: block; color: var(--ink2); font-size: 13.5px; font-weight: 650; margin-bottom: 3px; }
+.empty svg { width: 20px; height: 20px; color: var(--faint); margin-bottom: 7px; }

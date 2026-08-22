@@ -3,10 +3,12 @@
 // Horizontal strip of active loan instructions in the Deal Workspace.
 // "+ Add" composer is inline — distinct from the chat-mode 'instruct'
 // path so operators can manage instructions without opening the chat.
+//
+// Restyled onto `.panel`. Each instruction is an `.itemrow`; see the note in
+// `problems` about the petrol tint those blocks used to carry.
 
 import { useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { Btn, CellChip, IconBtn, Panel, Sub, Textarea } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useCreateInstruction, useDeactivateInstruction } from "@/hooks/useApi";
 import type { LoanInstruction } from "@/lib/types";
@@ -18,7 +20,6 @@ interface Props {
 }
 
 export function InstructionStrip({ loanId, instructions, canEdit }: Props) {
-  const { t } = useTheme();
   const create = useCreateInstruction();
   const deactivate = useDeactivateInstruction();
   const [composing, setComposing] = useState(false);
@@ -32,141 +33,83 @@ export function InstructionStrip({ loanId, instructions, canEdit }: Props) {
   };
 
   return (
-    <Card pad={14}>
-      <SectionLabel
-        action={
-          canEdit && !composing ? (
-            <button
-              onClick={() => setComposing(true)}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                color: t.petrol,
-                fontSize: 12,
-                fontWeight: 700,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              <Icon name="plus" size={11} stroke={2.4} /> Add instruction
-            </button>
-          ) : null
-        }
-      >
-        Active Instructions <Pill>{instructions.length}</Pill>
-      </SectionLabel>
-
+    <Panel
+      title={
+        <>
+          Active Instructions <CellChip>{instructions.length}</CellChip>
+        </>
+      }
+      actions={
+        canEdit && !composing ? (
+          <Btn size="sm" onClick={() => setComposing(true)}>
+            <Icon name="plus" size={11} stroke={2.4} /> Add instruction
+          </Btn>
+        ) : undefined
+      }
+      bodyClass="grid g10"
+    >
       {composing && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
-          <textarea
+        <div className="grid g6">
+          <Textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder="e.g. always cc legal on outbound emails for this deal"
             rows={2}
             autoFocus
-            style={{
-              width: "100%",
-              padding: "8px 10px",
-              borderRadius: 8,
-              background: t.surface2,
-              border: `1px solid ${t.line}`,
-              color: t.ink,
-              fontSize: 12.5,
-              fontFamily: "inherit",
-              outline: "none",
-              resize: "vertical",
-            }}
           />
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-            <button
+          <div className="row end">
+            <Btn
+              size="sm"
               onClick={() => {
                 setComposing(false);
                 setDraft("");
               }}
-              style={ghostBtn(t)}
             >
               Cancel
-            </button>
-            <button
+            </Btn>
+            <Btn
+              size="sm"
+              variant="pri"
               onClick={submit}
               disabled={!draft.trim() || create.isPending}
-              style={{ ...ghostBtn(t), background: t.ink, color: t.inverse, border: "none", fontWeight: 700 }}
             >
               {create.isPending ? "Saving…" : "Save instruction"}
-            </button>
+            </Btn>
           </div>
         </div>
       )}
 
       {instructions.length === 0 && !composing && (
-        <div style={{ fontSize: 12.5, color: t.ink3, padding: "6px 0" }}>
+        <Sub>
           No active instructions. Add one from the chat input (mode: <strong>Instruct Elara</strong>) or the
           + button above.
-        </div>
+        </Sub>
       )}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {instructions.map((inst) => (
-          <div
-            key={inst.id}
-            style={{
-              flex: "0 1 auto",
-              maxWidth: "100%",
-              minWidth: 220,
-              padding: "8px 10px",
-              borderRadius: 9,
-              background: t.petrolSoft,
-              border: `1px solid ${t.line}`,
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 8,
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, color: t.ink, fontWeight: 600, lineHeight: 1.4 }}>
-                {inst.body}
+      {instructions.length > 0 && (
+        // Bespoke: instruction cards flow and wrap, each with its own floor
+        // so a one-line rule does not become a sliver.
+        <div className="row top">
+          {instructions.map((inst) => (
+            <div key={inst.id} className="itemrow top" style={{ flex: "0 1 auto", minWidth: 220, maxWidth: "100%" }}>
+              <div className="grow">
+                <div style={{ fontWeight: 600 }}>{inst.body}</div>
+                <Sub>
+                  {new Date(inst.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                </Sub>
               </div>
-              <div style={{ fontSize: 10.5, color: t.ink3, marginTop: 4 }}>
-                {new Date(inst.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-              </div>
+              {canEdit && (
+                <IconBtn
+                  onClick={() => deactivate.mutate({ loanId, instructionId: inst.id })}
+                  aria-label="Deactivate instruction"
+                >
+                  <Icon name="x" size={12} />
+                </IconBtn>
+              )}
             </div>
-            {canEdit && (
-              <button
-                onClick={() => deactivate.mutate({ loanId, instructionId: inst.id })}
-                aria-label="Deactivate instruction"
-                style={{
-                  all: "unset",
-                  cursor: "pointer",
-                  width: 22,
-                  height: 22,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 6,
-                  color: t.ink3,
-                  flexShrink: 0,
-                }}
-              >
-                <Icon name="x" size={12} />
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-    </Card>
+          ))}
+        </div>
+      )}
+    </Panel>
   );
-}
-
-function ghostBtn(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    padding: "6px 12px",
-    borderRadius: 8,
-    background: t.surface,
-    border: `1px solid ${t.line}`,
-    color: t.ink2,
-    fontSize: 12,
-    cursor: "pointer",
-    fontFamily: "inherit",
-  };
 }

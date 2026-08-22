@@ -12,10 +12,15 @@
 // user was sending messages that never reached the lender. The pill
 // is now derived from EmailDraft.status + sent_message_id on the
 // backend; see app/services/lender_thread.py:_derive_send_status.
+//
+// Restyled onto the plain-CSS design system. What stays inline is the row's
+// own three-track geometry, the two-line clamp on the collapsed preview, and
+// the avatar tint — all of them derived from the entry rather than owned by
+// a class.
 
 import { useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Avatar, Pill } from "@/components/design-system/primitives";
+import { CellChip } from "@/components/ds";
+import { Avatar } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import type {
   LenderThreadEntry,
@@ -28,25 +33,28 @@ interface Props {
 }
 
 export function LenderThreadMessageRow({ entry, onShowDetails }: Props) {
-  const { t } = useTheme();
   const [expanded, setExpanded] = useState(false);
 
   const role = entry.sender_role;
   const avatarLabel = useMemo(() => initialsOf(entry.sender_label), [entry.sender_label]);
-  const avatarColor = roleAvatarColor(t, role);
+  const avatarColor = roleAvatarColor(role);
   const status = entry.send_status ?? "n/a";
 
   return (
     <div
       style={{
-        borderBottom: `1px solid ${t.line}`,
-        background: expanded ? t.surface2 : t.surface,
+        borderBottom: "1px solid var(--line)",
+        // State-derived: the open row lifts off the mailbox ground.
+        background: expanded ? "var(--sunken2)" : "var(--surface)",
         transition: "background 120ms ease",
       }}
     >
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        // Bespoke mailbox row: avatar / body / timestamp. Also the button
+        // reset — this row has to stay Enter-activatable.
         style={{
           all: "unset",
           display: "grid",
@@ -62,91 +70,52 @@ export function LenderThreadMessageRow({ entry, onShowDetails }: Props) {
         <Avatar label={avatarLabel} color={avatarColor} size={32} />
 
         <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              flexWrap: "wrap",
-            }}
-          >
-            <span style={{ fontWeight: 700, color: t.ink, fontSize: 13 }}>
-              {entry.sender_label}
-            </span>
-            <DirectionPill t={t} entry={entry} />
-            <StatusPill t={t} status={status} note={entry.send_note ?? undefined} />
+          <div className="row">
+            <span style={{ fontWeight: 700 }}>{entry.sender_label}</span>
+            <DirectionChip kind={entry.kind} />
+            <StatusChip status={status} note={entry.send_note ?? undefined} />
           </div>
           {entry.subject ? (
-            <div
-              style={{
-                fontSize: 12.5,
-                fontWeight: 600,
-                color: t.ink,
-                marginTop: 2,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
+            <div className="trunc" style={{ fontWeight: 600, marginTop: 2 }}>
               {entry.subject}
             </div>
           ) : null}
-          {entry.to_email ? (
-            <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
-              to {entry.to_email}
-            </div>
-          ) : null}
+          {entry.to_email ? <div className="sub">to {entry.to_email}</div> : null}
           <div
-            style={{
-              fontSize: 12,
-              color: t.ink3,
-              marginTop: 4,
-              lineHeight: 1.5,
-              whiteSpace: expanded ? "pre-wrap" : "nowrap",
-              overflow: expanded ? "visible" : "hidden",
-              textOverflow: expanded ? "clip" : "ellipsis",
-              maxWidth: "100%",
-              ...(expanded
-                ? {}
+            className="sub"
+            // State-derived: collapsed, the preview is clamped to two lines;
+            // expanded, it is the whole message.
+            style={
+              expanded
+                ? { marginTop: 4, whiteSpace: "pre-wrap" }
                 : {
+                    marginTop: 4,
                     display: "-webkit-box",
                     WebkitLineClamp: 2,
                     WebkitBoxOrient: "vertical" as const,
-                    whiteSpace: "normal",
-                  }),
-            }}
+                    overflow: "hidden",
+                  }
+            }
           >
             {entry.body}
           </div>
         </div>
 
-        <div
-          style={{
-            fontSize: 11,
-            color: t.ink3,
-            whiteSpace: "nowrap",
-            textAlign: "right",
-          }}
-          title={new Date(entry.sent_at).toLocaleString()}
-        >
+        <div className="sub" style={{ whiteSpace: "nowrap", textAlign: "right" }}
+             title={new Date(entry.sent_at).toLocaleString()}>
           {formatGmailTime(new Date(entry.sent_at))}
         </div>
       </button>
 
       {expanded ? (
-        <div
-          style={{
-            padding: "0 14px 12px 58px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-          }}
-        >
+        // Indented to line up under the row body, past the avatar column.
+        <div className="grid g8" style={{ padding: "0 14px 12px 58px" }}>
           {entry.attachments && entry.attachments.length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            <div className="row">
               {entry.attachments.map((a) => (
                 <a
                   key={a.id}
+                  className="chip"
                   href={a.download_url ?? "#"}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -156,68 +125,33 @@ export function LenderThreadMessageRow({ entry, onShowDetails }: Props) {
                     }
                     e.stopPropagation();
                   }}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "4px 8px",
-                    borderRadius: 999,
-                    background: t.surface2,
-                    border: `1px solid ${t.line}`,
-                    fontSize: 11.5,
-                    color: a.download_url ? t.brand : t.ink3,
-                    textDecoration: "none",
-                    maxWidth: 280,
-                  }}
+                  // Data-derived: an attachment with a signed URL reads as a
+                  // link; one without is inert and must not.
+                  style={{ color: a.download_url ? "var(--accent)" : "var(--muted)" }}
                   title={a.filename}
                 >
                   <Icon name="paperclip" size={10} stroke={2.5} />
-                  <span
-                    style={{
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      maxWidth: 220,
-                    }}
-                  >
-                    {a.filename}
-                  </span>
-                  {a.size_bytes > 0 && (
-                    <span style={{ color: t.ink3, fontSize: 10 }}>
-                      {formatBytes(a.size_bytes)}
-                    </span>
-                  )}
+                  {/* Bespoke measure — a filename must not widen the row. */}
+                  <span className="trunc" style={{ maxWidth: 220 }}>{a.filename}</span>
+                  {a.size_bytes > 0 && <span className="sub">{formatBytes(a.size_bytes)}</span>}
                 </a>
               ))}
             </div>
           )}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="row">
             <button
               type="button"
+              className="btn sm"
               onClick={(e) => {
                 e.stopPropagation();
                 onShowDetails(entry);
-              }}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                padding: "6px 10px",
-                borderRadius: 8,
-                border: `1px solid ${t.line}`,
-                background: t.surface,
-                fontSize: 11,
-                fontWeight: 700,
-                color: t.brand,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
               }}
             >
               <Icon name="search" size={11} stroke={2.5} /> Show details
             </button>
             {entry.sent_message_id ? (
-              <span style={{ fontSize: 11, color: t.ink3, padding: "6px 4px" }}>
-                Gmail msg id: <code>{entry.sent_message_id}</code>
+              <span className="sub">
+                Gmail msg id: <code className="mono">{entry.sent_message_id}</code>
               </span>
             ) : null}
           </div>
@@ -228,56 +162,44 @@ export function LenderThreadMessageRow({ entry, onShowDetails }: Props) {
 }
 
 // ---------------------------------------------------------------------------
-// Status / direction pills
+// Status / direction chips
 // ---------------------------------------------------------------------------
 
-function StatusPill({
-  t,
+function StatusChip({
   status,
   note,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   status: LenderThreadSendStatus;
   note?: string;
 }) {
   const cfg = useMemo(() => {
     switch (status) {
       case "sent":
-        return { bg: t.profitBg, fg: t.profit, label: "Delivered" };
+        return { tone: "ok" as const, label: "Delivered" };
       case "saved":
-        return { bg: t.warnBg, fg: t.warn, label: "Saved only" };
+        return { tone: "warn" as const, label: "Saved only" };
       case "failed":
-        return { bg: t.dangerBg, fg: t.danger, label: "Send failed" };
+        return { tone: "bad" as const, label: "Send failed" };
       default:
         return null;
     }
-  }, [t, status]);
+  }, [status]);
   if (!cfg) return null;
-  return (
-    <span title={note ?? cfg.label}>
-      <Pill bg={cfg.bg} color={cfg.fg}>
-        {cfg.label}
-      </Pill>
-    </span>
-  );
+  // `title` is CellChip's own hover explanation — the send note is the
+  // sentence behind the one-word status.
+  return <CellChip tone={cfg.tone} title={note ?? cfg.label}>{cfg.label}</CellChip>;
 }
 
-function DirectionPill({
-  t,
-  entry,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  entry: LenderThreadEntry;
-}) {
-  switch (entry.kind) {
+function DirectionChip({ kind }: { kind: LenderThreadEntry["kind"] }) {
+  switch (kind) {
     case "inbound":
-      return <Pill bg={t.brandSoft} color={t.brand}>Inbound</Pill>;
+      return <CellChip tone="acc">Inbound</CellChip>;
     case "outbound":
-      return <Pill bg={t.surface2} color={t.ink2}>Outbound</Pill>;
+      return <CellChip>Outbound</CellChip>;
     case "ai_outbound":
-      return <Pill bg={t.petrolSoft} color={t.petrol}>AI</Pill>;
+      return <CellChip tone="pet">AI</CellChip>;
     case "pending_draft":
-      return <Pill bg={t.warnBg} color={t.warn}>Draft</Pill>;
+      return <CellChip tone="warn">Draft</CellChip>;
   }
 }
 
@@ -292,19 +214,17 @@ function initialsOf(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function roleAvatarColor(
-  t: ReturnType<typeof useTheme>["t"],
-  role: LenderThreadEntry["sender_role"],
-): string {
+/** Role → avatar tint. Data-derived, and `Avatar` takes it as a prop. */
+function roleAvatarColor(role: LenderThreadEntry["sender_role"]): string {
   switch (role) {
     case "lender":
-      return t.warn;
+      return "var(--warn)";
     case "broker":
-      return t.brand;
+      return "var(--accent)";
     case "ai":
-      return t.petrol;
+      return "var(--petrol)";
     case "system":
-      return t.ink3;
+      return "var(--muted)";
   }
 }
 

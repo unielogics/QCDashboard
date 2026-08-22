@@ -20,13 +20,33 @@
 // Loan-backed files (in_funding / funded) are fully wired. A deal-only
 // RE Working file shows the shell with graceful "still being set up by
 // your agent" states for the loan-scoped surfaces.
+//
+// Styling: this is edge-to-edge inside `.content` (the caller cancels the
+// shell padding), so the OUTER box is deliberately not a `.panel` — a panel
+// would draw a border and a 14px radius hard against the viewport edge. Its
+// header, tab strip, scroller and rail borrow the panel vocabulary instead.
 
 import { useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
 import { QC_FMT } from "@/components/design-system/tokens";
+import {
+  Btn,
+  BtnLink,
+  Callout,
+  Card,
+  CellChip,
+  IconBtn,
+  ItemRow,
+  Note,
+  Panel,
+  StatusLine,
+  Sub,
+  Table,
+  Td,
+  Tr,
+  cx,
+  type ChipTone,
+} from "@/components/ds";
 import { loanTypeLabel } from "@/lib/types";
 import {
   useCalendar,
@@ -74,7 +94,6 @@ export function ClientFileModal({
   // out-of-range value is clamped to the first available tab.
   initialTab?: string;
 }) {
-  const { t } = useTheme();
   const loanId = file.loan_uuid;
   const hasLoan = !!loanId;
   const isFunding = file.status === "in_funding" || file.status === "funded";
@@ -89,139 +108,86 @@ export function ClientFileModal({
   const [tab, setTab] = useState<TabId>((initialTab as TabId) || "property");
   const activeTab = tabs.some((x) => x.id === tab) ? tab : tabs[0].id;
 
-  const statusPill =
+  const statusPill: { label: string; tone: ChipTone } =
     file.status === "funded"
-      ? { label: "Funded", bg: t.profitBg, fg: t.profit }
+      ? { label: "Funded", tone: "ok" }
       : file.status === "in_funding"
-        ? { label: "In Funding", bg: t.brandSoft, fg: t.brand }
+        ? { label: "In Funding", tone: "acc" }
         : file.status === "lost"
-          ? { label: "Lost", bg: t.dangerBg, fg: t.danger }
-          : { label: "RE Working", bg: t.warnBg, fg: t.warn };
+          ? { label: "Lost", tone: "bad" }
+          : { label: "RE Working", tone: "warn" };
 
   return (
     <div
+      // Bespoke geometry: a full-bleed surface sized to the content area, with
+      // its own scrollers inside. No class in the sheet expresses "fill the
+      // viewport below the topbar", and `.panel` would add the frame this
+      // deliberately does not have.
       style={{
-        // Full-bleed in-content panel — fills the entire content area
-        // edge-to-edge (the wrapper cancels the <main> padding). The
-        // sidebar + top bar stay visible and usable.
         height: "calc(100vh - 64px)",
         minHeight: 560,
-        background: t.surface,
+        background: "var(--surface)",
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
       }}
     >
       {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          padding: "14px 18px",
-          borderBottom: `1px solid ${t.line}`,
-        }}
-      >
-        <button
-          onClick={onClose}
-          style={{
-            all: "unset",
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "6px 10px",
-            borderRadius: 8,
-            background: t.surface2,
-            border: `1px solid ${t.line}`,
-            color: t.ink2,
-            fontSize: 12,
-            fontWeight: 700,
-            flexShrink: 0,
-          }}
-        >
+      <div className="panel-h">
+        <Btn onClick={onClose}>
           <Icon name="arrowL" size={12} /> All files
-        </button>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Pill bg={statusPill.bg} color={statusPill.fg}>
-              {statusPill.label}
-            </Pill>
-            <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>
+        </Btn>
+        <div className="grow">
+          <div className="row">
+            <CellChip tone={statusPill.tone}>{statusPill.label}</CellChip>
+            <span className="sub">
               {file.ref} · {file.stage_detail}
             </span>
           </div>
-          <div
-            style={{
-              fontSize: 18,
-              fontWeight: 800,
-              color: t.ink,
-              marginTop: 3,
-              letterSpacing: -0.2,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {file.address || file.ref}
-          </div>
+          <div className="filehd-t">{file.address || file.ref}</div>
         </div>
-        <ModalCloseButton onClick={onClose} label="Close file" />
+        <IconBtn onClick={onClose} aria-label="Close file">
+          <Icon name="x" size={15} />
+        </IconBtn>
       </div>
 
       {/* AI intelligence strip */}
       {file.ai_status ? (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 9,
-            padding: "10px 18px",
-            borderBottom: `1px solid ${t.line}`,
-            background: t.petrolSoft,
-          }}
-        >
-          <Icon name="ai" size={13} color={t.petrol} />
-          <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
-            <span style={{ fontWeight: 800, color: t.petrol }}>Where things stand · </span>
-            {file.ai_status}
-          </div>
+        // Bespoke gutter only: the strip lines up with the header's 16px
+        // inset. `.note` owns the box itself — petrol tint, petrol icon,
+        // petrol lead-in.
+        <div style={{ padding: "0 16px" }}>
+          <Note>
+            <Icon name="ai" size={13} />
+            <div>
+              <b>Where things stand · </b>
+              {file.ai_status}
+            </div>
+          </Note>
         </div>
       ) : null}
 
-      {/* Two-pane body */}
+      {/* Two-pane body.
+          Bespoke geometry: a growing main pane and a fixed 360px chat rail,
+          both full height with their own scrollers. `.withrail > .railcol` is
+          a STICKY page rail, and `.rail` is the Elara sidebar (100vh, sticky) —
+          both carry positioning that is wrong for a pane inside a fixed-height
+          box, so the split is written out here. */}
       <div style={{ display: "flex", minHeight: 0, flex: 1 }}>
         {/* Main pane */}
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
           {/* Tab strip */}
-          <div
-            style={{
-              display: "flex",
-              gap: 2,
-              padding: "10px 16px",
-              borderBottom: `1px solid ${t.line}`,
-              flexWrap: "wrap",
-            }}
-          >
+          <div className="ftabs" role="tablist" aria-label="File sections">
             {tabs.map((x) => {
               const on = x.id === activeTab;
               return (
                 <button
                   key={x.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  className={cx("ftab", on && "on")}
                   onClick={() => setTab(x.id)}
-                  style={{
-                    all: "unset",
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "7px 12px",
-                    borderRadius: 8,
-                    fontSize: 12.5,
-                    fontWeight: 700,
-                    color: on ? t.ink : t.ink3,
-                    background: on ? t.surface2 : "transparent",
-                  }}
                 >
                   <Icon name={x.icon} size={12} />
                   {x.label}
@@ -230,63 +196,53 @@ export function ClientFileModal({
             })}
           </div>
 
-          {/* Panel */}
-          <div style={{ padding: 16, overflowY: "auto", flex: 1, minHeight: 0 }}>
+          {/* Panel — `.panel-b` owns the padding and the flex fill; the scroll
+              is this box's own job. */}
+          <div className="panel-b" style={{ overflowY: "auto", minHeight: 0 }}>
             {activeTab === "property" ? (
-              <PropertyPanel file={file} loan={loan} t={t} />
+              <PropertyPanel file={file} loan={loan} />
             ) : activeTab === "schedule" ? (
-              <SchedulePanel loan={loan} hasLoan={hasLoan} t={t} />
+              <SchedulePanel loan={loan} hasLoan={hasLoan} />
             ) : activeTab === "documents" ? (
               hasLoan && loan ? (
                 <DocsTab loan={loan} canRequest={false} canUpload />
               ) : (
-                <SetupNotice t={t} label="Document upload opens once your agent moves this file forward." />
+                <SetupNotice label="Document upload opens once your agent moves this file forward." />
               )
             ) : activeTab === "terms" ? (
-              <LoanTermsPanel loan={loan} t={t} />
+              <LoanTermsPanel loan={loan} />
             ) : activeTab === "conditions" ? (
-              <ConditionsPanel loanId={loanId} t={t} />
+              <ConditionsPanel loanId={loanId} />
             ) : activeTab === "prequal" ? (
-              <PrequalPanel loanId={loanId} t={t} />
+              <PrequalPanel loanId={loanId} />
             ) : activeTab === "hud" ? (
-              <HudPanel loanId={loanId} t={t} />
+              <HudPanel loanId={loanId} />
             ) : null}
           </div>
         </div>
 
-        {/* Persistent AI chat rail */}
+        {/* Persistent AI chat rail — bespoke fixed pane, see the note above. */}
         <div
           style={{
             width: 360,
             flexShrink: 0,
-            borderLeft: `1px solid ${t.line}`,
-            background: t.bg,
+            borderLeft: "1px solid var(--line)",
+            background: "var(--bg)",
             display: "flex",
             flexDirection: "column",
             minHeight: 0,
           }}
         >
-          <div
-            style={{
-              padding: "10px 14px",
-              borderBottom: `1px solid ${t.line}`,
-              display: "flex",
-              alignItems: "center",
-              gap: 7,
-            }}
-          >
-            <Icon name="chat" size={13} color={t.petrol} />
-            <span style={{ fontSize: 12.5, fontWeight: 800, color: t.ink }}>Chat</span>
-            <span style={{ fontSize: 11, color: t.ink3 }}>· AI + your team</span>
+          <div className="panel-h">
+            <Icon name="chat" size={13} />
+            <b>Chat</b>
+            <Sub>· AI + your team</Sub>
           </div>
-          <div style={{ flex: 1, minHeight: 0, padding: 12, overflowY: "auto" }}>
+          <div className="panel-b" style={{ overflowY: "auto", minHeight: 0 }}>
             {hasLoan && loanId && currentUser ? (
               <ClientLoanChatTab loanId={loanId} user={currentUser} />
             ) : (
-              <SetupNotice
-                t={t}
-                label="Chat opens here once your file is active. In the meantime your agent is the best contact."
-              />
+              <SetupNotice label="Chat opens here once your file is active. In the meantime your agent is the best contact." />
             )}
           </div>
         </div>
@@ -297,54 +253,21 @@ export function ClientFileModal({
 
 // ── Panels ────────────────────────────────────────────────────────────
 
-function SetupNotice({
-  t,
-  label,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  label: string;
-}) {
-  return (
-    <Card pad={20}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-        <Icon name="clock" size={15} color={t.ink3} />
-        <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.55 }}>{label}</div>
-      </div>
-    </Card>
-  );
+function SetupNotice({ label }: { label: string }) {
+  return <Callout icon={<Icon name="clock" size={15} />}>{label}</Callout>;
 }
 
 function FieldGrid({
-  t,
   rows,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   rows: { label: string; value: React.ReactNode }[];
 }) {
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-        gap: 14,
-      }}
-    >
+    <div className="grid cols-auto">
       {rows.map((r) => (
-        <div key={r.label}>
-          <div
-            style={{
-              fontSize: 10.5,
-              fontWeight: 700,
-              color: t.ink3,
-              letterSpacing: 0.8,
-              textTransform: "uppercase",
-            }}
-          >
-            {r.label}
-          </div>
-          <div style={{ fontSize: 13.5, color: t.ink, marginTop: 4 }}>
-            {r.value ?? <span style={{ color: t.ink4 }}>—</span>}
-          </div>
+        <div key={r.label} className="grid g4">
+          <div className="lbl">{r.label}</div>
+          <div>{r.value ?? <Sub>—</Sub>}</div>
         </div>
       ))}
     </div>
@@ -354,11 +277,9 @@ function FieldGrid({
 function PropertyPanel({
   file,
   loan,
-  t,
 }: {
   file: MyFileRow;
   loan: ReturnType<typeof useLoan>["data"];
-  t: ReturnType<typeof useTheme>["t"];
 }) {
   const rows: { label: string; value: React.ReactNode }[] = [
     { label: "Address", value: loan?.address || file.address || null },
@@ -381,8 +302,8 @@ function PropertyPanel({
     },
   ];
   return (
-    <Card pad={18}>
-      <FieldGrid t={t} rows={rows} />
+    <Card>
+      <FieldGrid rows={rows} />
     </Card>
   );
 }
@@ -390,11 +311,9 @@ function PropertyPanel({
 function SchedulePanel({
   loan,
   hasLoan,
-  t,
 }: {
   loan: ReturnType<typeof useLoan>["data"];
   hasLoan: boolean;
-  t: ReturnType<typeof useTheme>["t"];
 }) {
   const { data: allEvents } = useCalendar();
 
@@ -411,7 +330,7 @@ function SchedulePanel({
   }, [allEvents, loan?.id]);
 
   if (!hasLoan) {
-    return <SetupNotice t={t} label="Showings and key dates appear here once the file is active." />;
+    return <SetupNotice label="Showings and key dates appear here once the file is active." />;
   }
 
   const now = Date.now();
@@ -430,10 +349,9 @@ function SchedulePanel({
     })[k] ?? "Event";
 
   return (
-    <div style={{ display: "grid", gap: 14 }}>
-      <Card pad={18}>
+    <div className="grid">
+      <Card>
         <FieldGrid
-          t={t}
           rows={[
             {
               label: "Target close date",
@@ -448,31 +366,22 @@ function SchedulePanel({
             },
           ]}
         />
-        <div style={{ fontSize: 12, color: t.ink3, marginTop: 14, lineHeight: 1.55 }}>
+        <div className="sub mt">
           Your agent and the funding team coordinate inspections, appraisal,
           and closing. Anything that needs you will show up in Chat and on
           your To-Do list.
         </div>
       </Card>
 
-      <Card pad={18}>
-        <div
-          style={{
-            fontSize: 13,
-            fontWeight: 700,
-            color: t.ink,
-            marginBottom: 12,
-          }}
-        >
-          Key dates
-        </div>
+      <Panel title="Key dates">
         {events.length === 0 ? (
-          <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.55 }}>
+          <div className="sub">
             No scheduled items yet. Inspections, appraisal, and closing
             dates appear here as the funding team sets them.
           </div>
         ) : (
-          <div style={{ display: "grid", gap: 8 }}>
+          // `.itemrow + .itemrow` owns the spacing between rows.
+          <div>
             {events.map((ev) => {
               const when = new Date(ev.starts_at);
               const isOverdue =
@@ -480,64 +389,48 @@ function SchedulePanel({
               const isDone = ev.status === "done";
               const isCancelled = ev.status === "cancelled";
               return (
-                <div
+                <ItemRow
                   key={ev.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: `1px solid ${isOverdue ? t.danger : t.line}`,
-                    background: isOverdue ? `${t.danger}14` : t.surface2,
-                  }}
+                  // A missed milestone tints the whole row: a list like this is
+                  // scanned, and a chip alone means reading every row to find it.
+                  className={cx(isOverdue && "tone-bad")}
+                  right={
+                    isOverdue ? (
+                      <CellChip tone="bad">Overdue</CellChip>
+                    ) : isDone ? (
+                      <CellChip tone="ok">Done</CellChip>
+                    ) : isCancelled ? (
+                      <CellChip>Cancelled</CellChip>
+                    ) : (
+                      <CellChip>Scheduled</CellChip>
+                    )
+                  }
                 >
-                  <div style={{ minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: isOverdue ? t.danger : t.ink,
-                        textDecoration: isCancelled ? "line-through" : "none",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {ev.title}
-                    </div>
-                    <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
-                      {kindLabel(ev.kind)} ·{" "}
-                      {when.toLocaleString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                      {ev.who ? ` · ${ev.who}` : ""}
-                    </div>
+                  <div
+                    className="trunc"
+                    // Data-derived: a cancelled event is struck through, and no
+                    // class carries that state.
+                    style={isCancelled ? { textDecoration: "line-through" } : undefined}
+                  >
+                    {ev.title}
                   </div>
-                  {isOverdue ? (
-                    <Pill color={t.danger} bg={t.dangerBg}>
-                      Overdue
-                    </Pill>
-                  ) : isDone ? (
-                    <Pill color={t.profit} bg={t.profitBg}>
-                      Done
-                    </Pill>
-                  ) : isCancelled ? (
-                    <Pill>Cancelled</Pill>
-                  ) : (
-                    <Pill>Scheduled</Pill>
-                  )}
-                </div>
+                  <div className="sub">
+                    {kindLabel(ev.kind)} ·{" "}
+                    {when.toLocaleString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                    {ev.who ? ` · ${ev.who}` : ""}
+                  </div>
+                </ItemRow>
               );
             })}
           </div>
         )}
-      </Card>
+      </Panel>
     </div>
   );
 }
@@ -547,22 +440,15 @@ function pct(v: number | null | undefined): string | null {
   return `${(Number(v) * 100).toFixed(1)}%`;
 }
 
-function LoanTermsPanel({
-  loan,
-  t,
-}: {
-  loan: ReturnType<typeof useLoan>["data"];
-  t: ReturnType<typeof useTheme>["t"];
-}) {
+function LoanTermsPanel({ loan }: { loan: ReturnType<typeof useLoan>["data"] }) {
   if (!loan) {
-    return <SetupNotice t={t} label="Loan terms appear once underwriting begins." />;
+    return <SetupNotice label="Loan terms appear once underwriting begins." />;
   }
   const rate = loan.final_rate ?? loan.base_rate;
   return (
     <>
-      <Card pad={18}>
+      <Card>
         <FieldGrid
-          t={t}
           rows={[
             { label: "Loan amount", value: loan.amount != null ? QC_FMT.usd(Number(loan.amount), 0) : null },
             { label: "Rate", value: rate != null ? `${Number(rate).toFixed(3)}%` : null },
@@ -585,7 +471,7 @@ function LoanTermsPanel({
           ]}
         />
       </Card>
-      <div style={{ fontSize: 11.5, color: t.ink4, marginTop: 10, fontStyle: "italic", lineHeight: 1.5 }}>
+      <div className="sub mt">
         Preliminary terms — final pricing and conditions are set by the
         lender at underwriting and may change.
       </div>
@@ -593,178 +479,113 @@ function LoanTermsPanel({
   );
 }
 
-function ConditionsPanel({
-  loanId,
-  t,
-}: {
-  loanId: string | null | undefined;
-  t: ReturnType<typeof useTheme>["t"];
-}) {
+function ConditionsPanel({ loanId }: { loanId: string | null | undefined }) {
   const { data: docs = [], isLoading } = useDocuments(loanId ?? undefined);
   if (isLoading) {
-    return <Card pad={16}><div style={{ fontSize: 13, color: t.ink3 }}>Loading…</div></Card>;
+    return <Card><div className="sub">Loading…</div></Card>;
   }
   const outstanding = docs.filter((d) => d.status !== "verified");
   if (outstanding.length === 0) {
     return (
-      <Card pad={18}>
-        <div style={{ fontSize: 13, color: t.profit, fontWeight: 700 }}>
-          ✓ No outstanding conditions — everything we need is in.
-        </div>
-      </Card>
+      <StatusLine tone="ok">
+        ✓ No outstanding conditions — everything we need is in.
+      </StatusLine>
     );
   }
   return (
-    <Card pad={0}>
-      <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.line}`, fontSize: 12, fontWeight: 800, color: t.ink2, textTransform: "uppercase", letterSpacing: 1 }}>
-        {outstanding.length} outstanding {outstanding.length === 1 ? "item" : "items"}
-      </div>
-      {outstanding.map((d, i) => (
-        <div
+    <Panel title={`${outstanding.length} outstanding ${outstanding.length === 1 ? "item" : "items"}`}>
+      {outstanding.map((d) => (
+        <ItemRow
           key={d.id}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "12px 16px",
-            borderBottom: i < outstanding.length - 1 ? `1px solid ${t.line}` : "none",
-          }}
+          // Flagged tints the row; "pending" is the normal state of everything
+          // in this list, so tinting it too would say nothing.
+          className={cx(d.status === "flagged" && "tone-bad")}
+          icon={<Icon name={d.status === "flagged" ? "alert" : "clock"} size={14} />}
+          right={
+            <CellChip tone={d.status === "flagged" ? "bad" : "warn"}>
+              {d.status === "flagged" ? "Needs attention" : "Pending"}
+            </CellChip>
+          }
         >
-          <Icon
-            name={d.status === "flagged" ? "alert" : "clock"}
-            size={14}
-            color={d.status === "flagged" ? t.danger : t.warn}
-          />
-          <div style={{ flex: 1, fontSize: 13, color: t.ink }}>{d.name}</div>
-          <Pill
-            bg={d.status === "flagged" ? t.dangerBg : t.warnBg}
-            color={d.status === "flagged" ? t.danger : t.warn}
-          >
-            {d.status === "flagged" ? "Needs attention" : "Pending"}
-          </Pill>
-        </div>
+          {d.name}
+        </ItemRow>
       ))}
-    </Card>
+    </Panel>
   );
 }
 
-function PrequalPanel({
-  loanId,
-  t,
-}: {
-  loanId: string | null | undefined;
-  t: ReturnType<typeof useTheme>["t"];
-}) {
+function PrequalPanel({ loanId }: { loanId: string | null | undefined }) {
   const { data: requests = [], isLoading } = useLoanPrequalRequests(loanId ?? undefined);
   if (isLoading) {
-    return <Card pad={16}><div style={{ fontSize: 13, color: t.ink3 }}>Loading…</div></Card>;
+    return <Card><div className="sub">Loading…</div></Card>;
   }
   if (requests.length === 0) {
-    return <SetupNotice t={t} label="No pre-qualification letter yet for this file." />;
+    return <SetupNotice label="No pre-qualification letter yet for this file." />;
   }
   return (
-    <Card pad={0}>
-      {requests.map((r, i) => (
-        <div
+    <div>
+      {requests.map((r) => (
+        <ItemRow
           key={r.id}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "13px 16px",
-            borderBottom: i < requests.length - 1 ? `1px solid ${t.line}` : "none",
-          }}
+          icon={<Icon name="docCheck" size={15} />}
+          right={
+            r.pdf_url ? (
+              <BtnLink
+                size="sm"
+                href={r.pdf_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Icon name="doc" size={12} /> View letter
+              </BtnLink>
+            ) : (
+              <Sub>No letter yet</Sub>
+            )
+          }
         >
-          <Icon name="docCheck" size={15} color={t.petrol} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>
-              {r.quote_number ? `Pre-qual ${r.quote_number}` : "Pre-qualification"}
-            </div>
-            <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
-              Status: {r.status}
-            </div>
-          </div>
-          {r.pdf_url ? (
-            <a
-              href={r.pdf_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: t.brand,
-                textDecoration: "none",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-              }}
-            >
-              <Icon name="doc" size={12} /> View letter
-            </a>
-          ) : (
-            <span style={{ fontSize: 11.5, color: t.ink4 }}>No letter yet</span>
-          )}
-        </div>
+          <b>{r.quote_number ? `Pre-qual ${r.quote_number}` : "Pre-qualification"}</b>
+          <div className="sub">Status: {r.status}</div>
+        </ItemRow>
       ))}
-    </Card>
+    </div>
   );
 }
 
-function HudPanel({
-  loanId,
-  t,
-}: {
-  loanId: string | null | undefined;
-  t: ReturnType<typeof useTheme>["t"];
-}) {
+function HudPanel({ loanId }: { loanId: string | null | undefined }) {
   const { data: lines = [], isLoading } = useHudLines(loanId ?? undefined);
   if (isLoading) {
-    return <Card pad={16}><div style={{ fontSize: 13, color: t.ink3 }}>Loading…</div></Card>;
+    return <Card><div className="sub">Loading…</div></Card>;
   }
   if (lines.length === 0) {
-    return <SetupNotice t={t} label="The settlement statement (HUD) isn't ready yet — it's prepared as closing approaches." />;
+    return <SetupNotice label="The settlement statement (HUD) isn't ready yet — it's prepared as closing approaches." />;
   }
   const total = lines.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
   return (
-    <Card pad={0}>
-      {lines.map((l) => (
-        <div
-          key={l.id}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "11px 16px",
-            borderBottom: `1px solid ${t.line}`,
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, color: t.ink }}>{l.label}</div>
-            {l.payee ? (
-              <div style={{ fontSize: 11, color: t.ink3, marginTop: 1 }}>{l.payee}</div>
-            ) : null}
-          </div>
-          <div style={{ fontSize: 13, fontWeight: 700, fontFeatureSettings: '"tnum"', color: t.ink }}>
-            {QC_FMT.usd(Number(l.amount) || 0, 2)}
-          </div>
-        </div>
-      ))}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "13px 16px",
-          background: t.surface2,
-        }}
+    <Panel noPad>
+      <Table
+        cols={[{ label: "Item" }, { label: "Amount", align: "r" }]}
+        caption="Estimated settlement statement"
       >
-        <div style={{ flex: 1, fontSize: 12.5, fontWeight: 800, color: t.ink2, textTransform: "uppercase", letterSpacing: 1 }}>
-          Estimated total
-        </div>
-        <div style={{ fontSize: 14, fontWeight: 800, fontFeatureSettings: '"tnum"', color: t.ink }}>
-          {QC_FMT.usd(total, 2)}
-        </div>
-      </div>
-    </Card>
+        {lines.map((l) => (
+          <Tr key={l.id}>
+            <Td>
+              {l.label}
+              {l.payee ? <div className="sub">{l.payee}</div> : null}
+            </Td>
+            <Td align="r">
+              <span className="num">{QC_FMT.usd(Number(l.amount) || 0, 2)}</span>
+            </Td>
+          </Tr>
+        ))}
+        <Tr>
+          <Td>
+            <span className="lbl">Estimated total</span>
+          </Td>
+          <Td align="r">
+            <b className="num">{QC_FMT.usd(total, 2)}</b>
+          </Td>
+        </Tr>
+      </Table>
+    </Panel>
   );
 }

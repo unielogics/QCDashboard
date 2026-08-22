@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, type CSSProperties, type ReactNode } from "react";
+import { cx } from "@/components/ds";
 import { Icon } from "./Icon";
 import { ModalCloseButton } from "./ModalCloseButton";
-import { useTheme } from "./ThemeProvider";
 
 export type ModalSize = "md" | "lg" | "xl" | "full" | "stage";
 
@@ -17,8 +17,8 @@ const WIDTHS: Record<ModalSize, string> = {
 
 /**
  * Themed, centered, full-canvas dialog. Fixed overlay + backdrop with
- * click-outside and Escape to close. All colors come from useTheme() tokens so
- * it holds in light and dark. zIndex 300 sits above RightPanel/AIChatPanel (200)
+ * click-outside and Escape to close. Chrome comes from `.mscrim` / `.panel` in
+ * the design-system sheet. zIndex 300 sits above RightPanel/AIChatPanel (200)
  * and below BucketFileReviewPanel (500).
  */
 export function Modal({
@@ -51,7 +51,6 @@ export function Modal({
    */
   insetLeft?: number;
 }) {
-  const { t } = useTheme();
   const isStage = size === "stage";
 
   useEffect(() => {
@@ -69,74 +68,37 @@ export function Modal({
     <div
       role="dialog"
       aria-modal="true"
-      style={{
-        position: "fixed",
-        top: 0,
-        right: 0,
-        bottom: 0,
-        // Leave the sidebar/menu uncovered and clickable.
-        left: insetLeft,
-        zIndex: 300,
-        background: "rgba(0,0,0,0.42)",
-        display: "flex",
-        alignItems: isStage ? "stretch" : "center",
-        justifyContent: isStage ? "stretch" : "center",
-        padding: isStage ? 16 : 24,
-      }}
+      className={cx("mscrim", isStage && "stage")}
+      // `insetLeft` is a caller-supplied offset that keeps a fixed sidebar
+      // uncovered and clickable, so it is data and stays inline. `.mscrim`
+      // deliberately sets `right/top/bottom` only and never `left`, so there
+      // is still exactly one owner of each edge.
+      style={{ left: insetLeft }}
       onClick={(e) => {
         if (closeOnBackdrop && e.target === e.currentTarget) onClose();
       }}
     >
       <div
+        className="panel mpanel"
+        // Width comes from the `size` map; the stage variant fills its scrim.
         style={{
           width: WIDTHS[size],
           maxHeight: isStage ? "100%" : "90vh",
           height: isStage ? "100%" : undefined,
-          background: t.surface,
-          borderRadius: 16,
-          border: `1px solid ${t.line}`,
-          boxShadow: "0 28px 64px rgba(0,0,0,0.32)",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
         }}
       >
         {(title || icon || headerAccessory) && (
-          <header
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "14px 18px",
-              borderBottom: `1px solid ${t.line}`,
-              flexShrink: 0,
-            }}
-          >
+          <header className="panel-h">
             {icon ? <Icon name={icon} size={15} /> : null}
-            {title ? (
-              <span style={{ fontFamily: "var(--font-inter-tight), var(--font-inter), system-ui, sans-serif", fontSize: 15, fontWeight: 900, color: t.ink }}>{title}</span>
-            ) : null}
-            <div style={{ flex: 1 }} />
+            {title ? <span className="mtitle">{title}</span> : null}
+            <span className="sp" />
             {headerAccessory}
             <ModalCloseButton onClick={onClose} />
           </header>
         )}
-        <div style={{ flex: 1, minHeight: 0, overflow: "auto", ...bodyStyle }}>{children}</div>
-        {footer ? (
-          <footer
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "flex-end",
-              gap: 8,
-              padding: "12px 18px",
-              borderTop: `1px solid ${t.line}`,
-              flexShrink: 0,
-            }}
-          >
-            {footer}
-          </footer>
-        ) : null}
+        {/* `bodyStyle` is a caller escape hatch and is spread last on purpose. */}
+        <div className="mbody" style={bodyStyle}>{children}</div>
+        {footer ? <footer className="drawer-f mfoot">{footer}</footer> : null}
       </div>
     </div>
   );

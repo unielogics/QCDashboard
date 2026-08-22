@@ -7,10 +7,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Modal } from "@/components/design-system/Modal";
-import { Tabs } from "@/components/design-system/Tabs";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { Drawer } from "@/components/ds/Drawer";
+import {
+  Btn,
+  Field,
+  Input,
+  Seg,
+  Select,
+  StatusLine,
+  Textarea,
+  cx,
+} from "@/components/ds";
 import { api, ApiError } from "@/lib/api";
 
 type Partner = { id: string; name: string; email: string };
@@ -25,7 +32,6 @@ export function DealerChannelComposeDialog({
   onClose: () => void;
   onSent: (intakeId: string) => void;
 }) {
-  const { t } = useTheme();
   const { getToken } = useAuth();
 
   const [mode, setMode] = useState<"existing" | "new">("existing");
@@ -132,115 +138,133 @@ export function DealerChannelComposeDialog({
     }
   }
 
-  const field: React.CSSProperties = {
-    width: "100%", boxSizing: "border-box", padding: "9px 11px", borderRadius: 9,
-    border: `1px solid ${t.line}`, background: t.surface2, color: t.ink, fontSize: 13, outline: "none",
-  };
-  const label: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.4 };
-
   return (
-    <Modal
+    <Drawer
       open
       onClose={onClose}
       title="New conversation"
-      icon="chat"
-      size="md"
+      width="md"
       footer={
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <span style={{ color: t.ink4, fontSize: 11.5 }}>
-            {partnerId ? "The dealer partner will see this in their Messages." : "Assign a partner so it reaches them."}
+        <>
+          <span className="sub">
+            {partnerId
+              ? "The dealer partner will see this in their Messages."
+              : "Assign a partner so it reaches them."}
           </span>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" style={qcBtn(t)} onClick={onClose} disabled={busy}>Cancel</button>
-            <button type="button" style={{ ...qcBtnPrimary(t), opacity: canSend && !busy ? 1 : 0.5 }} disabled={!canSend || busy} onClick={send}>
-              {busy ? "Sending…" : "Send message"}
-            </button>
-          </div>
-        </div>
+          <span className="grow" />
+          <Btn onClick={onClose} disabled={busy}>
+            Cancel
+          </Btn>
+          {/* `.btn:disabled` carries the dimmed state the inline opacity did. */}
+          <Btn variant="pri" disabled={!canSend || busy} onClick={send}>
+            {busy ? "Sending…" : "Send message"}
+          </Btn>
+        </>
       }
     >
-      <div style={{ padding: 16, display: "grid", gap: 12 }}>
-        <Tabs
-          variant="segmented"
+      <div className="grid g10">
+        <Seg
+          as="tabs"
+          ariaLabel="Conversation target"
           value={mode}
-          onChange={(v) => setMode(v)}
-          options={[{ id: "existing", label: "Existing file" }, { id: "new", label: "New file" }]}
+          onChange={setMode}
+          options={[
+            { value: "existing", label: "Existing file" },
+            { value: "new", label: "New file" },
+          ]}
         />
 
         {mode === "existing" ? (
-          <div style={{ display: "grid", gap: 6 }}>
-            <span style={label}>AI file</span>
-            <input style={field} placeholder="Search leads by name, business, or email…" value={leadSearch} onChange={(e) => setLeadSearch(e.target.value)} />
-            <div style={{ maxHeight: 180, overflowY: "auto", border: `1px solid ${t.line}`, borderRadius: 9 }}>
+          <Field label="AI file">
+            <Input
+              placeholder="Search leads by name, business, or email…"
+              value={leadSearch}
+              onChange={(e) => setLeadSearch(e.target.value)}
+            />
+            {/* `.picklist` bounds the list so the drawer's Send button stays on
+                screen no matter how many leads match. */}
+            <div className="picklist">
               {filteredLeads.length === 0 ? (
-                <div style={{ padding: 12, color: t.ink3, fontSize: 12.5 }}>No matching files.</div>
-              ) : filteredLeads.map((l) => (
-                <button
-                  key={l.id}
-                  type="button"
-                  onClick={() => setSelectedLeadId(l.id)}
-                  style={{
-                    all: "unset", cursor: "pointer", display: "block", width: "100%", boxSizing: "border-box",
-                    padding: "9px 11px", borderBottom: `1px solid ${t.line}`,
-                    background: selectedLeadId === l.id ? t.brandSoft : "transparent",
-                  }}
-                >
-                  <div style={{ color: t.ink, fontSize: 13, fontWeight: 600 }}>{l.business_name || l.full_name}</div>
-                  <div style={{ color: t.ink3, fontSize: 11.5 }}>{l.full_name} · {l.email}</div>
-                </button>
-              ))}
+                <div className="sub">No matching files.</div>
+              ) : (
+                filteredLeads.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => setSelectedLeadId(l.id)}
+                    className={cx("pick", selectedLeadId === l.id && "on")}
+                  >
+                    <span className="grow grid g4">
+                      <strong className="trunc">{l.business_name || l.full_name}</strong>
+                      <span className="sub trunc">
+                        {l.full_name} · {l.email}
+                      </span>
+                    </span>
+                  </button>
+                ))
+              )}
             </div>
-          </div>
+          </Field>
         ) : (
-          <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <div style={{ display: "grid", gap: 6 }}>
-                <span style={label}>Client name</span>
-                <input style={field} value={nf.full_name} onChange={(e) => setNf({ ...nf, full_name: e.target.value })} />
-              </div>
-              <div style={{ display: "grid", gap: 6 }}>
-                <span style={label}>Client email</span>
-                <input style={field} value={nf.email} onChange={(e) => setNf({ ...nf, email: e.target.value })} />
-              </div>
+          <div className="grid g10">
+            <div className="fldgrid two">
+              <Field label="Client name">
+                <Input
+                  value={nf.full_name}
+                  onChange={(e) => setNf({ ...nf, full_name: e.target.value })}
+                />
+              </Field>
+              <Field label="Client email">
+                <Input
+                  value={nf.email}
+                  onChange={(e) => setNf({ ...nf, email: e.target.value })}
+                />
+              </Field>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 8 }}>
-              <div style={{ display: "grid", gap: 6 }}>
-                <span style={label}>Business name</span>
-                <input style={field} value={nf.business_name} onChange={(e) => setNf({ ...nf, business_name: e.target.value })} />
-              </div>
-              <div style={{ display: "grid", gap: 6 }}>
-                <span style={label}>Type</span>
-                <select style={field} value={nf.variant} onChange={(e) => setNf({ ...nf, variant: e.target.value })}>
+            <div className="fldgrid two">
+              <Field label="Business name">
+                <Input
+                  value={nf.business_name}
+                  onChange={(e) => setNf({ ...nf, business_name: e.target.value })}
+                />
+              </Field>
+              <Field label="Type">
+                <Select
+                  value={nf.variant}
+                  onChange={(e) => setNf({ ...nf, variant: e.target.value })}
+                >
                   <option value="dealer">Dealer</option>
                   <option value="real_estate">Real estate</option>
-                </select>
-              </div>
+                </Select>
+              </Field>
             </div>
           </div>
         )}
 
-        <div style={{ display: "grid", gap: 6 }}>
-          <span style={label}>Dealer partner</span>
-          <select style={field} value={partnerId} onChange={(e) => setPartnerId(e.target.value)}>
+        <Field label="Dealer partner">
+          <Select value={partnerId} onChange={(e) => setPartnerId(e.target.value)}>
             <option value="">— None (internal only) —</option>
             {partners.map((p) => (
-              <option key={p.id} value={p.id}>{p.name} · {p.email}</option>
+              <option key={p.id} value={p.id}>
+                {p.name} · {p.email}
+              </option>
             ))}
-          </select>
-        </div>
+          </Select>
+        </Field>
 
-        <div style={{ display: "grid", gap: 6 }}>
-          <span style={label}>Message</span>
-          <textarea
-            style={{ ...field, minHeight: 90, resize: "vertical", fontFamily: "inherit", lineHeight: 1.45 }}
+        <Field label="Message">
+          {/* Bespoke measure: the composer opens three lines tall. `textarea.field`
+              owns the vertical-only resize. */}
+          <Textarea
+            style={{ minHeight: 90 }}
             placeholder="Write your message to the dealer partner…"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
           />
-        </div>
+        </Field>
 
-        {error ? <div style={{ color: t.danger, fontSize: 12 }}>{error}</div> : null}
+        {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
       </div>
-    </Modal>
+    </Drawer>
   );
 }

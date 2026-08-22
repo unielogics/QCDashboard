@@ -27,6 +27,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
+import { Icon } from "@/components/design-system/Icon";
 
 export function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
@@ -138,7 +139,10 @@ export function Kpi({
   value,
   sub,
   delta,
+  trend,
   tone = "mut",
+  icon,
+  iconTone,
   prose,
   className,
 }: {
@@ -149,7 +153,27 @@ export function Kpi({
       .kpi markup, which is how a shared component quietly stops being used. */
   sub?: ReactNode;
   delta?: ReactNode;
+  /**
+   * Direction of travel, drawn as an arrow inside the delta chip.
+   *
+   * The primitive this replaced drew this arrow and the migration dropped it,
+   * leaving "+12%" and "-12%" distinguishable only by a minus sign and a
+   * colour — which is a colour-only signal for anyone who cannot separate the
+   * ok and bad tints. Pass "up" or "down" alongside `delta`.
+   */
+  trend?: "up" | "down";
   tone?: ChipTone;
+  /**
+   * Glyph in the tile's top-right corner, beside the label.
+   *
+   * Carried by the primitive this replaced. Thirteen tiles on the home
+   * dashboard alone lost it in the migration; it is what lets a wall of eight
+   * near-identical tiles be told apart at a glance rather than by reading
+   * every label.
+   */
+  icon?: string;
+  /** Tone for `icon`. Defaults to the label's muted grey. */
+  iconTone?: ChipTone;
   /**
    * The value is a sentence, not a figure.
    *
@@ -162,7 +186,14 @@ export function Kpi({
 }) {
   return (
     <div className={cx("kpi", className)}>
-      <div className="lbl">{label}</div>
+      <div className="kpi-h">
+        <span className="lbl">{label}</span>
+        {icon ? (
+          <span className={cx("kpi-i", iconTone && `c-${iconTone}`)}>
+            <Icon name={icon} size={14} />
+          </span>
+        ) : null}
+      </div>
       <div className={cx("knum", !prose && "num", prose && "prose")}>{value}</div>
       {sub != null && (
         <div className="sub" style={{ marginTop: 4 }}>
@@ -171,7 +202,10 @@ export function Kpi({
       )}
       {delta != null && (
         <div className="kdelta">
-          <span className={`cellchip c-${tone}`}>{delta}</span>
+          <span className={`cellchip c-${tone}`}>
+            {trend ? <Icon name={trend === "up" ? "trend" : "trendDn"} size={11} stroke={2.4} /> : null}
+            {delta}
+          </span>
         </div>
       )}
     </div>

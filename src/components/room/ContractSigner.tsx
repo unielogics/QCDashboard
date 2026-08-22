@@ -13,9 +13,17 @@
 // Typed or drawn, the evidence is identical. And this screen only exists
 // behind the client's own room link: the rep's app has no signing surface,
 // so a signature can never be taken on the rep's device.
+//
+// Styling: this is a BARE route — no app shell, no sidebar, a client who has
+// no account. globals.css + app-extras.css are loaded from the root layout,
+// so the panel/button/consent vocabulary is available here and the screen
+// reads as the same product as the console. What stays inline is the pen
+// itself: the rotated pad, the signature well and its state tints, and the
+// agreement's document scroller.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiBase } from "@/lib/api";
+import { Btn, Field, IconBtn, Input, Panel, Seg, StatusLine, cx } from "@/components/ds";
 
 export type RoomContract = {
   id: string;
@@ -26,38 +34,10 @@ export type RoomContract = {
   commission_note: string | null;
 };
 
-const ui = {
-  card: {
-    border: "1px solid #d8dee9", borderRadius: 14, padding: 16,
-    background: "#fff", marginBottom: 12,
-  } as React.CSSProperties,
-  lbl: {
-    fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase",
-    color: "#5a6675", fontWeight: 700,
-  } as React.CSSProperties,
-  sub: { color: "#5a6675", fontSize: 12.5, lineHeight: 1.55 } as React.CSSProperties,
-  btn: {
-    border: "1px solid #1b4b9e", background: "#1b4b9e", color: "#fff",
-    borderRadius: 11, padding: "12px 16px", fontWeight: 680, fontSize: 14,
-    cursor: "pointer", width: "100%",
-  } as React.CSSProperties,
-  ghost: {
-    background: "none", border: 0, color: "#1b4b9e", fontWeight: 650,
-    fontSize: 13, cursor: "pointer", width: "100%", padding: 8,
-    textDecoration: "underline",
-  } as React.CSSProperties,
-  seg: {
-    display: "inline-flex", background: "#eef1f6", borderRadius: 9,
-    padding: 2, gap: 2, marginLeft: "auto",
-  } as React.CSSProperties,
-  segBtn: (on: boolean): React.CSSProperties => ({
-    border: 0, background: on ? "#fff" : "transparent",
-    color: on ? "#1b4b9e" : "#5a6675", fontWeight: 650, fontSize: 12,
-    padding: "6px 12px", borderRadius: 7, cursor: "pointer",
-    boxShadow: on ? "0 1px 2px rgba(15,23,32,.08)" : "none",
-  }),
-  consent: { display: "flex", gap: 9, alignItems: "flex-start", marginTop: 10, cursor: "pointer" } as React.CSSProperties,
-};
+// The pen's ink. Deliberately a literal and not a token: the drawn stroke is
+// rasterised into the PNG that becomes evidence, and the typed "/s/" rendering
+// has to look like the same pen as the drawn one.
+const INK = "#14265c";
 
 function LandscapePad({
   onUse,
@@ -89,13 +69,20 @@ function LandscapePad({
     ctx.lineWidth = 5;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.strokeStyle = "#14265c";
+    ctx.strokeStyle = INK;
   }, []);
 
   return (
+    // Bespoke geometry throughout: a viewport-filling overlay whose contents
+    // are rotated 90° so the phone's long axis becomes the signature's width.
+    // Nothing in the sheet describes a rotated surface.
     <div
+      // `color` is here for the same reason `.panel` carries one: the pad is a
+      // white surface on a route whose page sets a near-white ink for its dark
+      // ground, and the instruction above the canvas inherits it.
       style={{
-        position: "fixed", inset: 0, background: "#fff", zIndex: 80,
+        position: "fixed", inset: 0, background: "var(--surface)",
+        color: "var(--ink)", zIndex: 80,
       }}
     >
       <div
@@ -107,18 +94,23 @@ function LandscapePad({
           display: "flex", flexDirection: "column", padding: "18px 22px 16px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+        <div className="row">
+          {/* Sized up from the 14px body: this is the only instruction on a
+              screen that is otherwise all pen. */}
           <b style={{ fontSize: 16 }}>Draw your signature</b>
-          <span style={ui.sub}>hold your phone as it is and draw sideways</span>
+          <span className="sub">hold your phone as it is and draw sideways</span>
         </div>
         <canvas
           ref={canvasRef}
           width={1400}
           height={480}
+          // The drawing surface itself: it has to grow into whatever the
+          // rotated box leaves, and touchAction:none is what stops the browser
+          // scrolling the page instead of inking.
           style={{
             flex: 1, marginTop: 10, width: "100%",
-            border: "1.5px dashed #c7ceda", borderRadius: 14,
-            background: "#f8fafc", touchAction: "none",
+            border: "1.5px dashed var(--line2)", borderRadius: 14,
+            background: "var(--sunken2)", touchAction: "none",
           }}
           onPointerDown={(e) => {
             drawing.current = true;
@@ -140,10 +132,8 @@ function LandscapePad({
             drawing.current = false;
           }}
         />
-        <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-          <button
-            type="button"
-            style={{ ...ui.btn, width: "auto", background: "#fff", color: "#353e4a", borderColor: "#c7ceda" }}
+        <div className="row mt">
+          <Btn
             onClick={() => {
               const c = canvasRef.current!;
               c.getContext("2d")!.clearRect(0, 0, c.width, c.height);
@@ -151,23 +141,14 @@ function LandscapePad({
             }}
           >
             Clear
-          </button>
-          <span style={{ flex: 1 }} />
-          <button
-            type="button"
-            style={{ ...ui.btn, width: "auto", background: "#fff", color: "#353e4a", borderColor: "#c7ceda" }}
-            onClick={onCancel}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={!hasInk}
-            style={{ ...ui.btn, width: "auto", opacity: hasInk ? 1 : 0.45 }}
-            onClick={() => onUse(canvasRef.current!.toDataURL("image/png"))}
-          >
+          </Btn>
+          <span className="grow" />
+          <Btn onClick={onCancel}>Cancel</Btn>
+          {/* `.btn:disabled` carries the dimmed, not-yet-available state the
+              old inline opacity did. */}
+          <Btn variant="pri" disabled={!hasInk} onClick={() => onUse(canvasRef.current!.toDataURL("image/png"))}>
             Use this signature
-          </button>
+          </Btn>
         </div>
       </div>
     </div>
@@ -232,113 +213,117 @@ export function ContractSigner({
 
   if (signedMsg) {
     return (
-      <section style={ui.card}>
+      <Panel className="mb">
+        {/* Bespoke: the one celebratory mark in the product. A round success
+            badge at this size exists nowhere else in the sheet. */}
         <div style={{ textAlign: "center", padding: "26px 8px" }}>
           <div
             style={{
-              width: 52, height: 52, borderRadius: "50%", background: "#e6f4ec",
-              color: "#0f7b4f", display: "grid", placeItems: "center",
+              width: 52, height: 52, borderRadius: "50%", background: "var(--ok-tint)",
+              color: "var(--ok)", display: "grid", placeItems: "center",
               fontSize: 25, margin: "0 auto 10px", fontWeight: 800,
             }}
           >
             ✓
           </div>
           <b style={{ fontSize: 16 }}>Signed</b>
-          <p style={{ ...ui.sub, marginTop: 6 }}>{signedMsg}</p>
+          <p className="sub mt">{signedMsg}</p>
         </div>
-      </section>
+      </Panel>
     );
   }
 
   return (
-    <section style={{ ...ui.card, padding: 0, overflow: "hidden" }}>
-      <div
-        style={{
-          display: "flex", alignItems: "center", gap: 10,
-          padding: "12px 14px", borderBottom: "1px solid #eef1f6",
-        }}
-      >
-        <b style={{ fontSize: 14 }}>{contract.title}</b>
-        <div style={ui.seg}>
-          <button type="button" style={ui.segBtn(mode === "sign")} onClick={() => setMode("sign")}>
-            Sign
-          </button>
-          <button
-            type="button"
-            style={ui.segBtn(mode === "agreement")}
-            onClick={() => setMode("agreement")}
-          >
-            Agreement
-          </button>
-        </div>
-        <button type="button" onClick={onClose} aria-label="Close" style={{ ...ui.ghost, width: "auto", padding: "2px 4px", textDecoration: "none", fontSize: 16 }}>
-          ✕
-        </button>
-      </div>
-
+    <Panel
+      className="mb"
+      title={contract.title}
+      actions={
+        <>
+          <Seg
+            as="tabs"
+            ariaLabel="Signing view"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: "sign", label: "Sign" },
+              { value: "agreement", label: "Agreement" },
+            ]}
+          />
+          <IconBtn onClick={onClose} aria-label="Close">
+            ✕
+          </IconBtn>
+        </>
+      }
+    >
       {mode === "agreement" ? (
-        <div style={{ padding: 14 }}>
+        <>
+          {/* Bespoke: the agreement is the legal artifact, not a message and not
+              a card. A fixed-height well with its own smaller type so a long
+              document reads as a document and scrolls inside the panel. */}
           <div
             style={{
               maxHeight: "52vh", overflowY: "auto", fontSize: 12,
-              lineHeight: 1.65, color: "#353e4a", whiteSpace: "pre-wrap",
-              border: "1px solid #eef1f6", borderRadius: 10, padding: 12,
-              background: "#f8fafc",
+              lineHeight: 1.65, color: "var(--ink2)", whiteSpace: "pre-wrap",
+              border: "1px solid var(--line)", borderRadius: 10, padding: 12,
+              background: "var(--sunken2)",
             }}
           >
             {contract.agreement_text || "The agreement could not be loaded. Ask your representative to resend it."}
           </div>
-          <button type="button" style={{ ...ui.btn, marginTop: 12 }} onClick={() => setMode("sign")}>
+          <Btn variant="pri" className="ctrl-block mt" onClick={() => setMode("sign")}>
             Ready — go to signing
-          </button>
-        </div>
+          </Btn>
+        </>
       ) : (
-        <div style={{ padding: 14 }}>
+        <>
           {contract.commission_note && (
-            <p style={{ ...ui.sub, margin: "0 0 10px" }}>
+            <p className="sub mb">
               Key term: commission of {contract.commission_note}. Read the full agreement any
               time with the toggle above — what you sign is the entire document.
             </p>
           )}
 
-          <span style={ui.lbl}>Sign as</span>
-          <input
-            style={{
-              width: "100%", border: "1px solid #c7ceda", borderRadius: 9,
-              padding: "11px 12px", fontSize: 15, marginTop: 6, fontFamily: "inherit",
-            }}
-            placeholder="Type your full legal name"
-            autoComplete="name"
-            value={typedName}
-            onChange={(e) => {
-              setTypedName(e.target.value);
-              setDrawn(null);
-            }}
-          />
+          <Field label="Sign as">
+            <Input
+              placeholder="Type your full legal name"
+              autoComplete="name"
+              value={typedName}
+              onChange={(e) => {
+                setTypedName(e.target.value);
+                setDrawn(null);
+              }}
+            />
+          </Field>
 
+          {/* Bespoke, and data-derived: the signature well is empty (dashed,
+              waiting) or filled (solid, accent-tinted) depending on what the
+              signer has actually produced. */}
           <div
+            className="mt"
             style={{
-              marginTop: 10, minHeight: 70, borderRadius: 11, padding: 8,
+              minHeight: 70, borderRadius: 11, padding: 8,
               display: "grid", placeItems: "center", position: "relative",
-              border: drawn || typedName.trim() ? "1.5px solid #d6e3f6" : "1.5px dashed #c7ceda",
-              background: drawn || typedName.trim() ? "#eef3fb" : "#f8fafc",
+              border: drawn || typedName.trim() ? "1.5px solid var(--accent-200)" : "1.5px dashed var(--line2)",
+              background: drawn || typedName.trim() ? "var(--accent-100)" : "var(--sunken2)",
             }}
           >
             {drawn ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={drawn} alt="Your signature" style={{ maxHeight: 60, maxWidth: "100%" }} />
             ) : typedName.trim() ? (
-              <span style={{ fontSize: 20, fontWeight: 650, color: "#14265c", fontStyle: "italic" }}>
+              // The typed signature has to look like ink, not like a form field.
+              <span style={{ fontSize: 20, fontWeight: 650, color: INK, fontStyle: "italic" }}>
                 /s/ {typedName.trim()}
               </span>
             ) : (
-              <span style={ui.sub}>Your signature appears here</span>
+              <span className="sub">Your signature appears here</span>
             )}
             {adopt && (drawn || typedName.trim()) && (
               <span
+                // Adopted: a green tick pinned into the corner of the well.
                 style={{
                   position: "absolute", right: 8, bottom: 8, width: 20, height: 20,
-                  borderRadius: "50%", background: "#0f7b4f", color: "#fff",
+                  borderRadius: "50%", background: "var(--ok)", color: "#fff",
                   display: "grid", placeItems: "center", fontSize: 12, fontWeight: 800,
                 }}
               >
@@ -347,51 +332,60 @@ export function ContractSigner({
             )}
           </div>
 
-          <label style={ui.consent}>
-            <input
-              type="checkbox"
-              checked={adopt}
-              onChange={(e) => setAdopt(e.target.checked)}
-              style={{ width: 17, height: 17, accentColor: "#1b4b9e", marginTop: 1, flexShrink: 0 }}
-            />
-            <span style={{ fontSize: 12.5, color: "#353e4a", lineHeight: 1.5 }}>
-              I adopt this as my legal signature, and I agree it is the equivalent of my
-              handwritten signature on this agreement.
-            </span>
-          </label>
-          <label style={ui.consent}>
-            <input
-              type="checkbox"
-              checked={esign}
-              onChange={(e) => setEsign(e.target.checked)}
-              style={{ width: 17, height: 17, accentColor: "#1b4b9e", marginTop: 1, flexShrink: 0 }}
-            />
-            <span style={{ fontSize: 12.5, color: "#353e4a", lineHeight: 1.5 }}>
-              I consent to signing electronically and receiving records electronically
-              (E-SIGN / UETA). I can request a paper copy at any time.
-            </span>
-          </label>
+          {/* `.consent` is the sheet's consent-capture surface: body-size text
+              (never shrunk to fit), a 20px checkbox, and `.on` when accepted. */}
+          <div className={cx("consent", "mt", adopt && "on")}>
+            <label>
+              <input
+                type="checkbox"
+                checked={adopt}
+                onChange={(e) => setAdopt(e.target.checked)}
+              />
+              <span className="ctext">
+                I adopt this as my legal signature, and I agree it is the equivalent of my
+                handwritten signature on this agreement.
+              </span>
+            </label>
+          </div>
+          <div className={cx("consent", esign && "on")}>
+            <label>
+              <input
+                type="checkbox"
+                checked={esign}
+                onChange={(e) => setEsign(e.target.checked)}
+              />
+              <span className="ctext">
+                I consent to signing electronically and receiving records electronically
+                (E-SIGN / UETA). I can request a paper copy at any time.
+              </span>
+            </label>
+          </div>
 
-          <button
-            type="button"
-            style={{ ...ui.btn, marginTop: 14, opacity: armed ? 1 : 0.45 }}
+          <Btn
+            variant="pri"
+            className="ctrl-block mt"
             disabled={!armed}
             onClick={sign}
           >
             {busy ? "Signing…" : "Sign the agreement"}
-          </button>
-          <button type="button" style={ui.ghost} onClick={() => setPadOpen(true)}>
+          </Btn>
+          {/* A text action, full width, with a finger-sized target under the
+              primary button. `.linky` owns everything but the padding. */}
+          <button
+            type="button"
+            className="linky ctrl-block"
+            style={{ padding: 8 }}
+            onClick={() => setPadOpen(true)}
+          >
             Draw my signature instead
           </button>
-          <p style={{ ...ui.sub, textAlign: "center", margin: "2px 0 0", fontSize: 11.5 }}>
+          <p className="sub" style={{ textAlign: "center" }}>
             Signed on your own device, never on your representative&rsquo;s. A copy is emailed
             to you the moment it executes.
           </p>
 
-          {error && (
-            <p style={{ ...ui.sub, color: "#b42318", marginTop: 10 }}>{error}</p>
-          )}
-        </div>
+          {error && <StatusLine tone="bad" className="mt">{error}</StatusLine>}
+        </>
       )}
 
       {padOpen && (
@@ -403,6 +397,6 @@ export function ContractSigner({
           }}
         />
       )}
-    </section>
+    </Panel>
   );
 }

@@ -1,14 +1,16 @@
 "use client";
 
 import { useRef, useState, type DragEvent, type ReactNode } from "react";
+import { cx } from "@/components/ds";
 import { Icon } from "./Icon";
-import { useTheme } from "./ThemeProvider";
 
 /**
  * Reusable drag-and-drop + click-to-browse file input. Owns only the drag-hover
  * state and the hidden <input>; the caller owns the file queue via onFiles.
  * Extracted from the admin buckets upload zone so buckets, the admin chat panel,
- * and the intake conversation all share one dropzone. Themed via useTheme().
+ * and the intake conversation all share one dropzone. Renders `.dropzone`
+ * from globals.css in its in-form density (`.inline`), so the hover, drag and
+ * disabled states are all CSS.
  */
 export function FileDropzone({
   onFiles,
@@ -30,7 +32,6 @@ export function FileDropzone({
   /** Shrinks padding/icon/gap ~30% for tight layouts (e.g. beside a chat composer). */
   compact?: boolean;
 }) {
-  const { t } = useTheme();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -66,28 +67,13 @@ export function FileDropzone({
       onClick={() => {
         if (!disabled) inputRef.current?.click();
       }}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: compact ? 4 : 6,
-        padding: compact ? "12px 16px" : "18px 16px",
-        borderRadius: 12,
-        border: `1.5px dashed ${dragging ? t.brand : t.line}`,
-        background: dragging ? t.brandSoft : t.surface2,
-        color: t.ink3,
-        textAlign: "center",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.6 : 1,
-        transition: "border-color 120ms ease, background 120ms ease",
-      }}
+      className={cx("dropzone", "inline", compact && "compact", dragging && "drag", disabled && "off")}
     >
       {children ?? (
         <>
           <Icon name="upload" size={compact ? 14 : 18} />
-          <span style={{ fontSize: 13, fontWeight: 700, color: t.ink2 }}>{title}</span>
-          {hint ? <span style={{ fontSize: 12 }}>{hint}</span> : null}
+          <b>{title}</b>
+          {hint ? <span className="sub">{hint}</span> : null}
         </>
       )}
       <input
@@ -96,7 +82,7 @@ export function FileDropzone({
         multiple={multiple}
         accept={accept}
         onChange={(e) => emit(e.target.files)}
-        style={{ display: "none" }}
+        hidden
       />
     </div>
   );

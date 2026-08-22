@@ -7,8 +7,7 @@
 // backend-computed signal, never surfaced to the borrower, and the numbers
 // come from arithmetic over stated + document-extracted facts, not the model.
 
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { CellChip, ItemRow, Lbl, Panel, Row, Sub } from "@/components/ds";
 import { useLeadDscrPotential } from "@/hooks/useApi";
 
 function money(value: unknown): string {
@@ -20,41 +19,37 @@ function pct(value: unknown, digits = 1): string {
 }
 
 export function LeadDscrPanel({ intakeId }: { intakeId: string }) {
-  const { t } = useTheme();
   const query = useLeadDscrPotential(intakeId);
 
   if (query.isLoading) {
     return (
-      <Card pad={20}>
-        <SectionLabel>DSCR potential</SectionLabel>
-        <span style={{ color: t.ink3, fontSize: 13 }}>Computing DSCR potential…</span>
-      </Card>
+      <Panel title="DSCR potential">
+        <Sub>Computing DSCR potential…</Sub>
+      </Panel>
     );
   }
 
   const potential = query.data?.potential;
   if (!potential) {
     return (
-      <Card pad={20}>
-        <SectionLabel>DSCR potential</SectionLabel>
-        <span style={{ color: t.ink3, fontSize: 13 }}>Not applicable — this screen is real-estate-lead only.</span>
-      </Card>
+      <Panel title="DSCR potential">
+        <Sub>Not applicable — this screen is real-estate-lead only.</Sub>
+      </Panel>
     );
   }
 
   if (!potential.computed) {
     return (
-      <Card pad={20}>
-        <SectionLabel>DSCR potential</SectionLabel>
-        <p style={{ margin: "0 0 8px", color: t.ink2, fontSize: 13, lineHeight: 1.5 }}>
+      <Panel title="DSCR potential">
+        <p className="sub mb">
           Not enough facts yet to run the deterministic DSCR screen. Still needed:
         </p>
-        <ul style={{ margin: 0, paddingLeft: 18, color: t.ink3, fontSize: 13, lineHeight: 1.6 }}>
+        <ul className="sub" style={{ paddingLeft: 18 }}>
           {(potential.missing ?? []).map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>
-      </Card>
+      </Panel>
     );
   }
 
@@ -63,91 +58,72 @@ export function LeadDscrPanel({ intakeId }: { intakeId: string }) {
   const maxLoans = potential.max_loan_at_target_dscr ?? {};
   const requiredRents = potential.required_monthly_rent_at_requested ?? {};
   const dscr = potential.dscr_at_requested;
-  const dscrTone = typeof dscr === "number" ? (dscr >= 1.25 ? "good" : dscr >= 1.0 ? "mid" : "bad") : "mid";
+  // Data-derived tone: the chip colour is chosen from the computed DSCR, not
+  // from a fixed variant. Stays a value, but it is a class name, not a style.
+  const dscrTone = typeof dscr === "number" ? (dscr >= 1.25 ? "ok" : dscr >= 1.0 ? "mut" : "bad") : "mut";
 
   return (
-    <Card pad={20}>
-      <SectionLabel>DSCR potential</SectionLabel>
-      <p style={{ margin: "0 0 12px", color: t.ink2, fontSize: 13, lineHeight: 1.5 }}>
+    <Panel title="DSCR potential">
+      <p className="sub mb">
         Deterministic screen from stated facts and uploaded evidence — assumptions shown below, not a quote.
         Never surfaced to the borrower.
       </p>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-        <Pill
-          bg={dscrTone === "good" ? t.profitBg : dscrTone === "bad" ? t.dangerBg : t.surface2}
-          color={dscrTone === "good" ? t.profit : dscrTone === "bad" ? t.danger : t.ink2}
-        >
+      <Row className="mb">
+        <CellChip tone={dscrTone}>
           DSCR at requested: {typeof dscr === "number" ? dscr.toFixed(2) : "—"}
-        </Pill>
-        <Pill bg={t.surface2} color={t.ink2}>LTV: {pct(potential.ltv)}</Pill>
-        <Pill bg={t.surface2} color={t.ink2}>Rent: {money(inputs.monthly_rent)}/mo ({String(inputs.monthly_rent_source ?? "")})</Pill>
-        <Pill bg={t.surface2} color={t.ink2}>Value: {money(inputs.property_value)}</Pill>
-        <Pill bg={t.surface2} color={t.ink2}>Requested: {money(inputs.requested_loan_amount)}</Pill>
-      </div>
+        </CellChip>
+        <CellChip>LTV: {pct(potential.ltv)}</CellChip>
+        <CellChip>Rent: {money(inputs.monthly_rent)}/mo ({String(inputs.monthly_rent_source ?? "")})</CellChip>
+        <CellChip>Value: {money(inputs.property_value)}</CellChip>
+        <CellChip>Requested: {money(inputs.requested_loan_amount)}</CellChip>
+      </Row>
 
-      <div style={{ display: "grid", gap: 14 }}>
-        <div>
-          <div style={{ color: t.ink, fontWeight: 700, fontSize: 13, marginBottom: 6 }}>DSCR at the requested amount, by rate band</div>
-          <div style={{ display: "grid", gap: 6 }}>
+      <div>
+        <div className="fldsec">
+          <Lbl>DSCR at the requested amount, by rate band</Lbl>
+          <div className="grid g6">
             {scenarios.map((row) => (
-              <div
+              <ItemRow
                 key={row.annual_rate}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  border: `1px solid ${t.line}`,
-                  borderRadius: 10,
-                  padding: "8px 12px",
-                  background: t.surface2,
-                  fontSize: 13,
-                }}
+                right={
+                  <CellChip tone={typeof row.dscr === "number" && row.dscr >= 1 ? "ok" : "bad"}>
+                    DSCR {typeof row.dscr === "number" ? row.dscr.toFixed(2) : "—"}
+                  </CellChip>
+                }
               >
-                <span style={{ color: t.ink2 }}>{pct(row.annual_rate, 2)} · P&I {money(row.monthly_principal_interest)} · PITIA {money(row.monthly_pitia)}</span>
-                <strong style={{ color: typeof row.dscr === "number" && row.dscr >= 1 ? t.profit : t.danger }}>
-                  DSCR {typeof row.dscr === "number" ? row.dscr.toFixed(2) : "—"}
-                </strong>
-              </div>
+                {pct(row.annual_rate, 2)} · P&I {money(row.monthly_principal_interest)} · PITIA{" "}
+                {money(row.monthly_pitia)}
+              </ItemRow>
             ))}
           </div>
         </div>
 
-        <div>
-          <div style={{ color: t.ink, fontWeight: 700, fontSize: 13, marginBottom: 6 }}>Max supportable loan by DSCR target</div>
-          <div style={{ display: "grid", gap: 6 }}>
+        <div className="fldsec">
+          <Lbl>Max supportable loan by DSCR target</Lbl>
+          <div className="grid g6">
             {Object.entries(maxLoans).map(([target, row]) => (
-              <div
+              <ItemRow
                 key={target}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  border: `1px solid ${t.line}`,
-                  borderRadius: 10,
-                  padding: "8px 12px",
-                  background: t.surface2,
-                  fontSize: 13,
-                }}
+                right={
+                  <strong>
+                    {money(row.max_loan)} ({pct(row.implied_ltv)} LTV)
+                  </strong>
+                }
               >
-                <span style={{ color: t.ink2 }}>
-                  DSCR ≥ {target} — needs rent {money(requiredRents[target])}/mo at the requested amount
-                </span>
-                <strong style={{ color: t.ink }}>
-                  {money(row.max_loan)} ({pct(row.implied_ltv)} LTV)
-                </strong>
-              </div>
+                DSCR ≥ {target} — needs rent {money(requiredRents[target])}/mo at the requested amount
+              </ItemRow>
             ))}
           </div>
         </div>
 
-        <div style={{ color: t.ink3, fontSize: 12, lineHeight: 1.5 }}>
+        <div className="sub mt">
           Assumptions: {potential.assumptions?.amortization_months ?? 360}-month amortization at{" "}
           {(potential.assumptions?.rate_bands ?? []).map((r) => pct(r, 2)).join(" / ")} · taxes+insurance{" "}
           {money(inputs.monthly_tax_insurance_hoa)}/mo ({String(inputs.tax_insurance_source ?? "")}).{" "}
           {potential.assumptions?.note ?? ""}
         </div>
       </div>
-    </Card>
+    </Panel>
   );
 }

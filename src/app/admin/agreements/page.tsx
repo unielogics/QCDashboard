@@ -8,12 +8,33 @@
 // app/routers/agreements.py for the merge logic; this page is a thin list
 // view matching the AI Underwriter Leads page's list pattern (manual
 // fetch + local state, offset/limit pagination, search+type filter).
+//
+// Styling migrated off the inline token objects onto the plain-CSS design
+// system (globals.css + app-extras.css) via the wrappers in @/components/ds.
+// The fetch, the pagination arithmetic, the role gate and every action are
+// unchanged; only the surface vocabulary moved:
+//   local gridHeader()/rowStyle() → `.gridhd` / `.gridrow`, with the bespoke
+//                                   five-column track kept inline (rule 3)
+//   local inputStyle()            → Input / Select (`.field`)
+//   qcBtn / qcBtnPrimary          → Btn / BtnLink
+//   notice string                 → WarnLine, which wraps (the old inline span
+//                                   was a single amber line)
+//   "No certificate" Pill         → CellChip
 
-import { FormEvent, useEffect, useState, type CSSProperties } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import {
+  Btn,
+  BtnLink,
+  CellChip,
+  Input,
+  PageHeader,
+  Panel,
+  Row,
+  Select,
+  Sub,
+  WarnLine,
+} from "@/components/ds";
 import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
 import { useCurrentUser } from "@/hooks/useApi";
@@ -47,6 +68,11 @@ type AgreementPage = {
 
 const LIMIT = 50;
 
+// The list's own track. Bespoke — five columns sized to their contents, not
+// spans of the twelve-column page grid — so it stays inline (rule 3) while
+// `.gridhd` / `.gridrow` own everything that is not the track.
+const COLS = "minmax(220px,1.3fr) minmax(200px,1fr) 140px 170px 130px";
+
 const TYPE_FILTERS = [
   { value: "all", label: "All types" },
   { value: "platform_access", label: "Platform Access Agreement" },
@@ -59,7 +85,6 @@ const TYPE_FILTERS = [
 ] as const;
 
 export default function AdminAgreementsPage() {
-  const { t } = useTheme();
   const { getToken } = useAuth();
   const { data: me } = useCurrentUser();
 
@@ -114,90 +139,91 @@ export default function AdminAgreementsPage() {
   if (me && me.role !== Role.SUPER_ADMIN) return null;
 
   return (
-    <div style={{ maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
-      <div>
-        <h1 style={{ margin: 0, color: t.ink, fontSize: 24, letterSpacing: -0.5 }}>Agreements</h1>
-        <p style={{ margin: "4px 0 0", color: t.ink3, lineHeight: 1.35, fontSize: 13 }}>
-          Every e-signed agreement on the platform in one place -- Platform Access, Referral Protection,
-          client-facing engagement contracts, credit authorizations, and payment pre-authorizations.
-        </p>
-      </div>
+    <div className="grid">
+      <PageHeader
+        title="Agreements"
+        lede="Every e-signed agreement on the platform in one place -- Platform Access, Referral Protection, client-facing engagement contracts, credit authorizations, and payment pre-authorizations."
+      />
 
-      <Card pad={12}>
-        <form onSubmit={submitSearch} style={{ display: "grid", gridTemplateColumns: "minmax(240px,1fr) 260px auto", gap: 10, alignItems: "center" }}>
-          <input
+      <Panel>
+        <form
+          onSubmit={submitSearch}
+          // Bespoke: a growing search box, a fixed-width type filter and a
+          // shrink-to-fit submit. Not a twelve-column page row.
+          style={{ display: "grid", gridTemplateColumns: "minmax(240px,1fr) 260px auto", gap: 10, alignItems: "center" }}
+        >
+          <Input
+            aria-label="Search agreements"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search name, email, company, contract #"
-            style={inputStyle(t)}
           />
-          <select value={typeFilter} onChange={(event) => { setOffset(0); setTypeFilter(event.target.value); }} style={inputStyle(t)}>
+          <Select
+            aria-label="Filter by agreement type"
+            value={typeFilter}
+            onChange={(event) => { setOffset(0); setTypeFilter(event.target.value); }}
+          >
             {TYPE_FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
-          <button type="submit" style={qcBtnPrimary(t)}>Search</button>
+          </Select>
+          <Btn variant="pri" type="submit">Search</Btn>
         </form>
-      </Card>
+      </Panel>
 
-      {notice ? <div style={{ color: t.warn, fontSize: 13, fontWeight: 700 }}>{notice}</div> : null}
+      {notice ? <WarnLine>{notice}</WarnLine> : null}
 
-      <Card pad={0} style={{ overflow: "hidden" }}>
-        <div style={gridHeader(t)}>
+      <Panel noPad>
+        <div className="gridhd" style={{ gridTemplateColumns: COLS }}>
           <span>Agreement</span>
           <span>Party</span>
           <span>Contract #</span>
           <span>Signed</span>
           <span></span>
         </div>
-        <div>
-          {loading ? (
-            <div style={{ padding: 24, color: t.ink3 }}>Loading agreements...</div>
-          ) : rows.map((row) => (
-            <div key={`${row.source}-${row.id}`} style={rowStyle(t)}>
-              <div style={{ minWidth: 0 }}>
-                <strong style={{ color: t.ink, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {row.title}
-                </strong>
-                <span style={{ color: t.ink3, fontSize: 12 }}>{sourceLabel(row.source)} · v{row.document_version}</span>
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <span style={{ color: t.ink, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {row.party_name || row.typed_name || "—"}
-                </span>
-                <span style={{ color: t.ink3, fontSize: 12, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {[row.party_email, row.party_company].filter(Boolean).join(" · ") || partyKindLabel(row.party_kind)}
-                </span>
-              </div>
-              <div style={{ color: t.ink2, fontSize: 13 }}>{row.contract_number || "—"}</div>
-              <div style={{ color: t.ink3, fontSize: 12 }}>{formatDateTime(row.signed_at)}</div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
-                {row.agreement_type === "referral_protection" && row.company_id ? (
-                  <button
-                    type="button"
-                    onClick={() => setDealRegTarget({ id: row.company_id!, name: row.party_company || row.party_name || "Referral partner" })}
-                    style={{ ...qcBtn(t), padding: "6px 10px", fontSize: 12 }}
-                  >
-                    Issue Deal Registration
-                  </button>
-                ) : null}
-                {row.certificate_download_url ? (
-                  <a href={row.certificate_download_url} target="_blank" rel="noreferrer" style={{ ...qcBtn(t), padding: "6px 10px", fontSize: 12, textDecoration: "none" }}>
-                    Certificate
-                  </a>
-                ) : (
-                  <Pill>No certificate</Pill>
-                )}
+        {loading ? (
+          <div className="panel-b"><Sub>Loading agreements...</Sub></div>
+        ) : rows.map((row) => (
+          <div key={`${row.source}-${row.id}`} className="gridrow" style={{ gridTemplateColumns: COLS }}>
+            <div>
+              <div className="trunc"><strong>{row.title}</strong></div>
+              <Sub>{sourceLabel(row.source)} · v{row.document_version}</Sub>
+            </div>
+            <div>
+              <div className="trunc">{row.party_name || row.typed_name || "—"}</div>
+              <div className="trunc sub">
+                {[row.party_email, row.party_company].filter(Boolean).join(" · ") || partyKindLabel(row.party_kind)}
               </div>
             </div>
-          ))}
-        </div>
-        <div style={{ padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `1px solid ${t.line}` }}>
-          <span style={{ color: t.ink3, fontSize: 12 }}>{total ? `${offset + 1}-${Math.min(offset + LIMIT, total)} of ${total}` : "0 agreements"}</span>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button style={qcBtn(t)} disabled={offset === 0 || loading} onClick={() => loadAgreements(Math.max(0, offset - LIMIT))}>Previous</button>
-            <button style={qcBtn(t)} disabled={offset + LIMIT >= total || loading} onClick={() => loadAgreements(offset + LIMIT)}>Next</button>
+            <div>{row.contract_number || "—"}</div>
+            <Sub>{formatDateTime(row.signed_at)}</Sub>
+            <Row className="end">
+              {row.agreement_type === "referral_protection" && row.company_id ? (
+                <Btn
+                  size="sm"
+                  onClick={() => setDealRegTarget({ id: row.company_id!, name: row.party_company || row.party_name || "Referral partner" })}
+                >
+                  Issue Deal Registration
+                </Btn>
+              ) : null}
+              {row.certificate_download_url ? (
+                <BtnLink size="sm" href={row.certificate_download_url} target="_blank" rel="noreferrer">
+                  Certificate
+                </BtnLink>
+              ) : (
+                <CellChip>No certificate</CellChip>
+              )}
+            </Row>
           </div>
+        ))}
+        {/* Pagination bar. `.panel > .panel-h:last-child` already drops the
+            hairline under it, and the last `.gridrow` above supplies the one
+            over it, so this needs no border of its own. */}
+        <div className="panel-h">
+          <Sub>{total ? `${offset + 1}-${Math.min(offset + LIMIT, total)} of ${total}` : "0 agreements"}</Sub>
+          <span className="sp" />
+          <Btn disabled={offset === 0 || loading} onClick={() => loadAgreements(Math.max(0, offset - LIMIT))}>Previous</Btn>
+          <Btn disabled={offset + LIMIT >= total || loading} onClick={() => loadAgreements(offset + LIMIT)}>Next</Btn>
         </div>
-      </Card>
+      </Panel>
 
       {dealRegTarget ? (
         <IssueDealRegistrationModal
@@ -230,42 +256,4 @@ function formatDateTime(value: string | null): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
-}
-
-function gridHeader(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    display: "grid",
-    gridTemplateColumns: "minmax(220px,1.3fr) minmax(200px,1fr) 140px 170px 130px",
-    gap: 12,
-    padding: "12px 16px",
-    borderBottom: `1px solid ${t.line}`,
-    color: t.ink3,
-    fontSize: 11,
-    fontWeight: 900,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  };
-}
-
-function rowStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    display: "grid",
-    gridTemplateColumns: "minmax(220px,1.3fr) minmax(200px,1fr) 140px 170px 130px",
-    gap: 12,
-    alignItems: "center",
-    padding: "13px 16px",
-    borderBottom: `1px solid ${t.line}`,
-  };
-}
-
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): CSSProperties {
-  return {
-    minHeight: 42,
-    border: `1px solid ${t.line}`,
-    borderRadius: 12,
-    background: t.surface,
-    color: t.ink,
-    padding: "0 12px",
-    outline: "none",
-  };
 }

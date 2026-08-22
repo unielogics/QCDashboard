@@ -7,12 +7,20 @@
 // soft-disables (calls DELETE which sets is_active=false on the
 // server). The "Hard delete" affordance is hidden behind a confirm
 // and only succeeds if no loan still references the lender.
+//
+// Restyled onto the plain-CSS design system. The hand-rolled overlay is now
+// `<Drawer>`, which is a strict superset of what this modal did by hand:
+// backdrop click and the close button are carried over, and Escape-to-close,
+// body scroll locking and focus restore come along for free. Fields are
+// `Field` + `Input`/`Textarea`; the local `Field` helper survives as
+// `TextField`, reimplemented on top of the design-system pair rather than
+// deleted, because its label/hint/required signature is what every call site
+// here uses.
 
 import { useEffect, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Pill } from "@/components/design-system/primitives";
-import { Icon } from "@/components/design-system/Icon";
 import { LoanTypeChips } from "@/components/LoanTypeChips";
+import { Btn, Callout, Field, Input, Sub, Textarea } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import {
   useCreateLender,
   useDeleteLender,
@@ -28,7 +36,6 @@ interface Props {
 }
 
 export function LenderEditModal({ open, onClose, lender }: Props) {
-  const { t } = useTheme();
   const create = useCreateLender();
   const update = useUpdateLender();
   const del = useDeleteLender();
@@ -124,254 +131,105 @@ export function LenderEditModal({ open, onClose, lender }: Props) {
   const isSaving = create.isPending || update.isPending;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={lender ? "Edit lender" : "New lender"}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(6, 7, 11, 0.55)",
-        backdropFilter: "blur(2px)",
-        zIndex: 200,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <div
-        style={{
-          width: "min(720px, 95vw)",
-          maxHeight: "92vh",
-          overflowY: "auto",
-          background: t.bg,
-          borderRadius: 16,
-          boxShadow: t.shadowLg,
-          border: `1px solid ${t.line}`,
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "16px 22px",
-            borderBottom: `1px solid ${t.line}`,
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: 1.6,
-                textTransform: "uppercase",
-                color: t.petrol,
-              }}
-            >
-              Lender
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: t.ink, marginTop: 2 }}>
-              {lender ? lender.name : "New lender"}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              width: 32,
-              height: 32,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 8,
-              color: t.ink2,
-            }}
-          >
-            <Icon name="x" size={16} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div style={{ padding: "18px 22px", display: "flex", flexDirection: "column", gap: 16 }}>
-          <Field
-            t={t}
-            label="Lender name"
-            value={name}
-            onChange={setName}
-            placeholder="Acme Capital Partners"
-            required
-          />
-
-          <div>
-            <label
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: 1.2,
-                textTransform: "uppercase",
-                color: t.ink3,
-                display: "block",
-                marginBottom: 8,
-              }}
-            >
-              Products serviced
-            </label>
-            <div style={{ fontSize: 11.5, color: t.ink3, marginBottom: 8, lineHeight: 1.5 }}>
-              Tap to select / tap again to remove. Lenders only appear in the Connect-Lender
-              dropdown when their products match the loan's type.
-            </div>
-            <LoanTypeChips selected={products} onChange={setProducts} />
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            <Field t={t} label="Submission email" value={submissionEmail} onChange={setSubmissionEmail} placeholder="deals@acme.com" />
-            <Field t={t} label="Email domain" value={emailDomain} onChange={setEmailDomain} placeholder="acme.com" hint="Phase-2: inbound match fallback" />
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 14,
-              padding: 14,
-              background: t.surface2,
-              borderRadius: 12,
-              border: `1px solid ${t.line}`,
-            }}
-          >
-            <div style={{ gridColumn: "1 / -1", fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
-              Primary point of contact
-            </div>
-            <Field t={t} label="Name" value={contactName} onChange={setContactName} placeholder="Sarah Chen" />
-            <Field t={t} label="Title" value={contactTitle} onChange={setContactTitle} placeholder="Senior Underwriter" />
-            <Field t={t} label="Email" value={contactEmail} onChange={setContactEmail} placeholder="sarah@acme.com" />
-            <Field t={t} label="Phone" value={contactPhone} onChange={setContactPhone} placeholder="(555) 555-1234" />
-          </div>
-
-          <div>
-            <label
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: 1.2,
-                textTransform: "uppercase",
-                color: t.ink3,
-                display: "block",
-                marginBottom: 6,
-              }}
-            >
-              Notes
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={3}
-              placeholder="Internal scratchpad — turnaround times, niche programs, etc."
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                background: t.surface2,
-                border: `1px solid ${t.line}`,
-                borderRadius: 10,
-                color: t.ink,
-                fontSize: 13,
-                fontFamily: "inherit",
-                outline: "none",
-                resize: "vertical",
-              }}
-            />
-          </div>
-
+    <Drawer
+      open={open}
+      onClose={onClose}
+      width="md"
+      // The visible title is the lender's NAME, which is not the name of the
+      // dialog — and it changes between create and edit. Announce the object.
+      ariaLabel={lender ? "Edit lender" : "New lender"}
+      title={
+        <span className="row">
+          <span className="mlbl">Lender</span>
+          {lender ? lender.name : "New lender"}
+        </span>
+      }
+      footer={
+        <>
           {lender ? (
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12.5, color: t.ink2 }}>
-              <input
-                type="checkbox"
-                checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
-              />
-              Active — appears in Connect-Lender dropdowns
-            </label>
-          ) : null}
-
-          {error ? <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill> : null}
-        </div>
-
-        {/* Footer */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "14px 22px",
-            borderTop: `1px solid ${t.line}`,
-          }}
-        >
-          {lender ? (
-            <button
-              type="button"
-              onClick={handleSoftDelete}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                fontSize: 12.5,
-                color: t.danger,
-                fontWeight: 600,
-              }}
-            >
+            <Btn className="danger" onClick={handleSoftDelete}>
               Disable lender
-            </button>
-          ) : <span />}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              onClick={onClose}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                padding: "10px 18px",
-                borderRadius: 10,
-                border: `1px solid ${t.line}`,
-                fontSize: 13,
-                color: t.ink2,
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={submit}
-              disabled={isSaving}
-              style={{
-                all: "unset",
-                cursor: isSaving ? "wait" : "pointer",
-                padding: "10px 18px",
-                borderRadius: 10,
-                background: t.petrol,
-                color: "#fff",
-                fontSize: 13,
-                fontWeight: 700,
-                opacity: isSaving ? 0.6 : 1,
-              }}
-            >
-              {isSaving ? "Saving…" : lender ? "Save changes" : "Create lender"}
-            </button>
+            </Btn>
+          ) : null}
+          <span className="sp" />
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn variant="pri" onClick={submit} disabled={isSaving}>
+            {isSaving ? "Saving…" : lender ? "Save changes" : "Create lender"}
+          </Btn>
+        </>
+      }
+    >
+      <div className="grid">
+        <TextField
+          label="Lender name"
+          value={name}
+          onChange={setName}
+          placeholder="Acme Capital Partners"
+          required
+        />
+
+        <div className="fldsec">
+          <span className="lbl">Products serviced</span>
+          <div className="sub mb">
+            Tap to select / tap again to remove. Lenders only appear in the Connect-Lender
+            dropdown when their products match the loan&apos;s type.
+          </div>
+          <LoanTypeChips selected={products} onChange={setProducts} />
+        </div>
+
+        <div className="fldgrid two">
+          <TextField
+            label="Submission email"
+            value={submissionEmail}
+            onChange={setSubmissionEmail}
+            placeholder="deals@acme.com"
+          />
+          <TextField
+            label="Email domain"
+            value={emailDomain}
+            onChange={setEmailDomain}
+            placeholder="acme.com"
+            hint="Phase-2: inbound match fallback"
+          />
+        </div>
+
+        <div className="fldsec">
+          <span className="lbl">Primary point of contact</span>
+          <div className="fldgrid two">
+            <TextField label="Name" value={contactName} onChange={setContactName} placeholder="Sarah Chen" />
+            <TextField label="Title" value={contactTitle} onChange={setContactTitle} placeholder="Senior Underwriter" />
+            <TextField label="Email" value={contactEmail} onChange={setContactEmail} placeholder="sarah@acme.com" />
+            <TextField label="Phone" value={contactPhone} onChange={setContactPhone} placeholder="(555) 555-1234" />
           </div>
         </div>
+
+        <Field label="Notes">
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            placeholder="Internal scratchpad — turnaround times, niche programs, etc."
+          />
+        </Field>
+
+        {lender ? (
+          <label className="row">
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+            />
+            <Sub>Active — appears in Connect-Lender dropdowns</Sub>
+          </label>
+        ) : null}
+
+        {error ? <Callout tone="bad">{error}</Callout> : null}
       </div>
-    </div>
+    </Drawer>
   );
 }
 
 interface FieldProps {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   value: string;
   onChange: (v: string) => void;
@@ -380,42 +238,27 @@ interface FieldProps {
   hint?: string;
 }
 
-function Field({ t, label, value, onChange, placeholder, required, hint }: FieldProps) {
+/**
+ * Was the local `Field` helper. Kept — the call sites below all use its
+ * label/value/onChange/placeholder/required/hint shape — but its hand-rolled
+ * label and input styling is now the design-system `Field` + `Input`.
+ *
+ * `required` used to render a red asterisk that was always on. It now drives
+ * `req`, which is the same claim said properly: the rail and the REQUIRED tag
+ * appear while the field is still empty, and the control is marked `bad` so
+ * the signal is not colour alone.
+ */
+function TextField({ label, value, onChange, placeholder, required, hint }: FieldProps) {
+  const unmet = Boolean(required) && !value.trim();
   return (
-    <div>
-      <label
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: 1.2,
-          textTransform: "uppercase",
-          color: t.ink3,
-          display: "block",
-          marginBottom: 6,
-        }}
-      >
-        {label}
-        {required ? <span style={{ color: t.danger }}> *</span> : null}
-      </label>
-      <input
+    <Field label={label} hint={hint} req={unmet}>
+      <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          background: t.surface2,
-          border: `1px solid ${t.line}`,
-          borderRadius: 10,
-          color: t.ink,
-          fontSize: 13,
-          fontFamily: "inherit",
-          outline: "none",
-        }}
+        className={unmet ? "bad" : undefined}
+        aria-required={required || undefined}
       />
-      {hint ? (
-        <div style={{ fontSize: 10.5, color: t.ink4, marginTop: 4 }}>{hint}</div>
-      ) : null}
-    </div>
+    </Field>
   );
 }

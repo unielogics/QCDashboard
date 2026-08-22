@@ -9,10 +9,8 @@
 
 import { useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Pill } from "@/components/design-system/primitives";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { Icon } from "@/components/design-system/Icon";
+import { Btn, BtnLink, CellChip, Panel, cx } from "@/components/ds";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { useDealerChannelInbox, type DealerChannelInboxItem } from "@/hooks/useApi";
 import { DealerChannelComposeDialog } from "@/components/messages/DealerChannelComposeDialog";
@@ -50,7 +48,6 @@ export function DealerChannelInboxView({
   panelEmptyLabel: string;
   selfRole: "partner" | "team";
 }) {
-  const { t } = useTheme();
   const { getToken } = useAuth();
   const { data, isLoading, refetch } = useDealerChannelInbox(true, scope);
 
@@ -116,18 +113,25 @@ export function DealerChannelInboxView({
   }
 
   return (
-    <main style={{ padding: 24, display: "grid", gap: 16, minHeight: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <Icon name="chat" size={20} />
-        <h1 style={{ margin: 0, fontSize: 22, color: t.ink }}>Messages</h1>
+    // Was a second <main> with its own 24px padding, nested inside the shell's
+    // `main.content` — two landmarks and two gutters. The shell owns both.
+    <div className="grid">
+      {/* `.hd` rather than <PageHeader>: the unread count belongs on the title
+          baseline, and PageHeader takes only a title, a lede and actions. */}
+      <div className="hd">
+        <Icon name="chat" size={18} />
+        <h1>Messages</h1>
         {data && data.total_unread > 0 ? (
-          <Pill bg={t.brandSoft} color={t.brand}>{data.total_unread} unread</Pill>
+          <CellChip tone="acc">{data.total_unread} unread</CellChip>
         ) : null}
-        <span style={{ color: t.ink3, fontSize: 13 }}>{subtitle}</span>
+        <span className="lede">{subtitle}</span>
         {scope === "admin" ? (
-          <button type="button" style={{ ...qcBtnPrimary(t), marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => setComposeOpen(true)}>
-            <Icon name="plus" size={13} /> New message
-          </button>
+          <>
+            <span className="grow" />
+            <Btn variant="pri" onClick={() => setComposeOpen(true)}>
+              <Icon name="plus" size={13} /> New message
+            </Btn>
+          </>
         ) : null}
       </div>
 
@@ -143,6 +147,10 @@ export function DealerChannelInboxView({
         />
       ) : null}
 
+      {/* Bespoke two-pane track: a 360px conversation list beside the thread,
+          both pinned to the viewport so each scrolls on its own. `.cg` is the
+          twelve-column page grid and `.withrail` is a sticky rail — neither
+          describes a fixed-height master/detail split. */}
       <div
         style={{
           display: "grid",
@@ -153,14 +161,13 @@ export function DealerChannelInboxView({
           height: "calc(100vh - 150px)",
         }}
       >
-        <div style={{ border: `1px solid ${t.line}`, borderRadius: 14, background: t.surface, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+        <Panel noPad>
+          {/* The list scrolls inside the panel; `.pick + .pick` owns row spacing. */}
+          <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: 10 }}>
             {isLoading ? (
-              <div style={{ padding: 20, color: t.ink3, fontSize: 13 }}>Loading…</div>
+              <div className="sub">Loading…</div>
             ) : items.length === 0 ? (
-              <div style={{ padding: 20, color: t.ink3, fontSize: 13, lineHeight: 1.5 }}>
-                No conversations yet. Open a lead and start a message.
-              </div>
+              <div className="sub">No conversations yet. Open a lead and start a message.</div>
             ) : (
               items.map((item) => {
                 const active = item.intake_id === selectedId;
@@ -169,70 +176,68 @@ export function DealerChannelInboxView({
                     key={item.intake_id}
                     type="button"
                     onClick={() => openThread(item)}
-                    style={{
-                      all: "unset",
-                      boxSizing: "border-box",
-                      display: "grid",
-                      gap: 3,
-                      width: "100%",
-                      padding: "12px 14px",
-                      cursor: "pointer",
-                      borderBottom: `1px solid ${t.line}`,
-                      borderLeft: `3px solid ${active ? t.brand : "transparent"}`,
-                      background: active ? t.surface2 : "transparent",
-                    }}
+                    className={cx("pick", active && "on")}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                      <strong style={{ color: t.ink, fontSize: 13, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {item.name}
-                      </strong>
-                      <span style={{ color: t.ink4, fontSize: 11, flexShrink: 0 }}>{timeAgo(item.last_message_at)}</span>
-                      {item.unread_count > 0 ? (
-                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 18, height: 18, padding: "0 5px", borderRadius: 999, background: t.brand, color: t.inverse, fontSize: 10.5, fontWeight: 800, flexShrink: 0 }}>
-                          {item.unread_count}
-                        </span>
-                      ) : null}
-                    </div>
-                    <span style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {item.last_message
-                        ? `${authorLabel(item.last_message.author_role)}: ${item.last_message.content}`
-                        : "No messages yet"}
+                    <span className="grow grid g4">
+                      <span className="row">
+                        <strong className="grow trunc">{item.name}</strong>
+                        <span className="sub">{timeAgo(item.last_message_at)}</span>
+                        {item.unread_count > 0 ? (
+                          <span className="cnt sm">{item.unread_count}</span>
+                        ) : null}
+                      </span>
+                      <span className="sub trunc">
+                        {item.last_message
+                          ? `${authorLabel(item.last_message.author_role)}: ${item.last_message.content}`
+                          : "No messages yet"}
+                      </span>
                     </span>
                   </button>
                 );
               })
             )}
           </div>
-        </div>
+        </Panel>
 
+        {/* Bespoke: header row over a thread that takes the remaining height. */}
         <div style={{ minHeight: 0, display: "flex", flexDirection: "column", gap: 10 }}>
           {selected ? (
             <>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
-                <strong style={{ color: t.ink, fontSize: 15, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selected.name}</strong>
-                <Pill bg={t.surface2} color={t.ink3}>{selected.outcome_status}</Pill>
-                <a
-                  href={fileHref(selected.intake_id)}
-                  style={{ ...qcBtn(t), marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none", flexShrink: 0 }}
-                >
+              <div className="row">
+                <strong className="trunc">{selected.name}</strong>
+                <CellChip>{selected.outcome_status}</CellChip>
+                <span className="grow" />
+                <BtnLink href={fileHref(selected.intake_id)}>
                   <Icon name="layers" size={14} /> Open file
-                </a>
+                </BtnLink>
               </div>
               <div style={{ flex: 1, minHeight: 0 }}>
                 {threadLoading ? (
-                  <div style={{ padding: 20, color: t.ink3, fontSize: 13 }}>Loading conversation…</div>
+                  <div className="sub">Loading conversation…</div>
                 ) : (
-                  <LeadNotesPanel notes={notes} onPost={postMessage} posting={posting} error={postError} subtitle={panelSubtitle} emptyLabel={panelEmptyLabel} />
+                  <LeadNotesPanel
+                    notes={notes}
+                    onPost={postMessage}
+                    posting={posting}
+                    error={postError}
+                    subtitle={panelSubtitle}
+                    emptyLabel={panelEmptyLabel}
+                  />
                 )}
               </div>
             </>
           ) : (
-            <div style={{ flex: 1, display: "grid", placeItems: "center", textAlign: "center", color: t.ink3, fontSize: 13, border: `1px dashed ${t.line}`, borderRadius: 14, padding: 24, lineHeight: 1.5 }}>
-              Select a conversation to read and reply, or open its file.
+            // `.hintbox` is the dashed "what will be here" surface; it fills the
+            // pane so the two columns stay the same height.
+            <div className="hintbox" style={{ flex: 1 }}>
+              <span className="hintbox-i">
+                <Icon name="chat" size={16} />
+              </span>
+              <div className="sub">Select a conversation to read and reply, or open its file.</div>
             </div>
           )}
         </div>
       </div>
-    </main>
+    </div>
   );
 }

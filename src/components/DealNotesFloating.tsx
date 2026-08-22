@@ -3,15 +3,23 @@
 // Floating Notes widget mounted on /deals/[id]. Two pieces:
 //
 //   1. A fixed bottom-right button that opens the panel.
-//   2. A right-side drawer rendered as a portal-style fixed panel
-//      with timestamped note entries. New entries append to
-//      Deal.notes_entries (a JSONB array) — newest-first display.
+//   2. The notes dialog itself, now the shared `Drawer` — the design system's
+//      one dialog shape, which supersedes the hand-rolled right-side panel
+//      this used to be. That swap is what buys Escape-to-close, focus return
+//      to the button that opened it, and the body-scroll lock; the backdrop
+//      click and the close button behave as they did.
+//
+// The entry list is the shared thread vocabulary (`.thr` / `.msg`): a note IS
+// a message, the list scrolls inside its own box (which is what keeps the
+// scroll-to-newest behaviour working), and the legacy blob is `.msg.internal`
+// — dashed, because it is the one entry nobody wrote in this UI.
 //
 // Notes are agent-private — the handoff visibility filter excludes
 // them from the funding baseline at promote time.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { Btn, IconBtn, StatusLine, Textarea } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import { useUI } from "@/store/ui";
 import { useDeal, useUpdateDealById } from "@/hooks/useApi";
@@ -25,7 +33,6 @@ function newEntryId(): string {
 }
 
 export function DealNotesFloatingButton({ dealId }: { dealId: string }) {
-  const { t } = useTheme();
   const openNotes = useUI((s) => s.openNotes);
   const notesOpen = useUI((s) => s.notesOpen);
   const notesDealId = useUI((s) => s.notesDealId);
@@ -35,6 +42,13 @@ export function DealNotesFloatingButton({ dealId }: { dealId: string }) {
     <button
       onClick={() => openNotes(dealId)}
       title="Open notes"
+      // Bespoke geometry, deliberately inline: this is a floating action
+      // button pinned to the viewport, and nothing in the class vocabulary is
+      // one. `.btn` is an in-flow control — its 10px radius and 8/14 padding
+      // would every one of them have to be overridden here, which is exactly
+      // the class-vs-inline ambiguity the migration is removing. Colours are
+      // stylesheet variables rather than theme tokens so the palette still
+      // lives in one place.
       style={{
         position: "fixed",
         right: 24,
@@ -44,9 +58,9 @@ export function DealNotesFloatingButton({ dealId }: { dealId: string }) {
         height: 52,
         borderRadius: 999,
         border: "none",
-        background: t.brand,
-        color: t.inverse,
-        boxShadow: "0 6px 16px rgba(0,0,0,0.18)",
+        background: "var(--accent)",
+        color: "#fff",
+        boxShadow: "var(--sh2)",
         cursor: "pointer",
         display: "inline-flex",
         alignItems: "center",
@@ -59,7 +73,6 @@ export function DealNotesFloatingButton({ dealId }: { dealId: string }) {
 }
 
 export function DealNotesPanel() {
-  const { t } = useTheme();
   const notesOpen = useUI((s) => s.notesOpen);
   const notesDealId = useUI((s) => s.notesDealId);
   const closeNotes = useUI((s) => s.closeNotes);
@@ -123,196 +136,88 @@ export function DealNotesPanel() {
   if (!notesOpen) return null;
 
   return (
-    <>
-      {/* Backdrop — click to dismiss */}
-      <button
-        onClick={closeNotes}
-        aria-label="Close notes"
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.18)",
-          zIndex: 95,
-          border: "none",
-          cursor: "pointer",
-        }}
-      />
-      <aside
-        style={{
-          position: "fixed",
-          right: 0,
-          top: 0,
-          bottom: 0,
-          width: 420,
-          zIndex: 96,
-          background: t.surface,
-          borderLeft: `1px solid ${t.line}`,
-          boxShadow: "-8px 0 24px rgba(0,0,0,0.12)",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <header
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "14px 16px",
-            borderBottom: `1px solid ${t.line}`,
+    <Drawer
+      open={notesOpen}
+      onClose={closeNotes}
+      width="md"
+      title="Private notes"
+      sub={deal?.title ?? "Loading…"}
+      bodyClass="grid"
+    >
+      {/* Compose stays at the top, where it was: the entry list is
+          newest-first and scrolls itself, so a composer under it would be
+          below the fold on any file with real history. */}
+      <div className="grid g8">
+        <Textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              appendNote();
+            }
           }}
-        >
-          <Icon name="pencil" size={15} stroke={2.2} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>Private notes</div>
-            <div style={{ fontSize: 11, color: t.ink3 }}>
-              {deal?.title ?? "Loading…"}
-            </div>
-          </div>
-          <button
-            onClick={closeNotes}
-            style={{
-              background: "transparent",
-              border: "none",
-              padding: 4,
-              cursor: "pointer",
-              color: t.ink3,
-            }}
-            title="Close"
+          rows={3}
+          placeholder="Quick note… ⌘ + Enter to save"
+          aria-label="New private note"
+        />
+        {err ? <StatusLine tone="bad">{err}</StatusLine> : null}
+        <div className="row">
+          <span className="sub grow">Agent-only · never shared with funding</span>
+          <Btn
+            variant="pri"
+            onClick={appendNote}
+            disabled={!draft.trim() || update.isPending}
           >
-            <Icon name="x" size={16} stroke={2} />
-          </button>
-        </header>
+            {update.isPending ? "Saving…" : "Save note"}
+          </Btn>
+        </div>
+      </div>
 
-        {/* Compose */}
-        <div style={{ padding: 14, borderBottom: `1px solid ${t.line}` }}>
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                appendNote();
-              }
-            }}
-            rows={3}
-            placeholder='Quick note… ⌘ + Enter to save'
-            style={{
-              width: "100%",
-              padding: 10,
-              fontSize: 13,
-              fontFamily: "inherit",
-              borderRadius: 6,
-              border: `1px solid ${t.line}`,
-              background: t.surface,
-              color: t.ink,
-              resize: "vertical",
-              lineHeight: 1.4,
-              boxSizing: "border-box",
-            }}
-          />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-            <span style={{ fontSize: 11, color: t.ink3, flex: 1 }}>
-              Agent-only · never shared with funding
-            </span>
-            {err ? <span style={{ fontSize: 11, color: t.danger }}>{err}</span> : null}
-            <button
-              onClick={appendNote}
-              disabled={!draft.trim() || update.isPending}
-              style={{
-                padding: "6px 12px",
-                fontSize: 12,
-                fontWeight: 700,
-                borderRadius: 6,
-                border: "none",
-                background: t.brand,
-                color: t.inverse,
-                cursor: "pointer",
-                opacity: !draft.trim() || update.isPending ? 0.5 : 1,
-              }}
-            >
-              {update.isPending ? "Saving…" : "Save note"}
-            </button>
+      {/* Entries. `.thr` is the scroll box the scroll-to-top effect targets. */}
+      <div ref={listRef} className="thr">
+        {entries.length === 0 && !legacyText ? (
+          <div className="thr-empty">
+            No notes yet. Drop a quick thought above — they&apos;re timestamped automatically.
           </div>
-        </div>
-
-        {/* Entries */}
-        <div ref={listRef} style={{ flex: 1, overflowY: "auto", padding: 14 }}>
-          {entries.length === 0 && !legacyText ? (
-            <div style={{ fontSize: 13, color: t.ink3, padding: "16px 0", textAlign: "center" }}>
-              No notes yet. Drop a quick thought above — they&apos;re timestamped automatically.
+        ) : null}
+        {entries.map((entry) => (
+          <NoteCard key={entry.id} entry={entry} onDelete={() => deleteEntry(entry.id)} />
+        ))}
+        {legacyText ? (
+          <div className="msg internal">
+            <div className="msg-h">
+              <span className="msg-role">Legacy note</span>
             </div>
-          ) : null}
-          {entries.map((entry) => (
-            <NoteCard key={entry.id} entry={entry} onDelete={() => deleteEntry(entry.id)} />
-          ))}
-          {legacyText ? (
-            <div
-              style={{
-                marginTop: 14,
-                padding: 12,
-                borderRadius: 6,
-                background: t.surface2,
-                border: `1px dashed ${t.line}`,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 10.5,
-                  color: t.ink3,
-                  fontWeight: 700,
-                  letterSpacing: 0.4,
-                  textTransform: "uppercase",
-                  marginBottom: 4,
-                }}
-              >
-                Legacy note
-              </div>
-              <div style={{ fontSize: 13, color: t.ink2, whiteSpace: "pre-wrap" }}>{legacyText}</div>
-            </div>
-          ) : null}
-        </div>
-      </aside>
-    </>
+            <div className="msg-b">{legacyText}</div>
+          </div>
+        ) : null}
+      </div>
+    </Drawer>
   );
 }
 
 function NoteCard({ entry, onDelete }: { entry: DealNoteEntry; onDelete: () => void }) {
-  const { t } = useTheme();
   const when = new Date(entry.at);
   return (
-    <div
-      style={{
-        padding: 12,
-        borderRadius: 8,
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        marginBottom: 8,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-        <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700, letterSpacing: 0.4 }}>
-          {when.toLocaleDateString()} · {when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+    <div className="msg">
+      <div className="msg-h">
+        <span className="msg-when">
+          {when.toLocaleDateString()} ·{" "}
+          {when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
         </span>
-        <button
+        <span className="grow" />
+        <IconBtn
           onClick={() => {
             if (confirm("Delete this note?")) onDelete();
           }}
           title="Delete"
-          style={{
-            marginLeft: "auto",
-            background: "transparent",
-            border: "none",
-            color: t.ink3,
-            cursor: "pointer",
-            padding: 2,
-          }}
+          aria-label="Delete note"
         >
           <Icon name="x" size={11} stroke={2} />
-        </button>
+        </IconBtn>
       </div>
-      <div style={{ fontSize: 13, color: t.ink, whiteSpace: "pre-wrap", lineHeight: 1.45 }}>
-        {entry.body}
-      </div>
+      <div className="msg-b">{entry.body}</div>
     </div>
   );
 }

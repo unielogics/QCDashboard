@@ -6,18 +6,32 @@
 // "AI Underwriter Leads" cockpit — no credit-pull, program-fit, vendor-email,
 // exports, or client-thread reply here; those stay admin-only. Every fetch in
 // this file targets /broker/ai-underwriter-leads* only, by construction.
+//
+// Styling only: migrated off the inline `t.*` token objects onto the plain-CSS
+// design system. The outcome board is `.kcol` / `.kcard` — the kanban column
+// and tile the sheet already carries for /pipeline — so a dealer partner's
+// board and an operator's board are visibly the same object. Behaviour,
+// endpoints, the DEALER_PARTNER gate and both deep links are unchanged.
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
+import {
+  Btn,
+  Callout,
+  Card,
+  CellChip,
+  Field,
+  Input,
+  PageHeader,
+  Select,
+  StatusLine,
+  type ChipTone,
+} from "@/components/ds";
 import { Modal } from "@/components/design-system/Modal";
 import { Tabs } from "@/components/design-system/Tabs";
-import { Icon } from "@/components/design-system/Icon";
 import { IconButton } from "@/components/design-system/IconButton";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
-import { qcBtn, qcBtnPrimary, qcBtnDanger } from "@/components/design-system/buttons";
 import { useUI } from "@/store/ui";
 import { api, ApiError } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
@@ -116,17 +130,28 @@ function timeAgo(iso?: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
+// Outcome accent: a lifecycle state maps to one chip tone, and the column's
+// stripe reads the matching CSS variable. One mapping, two consumers — the
+// stripe and the pill can no longer disagree about what "denied" looks like.
+function outcomeTone(key: string): ChipTone {
+  if (key === "closed" || key === "funded") return "ok";
+  if (key === "denied") return "bad";
+  return "mut";
+}
+const TONE_VAR: Record<ChipTone, string> = {
+  ok: "var(--ok)",
+  warn: "var(--warn)",
+  bad: "var(--danger)",
+  mut: "var(--muted)",
+  acc: "var(--accent)",
+  gold: "var(--gold)",
+  pet: "var(--petrol)",
+};
+
 export default function BrokerAIUnderwriterLeadsPage() {
-  const { t } = useTheme();
   const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
   const sidebarWidth = sidebarCollapsed ? 68 : 232;
 
-  // Outcome-column accent: a subtle left stripe + pill tone per lifecycle state.
-  const outcomeTone = (key: string): { fg: string; bg: string } => {
-    if (key === "closed" || key === "funded") return { fg: t.profit, bg: t.profitBg };
-    if (key === "denied") return { fg: t.danger, bg: t.dangerBg };
-    return { fg: t.ink3, bg: t.surface2 };
-  };
   const { getToken } = useAuth();
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const searchParams = useSearchParams();
@@ -386,14 +411,14 @@ export default function BrokerAIUnderwriterLeadsPage() {
   }, [selectedId]);
 
   if (meLoading) {
-    return <main style={{ padding: 24 }}>Loading…</main>;
+    return (
+      <Card>
+        <span className="sub">Loading…</span>
+      </Card>
+    );
   }
   if (me && me.role !== Role.DEALER_PARTNER) {
-    return (
-      <main style={{ padding: 24 }}>
-        <Card pad={20}>This page is only available to dealer partner accounts.</Card>
-      </main>
-    );
+    return <Card>This page is only available to dealer partner accounts.</Card>;
   }
   if (!loaded && !loading) {
     loadLeads().catch(() => undefined);
@@ -407,34 +432,43 @@ export default function BrokerAIUnderwriterLeadsPage() {
   const selectedUnread = rows.find((r) => r.id === selectedId)?.channel_unread_count ?? 0;
 
   return (
-    <main style={{ padding: 24, display: "grid", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 22, color: t.ink }}>My Leads</h1>
-          <p style={{ margin: "4px 0 0", color: t.ink3, fontSize: 13 }}>{total} leads on file</p>
-        </div>
-        <button type="button" style={qcBtnPrimary(t)} onClick={() => setCreateOpen(true)}>
-          New lead
-        </button>
-      </div>
+    <div className="grid">
+      <PageHeader
+        title="My Leads"
+        lede={`${total} leads on file`}
+        actions={
+          <Btn variant="pri" onClick={() => setCreateOpen(true)}>
+            New lead
+          </Btn>
+        }
+      />
 
-      {notice ? <Card pad={12}><span style={{ color: t.ink2, fontSize: 13 }}>{notice}</span></Card> : null}
+      {notice ? <Callout tone="acc">{notice}</Callout> : null}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14 }}>
+      {/* Bespoke track: exactly three lifecycle columns, never a reflowing
+          auto-fit. `.grid` owns display + gap; the template is the one thing
+          it cannot own. Not `.kanban` — that column set is six wide. */}
+      <div className="grid" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
         {columns.map((col) => {
           const tone = outcomeTone(col.key);
           return (
-            <Card key={col.key} pad={14}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 999, background: tone.fg }} />
-                  <strong style={{ color: t.ink, fontSize: 13, letterSpacing: 0.2 }}>{col.label}</strong>
-                </div>
-                <Pill bg={tone.bg} color={tone.fg}>{col.rows.length}</Pill>
+            <div key={col.key} className="kcol">
+              <div className="lbl">
+                {/* `.kcol > .lbl` is a space-between flex row, so the dot and
+                    the label have to travel together as one child. */}
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                  {/* Data-derived: the dot takes the colour of this column's
+                      lifecycle tone, so it cannot be a fixed class. */}
+                  <span className="repdot" style={{ background: TONE_VAR[tone] }} />
+                  {col.label}
+                </span>
+                <CellChip tone={tone}>{col.rows.length}</CellChip>
               </div>
-              <div style={{ display: "grid", gap: 8 }}>
+              {/* Plain block, not `.grid`: `.kcard + .kcard` carries the
+                  stacking gap and a grid container would double it. */}
+              <div>
                 {col.rows.length === 0 ? (
-                  <span style={{ color: t.ink4, fontSize: 12.5, padding: "8px 2px" }}>No leads here yet.</span>
+                  <span className="sub">No leads here yet.</span>
                 ) : (
                   col.rows.map((row) => {
                     const missing = row.missing_required_count > 0;
@@ -443,57 +477,55 @@ export default function BrokerAIUnderwriterLeadsPage() {
                         key={row.id}
                         type="button"
                         onClick={() => openLead(row.id)}
-                        style={{
-                          all: "unset",
-                          boxSizing: "border-box",
-                          position: "relative",
-                          width: "100%",
-                          textAlign: "left",
-                          border: `1px solid ${t.line}`,
-                          borderRadius: 12,
-                          padding: "12px 12px 12px 15px",
-                          background: t.surface,
-                          cursor: "pointer",
-                          display: "grid",
-                          gap: 6,
-                          boxShadow: t.shadow,
-                          transition: "border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = t.brand;
-                          e.currentTarget.style.boxShadow = t.shadowLg;
-                          e.currentTarget.style.transform = "translateY(-1px)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = t.line;
-                          e.currentTarget.style.boxShadow = t.shadow;
-                          e.currentTarget.style.transform = "none";
-                        }}
+                        className="kcard btnreset"
+                        // `.kcard` owns surface, border, radius, padding,
+                        // shadow and cursor; `.btnreset` owns the box and type
+                        // a <button> would otherwise impose. What is left is
+                        // this tile's own stack and the stripe's positioning
+                        // context.
+                        style={{ position: "relative", display: "grid", gap: 6 }}
                       >
-                        {/* left status stripe */}
-                        <span style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 3, borderRadius: 999, background: tone.fg }} />
+                        {/* Left status stripe. Data-derived colour; it overlays
+                            `.kcard`'s own left padding so no padding is
+                            declared twice. */}
+                        <span
+                          style={{
+                            position: "absolute",
+                            left: 0,
+                            top: 8,
+                            bottom: 8,
+                            width: 3,
+                            borderRadius: 999,
+                            background: TONE_VAR[tone],
+                          }}
+                        />
+                        {/* Bespoke: name and recency share a baseline and must
+                            never wrap onto two lines — `.row` wraps and
+                            centres, which is the wrong shape here. */}
                         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-                          <strong style={{ color: t.ink, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {row.business_name || row.full_name}
-                          </strong>
-                          <span style={{ color: t.ink4, fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}>{timeAgo(row.updated_at)}</span>
+                          <b className="trunc">{row.business_name || row.full_name}</b>
+                          <span className="sub" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
+                            {timeAgo(row.updated_at)}
+                          </span>
                         </div>
-                        <span style={{ color: t.ink3, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <span className="sub trunc">
                           {row.full_name} · {row.email}
                         </span>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                          <Pill bg={t.surface2} color={t.ink2}>
-                            <span className="qc-num">{row.file_count}</span>&nbsp;files
-                          </Pill>
+                        <div className="row">
+                          <CellChip tone="mut">
+                            <span className="num">{row.file_count}</span>&nbsp;files
+                          </CellChip>
                           {missing ? (
-                            <Pill bg={t.warnBg} color={t.warn}>
-                              <span className="qc-num">{row.missing_required_count}</span>&nbsp;missing
-                            </Pill>
+                            <CellChip tone="warn">
+                              <span className="num">{row.missing_required_count}</span>&nbsp;missing
+                            </CellChip>
                           ) : (
-                            <Pill bg={t.profitBg} color={t.profit}>Complete</Pill>
+                            <CellChip tone="ok">Complete</CellChip>
                           )}
                         </div>
-                        <span style={{ color: t.ink2, fontSize: 12, lineHeight: 1.4 }}>
+                        {/* A sentence, not a chip: `.cellchip` is nowrap inside
+                            an overflow-hidden tile and would clip this. */}
+                        <span className="sub" style={{ lineHeight: 1.4 }}>
                           {row.probability_status || row.one_next_step || "Awaiting AI screen"}
                         </span>
                       </button>
@@ -501,7 +533,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
                   })
                 )}
               </div>
-            </Card>
+            </div>
           );
         })}
       </div>
@@ -515,10 +547,10 @@ export default function BrokerAIUnderwriterLeadsPage() {
         title={detail?.intake.business_name || detail?.intake.full_name || "Lead"}
         headerAccessory={
           detail ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Pill bg={outcomeTone(detail.intake.outcome_status).bg} color={outcomeTone(detail.intake.outcome_status).fg}>
+            <div className="row">
+              <CellChip tone={outcomeTone(detail.intake.outcome_status)}>
                 {detail.intake.outcome_status}
-              </Pill>
+              </CellChip>
               <IconButton
                 name="trash"
                 label="Request deletion"
@@ -533,8 +565,11 @@ export default function BrokerAIUnderwriterLeadsPage() {
       >
         {selectedId ? (
           detailLoading || !cockpitResponse || !cockpitAdapter ? (
-            <div style={{ padding: 24, color: t.ink3 }}>Loading lead…</div>
+            <div className="sub" style={{ padding: 24 }}>Loading lead…</div>
           ) : (
+            // Bespoke: a tab strip over a single flexible pane, filling the
+            // stage modal. Nothing in the twelve-column vocabulary describes
+            // "auto 1fr, full height, allowed to shrink".
             <div style={{ display: "grid", gridTemplateRows: "auto 1fr", gap: 12, height: "100%", padding: 16, minHeight: 0 }}>
               <Tabs
                 variant="underline"
@@ -545,26 +580,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
                   {
                     id: "messages",
                     label: "Messages",
-                    badge:
-                      selectedUnread > 0 ? (
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            minWidth: 16,
-                            height: 16,
-                            padding: "0 5px",
-                            borderRadius: 999,
-                            background: t.brand,
-                            color: t.inverse,
-                            fontSize: 10,
-                            fontWeight: 800,
-                          }}
-                        >
-                          {selectedUnread}
-                        </span>
-                      ) : undefined,
+                    badge: selectedUnread > 0 ? <span className="cnt sm">{selectedUnread}</span> : undefined,
                   },
                 ]}
               />
@@ -626,7 +642,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
           programLabel={programLabel}
         />
       ) : null}
-    </main>
+    </div>
   );
 }
 
@@ -641,7 +657,6 @@ function CreateBrokerLeadModal({
   creating: boolean;
   programLabel?: string | null;
 }) {
-  const { t } = useTheme();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -649,8 +664,6 @@ function CreateBrokerLeadModal({
   const [notifyClient, setNotifyClient] = useState(false);
   const [preferredLanguage, setPreferredLanguage] = useState<"en" | "es">("en");
   const [error, setError] = useState("");
-
-  const label = (text: string) => ({ color: t.ink3, fontSize: 11, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: 1, marginBottom: 4, display: "block" });
 
   function submit() {
     if (!fullName.trim()) { setError("Client name is required."); return; }
@@ -668,70 +681,54 @@ function CreateBrokerLeadModal({
 
   return (
     <Modal open onClose={onClose} title="Create a new lead" size="md">
-      <div style={{ display: "grid", gap: 12, padding: 4 }}>
-        <p style={{ margin: 0, color: t.ink3, fontSize: 13, lineHeight: 1.45 }}>
+      <div className="grid g10">
+        <p className="sub" style={{ margin: 0, lineHeight: 1.45 }}>
           Create a lead on behalf of your client and start underwriting now. Your client can log in later with this
           email — they receive a secure code by email.
         </p>
 
         {programLabel ? (
-          <div style={{ border: `1px solid ${t.petrol}40`, background: t.petrolSoft, borderRadius: 10, padding: "8px 12px", fontSize: 12.5, color: t.petrol, fontWeight: 700 }}>
-            Starting a lead for: {programLabel}
-          </div>
+          <Callout tone="acc">
+            Starting a lead for: <b>{programLabel}</b>
+          </Callout>
         ) : null}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div>
-            <label style={label("Name")}>Client full name *</label>
-            <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" style={{ ...inputStyle(t), width: "100%" }} />
-          </div>
-          <div>
-            <label style={label("Email")}>Client email *</label>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" style={{ ...inputStyle(t), width: "100%" }} />
-          </div>
-          <div>
-            <label style={label("Phone")}>Phone</label>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" style={{ ...inputStyle(t), width: "100%" }} />
-          </div>
-          <div>
-            <label style={label("Business")}>Business name</label>
-            <input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Dealership / business" style={{ ...inputStyle(t), width: "100%" }} />
-          </div>
-          <div>
-            <label style={label("Language")}>Preferred language (client)</label>
-            <select value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value as "en" | "es")} style={{ ...inputStyle(t), width: "100%" }}>
+        <div className="fldgrid two">
+          <Field label="Client full name *">
+            <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" />
+          </Field>
+          <Field label="Client email *">
+            <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" />
+          </Field>
+          <Field label="Phone">
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" />
+          </Field>
+          <Field label="Business name">
+            <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Dealership / business" />
+          </Field>
+          <Field label="Preferred language (client)">
+            <Select value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value as "en" | "es")}>
               <option value="en">English</option>
               <option value="es">Español (Spanish)</option>
-            </select>
-          </div>
+            </Select>
+          </Field>
         </div>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: t.ink2, cursor: "pointer" }}>
+        {/* `.row` owns the flex geometry; cursor is the one thing it does not. */}
+        <label className="row" style={{ cursor: "pointer" }}>
           <input type="checkbox" checked={notifyClient} onChange={(e) => setNotifyClient(e.target.checked)} />
           Email the client a secure login/resume link now
         </label>
 
-        {error ? <div style={{ color: t.danger, fontSize: 12 }}>{error}</div> : null}
+        {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
 
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
-          <button style={qcBtn(t)} onClick={onClose} disabled={creating}>Cancel</button>
-          <button style={qcBtnPrimary(t)} onClick={submit} disabled={creating}>
+        <div className="row end">
+          <Btn onClick={onClose} disabled={creating}>Cancel</Btn>
+          <Btn variant="pri" onClick={submit} disabled={creating}>
             {creating ? "Creating…" : "Create lead"}
-          </button>
+          </Btn>
         </div>
       </div>
     </Modal>
   );
-}
-
-function inputStyle(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    minHeight: 42,
-    border: `1px solid ${t.line}`,
-    borderRadius: 12,
-    background: t.surface,
-    color: t.ink,
-    padding: "0 12px",
-    outline: "none",
-  };
 }

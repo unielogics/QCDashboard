@@ -12,10 +12,33 @@
 // Everything mounted under /hud/share/* is bare-layout (no AppShell,
 // no auth gates) — middleware.ts + AppShell.tsx both opt-out this
 // path. The backend validates the token; we just render against it.
+//
+// Styling only: migrated off the inline `t.*` token objects onto the plain-CSS
+// design system. Because this page is bare, `.bareshell` (see AppShell) is the
+// only chrome it gets — it supplies the page background and the 100vh floor, so
+// nothing here declares either. Everything else is the same vocabulary the
+// signed-in console uses, which is the point: an escrow officer with no account
+// should see the same product an operator does. Behaviour, endpoints, the
+// two-step delete, and the Enter/Escape/blur commit rules are unchanged.
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import {
+  Btn,
+  Callout,
+  Card,
+  CellChip,
+  IconBtn,
+  Input,
+  PageHeader,
+  Panel,
+  Select,
+  Table,
+  Td,
+  Tr,
+  type Col,
+} from "@/components/ds";
+import { Icon } from "@/components/design-system/Icon";
 import { api, ApiError } from "@/lib/api";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { parseUSD } from "@/lib/formCoerce";
@@ -28,8 +51,15 @@ const CATEGORY_OPTIONS = [
   { value: "third_party", label: "Third party" },
 ];
 
+const COLS: Col[] = [
+  { label: "Item" },
+  { label: "Payee" },
+  { label: "Category", width: 130 },
+  { label: "Amount", align: "r", width: 140 },
+  { label: "", width: 56 },
+];
+
 export default function PublicHudSharePage() {
-  const { t } = useTheme();
   const params = useParams<{ token: string }>();
   const token = params?.token;
 
@@ -107,23 +137,23 @@ export default function PublicHudSharePage() {
   );
 
   if (status === "loading") {
-    return <CenteredCard t={t}>Loading…</CenteredCard>;
+    return <CenteredCard><span className="sub">Loading…</span></CenteredCard>;
   }
   if (status === "error") {
     return (
-      <CenteredCard t={t}>
-        <h1 style={{ fontSize: 18, fontWeight: 900, color: t.ink, marginBottom: 8 }}>Link not active</h1>
-        <p style={{ fontSize: 13, color: t.ink3 }}>{error || "Could not open the share link. Ask whoever sent it to mint a new one."}</p>
+      <CenteredCard>
+        <h1>Link not active</h1>
+        <p className="sub" style={{ marginTop: 8 }}>
+          {error || "Could not open the share link. Ask whoever sent it to mint a new one."}
+        </p>
       </CenteredCard>
     );
   }
   if (status === "expired" || status === "revoked") {
     return (
-      <CenteredCard t={t}>
-        <h1 style={{ fontSize: 18, fontWeight: 900, color: t.ink, marginBottom: 8 }}>
-          Link {status === "revoked" ? "revoked" : "expired"}
-        </h1>
-        <p style={{ fontSize: 13, color: t.ink3 }}>
+      <CenteredCard>
+        <h1>Link {status === "revoked" ? "revoked" : "expired"}</h1>
+        <p className="sub" style={{ marginTop: 8 }}>
           The party that sent you this link has {status === "revoked" ? "revoked" : "let it expire"}.
           Ask them for a fresh URL.
         </p>
@@ -133,118 +163,71 @@ export default function PublicHudSharePage() {
   if (!view) return null;
 
   return (
-    <div style={{ minHeight: "100vh", background: t.bg, padding: "32px 16px" }}>
-      <div style={{ maxWidth: 900, margin: "0 auto" }}>
-        <header style={{ marginBottom: 22 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: t.brand, letterSpacing: 1.2, textTransform: "uppercase" }}>
-            HUD Submission
-          </div>
-          <h1 style={{ fontSize: 24, fontWeight: 900, color: t.ink, margin: "4px 0 4px" }}>
-            {view.loan_address || "Loan settlement statement"}
-          </h1>
-          <div style={{ fontSize: 12.5, color: t.ink3 }}>
-            File {view.loan_label}
-            {view.invitee_label ? ` · inviting ${view.invitee_label}` : ""}
-            {view.invitee_role ? ` · ${view.invitee_role}` : ""}
-          </div>
+    // Bespoke: a standalone reading column. `.content` is the signed-in shell's
+    // measure and this page never mounts inside it.
+    <div style={{ padding: "32px 16px" }}>
+      <div className="grid" style={{ maxWidth: 900, margin: "0 auto" }}>
+        <header>
+          <div className="lbl">HUD Submission</div>
+          <PageHeader
+            title={view.loan_address || "Loan settlement statement"}
+            lede={
+              `File ${view.loan_label}` +
+              (view.invitee_label ? ` · inviting ${view.invitee_label}` : "") +
+              (view.invitee_role ? ` · ${view.invitee_role}` : "")
+            }
+          />
         </header>
 
-        <div style={{
-          padding: 14,
-          marginBottom: 18,
-          borderRadius: 10,
-          background: t.surface2,
-          border: `1px solid ${t.line}`,
-          fontSize: 13, color: t.ink2, lineHeight: 1.5,
-        }}>
-          Add the line items you&apos;re responsible for below. Click any field to edit — your changes save automatically. The operator who invited you will see everything you submit alongside their own HUD lines.
-        </div>
+        <Callout tone="acc">
+          Add the line items you&apos;re responsible for below. Click any field to edit — your changes save
+          automatically. The operator who invited you will see everything you submit alongside their own HUD lines.
+        </Callout>
 
-        <section style={{
-          background: t.surface,
-          borderRadius: 12,
-          border: `1px solid ${t.line}`,
-          overflow: "hidden",
-          marginBottom: 18,
-        }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "12px 16px",
-            borderBottom: `1px solid ${t.line}`,
-          }}>
-            <span style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>
-              Your line items
-            </span>
-            <span style={{
-              fontSize: 11, fontWeight: 700, color: t.ink3,
-              padding: "2px 8px", borderRadius: 999, background: t.surface2,
-            }}>
-              {myLines.length} entered
-            </span>
-            <div style={{ flex: 1 }} />
-            <button
-              onClick={addLine}
-              disabled={busy}
-              style={{
-                padding: "7px 14px",
-                borderRadius: 9,
-                background: t.brand,
-                color: t.inverse,
-                border: "none",
-                fontSize: 12.5,
-                fontWeight: 900,
-                cursor: busy ? "wait" : "pointer",
-                fontFamily: "inherit",
-                opacity: busy ? 0.6 : 1,
-              }}
-            >
-              + Add line item
-            </button>
-          </div>
-
+        <Panel
+          title="Your line items"
+          noPad
+          actions={
+            <>
+              <CellChip tone="mut">{myLines.length} entered</CellChip>
+              <Btn variant="pri" size="sm" onClick={addLine} disabled={busy}>
+                + Add line item
+              </Btn>
+            </>
+          }
+        >
           {myLines.length === 0 ? (
-            <div style={{ padding: 28, fontSize: 13, color: t.ink3, textAlign: "center" }}>
+            // `.panel-b` supplies the padding the `noPad` panel gave up.
+            <div className="panel-b sub" style={{ textAlign: "center" }}>
               Click <strong>Add line item</strong> to start.
             </div>
           ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-              <thead>
-                <tr style={{ background: t.surface2 }}>
-                  <Th t={t}>Item</Th>
-                  <Th t={t}>Payee</Th>
-                  <Th t={t} width={130}>Category</Th>
-                  <Th t={t} width={140} align="right">Amount</Th>
-                  <Th t={t} width={48}>&nbsp;</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {myLines.map((line) => (
-                  <PublicHudRow
-                    key={line.id}
-                    line={line}
-                    onUpdate={(patch) => updateLine(line.id, patch)}
-                    onDelete={() => deleteLine(line.id)}
-                  />
-                ))}
-              </tbody>
-            </table>
+            <Table cols={COLS} caption="Line items you have entered on this share link">
+              {myLines.map((line) => (
+                <PublicHudRow
+                  key={line.id}
+                  line={line}
+                  onUpdate={(patch) => updateLine(line.id, patch)}
+                  onDelete={() => deleteLine(line.id)}
+                />
+              ))}
+            </Table>
           )}
 
           {myLines.length > 0 ? (
-            <div style={{
-              padding: "12px 16px",
-              borderTop: `1px solid ${t.line}`,
-              display: "flex", justifyContent: "space-between",
-              fontSize: 13, fontWeight: 800, color: t.ink,
-            }}>
-              <span>Your subtotal</span>
-              <span style={{ fontFeatureSettings: '"tnum"' }}>{QC_FMT.usd(myTotal)}</span>
+            // A `.panel-h` in last position is the sheet's footer bar — the
+            // rule in app-extras drops its hairline there, and the table's own
+            // last-row border already draws the divide.
+            <div className="panel-h" style={{ justifyContent: "space-between" }}>
+              <b>Your subtotal</b>
+              <b className="num">{QC_FMT.usd(myTotal)}</b>
             </div>
           ) : null}
-        </section>
+        </Panel>
 
-        <p style={{ fontSize: 11, color: t.ink3, textAlign: "center", lineHeight: 1.6 }}>
-          Powered by Qualified Commercial. The operator who invited you receives all submissions in real time — no email back-and-forth needed.
+        <p className="sub" style={{ textAlign: "center", lineHeight: 1.6 }}>
+          Powered by Qualified Commercial. The operator who invited you receives all submissions in real time — no
+          email back-and-forth needed.
         </p>
       </div>
     </div>
@@ -259,11 +242,10 @@ function PublicHudRow({
   onUpdate: (patch: Partial<HudLine>) => Promise<void>;
   onDelete: () => Promise<void>;
 }) {
-  const { t } = useTheme();
   const [confirmDelete, setConfirmDelete] = useState(false);
   return (
-    <tr style={{ borderTop: `1px solid ${t.line}` }}>
-      <Td t={t}>
+    <Tr>
+      <Td>
         <InlineEdit value={line.label} onCommit={(v) => onUpdate({ label: v })} />
         <div style={{ marginTop: 2 }}>
           <InlineEdit
@@ -274,65 +256,53 @@ function PublicHudRow({
           />
         </div>
       </Td>
-      <Td t={t}>
+      <Td>
         <InlineEdit
           value={line.payee ?? ""}
           onCommit={(v) => onUpdate({ payee: v || null })}
           placeholder="—"
         />
       </Td>
-      <Td t={t}>
-        <select
+      <Td>
+        <Select
+          className="sm"
           value={line.category}
           onChange={(e) => onUpdate({ category: e.target.value })}
-          style={{
-            padding: "5px 8px",
-            borderRadius: 6,
-            border: `1px solid ${t.line}`,
-            background: t.surface,
-            color: t.ink,
-            fontSize: 12,
-            fontFamily: "inherit",
-            cursor: "pointer",
-          }}
+          aria-label="Category"
         >
           {CATEGORY_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
-        </select>
+        </Select>
       </Td>
-      <Td t={t} align="right">
+      <Td align="r">
         <CurrencyEdit value={Number(line.amount)} onCommit={(v) => onUpdate({ amount: v })} />
       </Td>
-      <Td t={t} align="right">
+      <Td align="r">
         {confirmDelete ? (
-          <button
+          // `.btn.tone-bad`, not a bare `.c-bad`: `.btn:hover` out-specifies
+          // the chip tone and the button would lose its tint exactly when you
+          // point at it.
+          <Btn
+            size="sm"
+            className="tone-bad"
             onClick={async () => { await onDelete(); setConfirmDelete(false); }}
-            style={{
-              background: t.dangerBg, color: t.danger, border: `1px solid ${t.danger}`,
-              fontSize: 11, fontWeight: 800, padding: "3px 8px", borderRadius: 6,
-              cursor: "pointer", fontFamily: "inherit",
-            }}
           >
             Sure?
-          </button>
+          </Btn>
         ) : (
-          <button
+          <IconBtn
+            className="danger"
             onClick={() => setConfirmDelete(true)}
             onBlur={() => setConfirmDelete(false)}
-            style={{
-              all: "unset", cursor: "pointer", color: t.ink3, fontSize: 18, lineHeight: 1,
-              padding: "4px 8px", borderRadius: 6,
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = t.danger; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = t.ink3; }}
             title="Remove this line"
+            aria-label="Remove this line"
           >
-            ×
-          </button>
+            <Icon name="x" />
+          </IconBtn>
         )}
       </Td>
-    </tr>
+    </Tr>
   );
 }
 
@@ -345,12 +315,12 @@ function InlineEdit({
   placeholder?: string;
   small?: boolean;
 }) {
-  const { t } = useTheme();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   if (editing) {
     return (
-      <input
+      <Input
+        className="sm"
         autoFocus
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
@@ -359,29 +329,22 @@ function InlineEdit({
           if (e.key === "Enter") { setEditing(false); if (draft !== value) onCommit(draft); }
           if (e.key === "Escape") { setEditing(false); setDraft(value); }
         }}
-        style={{
-          width: "100%",
-          padding: "3px 6px",
-          borderRadius: 5,
-          border: `1px solid ${t.brand}`,
-          background: t.surface,
-          color: t.ink,
-          fontSize: small ? 11 : 12.5,
-          fontFamily: "inherit",
-          outline: "none",
-        }}
+        // `.field.sm` owns the box; width is the one thing it cannot know.
+        style={{ width: "100%" }}
       />
     );
   }
   return (
     <span
       onClick={() => { setDraft(value); setEditing(true); }}
+      // Click-to-edit text. The colour and the italic are data-derived — they
+      // say "this cell is still empty" — and no class carries the affordance.
       style={{
         display: "inline-block",
         padding: "1px 4px",
         borderRadius: 4,
         cursor: "text",
-        color: value ? t.ink : t.ink3,
+        color: value ? "var(--ink)" : "var(--muted)",
         fontSize: small ? 11 : 12.5,
         fontStyle: value ? "normal" : "italic",
       }}
@@ -393,12 +356,12 @@ function InlineEdit({
 
 
 function CurrencyEdit({ value, onCommit }: { value: number; onCommit: (next: number) => void }) {
-  const { t } = useTheme();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value === 0 ? "" : String(value));
   if (editing) {
     return (
-      <input
+      <Input
+        className="sm num"
         autoFocus
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
@@ -415,32 +378,21 @@ function CurrencyEdit({ value, onCommit }: { value: number; onCommit: (next: num
           }
           if (e.key === "Escape") { setEditing(false); setDraft(String(value)); }
         }}
-        style={{
-          width: "100%",
-          padding: "3px 6px",
-          borderRadius: 5,
-          border: `1px solid ${t.brand}`,
-          background: t.surface,
-          color: t.ink,
-          fontSize: 12.5,
-          textAlign: "right",
-          fontFamily: "inherit",
-          fontFeatureSettings: '"tnum"',
-          outline: "none",
-        }}
+        // Bespoke: a money field in a right-aligned column types right-to-left.
+        style={{ width: "100%", textAlign: "right" }}
       />
     );
   }
   return (
     <span
+      className="num"
       onClick={() => { setDraft(value === 0 ? "" : String(value)); setEditing(true); }}
+      // Same click-to-edit affordance as InlineEdit; `.num` owns the figures.
       style={{
         display: "inline-block",
         padding: "1px 4px",
         borderRadius: 4,
         cursor: "text",
-        color: t.ink,
-        fontFeatureSettings: '"tnum"',
         fontWeight: 700,
       }}
     >
@@ -450,70 +402,12 @@ function CurrencyEdit({ value, onCommit }: { value: number; onCommit: (next: num
 }
 
 
-function Th({
-  children, t, width, align,
-}: {
-  children: React.ReactNode;
-  t: ReturnType<typeof useTheme>["t"];
-  width?: number;
-  align?: "left" | "right" | "center";
-}) {
+function CenteredCard({ children }: { children: React.ReactNode }) {
   return (
-    <th style={{
-      fontSize: 10, fontWeight: 900, letterSpacing: 0.8,
-      textTransform: "uppercase", color: t.ink3,
-      padding: "10px 12px",
-      textAlign: align || "left",
-      width,
-    }}>
-      {children}
-    </th>
-  );
-}
-
-
-function Td({
-  children, t, align,
-}: {
-  children: React.ReactNode;
-  t: ReturnType<typeof useTheme>["t"];
-  align?: "left" | "right" | "center";
-}) {
-  return (
-    <td style={{
-      padding: "10px 12px",
-      textAlign: align || "left",
-      verticalAlign: "top",
-      color: t.ink,
-      fontSize: 12.5,
-    }}>
-      {children}
-    </td>
-  );
-}
-
-
-function CenteredCard({ children, t }: { children: React.ReactNode; t: ReturnType<typeof useTheme>["t"] }) {
-  return (
-    <div style={{
-      minHeight: "100vh",
-      background: t.bg,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: 24,
-    }}>
-      <div style={{
-        background: t.surface,
-        border: `1px solid ${t.line}`,
-        borderRadius: 12,
-        padding: 28,
-        maxWidth: 440,
-        width: "100%",
-        textAlign: "center",
-      }}>
-        {children}
-      </div>
+    // Bespoke: a single card centred in the viewport. `.bareshell` around this
+    // page already paints the background and holds the 100vh floor.
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
+      <Card style={{ maxWidth: 440, width: "100%", textAlign: "center" }}>{children}</Card>
     </div>
   );
 }

@@ -21,11 +21,22 @@
 //
 // Drop targets: each (row, owner) cell uses id "handoff:<row_id>:<owner>"
 // so the parent DndContext (in DealWorkspaceTab) can route on drag-end.
+//
+// Restyled onto the plain-CSS design system. This screen is mostly
+// drag-state feedback, so more stays inline here than anywhere else in the
+// batch — every border, tint and opacity below is read off `drop.isOver`,
+// the row's owner, or the hover/drag flags, which is exactly the case the
+// inline escape hatch exists for. What did move to classes: the column
+// headers are `.cellchip`s (the AI column's blue and the Human column's grey
+// were the point of the hand-picked colours), the row number tile is
+// `.datetile`, the delete control is a `.btn.danger` (its hover tint is now
+// CSS, not two mouse handlers), the task label is `.trunc`, the category
+// badge is `.mlbl`, and the drag preview is `.dragchip`.
 
 import { useEffect, useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Icon } from "@/components/design-system/Icon";
+import { Btn, CellChip, cx } from "@/components/ds";
 import type { DSDealSecretaryView, DSTaskRow } from "@/lib/types";
 
 export interface HandoffRow {
@@ -52,6 +63,10 @@ export interface AISecretaryHandoffTableProps {
 }
 
 const STORAGE_PREFIX = "qc.secretary.handoff.";
+
+/** The 48px number gutter plus the two equal owner columns. A bespoke track,
+ *  not a page grid — it lives here rather than on `.cg`. */
+const TRACK: React.CSSProperties = { gridTemplateColumns: "48px 1fr 1fr" };
 
 export function loadHandoffRows(loanId: string): HandoffRow[] | null {
   if (typeof window === "undefined") return null;
@@ -93,8 +108,6 @@ export function defaultHandoffRows(view: DSDealSecretaryView): HandoffRow[] {
 export function AISecretaryHandoffTable({
   view, loanId: _loanId, isOperator: _isOperator, onAssign: _onAssign, onUnassign: _onUnassign, rows, setRows, onUnplaceTask,
 }: AISecretaryHandoffTableProps) {
-  const { t } = useTheme();
-
   // Build a key → task map so each cell can render the full task labels.
   const tasksByKey = useMemo(() => {
     const m = new Map<string, DSTaskRow>();
@@ -177,16 +190,20 @@ export function AISecretaryHandoffTable({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "48px 1fr 1fr", gap: 7, paddingBottom: 2 }}>
-        <span style={cellHeader(t)}>#</span>
-        <span style={{ ...cellHeader(t), color: t.brand, display: "flex", alignItems: "center", gap: 5 }}>
-          <Icon name="ai" size={11} stroke={2.2} />
-          AI
+    <div className="grid g8">
+      <div className="grid g8" style={TRACK}>
+        <span className="lbl">#</span>
+        <span>
+          <CellChip tone="acc">
+            <Icon name="ai" size={11} stroke={2.2} />
+            AI
+          </CellChip>
         </span>
-        <span style={{ ...cellHeader(t), display: "flex", alignItems: "center", gap: 5 }}>
-          <Icon name="user" size={11} stroke={2.2} />
-          Human
+        <span>
+          <CellChip tone="mut">
+            <Icon name="user" size={11} stroke={2.2} />
+            Human
+          </CellChip>
         </span>
       </div>
       {rows.map((row, i) => (
@@ -216,53 +233,37 @@ function HandoffRowView({
   showDelete: boolean;
   onUnplaceTask?: (taskKey: string) => void;
 }) {
-  const { t } = useTheme();
   const aiActive = row.owner === "ai";
   const humanActive = row.owner === "human";
   const empty = row.owner === null;
 
-  const accent = aiActive ? t.brand : humanActive ? t.ink2 : t.ink3;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "48px 1fr 1fr", gap: 7, alignItems: "stretch" }}>
-      <div style={{
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "space-between",
-        padding: "10px 4px", borderRadius: 10,
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        position: "relative",
-      }}>
-        <span style={{
-          fontSize: 15, fontWeight: 900, color: t.ink, lineHeight: 1,
-        }}>
-          {rowNumber}
-        </span>
-        <span style={{
-          fontSize: 8.5, fontWeight: 900, letterSpacing: 0.6,
-          textTransform: "uppercase", color: accent,
-          marginTop: 4, marginBottom: 4,
-        }}>
+    <div className="grid g8" style={{ ...TRACK, alignItems: "stretch" }}>
+      <div className="datetile">
+        <div className="d">{rowNumber}</div>
+        {/* Data-derived: the owner word is tinted by which party holds the
+            row, which `.datetile .m` cannot know. */}
+        <div
+          className="m"
+          style={{
+            color: aiActive ? "var(--accent)" : humanActive ? "var(--ink2)" : "var(--muted)",
+          }}
+        >
           {aiActive ? "AI" : humanActive ? "HUMAN" : "OPEN"}
-        </span>
+        </div>
         {showDelete ? (
-          <button
-            type="button"
+          /* `.btn` is inline-flex, so it centres inside `.datetile`'s
+             text-align:center. `.iconbtn` would not — it is display:grid,
+             which makes it a block box parked against the left edge. */
+          <Btn
+            size="sm"
+            className="danger"
             onClick={onDeleteRow}
             aria-label={`Remove row ${rowNumber}`}
             title="Remove this row"
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              color: t.ink3,
-              fontSize: 14,
-              fontWeight: 700,
-              lineHeight: 1,
-              padding: "4px 8px",
-              borderRadius: 6,
-              background: "transparent",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = t.dangerBg; e.currentTarget.style.color = t.danger; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = t.ink3; }}
-          >×</button>
+          >
+            ×
+          </Btn>
         ) : null}
       </div>
       <HandoffCell
@@ -301,7 +302,6 @@ function HandoffCell({
   onRemoveKey: (key: string) => void;
   onUnplaceTask?: (taskKey: string) => void;
 }) {
-  const { t } = useTheme();
   const dropId = `handoff:${rowId}:${owner}`;
   // Every cell is a drop target — including the "owned by the other
   // party" column. Dropping there flips the whole row's owner (the
@@ -309,25 +309,28 @@ function HandoffCell({
   // hand-off, not a split), which the parent's handler handles.
   const drop = useDroppable({ id: dropId });
   void active;
-  const accent = owner === "ai" ? t.brand : t.ink2;
-  const tint = owner === "ai" ? t.brandSoft : t.surface2;
+  const accent = owner === "ai" ? "var(--accent)" : "var(--ink2)";
+  const tint = owner === "ai" ? "var(--accent-100)" : "var(--sunken2)";
   const borderColor = drop.isOver
     ? accent
     : ownedByOther
-      ? `${t.line}`
+      ? "var(--line)"
       : taskKeys.length
         ? accent
-        : t.line;
+        : "var(--line)";
   return (
     <div
       ref={drop.setNodeRef}
+      // Every value here is drag-state: the border style and colour, the
+      // tint and the dimming are all read off drop.isOver / ownedByOther /
+      // whether the cell holds work. There is no class that can know them.
       style={{
         minHeight: 60,
         borderRadius: 10,
         border: `1.5px ${drop.isOver ? "dashed" : ownedByOther ? "dashed" : "solid"} ${borderColor}`,
         background: ownedByOther
           ? drop.isOver ? tint : "transparent"
-          : drop.isOver ? tint : taskKeys.length ? t.surface : t.surface2,
+          : drop.isOver ? tint : taskKeys.length ? "var(--surface)" : "var(--sunken2)",
         opacity: ownedByOther && !drop.isOver ? 0.45 : 1,
         padding: 8,
         display: "flex",
@@ -338,31 +341,40 @@ function HandoffCell({
       }}
     >
       {ownedByOther && !drop.isOver ? (
-        <span style={{
-          position: "absolute", inset: 0,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 11, fontWeight: 800, color: t.ink3,
-          letterSpacing: 0.5,
-        }}>
+        /* Bespoke: an overlay watermark filling the dimmed cell. */
+        <span
+          className="sub"
+          style={{
+            position: "absolute", inset: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
           ⤺ row handed to other party
         </span>
       ) : ownedByOther && drop.isOver ? (
-        <span style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          minHeight: 44,
-          fontSize: 11.5, color: accent, fontWeight: 900, letterSpacing: 0.2,
-        }}>
+        /* Data-derived: the prompt takes the target column's accent. */
+        <span
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            minHeight: 44,
+            fontSize: 11.5, color: accent, fontWeight: 900, letterSpacing: 0.2,
+          }}
+        >
           Drop to flip row → {owner === "ai" ? "Elara" : "My Tasks"}
         </span>
       ) : taskKeys.length === 0 ? (
-        <span style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          minHeight: 44,
-          fontSize: 11.5, color: drop.isOver ? accent : t.ink3,
-          fontWeight: drop.isOver ? 900 : 700,
-          fontStyle: drop.isOver ? "normal" : "italic",
-          letterSpacing: 0.2,
-        }}>
+        /* Data-derived: the empty slot goes from a muted italic hint to the
+           column's accent the moment something is dragged over it. */
+        <span
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            minHeight: 44,
+            fontSize: 11.5, color: drop.isOver ? accent : "var(--muted)",
+            fontWeight: drop.isOver ? 900 : 700,
+            fontStyle: drop.isOver ? "normal" : "italic",
+            letterSpacing: 0.2,
+          }}
+        >
           {drop.isOver ? `Drop here → ${owner === "ai" ? "Elara" : "My Tasks"}` : `Drag work here`}
         </span>
       ) : (
@@ -390,7 +402,6 @@ function HandoffTaskChip({
   onRemove: () => void;
   onUnplace?: () => void;
 }) {
-  const { t } = useTheme();
   const [hover, setHover] = useState(false);
   const label = task?.label ?? taskKey;
   const cat = task?.category ?? "";
@@ -407,7 +418,7 @@ function HandoffTaskChip({
     id: `chip:${taskKey}`,
     data: { kind: "chip", requirement_key: taskKey, label },
   });
-  const accent = owner === "ai" ? t.brand : t.ink2;
+  const accent = owner === "ai" ? "var(--accent)" : "var(--ink2)";
   return (
     <div
       ref={drag.setNodeRef}
@@ -418,13 +429,15 @@ function HandoffTaskChip({
         e.preventDefault();
         onUnplace();
       }}
+      // Data-derived: the lift on hover and the ghosting while dragging.
+      // The rest is the bespoke two-zone (handle | remove) chip box.
       style={{
         display: "flex",
         alignItems: "stretch",
         gap: 0,
         borderRadius: 8,
-        background: hover ? t.surface : t.surface2,
-        border: `1px solid ${hover ? accent : t.line}`,
+        background: hover ? "var(--surface)" : "var(--sunken2)",
+        border: `1px solid ${hover ? accent : "var(--line)"}`,
         minWidth: 0,
         userSelect: "none",
         opacity: drag.isDragging ? 0.4 : 1,
@@ -436,7 +449,9 @@ function HandoffTaskChip({
       <div
         {...drag.attributes}
         {...drag.listeners}
+        className="grabbable"
         title="Drag to move. Right-click to send back to the Resolution Queue."
+        // Bespoke: the grab zone claims the row minus the × gutter.
         style={{
           flex: 1,
           minWidth: 0,
@@ -444,27 +459,11 @@ function HandoffTaskChip({
           alignItems: "center",
           gap: 7,
           padding: "7px 9px",
-          cursor: "grab",
         }}
       >
         <Icon name={owner === "ai" ? "ai" : "user"} size={12} stroke={2.2} />
-        <span style={{
-          flex: 1, minWidth: 0,
-          fontSize: 12, fontWeight: 700, color: t.ink,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          lineHeight: 1.3,
-        }}>
-          {label}
-        </span>
-        {cat ? (
-          <span style={{
-            fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 4,
-            background: t.chip, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.4,
-            whiteSpace: "nowrap",
-          }}>
-            {String(cat).slice(0, 12)}
-          </span>
-        ) : null}
+        <b className="grow trunc">{label}</b>
+        {cat ? <span className="mlbl">{String(cat).slice(0, 12)}</span> : null}
       </div>
 
       {/* REMOVE BUTTON — separate hit zone, outside dnd-kit listeners */}
@@ -473,6 +472,9 @@ function HandoffTaskChip({
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
         aria-label="Remove from this row"
         title="Remove from this row (returns to an empty slot)"
+        // Data-derived: the gutter picks up the danger tint while the chip
+        // it belongs to is hovered, which is a parent-state rule that no
+        // :hover selector on this element can express.
         style={{
           display: "inline-flex",
           alignItems: "center",
@@ -480,10 +482,10 @@ function HandoffTaskChip({
           width: 32,
           minHeight: 32,
           padding: 0,
-          background: hover ? t.dangerBg : "transparent",
-          color: hover ? t.danger : t.ink3,
+          background: hover ? "var(--danger-tint)" : "transparent",
+          color: hover ? "var(--danger)" : "var(--muted)",
           border: "none",
-          borderLeft: `1px solid ${t.line}`,
+          borderLeft: "1px solid var(--line)",
           fontSize: 18,
           fontWeight: 700,
           lineHeight: 1,
@@ -502,35 +504,23 @@ function HandoffTaskChip({
 /** Read-only preview rendered inside the parent's <DragOverlay /> so the
  *  user sees what they're dragging follow the cursor. */
 export function HandoffChipPreview({ label, owner }: { label: string; owner: "ai" | "human" }) {
-  const { t } = useTheme();
   return (
-    <div style={{
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 7,
-      padding: "8px 12px",
-      borderRadius: 9,
-      background: owner === "ai" ? t.brandSoft : t.surface,
-      border: `1.5px solid ${owner === "ai" ? t.brand : t.lineStrong}`,
-      boxShadow: "0 10px 24px rgba(0,0,0,0.22), 0 2px 6px rgba(0,0,0,0.12)",
-      fontSize: 12.5, fontWeight: 800, color: t.ink,
-      pointerEvents: "none",
-      maxWidth: 360,
-      transform: "rotate(-1deg)",
-    }}>
+    <div
+      className={cx("dragchip", owner === "ai" && "ai")}
+      // The lifted shadow, the tilt and the cap on width are what make this
+      // read as "in flight"; `.dragchip` owns the box and the owner tint.
+      style={{
+        boxShadow: "0 10px 24px rgba(0,0,0,0.22), 0 2px 6px rgba(0,0,0,0.12)",
+        pointerEvents: "none",
+        maxWidth: 360,
+        transform: "rotate(-1deg)",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 7,
+      }}
+    >
       <Icon name={owner === "ai" ? "ai" : "user"} size={13} stroke={2.2} />
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {label}
-      </span>
+      <span className="trunc">{label}</span>
     </div>
   );
-}
-
-
-function cellHeader(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    fontSize: 10, fontWeight: 900, letterSpacing: 1.1,
-    textTransform: "uppercase", color: t.ink3,
-    padding: "0 4px",
-  };
 }

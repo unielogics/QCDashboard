@@ -4,12 +4,38 @@
 // 4-stage state machine (form → consent → pulling → done) shown as a modal
 // instead of a screen. Triggered from <ProTermsCard> on the dashboard and
 // from /profile.
+//
+// ── Design-system migration note ──────────────────────────────────────
+// Restyled onto globals.css/app-extras.css classes. The hand-rolled right-edge
+// panel became ds/Drawer — the one dialog shape — matching the move already
+// made by PreQualRequestModal, the other long borrower-facing form.
+//
+// `closeOnBackdrop={false}` is deliberate and carries the old behaviour
+// forward: the previous scrim had NO onClick, because losing seven fields of
+// half-typed PII to a stray click is a far worse outcome than having to hit
+// Cancel or Escape. Escape still closes (Drawer owns it now), and body-scroll
+// lock, focus-into-dialog and focus-restore-on-close are gained.
+//
+// The stage-dependent action rows moved from inside the card to the drawer
+// footer — same buttons, same handlers, same disabled predicates, one place.
+// Every hook, every error code branch, the formValid gate, the four stages and
+// both done-stage outcomes are the ones that were here before. Public props
+// (`open`, `onClose`, `initialEmail`, `initialName`, `mode`) are untouched.
 
-import { useEffect, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { useEffect, useState, type ReactNode } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import {
+  Btn,
+  Card,
+  CellChip,
+  Field as DsField,
+  Input,
+  Note,
+  Select,
+  StatusLine,
+  cx,
+} from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { PaymentAuthorizationPanel } from "@/components/PaymentAuthorizationPanel";
 import { useCreditSummary, usePaymentAuthorizationStatus, useStartMyCreditPull } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api";
@@ -30,7 +56,6 @@ interface Props {
 }
 
 export function CreditPullModal({ open, onClose, initialEmail, initialName, mode = "first" }: Props) {
-  const { t } = useTheme();
   const start = useStartMyCreditPull();
   const paymentAuthorization = usePaymentAuthorizationStatus();
   const [stage, setStage] = useState<Stage>("form");
@@ -71,15 +96,8 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
     }
   }, [open, initialName, initialEmail]);
 
-  // Esc closes
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  // Esc closes — now owned by Drawer, which also locks body scroll and returns
+  // focus to whatever opened the dialog.
 
   if (!open) return null;
   const needsPaymentAuthorization = Boolean(
@@ -155,296 +173,258 @@ export function CreditPullModal({ open, onClose, initialEmail, initialName, mode
     (!ssnRequired || form.ssn.length === 9)
   );
 
+  const eyebrow =
+    mode === "expired"
+      ? "Refresh credit · 90-day expiry"
+      : mode === "rerun"
+        ? "Re-run soft pull"
+        : "Unlock pro terms";
+
+  // The stage's actions. `.drawer-f` is a left-aligned flex row, so `.sp`
+  // (flex: 1) pushes the pair to the right edge — the same arrangement the old
+  // in-card footer produced. Null while pulling (there was nothing to press
+  // then either) and null on the payment-authorization branch, where the panel
+  // owns its own controls.
+  const footer = needsPaymentAuthorization ? null : stage === "form" ? (
+    <>
+      <span className="sp" />
+      <Btn onClick={onClose}>Cancel</Btn>
+      <Btn variant="pri" onClick={() => setStage("consent")} disabled={!formValid}>
+        Continue to Consent <Icon name="arrowR" size={13} />
+      </Btn>
+    </>
+  ) : stage === "consent" ? (
+    <>
+      <span className="sp" />
+      <Btn onClick={() => setStage("form")}>Back</Btn>
+      {/* `.btn.pri-bad`: solid danger, not the danger TINT. This is the one
+          control the whole dialog exists to reach, and it was solid-filled
+          before the migration — a tinted secondary demotes the most
+          consequential button on the screen to the weight of a Delete sitting
+          in a row of other actions. A single two-class selector, so
+          `background` still has exactly one owner. */}
+      <Btn className="pri-bad" onClick={submit}>
+        <Icon name="shield" size={14} /> I Authorize · Run Soft Pull
+      </Btn>
+    </>
+  ) : stage === "done" ? (
+    <>
+      <span className="sp" />
+      <Btn variant="pri" onClick={onClose}>
+        Done
+      </Btn>
+    </>
+  ) : null;
+
   return (
-    // Right-side panel (not a centered modal): the borrower can keep
-    // glancing at the simulator/dashboard behind it. Backdrop has NO
-    // onClick — clicks outside don't dismiss, since losing 7 fields of
-    // half-typed PII to a stray click is a much worse outcome than
-    // having to hit Cancel/Esc explicitly.
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Soft credit pull"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(6, 7, 11, 0.55)",
-        backdropFilter: "blur(2px)",
-        zIndex: 200,
-      }}
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Soft Credit Pull"
+      width="md"
+      closeOnBackdrop={false}
+      footer={footer}
     >
-      <div
-        style={{
-          position: "absolute",
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: "min(640px, 95vw)",
-          background: t.bg,
-          boxShadow: t.shadowLg,
-          borderTopLeftRadius: 18,
-          borderBottomLeftRadius: 18,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <div
-          style={{
-            flex: "0 0 auto",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "20px 28px",
-            borderBottom: `1px solid ${t.line}`,
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: mode === "expired" ? t.danger : t.petrol }}>
-              {mode === "expired"
-                ? "Refresh credit · 90-day expiry"
-                : mode === "rerun"
-                  ? "Re-run soft pull"
-                  : "Unlock pro terms"}
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: t.ink, marginTop: 2 }}>Soft Credit Pull</div>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              width: 32,
-              height: 32,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 8,
-              color: t.ink2,
-            }}
-          >
-            <Icon name="x" size={16} />
-          </button>
+      <div className="grid">
+        <div>
+          <CellChip tone={mode === "expired" ? "bad" : "pet"}>{eyebrow}</CellChip>
         </div>
 
-        <div
-          style={{
-            flex: "1 1 auto",
-            overflowY: "auto",
-            padding: "20px 28px 28px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-          }}
-        >
-          {needsPaymentAuthorization ? (
-            <>
-              <div style={{ fontSize: 13.5, color: t.ink2, lineHeight: 1.55 }}>
-                Unlock Pro Terms in one flow: first sign the payment pre-authorization and save a card securely through Stripe, then confirm FCRA consent and run the soft pull.
-              </div>
-              {submitError ? <div style={{ color: t.danger, fontSize: 13, fontWeight: 700 }}>{submitError}</div> : null}
-              <PaymentAuthorizationPanel />
-            </>
-          ) : (
-            <>
-              <div style={{ fontSize: 13.5, color: t.ink2, lineHeight: 1.55 }}>
-                We capture only what the bureaus require. No score impact. Valid for 90 days.
-              </div>
+        {needsPaymentAuthorization ? (
+          <>
+            <p className="sub">
+              Unlock Pro Terms in one flow: first sign the payment pre-authorization and save a card securely through Stripe, then confirm FCRA consent and run the soft pull.
+            </p>
+            {submitError ? <StatusLine tone="bad">{submitError}</StatusLine> : null}
+            <PaymentAuthorizationPanel />
+          </>
+        ) : (
+          <>
+            <p className="sub">
+              We capture only what the bureaus require. No score impact. Valid for 90 days.
+            </p>
 
-          {stage === "form" && (
-            <Card pad={20}>
-              <SectionLabel>Legal Name</SectionLabel>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <Field t={t} label="First name" value={form.legal_first_name} onChange={(v) => setForm({ ...form, legal_first_name: v })} />
-                <Field t={t} label="Last name" value={form.legal_last_name} onChange={(v) => setForm({ ...form, legal_last_name: v })} />
-              </div>
-              <DobField
-                t={t}
-                valueIso={form.dob}
-                onChangeIso={(iso) => setForm({ ...form, dob: iso })}
-              />
+            {stage === "form" && (
+              <Card>
+                {/* Surfaced for every code path that lands back on the form,
+                    not just the SSN one. bureau_freeze set this message and
+                    then had nowhere to render it. */}
+                {submitError ? (
+                  <StatusLine tone="warn" className="mb">
+                    {submitError}
+                  </StatusLine>
+                ) : null}
 
-              <div style={{ height: 10 }} />
-              <SectionLabel>Address Used for Credit</SectionLabel>
-              <Field t={t} label="Street" value={form.street} onChange={(v) => setForm({ ...form, street: v })} />
-              <Field t={t} label="City" value={form.city} onChange={(v) => setForm({ ...form, city: v })} />
-              <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 10 }}>
-                <StateSelect t={t} value={form.state} onChange={(v) => setForm({ ...form, state: v })} />
-                <Field t={t} label="ZIP" value={form.zip} onChange={(v) => setForm({ ...form, zip: v })} />
-              </div>
+                <div className="fldsec">
+                  <div className="lbl">Legal name</div>
+                  <div className="fldgrid two">
+                    <Field label="First name" value={form.legal_first_name} onChange={(v) => setForm({ ...form, legal_first_name: v })} />
+                    <Field label="Last name" value={form.legal_last_name} onChange={(v) => setForm({ ...form, legal_last_name: v })} />
+                  </div>
+                  <div className="mt">
+                    <DobField
+                      valueIso={form.dob}
+                      onChangeIso={(iso) => setForm({ ...form, dob: iso })}
+                    />
+                  </div>
+                </div>
 
-              {ssnRequired ? (
-                <>
-                  <div style={{ height: 10 }} />
-                  <SectionLabel>Identity verification</SectionLabel>
-                  {submitError ? (
-                    <div style={{ marginBottom: 10 }}>
-                      <Pill bg={t.warnBg} color={t.warn}>{submitError}</Pill>
+                <div className="fldsec">
+                  <div className="lbl">Address used for credit</div>
+                  <div className="fldgrid">
+                    <Field label="Street" value={form.street} onChange={(v) => setForm({ ...form, street: v })} />
+                    <Field label="City" value={form.city} onChange={(v) => setForm({ ...form, city: v })} />
+                    {/* Bespoke 1.4fr/1fr track: a state name is long and a ZIP
+                        is five characters. `.fldgrid.two` would give them equal
+                        columns and leave the ZIP field mostly empty. */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 11 }}>
+                      <StateSelect value={form.state} onChange={(v) => setForm({ ...form, state: v })} />
+                      <Field label="ZIP" value={form.zip} onChange={(v) => setForm({ ...form, zip: v })} />
                     </div>
-                  ) : null}
-                  <Field
-                    t={t}
-                    label="Social Security Number"
-                    placeholder="9 digits, no dashes"
-                    type="password"
-                    value={form.ssn}
-                    onChange={(v) => setForm({ ...form, ssn: v.replace(/\D/g, "").slice(0, 9) })}
-                  />
-                  <div style={{ fontSize: 11, color: t.ink3, marginTop: -4, marginBottom: 4 }}>
-                    Sent to the bureau over TLS. Only the last 4 digits are stored on file.
-                  </div>
-                </>
-              ) : (
-                <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 8, background: t.surface2, border: `1px solid ${t.line}` }}>
-                  <div style={{ fontSize: 11.5, color: t.ink2, lineHeight: 1.5 }}>
-                    We try to match your credit file using name, address, and date of birth — most consumers can be matched on those alone. We only ask for your SSN if the bureau can't find your file without it.
                   </div>
                 </div>
-              )}
 
-              <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                <button onClick={onClose} style={qcBtn(t)}>Cancel</button>
-                <button
-                  onClick={() => setStage("consent")}
-                  disabled={!formValid}
-                  style={{ ...qcBtnPrimary(t), opacity: formValid ? 1 : 0.5, cursor: formValid ? "pointer" : "not-allowed" }}
-                >
-                  Continue to Consent <Icon name="arrowR" size={13} />
-                </button>
-              </div>
-            </Card>
-          )}
+                {ssnRequired ? (
+                  <div className="fldsec">
+                    <div className="lbl">Identity verification</div>
+                    {/* `req` is the requirement-engine flag, not a validation
+                        error: the bureau came back and asked for this one. It
+                        rails the label and adds a REQUIRED tag so the signal
+                        is not colour alone. */}
+                    <Field
+                      label="Social Security Number"
+                      placeholder="9 digits, no dashes"
+                      type="password"
+                      req
+                      bad={form.ssn.length !== 9}
+                      hint="Sent to the bureau over TLS. Only the last 4 digits are stored on file."
+                      value={form.ssn}
+                      onChange={(v) => setForm({ ...form, ssn: v.replace(/\D/g, "").slice(0, 9) })}
+                    />
+                  </div>
+                ) : (
+                  <Note>
+                    We try to match your credit file using name, address, and date of birth — most consumers can be matched on those alone. We only ask for your SSN if the bureau can&apos;t find your file without it.
+                  </Note>
+                )}
+              </Card>
+            )}
 
-          {stage === "consent" && (
-            <Card pad={20}>
-              <SectionLabel>FCRA Consent</SectionLabel>
-              <p style={{ color: t.ink2, fontSize: 13, lineHeight: 1.6, margin: 0 }}>
-                I, <strong style={{ color: t.ink }}>{form.legal_first_name} {form.legal_last_name}</strong>, authorize Qualified Commercial to obtain my consumer credit report from Experian, TransUnion, and Equifax for the purpose of evaluating loan products. I understand this is a soft pull and will not affect my credit score.
-              </p>
-              {start.error && (
-                <div style={{ marginTop: 12 }}>
-                  <Pill bg={t.dangerBg} color={t.danger}>
+            {stage === "consent" && (
+              <Card>
+                {/* `.consent` runs at body size rather than the caption size
+                    the rest of the fine print uses — shrinking a disclosure to
+                    fit is the thing a compliance review flags. */}
+                <div className="consent">
+                  <div className="ctext">
+                    <span className="ctitle">FCRA consent</span>
+                    I, <strong>{form.legal_first_name} {form.legal_last_name}</strong>, authorize Qualified Commercial to obtain my consumer credit report from Experian, TransUnion, and Equifax for the purpose of evaluating loan products. I understand this is a soft pull and will not affect my credit score.
+                  </div>
+                </div>
+                {start.error && (
+                  <StatusLine tone="bad" className="mt">
                     {start.error instanceof Error ? start.error.message : "Pull failed — please retry."}
-                  </Pill>
-                </div>
-              )}
-              <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <button onClick={() => setStage("form")} style={qcBtn(t)}>Back</button>
-                <button onClick={submit} style={{ ...qcBtnPrimary(t), background: t.danger }}>
-                  <Icon name="shield" size={14} /> I Authorize · Run Soft Pull
-                </button>
-              </div>
-            </Card>
-          )}
+                  </StatusLine>
+                )}
+              </Card>
+            )}
 
-          {stage === "pulling" && (
-            <Card pad={32}>
-              <div style={{ textAlign: "center" }}>
-                <div style={{ display: "inline-block", animation: "spin 1.2s linear infinite", color: t.petrol }}>
-                  <Icon name="refresh" size={28} stroke={2.4} />
+            {stage === "pulling" && (
+              <Card>
+                {/* No class owns text-align: center; these three blocks are the
+                    only centred surfaces in the flow. */}
+                <div style={{ textAlign: "center" }}>
+                  {/* Animation and its colour: nothing in the sheet owns
+                      either, and the spin is the point of the state. */}
+                  <div style={{ display: "inline-block", animation: "spin 1.2s linear infinite", color: "var(--petrol)" }}>
+                    <Icon name="refresh" size={28} stroke={2.4} />
+                  </div>
+                  <h3 className="mt">Pulling… Experian → TransUnion → Equifax</h3>
+                  <p className="sub">This usually takes 5–10 seconds.</p>
                 </div>
-                <div style={{ marginTop: 14, fontSize: 14, fontWeight: 700, color: t.ink }}>
-                  Pulling… Experian → TransUnion → Equifax
-                </div>
-                <div style={{ marginTop: 6, fontSize: 12, color: t.ink3 }}>
-                  This usually takes 5–10 seconds.
-                </div>
-              </div>
-              <style jsx>{`
-                @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-              `}</style>
-            </Card>
-          )}
+                <style jsx>{`
+                  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+                `}</style>
+              </Card>
+            )}
 
-          {stage === "done" && (
-            <Card pad={32}>
-              {start.data?.fico == null ? (
-                // Bureau matched but didn't return a usable score (thin file,
-                // no recent activity). Re-running won't help — show that
-                // explicitly so the operator doesn't burn another pull.
-                <div style={{ textAlign: "center" }}>
-                  <Pill bg={t.warnBg} color={t.warn}>
-                    <Icon name="info" size={11} stroke={3} /> No score available
-                  </Pill>
-                  <div style={{ marginTop: 14, fontSize: 14, fontWeight: 700, color: t.ink }}>
-                    The bureau didn't return a usable score
+            {stage === "done" && (
+              <Card>
+                {start.data?.fico == null ? (
+                  // Bureau matched but didn't return a usable score (thin file,
+                  // no recent activity). Re-running won't help — show that
+                  // explicitly so the operator doesn't burn another pull.
+                  <div style={{ textAlign: "center" }}>
+                    <CellChip tone="warn">
+                      <Icon name="info" size={11} stroke={3} /> No score available
+                    </CellChip>
+                    <h3 className="mt">The bureau didn&apos;t return a usable score</h3>
+                    <p className="sub">
+                      This usually means a thin or stale credit file. Re-running a soft pull
+                      on the same identity won&apos;t change the result — please contact support
+                      if you believe this is an error.
+                    </p>
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 12.5, color: t.ink2, lineHeight: 1.5, maxWidth: 380, marginInline: "auto" }}>
-                    This usually means a thin or stale credit file. Re-running a soft pull
-                    on the same identity won't change the result — please contact support
-                    if you believe this is an error.
+                ) : (
+                  <div style={{ textAlign: "center" }}>
+                    <CellChip tone="ok">
+                      <Icon name="check" size={11} stroke={3} /> Verified
+                    </CellChip>
+                    {/* Hero figure — the payoff of the whole flow. `.knum` is
+                        26px and scoped to `.kpi`, `.big` is 29px; neither is
+                        this, so the size is the one property set by hand. */}
+                    <div className="num" style={{ fontSize: 56, fontWeight: 800, lineHeight: 1.05, marginTop: 12 }}>
+                      {start.data.fico}
+                    </div>
+                    <p className="sub">
+                      Valid through {start.data?.expires_at ? new Date(start.data.expires_at).toLocaleDateString() : "—"}
+                    </p>
+                    <CreditBriefing pullId={start.data.id} />
                   </div>
-                  <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
-                    <button onClick={onClose} style={qcBtnPrimary(t)}>Done</button>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ textAlign: "center" }}>
-                  <Pill bg={t.profitBg} color={t.profit}>
-                    <Icon name="check" size={11} stroke={3} /> Verified
-                  </Pill>
-                  <div style={{ marginTop: 12, fontSize: 56, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"' }}>
-                    {start.data.fico}
-                  </div>
-                  <div style={{ marginTop: 4, fontSize: 12, color: t.ink3 }}>
-                    Valid through {start.data?.expires_at ? new Date(start.data.expires_at).toLocaleDateString() : "—"}
-                  </div>
-                  <CreditBriefing pullId={start.data.id} />
-                  <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
-                    <button onClick={onClose} style={qcBtnPrimary(t)}>Done</button>
-                  </div>
-                </div>
-              )}
-            </Card>
-          )}
-            </>
-          )}
-        </div>
+                )}
+              </Card>
+            )}
+          </>
+        )}
       </div>
-    </div>
+    </Drawer>
   );
 }
 
 function Field({
-  t,
   label,
   value,
   onChange,
   placeholder,
   type = "text",
+  hint,
+  req,
+  bad,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   type?: "text" | "password";
+  hint?: ReactNode;
+  /** The requirement engine is waiting on this one — rails the label. */
+  req?: boolean;
+  /** Pairs with `req` so the signal is not colour alone. */
+  bad?: boolean;
 }) {
   return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
-        {label}
-      </div>
-      <input
+    <DsField label={label} hint={hint} req={req}>
+      <Input
+        className={cx(bad && "bad")}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         type={type}
         autoComplete={type === "password" ? "off" : undefined}
         inputMode={type === "password" ? "numeric" : undefined}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          borderRadius: 9,
-          background: t.surface2,
-          border: `1px solid ${t.line}`,
-          color: t.ink,
-          fontSize: 13,
-          fontFamily: "inherit",
-          outline: "none",
-        }}
       />
-    </div>
+    </DsField>
+
   );
 }
 
@@ -452,11 +432,9 @@ function Field({
 // the canonical ISO YYYY-MM-DD upstream so the bureau payload doesn't
 // change. Mirrors qcmobile's DobField — typing 8/15/1980 just works.
 function DobField({
-  t,
   valueIso,
   onChangeIso,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   valueIso: string;
   onChangeIso: (iso: string) => void;
 }) {
@@ -489,32 +467,16 @@ function DobField({
   };
 
   return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
-        Date of birth
-      </div>
-      <input
+    <DsField label="Date of birth" hint="US format · MM / DD / YYYY">
+      <Input
+        className="num"
         value={display}
         onChange={(e) => onChange(e.target.value)}
         placeholder="MM / DD / YYYY"
         inputMode="numeric"
         maxLength={10}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          borderRadius: 9,
-          background: t.surface2,
-          border: `1px solid ${t.line}`,
-          color: t.ink,
-          fontSize: 14,
-          fontFamily: "inherit",
-          outline: "none",
-          letterSpacing: 0.5,
-          fontVariant: "tabular-nums",
-        }}
       />
-      <div style={{ fontSize: 11, color: t.ink3, marginTop: 4 }}>US format · MM / DD / YYYY</div>
-    </div>
+    </DsField>
   );
 }
 
@@ -522,46 +484,24 @@ function DobField({
 // etc.) reuse the same authoritative list.
 
 function StateSelect({
-  t,
   value,
   onChange,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   value: string;
   onChange: (code: string) => void;
 }) {
   return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 5 }}>
-        State
-      </div>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          borderRadius: 9,
-          background: t.surface2,
-          border: `1px solid ${t.line}`,
-          color: value ? t.ink : t.ink3,
-          fontSize: 14,
-          fontFamily: "inherit",
-          outline: "none",
-          appearance: "none",
-          // Caret hint via background image (no extra deps)
-          backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${encodeURIComponent(t.ink3)}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>")`,
-          backgroundRepeat: "no-repeat",
-          backgroundPosition: "right 12px center",
-          paddingRight: 32,
-        }}
-      >
+    <DsField label="State">
+      {/* The hand-drawn caret (an inline background-image SVG) is gone with
+          appearance:none — `.field` keeps the native select control, which is
+          the same affordance without the data URI. */}
+      <Select value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="" disabled>Select a state…</option>
         {US_STATES.map((s) => (
           <option key={s.code} value={s.code}>{s.name} ({s.code})</option>
         ))}
-      </select>
-    </div>
+      </Select>
+    </DsField>
   );
 }
 
@@ -571,13 +511,10 @@ function StateSelect({
 // Intentionally label-only — operators looking for detail click into
 // the full credit summary card on the dashboard.
 function CreditBriefing({ pullId }: { pullId: string }) {
-  const { t } = useTheme();
   const { data: summary, isLoading } = useCreditSummary(pullId);
 
   if (isLoading) {
-    return (
-      <div style={{ marginTop: 18, fontSize: 12, color: t.ink3 }}>Loading briefing…</div>
-    );
+    return <p className="sub mt">Loading briefing…</p>;
   }
   if (!summary) return null;
 
@@ -586,17 +523,18 @@ function CreditBriefing({ pullId }: { pullId: string }) {
   if (positives.length === 0 && warns.length === 0) return null;
 
   return (
-    <div style={{ marginTop: 18, textAlign: "left", display: "grid", gap: 12 }}>
+    // The briefing reads left-aligned inside the centred done card.
+    <div className="grid g10 mt" style={{ textAlign: "left" }}>
       {positives.length > 0 && (
         <div>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: t.profit, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 6 }}>
-            What's good
-          </div>
-          <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 4 }}>
+          <CellChip tone="ok">What&apos;s good</CellChip>
+          <ul className="grid g4 mt">
             {positives.map((b, i) => (
-              <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5, color: t.ink2, lineHeight: 1.4 }}>
-                <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 3, background: t.profit, marginTop: 7, flexShrink: 0 }} />
-                <span>{b.label}</span>
+              <li key={i} className="row">
+                {/* Marker colour is the section's tone — chosen per list, so
+                    it stays inline. `.repdot` owns the shape. */}
+                <span className="repdot" style={{ background: "var(--ok)" }} />
+                <span className="sub grow">{b.label}</span>
               </li>
             ))}
           </ul>
@@ -604,14 +542,12 @@ function CreditBriefing({ pullId }: { pullId: string }) {
       )}
       {warns.length > 0 && (
         <div>
-          <div style={{ fontSize: 10.5, fontWeight: 700, color: t.warn, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 6 }}>
-            Things to watch
-          </div>
-          <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 4 }}>
+          <CellChip tone="warn">Things to watch</CellChip>
+          <ul className="grid g4 mt">
             {warns.map((b, i) => (
-              <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5, color: t.ink2, lineHeight: 1.4 }}>
-                <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 3, background: t.warn, marginTop: 7, flexShrink: 0 }} />
-                <span>{b.label}</span>
+              <li key={i} className="row">
+                <span className="repdot" style={{ background: "var(--warn)" }} />
+                <span className="sub grow">{b.label}</span>
               </li>
             ))}
           </ul>

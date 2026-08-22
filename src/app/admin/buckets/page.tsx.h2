@@ -1,0 +1,178 @@
+onChange={() => args.onToggle(file.id)} />
+onChange={() => setVariant(v.value)}
+onChange={() => setVendorAssignmentDraft({
+onChange={(e) => setAdminNote(e.target.value)} />
+onChange={(e) => setBucketForm({ ...bucketForm, bucket_type: e.target.value })}
+onChange={(e) => setBucketForm({ ...bucketForm, client_name: e.target.value })} />
+onChange={(e) => setBucketForm({ ...bucketForm, description: e.target.value })}
+onChange={(e) => setBucketForm({ ...bucketForm, name: e.target.value })} />
+onChange={(e) => setBucketForm({ ...bucketForm, purpose: e.target.value })} />
+onChange={(e) => setBusinessName(e.target.value)}
+onChange={(e) => setCreateDocSearch(e.target.value)}
+onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, passcode: e.target.value })} />
+onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, recipient_email: e.target.value })} />
+onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, recipient_name: e.target.value })} />
+onChange={(e) => setCustomDocDraft({ ...customDocDraft, allow_multiple_files: e.target.checked })}
+onChange={(e) => setCustomDocDraft({ ...customDocDraft, description: e.target.value })}
+onChange={(e) => setCustomDocDraft({ ...customDocDraft, name: e.target.value })}
+onChange={(e) => setEmail(e.target.value)}
+onChange={(e) => setFullName(e.target.value)}
+onChange={(e) => setIndustry(e.target.value)}
+onChange={(e) => setIntent(e.target.value)}
+onChange={(e) => setNotifyClient(e.target.checked)}
+onChange={(e) => setPhone(e.target.value)}
+onChange={(e) => setSearch(e.target.value)}
+onChange={(e) => setShareFiles({ ...shareFiles, [file.id]: e.target.checked })} />
+onChange={(e) => {
+onChange={(event) => args.onSearch(event.target.value)}
+onChange={(event) => event.target.files && addAdminUploadFiles(event.target.files)} />
+onChange={(event) => patchVendorAccess(access, { [key]: event.target.checked }).catch((e) => setNoti
+onChange={(event) => setAdminUploadForm({ ...adminUploadForm, note: event.target.value })}
+onChange={(event) => setAdminUploadForm({ ...adminUploadForm, uploader_email: event.target.value })}
+onChange={(event) => setAdminUploadForm({ ...adminUploadForm, uploader_name: event.target.value })}
+onChange={(event) => setUploadLinkDraft({ ...uploadLinkDraft, passcode: event.target.value })}
+onChange={(event) => setUploadLinkDraft({ ...uploadLinkDraft, recipient_email: event.target.value })
+onChange={(event) => setUploadLinkDraft({ ...uploadLinkDraft, recipient_name: event.target.value })}
+onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, [key]: event.target.checke
+onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, expires_days: Number(event
+onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, file_scope: event.target.v
+onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, file_search: event.target.
+onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, vendor_user_id: "", vendor
+onChange={(event) => setVendorAssignmentDraft({ ...vendorAssignmentDraft, vendor_user_id: "", vendor
+onChange={(event) => setVendorDirectoryDraft({ ...vendorDirectoryDraft, vendor_email: event.target.v
+onChange={(event) => setVendorDirectoryDraft({ ...vendorDirectoryDraft, vendor_name: event.target.va
+onChange={(event) => setVendorDraft({ ...vendorDraft, can_add_notes: event.target.checked })} />
+onChange={(event) => setVendorDraft({ ...vendorDraft, can_download: event.target.checked })} />
+onChange={(event) => setVendorDraft({ ...vendorDraft, can_preview: event.target.checked })} />
+onChange={(event) => setVendorDraft({ ...vendorDraft, can_propose_tasks: event.target.checked })} />
+onChange={(event) => setVendorDraft({ ...vendorDraft, can_see_internal_notes: event.target.checked }
+onChange={(event) => setVendorDraft({ ...vendorDraft, expires_days: Number(event.target.value) })}
+onChange={(event) => setVendorDraft({ ...vendorDraft, file_scope: event.target.value as VendorAccess
+onChange={(event) => setVendorDraft({ ...vendorDraft, vendor_user_id: "", vendor_email: event.target
+onChange={(event) => setVendorDraft({ ...vendorDraft, vendor_user_id: "", vendor_name: event.target.
+onChange={(event) => updateActivityFilters({ action: event.target.value })}
+onChange={(event) => updateActivityFilters({ actor_role: event.target.value })}
+onChange={(event) => updateActivityFilters({ date_from: event.target.value })}
+onChange={(event) => updateActivityFilters({ date_to: event.target.value })}
+onChange={(event) => updateActivityFilters({ q: event.target.value })}
+onChange={(event) => updateActivityFilters({ target_type: event.target.value })}
+onChange={(event) => updateAdminUploadFile(item.id, { requested_document_id: event.target.value, sta
+onChange={(event) => updatePublicShareViewer(viewer.id, { can_download: event.target.checked })} />
+onChange={(event) => updatePublicShareViewer(viewer.id, { expires_days: Number(event.target.value) }
+onChange={(event) => updatePublicShareViewer(viewer.id, { recipient_name: event.target.value })} />
+onChange={(event) => updateShareViewer(viewer.id, { can_download: event.target.checked })} />
+onChange={(event) => updateShareViewer(viewer.id, { expires_days: Number(event.target.value) })}
+onChange={(event) => updateShareViewer(viewer.id, { passcode: event.target.value })} />
+onChange={(event) => updateShareViewer(viewer.id, { recipient_email: event.target.value })} />
+onChange={(event) => updateShareViewer(viewer.id, { recipient_name: event.target.value })} />
+onChange={(event) => {
+onChange={(event) => {
+onChange={(event) => {
+onClick={() => adminFileInputRef.current?.click()}
+onClick={() => adminFileInputRef.current?.click()}
+onClick={() => args.onSetSelected([])}
+onClick={() => args.onSetSelected(filtered.map((file) => file.id))}
+onClick={() => args.onSetSelected(selectedShareFileIds)}
+onClick={() => copyPublicShareLink(share).catch(() => undefined)}
+onClick={() => copyShareInvite(share)}
+onClick={() => copyShareInvite(share)}
+onClick={() => copyShareLink(share)}
+onClick={() => copyShareLink(share)}
+onClick={() => copyText(`Upload link: ${link.url}\nAccess code: ${link.passcode}`)}
+onClick={() => copyText(createResult.links.map((link) => `${link.name}: ${link.url}\nAccess code: $
+onClick={() => copyUploadInvite(link)}
+onClick={() => copyUploadLink(link)}
+onClick={() => copyVendorInvite(access)}
+onClick={() => copyVendorLoginLink(access)}
+onClick={() => createBucketUploadLink().catch((e) => setNotice(String(e)))}
+onClick={() => createPublicShareLinks().catch((e) => setNotice(readableError(e)))}
+onClick={() => createShareLinks().catch((e) => setNotice(readableError(e)))}
+onClick={() => createVendorAccess().catch((e) => setNotice(readableError(e)))}
+onClick={() => createVendorFromDirectory().catch((error) => setNotice(readableError(error)))}
+onClick={() => deleteFile(file).catch(() => undefined)}
+onClick={() => detail && loadBucketActivity(detail.id, Math.max(0, activityOffset - ACTIVITY_PAGE_S
+onClick={() => detail && loadBucketActivity(detail.id, activityOffset + ACTIVITY_PAGE_SIZE, activit
+onClick={() => detail && setConvertLeadBucket(detail)}
+onClick={() => generateShareCode(viewer.id)}
+onClick={() => onSelect(bucket.id)}
+onClick={() => openEditShareFiles(share)}
+onClick={() => openEditVendorFiles(access)}
+onClick={() => openEmailShare(share)}
+onClick={() => openEmailShare(share)}
+onClick={() => openFile(file, false)}
+onClick={() => openFile(file, true)}
+onClick={() => patchVendorAccess(access, { file_scope: "all_active", file_ids: [] }).then(() => set
+onClick={() => regenerateSharePasscode(share)}
+onClick={() => regenerateUploadLinkPasscode(link).catch((e) => setNotice(String(e)))}
+onClick={() => removeAdminUploadFile(item.id)}
+onClick={() => removePublicShareViewer(viewer.id)}
+onClick={() => removeShareViewer(viewer.id)}
+onClick={() => resendVendorInvite(access).catch((e) => setNotice(readableError(e)))}
+onClick={() => saveEditedShareFiles(share)}
+onClick={() => saveEditedVendorFiles(access).catch((e) => setNotice(readableError(e)))}
+onClick={() => setCreateDocPage((page) => Math.max(0, page - 1))}
+onClick={() => setCreateDocPage((page) => Math.min(createDocPageCount - 1, page + 1))}
+onClick={() => setCreateInviteDraft({ ...createInviteDraft, passcode: generateAccessCode() })}
+onClick={() => setCreateInvites((rows) => rows.filter((row) => row.id !== invite.id))}
+onClick={() => setCreateOpen(false)}
+onClick={() => setCreateOpen(false)}
+onClick={() => setCreatedPublicShareLinks([])}
+onClick={() => setCreatedShareLinks([])}
+onClick={() => setCustomDocOpen((value) => !value)} aria-expanded={customDocOpen}
+onClick={() => setEditingShareId(null)}
+onClick={() => setEditingVendorAccessId(null)}
+onClick={() => setExpandedActivityId(isOpen ? null : item.id)}
+onClick={() => setExpandedShareId(isOpen ? null : share.id)}
+onClick={() => setExpandedUploadLinkId(isOpen ? null : link.id)}
+onClick={() => setExpandedVendorAccessId(isOpen ? null : access.id)}
+onClick={() => setPublicSharePopupOpen(false)}
+onClick={() => setSharePopupOpen(false)}
+onClick={() => setShareStatus(share, "active")}
+onClick={() => setShareStatus(share, "revoked")}
+onClick={() => setUploadLinkDraft({ ...uploadLinkDraft, passcode: generateAccessCode() })}
+onClick={() => setVendorAssignmentDraft({ ...vendorAssignmentDraft, file_ids: [] })}
+onClick={() => setVendorAssignmentDraft({ ...vendorAssignmentDraft, file_ids: filtered.map((file) =
+onClick={() => setVendorDirectoryOpen(true)}
+onClick={() => setVendorStatus(access, "active").catch((e) => setNotice(readableError(e)))} disable
+onClick={() => setVendorStatus(access, "revoked").catch((e) => setNotice(readableError(e)))}
+onClick={() => toggleCreateDoc(doc.id)}
+onClick={() => {
+onClick={() => {
+onClick={() => {
+onClick={() => {
+onClick={() => { setFormError(""); setStep((n) => n - 1); }}
+onClick={(event) => {
+onClick={(event) => {
+onClick={(event) => {
+onClick={addCreateInvite}
+onClick={addCustomDoc}
+onClick={addNote}
+onClick={addPublicShareViewer}
+onClick={addShareViewer}
+onClick={assignVendorFromBucketList}
+onClick={createBucketWorkflow}
+onClick={goNext}
+onClick={onClose}
+onClick={onClose}
+onClick={showVendorSettings}
+onClick={submitAdminUploads}
+onClick={submit}
+onClose={() => setCreateOpen(false)}
+onClose={() => setDetail(null)}
+onClose={() => setEmailShare(null)}
+onClose={() => setReviewFile(null)}
+onClose={() => setVendorDirectoryOpen(false)}
+onClose={() => {
+onClose={() => {
+onClose={onClose}
+onConvert={convertBucketToLead}
+onDelete={() => deleteFile(reviewFile).catch(() => undefined)}
+onDelete={deleteBucket} />
+onDragLeave={onAdminUploadDragLeave}
+onDragOver={onAdminUploadDragOver}
+onDrop={onAdminUploadDrop}
+onKeyDown={(event) => {
+onKeyDown={(event) => {
+onKeyDown={(event) => {
+onSelect={(id) => openBucket(id)} onOpenVendors={openVendorAssignment} onConvertToLead={setConvertLe
+onSend={sendShareEmail}

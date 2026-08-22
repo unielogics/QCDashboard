@@ -4,9 +4,12 @@
 // the "Elara" summarizer (qcbackend/app/services/ai/summarizer.py).
 // Falls back to the legacy plain-text status_summary for loans that haven't
 // been refreshed since the upgrade.
+//
+// Restyled onto `.panel`. The only values left inline are the two accents
+// that are chosen from the data: the market-warning tone and the tint that
+// marks an action list as the AI's or the broker's.
 
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { Btn, CellChip, Panel, StatusLine, Sub, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useRefreshLoanSummary } from "@/hooks/useApi";
 import { useActiveProfile } from "@/store/role";
@@ -15,156 +18,119 @@ import type { Loan, LivingLoanProfile, MarketWarning } from "@/lib/types";
 import { DealHealthPill } from "./DealHealthPill";
 
 export function LoanSummaryCard({ loan }: { loan: Loan }) {
-  const { t } = useTheme();
   const profile = useActiveProfile();
   const refresh = useRefreshLoanSummary();
   const canRefresh = profile.role !== Role.CLIENT;
   const live = loan.living_profile ?? null;
 
   return (
-    <Card pad={16}>
-      <SectionLabel
-        action={
-          canRefresh && (
-            <button
-              onClick={() => refresh.mutate({ loanId: loan.id })}
-              disabled={refresh.isPending}
-              style={{
-                padding: "5px 10px",
-                borderRadius: 7,
-                background: t.surface2,
-                border: `1px solid ${t.line}`,
-                color: t.ink2,
-                fontSize: 11.5,
-                fontWeight: 700,
-                cursor: refresh.isPending ? "wait" : "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-              }}
-              title="Re-run the 'Elara' summarizer"
-            >
-              <Icon name="ai" size={11} />
-              {refresh.isPending ? "Refreshing…" : "Refresh"}
-            </button>
-          )
-        }
-      >
-        Living Loan Profile
-      </SectionLabel>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+    <Panel
+      title="Living Loan Profile"
+      actions={
+        canRefresh ? (
+          <Btn
+            size="sm"
+            onClick={() => refresh.mutate({ loanId: loan.id })}
+            disabled={refresh.isPending}
+            title="Re-run the 'Elara' summarizer"
+          >
+            <Icon name="ai" size={11} />
+            {refresh.isPending ? "Refreshing…" : "Refresh"}
+          </Btn>
+        ) : undefined
+      }
+      bodyClass="grid g10"
+    >
+      <div className="row">
         <DealHealthPill health={loan.deal_health} />
-        {live?.market_context.warning && (
-          <MarketWarningPill t={t} warning={live.market_context.warning} />
-        )}
+        {live?.market_context.warning && <MarketWarningPill warning={live.market_context.warning} />}
         {refresh.data?.used_stub && (
-          <span style={{ fontSize: 10.5, color: t.ink3, fontStyle: "italic" }}>
-            (stub — set ANTHROPIC_API_KEY for AI-generated profile)
-          </span>
+          <Sub>(stub — set ANTHROPIC_API_KEY for AI-generated profile)</Sub>
         )}
       </div>
 
       {live ? (
-        <ProfileSections t={t} profile={live} />
+        <ProfileSections profile={live} />
       ) : loan.status_summary ? (
-        <div style={{ fontSize: 13.5, color: t.ink, lineHeight: 1.55 }}>{loan.status_summary}</div>
+        <div>{loan.status_summary}</div>
       ) : (
-        <div style={{ fontSize: 13.5, color: t.ink3 }}>
+        <Sub>
           No profile yet. Click <strong>Refresh</strong> to have the &quot;Elara&quot; generate one from
           the most recent activity and live FRED rates.
-        </div>
+        </Sub>
       )}
 
       {refresh.error && (
-        <div style={{ marginTop: 8, fontSize: 11.5, color: t.danger, fontWeight: 700 }}>
+        <StatusLine tone="bad">
           {refresh.error instanceof Error ? refresh.error.message : "Refresh failed."}
-        </div>
+        </StatusLine>
       )}
 
       {/* AI disclosure microcopy — Disclosure §2 ("AI can make mistakes")
           requires this near AI-generated underwriting observations. */}
       <div
-        style={{
-          marginTop: 12,
-          paddingTop: 10,
-          borderTop: `1px solid ${t.line}`,
-          fontSize: 11,
-          color: t.ink4,
-          fontStyle: "italic",
-          lineHeight: 1.5,
-        }}
+        className="sub"
+        style={{ paddingTop: 10, borderTop: "1px solid var(--line)", fontStyle: "italic" }}
       >
         AI can make mistakes. Review before relying on these figures — final
         underwriting and lender decisions are made independently.
       </div>
-    </Card>
+    </Panel>
   );
 }
 
-function ProfileSections({
-  t,
-  profile,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  profile: LivingLoanProfile;
-}) {
+function ProfileSections({ profile }: { profile: LivingLoanProfile }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div className="grid">
       <Section
-        t={t}
         label="Current status"
         icon="audit"
-        body={<div style={{ fontSize: 13.5, color: t.ink, lineHeight: 1.55, fontWeight: 600 }}>{profile.current_status}</div>}
+        body={<div style={{ fontWeight: 600 }}>{profile.current_status}</div>}
       />
 
       <Section
-        t={t}
         label="Market context"
         icon="trend"
         body={
-          <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.55 }}>
+          <div>
             {profile.market_context.narrative || (
-              <span style={{ color: t.ink3 }}>No FRED data tied to this product yet.</span>
+              <Sub>No FRED data tied to this product yet.</Sub>
             )}
           </div>
         }
       />
 
       <Section
-        t={t}
         label="Bottlenecks"
         icon="alert"
         body={
           profile.bottlenecks.length > 0 ? (
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: t.ink2, lineHeight: 1.6 }}>
+            // Bespoke list geometry; nothing in the sheet owns a <ul>.
+            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
               {profile.bottlenecks.map((b, i) => (
                 <li key={i}>{b}</li>
               ))}
             </ul>
           ) : (
-            <div style={{ fontSize: 12.5, color: t.ink3 }}>None — deal is unblocked.</div>
+            <Sub>None — deal is unblocked.</Sub>
           )
         }
       />
 
       <Section
-        t={t}
         label="Next actions"
         icon="bolt"
         body={
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div className="fldgrid two">
             <ActionList
-              t={t}
               title="AI"
-              accent={t.petrol}
+              accent="var(--petrol)"
               items={profile.next_actions.ai}
               emptyLabel="Nothing queued."
             />
             <ActionList
-              t={t}
               title="Broker"
-              accent={t.brand}
+              accent="var(--accent)"
               items={profile.next_actions.broker}
               emptyLabel="No broker action required."
             />
@@ -176,31 +142,17 @@ function ProfileSections({
 }
 
 function Section({
-  t,
   label,
   icon,
   body,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   icon: string;
   body: React.ReactNode;
 }) {
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          fontSize: 10.5,
-          fontWeight: 700,
-          letterSpacing: 1.2,
-          textTransform: "uppercase",
-          color: t.ink3,
-          marginBottom: 6,
-        }}
-      >
+      <div className="lbl row mb">
         <Icon name={icon} size={11} stroke={2.2} />
         {label}
       </div>
@@ -210,13 +162,11 @@ function Section({
 }
 
 function ActionList({
-  t,
   title,
   accent,
   items,
   emptyLabel,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   title: string;
   accent: string;
   items: string[];
@@ -224,56 +174,43 @@ function ActionList({
 }) {
   return (
     <div
-      style={{
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        borderLeft: `3px solid ${accent}`,
-        borderRadius: 8,
-        padding: 10,
-      }}
+      className="itemrow top"
+      // Data-derived: the rail colour says whose list this is (Elara's
+      // petrol vs. the broker's accent). `.itemrow` owns everything else.
+      style={{ borderLeft: `3px solid ${accent}` }}
     >
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 800,
-          letterSpacing: 1.2,
-          textTransform: "uppercase",
-          color: accent,
-          marginBottom: 4,
-        }}
-      >
-        [{title} action]
+      <div className="grow">
+        {/* Data-derived, same accent as the rail: `.lbl` owns the colour,
+            and this is the documented exception. */}
+        <div className="lbl" style={{ color: accent }}>
+          [{title} action]
+        </div>
+        {items.length === 0 ? (
+          <Sub>{emptyLabel}</Sub>
+        ) : (
+          <ul style={{ margin: "4px 0 0", paddingLeft: 16, lineHeight: 1.55 }}>
+            {items.map((item, i) => (
+              <li key={i}>{item}</li>
+            ))}
+          </ul>
+        )}
       </div>
-      {items.length === 0 ? (
-        <div style={{ fontSize: 12, color: t.ink3 }}>{emptyLabel}</div>
-      ) : (
-        <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12.5, color: t.ink2, lineHeight: 1.55 }}>
-          {items.map((item, i) => (
-            <li key={i}>{item}</li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }
 
-function MarketWarningPill({
-  t,
-  warning,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  warning: MarketWarning;
-}) {
-  const map: Record<MarketWarning, { bg: string; color: string; icon: string }> = {
-    "Rate Pressure": { bg: t.dangerBg, color: t.danger, icon: "trend" },
-    "Rate Easing": { bg: t.profitBg, color: t.profit, icon: "trendDn" },
-    "Rate Stability": { bg: t.chip, color: t.ink2, icon: "audit" },
-  };
-  const { bg, color, icon } = map[warning];
+const WARNING_TONE: Record<MarketWarning, { tone: ChipTone; icon: string }> = {
+  "Rate Pressure": { tone: "bad", icon: "trend" },
+  "Rate Easing": { tone: "ok", icon: "trendDn" },
+  "Rate Stability": { tone: "mut", icon: "audit" },
+};
+
+function MarketWarningPill({ warning }: { warning: MarketWarning }) {
+  const { tone, icon } = WARNING_TONE[warning];
   return (
-    <Pill bg={bg} color={color}>
+    <CellChip tone={tone}>
       <Icon name={icon} size={10} stroke={2.4} />
       {warning}
-    </Pill>
+    </CellChip>
   );
 }

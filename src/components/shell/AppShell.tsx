@@ -10,7 +10,6 @@ import AIRail from "./AIRail";
 import GlobalSearch from "./GlobalSearch";
 import { useUI, readPersistedSidebar } from "@/store/ui";
 import { isBareRoute as computeBareRoute } from "@/lib/shellRoutes";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { useCurrentUser, useContractStatus } from "@/hooks/useApi";
 import { useRecordPendingConsent } from "@/hooks/useRecordPendingConsent";
 import { SIGN_IN_URL } from "@/lib/appUrl";
@@ -31,7 +30,6 @@ export default function AppShell({
   // "/agreement/...", so pathname alone can't detect the portal on that host.
   isAgreementPortal?: boolean;
 }) {
-  const { t } = useTheme();
   const pathname = usePathname();
   const router = useRouter();
   const aiOpen = useUI((s) => s.aiOpen);
@@ -124,11 +122,11 @@ export default function AppShell({
   }, [isDealerPartnerOutOfBounds, router]);
 
   if (isBareRoute) {
-    return <div style={{ background: t.bg, minHeight: "100vh" }}>{children}</div>;
+    return <div className="bareshell">{children}</div>;
   }
 
   if (!authLoaded || isSignedIn === false) {
-    return <div style={{ background: t.bg, minHeight: "100vh" }} />;
+    return <div className="bareshell" />;
   }
 
   // Hard block: a dealer partner with no signed Platform Access Agreement
@@ -141,11 +139,14 @@ export default function AppShell({
   }
 
   if (isDealerPartnerOutOfBounds) {
-    return <div style={{ background: t.bg, minHeight: "100vh" }} />;
+    return <div className="bareshell" />;
   }
 
   return (
-    <div className={sidebarCollapsed ? "app rail" : "app"} style={{ height: "100vh" }}>
+    // `.app` ships `min-height: 100vh`; the console pins it to exactly the
+    // viewport instead so <main> below can be the only scroller. That
+    // correction lives in app-extras.css, not here.
+    <div className={sidebarCollapsed ? "app rail" : "app"}>
       <Sidebar />
       {/* min-height:0 + minWidth:0 are REQUIRED on the flex column so the
           inner <main> can actually shrink and scroll instead of pushing the

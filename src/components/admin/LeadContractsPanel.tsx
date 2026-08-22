@@ -13,9 +13,7 @@
 // placeholder text), editable later if a deal ever needs it filled in.
 
 import { useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
-import { qcBtnPrimary } from "@/components/design-system/buttons";
+import { Btn, CellChip, Field, Input, ItemRow, Panel, StatusLine, Sub } from "@/components/ds";
 import { useLeadContractStatus, useRequestLeadContract } from "@/hooks/useApi";
 import { ContractType } from "@/lib/enums.generated";
 import { ApiError } from "@/lib/api";
@@ -33,7 +31,6 @@ const REQUESTABLE_CONTRACT_TYPES = [
 ];
 
 export function LeadContractsPanel({ intakeId }: { intakeId: string }) {
-  const { t } = useTheme();
   const status = useLeadContractStatus(intakeId);
   const request = useRequestLeadContract(intakeId);
   const [effectiveDate, setEffectiveDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -42,10 +39,9 @@ export function LeadContractsPanel({ intakeId }: { intakeId: string }) {
 
   if (status.isLoading) {
     return (
-      <Card pad={20}>
-        <SectionLabel>Contracts</SectionLabel>
-        <span style={{ color: t.ink3, fontSize: 13 }}>Loading contract status…</span>
-      </Card>
+      <Panel title="Contracts">
+        <Sub>Loading contract status…</Sub>
+      </Panel>
     );
   }
 
@@ -71,66 +67,60 @@ export function LeadContractsPanel({ intakeId }: { intakeId: string }) {
   }
 
   return (
-    <Card pad={20}>
-      <SectionLabel>Contracts</SectionLabel>
-      <p style={{ margin: "0 0 12px", color: t.ink2, fontSize: 13, lineHeight: 1.5 }}>
+    <Panel title="Contracts">
+      <p className="sub mb">
         Request a client-facing engagement agreement. The client signs it via their intake link chat — same
         signing mechanism as the credit authorization above.
       </p>
-      <label style={{ display: "block", maxWidth: 220, marginBottom: 14 }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 5 }}>
-          Effective date
-        </div>
-        <input
-          type="date"
-          value={effectiveDate}
-          onChange={(e) => setEffectiveDate(e.target.value)}
-          style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: `1px solid ${t.line}`, background: t.surface2, color: t.ink, fontSize: 13 }}
-        />
-      </label>
+      {/* Bespoke width (rule 3): a date field wants to be as wide as a date, not
+          as wide as the panel, and it is the only control in its row — so this
+          is not a .fldgrid column. */}
+      <div className="mb" style={{ maxWidth: 220 }}>
+        <Field label="Effective date">
+          {/* aria-label because `Field` renders a <span class="lbl">, not a
+              <label for>; the old markup wrapped the control in a <label>. */}
+          <Input
+            aria-label="Effective date"
+            type="date"
+            value={effectiveDate}
+            onChange={(e) => setEffectiveDate(e.target.value)}
+          />
+        </Field>
+      </div>
 
-      <div style={{ display: "grid", gap: 10 }}>
+      <div className="grid g10">
         {REQUESTABLE_CONTRACT_TYPES.map((contractType) => {
           const row = byType.get(contractType);
           const requested = Boolean(row?.requested);
           const signed = Boolean(row?.signed);
           const isPending = request.isPending && pendingType === contractType;
           return (
-            <div
+            <ItemRow
               key={contractType}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                border: `1px solid ${t.line}`,
-                borderRadius: 10,
-                padding: "10px 12px",
-                background: t.surface2,
-              }}
+              right={
+                signed ? (
+                  <CellChip tone="ok">Signed</CellChip>
+                ) : requested ? (
+                  <CellChip tone="warn">Awaiting signature</CellChip>
+                ) : (
+                  <Btn variant="pri" onClick={() => onRequest(contractType)} disabled={isPending}>
+                    {isPending ? "Requesting…" : "Request"}
+                  </Btn>
+                )
+              }
             >
-              <div style={{ fontSize: 13, color: t.ink, fontWeight: 600 }}>{CONTRACT_LABELS[contractType]}</div>
-              {signed ? (
-                <Pill bg={t.profitBg} color={t.profit}>Signed</Pill>
-              ) : requested ? (
-                <Pill bg={t.warnBg} color={t.warn}>Awaiting signature</Pill>
-              ) : (
-                <button
-                  type="button"
-                  style={{ ...qcBtnPrimary(t), opacity: isPending ? 0.6 : 1 }}
-                  onClick={() => onRequest(contractType)}
-                  disabled={isPending}
-                >
-                  {isPending ? "Requesting…" : "Request"}
-                </button>
-              )}
-            </div>
+              <strong>{CONTRACT_LABELS[contractType]}</strong>
+            </ItemRow>
           );
         })}
       </div>
 
-      {error ? <div style={{ color: t.danger, fontSize: 12.5, marginTop: 12 }}>{error}</div> : null}
-    </Card>
+      {error ? (
+        <StatusLine tone="bad" className="mt">
+          {error}
+        </StatusLine>
+      ) : null}
+    </Panel>
   );
 }
 

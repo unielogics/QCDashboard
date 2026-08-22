@@ -14,10 +14,13 @@
 //
 // The localStorage layer is intentionally cheap: a single boolean
 // per panel. We don't persist scroll position or anything else.
+//
+// Restyled onto `.panel` / `.panel-h` / `.panel-b`. The header is still a
+// real button, and now carries `aria-expanded` so a screen reader is told
+// what the click does.
 
 import { useEffect, useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
+import { CellChip } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 
 interface Props {
@@ -39,7 +42,6 @@ export function CollapsiblePanel({
   importance = "med",
   children,
 }: Props) {
-  const { t } = useTheme();
   const storageKey = `lender-panel:${loanId}:${panelKey}`;
   const [open, setOpen] = useState<boolean>(defaultOpen);
   const [userOverridden, setUserOverridden] = useState<boolean>(false);
@@ -85,50 +87,34 @@ export function CollapsiblePanel({
 
   const importancePill = useMemo(() => {
     if (importance === "high") {
-      return <Pill bg={t.dangerBg} color={t.danger}>Priority</Pill>;
+      return <CellChip tone="bad">Priority</CellChip>;
     }
     if (importance === "low") {
-      return <Pill bg={t.surface2} color={t.ink3}>Quiet</Pill>;
+      return <CellChip>Quiet</CellChip>;
     }
     return null;
-  }, [importance, t]);
+  }, [importance]);
 
   return (
-    <Card pad={0}>
+    <div className="panel">
+      {/* `.panel-h` owns the padding, the hairline and the flex row; the
+          element being a <button> is what makes the panel operable by
+          keyboard. `.panel > .panel-h:last-child` drops the hairline while
+          collapsed. */}
       <button
         type="button"
+        className="panel-h toggler"
         onClick={toggle}
-        style={{
-          all: "unset",
-          width: "100%",
-          cursor: "pointer",
-          padding: "10px 14px",
-          borderBottom: open ? `1px solid ${t.line}` : "none",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-          boxSizing: "border-box",
-        }}
+        aria-expanded={open}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span className="row grow">
           <Icon name={open ? "chevD" : "chevR"} size={11} stroke={2.5} />
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: 1.6,
-              textTransform: "uppercase",
-              color: t.ink2,
-            }}
-          >
-            {title}
-          </span>
+          <span className="lbl">{title}</span>
           {importancePill}
-        </div>
-        {rightBadge ? <div>{rightBadge}</div> : null}
+        </span>
+        {rightBadge ? <span>{rightBadge}</span> : null}
       </button>
-      {open ? <div style={{ padding: 14 }}>{children}</div> : null}
-    </Card>
+      {open ? <div className="panel-b">{children}</div> : null}
+    </div>
   );
 }

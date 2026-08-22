@@ -1,7 +1,20 @@
 "use client";
 
+// Passcode-gated bucket share — a token in a URL plus an access code, no login.
+//
+// Styling only: migrated off the module-level CSSProperties constants (and the
+// ~40 hardcoded hex literals in them) onto the plain-CSS design system. This
+// route is bare-layout — `.bareshell` in AppShell is the only chrome it gets —
+// so it has to read as a finished product standing alone, which is exactly why
+// it should not carry a second, private palette that drifts from the one every
+// other screen uses. The file-type badge keeps its colour coding; the colours
+// are now the sheet's tone tokens. Behaviour, endpoints, the passcode gate,
+// Enter-to-submit, and both permission flags (can_download, can_add_notes) are
+// unchanged.
+
 import { useEffect, useState, type CSSProperties } from "react";
 import { useParams } from "next/navigation";
+import { Btn, Callout, Card, CellChip, Kpi, Panel, StatusLine, Textarea, type ChipTone } from "@/components/ds";
 import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
 import { QCMark } from "@/components/QCMark";
 import { Icon } from "@/components/design-system/Icon";
@@ -131,17 +144,22 @@ export default function BucketSharePage() {
   const recipient = access?.share.recipient_name ?? info?.recipient_name;
 
   return (
-    <main style={page}>
+    // `.bareshell` around this page already paints the ground and holds the
+    // 100vh floor; the gutter is all that is left.
+    <main style={{ padding: 24 }}>
       {!access ? (
-        <section style={gateShell}>
+        <section className="grid" style={{ maxWidth: 760, margin: "6vh auto 0" }}>
           <BrandBlock />
-          <div style={gateCard}>
-            <div style={securePill}>
-              <Icon name="lock" size={14} />
-              Encrypted secure room
-            </div>
-            <h1 style={gateTitle}>Qualified Commercial Secure File Room</h1>
-            <p style={gateCopy}>
+          <Card hi>
+            <CellChip tone="acc">
+              <Icon name="lock" size={12} /> Encrypted secure room
+            </CellChip>
+            {/* Hero display type: while the room is locked this heading IS the
+                page, and `.hd h1` is a console page title. */}
+            <h1 style={{ margin: "16px 0 8px", fontSize: 34, lineHeight: 1.08 }}>
+              Qualified Commercial Secure File Room
+            </h1>
+            <p style={{ margin: 0, color: "var(--muted)", fontSize: 16, lineHeight: 1.5 }}>
               {info ? (
                 <>
                   Hi <strong>{info.recipient_name}</strong>, you have been invited to review files for <strong>{info.bucket.name}</strong>.
@@ -150,15 +168,18 @@ export default function BucketSharePage() {
                 "Opening your secure file room."
               )}
             </p>
-            <div style={callout}>
-              <Icon name="shield" size={16} />
+            <Callout tone="pet" className="mt" icon={<Icon name="shield" size={16} />}>
               Access is gated by a private code and authorized user controls.
-            </div>
-            <div style={gateForm}>
-              <label style={label} htmlFor="share-passcode">Access code</label>
+            </Callout>
+            {/* Bespoke: the code field is deliberately larger than a console
+                `.field` — it is the only control on the page and it is typed
+                from a phone. */}
+            <div className="grid g10" style={{ maxWidth: 440, marginTop: 20 }}>
+              <label className="lbl" htmlFor="share-passcode">Access code</label>
               <input
                 id="share-passcode"
-                style={accessInput}
+                className="field"
+                style={{ height: 50, fontSize: 17 }}
                 placeholder="Enter access code"
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
@@ -167,112 +188,139 @@ export default function BucketSharePage() {
                 }}
                 autoComplete="one-time-code"
               />
-              <button style={{ ...primaryButton, opacity: working || !passcode.trim() ? 0.7 : 1 }} onClick={() => openRoom().catch(() => undefined)} disabled={working || !passcode.trim()}>
+              <Btn
+                variant="pri"
+                onClick={() => openRoom().catch(() => undefined)}
+                disabled={working || !passcode.trim()}
+                style={{ justifyContent: "center", height: 44 }}
+              >
                 {working ? "Checking access..." : "Open file room"}
-              </button>
+              </Btn>
             </div>
-            {status ? <p style={statusStyle(status)}>{status}</p> : null}
-          </div>
+            {status ? (
+              <StatusLine className="mt" tone={isErrorStatus(status) ? "bad" : "ok"}>{status}</StatusLine>
+            ) : null}
+          </Card>
         </section>
       ) : (
-        <section style={roomShell}>
-          <header style={roomHeader}>
+        <section className="grid" style={{ maxWidth: 1320, margin: "0 auto" }}>
+          {/* Bespoke: identity on the left, the file count pinned right. */}
+          <Card style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}>
             <div style={{ minWidth: 0 }}>
               <BrandBlock compact />
-              <h1 style={roomTitle}>{roomName}</h1>
-              <p style={roomMeta}>
+              <h1 style={{ margin: "12px 0 4px", fontSize: 28, lineHeight: 1.12 }}>{roomName}</h1>
+              <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.45 }}>
                 Access granted to <strong>{recipient}</strong>
                 {access.bucket.client_name ? ` | ${access.bucket.client_name}` : ""}
                 {access.bucket.purpose ? ` | ${access.bucket.purpose}` : ""}
               </p>
             </div>
-            <div style={summaryCard}>
-              <span style={summaryNumber}>{access.files.length}</span>
-              <span style={summaryLabel}>shared files</span>
-            </div>
-          </header>
+            <Kpi label="Shared files" value={access.files.length} />
+          </Card>
 
-          <div style={securityBar}>
-            <Icon name="shield" size={16} />
-            <span>Uploads and shared documents are encrypted. Viewing is controlled through authorized access permissions.</span>
-          </div>
+          <Callout tone="acc" icon={<Icon name="shield" size={16} />}>
+            Uploads and shared documents are encrypted. Viewing is controlled through authorized access permissions.
+          </Callout>
 
-          <div style={roomGrid}>
-            <main style={filePanel}>
-              <div style={sectionHeader}>
-                <div>
-                  <h2 style={sectionTitle}>Shared files</h2>
-                  <p style={sectionCopy}>Preview supported files in the secure viewer or download when permission is enabled.</p>
-                </div>
-              </div>
-              <div style={fileList}>
+          {/* Bespoke: files beside notes on a laptop, stacked on a phone, each
+              column allowed to shrink to zero. Not `.cg` — this page has no
+              console around it and the split is a reading decision. */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))", gap: 14, alignItems: "start" }}>
+            {/* <section>, not <main>: the page already has one, and two of them
+                leaves a screen reader with no single main landmark. */}
+            <Panel
+              title="Shared files"
+              sub="Preview supported files in the secure viewer or download when permission is enabled."
+            >
+              <div className="grid g10">
                 {access.files.length === 0 ? (
-                  <div style={emptyState}>No files have been shared yet.</div>
+                  <div className="sub">No files have been shared yet.</div>
                 ) : access.files.map((file) => (
-                  <article key={file.id} style={fileCard}>
+                  // Bespoke track: a fixed 54px file badge beside a fluid
+                  // title, with the actions dropping to a full-width row.
+                  <article
+                    key={file.id}
+                    className="card"
+                    style={{ display: "grid", gridTemplateColumns: "54px minmax(0, 1fr)", gap: 12, alignItems: "center" }}
+                  >
                     <div style={fileIcon(file)}>
                       <span>{fileExtension(file.file_name)}</span>
                     </div>
                     <div style={{ minWidth: 0 }}>
-                      <h3 style={fileName}>{file.file_name}</h3>
-                      <div style={fileMeta}>
+                      <h3 style={{ fontSize: 16, overflowWrap: "anywhere" }}>{file.file_name}</h3>
+                      <div className="sub" style={{ display: "flex", flexWrap: "wrap", gap: "6px 10px", marginTop: 5 }}>
                         <span>{fileKindLabel(file)}</span>
                         <span>Uploaded {formatDate(file.created_at)}</span>
                         {typeof file.size_bytes === "number" ? <span>{formatSize(file.size_bytes)}</span> : null}
                       </div>
                     </div>
-                    <div style={fileActions}>
+                    <div className="row" style={{ gridColumn: "1 / -1" }}>
                       {file.preview_url ? (
-                        <button style={secondaryButton} onClick={() => setReviewFile(file)}>
+                        <Btn onClick={() => setReviewFile(file)}>
                           <Icon name="eye" size={14} />
                           Preview
-                        </button>
+                        </Btn>
                       ) : null}
                       {access.share.can_download ? (
-                        <button style={primaryLinkButton} onClick={() => downloadSharedFile(file).catch(() => setStatus("Download is not available for this file."))} disabled={downloadingId === file.id}>
+                        <Btn
+                          variant="pri"
+                          onClick={() => downloadSharedFile(file).catch(() => setStatus("Download is not available for this file."))}
+                          disabled={downloadingId === file.id}
+                        >
                           <Icon name="download" size={14} />
                           {downloadingId === file.id ? "Preparing..." : "Download"}
-                        </button>
+                        </Btn>
                       ) : (
-                        <span style={downloadDisabled}>Download disabled</span>
+                        <span className="sub">Download disabled</span>
                       )}
                     </div>
                   </article>
                 ))}
               </div>
-            </main>
+            </Panel>
 
-            <aside style={notesPanel}>
-              <div style={sectionHeader}>
-                <div>
-                  <h2 style={sectionTitle}>Shared notes</h2>
-                  <p style={sectionCopy}>{access.share.can_add_notes ? "Add context or questions for the Qualified Commercial team." : "Notes are read-only for this share."}</p>
-                </div>
-              </div>
-              {access.share.can_add_notes ? (
-                <div style={noteComposer}>
-                  <textarea style={noteField} placeholder="Add a note" value={note} onChange={(e) => setNote(e.target.value)} />
-                  <button style={{ ...primaryButton, alignSelf: "end", minWidth: 92, opacity: working || !note.trim() ? 0.7 : 1 }} onClick={() => addNote().catch(() => undefined)} disabled={working || !note.trim()}>
-                    Add note
-                  </button>
-                </div>
-              ) : (
-                <div style={emptyState}>Notes are disabled for this share.</div>
-              )}
-              <div style={noteList}>
-                {access.notes.length === 0 ? (
-                  <div style={emptyState}>No notes yet.</div>
-                ) : access.notes.map((item) => (
-                  <div key={item.id} style={noteCard}>
-                    <div style={noteAuthor}>{item.author_name || "Qualified Commercial"}</div>
-                    <div style={noteDate}>{formatDateTime(item.created_at)}</div>
-                    <p style={noteText}>{item.content}</p>
+            {/* The notes rail rides along as you scroll the file list. */}
+            <div style={{ position: "sticky", top: 16 }}>
+              <Panel
+                title="Shared notes"
+                sub={access.share.can_add_notes ? "Add context or questions for the Qualified Commercial team." : "Notes are read-only for this share."}
+              >
+                {access.share.can_add_notes ? (
+                  <div className="grid g8" style={{ marginBottom: 12 }}>
+                    <Textarea
+                      placeholder="Add a note"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      style={{ minHeight: 96, resize: "vertical" }}
+                    />
+                    <Btn
+                      variant="pri"
+                      onClick={() => addNote().catch(() => undefined)}
+                      disabled={working || !note.trim()}
+                      style={{ justifySelf: "end" }}
+                    >
+                      Add note
+                    </Btn>
                   </div>
-                ))}
-              </div>
-            </aside>
+                ) : (
+                  <div className="sub" style={{ marginBottom: 12 }}>Notes are disabled for this share.</div>
+                )}
+                <div className="grid g8">
+                  {access.notes.length === 0 ? (
+                    <div className="sub">No notes yet.</div>
+                  ) : access.notes.map((item) => (
+                    <div key={item.id} className="itemrow" style={{ display: "block" }}>
+                      <div style={{ fontWeight: 700 }}>{item.author_name || "Qualified Commercial"}</div>
+                      <div className="sub" style={{ marginTop: 2 }}>{formatDateTime(item.created_at)}</div>
+                      {/* `.pretext` keeps the line breaks a person typed. */}
+                      <p className="pretext" style={{ margin: "8px 0 0", color: "var(--ink2)" }}>{item.content}</p>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            </div>
           </div>
-          {status ? <p style={statusStyle(status)}>{status}</p> : null}
+          {status ? <StatusLine tone={isErrorStatus(status) ? "bad" : "ok"}>{status}</StatusLine> : null}
         </section>
       )}
 
@@ -291,11 +339,11 @@ export default function BucketSharePage() {
 
 function BrandBlock({ compact = false }: { compact?: boolean }) {
   return (
-    <div style={brandBlock}>
+    <div className="row">
       <QCMark size={compact ? 34 : 44} />
       <div>
-        <div style={brandEyebrow}>Qualified Commercial</div>
-        <div style={brandName}>Secure File Room</div>
+        <div className="lbl">Qualified Commercial</div>
+        <div style={{ fontSize: 16, fontWeight: 800, lineHeight: 1.2 }}>Secure File Room</div>
       </div>
     </div>
   );
@@ -340,66 +388,48 @@ function formatSize(size: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function statusStyle(value: string): CSSProperties {
-  const isError = /invalid|unavailable|could not|disabled/i.test(value);
-  return { margin: "14px 0 0", color: isError ? "#b91c1c" : "#0f766e", fontWeight: 800 };
+/** Same wording test the page always used; only the styling moved to a class. */
+function isErrorStatus(value: string): boolean {
+  return /invalid|unavailable|could not|disabled/i.test(value);
 }
 
-const page: CSSProperties = { minHeight: "100vh", background: "#f3f5f8", color: "#111827", padding: 24, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" };
-const gateShell: CSSProperties = { maxWidth: 760, margin: "6vh auto 0", display: "grid", gap: 18 };
-const gateCard: CSSProperties = { background: "#fff", border: "1px solid #d8dee8", borderRadius: 12, padding: 28, boxShadow: "0 18px 45px rgba(15,23,42,.08)" };
-const brandBlock: CSSProperties = { display: "flex", alignItems: "center", gap: 12 };
-const brandEyebrow: CSSProperties = { color: "#64748b", fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0 };
-const brandName: CSSProperties = { color: "#111827", fontSize: 16, fontWeight: 900, lineHeight: 1.2 };
-const securePill: CSSProperties = { display: "inline-flex", alignItems: "center", gap: 7, border: "1px solid #bfdbfe", borderRadius: 999, padding: "6px 10px", color: "#1e3a8a", background: "#eff6ff", fontSize: 12, fontWeight: 900 };
-const gateTitle: CSSProperties = { margin: "16px 0 8px", fontSize: 34, lineHeight: 1.08, letterSpacing: 0 };
-const gateCopy: CSSProperties = { margin: 0, color: "#475569", fontSize: 16, lineHeight: 1.5 };
-const callout: CSSProperties = { display: "flex", gap: 9, alignItems: "center", border: "1px solid #ccfbf1", background: "#f0fdfa", color: "#0f766e", borderRadius: 10, padding: 12, fontSize: 14, fontWeight: 750, marginTop: 18 };
-const gateForm: CSSProperties = { display: "grid", gap: 10, maxWidth: 440, marginTop: 20 };
-const label: CSSProperties = { color: "#334155", fontSize: 13, fontWeight: 850 };
-const accessInput: CSSProperties = { height: 50, border: "1px solid #cbd5e1", borderRadius: 9, padding: "0 13px", font: "inherit", fontSize: 17, background: "#fff" };
-const primaryButton: CSSProperties = { height: 44, border: "none", borderRadius: 9, padding: "0 14px", font: "inherit", fontWeight: 900, background: "#111827", color: "#fff", cursor: "pointer" };
-const roomShell: CSSProperties = { maxWidth: 1320, margin: "0 auto", display: "grid", gap: 14 };
-const roomHeader: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", background: "#fff", border: "1px solid #d8dee8", borderRadius: 12, padding: 18, boxShadow: "0 10px 28px rgba(15,23,42,.06)" };
-const roomTitle: CSSProperties = { margin: "12px 0 4px", fontSize: 28, lineHeight: 1.12, letterSpacing: 0 };
-const roomMeta: CSSProperties = { margin: 0, color: "#64748b", lineHeight: 1.45 };
-const summaryCard: CSSProperties = { minWidth: 116, border: "1px solid #e2e8f0", borderRadius: 10, padding: 12, textAlign: "center", background: "#f8fafc" };
-const summaryNumber: CSSProperties = { display: "block", color: "#111827", fontSize: 28, fontWeight: 950, lineHeight: 1 };
-const summaryLabel: CSSProperties = { color: "#64748b", fontSize: 12, fontWeight: 850, textTransform: "uppercase" };
-const securityBar: CSSProperties = { display: "flex", alignItems: "center", gap: 10, border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 12px", color: "#1e3a8a", background: "#eff6ff", fontSize: 13.5, fontWeight: 750 };
-const roomGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))", gap: 14, alignItems: "start" };
-const filePanel: CSSProperties = { minWidth: 0, background: "#fff", border: "1px solid #d8dee8", borderRadius: 12, padding: 16, boxShadow: "0 10px 28px rgba(15,23,42,.05)" };
-const notesPanel: CSSProperties = { minWidth: 0, background: "#fff", border: "1px solid #d8dee8", borderRadius: 12, padding: 16, boxShadow: "0 10px 28px rgba(15,23,42,.05)", position: "sticky", top: 16 };
-const sectionHeader: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 12 };
-const sectionTitle: CSSProperties = { margin: 0, color: "#111827", fontSize: 17, fontWeight: 950 };
-const sectionCopy: CSSProperties = { margin: "4px 0 0", color: "#64748b", fontSize: 13, lineHeight: 1.4 };
-const fileList: CSSProperties = { display: "grid", gap: 10 };
-const fileCard: CSSProperties = { display: "grid", gridTemplateColumns: "54px minmax(0, 1fr)", gap: 12, alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 10, padding: 12, background: "#fff" };
-const fileName: CSSProperties = { margin: 0, color: "#111827", fontSize: 16, fontWeight: 900, lineHeight: 1.25, overflowWrap: "anywhere" };
-const fileMeta: CSSProperties = { display: "flex", flexWrap: "wrap", gap: "6px 10px", color: "#64748b", fontSize: 12.5, marginTop: 5 };
-const fileActions: CSSProperties = { gridColumn: "1 / -1", display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-start", flexWrap: "wrap" };
-const secondaryButton: CSSProperties = { height: 38, border: "1px solid #cbd5e1", borderRadius: 8, padding: "0 12px", font: "inherit", fontWeight: 900, background: "#fff", color: "#111827", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7 };
-const primaryLinkButton: CSSProperties = { ...primaryButton, height: 38, display: "inline-flex", alignItems: "center", gap: 7, textDecoration: "none" };
-const downloadDisabled: CSSProperties = { color: "#64748b", fontSize: 12.5, fontWeight: 800 };
-const noteComposer: CSSProperties = { display: "grid", gap: 8, marginBottom: 12 };
-const noteField: CSSProperties = { minHeight: 96, border: "1px solid #cbd5e1", borderRadius: 9, padding: 10, font: "inherit", resize: "vertical", boxSizing: "border-box" };
-const noteList: CSSProperties = { display: "grid", gap: 8 };
-const noteCard: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, background: "#fbfdff" };
-const noteAuthor: CSSProperties = { color: "#111827", fontWeight: 900, fontSize: 13 };
-const noteDate: CSSProperties = { color: "#64748b", fontSize: 12, marginTop: 2 };
-const noteText: CSSProperties = { margin: "8px 0 0", color: "#334155", lineHeight: 1.45, whiteSpace: "pre-wrap" };
-const emptyState: CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 10, padding: 13, color: "#64748b", background: "#f8fafc", fontSize: 13 };
+/** File kind -> the sheet's tone vocabulary, so a PDF badge here is the same
+    red a bad status is anywhere else in the product. */
+const FILE_TONE: Record<string, ChipTone> = {
+  pdf: "bad",
+  image: "acc",
+  csv: "ok",
+  text: "mut",
+  spreadsheet: "pet",
+  unsupported: "mut",
+};
 
+const TONE_INK: Record<ChipTone, string> = {
+  ok: "var(--ok)", warn: "var(--warn)", bad: "var(--danger)", mut: "var(--muted)",
+  acc: "var(--accent)", gold: "var(--gold)", pet: "var(--petrol)",
+};
+const TONE_TINT: Record<ChipTone, string> = {
+  ok: "var(--ok-tint)", warn: "var(--warn-tint)", bad: "var(--danger-tint)", mut: "var(--sunken)",
+  acc: "var(--accent-100)", gold: "var(--gold-100)", pet: "var(--petrol-100)",
+};
+
+/**
+ * The 54px file-type badge. Data-derived by definition — the tone is read off
+ * the file's own content type — and larger than anything `.cellchip` or
+ * `.botmark` describes, so the geometry stays here.
+ */
 function fileIcon(file: FileRow): CSSProperties {
-  const type = reviewFileType(file.content_type, file.file_name);
-  const colors: Record<string, { bg: string; color: string; border: string }> = {
-    pdf: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca" },
-    image: { bg: "#eff6ff", color: "#1e3a8a", border: "#bfdbfe" },
-    csv: { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
-    text: { bg: "#f8fafc", color: "#334155", border: "#e2e8f0" },
-    spreadsheet: { bg: "#ecfdf5", color: "#065f46", border: "#a7f3d0" },
-    unsupported: { bg: "#f8fafc", color: "#334155", border: "#e2e8f0" },
+  const tone = FILE_TONE[reviewFileType(file.content_type, file.file_name)];
+  return {
+    width: 54,
+    height: 54,
+    border: "1px solid var(--line)",
+    borderRadius: 10,
+    background: TONE_TINT[tone],
+    color: TONE_INK[tone],
+    display: "grid",
+    placeItems: "center",
+    fontSize: 11,
+    fontWeight: 900,
   };
-  const palette = colors[type];
-  return { width: 54, height: 54, border: `1px solid ${palette.border}`, borderRadius: 10, background: palette.bg, color: palette.color, display: "grid", placeItems: "center", fontSize: 11, fontWeight: 950 };
 }

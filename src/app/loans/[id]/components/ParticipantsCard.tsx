@@ -4,12 +4,14 @@
 // Source of truth for the Fintech Orchestrator's PII / CC / BCC routing.
 // Super-admin participants are picked from a dropdown of operator users
 // (no free-text email) so the audit-CC list can't drift from real accounts.
+//
+// Restyled onto the plain-CSS design system. The field labels became real
+// `<label>` elements on the way through: they used to be sibling `<div>`s,
+// so none of these inputs had an accessible name.
 
-import { useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { useState, type ReactNode } from "react";
+import { Btn, CellChip, Input, Panel, Select, StatusLine, Sub, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import {
   useCreateParticipant,
   useDeleteParticipant,
@@ -44,7 +46,6 @@ const EMPTY_DRAFT: DraftState = {
 };
 
 export function ParticipantsCard({ loanId }: { loanId: string }) {
-  const { t } = useTheme();
   const profile = useActiveProfile();
   const { data: participants = [], isLoading } = useLoanParticipants(loanId);
   const create = useCreateParticipant();
@@ -114,41 +115,40 @@ export function ParticipantsCard({ loanId }: { loanId: string }) {
   };
 
   return (
-    <Card pad={0}>
-      <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.line}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <SectionLabel>Thread participants · {participants.length}</SectionLabel>
-        {canEdit && (
-          <button
-            onClick={() => setOpen((v) => !v)}
-            style={{
-              padding: "6px 12px", borderRadius: 8, background: t.brand, color: t.inverse,
-              fontSize: 12, fontWeight: 700, border: "none", cursor: "pointer",
-              display: "inline-flex", alignItems: "center", gap: 5,
-            }}
-          >
+    <Panel
+      title={`Thread participants · ${participants.length}`}
+      actions={
+        canEdit ? (
+          <Btn size="sm" variant="pri" onClick={() => setOpen((v) => !v)}>
             <Icon name="plus" size={12} /> Add
-          </button>
-        )}
-      </div>
-
+          </Btn>
+        ) : undefined
+      }
+      noPad
+    >
       {open && canEdit && (
-        <div style={{ padding: 14, borderBottom: `1px solid ${t.line}`, background: t.surface2 }}>
+        /* Full-bleed composer strip inside a noPad panel — the inset and
+           sunken ground belong to this block, not to a class. */
+        <div style={{ padding: 14, borderBottom: "1px solid var(--line)", background: "var(--sunken2)" }}>
+          {/* Bespoke split: a fixed 180px role picker beside its explanation. */}
           <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 12, marginBottom: 12 }}>
-            <FieldSelect
-              t={t}
-              label="Role"
-              value={draft.role}
-              onChange={(v) => setDraft((d) => ({ ...d, role: v as ParticipantRole, email: "", display_name: "", company: "", user_id: "" }))}
-              options={ROLES.map((r) => ({ value: r.v, label: r.l }))}
-            />
-            <div style={{ alignSelf: "end", fontSize: 11, color: t.ink3, paddingBottom: 6 }}>
+            <Labelled label="Role">
+              <Select
+                value={draft.role}
+                onChange={(e) => setDraft((d) => ({ ...d, role: e.target.value as ParticipantRole, email: "", display_name: "", company: "", user_id: "" }))}
+              >
+                {ROLES.map((r) => (
+                  <option key={r.v} value={r.v}>{r.l}</option>
+                ))}
+              </Select>
+            </Labelled>
+            <div className="sub" style={{ alignSelf: "end", paddingBottom: 6 }}>
               {ROLES.find((r) => r.v === draft.role)?.tone}
             </div>
           </div>
 
           {draft.role === "super_admin" ? (
             <SuperAdminPicker
-              t={t}
               users={superAdmins}
               usersErr={usersErr}
               isSuperAdmin={isSuperAdmin}
@@ -156,52 +156,51 @@ export function ParticipantsCard({ loanId }: { loanId: string }) {
               onChange={(id) => setDraft((d) => ({ ...d, user_id: id }))}
             />
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-              <FieldInput
-                t={t}
-                label="Email"
-                value={draft.email}
-                onChange={(v) => setDraft((d) => ({ ...d, email: v }))}
-                placeholder={draft.role === "lender" ? "sarah@jpmchase.com" : "name@example.com"}
-              />
-              <FieldInput
-                t={t}
-                label="Display name"
-                value={draft.display_name}
-                onChange={(v) => setDraft((d) => ({ ...d, display_name: v }))}
-                placeholder={draft.role === "lender" ? "Sarah Thompson" : "Jane Smith"}
-              />
-              <FieldInput
-                t={t}
-                label="Company (optional)"
-                value={draft.company}
-                onChange={(v) => setDraft((d) => ({ ...d, company: v }))}
-                placeholder={draft.role === "lender" ? "JP Morgan" : "—"}
-              />
+            <div className="fldgrid three">
+              <Labelled label="Email">
+                <Input
+                  value={draft.email}
+                  onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
+                  placeholder={draft.role === "lender" ? "sarah@jpmchase.com" : "name@example.com"}
+                />
+              </Labelled>
+              <Labelled label="Display name">
+                <Input
+                  value={draft.display_name}
+                  onChange={(e) => setDraft((d) => ({ ...d, display_name: e.target.value }))}
+                  placeholder={draft.role === "lender" ? "Sarah Thompson" : "Jane Smith"}
+                />
+              </Labelled>
+              <Labelled label="Company (optional)">
+                <Input
+                  value={draft.company}
+                  onChange={(e) => setDraft((d) => ({ ...d, company: e.target.value }))}
+                  placeholder={draft.role === "lender" ? "JP Morgan" : "—"}
+                />
+              </Labelled>
             </div>
           )}
 
-          {error && <div style={{ color: t.danger, fontSize: 11.5, fontWeight: 700, marginTop: 8 }}>{error}</div>}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
-            <button onClick={reset} style={qcBtn(t)}>Cancel</button>
-            <button onClick={submitNew} disabled={create.isPending} style={{ ...qcBtnPrimary(t), opacity: create.isPending ? 0.6 : 1 }}>
+          {error && <StatusLine tone="bad" className="mt">{error}</StatusLine>}
+          <div className="row end mt">
+            <Btn onClick={reset}>Cancel</Btn>
+            <Btn variant="pri" onClick={submitNew} disabled={create.isPending}>
               <Icon name="plus" size={12} /> {create.isPending ? "Adding…" : "Add participant"}
-            </button>
+            </Btn>
           </div>
         </div>
       )}
 
-      <div style={{ padding: 4 }}>
-        {isLoading && <div style={{ padding: 16, fontSize: 13, color: t.ink3 }}>Loading…</div>}
+      <div>
+        {isLoading && <div className="sub" style={{ padding: 16 }}>Loading…</div>}
         {!isLoading && participants.length === 0 && (
-          <div style={{ padding: 16, fontSize: 13, color: t.ink3 }}>
+          <div className="sub" style={{ padding: 16 }}>
             No participants on this thread yet. Add the lender, broker, client, and any super-admin emails above — these drive who gets emailed and who&apos;s hidden from whom.
           </div>
         )}
         {participants.map((p) => (
           <ParticipantRow
             key={p.id}
-            t={t}
             participant={p}
             canEdit={canEdit}
             onUpdate={(patch) => update.mutate({ loanId, participantId: p.id, ...patch })}
@@ -213,43 +212,48 @@ export function ParticipantsCard({ loanId }: { loanId: string }) {
           />
         ))}
       </div>
-    </Card>
+    </Panel>
   );
 }
 
+const ROLE_TONE: Record<string, ChipTone> = {
+  lender: "warn",
+  broker: "acc",
+  super_admin: "pet",
+};
+
 function ParticipantRow({
-  t,
   participant: p,
   canEdit,
   onUpdate,
   onRemove,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   participant: LoanParticipant;
   canEdit: boolean;
   onUpdate: (patch: LoanParticipantUpdate) => void;
   onRemove: () => void;
 }) {
-  const roleColor = p.role === "lender" ? t.warn : p.role === "broker" ? t.brand : p.role === "super_admin" ? t.petrol : t.ink2;
   return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: "minmax(0, 2fr) 110px minmax(0, 1.4fr) 90px 90px 36px",
-      gap: 12, padding: "12px 14px", borderBottom: `1px solid ${t.line}`, alignItems: "center", fontSize: 12.5,
-    }}>
+    // Bespoke six-track row: identity / role / three toggles / remove.
+    // Not `.cg` — that is the twelve-column PAGE grid.
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 2fr) 110px minmax(0, 1.4fr) 90px 90px 36px",
+        gap: 12,
+        padding: "12px 14px",
+        borderBottom: "1px solid var(--line)",
+        alignItems: "center",
+      }}
+    >
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 700, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {p.display_name || p.email}
-        </div>
-        <div style={{ fontSize: 11, color: t.ink3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div className="trunc" style={{ fontWeight: 700 }}>{p.display_name || p.email}</div>
+        <div className="sub trunc">
           {p.email}{p.company ? ` · ${p.company}` : ""}
         </div>
       </div>
-      <Pill bg={p.role === "lender" ? t.warnBg : p.role === "broker" ? t.brandSoft : p.role === "super_admin" ? t.petrolSoft : t.chip} color={roleColor}>
-        {p.role.replace(/_/g, " ")}
-      </Pill>
+      <CellChip tone={ROLE_TONE[p.role] ?? "mut"}>{p.role.replace(/_/g, " ")}</CellChip>
       <ToggleField
-        t={t}
         label="Hide identity"
         title="Strip name/email/company from anything shown to broker/client (One-Way Mirror)"
         value={p.hide_identity}
@@ -257,7 +261,6 @@ function ParticipantRow({
         onChange={(v) => onUpdate({ hide_identity: v })}
       />
       <ToggleField
-        t={t}
         label="CC"
         title="Visibly CC'd on outbound mail"
         value={p.cc_outbound}
@@ -265,7 +268,6 @@ function ParticipantRow({
         onChange={(v) => onUpdate({ cc_outbound: v })}
       />
       <ToggleField
-        t={t}
         label="BCC"
         title="Silently BCC'd on every outbound mail (audit trail)"
         value={p.bcc_outbound}
@@ -273,28 +275,27 @@ function ParticipantRow({
         onChange={(v) => onUpdate({ bcc_outbound: v })}
       />
       {canEdit ? (
-        <button
+        <Btn
+          size="sm"
+          className="iconbtn"
           onClick={onRemove}
           aria-label="Remove participant"
-          style={{ background: "transparent", border: "none", color: t.ink3, cursor: "pointer", padding: 4 }}
           title="Remove"
         >
           <Icon name="x" size={13} />
-        </button>
+        </Btn>
       ) : <div />}
     </div>
   );
 }
 
 function SuperAdminPicker({
-  t,
   users,
   usersErr,
   isSuperAdmin,
   value,
   onChange,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   users: UserRow[];
   usersErr: boolean;
   isSuperAdmin: boolean;
@@ -303,103 +304,76 @@ function SuperAdminPicker({
 }) {
   if (!isSuperAdmin) {
     return (
-      <div style={{ fontSize: 12, color: t.warn, padding: "10px 12px", borderRadius: 9, background: t.warnBg }}>
+      <StatusLine tone="warn">
         Only super-admins can attach another super-admin to a thread. Switch role to view the dropdown.
-      </div>
+      </StatusLine>
     );
   }
   if (usersErr) {
     return (
-      <div style={{ fontSize: 12, color: t.danger, padding: "10px 12px", borderRadius: 9, background: t.dangerBg }}>
+      <StatusLine tone="bad">
         Couldn&apos;t load operator users (/users endpoint). Check that you&apos;re signed in as a super-admin.
-      </div>
+      </StatusLine>
     );
   }
   if (users.length === 0) {
     return (
-      <div style={{ fontSize: 12, color: t.ink3, padding: "10px 12px", borderRadius: 9, background: t.surface }}>
-        No super-admin users seeded yet. Run <code style={{ background: t.chip, padding: "1px 5px", borderRadius: 4 }}>python -m app.seed</code> in qcbackend or have an admin create one.
-      </div>
+      <StatusLine>
+        No super-admin users seeded yet. Run <code className="mono">python -m app.seed</code> in qcbackend or have an admin create one.
+      </StatusLine>
     );
   }
   return (
     <div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>
-        Pick a super-admin
-      </div>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          width: "100%", padding: "8px 10px", borderRadius: 8, background: t.surface,
-          border: `1px solid ${t.line}`, color: t.ink, fontSize: 12.5, fontFamily: "inherit",
-        }}
-      >
-        <option value="">— select —</option>
-        {users.map((u) => (
-          <option key={u.id} value={u.id}>{u.name} · {u.email}</option>
-        ))}
-      </select>
-      <div style={{ fontSize: 11, color: t.ink3, marginTop: 6 }}>
+      <Labelled label="Pick a super-admin">
+        <Select value={value} onChange={(e) => onChange(e.target.value)}>
+          <option value="">— select —</option>
+          {users.map((u) => (
+            <option key={u.id} value={u.id}>{u.name} · {u.email}</option>
+          ))}
+        </Select>
+      </Labelled>
+      <Sub>
         This person will be silently BCC&apos;d on every outbound message for this loan (audit trail). Toggle CC instead if you want them visible.
-      </div>
+      </Sub>
     </div>
   );
 }
 
-function FieldInput({ t, label, value, onChange, placeholder }: { t: ReturnType<typeof useTheme>["t"]; label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+/**
+ * Label + control.
+ *
+ * A real `<label>`, not the design system's `Field` (a `<div>` plus a
+ * `<span class="lbl">`): wrapping is what gives each control an accessible
+ * name, and the markup this replaced had none.
+ */
+function Labelled({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
-      <input
-        value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-        style={{
-          width: "100%", padding: "8px 10px", borderRadius: 8, background: t.surface,
-          border: `1px solid ${t.line}`, color: t.ink, fontSize: 12.5, fontFamily: "inherit", outline: "none",
-        }}
-      />
-    </div>
+    <label className="grid g4">
+      <span className="lbl">{label}</span>
+      {children}
+    </label>
   );
 }
 
-function FieldSelect({ t, label, value, onChange, options }: {
-  t: ReturnType<typeof useTheme>["t"]; label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[];
+function ToggleField({ label, title, value, disabled, onChange }: {
+  label: string; title?: string; value: boolean; disabled?: boolean; onChange: (v: boolean) => void;
 }) {
+  // `aria-pressed` is the state a screen reader needs; `.btn.tone-pet`
+  // rather than a bare tone chip, which `.btn:hover` out-specifies.
   return (
-    <div>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
-      <select
-        value={value} onChange={(e) => onChange(e.target.value)}
-        style={{
-          width: "100%", padding: "8px 10px", borderRadius: 8, background: t.surface,
-          border: `1px solid ${t.line}`, color: t.ink, fontSize: 12.5, fontFamily: "inherit",
-        }}
-      >
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </div>
-  );
-}
-
-function ToggleField({ t, label, title, value, disabled, onChange }: {
-  t: ReturnType<typeof useTheme>["t"]; label: string; title?: string; value: boolean; disabled?: boolean; onChange: (v: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
+    <Btn
+      size="sm"
       onClick={() => !disabled && onChange(!value)}
       disabled={disabled}
+      aria-pressed={value}
       title={title}
-      style={{
-        display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 9px",
-        borderRadius: 999, border: `1px solid ${value ? t.petrol : t.line}`,
-        background: value ? t.petrolSoft : "transparent",
-        color: value ? t.petrol : t.ink3, fontSize: 11, fontWeight: 700,
-        cursor: disabled ? "default" : "pointer", whiteSpace: "nowrap",
-      }}
+      className={value ? "tone-pet" : undefined}
+      style={{ whiteSpace: "nowrap" }}
     >
-      <span style={{ width: 6, height: 6, borderRadius: 999, background: value ? t.petrol : t.ink4 }} />
+      {/* Data-derived: the dot's tint is the toggle's state. */}
+      <span className="repdot" style={{ background: value ? "currentColor" : "var(--faint)" }} />
       {label}
-    </button>
+    </Btn>
   );
 }

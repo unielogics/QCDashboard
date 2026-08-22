@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
 import { Icon } from "@/components/design-system/Icon";
+import { Btn, BtnLink, IconBtn, Callout, Panel, StatusLine, Sub, Textarea, cx } from "@/components/ds";
 
 export type BucketReviewFile = {
   id: string;
@@ -228,56 +229,87 @@ export function BucketFileReviewPanel({
     : "Area comments are available for PDF and image previews.";
 
   return (
-    <div style={backdrop}>
-      <section style={panel}>
-        <header style={header}>
-          <div style={{ minWidth: 0 }}>
-            <div style={eyebrow}>{title}</div>
-            <h2 style={heading}>{review?.file.file_name ?? "File"}</h2>
-            {review ? <div style={fileMeta}>{fileTypeLabel(fileType)}{typeof review.file.size_bytes === "number" ? ` | ${formatSize(review.file.size_bytes)}` : ""}</div> : null}
+    // Bespoke, and it has to be: this is a full-bleed reviewer, not the centred
+    // `.drawer`. z-index 500 is load-bearing — /admin/buckets opens it from
+    // inside its bucket detail modal (300) and /vendor/buckets over the AI rail
+    // (200); at the drawer's 61 it would open behind both.
+    <div style={{ position: "fixed", inset: 0, zIndex: 500, background: "rgba(15, 23, 32, 0.52)", padding: 18 }}>
+      {/* `.panel` is already a clipped flex column; only the full-height fill
+          is this overlay's own. */}
+      <section className="panel" style={{ height: "100%" }}>
+        {/* `.filehd-b` and not `.panel-h`: this is a file identity block —
+            eyebrow, file name, meta on the left, actions on the right — and
+            `.panel-h h2` would pin the file name to 15px, fighting
+            `.filehd-t`. Only the hairline under it is this header's own,
+            because `.filehd` (which normally draws it) is a standalone card
+            and would double the panel's border. */}
+        <header className="filehd-b" style={{ borderBottom: "1px solid var(--line)" }}>
+          <div className="grid g4" style={{ minWidth: 0 }}>
+            <span className="lbl">{title}</span>
+            <h2 className="filehd-t">{review?.file.file_name ?? "File"}</h2>
+            {review ? (
+              <Sub>
+                {fileTypeLabel(fileType)}
+                {typeof review.file.size_bytes === "number" ? ` | ${formatSize(review.file.size_bytes)}` : ""}
+              </Sub>
+            ) : null}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {onDownload ? (
-              <button style={primaryButton} onClick={onDownload}>
-                <Icon name="download" size={14} />
-                Download
-              </button>
-            ) : downloadUrl ? (
-              <a style={primaryLink} href={downloadUrl} target="_blank" rel="noopener noreferrer">
-                <Icon name="download" size={14} />
-                Download
-              </a>
-            ) : null}
-            {review?.preview_url ? (
-              <a style={secondaryLink} href={review.preview_url} target="_blank" rel="noopener noreferrer">
-                <Icon name="external" size={14} />
-                Open original
-              </a>
-            ) : null}
-            {onDelete ? (
-              <button style={dangerButton} onClick={onDelete}>
-                <Icon name="x" size={14} />
-                Delete
-              </button>
-            ) : null}
-            <button style={iconButton} onClick={onClose} aria-label="Close review">
-              <Icon name="x" size={18} />
-            </button>
+          <div className="row">
+          {onDownload ? (
+            <Btn variant="pri" onClick={onDownload}>
+              <Icon name="download" size={14} />
+              Download
+            </Btn>
+          ) : downloadUrl ? (
+            <BtnLink variant="pri" href={downloadUrl} target="_blank" rel="noopener noreferrer">
+              <Icon name="download" size={14} />
+              Download
+            </BtnLink>
+          ) : null}
+          {review?.preview_url ? (
+            <BtnLink href={review.preview_url} target="_blank" rel="noopener noreferrer">
+              <Icon name="external" size={14} />
+              Open original
+            </BtnLink>
+          ) : null}
+          {onDelete ? (
+            <Btn className="danger" onClick={onDelete}>
+              <Icon name="x" size={14} />
+              Delete
+            </Btn>
+          ) : null}
+          <IconBtn onClick={onClose} aria-label="Close review" title="Close review">
+            <Icon name="x" size={15} />
+          </IconBtn>
           </div>
         </header>
-        <div style={body}>
-          <main ref={viewerRef} style={viewerColumn}>
+        {/* Bespoke track: a document that wants every pixel it can get beside a
+            review rail that must not fall below a readable width. */}
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 5fr) minmax(180px, 1fr)", minHeight: 0, flex: 1 }}>
+          {/* Bespoke: the scrolling document well, sunk behind the page it holds. */}
+          <main ref={viewerRef} style={{ minWidth: 0, minHeight: 0, overflow: "auto", background: "var(--sunken)", padding: 16 }}>
             {review?.preview_url && fileType === "pdf" ? (
               <>
-                <div style={toolbar}>
-                  <button style={toolButton} onClick={() => setPdfZoom(MAXIMIZED_PDF_ZOOM)}>Maximize</button>
-                  <button style={toolButton} onClick={() => setPdfZoom((zoom) => Math.max(0.55, Number((zoom - 0.15).toFixed(2))))} aria-label="Zoom out">-</button>
-                  <span style={zoomLabel}>{Math.round(pdfZoom * 100)}%</span>
-                  <button style={toolButton} onClick={() => setPdfZoom((zoom) => Math.min(2.4, Number((zoom + 0.15).toFixed(2))))} aria-label="Zoom in">+</button>
-                  <button style={toolButton} onClick={() => setPdfZoom(1)}>Reset</button>
-                  <span style={muted}>{pageCount} page{pageCount === 1 ? "" : "s"}</span>
+                {/* Bespoke: a toolbar that stays with the reader as the document
+                    scrolls under it. Nothing in the sheet is sticky-within. */}
+                <div
+                  className="row"
+                  style={{
+                    position: "sticky", top: 0, zIndex: 4, justifyContent: "center", marginBottom: 14,
+                    padding: 8, border: "1px solid var(--line2)", borderRadius: "var(--r-sm)",
+                    background: "var(--surface)", boxShadow: "var(--sh2)",
+                  }}
+                >
+                  <Btn onClick={() => setPdfZoom(MAXIMIZED_PDF_ZOOM)}>Maximize</Btn>
+                  <Btn onClick={() => setPdfZoom((zoom) => Math.max(0.55, Number((zoom - 0.15).toFixed(2))))} aria-label="Zoom out" title="Zoom out">-</Btn>
+                  {/* Fixed width so the row does not shuffle between 90% and 100%. */}
+                  <span className="num" style={{ minWidth: 54, textAlign: "center" }}>{Math.round(pdfZoom * 100)}%</span>
+                  <Btn onClick={() => setPdfZoom((zoom) => Math.min(2.4, Number((zoom + 0.15).toFixed(2))))} aria-label="Zoom in" title="Zoom in">+</Btn>
+                  <Btn onClick={() => setPdfZoom(1)}>Reset</Btn>
+                  <span className="sub">{pageCount} page{pageCount === 1 ? "" : "s"}</span>
                 </div>
-                <div style={pdfStack}>
+                {/* Bespoke: a centred column of rendered pages. */}
+                <div style={{ display: "grid", justifyItems: "center", gap: 18, paddingBottom: 24 }}>
                   {pdfDoc ? Array.from({ length: pageCount }, (_, index) => {
                     const pageNumber = index + 1;
                     return (
@@ -310,62 +342,69 @@ export function BucketFileReviewPanel({
                 onMouseUp={endMark}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={review.preview_url} alt={review.file.file_name} style={imagePreview} />
+                {/* Bespoke: the image is sized to the viewport, not to a box. */}
+                <img src={review.preview_url} alt={review.file.file_name} style={{ display: "block", maxWidth: "min(100%, 1200px)", maxHeight: "78vh", objectFit: "contain" }} />
                 <RectLayer annotations={(review.annotations ?? []).filter((annotation) => annotation.page_number === 1)} draftRect={draftRect?.page_number === 1 ? draftRect : null} activeId={activeAnnotationId} onSelect={setActiveAnnotationId} />
               </ReviewStage>
             ) : review?.preview_url && fileType === "csv" ? (
               <CsvPreview text={textPreview} />
             ) : review?.preview_url && fileType === "text" ? (
-              <pre style={textBox}>{textPreview || "Loading preview..."}</pre>
+              // Bespoke: a monospace document well. `.field` is a control and
+              // the sheet has no read-only code surface.
+              <pre style={{ margin: 0, minHeight: 420, border: "1px solid var(--line)", borderRadius: "var(--r)", background: "var(--surface)", color: "var(--ink)", padding: 16, whiteSpace: "pre-wrap", overflow: "auto", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 13, lineHeight: 1.55 }}>
+                {textPreview || "Loading preview..."}
+              </pre>
             ) : (
               <UnsupportedPreview review={review} fileType={fileType} />
             )}
-            {status ? <div style={statusText}>{status}</div> : null}
+            {status ? <StatusLine tone="warn" className="mt">{status}</StatusLine> : null}
           </main>
-          <aside style={sidePanel}>
-            <section style={sideSection}>
-              <h3 style={sectionTitle}>Add section comment</h3>
-              <div style={instructionBox}>
-                <strong>{canAnnotate(fileType) ? "To leave a comment: click and drag over the exact area on the document." : "Section comments are available for PDF and image files."}</strong>
-                <span>{annotationHelp}</span>
-              </div>
-              {draftRect ? (
-                <div style={{ display: "grid", gap: 8 }}>
-                  <textarea style={textarea} value={draftComment} onChange={(event) => setDraftComment(event.target.value)} placeholder="Comment on the marked section" />
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button style={primaryButton} onClick={submitComment} disabled={saving || !draftComment.trim()}>{saving ? "Saving..." : "Save comment"}</button>
-                    <button style={secondaryButton} onClick={() => { setDraftRect(null); setDraftComment(""); }}>Cancel</button>
-                  </div>
+          {/* Bespoke: the review rail. Scrolls independently of the document. */}
+          <aside className="grid g10" style={{ borderLeft: "1px solid var(--line)", background: "var(--surface)", overflowY: "auto", padding: 14, alignContent: "start" }}>
+            <Panel title="Add section comment" bodyClass="grid g8">
+              <Callout tone="acc">
+                <div className="grid g4">
+                  <b>{canAnnotate(fileType) ? "To leave a comment: click and drag over the exact area on the document." : "Section comments are available for PDF and image files."}</b>
+                  <span>{annotationHelp}</span>
                 </div>
+              </Callout>
+              {draftRect ? (
+                <>
+                  {/* Bespoke: a comment box sized to a comment. */}
+                  <Textarea style={{ minHeight: 88 }} value={draftComment} onChange={(event) => setDraftComment(event.target.value)} placeholder="Comment on the marked section" />
+                  <div className="row">
+                    <Btn variant="pri" onClick={submitComment} disabled={saving || !draftComment.trim()}>{saving ? "Saving..." : "Save comment"}</Btn>
+                    <Btn onClick={() => { setDraftRect(null); setDraftComment(""); }}>Cancel</Btn>
+                  </div>
+                </>
               ) : (
-                <div style={emptyNote}>{canAnnotate(fileType) ? "No area selected." : "Preview this file locally to add general feedback."}</div>
+                <Sub>{canAnnotate(fileType) ? "No area selected." : "Preview this file locally to add general feedback."}</Sub>
               )}
-            </section>
-            <section style={sideSection}>
-              <h3 style={sectionTitle}>Review comments</h3>
-              <div style={{ display: "grid", gap: 8 }}>
-                {(review?.annotations ?? []).length === 0 ? (
-                  <div style={emptyNote}>No comments yet.</div>
-                ) : review!.annotations.map((annotation) => (
-                  <button
-                    key={annotation.id}
-                    style={{ ...annotationButton, ...(activeAnnotationId === annotation.id ? annotationButtonActive : {}) }}
-                    onClick={() => selectAnnotation(annotation)}
-                  >
-                    <strong>{annotation.author_name}</strong>
-                    <span>Page {annotation.page_number} | {formatDate(annotation.created_at)}</span>
+            </Panel>
+            <Panel title="Review comments" bodyClass="grid g8">
+              {(review?.annotations ?? []).length === 0 ? (
+                <Sub>No comments yet.</Sub>
+              ) : review!.annotations.map((annotation) => (
+                <button
+                  key={annotation.id}
+                  type="button"
+                  className={cx("pick", activeAnnotationId === annotation.id && "on")}
+                  onClick={() => selectAnnotation(annotation)}
+                >
+                  <span className="grow grid g4">
+                    <b>{annotation.author_name}</b>
+                    <span className="sub">Page {annotation.page_number} | {formatDate(annotation.created_at)}</span>
                     <span>{annotation.comment}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
+                  </span>
+                </button>
+              ))}
+            </Panel>
             {activeAnnotation ? (
-              <section style={sideSection}>
-                <h3 style={sectionTitle}>Selected comment</h3>
-                <p style={{ margin: 0, color: "#111827", fontWeight: 800 }}>{activeAnnotation.author_name}</p>
-                <p style={muted}>{formatDate(activeAnnotation.created_at)}</p>
-                <p style={{ margin: 0, color: "#334155", lineHeight: 1.45 }}>{activeAnnotation.comment}</p>
-              </section>
+              <Panel title="Selected comment" bodyClass="grid g6">
+                <b>{activeAnnotation.author_name}</b>
+                <Sub>{formatDate(activeAnnotation.created_at)}</Sub>
+                <p>{activeAnnotation.comment}</p>
+              </Panel>
             ) : null}
           </aside>
         </div>
@@ -452,8 +491,9 @@ function PdfPage({
   }, [pageNumber, pdfDoc, viewerWidth, zoom]);
 
   return (
-    <div style={pdfPageWrap}>
-      <div style={pdfPageLabel}>Page {pageNumber}</div>
+    // Bespoke: one rendered page, centred with its label above it.
+    <div style={{ display: "grid", justifyItems: "center", gap: 7 }}>
+      <div className="lbl">Page {pageNumber}</div>
       <ReviewStage
         stageRef={(node) => {
           localStageRef.current = node;
@@ -463,10 +503,11 @@ function PdfPage({
         onMouseMove={(event) => onMouseMove(event, localStageRef.current)}
         onMouseUp={onMouseUp}
       >
+        {/* The canvas is sized in JS from the pdf.js viewport — measured geometry. */}
         <canvas ref={canvasRef} style={{ display: "block", maxWidth: "none" }} />
         <RectLayer annotations={annotations} draftRect={draftRect} activeId={activeId} onSelect={onSelect} />
       </ReviewStage>
-      {renderStatus ? <div style={pageStatus}>{renderStatus}</div> : null}
+      {renderStatus ? <StatusLine tone="warn">{renderStatus}</StatusLine> : null}
     </div>
   );
 }
@@ -487,7 +528,10 @@ function ReviewStage({
   return (
     <div
       ref={stageRef}
-      style={stage}
+      // Bespoke: the drag surface. It sizes to the rendered page (fit-content)
+      // because the mark coordinates are fractions of exactly this box, and
+      // text selection has to be off or a drag selects the page instead.
+      style={{ position: "relative", width: "fit-content", maxWidth: "none", margin: "0 auto", background: "var(--surface)", boxShadow: "var(--sh2)", userSelect: "none" }}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
@@ -510,11 +554,13 @@ function RectLayer({
   onSelect: (id: string) => void;
 }) {
   return (
-    <div style={rectLayer}>
+    <div className="marklayer">
       {annotations.map((annotation) => (
         <button
           key={annotation.id}
-          style={{ ...rectStyle(annotation), ...(activeId === annotation.id ? activeRect : {}) }}
+          type="button"
+          className={cx("mark", activeId === annotation.id && "on")}
+          style={rectBox(annotation)}
           onClick={(event) => {
             event.stopPropagation();
             onSelect(annotation.id);
@@ -523,7 +569,7 @@ function RectLayer({
           aria-label={`Review comment by ${annotation.author_name}`}
         />
       ))}
-      {draftRect ? <div style={{ ...rectStyle(draftRect), ...draftRectStyle }} /> : null}
+      {draftRect ? <div className="mark draft" style={rectBox(draftRect)} /> : null}
     </div>
   );
 }
@@ -531,59 +577,81 @@ function RectLayer({
 function CsvPreview({ text }: { text: string }) {
   const parsed = parseCsv(text);
   const rows = parsed.slice(0, 200);
-  if (!text) return <div style={emptyPreview}>Loading CSV preview...</div>;
-  if (!rows.length) return <div style={emptyPreview}>No CSV rows found.</div>;
+  if (!text) return <div className="hintbox"><Sub>Loading CSV preview...</Sub></div>;
+  if (!rows.length) return <div className="hintbox"><Sub>No CSV rows found.</Sub></div>;
   const [head, ...bodyRows] = rows;
   return (
-    <div style={tableWrap}>
-      <table style={table}>
-        <thead>
-          <tr>
-            {head.map((cell, index) => <th key={`${cell}-${index}`} style={th}>{cell || `Column ${index + 1}`}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {bodyRows.map((row, rowIndex) => (
-            <tr key={rowIndex}>
-              {head.map((_, cellIndex) => <td key={cellIndex} style={td}>{row[cellIndex] ?? ""}</td>)}
+    <Panel noPad>
+      {/* Bespoke: the preview scrolls in both directions inside a bounded box,
+          so a 4000-row export does not become a 4000-row page. */}
+      <div className="tblwrap" style={{ maxHeight: "76vh", overflowY: "auto" }}>
+        <table className="tbl nowrap">
+          <caption className="sr-only">CSV preview</caption>
+          <thead>
+            <tr>
+              {head.map((cell, index) => (
+                <th key={`${cell}-${index}`} scope="col" style={{ position: "sticky", top: 0, zIndex: 1 }}>
+                  {cell || `Column ${index + 1}`}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-      {parsed.length > 200 ? <div style={tableNote}>Showing first 200 rows.</div> : null}
-    </div>
+          </thead>
+          <tbody>
+            {bodyRows.map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                {head.map((_, cellIndex) => <td key={cellIndex}>{row[cellIndex] ?? ""}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {parsed.length > 200 ? (
+        <div className="panel-b">
+          <Sub>Showing first 200 rows.</Sub>
+        </div>
+      ) : null}
+    </Panel>
   );
 }
 
 function UnsupportedPreview({ review, fileType }: { review: BucketFileReview | null; fileType: ReviewFileType }) {
   const isSpreadsheet = fileType === "spreadsheet";
   return (
-    <div style={unsupportedBox}>
-      <Icon name={isSpreadsheet ? "doc" : "file"} size={28} />
-      <strong>{isSpreadsheet ? "Spreadsheet preview requires download." : "Preview is not available for this file type."}</strong>
-      <span style={muted}>{isSpreadsheet ? "Open Excel files locally to preserve formulas, tabs, and formatting." : "Open the original file to review it locally."}</span>
-      {review?.preview_url ? (
-        <a style={primaryLink} href={review.preview_url} target="_blank" rel="noopener noreferrer">
-          <Icon name="external" size={14} />
-          Open file
-        </a>
-      ) : null}
+    // `.hintbox` is the dashed placeholder-with-a-reason; `minHeight` keeps the
+    // well from collapsing to a strip in the middle of a tall viewer.
+    <div className="hintbox" style={{ minHeight: 360 }}>
+      <span className="hintbox-i">
+        <Icon name={isSpreadsheet ? "doc" : "file"} size={18} />
+      </span>
+      <div className="grid g6">
+        <b>{isSpreadsheet ? "Spreadsheet preview requires download." : "Preview is not available for this file type."}</b>
+        <Sub>{isSpreadsheet ? "Open Excel files locally to preserve formulas, tabs, and formatting." : "Open the original file to review it locally."}</Sub>
+        {review?.preview_url ? (
+          <div>
+            <BtnLink variant="pri" href={review.preview_url} target="_blank" rel="noopener noreferrer">
+              <Icon name="external" size={14} />
+              Open file
+            </BtnLink>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-function rectStyle(rect: Pick<DraftRect, "x" | "y" | "width" | "height">): CSSProperties {
+/**
+ * Where a mark sits on the page.
+ *
+ * Fractions of the stage box, so this is measured geometry and stays inline.
+ * Everything the mark LOOKS like — the teal border, the wash, the selected and
+ * draft variants — is `.mark` in app-extras.css.
+ */
+function rectBox(rect: Pick<DraftRect, "x" | "y" | "width" | "height">): CSSProperties {
   return {
-    position: "absolute",
     left: `${rect.x * 100}%`,
     top: `${rect.y * 100}%`,
     width: `${rect.width * 100}%`,
     height: `${rect.height * 100}%`,
-    border: "2px solid #21a7a1",
-    background: "rgba(33,167,161,.16)",
-    borderRadius: 3,
-    padding: 0,
-    cursor: "pointer",
   };
 }
 
@@ -658,48 +726,3 @@ function formatSize(size: number): string {
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
-
-const backdrop: CSSProperties = { position: "fixed", inset: 0, zIndex: 500, background: "rgba(0,0,0,.52)", padding: 18 };
-const panel: CSSProperties = { height: "100%", background: "#fff", border: "1px solid #d8dee8", borderRadius: 12, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", overflow: "hidden" };
-const header: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "14px 16px", borderBottom: "1px solid #e5e7eb" };
-const eyebrow: CSSProperties = { color: "#64748b", fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0 };
-const heading: CSSProperties = { margin: "3px 0 0", color: "#111827", fontSize: 20, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
-const fileMeta: CSSProperties = { color: "#64748b", fontSize: 12, fontWeight: 750, marginTop: 3 };
-const body: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 5fr) minmax(180px, 1fr)", minHeight: 0 };
-const viewerColumn: CSSProperties = { minWidth: 0, minHeight: 0, overflow: "auto", background: "#eef1f5", padding: 16 };
-const sidePanel: CSSProperties = { borderLeft: "1px solid #e5e7eb", background: "#fff", overflowY: "auto", padding: 14, display: "grid", gap: 12, alignContent: "start" };
-const toolbar: CSSProperties = { position: "sticky", top: 0, zIndex: 4, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 14, padding: 8, border: "1px solid #d8dee8", borderRadius: 10, background: "rgba(255,255,255,.94)", boxShadow: "0 8px 24px rgba(15,23,42,.08)", flexWrap: "wrap" };
-const toolButton: CSSProperties = { height: 34, border: "1px solid #cbd5e1", borderRadius: 8, background: "#fff", color: "#111827", fontWeight: 850, padding: "0 12px", cursor: "pointer" };
-const zoomLabel: CSSProperties = { minWidth: 54, textAlign: "center", color: "#334155", fontSize: 12, fontWeight: 900 };
-const pdfStack: CSSProperties = { display: "grid", justifyItems: "center", gap: 18, paddingBottom: 24 };
-const pdfPageWrap: CSSProperties = { display: "grid", justifyItems: "center", gap: 7 };
-const pdfPageLabel: CSSProperties = { color: "#64748b", fontSize: 12, fontWeight: 900 };
-const stage: CSSProperties = { position: "relative", width: "fit-content", maxWidth: "none", margin: "0 auto", background: "#fff", boxShadow: "0 12px 34px rgba(15,23,42,.16)", userSelect: "none" };
-const rectLayer: CSSProperties = { position: "absolute", inset: 0 };
-const activeRect: CSSProperties = { borderColor: "#0f766e", background: "rgba(15,118,110,.24)" };
-const draftRectStyle: CSSProperties = { borderStyle: "dashed", pointerEvents: "none" };
-const imagePreview: CSSProperties = { display: "block", maxWidth: "min(100%, 1200px)", maxHeight: "78vh", objectFit: "contain" };
-const iconButton: CSSProperties = { width: 36, height: 36, border: "1px solid #d8dee8", borderRadius: 9, background: "#fff", color: "#334155", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" };
-const sideSection: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, display: "grid", gap: 8 };
-const sectionTitle: CSSProperties = { margin: 0, color: "#111827", fontSize: 14, fontWeight: 900 };
-const muted: CSSProperties = { margin: 0, color: "#64748b", fontSize: 13, lineHeight: 1.4 };
-const instructionBox: CSSProperties = { display: "grid", gap: 4, border: "1px solid #bfdbfe", borderRadius: 9, padding: 10, color: "#1e3a8a", background: "#eff6ff", fontSize: 13, lineHeight: 1.4 };
-const textarea: CSSProperties = { minHeight: 88, border: "1px solid #cbd5e1", borderRadius: 8, padding: 10, font: "inherit", resize: "vertical" };
-const primaryButton: CSSProperties = { height: 36, border: "none", borderRadius: 8, background: "#111827", color: "#fff", fontWeight: 900, padding: "0 12px", cursor: "pointer" };
-const primaryLink: CSSProperties = { ...primaryButton, display: "inline-flex", alignItems: "center", gap: 7, textDecoration: "none" };
-const secondaryButton: CSSProperties = { height: 36, border: "1px solid #cbd5e1", borderRadius: 8, background: "#fff", color: "#334155", fontWeight: 900, padding: "0 12px", cursor: "pointer" };
-const secondaryLink: CSSProperties = { ...secondaryButton, display: "inline-flex", alignItems: "center", gap: 7, textDecoration: "none" };
-const dangerButton: CSSProperties = { ...secondaryButton, display: "inline-flex", alignItems: "center", gap: 7, color: "#b91c1c", borderColor: "#fecaca", background: "#fff5f5" };
-const emptyNote: CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 8, padding: 10, color: "#64748b", background: "#f8fafc", fontSize: 13 };
-const annotationButton: CSSProperties = { textAlign: "left", border: "1px solid #e5e7eb", borderRadius: 8, background: "#fff", color: "#334155", padding: 10, display: "grid", gap: 4, cursor: "pointer" };
-const annotationButtonActive: CSSProperties = { borderColor: "#21a7a1", background: "#ecfeff" };
-const unsupportedBox: CSSProperties = { minHeight: 360, display: "grid", placeItems: "center", alignContent: "center", gap: 10, color: "#334155", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 18, textAlign: "center" };
-const emptyPreview: CSSProperties = { minHeight: 260, display: "grid", placeItems: "center", color: "#64748b", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12 };
-const statusText: CSSProperties = { marginTop: 12, color: "#b45309", fontWeight: 800 };
-const pageStatus: CSSProperties = { color: "#b45309", fontSize: 12, fontWeight: 800 };
-const textBox: CSSProperties = { margin: 0, minHeight: 420, border: "1px solid #d8dee8", borderRadius: 12, background: "#fff", color: "#111827", padding: 16, whiteSpace: "pre-wrap", overflow: "auto", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 13, lineHeight: 1.55 };
-const tableWrap: CSSProperties = { border: "1px solid #d8dee8", borderRadius: 12, background: "#fff", overflow: "auto", maxHeight: "76vh" };
-const table: CSSProperties = { width: "100%", borderCollapse: "collapse", fontSize: 13 };
-const th: CSSProperties = { position: "sticky", top: 0, zIndex: 1, background: "#f8fafc", color: "#334155", textAlign: "left", padding: "9px 10px", borderBottom: "1px solid #e2e8f0", fontWeight: 900, whiteSpace: "nowrap" };
-const td: CSSProperties = { padding: "8px 10px", borderBottom: "1px solid #eef2f7", color: "#111827", whiteSpace: "nowrap" };
-const tableNote: CSSProperties = { padding: 10, color: "#64748b", fontSize: 12, fontWeight: 800 };

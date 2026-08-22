@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { Pill } from "@/components/design-system/primitives";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { CellChip, Input, Linky, Select, cx } from "@/components/ds";
 import { useAddressAutocomplete, useResolveAddress } from "@/hooks/useApi";
 import { US_STATES } from "@/lib/usStates";
 import type { AddressParts } from "@/lib/types";
@@ -66,7 +65,6 @@ export function GoogleAddressInput({
   disabled?: boolean;
   showZip?: boolean;
 }) {
-  const { t } = useTheme();
   const [query, setQuery] = useState(() => formatAddressParts(value));
   const [manualOpen, setManualOpen] = useState(() => hasSplitAddress(value));
   const [menuOpen, setMenuOpen] = useState(false);
@@ -81,18 +79,6 @@ export function GoogleAddressInput({
     if (!formattedValue || formattedValue === query) return;
     setQuery(formattedValue);
   }, [formattedValue]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const inputStyle = {
-    width: "100%",
-    padding: "9px 11px",
-    borderRadius: 8,
-    border: `1px solid ${t.line}`,
-    background: t.surface,
-    color: t.ink,
-    fontSize: 13,
-    fontFamily: "inherit",
-    outline: "none",
-  } as const;
 
   const updatePart = (key: keyof Pick<AddressParts, "street" | "city" | "state" | "zip">, raw: string) => {
     const next = normalize({
@@ -138,14 +124,21 @@ export function GoogleAddressInput({
     !suggestions.isFetching &&
     !suggestions.data?.length;
 
+  const resolvedByGoogle = Boolean(value?.latitude && value?.longitude);
+
   return (
-    <div style={{ display: "grid", gap: 8 }}>
-      <label style={{ display: "block" }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.7 }}>{label}</span>
-        <div style={{ position: "relative", marginTop: 5 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${t.line}`, background: t.surface2, borderRadius: 9, padding: "0 11px" }}>
-            <Icon name="search" size={14} />
+    <div className="grid g8">
+      <label className="grid g4">
+        <span className="lbl">{label}</span>
+        {/* Bespoke: the anchor for the absolutely-positioned suggestion menu. */}
+        <div style={{ position: "relative" }}>
+          {/* `.field` is the box; the flex row inside it carries a leading
+              search icon and a trailing pending spinner, which is why the
+              input is not simply an `<Input>` in a `.row`. */}
+          <div className="field" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Icon name="search" size={14} className="sub" />
             <input
+              className="grow"
               value={query}
               disabled={disabled}
               onFocus={() => setMenuOpen(true)}
@@ -155,75 +148,78 @@ export function GoogleAddressInput({
                 setMenuOpen(true);
               }}
               placeholder="Start typing property address..."
-              style={{ flex: 1, minWidth: 0, padding: "10px 0", background: "transparent", border: "none", color: t.ink, outline: "none", fontSize: 13, fontFamily: "inherit" }}
+              // Bespoke: a bare input INSIDE a `.field` shell — the shell owns
+              // the border, radius, padding and background, so this one must
+              // own none of them.
+              style={{ border: 0, padding: 0, background: "transparent", color: "inherit", font: "inherit", outline: "none" }}
             />
-            {resolveAddress.isPending ? <Icon name="refresh" size={13} /> : null}
+            {resolveAddress.isPending ? <span className="spinner" aria-label="Resolving address" role="status" /> : null}
           </div>
           {showSuggestions ? (
-            <div style={{ position: "absolute", zIndex: 30, top: "100%", left: 0, right: 0, marginTop: 4, background: t.surface, border: `1px solid ${t.line}`, borderRadius: 9, boxShadow: "0 8px 24px rgba(0,0,0,.18)", maxHeight: 260, overflow: "auto" }}>
+            // `.popmenu` is right-anchored and min-width 212; this one spans
+            // the input and caps its own height.
+            <div className="popmenu" style={{ left: 0, maxHeight: 260, overflowY: "auto" }}>
               {suggestions.data?.map((s) => (
                 <button
                   key={s.place_id}
                   type="button"
+                  className="mi"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => selectSuggestion(s.place_id, s.text)}
-                  style={{ all: "unset", display: "block", boxSizing: "border-box", width: "100%", padding: "10px 12px", cursor: "pointer", borderBottom: `1px solid ${t.line}` }}
                 >
-                  <div style={{ color: t.ink, fontWeight: 700, fontSize: 12.5 }}>{s.text}</div>
-                  {s.secondary_text ? <div style={{ color: t.ink3, fontSize: 11, marginTop: 1 }}>{s.secondary_text}</div> : null}
+                  <b>{s.text}</b>
+                  {s.secondary_text ? <small>{s.secondary_text}</small> : null}
                 </button>
               ))}
-              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={openManual} style={{ all: "unset", display: "block", boxSizing: "border-box", width: "100%", padding: "9px 12px", cursor: "pointer", color: t.petrol, fontSize: 12, fontWeight: 800 }}>
-                Enter address manually
+              <button type="button" className="mi" onMouseDown={(e) => e.preventDefault()} onClick={openManual}>
+                <b>Enter address manually</b>
               </button>
             </div>
           ) : null}
           {showManualFallback ? (
-            <div style={{ position: "absolute", zIndex: 30, top: "100%", left: 0, right: 0, marginTop: 4, background: t.surface, border: `1px solid ${t.line}`, borderRadius: 9, boxShadow: "0 8px 24px rgba(0,0,0,.18)", padding: 10 }}>
-              <div style={{ fontSize: 12, color: t.ink3, marginBottom: 8 }}>No Google match. Use manual entry for this property.</div>
-              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={openManual} style={{ all: "unset", cursor: "pointer", color: t.petrol, fontSize: 12, fontWeight: 800 }}>
-                Enter address manually
+            <div className="popmenu" style={{ left: 0 }}>
+              <button type="button" className="mi" onMouseDown={(e) => e.preventDefault()} onClick={openManual}>
+                <b>Enter address manually</b>
+                <small>No Google match. Use manual entry for this property.</small>
               </button>
             </div>
           ) : null}
         </div>
       </label>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <Pill bg={value?.latitude && value?.longitude ? t.profitBg : t.chip} color={value?.latitude && value?.longitude ? t.profit : t.ink3}>
-          {value?.latitude && value?.longitude
+      <div className="row">
+        <CellChip tone={resolvedByGoogle ? "ok" : "mut"}>
+          {resolvedByGoogle
             ? "Google address resolved"
             : hasSplitAddress(value)
               ? "Manual address"
               : "Search Google or enter manually"}
-        </Pill>
-        {!manualOpen ? (
-          <button type="button" onClick={openManual} style={{ all: "unset", cursor: "pointer", color: t.petrol, fontSize: 12, fontWeight: 800 }}>
-            Manual entry
-          </button>
-        ) : null}
+        </CellChip>
+        {!manualOpen ? <Linky onClick={openManual}>Manual entry</Linky> : null}
       </div>
-      {helperText ? <div style={{ color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>{helperText}</div> : null}
+      {helperText ? <div className="sub">{helperText}</div> : null}
       {manualOpen ? (
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${showZip ? 110 : 120}px, 1fr))`, gap: 10 }}>
-          <label style={{ display: "block" }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>Street</span>
-            <input value={value?.street ?? ""} onChange={(e) => updatePart("street", e.target.value)} style={inputStyle} />
+        // Four across with ZIP, three without — `.fldgrid` collapses both to
+        // two columns and then one as the container narrows.
+        <div className={cx("fldgrid", showZip ? "four" : "three")}>
+          <label className="grid g4">
+            <span className="lbl">Street</span>
+            <Input value={value?.street ?? ""} onChange={(e) => updatePart("street", e.target.value)} />
           </label>
-          <label style={{ display: "block" }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>City</span>
-            <input value={value?.city ?? ""} onChange={(e) => updatePart("city", e.target.value)} style={inputStyle} />
+          <label className="grid g4">
+            <span className="lbl">City</span>
+            <Input value={value?.city ?? ""} onChange={(e) => updatePart("city", e.target.value)} />
           </label>
-          <label style={{ display: "block" }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>State</span>
-            <select value={value?.state ?? ""} onChange={(e) => updatePart("state", e.target.value)} style={inputStyle}>
+          <label className="grid g4">
+            <span className="lbl">State</span>
+            <Select value={value?.state ?? ""} onChange={(e) => updatePart("state", e.target.value)}>
               <option value="">State</option>
               {US_STATES.map((s) => <option key={s.code} value={s.code}>{s.code}</option>)}
-            </select>
+            </Select>
           </label>
           {showZip ? (
-            <label style={{ display: "block" }}>
-              <span style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.6 }}>ZIP</span>
-              <input value={value?.zip ?? ""} onChange={(e) => updatePart("zip", e.target.value)} inputMode="numeric" style={inputStyle} />
+            <label className="grid g4">
+              <span className="lbl">ZIP</span>
+              <Input value={value?.zip ?? ""} onChange={(e) => updatePart("zip", e.target.value)} inputMode="numeric" />
             </label>
           ) : null}
         </div>

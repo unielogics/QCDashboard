@@ -16,13 +16,25 @@
 // The host's primary_color is still honoured, but as an accent only. It no
 // longer paints the page ground, so a host cannot make their own page
 // unreadable by choosing a pale colour.
+//
+// Styling only: migrated onto the plain-CSS design system. The "locked light"
+// note above is now free — globals.css IS the light palette and carries no dark
+// block at all, so `.panel` / `.btn` / `.field` here render exactly what the
+// signed-in console renders. QC_TOKENS.light survives in only two places, both
+// marked: withAlpha() needs a concrete hex to composite against, and a CSS
+// custom property is a string this page cannot do colour maths on. Every
+// host-accent colour stays inline because it is data, not design.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { Card, Textarea, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { QC_TOKENS, withAlpha } from "@/components/design-system/tokens";
 
+// The ONE token object left on this page. `withAlpha()` composites a real hex,
+// so the accent fallback and the on-accent ink cannot be `var(--accent)` /
+// `var(--ink)` strings — everything else on the page is a class.
 const t = QC_TOKENS.light;
 
 interface PublicBookingSlot {
@@ -165,7 +177,7 @@ export default function PublicBookingPage() {
     return (
       <Frame>
         <Centered>
-          <div style={{ color: t.ink3, fontSize: 14 }}>Loading…</div>
+          <span className="sub">Loading…</span>
         </Centered>
       </Frame>
     );
@@ -175,10 +187,8 @@ export default function PublicBookingPage() {
     return (
       <Frame>
         <Centered>
-          <h1 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, color: t.ink }}>
-            Booking page unavailable
-          </h1>
-          <p style={{ margin: 0, color: t.ink3, fontSize: 14, lineHeight: 1.6 }}>{error}</p>
+          <h1>Booking page unavailable</h1>
+          <p className="sub" style={{ marginTop: 8, lineHeight: 1.6 }}>{error}</p>
         </Centered>
       </Frame>
     );
@@ -189,6 +199,8 @@ export default function PublicBookingPage() {
     return (
       <Frame>
         <Centered>
+          {/* Bespoke: a 46px success medallion. `.botmark` is the square
+              38px mark and the wrong shape for a confirmation. */}
           <div
             style={{
               width: 46,
@@ -196,34 +208,22 @@ export default function PublicBookingPage() {
               borderRadius: 999,
               display: "grid",
               placeItems: "center",
-              background: withAlpha(t.profit, 0.14),
-              color: t.profit,
+              background: "var(--ok-tint)",
+              color: "var(--ok)",
               margin: "0 auto 16px",
             }}
           >
             <Icon name="check" size={22} stroke={2.6} />
           </div>
-          <h1 style={{ margin: "0 0 8px", fontSize: 24, fontWeight: 800, color: t.ink }}>
-            You are booked
-          </h1>
-          <p style={{ margin: "0 0 14px", color: t.ink2, fontSize: 14, lineHeight: 1.65 }}>
+          <h1>You are booked</h1>
+          <p style={{ margin: "8px 0 14px", lineHeight: 1.65 }}>
             {selected?.date_label} at {selected?.label}, with {host}.
           </p>
-          <div
-            style={{
-              padding: 14,
-              borderRadius: 12,
-              background: t.surface2,
-              border: `1px solid ${t.line}`,
-              color: t.ink3,
-              fontSize: 13,
-              lineHeight: 1.6,
-              textAlign: "left",
-            }}
-          >
-            A calendar invitation is on its way to{" "}
-            <strong style={{ color: t.ink }}>{form.email}</strong>. Accept it and the meeting
-            lands on your calendar with everything you need to join.
+          <div className="itemrow" style={{ textAlign: "left", lineHeight: 1.6 }}>
+            <span className="sub">
+              A calendar invitation is on its way to <strong>{form.email}</strong>. Accept it and the
+              meeting lands on your calendar with everything you need to join.
+            </span>
           </div>
         </Centered>
       </Frame>
@@ -249,43 +249,36 @@ export default function PublicBookingPage() {
               style={{ height: 34, width: "auto", objectFit: "contain", marginBottom: 20 }}
             />
           ) : (
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 800,
-                letterSpacing: 0.2,
-                color: t.ink,
-                marginBottom: 20,
-              }}
-            >
-              Qualified Commercial
-            </div>
+            <div style={{ fontWeight: 800, marginBottom: 20 }}>Qualified Commercial</div>
           )}
 
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <div className="row" style={{ marginBottom: 12 }}>
             <Chip accent={accent}>{profile.duration_min} minutes</Chip>
             <Chip>
-              <Icon name="audit" size={12} style={{ marginRight: 5, verticalAlign: -1 }} />
+              <Icon name="audit" size={12} />
               {profile.timezone.replace(/_/g, " ")}
             </Chip>
           </div>
 
+          {/* Hero display type. This is the only heading in the product sized
+              for a stranger's first screen — `.hd h1` is 23px, which is a
+              console page title. Weight, face and tracking stay with the
+              stylesheet; only the scale and the measure are declared here. */}
           <h1
             style={{
-              margin: "0 0 10px",
+              marginBottom: 10,
               fontSize: "clamp(28px, 4.6vw, 44px)",
               lineHeight: 1.1,
-              letterSpacing: -0.8,
-              fontWeight: 800,
-              color: t.ink,
-              fontFamily: "var(--font-inter-tight), inherit",
               maxWidth: 720,
             }}
           >
             {profile.title}
           </h1>
           {profile.intro && (
-            <p style={{ margin: 0, maxWidth: 620, color: t.ink3, fontSize: 15, lineHeight: 1.65 }}>
+            /* Hero-scale prose, same reasoning as the h1 above: `.sub` is the
+               console's 12px caption and this is the paragraph a stranger reads
+               first, so the scale is declared here rather than fought with. */
+            <p style={{ margin: 0, maxWidth: 620, color: "var(--muted)", fontSize: 15, lineHeight: 1.65 }}>
               {profile.intro}
             </p>
           )}
@@ -296,16 +289,20 @@ export default function PublicBookingPage() {
               <img
                 src={profile.profile_photo_url}
                 alt=""
+                /* Bespoke: a 42px host portrait. `.avatar` is the console's
+                   30px initials disc, which is not this. */
                 style={{
                   width: 42,
                   height: 42,
                   borderRadius: 999,
                   objectFit: "cover",
-                  border: `1px solid ${t.line}`,
+                  border: "1px solid var(--line)",
                 }}
               />
             ) : (
               <div
+                /* Same 42px disc; the tint is the host's own accent, so it is
+                   data and stays inline. */
                 style={{
                   width: 42,
                   height: 42,
@@ -320,12 +317,15 @@ export default function PublicBookingPage() {
               </div>
             )}
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: t.ink }}>{host}</div>
-              {role && <div style={{ fontSize: 12.5, color: t.ink3 }}>{role}</div>}
+              <div style={{ fontWeight: 700 }}>{host}</div>
+              {role && <div className="sub">{role}</div>}
             </div>
           </div>
         </header>
 
+        {/* Bespoke: two panels that sit side by side on a laptop and stack on a
+            phone. `.cg` is the twelve-column console grid and this page has no
+            console around it. */}
         <div
           style={{
             display: "grid",
@@ -337,13 +337,15 @@ export default function PublicBookingPage() {
           {/* Slots */}
           <Panel title="Pick a time" icon="cal">
             {days.length === 0 ? (
-              <p style={{ margin: 0, color: t.ink3, fontSize: 13.5, lineHeight: 1.6 }}>
+              <p className="sub" style={{ margin: 0, lineHeight: 1.6 }}>
                 No times are open at the moment. Please check back shortly.
               </p>
             ) : (
               <>
                 {/* Day rail. The old page dumped up to seven dates at once, which
-                    on a phone was a wall of buttons. */}
+                    on a phone was a wall of buttons. Bespoke: a horizontal
+                    scroller under a hairline — not `.seg`, which is a fixed
+                    pill group that cannot scroll. */}
                 <div
                   style={{
                     display: "flex",
@@ -351,7 +353,7 @@ export default function PublicBookingPage() {
                     overflowX: "auto",
                     paddingBottom: 10,
                     marginBottom: 14,
-                    borderBottom: `1px solid ${t.line}`,
+                    borderBottom: "1px solid var(--line)",
                   }}
                 >
                   {days.map((d, i) => {
@@ -362,28 +364,28 @@ export default function PublicBookingPage() {
                         type="button"
                         onClick={() => setDayIndex(i)}
                         aria-pressed={on}
+                        className="btn sm"
+                        // `.btn.sm` owns the resting chrome. The pressed state
+                        // is painted in the HOST's accent, which is data, and
+                        // the two flex properties keep the rail scrolling
+                        // instead of squeezing.
                         style={{
                           flex: "0 0 auto",
-                          padding: "8px 13px",
-                          borderRadius: 999,
-                          fontSize: 12.5,
-                          fontWeight: 700,
-                          cursor: "pointer",
                           whiteSpace: "nowrap",
-                          border: `1px solid ${on ? accent : t.line}`,
-                          background: on ? withAlpha(accent, 0.1) : t.surface,
-                          color: on ? accent : t.ink2,
+                          ...(on
+                            ? { borderColor: accent, background: withAlpha(accent, 0.1), color: accent }
+                            : null),
                         }}
                       >
                         {d.date}
-                        <span style={{ marginLeft: 6, color: on ? accent : t.ink4, fontWeight: 600 }}>
-                          {d.slots.length}
-                        </span>
+                        <span style={{ color: on ? accent : "var(--faint)" }}>{d.slots.length}</span>
                       </button>
                     );
                   })}
                 </div>
 
+                {/* Bespoke: a time grid that packs as many 104px columns as
+                    fit. `.cols-auto` is 230px minimum — two per row here. */}
                 <div
                   style={{
                     display: "grid",
@@ -399,17 +401,12 @@ export default function PublicBookingPage() {
                         type="button"
                         onClick={() => pick(slot)}
                         aria-pressed={on}
+                        className="btn"
+                        // Selected slot is filled with the host accent, with
+                        // `onAccent()` picking legible ink for it — data, both.
                         style={{
-                          padding: "11px 8px",
-                          borderRadius: 10,
-                          fontSize: 13.5,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          fontVariantNumeric: "tabular-nums",
-                          border: `1px solid ${on ? accent : t.lineStrong}`,
-                          background: on ? accent : t.surface,
-                          color: on ? accentInk : t.ink,
-                          transition: "background 120ms, border-color 120ms",
+                          justifyContent: "center",
+                          ...(on ? { borderColor: accent, background: accent, color: accentInk } : null),
                         }}
                       >
                         {slot.label}
@@ -424,27 +421,29 @@ export default function PublicBookingPage() {
           {/* Details */}
           <div ref={detailsRef}>
             <Panel title="Your details" icon="user">
-              <form onSubmit={submit} noValidate>
+              {/* `.grid.g10` stacks the whole form on one rhythm, which is why
+                  no field below carries a margin of its own. */}
+              <form onSubmit={submit} noValidate className="grid g10">
                 <div
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    marginBottom: 16,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    background: selected ? withAlpha(accent, 0.09) : t.surface2,
-                    border: `1px solid ${selected ? withAlpha(accent, 0.3) : t.line}`,
-                    color: selected ? t.ink : t.ink3,
-                  }}
+                  className="itemrow"
+                  // `.itemrow` is the resting state. Once a slot is picked the
+                  // row is tinted with the HOST's accent — data, not design.
+                  style={
+                    selected
+                      ? { background: withAlpha(accent, 0.09), borderColor: withAlpha(accent, 0.3) }
+                      : undefined
+                  }
                 >
-                  {selected
-                    ? `${selected.date_label} at ${selected.label}`
-                    : "Pick a time to continue"}
+                  <span className={cx(!selected && "sub")} style={{ fontWeight: 600 }}>
+                    {selected
+                      ? `${selected.date_label} at ${selected.label}`
+                      : "Pick a time to continue"}
+                  </span>
                 </div>
 
                 <Field label="Full name" required>
                   <input
-                    style={inputStyle}
+                    className="field"
                     value={form.full_name}
                     onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
                     autoComplete="name"
@@ -453,7 +452,7 @@ export default function PublicBookingPage() {
                 </Field>
                 <Field label="Email" required>
                   <input
-                    style={inputStyle}
+                    className="field"
                     type="email"
                     inputMode="email"
                     value={form.email}
@@ -464,7 +463,7 @@ export default function PublicBookingPage() {
                 </Field>
                 <Field label="Phone">
                   <input
-                    style={inputStyle}
+                    className="field"
                     type="tel"
                     inputMode="tel"
                     value={form.phone}
@@ -473,8 +472,11 @@ export default function PublicBookingPage() {
                   />
                 </Field>
                 <Field label="What would you like to cover?">
-                  <textarea
-                    style={{ ...inputStyle, minHeight: 88, resize: "vertical" }}
+                  <Textarea
+                    // `.field` owns the box and the `.grid` label above stretches
+                    // it; `.composer textarea` is the only place the sheet sizes
+                    // a textarea, and this is not a composer.
+                    style={{ minHeight: 88, resize: "vertical" }}
                     rows={3}
                     value={form.notes}
                     onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
@@ -482,18 +484,9 @@ export default function PublicBookingPage() {
                 </Field>
 
                 {error && (
-                  <div
-                    role="alert"
-                    style={{
-                      marginBottom: 12,
-                      padding: "9px 12px",
-                      borderRadius: 9,
-                      fontSize: 13,
-                      background: t.dangerBg,
-                      color: t.danger,
-                      border: `1px solid ${withAlpha(t.danger, 0.25)}`,
-                    }}
-                  >
+                  // role="alert" so a submission failure is announced, not just
+                  // shown. `.statusline` is the chip vocabulary that wraps.
+                  <div role="alert" className="statusline c-bad">
                     {error}
                   </div>
                 )}
@@ -501,23 +494,22 @@ export default function PublicBookingPage() {
                 <button
                   type="submit"
                   disabled={!canSubmit || status === "submitting"}
+                  className="btn pri"
+                  // `.btn.pri` and `.btn:disabled` own the shape and the dimmed
+                  // state. Only the host's accent is painted here, and only
+                  // while the button is live — a disabled control must not
+                  // advertise itself in full brand colour.
                   style={{
-                    width: "100%",
-                    padding: "13px 18px",
-                    borderRadius: 10,
-                    fontSize: 14,
-                    fontWeight: 700,
-                    cursor: canSubmit && status !== "submitting" ? "pointer" : "not-allowed",
-                    border: "none",
-                    background: canSubmit ? accent : t.chip,
-                    color: canSubmit ? accentInk : t.ink4,
-                    transition: "background 120ms",
+                    justifyContent: "center",
+                    ...(canSubmit && status !== "submitting"
+                      ? { background: accent, borderColor: accent, color: accentInk }
+                      : null),
                   }}
                 >
                   {status === "submitting" ? "Booking…" : "Confirm booking"}
                 </button>
 
-                <p style={{ margin: "12px 0 0", fontSize: 12, lineHeight: 1.55, color: t.ink4 }}>
+                <p className="sub" style={{ margin: 0, lineHeight: 1.55 }}>
                   You will get a calendar invitation by email. No account needed.
                 </p>
               </form>
@@ -533,18 +525,12 @@ export default function PublicBookingPage() {
 
 function Frame({ children, accent }: { children: React.ReactNode; accent?: string }) {
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: t.bg,
-        color: t.ink,
-        // The page renders inside the app shell's own ground, which follows the
-        // operator's theme. This must cover it completely or a dark-mode
-        // visitor sees the wrong colour bleed at the edges.
-        borderTop: accent ? `3px solid ${accent}` : undefined,
-        fontFamily: "var(--font-inter), system-ui, sans-serif",
-      }}
-    >
+    // `.bareshell` (AppShell) already paints the ground and holds the 100vh
+    // floor for every route under /book, and globals.css carries no dark block
+    // at all — so the "cover the operator's theme" defence the old inline
+    // background existed for has nothing left to defend against. The one rule
+    // here is the host's own accent, which is data.
+    <div className="bareshell" style={{ borderTop: accent ? `3px solid ${accent}` : undefined }}>
       {children}
     </div>
   );
@@ -552,21 +538,11 @@ function Frame({ children, accent }: { children: React.ReactNode; accent?: strin
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
+    // Bespoke: one card centred in the viewport. `.card` supplies its own
+    // surface, border, radius, shadow and padding; the measure and the
+    // centring are the only things left.
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
-      <div
-        style={{
-          maxWidth: 420,
-          width: "100%",
-          textAlign: "center",
-          background: t.surface,
-          border: `1px solid ${t.line}`,
-          borderRadius: 16,
-          padding: 32,
-          boxShadow: t.shadow,
-        }}
-      >
-        {children}
-      </div>
+      <Card style={{ maxWidth: 420, width: "100%", textAlign: "center" }}>{children}</Card>
     </div>
   );
 }
@@ -581,22 +557,17 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section
-      style={{
-        background: t.surface,
-        border: `1px solid ${t.line}`,
-        borderRadius: 16,
-        padding: 20,
-        boxShadow: t.shadow,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-        <Icon name={icon} size={16} style={{ color: t.ink3 }} />
-        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: t.ink, letterSpacing: -0.1 }}>
-          {title}
-        </h2>
+    // Kept as a local component rather than swapped for `<Panel>` from
+    // "@/components/ds": that one puts the whole header inside its <h3>, and
+    // the section icon here is a SIBLING of the heading, not part of its text.
+    // The chrome is the same `.panel` / `.panel-h` / `.panel-b` all the same,
+    // and `.panel-h h2` (app-extras) owns the title size.
+    <section className="panel">
+      <div className="panel-h">
+        <Icon name={icon} size={15} />
+        <h2>{title}</h2>
       </div>
-      {children}
+      <div className="panel-b">{children}</div>
     </section>
   );
 }
@@ -604,16 +575,15 @@ function Panel({
 function Chip({ children, accent }: { children: React.ReactNode; accent?: string }) {
   return (
     <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "5px 11px",
-        borderRadius: 999,
-        fontSize: 12,
-        fontWeight: 700,
-        background: accent ? withAlpha(accent, 0.1) : t.chip,
-        color: accent || t.ink2,
-      }}
+      className="chip"
+      // `.chip` owns the pill. The accent variant repaints it in the host's
+      // own colour, which is data — there is no class for "whatever hex this
+      // firm typed into their booking settings".
+      style={
+        accent
+          ? { background: withAlpha(accent, 0.1), color: accent, borderColor: withAlpha(accent, 0.25) }
+          : undefined
+      }
     >
       {children}
     </span>
@@ -630,34 +600,19 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label style={{ display: "block", marginBottom: 13 }}>
-      <span
-        style={{
-          display: "block",
-          marginBottom: 6,
-          fontSize: 11.5,
-          fontWeight: 700,
-          letterSpacing: 0.4,
-          textTransform: "uppercase",
-          color: t.ink3,
-        }}
-      >
+    // A real <label> WRAPPING the control, not `<Field>` from
+    // "@/components/ds": that one renders a <div> with a `.lbl` span, and the
+    // implicit label-for association this <label> gives is the difference
+    // between a screen reader reading "Email, edit text" and reading nothing
+    // at all. On a page filled in by strangers that is not negotiable.
+    <label className="grid g6">
+      <span className="lbl">
         {label}
-        {required && <span style={{ color: t.danger, marginLeft: 3 }}>*</span>}
+        {/* Required marker. `.reqtag` says REQUIRED and belongs to the
+            requirement engine; this is plain form validation. */}
+        {required && <span style={{ color: "var(--danger)", marginLeft: 3 }}>*</span>}
       </span>
       {children}
     </label>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 9,
-  border: `1px solid ${t.lineStrong}`,
-  background: t.surface,
-  color: t.ink,
-  fontSize: 14,
-  fontFamily: "inherit",
-  outline: "none",
-};

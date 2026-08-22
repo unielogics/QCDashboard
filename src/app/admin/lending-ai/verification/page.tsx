@@ -3,10 +3,22 @@
 // Super Admin → Lending AI Settings → Document Verification
 // Visual checklists per common doc type. Raw JSON + source-of-truth
 // priority overrides live behind an Advanced disclosure.
+//
+// Styling migrated off the inline token objects onto the plain-CSS design
+// system (globals.css + app-extras.css) via the wrappers in @/components/ds.
+// The rules model, the catalog and every handler are untouched; only the
+// surface vocabulary changed:
+//   Card + SectionLabel stack   → one Panel of `.fldsec` sections
+//   hand-rolled checkbox rows   → `.filerow`, which already owns the accent
+//                                 checkbox and the hairline between rows
+//   "▸ Advanced" text toggle    → `.disc` / `.disc-h` / `.disc-b`, a real
+//                                 button rather than a div with an onClick
+//   raw-JSON textarea           → Textarea + `.mono`
+// The page no longer sets its own padding or max-width — the shell's
+// `.content` owns both.
 
 import { useEffect, useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, SectionLabel } from "@/components/design-system/primitives";
+import { Btn, Input, Lbl, Panel, Row, Sub, Textarea, cx } from "@/components/ds";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 import { isAINotDeployed, useFundingMetaRules, usePatchFundingMetaRules } from "@/hooks/useApi";
@@ -89,7 +101,6 @@ const DOC_TYPE_CATALOG: { key: string; label: string; checks: { id: string; labe
 
 
 export default function VerificationRulesPage() {
-  const { t } = useTheme();
   const { data, isLoading, error: vfError } = useFundingMetaRules("verification");
   const patch = usePatchFundingMetaRules("verification");
 
@@ -149,7 +160,7 @@ export default function VerificationRulesPage() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
+    <div className="grid">
       <LendingAIHeader
         title="Document Verification"
         subtitle="For each document type, choose what the AI should check."
@@ -159,99 +170,81 @@ export default function VerificationRulesPage() {
         <AINotDeployedBanner surface="Lending AI" />
       ) : null}
 
-      <Card pad={20}>
+      <Panel>
         {isLoading ? (
-          <div style={{ color: t.ink3 }}>Loading…</div>
+          <Sub>Loading…</Sub>
         ) : (
           <>
             {docTypes.map(d => (
-              <div key={d.key} style={{ marginBottom: 24 }}>
-                <SectionLabel>{d.label}</SectionLabel>
-                <div style={{ marginTop: 8 }}>
+              <div key={d.key} className="fldsec">
+                <Lbl>{d.label}</Lbl>
+                <div>
                   {d.checks.map(c => (
-                    <label key={c.id} style={{
-                      display: "flex", alignItems: "center", gap: 10,
-                      padding: "6px 0", fontSize: 13, color: t.ink,
-                      cursor: "pointer",
-                    }}>
+                    <label key={c.id} className="filerow">
                       <input
                         type="checkbox"
                         checked={d.cfg.checks?.[c.id] !== false}
                         onChange={e => setDocCheck(d.key, c.id, e.target.checked)}
-                        style={{ width: 18, height: 18 }}
                       />
                       {c.label}
                     </label>
                   ))}
                 </div>
                 {d.hasExpiration ? (
-                  <div style={{
-                    display: "flex", alignItems: "center", gap: 10,
-                    marginTop: 8, fontSize: 13, color: t.ink3,
-                  }}>
-                    Expiration window:
-                    <input
+                  <Row className="mt">
+                    <Sub>Expiration window:</Sub>
+                    <Input
                       type="number"
+                      aria-label={`${d.label} expiration window in days`}
                       value={d.cfg.expiration_days ?? 60}
                       onChange={e => setExpiration(d.key, parseInt(e.target.value || "0", 10) || null)}
-                      style={{
-                        width: 70, padding: 6, fontSize: 13,
-                        borderRadius: 6, border: `1px solid ${t.line}`,
-                        background: t.surface, color: t.ink,
-                      }}
+                      // Bespoke: a two-or-three-digit day count. `.field` has no
+                      // width of its own and would otherwise stretch the row.
+                      style={{ width: 70 }}
                     />
-                    days
-                  </div>
+                    <Sub>days</Sub>
+                  </Row>
                 ) : null}
               </div>
             ))}
 
-            <button onClick={save} disabled={patch.isPending} style={btnPrimary(t)}>
-              {patch.isPending ? "Saving…" : "Save verification rules"}
-            </button>
+            <Row className="mt">
+              <Btn variant="pri" onClick={save} disabled={patch.isPending}>
+                {patch.isPending ? "Saving…" : "Save verification rules"}
+              </Btn>
+            </Row>
 
             {/* Advanced disclosure */}
-            <div style={{ marginTop: 28, paddingTop: 16, borderTop: `1px solid ${t.line}` }}>
+            <div className={cx("disc", "mt", advanced && "on")}>
               <button
+                type="button"
+                className="disc-h"
+                aria-expanded={advanced}
                 onClick={() => setAdvanced(o => !o)}
-                style={{
-                  background: "transparent", border: "none",
-                  padding: 0, color: t.ink3, fontSize: 12, fontWeight: 700,
-                  cursor: "pointer",
-                }}
               >
-                {advanced ? "▾" : "▸"} Advanced — raw JSON + source-of-truth priority overrides
+                <span className="lbl">
+                  Advanced — raw JSON + source-of-truth priority overrides
+                </span>
+                <span aria-hidden="true">{advanced ? "▾" : "▸"}</span>
               </button>
               {advanced ? (
-                <div style={{ marginTop: 12 }}>
-                  <textarea
+                <div className="disc-b grid">
+                  <Textarea
+                    className="mono"
+                    aria-label="Verification rules, raw JSON"
                     value={advancedText}
                     onChange={e => setAdvancedText(e.target.value)}
                     rows={20}
-                    style={{
-                      width: "100%", fontFamily: "ui-monospace, SF Mono, monospace", fontSize: 12,
-                      padding: 10, borderRadius: 8, border: `1px solid ${t.line}`,
-                      background: t.surface, color: t.ink, resize: "vertical",
-                    }}
                   />
-                  <button onClick={saveAdvanced} style={{ ...btnPrimary(t), marginTop: 8 }}>
-                    Save raw JSON
-                  </button>
+                  <Row className="mt">
+                    <Btn variant="pri" onClick={saveAdvanced}>Save raw JSON</Btn>
+                  </Row>
                 </div>
               ) : null}
             </div>
           </>
         )}
-      </Card>
+      </Panel>
     </div>
   );
-}
-
-
-function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    padding: "8px 14px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.petrol, color: "#fff", cursor: "pointer",
-  } as const;
 }

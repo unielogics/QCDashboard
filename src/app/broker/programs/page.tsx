@@ -14,10 +14,8 @@
 // that doesn't exist yet (BrokerLeadCreate has no program slot).
 
 import Link from "next/link";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
+import { Card, CellChip, PageHeader } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtnPrimary } from "@/components/design-system/buttons";
 import { Role } from "@/lib/enums.generated";
 import { useCurrentUser } from "@/hooks/useApi";
 
@@ -129,29 +127,28 @@ const PROGRAMS: Program[] = [
 ];
 
 export default function BrokerProgramsPage() {
-  const { t } = useTheme();
   const { data: me, isLoading: meLoading } = useCurrentUser();
 
   if (meLoading) {
-    return <main style={{ padding: 24 }}>Loading…</main>;
+    return (
+      <Card>
+        <span className="sub">Loading…</span>
+      </Card>
+    );
   }
   if (me && me.role !== Role.DEALER_PARTNER) {
-    return (
-      <main style={{ padding: 24 }}>
-        <Card pad={20}>This page is only available to dealer partner accounts.</Card>
-      </main>
-    );
+    return <Card>This page is only available to dealer partner accounts.</Card>;
   }
 
   return (
-    <main style={{ padding: 24, display: "grid", gap: 16 }}>
-      <div>
-        <h1 style={{ margin: 0, fontSize: 22, color: t.ink }}>Programs & Resources</h1>
-        <p style={{ margin: "4px 0 0", color: t.ink3, fontSize: 13 }}>
-          The financing programs Qualified Commercial places for car dealers — what each covers, what's required, and how long it takes.
-        </p>
-      </div>
+    <div className="grid">
+      <PageHeader
+        title="Programs & Resources"
+        lede="The financing programs Qualified Commercial places for car dealers — what each covers, what's required, and how long it takes."
+      />
 
+      {/* Bespoke: a snapping horizontal carousel of fixed-width cards. Not a
+          grid — the cards must overflow sideways, not reflow. */}
       <div
         style={{
           display: "flex",
@@ -165,15 +162,17 @@ export default function BrokerProgramsPage() {
           <ProgramCard key={program.slug} program={program} />
         ))}
       </div>
-    </main>
+    </div>
   );
 }
 
 function ProgramCard({ program }: { program: Program }) {
-  const { t } = useTheme();
   return (
     <Card
-      pad={18}
+      // `.card` owns surface, border, radius, shadow and padding. These are
+      // the carousel geometry it cannot own: a fixed track width, the snap
+      // point, and the column that lets Start sit on the bottom edge so
+      // every card's action lines up.
       style={{
         width: 340,
         flexShrink: 0,
@@ -184,45 +183,47 @@ function ProgramCard({ program }: { program: Program }) {
       }}
     >
       <div>
-        <Pill bg={t.petrolSoft} color={t.petrol}>{program.tag}</Pill>
-        <h2 style={{ margin: "10px 0 0", fontSize: 16, color: t.ink }}>{program.title}</h2>
-        <p style={{ margin: "6px 0 0", color: t.ink2, fontSize: 12.5, lineHeight: 1.5 }}>{program.summary}</p>
+        <CellChip tone="pet">{program.tag}</CellChip>
+        <h3 style={{ marginTop: 10 }}>{program.title}</h3>
+        <p className="sub" style={{ margin: "6px 0 0", lineHeight: 1.5 }}>{program.summary}</p>
       </div>
 
       <div>
-        <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5, color: t.ink3, marginBottom: 6 }}>
-          Required documents
-        </div>
-        <div style={{ display: "grid", gap: 4 }}>
-          {program.requiredDocs.map((doc) => (
-            <div key={doc} style={{ display: "flex", gap: 6, alignItems: "flex-start", fontSize: 12, color: t.ink2 }}>
-              <Icon name="check" size={12} style={{ color: t.petrol, marginTop: 2, flexShrink: 0 }} />
-              <span>{doc}</span>
-            </div>
-          ))}
-        </div>
+        <div className="lbl" style={{ marginBottom: 6 }}>Required documents</div>
+        {/* `.req` + `.ic.ok` is the sheet's checklist row — the same shape a
+            loan file's requirement list uses, so a program's document list
+            and a live file's document list read as one object. */}
+        {program.requiredDocs.map((doc) => (
+          <div key={doc} className="req">
+            <span className="ic ok">
+              <Icon name="check" size={11} />
+            </span>
+            <span>{doc}</span>
+          </div>
+        ))}
       </div>
 
       <div>
-        <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5, color: t.ink3, marginBottom: 6 }}>
-          Timeline
-        </div>
-        <div style={{ display: "grid", gap: 6 }}>
-          {program.timeline.map((item, i) => (
-            <div key={item.step} style={{ display: "flex", gap: 8, fontSize: 12 }}>
-              <span style={{ color: t.ink3, fontWeight: 800, minWidth: 14 }}>{i + 1}.</span>
-              <span>
-                <strong style={{ color: t.ink }}>{item.step}</strong>
-                <span style={{ color: t.ink3 }}> — {item.detail}</span>
-              </span>
-            </div>
-          ))}
-        </div>
+        <div className="lbl" style={{ marginBottom: 6 }}>Timeline</div>
+        {/* `.prio` is the sheet's numbered "step — what happens" row. */}
+        {program.timeline.map((item, i) => (
+          <div key={item.step} className="prio">
+            <span className="n">{i + 1}</span>
+            <span>
+              <span className="t">{item.step}</span>
+              <span className="d"> — {item.detail}</span>
+            </span>
+          </div>
+        ))}
       </div>
 
       <Link
         href={`/broker/ai-underwriter-leads?program=${program.slug}`}
-        style={{ ...qcBtnPrimary(t), textAlign: "center", textDecoration: "none", marginTop: "auto" }}
+        className="btn pri"
+        // `.btn` owns everything but these: the auto margin pins the action to
+        // the bottom of the card, and `.btn` sets no justify-content, so the
+        // label centres in the stretched-to-full-width footer button.
+        style={{ marginTop: "auto", justifyContent: "center" }}
       >
         Start
       </Link>

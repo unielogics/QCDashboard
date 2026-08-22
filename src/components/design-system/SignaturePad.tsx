@@ -10,6 +10,7 @@
 // original inline canvasRef usage.
 
 import { forwardRef, useImperativeHandle, useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { cx } from "@/components/ds";
 import { useTheme } from "@/components/design-system/ThemeProvider";
 
 export type SignaturePadHandle = {
@@ -20,7 +21,10 @@ export type SignaturePadHandle = {
 
 export const SignaturePad = forwardRef<SignaturePadHandle, { width?: number; height?: number }>(
   function SignaturePad({ width = 560, height = 150 }, ref) {
-    const { t, isDark } = useTheme();
+    // `isDark` is always false now (ThemeProvider is a light-only shim), but
+    // the branch is kept rather than folded away — removing it is a separate
+    // decision from restyling.
+    const { isDark } = useTheme();
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const drawing = useRef(false);
 
@@ -39,14 +43,10 @@ export const SignaturePad = forwardRef<SignaturePadHandle, { width?: number; hei
         onPointerMove={(e) => moveDraw(e, canvasRef.current, drawing)}
         onPointerUp={() => { drawing.current = false; }}
         onPointerLeave={() => { drawing.current = false; }}
-        style={{
-          width: "100%",
-          height,
-          borderRadius: 12,
-          border: `1px solid ${t.line}`,
-          background: isDark ? "#080A10" : "#F8FAFC",
-          touchAction: "none",
-        }}
+        className={cx("sigpad", isDark && "dark")}
+        // `height` is a prop and drives the CSS box as well as the canvas
+        // bitmap, so the two cannot diverge.
+        style={{ height }}
       />
     );
   },

@@ -17,10 +17,24 @@
 // on importance (open_asks present → AI summary open; deal_health off
 // → Living Profile open; external action items present → To-dos open).
 // User overrides persist per-loan in localStorage.
+//
+// Restyled onto the plain-CSS design system: chrome comes from classes,
+// only the bespoke 65/35 page split stays inline.
 
 import { useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import {
+  Btn,
+  CellChip,
+  Callout,
+  Lbl,
+  Linky,
+  Panel,
+  Seg,
+  StatusLine,
+  Sub,
+  Textarea,
+  Input,
+} from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
@@ -55,7 +69,6 @@ interface Props {
 }
 
 export function LenderThread({ loan, lender }: Props) {
-  const { t } = useTheme();
   const profile = useActiveProfile();
   const canPost =
     profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
@@ -180,6 +193,8 @@ export function LenderThread({ loan, lender }: Props) {
   };
 
   return (
+    // Bespoke 65/35 split — not the twelve-column page grid, and the
+    // ratio is this surface's own. Stays inline.
     <div
       style={{
         display: "grid",
@@ -188,101 +203,73 @@ export function LenderThread({ loan, lender }: Props) {
         alignItems: "start",
       }}
     >
-      {/* LEFT 65% — Mailbox + composer */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-        <Card pad={0}>
-          <div
-            style={{
-              padding: "10px 14px",
-              borderBottom: `1px solid ${t.line}`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Icon name="mail" size={13} stroke={2.5} />
-              <SectionLabel>Conversation — {lender.name}</SectionLabel>
-            </div>
-            {isSuperAdmin && inboxIsMock && (
-              <button
-                type="button"
-                onClick={() => setInjectOpen((v) => !v)}
-                style={{
-                  all: "unset",
-                  cursor: "pointer",
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  border: `1px solid ${t.line}`,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: t.petrol,
-                }}
-              >
+      {/* LEFT 65% — Mailbox + composer.
+          Grid, not flex: `.panel` is overflow:hidden, and as a flex child
+          that zeroes its automatic minimum size and clips the composer. */}
+      <div className="grid">
+        <Panel
+          title={
+            <>
+              <Icon name="mail" size={13} stroke={2.5} /> Conversation — {lender.name}
+            </>
+          }
+          actions={
+            isSuperAdmin && inboxIsMock ? (
+              <Btn size="sm" onClick={() => setInjectOpen((v) => !v)}>
                 {injectOpen ? "Cancel" : "Inject test email"}
-              </button>
-            )}
-          </div>
-
+              </Btn>
+            ) : undefined
+          }
+          noPad
+        >
           {injectOpen && isSuperAdmin && (
-            <div
-              style={{
-                padding: 14,
-                borderBottom: `1px solid ${t.line}`,
-                background: t.surface2,
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-              }}
-            >
-              <div style={{ fontSize: 11, color: t.ink3, lineHeight: 1.5 }}>
+            /* Full-bleed section inside a noPad panel — the inset and the
+               sunken ground are this block's own, not a class's. */
+            <div style={{ padding: 14, borderBottom: "1px solid var(--line)", background: "var(--sunken2)" }}>
+              <div className="sub">
                 Dev-only mock-inbox injector. Writes a synthetic inbound
                 Message(from_role=LENDER) row — same shape the real
                 Gmail poller produces.
               </div>
-              <input
-                value={injectFrom}
-                onChange={(e) => setInjectFrom(e.target.value)}
-                placeholder="from email (lender)"
-                style={inputStyle(t)}
-              />
-              <input
-                value={injectSubject}
-                onChange={(e) => setInjectSubject(e.target.value)}
-                placeholder="subject"
-                style={inputStyle(t)}
-              />
-              <textarea
-                value={injectBody}
-                onChange={(e) => setInjectBody(e.target.value)}
-                placeholder="paste the email body (eg from an .eml file)"
-                rows={5}
-                style={{ ...inputStyle(t), fontFamily: "inherit", resize: "vertical" }}
-              />
-              <button
-                type="button"
-                onClick={handleInject}
-                disabled={inject.isPending}
-                style={{ ...primaryButton(t), opacity: inject.isPending ? 0.6 : 1 }}
-              >
-                {inject.isPending ? "Injecting…" : "Inject as inbound lender email"}
-              </button>
+              <div className="grid g8 mt">
+                <Input
+                  value={injectFrom}
+                  onChange={(e) => setInjectFrom(e.target.value)}
+                  placeholder="from email (lender)"
+                />
+                <Input
+                  value={injectSubject}
+                  onChange={(e) => setInjectSubject(e.target.value)}
+                  placeholder="subject"
+                />
+                <Textarea
+                  value={injectBody}
+                  onChange={(e) => setInjectBody(e.target.value)}
+                  placeholder="paste the email body (eg from an .eml file)"
+                  rows={5}
+                />
+                <Btn variant="pri" onClick={handleInject} disabled={inject.isPending}>
+                  {inject.isPending ? "Injecting…" : "Inject as inbound lender email"}
+                </Btn>
+              </div>
             </div>
           )}
 
           <div>
             {thread.isLoading ? (
-              <div style={{ padding: 14, fontSize: 12.5, color: t.ink3 }}>
-                Loading thread…
-              </div>
+              <div className="sub" style={{ padding: 14 }}>Loading thread…</div>
             ) : grouped.length === 0 ? (
-              <div style={{ padding: 14, fontSize: 12.5, color: t.ink3 }}>
+              <div className="sub" style={{ padding: 14 }}>
                 No messages yet. {canPost ? "Send the first one below." : ""}
               </div>
             ) : (
               grouped.map(({ day, entries }) => (
                 <div key={day}>
-                  <DayDivider t={t} label={day} />
+                  {/* `.thr-day` is the sheet's day divider; the panel is
+                      noPad, so the inset comes from here. */}
+                  <div className="thr-day" style={{ padding: "10px 14px" }}>
+                    {day}
+                  </div>
                   {entries.map((e) => (
                     <LenderThreadMessageRow
                       key={e.id}
@@ -294,87 +281,56 @@ export function LenderThread({ loan, lender }: Props) {
               ))
             )}
           </div>
-        </Card>
+        </Panel>
 
         {canPost && (
-          <Card pad={0}>
-            <div
-              style={{
-                padding: "10px 14px",
-                borderBottom: `1px solid ${t.line}`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <SectionLabel>Reply</SectionLabel>
-              <div style={{ display: "flex", gap: 6 }}>
-                {(["send_now", "instruct_ai", "save_draft"] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setMode(m)}
-                    style={{
-                      all: "unset",
-                      cursor: "pointer",
-                      padding: "6px 10px",
-                      borderRadius: 8,
-                      border: `1px solid ${mode === m ? t.brand : t.line}`,
-                      background: mode === m ? t.brandSoft : t.surface,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: mode === m ? t.brand : t.ink3,
-                    }}
-                  >
-                    {modeLabel(m)}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ fontSize: 11.5, color: t.ink3, lineHeight: 1.45 }}>
-                {modeHint(mode, lender.name)}
-              </div>
-              <LenderThreadAttachmentBar
-                loanId={loan.id}
-                attachments={attachments}
-                onChange={setAttachments}
+          <Panel
+            title="Reply"
+            actions={
+              // A group of mutually-exclusive send modes, NOT a tablist:
+              // picking one changes what Submit does, not which view you
+              // are looking at.
+              <Seg
+                as="filter"
+                ariaLabel="Reply mode"
+                value={mode}
+                onChange={setMode}
+                options={[
+                  { value: "send_now", label: modeLabel("send_now") },
+                  { value: "instruct_ai", label: modeLabel("instruct_ai") },
+                  { value: "save_draft", label: modeLabel("save_draft") },
+                ]}
               />
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                rows={5}
-                placeholder={modePlaceholder(mode)}
-                style={{
-                  ...inputStyle(t),
-                  fontFamily: "inherit",
-                  resize: "vertical",
-                  minHeight: 110,
-                }}
-              />
-              {error && <div style={{ fontSize: 12, color: t.danger }}>{error}</div>}
-              {lastNote && !error && (
-                <div style={{ fontSize: 12, color: t.profit }}>{lastNote}</div>
-              )}
-              <button
-                type="button"
-                onClick={openPreviewOrSave}
-                disabled={reply.isPending}
-                style={{ ...primaryButton(t), opacity: reply.isPending ? 0.6 : 1 }}
-              >
-                {reply.isPending
-                  ? "Working…"
-                  : mode === "save_draft"
-                  ? "Save as draft"
-                  : "Preview…"}
-              </button>
-            </div>
-          </Card>
+            }
+            bodyClass="grid g10"
+          >
+            <Sub>{modeHint(mode, lender.name)}</Sub>
+            <LenderThreadAttachmentBar
+              loanId={loan.id}
+              attachments={attachments}
+              onChange={setAttachments}
+            />
+            <Textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={5}
+              placeholder={modePlaceholder(mode)}
+            />
+            {error && <StatusLine tone="bad">{error}</StatusLine>}
+            {lastNote && !error && <StatusLine tone="ok">{lastNote}</StatusLine>}
+            <Btn variant="pri" onClick={openPreviewOrSave} disabled={reply.isPending}>
+              {reply.isPending
+                ? "Working…"
+                : mode === "save_draft"
+                ? "Save as draft"
+                : "Preview…"}
+            </Btn>
+          </Panel>
         )}
       </div>
 
       {/* RIGHT 35% — stackable collapsible panels */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+      <div className="grid g10">
         <CollapsiblePanel
           loanId={loan.id}
           panelKey="ai-summary"
@@ -383,31 +339,25 @@ export function LenderThread({ loan, lender }: Props) {
           defaultOpen={true}
           rightBadge={
             summary.data ? (
-              <Pill bg={t.brandSoft} color={t.brand}>
+              <CellChip tone="acc">
                 {summary.data.message_count} msg
                 {summary.data.message_count === 1 ? "" : "s"}
-              </Pill>
+              </CellChip>
             ) : null
           }
         >
           {summary.isLoading ? (
-            <div style={{ fontSize: 12, color: t.ink3 }}>Generating summary…</div>
+            <Sub>Generating summary…</Sub>
           ) : summary.data ? (
-            <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
-              <div style={{ color: t.ink, fontWeight: 600, marginBottom: 6 }}>
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>
                 {summary.data.headline}
               </div>
               {summary.data.open_asks.length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                  <SubLabel t={t}>Open asks</SubLabel>
-                  <ul
-                    style={{
-                      margin: "4px 0 0",
-                      paddingLeft: 18,
-                      color: t.ink2,
-                      fontSize: 12,
-                    }}
-                  >
+                <div className="mt">
+                  <Lbl>Open asks</Lbl>
+                  {/* Bespoke list geometry; `.sub` owns colour and size. */}
+                  <ul className="sub" style={{ margin: "4px 0 0", paddingLeft: 18 }}>
                     {summary.data.open_asks.map((a, i) => (
                       <li key={i}>{a}</li>
                     ))}
@@ -415,49 +365,24 @@ export function LenderThread({ loan, lender }: Props) {
                 </div>
               )}
               {summary.data.suggested_next_reply && canPost && (
-                <div
-                  style={{
-                    marginTop: 10,
-                    padding: 10,
-                    borderRadius: 8,
-                    background: t.brandSoft,
-                    border: `1px solid ${t.line}`,
-                  }}
-                >
-                  <SubLabel t={t}>Suggested reply</SubLabel>
-                  <div
-                    style={{
-                      color: t.ink,
-                      fontSize: 12.5,
-                      lineHeight: 1.5,
-                      marginTop: 4,
-                    }}
-                  >
-                    {summary.data.suggested_next_reply}
+                <Callout tone="acc" className="mt">
+                  <Lbl>Suggested reply</Lbl>
+                  <div style={{ marginTop: 4 }}>{summary.data.suggested_next_reply}</div>
+                  <div className="mt">
+                    <Linky
+                      onClick={() => {
+                        setText(summary.data?.suggested_next_reply ?? "");
+                        setMode("send_now");
+                      }}
+                    >
+                      Use as starting point ←
+                    </Linky>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setText(summary.data?.suggested_next_reply ?? "");
-                      setMode("send_now");
-                    }}
-                    style={{
-                      all: "unset",
-                      cursor: "pointer",
-                      marginTop: 8,
-                      fontSize: 11.5,
-                      fontWeight: 700,
-                      color: t.brand,
-                      textDecoration: "underline",
-                    }}
-                  >
-                    Use as starting point ←
-                  </button>
-                </div>
+                </Callout>
               )}
             </div>
           ) : (
-            <div style={{ fontSize: 12, color: t.ink3 }}>Summary unavailable.</div>
+            <Sub>Summary unavailable.</Sub>
           )}
         </CollapsiblePanel>
 
@@ -469,9 +394,7 @@ export function LenderThread({ loan, lender }: Props) {
           defaultOpen={hasExternalAsks || !!lenderExtract}
           rightBadge={
             lenderExtract && lenderExtract.action_items.length > 0 ? (
-              <Pill bg={t.warnBg} color={t.warn}>
-                {lenderExtract.action_items.length}
-              </Pill>
+              <CellChip tone="warn">{lenderExtract.action_items.length}</CellChip>
             ) : null
           }
         >
@@ -487,29 +410,20 @@ export function LenderThread({ loan, lender }: Props) {
             defaultOpen={profileNeedsAttention}
             rightBadge={
               livingProfile?.deal_health ? (
-                <DealHealthPill t={t} health={livingProfile.deal_health} />
+                <DealHealthPill health={livingProfile.deal_health} />
               ) : null
             }
           >
-            <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
-              {statusSummary ? (
-                <div style={{ marginBottom: 8 }}>{statusSummary}</div>
-              ) : null}
+            <div>
+              {statusSummary ? <div style={{ marginBottom: 8 }}>{statusSummary}</div> : null}
               {livingProfile?.bottlenecks && livingProfile.bottlenecks.length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                  <SubLabel t={t}>Bottlenecks</SubLabel>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 4,
-                      marginTop: 4,
-                    }}
-                  >
+                <div className="mt">
+                  <Lbl>Bottlenecks</Lbl>
+                  <div className="row" style={{ marginTop: 4 }}>
                     {livingProfile.bottlenecks.map((b) => (
-                      <Pill key={b} bg={t.warnBg} color={t.warn}>
+                      <CellChip key={b} tone="warn">
                         {b}
-                      </Pill>
+                      </CellChip>
                     ))}
                   </div>
                 </div>
@@ -536,51 +450,24 @@ export function LenderThread({ loan, lender }: Props) {
             importance={gmailCanSend ? "low" : "high"}
             defaultOpen={!gmailCanSend}
             rightBadge={
-              <Pill
-                bg={gmailCanSend ? t.profitBg : t.warnBg}
-                color={gmailCanSend ? t.profit : t.warn}
-              >
+              <CellChip tone={gmailCanSend ? "ok" : "warn"}>
                 {gmailCanSend ? "Ready" : "Not configured"}
-              </Pill>
+              </CellChip>
             }
           >
-            <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
+            <div>
               {gmailCanSend
                 ? "Send Now and Instruct Elara will deliver via Gmail."
                 : "Messages will be saved locally only — recipients will NOT receive them."}
-              <div style={{ marginTop: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => gmailTest.mutate()}
-                  disabled={gmailTest.isPending}
-                  style={{
-                    all: "unset",
-                    cursor: gmailTest.isPending ? "wait" : "pointer",
-                    padding: "6px 12px",
-                    borderRadius: 8,
-                    border: `1px solid ${t.line}`,
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    color: t.brand,
-                  }}
-                >
+              <div className="mt">
+                <Btn size="sm" onClick={() => gmailTest.mutate()} disabled={gmailTest.isPending}>
                   {gmailTest.isPending ? "Testing…" : "Test Gmail"}
-                </button>
+                </Btn>
               </div>
               {gmailTest.data ? (
-                <div
-                  style={{
-                    marginTop: 8,
-                    padding: "6px 8px",
-                    borderRadius: 6,
-                    background: gmailTest.data.ok ? t.profitBg : t.dangerBg,
-                    color: gmailTest.data.ok ? t.profit : t.danger,
-                    fontSize: 11.5,
-                    lineHeight: 1.45,
-                  }}
-                >
+                <StatusLine tone={gmailTest.data.ok ? "ok" : "bad"} className="mt">
                   {gmailTest.data.note}
-                </div>
+                </StatusLine>
               ) : null}
             </div>
           </CollapsiblePanel>
@@ -606,68 +493,18 @@ export function LenderThread({ loan, lender }: Props) {
   );
 }
 
-function DayDivider({
-  t,
-  label,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  label: string;
-}) {
-  return (
-    <div
-      style={{
-        padding: "8px 14px",
-        background: t.surface2,
-        borderTop: `1px solid ${t.line}`,
-        borderBottom: `1px solid ${t.line}`,
-        fontSize: 10.5,
-        fontWeight: 700,
-        letterSpacing: 1.4,
-        textTransform: "uppercase",
-        color: t.ink3,
-      }}
-    >
-      {label}
-    </div>
-  );
-}
-
 function DealHealthPill({
-  t,
   health,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   health: "on_track" | "at_risk" | "stuck";
 }) {
   const map = {
-    on_track: { bg: t.profitBg, fg: t.profit, label: "On track" },
-    at_risk: { bg: t.warnBg, fg: t.warn, label: "At risk" },
-    stuck: { bg: t.dangerBg, fg: t.danger, label: "Stuck" },
+    on_track: { tone: "ok", label: "On track" },
+    at_risk: { tone: "warn", label: "At risk" },
+    stuck: { tone: "bad", label: "Stuck" },
   } as const;
   const cfg = map[health];
-  return <Pill bg={cfg.bg} color={cfg.fg}>{cfg.label}</Pill>;
-}
-
-function SubLabel({
-  t,
-  children,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        fontSize: 10.5,
-        fontWeight: 700,
-        letterSpacing: 1.2,
-        textTransform: "uppercase",
-        color: t.ink3,
-      }}
-    >
-      {children}
-    </div>
-  );
+  return <CellChip tone={cfg.tone}>{cfg.label}</CellChip>;
 }
 
 interface DayGroup {
@@ -742,32 +579,4 @@ function modePlaceholder(m: LenderThreadReplyMode): string {
     case "save_draft":
       return "Write the message you want to save for later approval…";
   }
-}
-
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    width: "100%",
-    padding: "9px 12px",
-    background: t.surface,
-    border: `1px solid ${t.line}`,
-    borderRadius: 8,
-    color: t.ink,
-    fontSize: 13,
-    outline: "none",
-    boxSizing: "border-box",
-  };
-}
-
-function primaryButton(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    all: "unset",
-    cursor: "pointer",
-    padding: "10px 16px",
-    borderRadius: 10,
-    background: t.petrol,
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: 700,
-    textAlign: "center",
-  };
 }

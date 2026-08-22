@@ -1,10 +1,18 @@
 "use client";
 
+// AgentLoanMirror — the agent-facing read-only view of a funding file.
+//
+// Styling lives in globals.css / app-extras.css. The three status tiles sit on
+// `.cg` (the 12-column page grid) and the stat tiles carry `.kpi.tone-*`, so a
+// tile that is asking for attention is tinted rather than badged: this band is
+// scanned, and a badge inside each tile means reading every tile to find the
+// one that matters.
+
 import Link from "next/link";
-import { Card, Pill, SectionLabel, StageBadge, VerifiedBadge } from "@/components/design-system/primitives";
+import { Pill, StageBadge, VerifiedBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { QC_FMT } from "@/components/design-system/tokens";
+import { Callout, ItemRow, Kpi, KpiRow, Panel } from "@/components/ds";
 import type { Activity, Document, Loan } from "@/lib/types";
 
 const STAGE_KEYS = ["prequalified", "collecting_docs", "lender_connected", "processing", "closing", "funded"];
@@ -18,152 +26,112 @@ export function AgentLoanMirror({
   docs: Document[];
   activity: Activity[];
 }) {
-  const { t } = useTheme();
   const stageIndex = STAGE_KEYS.indexOf(loan.stage);
   const receivedDocs = docs.filter((doc) => doc.status === "received" || doc.status === "verified").length;
   const openDocs = docs.filter((doc) => doc.status !== "verified");
   const recent = activity.slice(0, 5);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Card pad={18}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-          <div style={{ flex: 1, minWidth: 260 }}>
-            <SectionLabel>Agent Funding Mirror</SectionLabel>
-            <h2 style={{ margin: 0, color: t.ink, fontSize: 22, fontWeight: 850, letterSpacing: -0.4 }}>
-              Funding status for your client.
-            </h2>
-            <div style={{ marginTop: 6, color: t.ink2, fontSize: 13, lineHeight: 1.55, maxWidth: 720 }}>
-              This view keeps client and transaction coordination visible to the agent while underwriting,
-              lender packaging, and internal calculations stay with the Funding Team.
-            </div>
-          </div>
-          <Link
-            href={`/clients/${loan.client_id}`}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 7,
-              padding: "9px 12px",
-              borderRadius: 10,
-              background: t.surface2,
-              color: t.ink,
-              border: `1px solid ${t.line}`,
-              textDecoration: "none",
-              fontSize: 13,
-              fontWeight: 800,
-            }}
-          >
+    <div className="cg">
+      <Panel
+        className="s12"
+        title="Agent Funding Mirror"
+        actions={
+          <Link href={`/clients/${loan.client_id}`} className="btn">
             <Icon name="clients" size={14} />
             Client file
           </Link>
+        }
+      >
+        <h2>Funding status for your client.</h2>
+        <p className="sub">
+          This view keeps client and transaction coordination visible to the agent while underwriting,
+          lender packaging, and internal calculations stay with the Funding Team.
+        </p>
+      </Panel>
+
+      <Panel className="s4" title="Status">
+        <div className="row">
+          <StageBadge stage={stageIndex} />
+          <Pill>{loan.type.replace(/_/g, " ")}</Pill>
         </div>
-      </Card>
+        <KpiRow className="mt">
+          <Kpi label="Loan amount" value={QC_FMT.short(Number(loan.amount))} prose />
+          <Kpi
+            label="Close"
+            value={loan.close_date ? new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Unset"}
+            prose
+          />
+        </KpiRow>
+      </Panel>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
-        <Card pad={18}>
-          <SectionLabel>Status</SectionLabel>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <StageBadge stage={stageIndex} />
-            <Pill>{loan.type.replace(/_/g, " ")}</Pill>
-          </div>
-          <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
-            <Mini t={t} label="Loan amount" value={QC_FMT.short(Number(loan.amount))} />
-            <Mini t={t} label="Close" value={loan.close_date ? new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Unset"} />
-          </div>
-        </Card>
+      <Panel className="s4" title="Client Conditions">
+        <KpiRow>
+          <Kpi label="Docs ready" value={`${receivedDocs}/${docs.length || 0}`} prose />
+          {/* The tile carries the state, not a badge inside it. */}
+          <Kpi
+            label="Open items"
+            value={openDocs.length}
+            prose
+            className={openDocs.length ? "tone-warn" : "tone-ok"}
+          />
+        </KpiRow>
+        <p className="sub mt">
+          Use this to keep your buyer or seller updated. The Funding Team owns review and approval.
+        </p>
+      </Panel>
 
-        <Card pad={18}>
-          <SectionLabel>Client Conditions</SectionLabel>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
-            <Mini t={t} label="Docs ready" value={`${receivedDocs}/${docs.length || 0}`} />
-            <Mini t={t} label="Open items" value={openDocs.length} accent={openDocs.length ? t.warn : t.profit} />
-          </div>
-          <div style={{ marginTop: 12, fontSize: 12.5, color: t.ink3, lineHeight: 1.45 }}>
-            Use this to keep your buyer or seller updated. The Funding Team owns review and approval.
-          </div>
-        </Card>
+      <Panel className="s4" title="Agent Next Move">
+        <Callout
+          tone={openDocs.length ? "warn" : "ok"}
+          icon={<Icon name={openDocs.length ? "doc" : "check"} size={15} />}
+        >
+          {openDocs.length
+            ? "Help the client gather open documents and keep transaction parties aligned."
+            : "Keep the client informed while funding moves the file through lender milestones."}
+        </Callout>
+      </Panel>
 
-        <Card pad={18}>
-          <SectionLabel>Agent Next Move</SectionLabel>
-          <div style={{ display: "flex", gap: 9, color: t.ink2, fontSize: 13, lineHeight: 1.45 }}>
-            <Icon name={openDocs.length ? "doc" : "check"} size={15} style={{ color: openDocs.length ? t.warn : t.profit, marginTop: 1 }} />
-            <span>
-              {openDocs.length
-                ? "Help the client gather open documents and keep transaction parties aligned."
-                : "Keep the client informed while funding moves the file through lender milestones."}
-            </span>
+      <Panel className="s7" title="Visible Document Items">
+        {openDocs.length === 0 ? (
+          <Callout tone="ok" icon={<Icon name="check" size={15} />}>
+            No open client-facing document items.
+          </Callout>
+        ) : (
+          <div className="grid g8">
+            {openDocs.slice(0, 8).map((doc) => (
+              <ItemRow
+                key={doc.id}
+                right={<VerifiedBadge kind={doc.status === "flagged" ? "flagged" : "pending"} />}
+              >
+                <div className="trunc"><strong>{doc.name}</strong></div>
+                <div className="sub">{doc.category ?? "Document"}</div>
+              </ItemRow>
+            ))}
           </div>
-        </Card>
-      </div>
+        )}
+      </Panel>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 14 }}>
-        <Card pad={18}>
-          <SectionLabel>Visible Document Items</SectionLabel>
-          {openDocs.length === 0 ? (
-            <div style={{ color: t.profit, display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 800 }}>
-              <Icon name="check" size={15} />
-              No open client-facing document items.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {openDocs.slice(0, 8).map((doc) => (
-                <div key={doc.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 96px", gap: 10, alignItems: "center", padding: "9px 11px", border: `1px solid ${t.line}`, borderRadius: 10 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 800, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.name}</div>
-                    <div style={{ marginTop: 2, fontSize: 11.5, color: t.ink3 }}>{doc.category ?? "Document"}</div>
-                  </div>
-                  <VerifiedBadge kind={doc.status === "flagged" ? "flagged" : "pending"} />
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-
-        <Card pad={18}>
-          <SectionLabel>Recent Updates</SectionLabel>
-          {recent.length === 0 ? (
-            <div style={{ fontSize: 13, color: t.ink3 }}>No recent updates yet.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-              {recent.map((item) => (
-                <div key={item.id} style={{ display: "flex", gap: 9, fontSize: 12.5, color: t.ink2, lineHeight: 1.4 }}>
-                  <Icon name="audit" size={13} style={{ color: t.ink3, marginTop: 1 }} />
-                  <div>
-                    <div style={{ color: t.ink, fontWeight: 750 }}>{item.summary}</div>
-                    <div style={{ marginTop: 2, color: t.ink3, fontSize: 11.5 }}>
-                      {new Date(item.occurred_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                    </div>
+      <Panel className="s5" title="Recent Updates">
+        {recent.length === 0 ? (
+          <span className="sub">No recent updates yet.</span>
+        ) : (
+          <div className="grid g10">
+            {recent.map((item) => (
+              <div key={item.id} className="row top">
+                <Icon name="audit" size={13} />
+                <div className="grow">
+                  <div>{item.summary}</div>
+                  <div className="sub">
+                    {new Date(item.occurred_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      </div>
-    </div>
-  );
-}
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
 
-function Mini({
-  t,
-  label,
-  value,
-  accent,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  label: string;
-  value: string | number;
-  accent?: string;
-}) {
-  return (
-    <div style={{ border: `1px solid ${t.line}`, borderRadius: 12, padding: "10px 12px", background: t.surface2 }}>
-      <div style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1.1, textTransform: "uppercase" }}>
-        {label}
-      </div>
-      <div style={{ marginTop: 5, fontSize: 18, fontWeight: 850, color: accent ?? t.ink, fontFeatureSettings: '"tnum"' }}>
-        {value}
-      </div>
     </div>
   );
 }

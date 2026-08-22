@@ -3,10 +3,14 @@
 // Multi-party Deal Workspace chat thread. Bubbles styled by from_role.
 // AI bubbles get a thumbs/comment row + (super-admin only) an AI Modify
 // pencil that opens an inline correction textarea.
+//
+// Restyled onto the design system's message vocabulary (`.msg`, `.msg-h`,
+// `.msg-b`, `.msg.mine` / `.ai` / `.internal`). Two things stay inline
+// because they are derived from the message rather than from a class: the
+// side a bubble sits on, and the tint on the speaker's name.
 
 import { useEffect, useRef, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Pill } from "@/components/design-system/primitives";
+import { Btn, Linky, Textarea, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { FeedbackWidget } from "@/components/FeedbackWidget";
 import { useAttachAIModifyCorrection, useResumeAI } from "@/hooks/useApi";
@@ -21,7 +25,6 @@ interface Props {
 }
 
 export function DealChatThread({ loanId, user, messages, pausedUntil }: Props) {
-  const { t } = useTheme();
   const resume = useResumeAI();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -36,67 +39,32 @@ export function DealChatThread({ loanId, user, messages, pausedUntil }: Props) {
   const isPaused = pauseRemaining > 0;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, minHeight: 0, flex: 1 }}>
+    <div className="grid g8" style={{ minHeight: 0 }}>
       {isPaused && (
-        <div
-          style={{
-            padding: "8px 12px",
-            borderRadius: 9,
-            background: t.warnBg,
-            border: `1px solid ${t.warn}40`,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          <Icon name="pause" size={14} style={{ color: t.warn }} />
-          <div style={{ flex: 1, fontSize: 12, color: t.ink2 }}>
-            <strong style={{ color: t.warn }}>Elara paused</strong> after operator override —
-            resumes in ~{pauseRemaining} min.
+        <div className="warnline row">
+          <Icon name="pause" size={14} />
+          <div className="grow">
+            <strong>Elara paused</strong> after operator override — resumes in ~{pauseRemaining} min.
           </div>
           {isSuperAdmin && (
-            <button
-              onClick={() => resume.mutate({ loanId })}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                padding: "5px 10px",
-                borderRadius: 7,
-                background: t.surface,
-                border: `1px solid ${t.line}`,
-                fontSize: 12,
-                fontWeight: 700,
-                color: t.ink2,
-              }}
-            >
+            <Btn size="sm" onClick={() => resume.mutate({ loanId })}>
               Resume AI now
-            </button>
+            </Btn>
           )}
         </div>
       )}
 
-      <div
-        ref={scrollRef}
-        style={{
-          flex: 1,
-          minHeight: 240,
-          maxHeight: 520,
-          overflowY: "auto",
-          padding: "8px 4px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
+      {/* `.thr` is the sheet's thread scroller (56vh cap); the floor keeps a
+          one-message thread from collapsing to nothing. */}
+      <div ref={scrollRef} className="thr" style={{ minHeight: 240 }}>
         {messages.length === 0 && (
-          <div style={{ fontSize: 12.5, color: t.ink3, textAlign: "center", padding: 24 }}>
+          <div className="thr-empty">
             No conversation yet. Send a message below to start the AI thread for this loan.
           </div>
         )}
         {messages.map((m) => (
           <Bubble
             key={m.id}
-            t={t}
             message={m}
             loanId={loanId}
             canCorrect={isSuperAdmin && m.from_role === DealChatRole.AI}
@@ -107,13 +75,23 @@ export function DealChatThread({ loanId, user, messages, pausedUntil }: Props) {
   );
 }
 
+/** Role → the tint on the speaker's name. Data, not chrome. */
+function roleInk(role: LoanChatMessage["from_role"]): string {
+  switch (role) {
+    case DealChatRole.AI: return "var(--petrol)";
+    case DealChatRole.SUPER_ADMIN: return "var(--accent)";
+    case DealChatRole.BROKER: return "var(--gold)";
+    case DealChatRole.BROKER_INTERNAL: return "var(--gold)";
+    case DealChatRole.CLIENT: return "var(--ink2)";
+    default: return "var(--muted)";
+  }
+}
+
 function Bubble({
-  t,
   message,
   loanId,
   canCorrect,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   message: LoanChatMessage;
   loanId: string;
   canCorrect: boolean;
@@ -122,17 +100,6 @@ function Bubble({
   const isInternal = !message.client_visible;
   const align: "flex-start" | "flex-end" = isAI ? "flex-start" : "flex-end";
 
-  const bubbleColor = isAI ? t.surface : t.brandSoft;
-  const labelColor = (() => {
-    switch (message.from_role) {
-      case DealChatRole.AI: return t.petrol;
-      case DealChatRole.SUPER_ADMIN: return t.brand;
-      case DealChatRole.BROKER: return t.gold;
-      case DealChatRole.BROKER_INTERNAL: return t.gold;
-      case DealChatRole.CLIENT: return t.ink2;
-      default: return t.ink3;
-    }
-  })();
   const labelText = (() => {
     if (message.from_role === DealChatRole.AI) return "Elara";
     const roleWord = (() => {
@@ -149,48 +116,34 @@ function Bubble({
   })();
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: align, gap: 4 }}>
-      <div
-        style={{
-          maxWidth: "82%",
-          padding: "10px 12px",
-          borderRadius: 12,
-          background: bubbleColor,
-          border: `1px solid ${t.line}`,
-          ...(isInternal ? { borderStyle: "dashed", borderColor: `${t.gold}66` } : {}),
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            marginBottom: 4,
-            fontSize: 10.5,
-            fontWeight: 700,
-            letterSpacing: 0.6,
-            textTransform: "uppercase",
-          }}
-        >
-          <span style={{ color: labelColor }}>{labelText}</span>
-          {isInternal && <Pill bg={t.goldSoft} color={t.gold}>Internal</Pill>}
-          <span style={{ color: t.ink4, fontSize: 10, fontWeight: 600 }}>
-            {new Date(message.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-          </span>
-        </div>
-        <div style={{ fontSize: 13, color: t.ink, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-          {message.body}
-        </div>
+    <div
+      className={cx("msg", isAI ? "ai" : "mine", isInternal && "internal")}
+      // Data-derived: Elara speaks from the left, everyone else from the right.
+      style={{ alignItems: align }}
+    >
+      <div className="msg-h">
+        {/* Data-derived: the speaker's tint is chosen from their role. */}
+        <span className="msg-who" style={{ color: roleInk(message.from_role) }}>
+          {labelText}
+        </span>
+        {isInternal && <span className="msg-role">Internal</span>}
+        <span className="msg-when">
+          {new Date(message.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+        </span>
+      </div>
+      {/* Bespoke bubble measure — a chat bubble never spans the full column. */}
+      <div className="msg-b" style={{ maxWidth: "82%" }}>
+        {message.body}
       </div>
       {isAI && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 4 }}>
+        <div className="row">
           <FeedbackWidget
             outputType={FeedbackOutputType.CHAT_REPLY}
             outputId={message.id}
             loanId={loanId}
             compact
           />
-          {canCorrect && <CorrectionButton t={t} loanId={loanId} messageId={message.id} />}
+          {canCorrect && <CorrectionButton loanId={loanId} messageId={message.id} />}
         </div>
       )}
     </div>
@@ -198,11 +151,9 @@ function Bubble({
 }
 
 function CorrectionButton({
-  t,
   loanId,
   messageId,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   loanId: string;
   messageId: string;
 }) {
@@ -219,69 +170,27 @@ function CorrectionButton({
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        aria-label="AI Modify"
-        style={{
-          all: "unset",
-          cursor: "pointer",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 4,
-          padding: "3px 7px",
-          borderRadius: 6,
-          fontSize: 11,
-          color: t.ink3,
-        }}
-      >
+      <Linky onClick={() => setOpen(true)} aria-label="AI Modify">
         <Icon name="pencil" size={11} /> AI Modify
-      </button>
+      </Linky>
     );
   }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
-      <textarea
+    <div className="grid g6 grow">
+      <Textarea
         autoFocus
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={2}
         placeholder="What should the AI have said? Future replies on this loan will respect this note."
-        style={{
-          width: "100%",
-          padding: "6px 10px",
-          borderRadius: 7,
-          background: t.surface2,
-          border: `1px solid ${t.line}`,
-          color: t.ink,
-          fontSize: 12,
-          fontFamily: "inherit",
-          outline: "none",
-          resize: "vertical",
-        }}
       />
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-        <button
-          onClick={() => { setOpen(false); setText(""); }}
-          style={{ all: "unset", cursor: "pointer", padding: "4px 10px", borderRadius: 6, fontSize: 11, color: t.ink3 }}
-        >
+      <div className="row end">
+        <Btn size="sm" onClick={() => { setOpen(false); setText(""); }}>
           Cancel
-        </button>
-        <button
-          onClick={submit}
-          disabled={!text.trim() || attach.isPending}
-          style={{
-            all: "unset",
-            cursor: "pointer",
-            padding: "4px 10px",
-            borderRadius: 6,
-            background: t.ink,
-            color: t.inverse,
-            fontSize: 11,
-            fontWeight: 700,
-          }}
-        >
+        </Btn>
+        <Btn size="sm" variant="pri" onClick={submit} disabled={!text.trim() || attach.isPending}>
           {attach.isPending ? "Saving…" : "Save correction"}
-        </button>
+        </Btn>
       </div>
     </div>
   );

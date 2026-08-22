@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useTheme } from "./ThemeProvider";
+import { cx } from "@/components/ds";
 
 export type TabOption<T extends string> = { id: T; label: string; badge?: ReactNode };
 
@@ -11,7 +11,7 @@ export type TabOption<T extends string> = { id: T; label: string; badge?: ReactN
  *   good for compact in-panel switches.
  * - "underline": corporate underline tab bar for section navigation inside a
  *   modal or a master-detail panel.
- * Themed entirely via useTheme() tokens.
+ * Both render from `.seg` / `.ftab` in the design-system sheet.
  */
 export function Tabs<T extends string>({
   value,
@@ -26,16 +26,20 @@ export function Tabs<T extends string>({
   variant?: "segmented" | "underline";
   fill?: boolean;
 }) {
-  const { t } = useTheme();
-
   if (variant === "underline") {
     return (
+      // NOT `.ftabs`: that strip is fused to the bottom edge of a `.filehd`
+      // and carries its hairline on TOP. A free-standing underline bar needs
+      // the hairline UNDER it, which is the one declaration left inline here.
+      // `.ftab` itself — padding, weight, the 2px underline and its `.on`
+      // state — is the shared class.
       <div
         role="tablist"
         style={{
           display: "flex",
           gap: 4,
-          borderBottom: `1px solid ${t.line}`,
+          overflowX: "auto",
+          borderBottom: "1px solid var(--line)",
           width: fill ? "100%" : "fit-content",
         }}
       >
@@ -44,24 +48,13 @@ export function Tabs<T extends string>({
           return (
             <button
               key={o.id}
+              type="button"
               role="tab"
               aria-selected={active}
               onClick={() => onChange(o.id)}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "9px 13px",
-                fontSize: 13,
-                fontWeight: active ? 800 : 600,
-                color: active ? t.ink : t.ink3,
-                borderBottom: `2px solid ${active ? t.brand : "transparent"}`,
-                marginBottom: -1,
-                flex: fill ? 1 : undefined,
-                justifyContent: fill ? "center" : undefined,
-              }}
+              className={cx("ftab", active && "on")}
+              // `fill` spreads the strip across its container.
+              style={fill ? { flex: 1, justifyContent: "center" } : undefined}
             >
               {o.label}
               {o.badge != null ? o.badge : null}
@@ -73,41 +66,19 @@ export function Tabs<T extends string>({
   }
 
   return (
-    <div
-      role="tablist"
-      style={{
-        display: "flex",
-        gap: 4,
-        padding: 3,
-        background: t.surface2,
-        borderRadius: 9,
-        width: fill ? "100%" : "fit-content",
-      }}
-    >
+    // `.seg` is inline-flex; `.seg.fill` (app-extras) is the full-width
+    // variant, because `display` cannot be owned by both a class and a style.
+    <div role="tablist" className={cx("seg", fill && "fill")}>
       {options.map((o) => {
         const active = value === o.id;
         return (
           <button
             key={o.id}
+            type="button"
             role="tab"
             aria-selected={active}
             onClick={() => onChange(o.id)}
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              justifyContent: "center",
-              padding: "6px 11px",
-              borderRadius: 7,
-              fontSize: 12,
-              fontWeight: 600,
-              background: active ? t.surface : "transparent",
-              color: active ? t.ink : t.ink3,
-              boxShadow: active ? `0 1px 2px ${t.line}` : "none",
-              flex: fill ? 1 : undefined,
-            }}
+            className={cx(active && "on")}
           >
             {o.label}
             {o.badge != null ? o.badge : null}

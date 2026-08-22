@@ -13,11 +13,18 @@
 // SignRequestedDocument, reused rather than rebuilt — the evidence produced
 // (typed name, drawn signature, hashes, certificate) must be identical no
 // matter which door the signer came through.
+//
+// Styling: a BARE route (no app shell). The sections are `.panel` written out
+// by hand rather than the <Panel> component for one reason — the host page
+// (buckets/request/[token]) heads its sections with <h2> under a single <h1>,
+// and <Panel> hard-codes <h3>. Dropping a level here would leave a public page
+// with a broken heading outline. `.panel-h h2` in app-extras carries the size.
 
 import { useCallback, useEffect, useState } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { stashRoomHandoff } from "@/lib/roomPlaidHandoff";
 import { apiBase } from "@/lib/api";
+import { Btn, CellChip, Field, Input, StatusLine, WarnLine, cx } from "@/components/ds";
 import {
   SignRequestedDocument,
   type SignableDoc,
@@ -43,34 +50,6 @@ type Features = {
   bank_consent_disclosure: string;
   signable: Signable[];
   contracts: RoomContract[];
-};
-
-const section: React.CSSProperties = {
-  border: "1px solid #d8dee9",
-  borderRadius: 12,
-  padding: 16,
-  marginBottom: 14,
-  background: "#fff",
-};
-const title: React.CSSProperties = { margin: 0, fontSize: 15, fontWeight: 700 };
-const sub: React.CSSProperties = { color: "#5a6675", fontSize: 12.5, lineHeight: 1.5 };
-const btn: React.CSSProperties = {
-  border: "1px solid #1b4b9e",
-  background: "#1b4b9e",
-  color: "#fff",
-  borderRadius: 9,
-  padding: "9px 16px",
-  fontWeight: 650,
-  fontSize: 13,
-  cursor: "pointer",
-};
-const okBadge: React.CSSProperties = {
-  background: "#e6f4ec",
-  color: "#0f7b4f",
-  borderRadius: 99,
-  padding: "2px 9px",
-  fontSize: 11,
-  fontWeight: 750,
 };
 
 function BankConnect({
@@ -201,84 +180,90 @@ function BankConnect({
 
   if (done) {
     return (
-      <section style={section}>
-        <h2 style={title}>
-          Bank connection <span style={okBadge}>Connected</span>
-        </h2>
-        <p style={{ ...sub, marginTop: 6 }}>{done}</p>
+      <section className="panel mb">
+        <div className="panel-h">
+          <h2>Bank connection</h2>
+          <CellChip tone="ok">Connected</CellChip>
+        </div>
+        <div className="panel-b">
+          <p className="sub">{done}</p>
+        </div>
       </section>
     );
   }
 
   return (
-    <section style={section}>
-      <h2 style={title}>Connect your bank</h2>
-      <p style={{ ...sub, marginTop: 6 }}>
-        A read-only connection through Plaid retrieves your bank statements directly, so you do
-        not have to download and upload them yourself. No credentials pass through Qualified
-        Commercial, and nothing can be moved or charged.
-      </p>
-      {environment === "sandbox" ? (
-        <p style={{ ...sub, color: "#a15c07" }}>
-          Test mode: this connection currently reaches Plaid&apos;s test institutions only.
+    <section className="panel mb">
+      <div className="panel-h">
+        <h2>Connect your bank</h2>
+      </div>
+      <div className="panel-b">
+        <p className="sub">
+          A read-only connection through Plaid retrieves your bank statements directly, so you do
+          not have to download and upload them yourself. No credentials pass through Qualified
+          Commercial, and nothing can be moved or charged.
         </p>
-      ) : null}
-      {!consentGranted ? (
-        <div style={{ marginTop: 10 }}>
-          <p
-            style={{
-              ...sub,
-              whiteSpace: "pre-line",
-              lineHeight: 1.55,
-              background: "#f7f9fc",
-              border: "1px solid #e3e8ef",
-              borderRadius: 10,
-              padding: 12,
-            }}
-          >
-            {disclosure}
-          </p>
-          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8 }}>
-            <input
-              type="checkbox"
-              checked={agreed}
-              onChange={(e) => setAgreed(e.target.checked)}
-            />
-            <span style={{ fontSize: 13 }}>I have read and agree to the above.</span>
-          </label>
-          <input
-            value={signer}
-            onChange={(e) => setSigner(e.target.value)}
-            placeholder="Your full name"
-            style={{
-              marginTop: 8,
-              padding: "8px 10px",
-              border: "1px solid #d8dee9",
-              borderRadius: 8,
-              width: "100%",
-              maxWidth: 320,
-              fontSize: 14,
-            }}
-          />
-          <div style={{ marginTop: 10 }}>
-            <button
-              type="button"
-              style={{ ...btn, opacity: !agreed || !signer.trim() || busy ? 0.6 : 1 }}
-              disabled={!agreed || !signer.trim() || busy}
-              onClick={authorize}
-            >
-              {busy ? "Recording…" : "Authorize and continue"}
-            </button>
+        {environment === "sandbox" ? (
+          <WarnLine className="mt">
+            Test mode: this connection currently reaches Plaid&apos;s test institutions only.
+          </WarnLine>
+        ) : null}
+        {!consentGranted ? (
+          <>
+            {/* `.consent` is the sheet's consent-capture surface: body-size text
+                (never shrunk to fit) and a 20px checkbox. The disclosure and the
+                box that accepts it are one object, which is what the stored
+                proof actually is. */}
+            <div className={cx("consent", "mt", agreed && "on")}>
+              <p
+                className="ctext mb"
+                // Server-owned wording, rendered verbatim: its own line breaks
+                // are part of the text.
+                style={{ whiteSpace: "pre-line" }}
+              >
+                {disclosure}
+              </p>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={agreed}
+                  onChange={(e) => setAgreed(e.target.checked)}
+                />
+                <span className="ctext">I have read and agree to the above.</span>
+              </label>
+            </div>
+            {/* Bespoke measure: a name field has no business running the full
+                width of a desktop panel. */}
+            <div className="mt" style={{ maxWidth: 320 }}>
+              <Field label="Your full name">
+                <Input
+                  value={signer}
+                  onChange={(e) => setSigner(e.target.value)}
+                  placeholder="Your full name"
+                  autoComplete="name"
+                />
+              </Field>
+            </div>
+            <div className="mt">
+              {/* `.btn:disabled` carries the dimmed state the inline opacity did. */}
+              <Btn
+                variant="pri"
+                disabled={!agreed || !signer.trim() || busy}
+                onClick={authorize}
+              >
+                {busy ? "Recording…" : "Authorize and continue"}
+              </Btn>
+            </div>
+          </>
+        ) : (
+          <div className="mt">
+            <Btn variant="pri" disabled={busy} onClick={start}>
+              {busy ? "Opening…" : "Connect bank securely"}
+            </Btn>
           </div>
-        </div>
-      ) : (
-        <div style={{ marginTop: 10 }}>
-          <button type="button" style={{ ...btn, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={start}>
-            {busy ? "Opening…" : "Connect bank securely"}
-          </button>
-        </div>
-      )}
-      {error ? <p style={{ ...sub, color: "#b42318", marginTop: 8 }}>{error}</p> : null}
+        )}
+        {error ? <StatusLine tone="bad" className="mt">{error}</StatusLine> : null}
+      </div>
     </section>
   );
 }
@@ -365,32 +350,30 @@ export function RoomActions({
       ) : null}
 
       {!signingContract && (contractsPending.length > 0 || contractsSigned.length > 0) ? (
-        <section style={section}>
-          <h2 style={title}>Agreements to sign</h2>
-          <p style={{ ...sub, marginTop: 6 }}>
-            Prepared for you by your representative. Review the full agreement, then sign on
-            this device — a copy is emailed to you the moment it executes.
-          </p>
-          {contractsPending.map((c) => (
-            <div
-              key={c.id}
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderTop: "1px solid #eef1f6" }}
-            >
-              <span style={{ fontWeight: 650, fontSize: 13.5, flex: 1 }}>{c.title}</span>
-              <button type="button" style={btn} onClick={() => setSigningContract(c)}>
-                Review and sign
-              </button>
-            </div>
-          ))}
-          {contractsSigned.map((c) => (
-            <div
-              key={c.id}
-              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderTop: "1px solid #eef1f6" }}
-            >
-              <span style={{ fontWeight: 650, fontSize: 13.5, flex: 1 }}>{c.title}</span>
-              <span style={okBadge}>Signed</span>
-            </div>
-          ))}
+        <section className="panel mb">
+          <div className="panel-h">
+            <h2>Agreements to sign</h2>
+          </div>
+          <div className="panel-b">
+            <p className="sub mb">
+              Prepared for you by your representative. Review the full agreement, then sign on
+              this device — a copy is emailed to you the moment it executes.
+            </p>
+            {contractsPending.map((c) => (
+              <div key={c.id} className="filerow">
+                <b className="grow">{c.title}</b>
+                <Btn variant="pri" onClick={() => setSigningContract(c)}>
+                  Review and sign
+                </Btn>
+              </div>
+            ))}
+            {contractsSigned.map((c) => (
+              <div key={c.id} className="filerow">
+                <b className="grow">{c.title}</b>
+                <CellChip tone="ok">Signed</CellChip>
+              </div>
+            ))}
+          </div>
         </section>
       ) : null}
       {features.bank_connect_available ? (
@@ -405,63 +388,57 @@ export function RoomActions({
       ) : null}
 
       {pending.length > 0 || signed.length > 0 ? (
-        <section style={section}>
-          <h2 style={title}>Signatures needed</h2>
-          <p style={{ ...sub, marginTop: 6 }}>
-            Review each document in full and sign on this device. You will receive a copy of
-            everything you sign by email.
-          </p>
-          {pending.map((d) => (
-            <div
-              key={d.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "10px 0",
-                borderTop: "1px solid #eef1f6",
-              }}
-            >
-              <span style={{ fontWeight: 650, fontSize: 13.5, flex: 1 }}>{d.name}</span>
-              <button type="button" style={btn} onClick={() => { setSigning(d); setSignError(null); }}>
-                Review and sign
-              </button>
-            </div>
-          ))}
-          {signed.map((d) => (
-            <div
-              key={d.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "10px 0",
-                borderTop: "1px solid #eef1f6",
-              }}
-            >
-              <span style={{ fontWeight: 650, fontSize: 13.5, flex: 1 }}>{d.name}</span>
-              <span style={okBadge}>Signed</span>
-            </div>
-          ))}
+        <section className="panel mb">
+          <div className="panel-h">
+            <h2>Signatures needed</h2>
+          </div>
+          <div className="panel-b">
+            <p className="sub mb">
+              Review each document in full and sign on this device. You will receive a copy of
+              everything you sign by email.
+            </p>
+            {pending.map((d) => (
+              <div key={d.id} className="filerow">
+                <b className="grow">{d.name}</b>
+                <Btn
+                  variant="pri"
+                  onClick={() => {
+                    setSigning(d);
+                    setSignError(null);
+                  }}
+                >
+                  Review and sign
+                </Btn>
+              </div>
+            ))}
+            {signed.map((d) => (
+              <div key={d.id} className="filerow">
+                <b className="grow">{d.name}</b>
+                <CellChip tone="ok">Signed</CellChip>
+              </div>
+            ))}
+          </div>
         </section>
       ) : null}
 
       {signing ? (
-        <section style={section}>
-          <SignRequestedDocument
-            doc={
-              {
-                id: signing.id,
-                name: signing.name,
-                signature_kind: signing.kind,
-                signature_document_text: signing.document_text,
-              } as SignableDoc
-            }
-            busy={signBusy}
-            error={signError}
-            onSign={sign}
-            onCancel={() => setSigning(null)}
-          />
+        <section className="panel mb">
+          <div className="panel-b">
+            <SignRequestedDocument
+              doc={
+                {
+                  id: signing.id,
+                  name: signing.name,
+                  signature_kind: signing.kind,
+                  signature_document_text: signing.document_text,
+                } as SignableDoc
+              }
+              busy={signBusy}
+              error={signError}
+              onSign={sign}
+              onCancel={() => setSigning(null)}
+            />
+          </div>
         </section>
       ) : null}
     </>

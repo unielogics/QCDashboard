@@ -7,9 +7,7 @@
 // admin-supplied data on the request, not branching UI.
 
 import { useRef, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { Btn, CellChip, Field, Input, Panel, StatusLine, Sub, Textarea } from "@/components/ds";
 import { FileDropzone } from "@/components/design-system/FileDropzone";
 import {
   useCreditSummary,
@@ -22,7 +20,6 @@ import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { ApiError } from "@/lib/api";
 
 export function LeadCreditPanel({ intakeId }: { intakeId: string }) {
-  const { t } = useTheme();
   const status = useLeadCreditStatus(intakeId);
   const requestAuth = useRequestLeadCreditAuthorization(intakeId);
   const uploadTemplate = useUploadLeadCreditTemplate(intakeId);
@@ -36,10 +33,9 @@ export function LeadCreditPanel({ intakeId }: { intakeId: string }) {
 
   if (status.isLoading) {
     return (
-      <Card pad={20}>
-        <SectionLabel>Credit</SectionLabel>
-        <span style={{ color: t.ink3, fontSize: 13 }}>Loading credit status…</span>
-      </Card>
+      <Panel title="Credit">
+        <Sub>Loading credit status…</Sub>
+      </Panel>
     );
   }
 
@@ -79,112 +75,100 @@ export function LeadCreditPanel({ intakeId }: { intakeId: string }) {
   const pending = requestAuth.isPending || uploadTemplate.isPending || runPull.isPending;
 
   return (
-    <div style={{ display: "grid", gap: 14 }}>
-      <Card pad={20}>
-        <SectionLabel
-          action={
-            <Pill
-              bg={authorizationSigned ? t.profitBg : authorizationRequested ? t.warnBg : t.surface2}
-              color={authorizationSigned ? t.profit : authorizationRequested ? t.warn : t.ink3}
-            >
-              {authorizationSigned ? "Signed" : authorizationRequested ? "Awaiting signature" : "Not requested"}
-            </Pill>
-          }
-        >
-          Credit report authorization
-        </SectionLabel>
-
+    // Grid, not flex-column: `.panel` is overflow:hidden, and as a flex child
+    // that zeroes its automatic minimum size and clips the form inside it.
+    <div className="grid">
+      <Panel
+        title="Credit report authorization"
+        actions={
+          <CellChip tone={authorizationSigned ? "ok" : authorizationRequested ? "warn" : "mut"}>
+            {authorizationSigned ? "Signed" : authorizationRequested ? "Awaiting signature" : "Not requested"}
+          </CellChip>
+        }
+      >
         {!authorizationRequested ? (
-          <div style={{ display: "grid", gap: 10 }}>
-            <p style={{ margin: 0, color: t.ink2, fontSize: 13, lineHeight: 1.5 }}>
+          <div className="grid g10">
+            <p className="sub">
               Send a signature request to the client via their intake link. Real estate leads default to a
               built-in FCRA-style disclosure. For a dealer-specific document, optionally upload a template
               below — the client will see and sign that exact file instead.
             </p>
-            <label style={{ display: "block" }}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 5 }}>
-                Custom disclosure text (optional — leave blank to use the default)
-              </div>
-              <textarea
+            <Field label="Custom disclosure text (optional — leave blank to use the default)">
+              {/* aria-label because `Field` renders a <span class="lbl">, not a
+                  <label for>: the old markup wrapped the control in a <label>,
+                  so the control had an accessible name and this keeps it. */}
+              <Textarea
+                aria-label="Custom disclosure text (optional — leave blank to use the default)"
                 value={documentText}
                 onChange={(e) => setDocumentText(e.target.value)}
                 rows={4}
-                style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: `1px solid ${t.line}`, background: t.surface2, color: t.ink, fontSize: 13, fontFamily: "inherit" }}
               />
-            </label>
-            <div>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 5 }}>
-                Template document (optional)
-              </div>
+            </Field>
+            <div className="fldsec">
+              <div className="lbl">Template document (optional)</div>
               {templateFile ? (
-                <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12.5, color: t.ink2 }}>
+                <div className="row">
                   <span>{templateFile.name}</span>
-                  <button type="button" style={qcBtn(t)} onClick={() => setTemplateFile(null)}>Remove</button>
+                  <Btn onClick={() => setTemplateFile(null)}>Remove</Btn>
                 </div>
               ) : (
                 <FileDropzone key={fileInputKey.current} multiple={false} onFiles={(files) => setTemplateFile(files[0] ?? null)} title="Upload a signable template (PDF)" />
               )}
             </div>
-            {error ? <div style={{ color: t.danger, fontSize: 12.5 }}>{error}</div> : null}
+            {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
             <div>
-              <button style={qcBtnPrimary(t)} onClick={onRequestAuthorization} disabled={pending}>
+              <Btn variant="pri" onClick={onRequestAuthorization} disabled={pending}>
                 {pending ? "Requesting…" : "Request credit authorization"}
-              </button>
+              </Btn>
             </div>
           </div>
         ) : (
-          <div style={{ display: "grid", gap: 8 }}>
-            <p style={{ margin: 0, color: t.ink2, fontSize: 13, lineHeight: 1.5 }}>
+          <div className="grid g8">
+            <p className="sub">
               {authorizationSigned
                 ? "The client has signed the credit authorization — you can run the soft pull below."
                 : "Waiting on the client to sign the authorization form via their intake link."}
             </p>
           </div>
         )}
-      </Card>
+      </Panel>
 
       {authorizationRequested ? (
-        <Card pad={20}>
-          <SectionLabel
-            action={
-              data?.fico != null ? (
-                <Pill bg={t.profitBg} color={t.profit}>FICO {data.fico}</Pill>
-              ) : null
-            }
-          >
-            Run credit pull
-          </SectionLabel>
-          <div style={{ display: "grid", gap: 10 }}>
-            <p style={{ margin: 0, color: t.ink2, fontSize: 13, lineHeight: 1.5 }}>
+        <Panel
+          title="Run credit pull"
+          actions={data?.fico != null ? <CellChip tone="ok">FICO {data.fico}</CellChip> : null}
+        >
+          <div className="grid g10">
+            <p className="sub">
               Runs the bureau soft pull using the identity the client entered when signing. No card on file is
               required — the signed authorization is the consent record.
             </p>
-            <label style={{ display: "block", maxWidth: 220 }}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 5 }}>
-                SSN (only if a first attempt returns no-hit)
-              </div>
-              <input
-                value={ssn}
-                onChange={(e) => setSsn(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                placeholder="9 digits, no dashes"
-                type="password"
-                style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: `1px solid ${t.line}`, background: t.surface2, color: t.ink, fontSize: 13 }}
-              />
-            </label>
-            {error ? <div style={{ color: t.danger, fontSize: 12.5 }}>{error}</div> : null}
+            {/* Bespoke width (rule 3): a 9-digit field should not span the panel. */}
+            <div style={{ maxWidth: 220 }}>
+              <Field label="SSN (only if a first attempt returns no-hit)">
+                <Input
+                  aria-label="SSN (only if a first attempt returns no-hit)"
+                  value={ssn}
+                  onChange={(e) => setSsn(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                  placeholder="9 digits, no dashes"
+                  type="password"
+                />
+              </Field>
+            </div>
+            {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
             <div>
-              <button style={qcBtnPrimary(t)} onClick={onRunPull} disabled={!authorizationSigned || pending}>
+              <Btn variant="pri" onClick={onRunPull} disabled={!authorizationSigned || pending}>
                 {runPull.isPending ? "Pulling…" : data?.pull_id ? "Re-run credit pull" : "Run credit pull"}
-              </button>
+              </Btn>
             </div>
             {data?.pulled_at ? (
-              <span style={{ color: t.ink3, fontSize: 12 }}>
+              <Sub>
                 Last pulled {new Date(data.pulled_at).toLocaleString()}
                 {data.expires_at ? ` · valid through ${new Date(data.expires_at).toLocaleDateString()}` : ""}
-              </span>
+              </Sub>
             ) : null}
           </div>
-        </Card>
+        </Panel>
       ) : null}
 
       {data?.pull_id ? <CreditSummaryCard summary={summary.data} loading={summary.isLoading} /> : null}

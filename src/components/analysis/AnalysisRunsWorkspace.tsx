@@ -212,7 +212,7 @@ export function AnalysisRunsTable({
                       <Td>
                         {/* Bespoke truncation: a long property address must not push
                             the other six columns off the table. */}
-                        <b style={{ display: "block", maxWidth: 360, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <b className="trunc" style={{ display: "block", maxWidth: 360 }}>
                           {titleFor(run)}
                         </b>
                         <div className="sub">{SOURCE_LABEL[run.tool_source] ?? run.tool_source}</div>
@@ -284,7 +284,7 @@ export function AnalysisRunInspect({
     return (
       <div className="grid">
         <div className="hd">
-          <span style={{ flex: 1 }} />
+          <span className="grow" />
           <CloseButton onClose={onBack} />
         </div>
         <Panel>
@@ -506,16 +506,15 @@ function ActionRow({
       className="toollink"
       disabled={disabled}
       onClick={onSelect}
-      style={disabled ? { opacity: 0.55, cursor: "not-allowed" } : undefined}
     >
       <Icon name={action.icon ?? "plus"} size={14} />
-      <span style={{ minWidth: 0 }}>
-        <b style={{ display: "block" }}>{action.label}</b>
-        {action.description ? (
-          <span className="sub" style={{ display: "block" }}>{action.description}</span>
-        ) : null}
+      {/* A grid stack, so the label, the description and the reason it is
+          unavailable are each their own line without three display:block. */}
+      <span className="grow grid g4">
+        <b>{action.label}</b>
+        {action.description ? <span className="sub">{action.description}</span> : null}
         {disabled && action.disabledHint ? (
-          <span style={{ display: "block", fontSize: 11.2, color: "var(--warn)" }}>{action.disabledHint}</span>
+          <span className="warnline">{action.disabledHint}</span>
         ) : null}
       </span>
     </button>
@@ -528,7 +527,7 @@ function Mini({ label, value }: { label: string; value: string }) {
   return (
     <Kpi
       label={label}
-      value={<span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</span>}
+      value={<div className="trunc">{value}</div>}
     />
   );
 }

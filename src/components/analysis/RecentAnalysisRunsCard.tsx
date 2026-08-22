@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { CellChip, Panel, Row, Sub } from "@/components/ds";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { useClients } from "@/hooks/useApi";
 import type { AnalysisRun } from "@/lib/types";
@@ -57,66 +56,53 @@ export function RecentAnalysisRunsCard({
   title?: string;
   emptyText?: string;
 }) {
-  const { t } = useTheme();
   const { data: clients = [] } = useClients("mine");
   const rows = runs.slice(0, 6);
 
   return (
-    <Card pad={14}>
-      <SectionLabel>{title}</SectionLabel>
+    <Panel title={title} bodyClass="grid g8">
       {rows.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5 }}>{emptyText}</div>
+        <Sub>{emptyText}</Sub>
       ) : (
-        <div style={{ display: "grid", gap: 8 }}>
-          {rows.map((run) => {
-            const amount = amountFor(run);
-            const clientName = run.client_id
-              ? clients.find((client) => client.id === run.client_id)?.name ?? "Linked client"
-              : "Unlinked";
-            const href = hrefFor(run);
-            const body = (
-              <>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 800, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {run.title || run.target_property_address || "Saved analysis"}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {clientName} - {PRODUCT_LABEL[run.product] ?? run.product}
-                      {amount ? ` - ${QC_FMT.usd(amount, 0)}` : ""}
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 11, color: t.ink3, whiteSpace: "nowrap" }}>{dateLabel(run.updated_at)}</div>
-                </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7 }}>
-                  <Pill bg={t.chip} color={t.ink2}>{SOURCE_LABEL[run.tool_source] ?? run.tool_source}</Pill>
-                  {run.shared_at ? <Pill bg={t.profitBg} color={t.profit}>Shared</Pill> : null}
-                  {run.prequal_request_id ? <Pill bg={t.petrolSoft} color={t.petrol}>Prequal</Pill> : null}
-                  {run.status ? <Pill bg={t.chip} color={t.ink3}>{run.status.replace(/_/g, " ")}</Pill> : null}
-                </div>
-              </>
-            );
-            const style = {
-              display: "block",
-              padding: "10px 11px",
-              borderRadius: 12,
-              border: `1px solid ${t.line}`,
-              background: t.surface2,
-              textDecoration: "none",
-              color: t.ink,
-            };
-            return href ? (
-              <Link key={run.id} href={href} style={style}>
-                {body}
-              </Link>
-            ) : (
-              <div key={run.id} style={style}>
-                {body}
+        rows.map((run) => {
+          const amount = amountFor(run);
+          const clientName = run.client_id
+            ? clients.find((client) => client.id === run.client_id)?.name ?? "Linked client"
+            : "Unlinked";
+          const href = hrefFor(run);
+          const body = (
+            <div className="grow grid g6">
+              <div className="row">
+                <b className="grow trunc">{run.title || run.target_property_address || "Saved analysis"}</b>
+                <span className="sub trunc">{dateLabel(run.updated_at)}</span>
               </div>
-            );
-          })}
-        </div>
+              <div className="sub trunc">
+                {clientName} - {PRODUCT_LABEL[run.product] ?? run.product}
+                {amount ? ` - ${QC_FMT.usd(amount, 0)}` : ""}
+              </div>
+              <Row>
+                <CellChip tone="mut">{SOURCE_LABEL[run.tool_source] ?? run.tool_source}</CellChip>
+                {run.shared_at ? <CellChip tone="ok">Shared</CellChip> : null}
+                {run.prequal_request_id ? <CellChip tone="pet">Prequal</CellChip> : null}
+                {run.status ? <CellChip tone="mut">{run.status.replace(/_/g, " ")}</CellChip> : null}
+              </Row>
+            </div>
+          );
+          // `.pick` claims to be clickable and `.itemrow` does not — a run with
+          // no loan and no client has nowhere to go, and rendering it as a
+          // pointer-cursor row that swallows the click is the version of this
+          // list that made people think it was broken.
+          return href ? (
+            <Link key={run.id} href={href} className="pick">
+              {body}
+            </Link>
+          ) : (
+            <div key={run.id} className="itemrow">
+              {body}
+            </div>
+          );
+        })
       )}
-    </Card>
+    </Panel>
   );
 }

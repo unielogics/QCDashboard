@@ -8,10 +8,22 @@
 // prompt by app/routers/ai.py — so the AI introduces itself with this
 // name, follows the firm's tone, and refuses anything in the global
 // rules list regardless of per-client overrides.
+//
+// Styling migrated off the inline token objects onto the plain-CSS design
+// system (globals.css + app-extras.css) via the wrappers in @/components/ds.
+// Every field, handler and payload key is unchanged; only the surface
+// vocabulary moved:
+//   local Field helper       → ds Field (same label + hint shape)
+//   local ChipRow helper     → Seg as="filter" — it is a value picker, not a
+//                              view switch, so aria-pressed rather than a
+//                              tablist (see `problems`)
+//   Card + SectionLabel      → Panel with its own title row
+//   hand-rolled inputs       → Input / Textarea (`.field`)
+// The page no longer sets its own padding or max-width — the shell's
+// `.content` owns both.
 
 import { useEffect, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, SectionLabel } from "@/components/design-system/primitives";
+import { Btn, Field, Input, Panel, Row, Seg, Sub, Textarea } from "@/components/ds";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 import {
@@ -45,9 +57,14 @@ const SUGGESTED_RULES = [
   "If asked about a competitor, redirect politely to our offering",
 ];
 
+const GREETING_STYLES: { value: NonNullable<Identity["greeting_style"]>; label: string }[] = [
+  { value: "formal", label: "Formal" },
+  { value: "friendly", label: "Friendly" },
+  { value: "concise", label: "Concise" },
+];
+
 
 export default function AIIdentityPage() {
-  const { t } = useTheme();
   const { data, isLoading, error: idErr } = useFundingMetaRules("communication");
   const patch = usePatchFundingMetaRules("communication");
 
@@ -77,7 +94,7 @@ export default function AIIdentityPage() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 880, margin: "0 auto" }}>
+    <div className="grid">
       <LendingAIHeader
         title="AI Identity & Global Rules"
         subtitle="The AI's name, voice, and the hard rules that apply across every conversation. These take precedence over per-agent or per-client overrides."
@@ -86,131 +103,101 @@ export default function AIIdentityPage() {
       {isAINotDeployed(idErr) ? (
         <AINotDeployedBanner surface="Lending AI" />
       ) : isLoading ? (
-        <Card pad={20}><div style={{ color: t.ink3 }}>Loading…</div></Card>
+        <Panel><Sub>Loading…</Sub></Panel>
       ) : (
         <>
           {/* ── Identity ────────────────────────────────────────── */}
-          <Card pad={20} style={{ marginBottom: 16 }}>
-            <SectionLabel>Identity</SectionLabel>
-
-            <Field label="AI name" t={t} hint="What your AI introduces itself as. e.g. Quinn, Athena, Rocky.">
-              <input
+          <Panel title="Identity" bodyClass="grid">
+            <Field label="AI name" hint="What your AI introduces itself as. e.g. Quinn, Athena, Rocky.">
+              <Input
                 value={identity.ai_name || ""}
                 onChange={e => setIdentity({ ...identity, ai_name: e.target.value })}
                 placeholder="e.g. Quinn"
-                style={input(t)}
               />
             </Field>
 
-            <Field label="Greeting style" t={t}>
-              <ChipRow
-                options={[
-                  { value: "formal", label: "Formal" },
-                  { value: "friendly", label: "Friendly" },
-                  { value: "concise", label: "Concise" },
-                ]}
-                value={identity.greeting_style || "friendly"}
-                onChange={(v) => setIdentity({ ...identity, greeting_style: v as Identity["greeting_style"] })}
-                t={t}
-              />
+            <Field label="Greeting style">
+              <Row>
+                <Seg
+                  as="filter"
+                  ariaLabel="Greeting style"
+                  value={identity.greeting_style || "friendly"}
+                  onChange={(v) => setIdentity({ ...identity, greeting_style: v })}
+                  options={GREETING_STYLES}
+                />
+              </Row>
             </Field>
 
-            <Field label="Voice summary" t={t} hint="One or two sentences describing how the AI should sound.">
-              <textarea
+            <Field label="Voice summary" hint="One or two sentences describing how the AI should sound.">
+              <Textarea
                 value={identity.voice_summary || ""}
                 onChange={e => setIdentity({ ...identity, voice_summary: e.target.value })}
                 placeholder="e.g. Direct, knowledgeable about commercial real estate lending. Always references concrete numbers, never vague generalities."
                 rows={2}
-                style={{ ...input(t), resize: "vertical" }}
               />
             </Field>
 
-            <Field label="Brand signature" t={t} hint="Optional sign-off appended to messages.">
-              <input
+            <Field label="Brand signature" hint="Optional sign-off appended to messages.">
+              <Input
                 value={identity.brand_signature || ""}
                 onChange={e => setIdentity({ ...identity, brand_signature: e.target.value })}
                 placeholder="— Quinn, Qualified Commercial"
-                style={input(t)}
               />
             </Field>
-          </Card>
+          </Panel>
 
           {/* ── Global Rules ───────────────────────────────────── */}
-          <Card pad={20} style={{ marginBottom: 16 }}>
-            <SectionLabel>Global rules — applied to every conversation</SectionLabel>
-            <div style={{ fontSize: 12, color: t.ink3, margin: "4px 0 14px" }}>
+          <Panel
+            title="Global rules — applied to every conversation"
+            bodyClass="grid g10"
+          >
+            <Sub>
               The AI honors these rules regardless of per-agent or per-client overrides.
               Phrase as plain English &quot;never&quot; / &quot;always&quot; statements.
-            </div>
+            </Sub>
 
             {(identity.global_rules || []).map((rule, i) => (
-              <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <input
+              <Row key={i}>
+                <Input
+                  grow
+                  aria-label={`Global rule ${i + 1}`}
                   value={rule}
                   onChange={e => setRule(i, e.target.value)}
-                  style={{ ...input(t), flex: 1 }}
                 />
-                <button
-                  onClick={() => removeRule(i)}
-                  style={{
-                    padding: "6px 12px", fontSize: 12, fontWeight: 600,
-                    borderRadius: 6, border: `1px solid ${t.line}`,
-                    background: t.surface, color: t.danger, cursor: "pointer",
-                  }}
-                >
+                <Btn className="danger" onClick={() => removeRule(i)}>
                   Remove
-                </button>
-              </div>
+                </Btn>
+              </Row>
             ))}
 
-            <button
-              onClick={() => addRule("")}
-              style={{
-                marginTop: 8, padding: "6px 12px", fontSize: 12, fontWeight: 600,
-                borderRadius: 6, border: `1px dashed ${t.line}`,
-                background: "transparent", color: t.ink3, cursor: "pointer",
-              }}
-            >
-              + Add rule
-            </button>
+            <Row>
+              <Btn onClick={() => addRule("")}>+ Add rule</Btn>
+            </Row>
 
             {/* Suggested rules — quick-add pool */}
-            <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${t.line}` }}>
-              <div style={{
-                fontSize: 11, fontWeight: 700, color: t.ink3,
-                marginBottom: 8, textTransform: "uppercase",
-              }}>
-                Suggested rules (click to add)
-              </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <hr className="hr" />
+            <div>
+              <div className="lbl mb">Suggested rules (click to add)</div>
+              <Row>
                 {SUGGESTED_RULES
                   .filter(s => !(identity.global_rules || []).includes(s))
                   .map(s => (
-                    <button
-                      key={s}
-                      onClick={() => addRule(s)}
-                      style={{
-                        padding: "6px 10px", fontSize: 12,
-                        borderRadius: 999, border: `1px solid ${t.line}`,
-                        background: t.surface, color: t.ink2, cursor: "pointer",
-                        textAlign: "left",
-                      }}
-                    >
+                    <Btn key={s} size="sm" onClick={() => addRule(s)}>
                       + {s}
-                    </button>
+                    </Btn>
                   ))}
-              </div>
+              </Row>
             </div>
-          </Card>
+          </Panel>
 
           {/* ── Forbidden topics ───────────────────────────────── */}
-          <Card pad={20} style={{ marginBottom: 16 }}>
-            <SectionLabel>Off-limits topics</SectionLabel>
-            <div style={{ fontSize: 12, color: t.ink3, margin: "4px 0 14px" }}>
+          <Panel title="Off-limits topics" bodyClass="grid">
+            <Sub>
               Comma-separated. The AI will refuse to engage on these and offer the redirect template instead.
-            </div>
+            </Sub>
 
-            <input
+            <Input
+              aria-label="Off-limits topics"
               value={(identity.forbidden_topics || []).join(", ")}
               onChange={e => setIdentity({
                 ...identity,
@@ -220,103 +207,25 @@ export default function AIIdentityPage() {
                   .filter(Boolean),
               })}
               placeholder="e.g. exact rate quotes, legal advice, tax advice, competitor pricing"
-              style={input(t)}
             />
 
-            <Field label="When the AI redirects, it says:" t={t}>
-              <textarea
+            <Field label="When the AI redirects, it says:">
+              <Textarea
                 value={identity.redirect_template || ""}
                 onChange={e => setIdentity({ ...identity, redirect_template: e.target.value })}
                 placeholder="e.g. That's something the funding team will confirm directly with you. I can flag it now and they'll follow up — would that work?"
                 rows={2}
-                style={{ ...input(t), resize: "vertical" }}
               />
             </Field>
-          </Card>
+          </Panel>
 
-          <button onClick={save} disabled={patch.isPending} style={btnPrimary(t)}>
-            {patch.isPending ? "Saving…" : "Save AI Identity"}
-          </button>
+          <Row>
+            <Btn variant="pri" onClick={save} disabled={patch.isPending}>
+              {patch.isPending ? "Saving…" : "Save AI Identity"}
+            </Btn>
+          </Row>
         </>
       )}
     </div>
   );
-}
-
-
-// ── Helpers ─────────────────────────────────────────────────────────
-
-
-function Field({
-  label, hint, children, t,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-  t: ReturnType<typeof useTheme>["t"];
-}) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{
-        fontSize: 11, fontWeight: 700, color: t.ink3,
-        marginBottom: 4, textTransform: "uppercase",
-      }}>
-        {label}
-      </div>
-      {hint ? (
-        <div style={{ fontSize: 11, color: t.ink3, marginBottom: 6, lineHeight: 1.5 }}>
-          {hint}
-        </div>
-      ) : null}
-      {children}
-    </div>
-  );
-}
-
-
-function ChipRow({
-  options, value, onChange, t,
-}: {
-  options: { value: string; label: string }[];
-  value: string;
-  onChange: (v: string) => void;
-  t: ReturnType<typeof useTheme>["t"];
-}) {
-  return (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-      {options.map(o => (
-        <button
-          key={o.value}
-          onClick={() => onChange(o.value)}
-          style={{
-            padding: "6px 14px", fontSize: 13, fontWeight: 600,
-            borderRadius: 18, border: `1px solid ${value === o.value ? t.petrol : t.line}`,
-            background: value === o.value ? t.petrol : t.surface,
-            color: value === o.value ? "#fff" : t.ink,
-            cursor: "pointer",
-          }}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-
-function input(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    width: "100%", padding: 8, fontSize: 13, fontFamily: "inherit",
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.surface, color: t.ink,
-  } as const;
-}
-
-
-function btnPrimary(t: ReturnType<typeof useTheme>["t"]) {
-  return {
-    padding: "10px 18px", fontSize: 13, fontWeight: 600,
-    borderRadius: 6, border: `1px solid ${t.line}`,
-    background: t.petrol, color: "#fff", cursor: "pointer",
-  } as const;
 }

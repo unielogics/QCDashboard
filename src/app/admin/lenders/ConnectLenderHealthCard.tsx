@@ -4,27 +4,40 @@
 //
 // Kept compact so the lender roster stays the primary surface. The
 // full probe details are still available behind the Details toggle.
+//
+// Styling migrated off the inline token objects onto the plain-CSS design
+// system (globals.css + app-extras.css) via the wrappers in @/components/ds.
+// The probe, its states and the toggle are unchanged; only the surface moved:
+//   Card + hand-rolled toggle row → `.disc` / `.disc-h` / `.disc-b`, the named
+//                                   collapsed-summary row. The summary line is
+//                                   now a real button, so the whole strip is
+//                                   focusable and Enter-activatable rather than
+//                                   only the small Details control.
+//   local InlineStat helper       → Chip (`.chip` + `.lbl` + `.num`)
+//   status Pill                   → CellChip tone, and each expanded check row
+//                                   carries its own tone on the SURFACE so a
+//                                   failing check is findable without reading
+//                                   every row.
 
 import { useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { Callout, CellChip, Chip, Sub, cx, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useConnectLenderHealth } from "@/hooks/useApi";
 import type { HealthStatus } from "@/lib/types";
 
-function statusColors(t: ReturnType<typeof useTheme>["t"], status: HealthStatus) {
+/** Probe status → the chip vocabulary. Was a palette lookup off the theme. */
+function statusMeta(status: HealthStatus): { tone: ChipTone; label: string } {
   switch (status) {
     case "ok":
-      return { bg: t.profitBg, fg: t.profit, label: "OK" };
+      return { tone: "ok", label: "OK" };
     case "warn":
-      return { bg: t.warnBg, fg: t.warn, label: "WARN" };
+      return { tone: "warn", label: "WARN" };
     case "fail":
-      return { bg: t.dangerBg, fg: t.danger, label: "FAIL" };
+      return { tone: "bad", label: "FAIL" };
   }
 }
 
 export function ConnectLenderHealthCard() {
-  const { t } = useTheme();
   const { data, isLoading, isError, error } = useConnectLenderHealth();
   const [expanded, setExpanded] = useState(false);
 
@@ -33,156 +46,80 @@ export function ConnectLenderHealthCard() {
     return data.checks.find((c) => c.status === "fail") ?? data.checks.find((c) => c.status === "warn") ?? null;
   }, [data]);
 
-  const overall = data ? statusColors(t, data.overall) : null;
+  const overall = data ? statusMeta(data.overall) : null;
 
   return (
-    <Card pad={0}>
-      <div
-        style={{
-          padding: "9px 14px",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          flexWrap: "wrap",
-        }}
+    <div className={cx("disc", expanded && "on")}>
+      <button
+        type="button"
+        className="disc-h"
+        aria-expanded={expanded}
+        // Nothing to open until the probe lands. `.disc-h:disabled` drops the
+        // pointer cursor so the row stops promising a click that does nothing.
+        disabled={!data}
+        onClick={() => setExpanded((v) => !v)}
       >
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 190 }}>
+        <span className="row">
           <Icon name="shieldChk" size={14} stroke={2.5} />
-          <SectionLabel style={{ marginBottom: 0 }}>Connect Lender — health</SectionLabel>
-        </div>
+          <span className="lbl">Connect Lender — health</span>
 
-        {isLoading ? (
-          <div style={{ fontSize: 12.5, color: t.ink3 }}>Running checks...</div>
-        ) : isError ? (
-          <div style={{ fontSize: 12.5, color: t.danger, minWidth: 0 }}>
-            Probe failed: {(error as Error)?.message ?? "Unknown error"}. The /admin/connect-lender/health endpoint may not be deployed yet.
-          </div>
-        ) : data ? (
-          <>
-            {overall ? <Pill bg={overall.bg} color={overall.fg}>{overall.label}</Pill> : null}
-            <InlineStat label="Active lenders" value={data.active_lender_count} />
-            <InlineStat label="Connectable" value={data.eligible_loan_count} />
-            <InlineStat label="Connected" value={data.connected_loan_count} />
-            {attentionCheck ? (
-              <div
-                style={{
-                  minWidth: 0,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  color: statusColors(t, attentionCheck.status).fg,
-                  fontSize: 12,
-                  fontWeight: 750,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <Icon name="alert" size={12} />
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+          {isLoading ? (
+            <Sub>Running checks...</Sub>
+          ) : isError ? (
+            <span className="statusline c-bad">
+              Probe failed: {(error as Error)?.message ?? "Unknown error"}. The
+              /admin/connect-lender/health endpoint may not be deployed yet.
+            </span>
+          ) : data ? (
+            <>
+              {overall ? <CellChip tone={overall.tone}>{overall.label}</CellChip> : null}
+              <InlineStat label="Active lenders" value={data.active_lender_count} />
+              <InlineStat label="Connectable" value={data.eligible_loan_count} />
+              <InlineStat label="Connected" value={data.connected_loan_count} />
+              {attentionCheck ? (
+                <CellChip tone={statusMeta(attentionCheck.status).tone} className="trunc">
+                  <Icon name="alert" size={12} />
                   {attentionCheck.name}
-                </span>
-              </div>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              style={{
-                all: "unset",
-                marginLeft: "auto",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-                padding: "5px 8px",
-                borderRadius: 7,
-                color: t.ink2,
-                background: t.surface2,
-                border: `1px solid ${t.line}`,
-                fontSize: 11.5,
-                fontWeight: 800,
-              }}
-            >
-              {expanded ? "Hide" : "Details"}
-              <Icon name={expanded ? "chevU" : "chevD"} size={11} />
-            </button>
-          </>
+                </CellChip>
+              ) : null}
+            </>
+          ) : null}
+        </span>
+
+        {data ? (
+          <span className="row">
+            <Sub>{expanded ? "Hide" : "Details"}</Sub>
+            <Icon name={expanded ? "chevU" : "chevD"} size={11} />
+          </span>
         ) : null}
-      </div>
+      </button>
 
       {expanded && data ? (
-        <div
-          style={{
-            padding: "0 14px 12px",
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: 6,
-          }}
-        >
+        <div className="disc-b grid cols-auto">
           {data.checks.map((c) => {
-            const sc = statusColors(t, c.status);
+            const sc = statusMeta(c.status);
             return (
-              <div
-                key={c.name}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "auto 1fr",
-                  gap: 8,
-                  alignItems: "start",
-                  padding: "7px 9px",
-                  borderRadius: 8,
-                  background: t.surface2,
-                  border: `1px solid ${t.line}`,
-                }}
-              >
-                <Pill bg={sc.bg} color={sc.fg}>
-                  {sc.label}
-                </Pill>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 800, color: t.ink }}>
-                    {c.name}
-                  </div>
-                  <div style={{ fontSize: 11, color: t.ink3, marginTop: 2, lineHeight: 1.35 }}>
-                    {c.detail}
-                  </div>
-                </div>
-              </div>
+              // The tone rides on the row itself: a band of check rows is
+              // scanned, and a chip inside each one means reading all of them
+              // to find the one that is failing. `.callout` is also
+              // top-aligned, which `.itemrow` is not — the detail line wraps.
+              <Callout key={c.name} tone={sc.tone} icon={<CellChip tone={sc.tone}>{sc.label}</CellChip>}>
+                <b>{c.name}</b>
+                <div className="sub">{c.detail}</div>
+              </Callout>
             );
           })}
         </div>
       ) : null}
-    </Card>
+    </div>
   );
 }
 
 function InlineStat({ label, value }: { label: string; value: number }) {
-  const { t } = useTheme();
   return (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "baseline",
-        gap: 5,
-        padding: "4px 8px",
-        borderRadius: 8,
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-      }}
-    >
-      <span
-        style={{
-          fontSize: 10,
-          fontWeight: 800,
-          letterSpacing: 0.8,
-          textTransform: "uppercase",
-          color: t.ink3,
-        }}
-      >
-        {label}
-      </span>
-      <span style={{ fontSize: 14, fontWeight: 900, color: t.ink, fontFeatureSettings: '"tnum"' }}>
-        {value}
-      </span>
-    </div>
+    <Chip>
+      <span className="lbl">{label}</span>
+      <b className="num">{value}</b>
+    </Chip>
   );
 }

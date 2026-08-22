@@ -9,9 +9,15 @@
 //
 // Each surface owns its own value + onChange + onSave plumbing; this
 // component is the visual contract.
+//
+// Styling is the shared class system: the block is a `.panel` (its header row
+// carries the title, the "saving…" note and Reset), the three knobs are a
+// `.fldgrid.three`, and every control is a `.field`. No palette tokens live in
+// this file — which is why the `t` prop the two sub-components used to take is
+// gone: it carried nothing but colours.
 
-import { useEffect, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { useEffect, useId, useState } from "react";
+import { Btn, Input, Panel } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 
 export interface FollowUpSettings {
@@ -49,7 +55,6 @@ export function FollowUpEditor({
   subtitle = "Configurable per file. Falls back to the firm default when unset.",
   saving, hasOverride,
 }: Props) {
-  const { t } = useTheme();
   const [draft, setDraft] = useState<FollowUpSettings>(value ?? {});
   useEffect(() => { setDraft(value ?? {}); }, [value]);
 
@@ -62,54 +67,25 @@ export function FollowUpEditor({
   };
 
   return (
-    <div style={{
-      padding: 14,
-      borderRadius: 11,
-      border: `1px solid ${t.line}`,
-      background: t.surface,
-      display: "flex", flexDirection: "column", gap: 12,
-    }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-        <span style={{
-          width: 32, height: 32, borderRadius: 8,
-          display: "grid", placeItems: "center",
-          background: t.brandSoft, color: t.brand, flex: "0 0 auto",
-        }}>
-          <Icon name="ai" size={14} stroke={2.2} />
-        </span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 900, color: t.ink, letterSpacing: 0.2 }}>
-            {title}
-          </div>
-          <div style={{ marginTop: 2, fontSize: 11.5, color: t.ink3, lineHeight: 1.4 }}>
-            {subtitle}
-          </div>
-        </div>
-        {saving ? (
-          <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 800 }}>saving…</span>
-        ) : null}
-        {hasOverride && onReset ? (
-          <button
-            type="button"
-            onClick={onReset}
-            style={{
-              padding: "4px 10px", borderRadius: 7,
-              background: "transparent", color: t.ink3,
-              border: `1px solid ${t.line}`,
-              fontSize: 11, fontWeight: 800,
-              cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            Reset to default
-          </button>
-        ) : null}
-      </div>
-
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-        gap: 10,
-      }}>
+    <Panel
+      // `.row` inside the heading, not a bare svg: Preflight makes svg a
+      // block element, so an icon dropped straight into the h3 would sit on
+      // its own line above the title.
+      title={<span className="row"><Icon name="ai" size={14} stroke={2.2} />{title}</span>}
+      sub={subtitle}
+      actions={
+        <>
+          {saving ? <span className="sub">saving…</span> : null}
+          {hasOverride && onReset ? (
+            <Btn size="sm" onClick={onReset}>
+              Reset to default
+            </Btn>
+          ) : null}
+        </>
+      }
+      bodyClass="grid g10"
+    >
+      <div className="fldgrid three">
         <KnobField
           label="Stall threshold"
           hint="Wait this long after the last borrower message before nudging again."
@@ -119,7 +95,6 @@ export function FollowUpEditor({
           onCommit={(v) => update({ stall_threshold_minutes: v })}
           fallbackLabel={fallbackLabel}
           previewValue={stallDisplay}
-          t={t}
         />
         <KnobField
           label="Max attempts / day"
@@ -129,7 +104,6 @@ export function FollowUpEditor({
           placeholder={String(fallback.max_attempts_per_day ?? 3)}
           onCommit={(v) => update({ max_attempts_per_day: v })}
           fallbackLabel={fallbackLabel}
-          t={t}
         />
         <KnobField
           label="Max days no reply"
@@ -139,40 +113,35 @@ export function FollowUpEditor({
           placeholder={String(fallback.max_days_without_reply ?? 14)}
           onCommit={(v) => update({ max_days_without_reply: v })}
           fallbackLabel={fallbackLabel}
-          t={t}
         />
       </div>
 
       {/* Quiet hours — optional. Both unset = no quiet-hours gate. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 0.7, textTransform: "uppercase" }}>
-          Quiet hours (optional)
-        </span>
+      <div className="row">
+        <span className="lbl">Quiet hours (optional)</span>
         <HourInput
           label="Start"
           value={draft.quiet_hours_start ?? null}
           onCommit={(v) => update({ quiet_hours_start: v })}
-          t={t}
         />
         <HourInput
           label="End"
           value={draft.quiet_hours_end ?? null}
           onCommit={(v) => update({ quiet_hours_end: v })}
-          t={t}
         />
-        <span style={{ fontSize: 11, color: t.ink3 }}>
+        <span className="sub">
           {draft.quiet_hours_start != null && draft.quiet_hours_end != null
             ? `AI won't nudge between ${pad(draft.quiet_hours_start)}:00 and ${pad(draft.quiet_hours_end)}:00`
             : "Disabled — no quiet-hours gate"}
         </span>
       </div>
-    </div>
+    </Panel>
   );
 }
 
 
 function KnobField({
-  label, hint, unit, value, placeholder, onCommit, fallbackLabel, previewValue, t,
+  label, hint, unit, value, placeholder, onCommit, fallbackLabel, previewValue,
 }: {
   label: string;
   hint: string;
@@ -182,8 +151,8 @@ function KnobField({
   onCommit: (next: number | null) => void;
   fallbackLabel: string;
   previewValue?: string;
-  t: ReturnType<typeof useTheme>["t"];
 }) {
+  const inputId = useId();
   const [draft, setDraft] = useState<string>(value === null || value === undefined ? "" : String(value));
   useEffect(() => {
     setDraft(value === null || value === undefined ? "" : String(value));
@@ -195,18 +164,11 @@ function KnobField({
     onCommit(n);
   };
   return (
-    <div style={{
-      padding: "10px 11px",
-      borderRadius: 9,
-      background: t.surface2,
-      border: `1px solid ${t.line}`,
-      display: "flex", flexDirection: "column", gap: 5,
-    }}>
-      <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 0.7, textTransform: "uppercase" }}>
-        {label}
-      </div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-        <input
+    <div className="grid g4">
+      <label className="lbl" htmlFor={inputId}>{label}</label>
+      <div className="row">
+        <Input
+          id={inputId}
           type="number"
           inputMode="numeric"
           min={1}
@@ -215,37 +177,28 @@ function KnobField({
           onBlur={commit}
           onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
           placeholder={placeholder}
-          style={{
-            width: 70, padding: "4px 7px", borderRadius: 6,
-            border: `1px solid ${t.line}`,
-            background: t.surface, color: t.ink,
-            fontFamily: "inherit", fontSize: 14, fontWeight: 800,
-            outline: "none",
-          }}
+          // Bespoke control width — a three-digit cadence number next to its
+          // unit, not a full-width text field. `.field` owns everything else.
+          style={{ width: 78 }}
         />
-        <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>{unit}</span>
+        <span className="sub">{unit}</span>
       </div>
-      {previewValue ? (
-        <div style={{ fontSize: 10.5, color: t.ink3, fontWeight: 700 }}>≈ {previewValue}</div>
-      ) : null}
-      <div style={{ fontSize: 10.5, color: t.ink3, lineHeight: 1.35 }}>
-        {hint}
-      </div>
-      <div style={{ fontSize: 10, color: t.ink3, fontStyle: "italic", marginTop: 2 }}>
-        Empty → {fallbackLabel} ({placeholder})
-      </div>
+      {previewValue ? <span className="sub">≈ {previewValue}</span> : null}
+      <span className="sub">{hint}</span>
+      {/* <em>, not an inline font-style: the fallback line is an aside about
+          the field, and the element already italicises it. */}
+      <em className="sub">Empty → {fallbackLabel} ({placeholder})</em>
     </div>
   );
 }
 
 
 function HourInput({
-  label, value, onCommit, t,
+  label, value, onCommit,
 }: {
   label: string;
   value: number | null;
   onCommit: (next: number | null) => void;
-  t: ReturnType<typeof useTheme>["t"];
 }) {
   const [draft, setDraft] = useState<string>(value === null || value === undefined ? "" : String(value));
   useEffect(() => {
@@ -258,9 +211,9 @@ function HourInput({
     onCommit(n);
   };
   return (
-    <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, color: t.ink3, fontWeight: 700 }}>
-      {label}
-      <input
+    <label className="row">
+      <span className="sub">{label}</span>
+      <Input
         type="number"
         min={0}
         max={23}
@@ -269,13 +222,8 @@ function HourInput({
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
         placeholder="—"
-        style={{
-          width: 44, padding: "4px 6px", borderRadius: 6,
-          border: `1px solid ${t.line}`,
-          background: t.surface, color: t.ink,
-          fontFamily: "inherit", fontSize: 12, fontWeight: 800,
-          outline: "none", textAlign: "center",
-        }}
+        // Bespoke control width — a two-digit hour.
+        style={{ width: 62 }}
       />
     </label>
   );

@@ -4,9 +4,13 @@
 // Sits on /clients/[id] under the existing tabs (or as an inline card).
 // Shows the agent-visible subset: requirement waivers + custom-instruction
 // edits + handoff events for THIS client.
+//
+// Styling is the shared class system (globals.css + app-extras.css): the feed
+// is a `.panel` of `.itemrow` entries. The event key and the requirement key
+// are `<code>` rather than a mono class — they are code identifiers, and the
+// element already carries the monospace stack.
 
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, SectionLabel } from "@/components/design-system/primitives";
+import { ItemRow, Panel, Tag } from "@/components/ds";
 import { useAuditEvents } from "@/hooks/useApi";
 
 interface Props {
@@ -15,7 +19,6 @@ interface Props {
 }
 
 export function ClientAuditTrail({ clientId, limit = 25 }: Props) {
-  const { t } = useTheme();
   const { data: events = [], isLoading } = useAuditEvents({
     client_id: clientId,
     limit,
@@ -23,54 +26,46 @@ export function ClientAuditTrail({ clientId, limit = 25 }: Props) {
 
   if (isLoading) {
     return (
-      <Card pad={16}>
-        <SectionLabel>Activity log</SectionLabel>
-        <div style={{ fontSize: 13, color: t.ink3, marginTop: 8 }}>Loading…</div>
-      </Card>
+      <Panel title="Activity log">
+        <div className="sub">Loading…</div>
+      </Panel>
     );
   }
   if (events.length === 0) {
     return (
-      <Card pad={16}>
-        <SectionLabel>Activity log</SectionLabel>
-        <div style={{ fontSize: 13, color: t.ink3, marginTop: 8 }}>No audit events yet.</div>
-      </Card>
+      <Panel title="Activity log">
+        <div className="sub">No audit events yet.</div>
+      </Panel>
     );
   }
 
   return (
-    <Card pad={16}>
-      <SectionLabel>Activity log</SectionLabel>
-      <div style={{ marginTop: 8 }}>
+    <Panel title="Activity log">
+      {/* Plain flow, not `.grid`: `.itemrow + .itemrow` already carries the
+          6px rhythm, and a grid gap would stack on top of it. */}
+      <div>
         {events.map(e => (
-          <div key={e.id} style={{
-            padding: "8px 0", borderBottom: `1px solid ${t.line}`, fontSize: 12,
-          }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{
-                fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
-                background: t.surface2, color: t.ink, fontFamily: "monospace",
-              }}>
-                {e.event_type}
-              </span>
-              <span style={{ color: t.ink3, fontSize: 11 }}>{e.actor_type}</span>
-              <span style={{ marginLeft: "auto", color: t.ink3, fontSize: 11 }}>
-                {new Date(e.created_at).toLocaleString()}
-              </span>
+          <ItemRow
+            key={e.id}
+            right={<span className="sub num">{new Date(e.created_at).toLocaleString()}</span>}
+          >
+            <div className="grid g4">
+              <div className="row">
+                <Tag>
+                  <code>{e.event_type}</code>
+                </Tag>
+                <span className="sub">{e.actor_type}</span>
+              </div>
+              {e.requirement_key ? (
+                <div>
+                  <code>{e.requirement_key}</code>
+                </div>
+              ) : null}
+              {e.new_value ? <div className="sub">{JSON.stringify(e.new_value)}</div> : null}
             </div>
-            {e.requirement_key ? (
-              <div style={{ marginTop: 2, color: t.ink, fontFamily: "monospace", fontSize: 11 }}>
-                {e.requirement_key}
-              </div>
-            ) : null}
-            {e.new_value ? (
-              <div style={{ color: t.ink3, marginTop: 2 }}>
-                {JSON.stringify(e.new_value)}
-              </div>
-            ) : null}
-          </div>
+          </ItemRow>
         ))}
       </div>
-    </Card>
+    </Panel>
   );
 }

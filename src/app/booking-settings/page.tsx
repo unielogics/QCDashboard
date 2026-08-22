@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
 import { QC_TOKENS, withAlpha } from "@/components/design-system/tokens";
 import { Icon } from "@/components/design-system/Icon";
-import { Btn, CG, Input, PageHeader, Panel, Row, Select, Textarea, cx } from "@/components/ds";
+import { Btn, CG, Input, PageHeader, Panel, Row, Select, StatusLine, Textarea, cx } from "@/components/ds";
 import {
   useBookingSettings,
   useCurrentUser,
@@ -240,58 +240,68 @@ export default function BookingSettingsPage() {
 }
 
 /**
- * Two-tone status line. `.c-ok` / `.c-warn` own the tint and the text colour;
- * the inline values are box geometry only, because the stylesheet has no
- * block-level success surface and shared files are off-limits. A `.cellchip`
- * would have been the closer class, but it is `white-space: nowrap` and these
- * messages run to a full sentence.
+ * Two-tone status line. This used to hand-roll its box because the sheet had no
+ * block-level success surface; `.statusline` (and `StatusLine`) is now exactly
+ * that class — a `.cellchip` that wraps — so the geometry has one owner again.
  */
 function FeedbackLine({ ok, children }: { ok: boolean; children: ReactNode }) {
-  return (
-    <div className={ok ? "c-ok" : "c-warn"} style={{ borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 650 }}>
-      {children}
-    </div>
-  );
+  return <StatusLine tone={ok ? "ok" : "warn"}>{children}</StatusLine>;
 }
 
 function BookingPreview({ settings, hostName, logoUrl, profileUrl }: { settings: UserBookingSettings; hostName: string; logoUrl: string | null; profileUrl: string | null }) {
-  // Mirrors the real /book/[slug] page, which is locked to the light token set.
-  // This preview used to render the retired dark styling, so a host tuning
-  // their colours here was looking at a page that no longer exists.
+  // Mirrors the real /book/[slug] page. That page is now itself on the plain-CSS
+  // classes, so the parts of it that ARE the design system — the `.chip` pills,
+  // the `.panel` around the time picker — are the same classes here. The parts
+  // that are bespoke to a public page stay bespoke here too: the hero type, the
+  // device frame, and the slot tiles, which are a PICTURE of buttons and must
+  // not carry `.btn`'s cursor:pointer and pretend to be clickable.
   //
-  // DELIBERATELY NOT MIGRATED to the console classes. /book/[slug] is a public
-  // page outside this design system — it reads QC_TOKENS.light directly and is
-  // locked there (see the header comment on that file). Restyling this block to
-  // `.panel` / `.card` / `.chip` would make the preview show the operator
-  // console instead of the page it is previewing, which is the one thing this
-  // component exists not to do. It tracks that file, not this stylesheet.
+  // This component tracks /book/[slug], not this stylesheet. If that file's
+  // layout changes, this one changes with it.
+  //
+  // `l` survives for the two values that must be a concrete hex: withAlpha()
+  // composites against one, and onAccentPreview() does luminance maths on one.
+  // Everything else reads the custom properties directly — globals.css IS this
+  // palette, and a second copy of a colour is a colour that will drift.
   const l = QC_TOKENS.light;
   const accent = settings.primary_color || l.brand;
   return (
-    <div style={{ position: "sticky", top: 18, borderRadius: 16, border: `1px solid ${l.line}`, borderTop: `3px solid ${accent}`, background: l.bg, color: l.ink, padding: 20, boxShadow: l.shadowLg }}>
-      {logoUrl ? <img src={logoUrl} alt="" style={{ maxHeight: 30, maxWidth: 170, objectFit: "contain", marginBottom: 14 }} /> : <div style={{ color: l.ink, fontSize: 12, fontWeight: 800, marginBottom: 14 }}>Qualified Commercial</div>}
+    // The device frame: the public page's own ground (--bg), pinned beside the
+    // editor, wearing the host's accent as its top rule. Bespoke because it is
+    // a picture of a page, not a surface in this one.
+    <div style={{ position: "sticky", top: 18, borderRadius: "var(--r)", border: "1px solid var(--line)", borderTop: `3px solid ${accent}`, background: "var(--bg)", padding: 20, boxShadow: "var(--sh2)" }}>
+      {logoUrl ? <img src={logoUrl} alt="" style={{ maxHeight: 30, maxWidth: 170, objectFit: "contain", marginBottom: 14 }} /> : <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 14 }}>Qualified Commercial</div>}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: withAlpha(accent, 0.1), color: accent }}>{settings.duration_min} minutes</span>
-        <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: l.chip, color: l.ink2 }}>{settings.timezone.replace(/_/g, " ")}</span>
+      {/* Same `.chip` pair the real page renders, accent tint and all. */}
+      <div className="row" style={{ marginBottom: 12 }}>
+        <span className="chip" style={{ background: withAlpha(accent, 0.1), color: accent, borderColor: withAlpha(accent, 0.25) }}>{settings.duration_min} minutes</span>
+        <span className="chip">{settings.timezone.replace(/_/g, " ")}</span>
       </div>
 
-      <h2 style={{ margin: "0 0 8px", fontSize: 24, lineHeight: 1.12, fontWeight: 800, letterSpacing: -0.5, color: l.ink }}>{settings.title || `Book a meeting with ${hostName}`}</h2>
-      <p style={{ color: l.ink3, lineHeight: 1.6, fontSize: 13.5, margin: 0 }}>{settings.intro || "Choose a time that works for you. You will receive a calendar invitation after booking."}</p>
+      {/* Hero type, scaled down. The real page clamps to 44px; this is the
+          same shape at preview size. */}
+      <h2 style={{ marginBottom: 8, fontSize: 24, lineHeight: 1.12 }}>{settings.title || `Book a meeting with ${hostName}`}</h2>
+      <p style={{ color: "var(--muted)", lineHeight: 1.6, fontSize: 13.5, margin: 0 }}>{settings.intro || "Choose a time that works for you. You will receive a calendar invitation after booking."}</p>
 
       <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "16px 0" }}>
-        <div style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${l.line}`, background: withAlpha(accent, 0.12), color: accent, overflow: "hidden", display: "grid", placeItems: "center", flexShrink: 0 }}>
+        {/* The host disc, at the preview's 34px rather than the page's 42px. */}
+        <div style={{ width: 34, height: 34, borderRadius: 999, border: "1px solid var(--line)", background: withAlpha(accent, 0.12), color: accent, overflow: "hidden", display: "grid", placeItems: "center", flexShrink: 0 }}>
           {profileUrl ? <img src={profileUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Icon name="user" size={17} />}
         </div>
-        <span style={{ fontSize: 13, fontWeight: 700, color: l.ink }}>{hostName}</span>
+        <span style={{ fontWeight: 700 }}>{hostName}</span>
       </div>
 
-      <div style={{ background: l.surface, border: `1px solid ${l.line}`, borderRadius: 12, padding: 14 }}>
-        <div style={{ fontSize: 12, fontWeight: 800, color: l.ink, marginBottom: 10 }}>Pick a time</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
-          {[settings.start_time, "10:30", "11:00", "13:00", "14:30", "15:00"].map((label, index) => (
-            <div key={`${label}-${index}`} style={{ textAlign: "center", padding: "8px 4px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, fontVariantNumeric: "tabular-nums", border: `1px solid ${index === 0 ? accent : l.lineStrong}`, background: index === 0 ? accent : l.surface, color: index === 0 ? onAccentPreview(accent, l.ink) : l.ink }}>{label}</div>
-          ))}
+      <div className="panel">
+        <div className="panel-h"><h2>Pick a time</h2></div>
+        <div className="panel-b">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+            {[settings.start_time, "10:30", "11:00", "13:00", "14:30", "15:00"].map((label, index) => (
+              // NOT `.btn`: these are a picture of the slot buttons, and `.btn`
+              // carries cursor:pointer, which would advertise a click the
+              // preview cannot honour. Colours are the host's, so inline.
+              <div key={`${label}-${index}`} style={{ textAlign: "center", padding: "8px 4px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, border: `1px solid ${index === 0 ? accent : "var(--line2)"}`, background: index === 0 ? accent : "var(--surface)", color: index === 0 ? onAccentPreview(accent, l.ink) : "var(--ink)" }}>{label}</div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

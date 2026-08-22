@@ -4,8 +4,12 @@
 // based on the active loan.type so the Criteria tab can fine-tune a
 // DSCR file differently from a Fix & Flip / Ground Up / Bridge / Cash-
 // Out Refi / Portfolio file. All inputs are manual — no sliders.
+//
+// Restyled onto the plain-CSS design system. Each field became a real
+// `<label>` on the way through — they used to be a `<span>` above an input
+// with no association, so none of these controls had an accessible name.
 
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { Input, Select } from "@/components/ds";
 import { LoanType, ExitStrategy, ExitStrategyOptions } from "@/lib/enums.generated";
 
 export interface TypeFieldsValue {
@@ -32,13 +36,11 @@ export function LoanTypeFields({
   value: TypeFieldsValue;
   onChange: TypeFieldsOnChange;
 }) {
-  const { t } = useTheme();
-
   if (loanType === LoanType.DSCR) {
     return (
       <Grid>
-        <PctField t={t} label="Vacancy %" value={value.vacancyPct} onChange={(v) => onChange("vacancyPct", v)} />
-        <PctField t={t} label="Operating expense ratio" value={value.expenseRatioPct} onChange={(v) => onChange("expenseRatioPct", v)} />
+        <PctField label="Vacancy %" value={value.vacancyPct} onChange={(v) => onChange("vacancyPct", v)} />
+        <PctField label="Operating expense ratio" value={value.expenseRatioPct} onChange={(v) => onChange("expenseRatioPct", v)} />
       </Grid>
     );
   }
@@ -46,10 +48,9 @@ export function LoanTypeFields({
   if (loanType === LoanType.FIX_AND_FLIP || loanType === LoanType.GROUND_UP) {
     return (
       <Grid>
-        <PctField t={t} label="Construction holdback" value={value.constructionHoldbackPct} onChange={(v) => onChange("constructionHoldbackPct", v)} />
-        <NumField t={t} label="Draw count" value={value.drawCount} onChange={(v) => onChange("drawCount", v)} />
+        <PctField label="Construction holdback" value={value.constructionHoldbackPct} onChange={(v) => onChange("constructionHoldbackPct", v)} />
+        <NumField label="Draw count" value={value.drawCount} onChange={(v) => onChange("drawCount", v)} />
         <SelectField
-          t={t}
           label="Exit strategy"
           value={value.exitStrategy}
           options={ExitStrategyOptions}
@@ -63,7 +64,6 @@ export function LoanTypeFields({
     return (
       <Grid>
         <SelectField
-          t={t}
           label="Exit strategy"
           value={value.exitStrategy}
           options={ExitStrategyOptions}
@@ -76,8 +76,8 @@ export function LoanTypeFields({
   if (loanType === LoanType.CASH_OUT_REFI) {
     return (
       <Grid>
-        <MoneyField t={t} label="Cash to borrower" value={value.cashToBorrower} onChange={(v) => onChange("cashToBorrower", v)} />
-        <NumField t={t} label="Seasoning (months)" value={value.seasoningMonths} onChange={(v) => onChange("seasoningMonths", v)} />
+        <MoneyField label="Cash to borrower" value={value.cashToBorrower} onChange={(v) => onChange("cashToBorrower", v)} />
+        <NumField label="Seasoning (months)" value={value.seasoningMonths} onChange={(v) => onChange("seasoningMonths", v)} />
       </Grid>
     );
   }
@@ -85,8 +85,8 @@ export function LoanTypeFields({
   if (loanType === LoanType.PORTFOLIO) {
     return (
       <Grid>
-        <NumField t={t} label="Property count" value={value.propertyCount} onChange={(v) => onChange("propertyCount", v)} />
-        <PctField t={t} label="Operating expense ratio" value={value.expenseRatioPct} onChange={(v) => onChange("expenseRatioPct", v)} />
+        <NumField label="Property count" value={value.propertyCount} onChange={(v) => onChange("propertyCount", v)} />
+        <PctField label="Operating expense ratio" value={value.expenseRatioPct} onChange={(v) => onChange("expenseRatioPct", v)} />
       </Grid>
     );
   }
@@ -95,107 +95,87 @@ export function LoanTypeFields({
 }
 
 function Grid({ children }: { children: React.ReactNode }) {
-  return <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>{children}</div>;
+  return <div className="fldgrid three">{children}</div>;
 }
 
+/**
+ * Label + control.
+ *
+ * A `<label>` rather than the design system's `Field` (a `<div>` and a
+ * `<span class="lbl">`), because wrapping is what names the control.
+ */
 function Field({
-  t,
   label,
   children,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   children: React.ReactNode;
 }) {
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <span style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1.1, textTransform: "uppercase" }}>{label}</span>
+    <label className="grid g6">
+      <span className="lbl">{label}</span>
       {children}
     </label>
   );
 }
 
 function NumField({
-  t,
   label,
   value,
   onChange,
   suffix,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   value: string;
   onChange: (v: string) => void;
   suffix?: string;
 }) {
   return (
-    <Field t={t} label={label}>
+    <Field label={label}>
       <div style={{ position: "relative" }}>
-        <input
+        <Input
           value={value}
           inputMode="decimal"
+          className="num"
           onChange={(e) => onChange(e.target.value.replace(/[^0-9.]/g, ""))}
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            paddingRight: suffix ? 30 : 12,
-            borderRadius: 10,
-            background: t.surface2,
-            border: `1px solid ${t.line}`,
-            color: t.ink,
-            fontSize: 13,
-            fontFamily: "inherit",
-            outline: "none",
-            fontFeatureSettings: '"tnum"',
-          }}
+          // The affix is overlaid INSIDE the control, so the control has to
+          // reserve room for it. This is the one place in this file where a
+          // property `.field` owns (its inset) is also set here — deliberately,
+          // and only on the side the affix sits.
+          style={{ width: "100%", paddingRight: suffix ? 30 : undefined }}
         />
         {suffix ? (
-          <span style={{ position: "absolute", top: 0, bottom: 0, right: 10, display: "inline-flex", alignItems: "center", color: t.ink3, fontSize: 12, fontWeight: 800, pointerEvents: "none" }}>
-            {suffix}
-          </span>
+          <span className="sub" style={AFFIX_RIGHT}>{suffix}</span>
         ) : null}
       </div>
     </Field>
   );
 }
 
-function PctField(props: Parameters<typeof NumField>[0]) {
+function PctField(props: Omit<Parameters<typeof NumField>[0], "suffix">) {
   return <NumField {...props} suffix="%" />;
 }
 
 function MoneyField({
-  t,
   label,
   value,
   onChange,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   value: string;
   onChange: (v: string) => void;
 }) {
   return (
-    <Field t={t} label={label}>
+    <Field label={label}>
       <div style={{ position: "relative" }}>
-        <span style={{ position: "absolute", top: 0, bottom: 0, left: 10, display: "inline-flex", alignItems: "center", color: t.ink3, fontSize: 12, fontWeight: 800, pointerEvents: "none" }}>
-          $
-        </span>
-        <input
+        <span className="sub" style={AFFIX_LEFT}>$</span>
+        <Input
           value={value}
           inputMode="decimal"
+          className="num"
           onChange={(e) => onChange(e.target.value.replace(/[^0-9.]/g, ""))}
-          style={{
-            width: "100%",
-            padding: "10px 12px 10px 28px",
-            borderRadius: 10,
-            background: t.surface2,
-            border: `1px solid ${t.line}`,
-            color: t.ink,
-            fontSize: 13,
-            fontFamily: "inherit",
-            outline: "none",
-            fontFeatureSettings: '"tnum"',
-          }}
+          // Same deliberate inset override as NumField, on the left.
+          style={{ width: "100%", paddingLeft: 28 }}
         />
       </div>
     </Field>
@@ -203,40 +183,37 @@ function MoneyField({
 }
 
 function SelectField({
-  t,
   label,
   value,
   options,
   onChange,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   value: string;
   options: readonly { value: string; label: string }[];
   onChange: (v: string) => void;
 }) {
   return (
-    <Field t={t} label={label}>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          borderRadius: 10,
-          background: t.surface2,
-          border: `1px solid ${t.line}`,
-          color: t.ink,
-          fontSize: 13,
-          fontFamily: "inherit",
-          outline: "none",
-        }}
-      >
+    <Field label={label}>
+      <Select value={value} onChange={(e) => onChange(e.target.value)} style={{ width: "100%" }}>
         <option value="">—</option>
         {options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
-      </select>
+      </Select>
     </Field>
   );
 }
+
+/** Affix geometry — an overlay pinned inside the control's inset. */
+const AFFIX_RIGHT: React.CSSProperties = {
+  position: "absolute",
+  top: 0,
+  bottom: 0,
+  right: 10,
+  display: "inline-flex",
+  alignItems: "center",
+  fontWeight: 700,
+  pointerEvents: "none",
+};
+const AFFIX_LEFT: React.CSSProperties = { ...AFFIX_RIGHT, right: "auto", left: 10 };

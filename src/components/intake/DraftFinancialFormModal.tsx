@@ -8,7 +8,6 @@
 
 import { useState } from "react";
 import { Modal } from "@/components/design-system/Modal";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 
 export type PfsFormPayload = {
   owner_full_name: string;
@@ -62,7 +61,6 @@ export function PfsFormModal({
   error: string | null;
   onSubmit: (payload: PfsFormPayload) => void;
 }) {
-  const { t } = useTheme();
   const [ownerName, setOwnerName] = useState(ownerDefaultName ?? "");
   const [assetValues, setAssetValues] = useState<Record<string, string>>({});
   const [liabilityValues, setLiabilityValues] = useState<Record<string, string>>({});
@@ -96,33 +94,23 @@ export function PfsFormModal({
       size="md"
       footer={
         <>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            style={{ fontSize: 13, padding: "8px 14px", borderRadius: 8, border: `1px solid ${t.line}`, background: t.surface, cursor: "pointer" }}
-          >
+          <button type="button" className="btn" onClick={onClose} disabled={busy}>
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={busy}
-            style={{ fontSize: 13, fontWeight: 700, padding: "8px 16px", borderRadius: 8, border: "none", background: t.brand, color: t.inverse, cursor: "pointer" }}
-          >
+          <button type="button" className="btn pri" onClick={submit} disabled={busy}>
             {busy ? "Submitting…" : "Submit"}
           </button>
         </>
       }
     >
-      <div style={{ padding: 18, display: "grid", gap: 12 }}>
-        <p style={{ margin: 0, fontSize: 12, color: t.ink3, lineHeight: 1.5 }}>
+      <div className="panel-b grid g10">
+        <p className="sub">
           This short online form takes the place of an uploaded PFS. It is for underwriting processing only — it
           is not financial or investment advice, and completing it is voluntary. We do not collect your Social
           Security Number here.
         </p>
         <FormField label="Your full legal name" value={ownerName} onChange={setOwnerName} />
-        <strong style={{ fontSize: 13 }}>Assets</strong>
+        <strong className="lbl">Assets</strong>
         {PFS_ASSET_LABELS.map(({ label }) => (
           <FormField
             key={label}
@@ -132,7 +120,7 @@ export function PfsFormModal({
             type="number"
           />
         ))}
-        <strong style={{ fontSize: 13 }}>Liabilities</strong>
+        <strong className="lbl">Liabilities</strong>
         {PFS_LIABILITY_LABELS.map((label) => (
           <FormField
             key={label}
@@ -142,12 +130,19 @@ export function PfsFormModal({
             type="number"
           />
         ))}
-        <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, color: t.ink2, cursor: "pointer" }}>
-          <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} style={{ marginTop: 2 }} />
-          I understand this form is informational-only, not financial or investment advice, and I am submitting
-          this information voluntarily.
-        </label>
-        {(formError || error) ? <div style={{ color: t.danger, fontSize: 12.5 }}>{formError || error}</div> : null}
+        {/* `.consent` is the sheet's acknowledgment block. It runs at body
+            size on purpose — shrinking a disclosure to fit is the thing a
+            compliance review flags. */}
+        <div className={ack ? "consent on" : "consent"}>
+          <label>
+            <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+            <span className="ctext">
+              I understand this form is informational-only, not financial or investment advice, and I am
+              submitting this information voluntarily.
+            </span>
+          </label>
+        </div>
+        {(formError || error) ? <div className="statusline c-bad">{formError || error}</div> : null}
       </div>
     </Modal>
   );
@@ -168,7 +163,6 @@ export function DebtScheduleFormModal({
   error: string | null;
   onSubmit: (payload: DebtScheduleFormPayload) => void;
 }) {
-  const { t } = useTheme();
   const [businessName, setBusinessName] = useState(businessNameDefault ?? "");
   const [rows, setRows] = useState<{ lender: string; balance: string; monthly_payment: string }[]>([
     { lender: "", balance: "", monthly_payment: "" },
@@ -204,32 +198,25 @@ export function DebtScheduleFormModal({
       size="md"
       footer={
         <>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            style={{ fontSize: 13, padding: "8px 14px", borderRadius: 8, border: `1px solid ${t.line}`, background: t.surface, cursor: "pointer" }}
-          >
+          <button type="button" className="btn" onClick={onClose} disabled={busy}>
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={busy}
-            style={{ fontSize: 13, fontWeight: 700, padding: "8px 16px", borderRadius: 8, border: "none", background: t.brand, color: t.inverse, cursor: "pointer" }}
-          >
+          <button type="button" className="btn pri" onClick={submit} disabled={busy}>
             {busy ? "Submitting…" : "Submit"}
           </button>
         </>
       }
     >
-      <div style={{ padding: 18, display: "grid", gap: 12 }}>
-        <p style={{ margin: 0, fontSize: 12, color: t.ink3, lineHeight: 1.5 }}>
+      <div className="panel-b grid g10">
+        <p className="sub">
           List every outstanding business debt: who it&apos;s owed to, the current balance, and the monthly
           payment. This is for underwriting processing only and is not financial or investment advice.
         </p>
         <FormField label="Business name" value={businessName} onChange={setBusinessName} />
         {rows.map((row, i) => (
+          // A bespoke 4-track row (lender / balance / payment / remove).
+          // `.fldgrid` is equal columns and `.cg` is the twelve-column page
+          // grid; neither describes this.
           <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 8, alignItems: "end" }}>
             <FormField
               label="Lender"
@@ -251,7 +238,7 @@ export function DebtScheduleFormModal({
             <button
               type="button"
               onClick={() => setRows((r) => r.filter((_, j) => j !== i))}
-              style={{ fontSize: 12, background: t.surface, border: `1px solid ${t.line}`, borderRadius: 8, padding: "9px 10px", cursor: "pointer", height: 36 }}
+              className="btn"
             >
               Remove
             </button>
@@ -260,16 +247,25 @@ export function DebtScheduleFormModal({
         <button
           type="button"
           onClick={() => setRows((r) => [...r, { lender: "", balance: "", monthly_payment: "" }])}
-          style={{ fontSize: 12, fontWeight: 700, background: t.surface, border: `1px solid ${t.line}`, borderRadius: 8, padding: "8px 12px", cursor: "pointer", justifySelf: "start" }}
+          className="btn"
+          // Grid placement — the button must not stretch across the column.
+          style={{ justifySelf: "start" }}
         >
           + Add another debt
         </button>
-        <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, color: t.ink2, cursor: "pointer" }}>
-          <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} style={{ marginTop: 2 }} />
-          I understand this form is informational-only, not financial or investment advice, and I am submitting
-          this information voluntarily.
-        </label>
-        {(formError || error) ? <div style={{ color: t.danger, fontSize: 12.5 }}>{formError || error}</div> : null}
+        {/* `.consent` is the sheet's acknowledgment block. It runs at body
+            size on purpose — shrinking a disclosure to fit is the thing a
+            compliance review flags. */}
+        <div className={ack ? "consent on" : "consent"}>
+          <label>
+            <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+            <span className="ctext">
+              I understand this form is informational-only, not financial or investment advice, and I am
+              submitting this information voluntarily.
+            </span>
+          </label>
+        </div>
+        {(formError || error) ? <div className="statusline c-bad">{formError || error}</div> : null}
       </div>
     </Modal>
   );
@@ -286,16 +282,11 @@ function FormField({
   onChange: (v: string) => void;
   type?: string;
 }) {
-  const { t } = useTheme();
   return (
-    <label style={{ display: "block" }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: t.ink3, marginBottom: 4 }}>{label}</div>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: `1px solid ${t.line}`, fontSize: 13 }}
-      />
+    // A real <label> wrapping its control, so the caption is a click target.
+    <label className="grid g4">
+      <span className="lbl">{label}</span>
+      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="field" />
     </label>
   );
 }

@@ -2,7 +2,6 @@
 
 import type { CSSProperties } from "react";
 import { Icon } from "./Icon";
-import { useTheme } from "./ThemeProvider";
 
 export function ModalCloseButton({
   onClick,
@@ -15,25 +14,19 @@ export function ModalCloseButton({
   size?: number;
   style?: CSSProperties;
 }) {
-  const { t } = useTheme();
+  // `.iconbtn` is exactly 30px, which is this component's default. A caller
+  // that asks for another size is overriding the class on purpose, so the
+  // override is applied only when it actually differs — otherwise the class
+  // and the style object would both claim width/height.
+  const sized: CSSProperties | undefined =
+    size !== 30 ? { width: size, height: size, ...style } : style;
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={label}
-      style={{
-        all: "unset",
-        cursor: "pointer",
-        width: size,
-        height: size,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        borderRadius: 8,
-        color: t.ink2,
-        flexShrink: 0,
-        ...style,
-      }}
+      className="btn sm iconbtn"
+      style={sized}
     >
       <Icon name="x" size={15} />
     </button>

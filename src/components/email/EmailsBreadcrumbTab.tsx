@@ -10,8 +10,7 @@
 // that could carry body text.
 
 import Link from "next/link";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { CellChip, Panel, Sub } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 
 export type BreadcrumbRow = {
@@ -43,80 +42,63 @@ export function EmailsBreadcrumbTab({
   isLoading: boolean;
   showInboxHint?: boolean;
 }) {
-  const { t } = useTheme();
-
   const emails = rows.filter((r) => r.kind === TRACKED_KIND);
 
   if (isLoading) {
     return (
-      <Card pad={16}>
-        <div style={{ fontSize: 13, color: t.ink3 }}>Loading emails…</div>
-      </Card>
+      <Panel>
+        <Sub>Loading emails…</Sub>
+      </Panel>
     );
   }
 
   return (
-    <Card pad={0}>
-      <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.line}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <SectionLabel>Tracked email · {emails.length}</SectionLabel>
-        {showInboxHint && (
-          <Link href="/inbox" style={{ textDecoration: "none" }}>
-            <Pill bg={t.brandSoft} color={t.brand}><Icon name="mail" size={11} /> Open Inbox</Pill>
+    <Panel
+      title={`Tracked email · ${emails.length}`}
+      actions={
+        showInboxHint ? (
+          <Link className="btn sm" href="/inbox">
+            <Icon name="mail" size={13} /> Open Inbox
           </Link>
-        )}
-      </div>
-
+        ) : undefined
+      }
+    >
       {emails.length === 0 ? (
-        <div style={{ padding: 16, fontSize: 13, color: t.ink3, lineHeight: 1.55 }}>
+        <Sub>
           No tracked email yet. When a client or party emails your connected Workspace
           mailbox, it appears here as a private breadcrumb — sender, subject, and time
           only. The full message stays in your inbox.
-        </div>
+        </Sub>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          {emails.map((e, i) => {
-            const p = e.payload ?? {};
-            const from = str(p["from"]) ?? "unknown sender";
-            const subject = str(p["subject"]) ?? "(no subject)";
-            const direction = str(p["direction"]) ?? "inbound";
-            const role = str(p["party_role"]);
-            const received = str(p["received_at"]) ?? e.occurredAt;
-            const outbound = direction === "outbound";
-            return (
-              <div
-                key={e.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "32px 1fr auto",
-                  gap: 12,
-                  padding: "12px 16px",
-                  borderBottom: i === emails.length - 1 ? "none" : `1px solid ${t.line}`,
-                  alignItems: "flex-start",
-                }}
-              >
-                <div style={{ display: "grid", placeItems: "center", width: 30, height: 30, borderRadius: 8, background: t.brandSoft, color: t.brand, marginTop: 2 }}>
-                  <Icon name="mail" size={14} />
+        emails.map((e) => {
+          const p = e.payload ?? {};
+          const from = str(p["from"]) ?? "unknown sender";
+          const subject = str(p["subject"]) ?? "(no subject)";
+          const direction = str(p["direction"]) ?? "inbound";
+          const role = str(p["party_role"]);
+          const received = str(p["received_at"]) ?? e.occurredAt;
+          const outbound = direction === "outbound";
+          return (
+            // `.filerow` is the divided list row: hairline between rows, none
+            // after the last one, which is what the hand-rolled version was
+            // computing with an index comparison.
+            <div key={e.id} className="filerow">
+              <Icon name="mail" size={15} />
+              <div className="grow grid g4">
+                <div className="row">
+                  <b>{subject}</b>
+                  <CellChip tone={outbound ? "pet" : "mut"}>{outbound ? "Sent" : "Received"}</CellChip>
+                  {role ? <CellChip tone="mut">{role}</CellChip> : null}
                 </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{subject}</span>
-                    <Pill bg={outbound ? t.petrolSoft : t.chip} color={outbound ? t.petrol : t.ink2}>
-                      {outbound ? "Sent" : "Received"}
-                    </Pill>
-                    {role && <Pill>{role}</Pill>}
-                  </div>
-                  <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 4 }}>
-                    {outbound ? "to " : "from "}{from}
-                  </div>
-                </div>
-                <div style={{ fontSize: 11, color: t.ink3, whiteSpace: "nowrap", marginTop: 2 }}>
-                  {fmt(received)}
-                </div>
+                <span className="sub">
+                  {outbound ? "to " : "from "}{from}
+                </span>
               </div>
-            );
-          })}
-        </div>
+              <span className="sub trunc">{fmt(received)}</span>
+            </div>
+          );
+        })
       )}
-    </Card>
+    </Panel>
   );
 }

@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Modal } from "@/components/design-system/Modal";
 import { Icon } from "@/components/design-system/Icon";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { Btn, Callout, cx, Sub } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 
 export type ReviewProgress = {
   review_id: string;
@@ -30,8 +29,20 @@ function stageIndex(stage: string): number {
   return i < 0 ? 0 : i;
 }
 
+// The dialog retitles itself as it runs, so the announced name is pinned here
+// instead — otherwise a screen-reader user hears the current stage and never
+// what they opened.
+const DIALOG_NAME = "Re-run AI review";
+
+const PHASE_TITLE: Record<"confirm" | "running" | "done" | "error", string> = {
+  confirm: "Re-run AI review",
+  running: "Running AI review…",
+  done: "Review complete",
+  error: "Review didn’t finish",
+};
+
 /**
- * In-app re-run dialog. Two phases in one themed modal (no browser confirm):
+ * In-app re-run dialog. Two phases in one dialog (no browser confirm):
  *  1. confirm — explains the action, Cancel / Run.
  *  2. running — a live progress bar + % + stage stepper, polling the backend's
  *     review-progress endpoint so the user sees exactly what the AI is doing.
@@ -51,7 +62,6 @@ export function RunReviewDialog({
   poll: (reviewId: string) => Promise<ReviewProgress>;
   onDone: (completed: boolean) => void;
 }) {
-  const { t } = useTheme();
   const [phase, setPhase] = useState<"confirm" | "running" | "done" | "error">("confirm");
   const [progress, setProgress] = useState<ReviewProgress | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
@@ -123,134 +133,110 @@ export function RunReviewDialog({
   }
 
   const pct = Math.max(0, Math.min(100, progress?.percent ?? 0));
+  const running = phase === "running";
 
   return (
-    <Modal open={open} onClose={phase === "running" ? () => undefined : onClose} size="md" closeOnBackdrop={phase !== "running"}>
-      <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 16 }}>
-        {phase === "confirm" ? (
+    <Drawer
+      open={open}
+      // A run in flight is not dismissible: no Escape, no backdrop, no close X.
+      // Same guard the Modal version carried, expressed the same way.
+      onClose={running ? () => undefined : onClose}
+      closeOnBackdrop={!running}
+      title={PHASE_TITLE[phase]}
+      ariaLabel={DIALOG_NAME}
+      width="md"
+      footer={
+        phase === "confirm" ? (
           <>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: t.brandSoft, color: t.brand, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Icon name="spark" size={17} />
-              </div>
-              <strong style={{ color: t.ink, fontSize: 16 }}>Re-run AI review</strong>
-            </div>
-            <p style={{ margin: 0, color: t.ink2, fontSize: 13.5, lineHeight: 1.55 }}>
-              This runs a fresh underwriting pass over every document currently uploaded to this
-              lead — including any new files — and updates the intelligence breakdown. Files that
-              were already analyzed are reused, so this is usually fast.
-            </p>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button type="button" style={qcBtn(t)} onClick={onClose}>Cancel</button>
-              <button type="button" style={qcBtnPrimary(t)} onClick={begin}>Run review</button>
-            </div>
+            <span className="grow" />
+            <Btn onClick={onClose}>Cancel</Btn>
+            <Btn variant="pri" onClick={begin}>
+              Run review
+            </Btn>
           </>
+        ) : phase === "done" ? (
+          <>
+            <span className="grow" />
+            <Btn variant="pri" onClick={() => finish(true)}>
+              View results
+            </Btn>
+          </>
+        ) : phase === "error" ? (
+          <>
+            <span className="grow" />
+            <Btn onClick={() => finish(false)}>Close</Btn>
+            <Btn variant="pri" onClick={begin}>
+              Try again
+            </Btn>
+          </>
+        ) : undefined
+      }
+    >
+      <div className="grid">
+        {phase === "confirm" ? (
+          <p className="sub">
+            This runs a fresh underwriting pass over every document currently uploaded to this lead —
+            including any new files — and updates the intelligence breakdown. Files that were already
+            analyzed are reused, so this is usually fast.
+          </p>
         ) : null}
 
-        {phase === "running" ? (
+        {running ? (
           <>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <Spinner color={t.brand} />
-              <strong style={{ color: t.ink, fontSize: 15 }}>Running AI review…</strong>
-              <span style={{ marginLeft: "auto", color: t.ink, fontSize: 15, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
+            <div className="row">
+              <Spinner />
+              <span className="grow sub">
+                {progress?.label || "Working…"}
+                {progress && progress.files_total > 0 ? ` · ${progress.files_done}/${progress.files_total} files` : ""}
+              </span>
+              <strong className="num">{pct}%</strong>
             </div>
 
-            <div style={{ height: 10, borderRadius: 999, background: t.surface2, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${pct}%`, background: t.brand, borderRadius: 999, transition: "width 400ms ease" }} />
+            {/* Data-derived width: the fill is the reported percentage, so it
+                has to be an inline value. Everything else is `.track`/`.fill`. */}
+            <div className="track" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Review progress">
+              <div className="fill" style={{ width: `${pct}%`, transition: "width 400ms ease" }} />
             </div>
 
-            <div style={{ color: t.ink2, fontSize: 13, minHeight: 18 }}>
-              {progress?.label || "Working…"}
-              {progress && progress.files_total > 0 ? (
-                <span style={{ color: t.ink3 }}> · {progress.files_done}/{progress.files_total} files</span>
-              ) : null}
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 2 }}>
+            <div className="grid g8">
               {STAGES.map((s, i) => {
                 const active = i === stageIndex(progress?.stage || "queued");
                 const done = i < stageIndex(progress?.stage || "queued");
                 return (
-                  <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 12.5 }}>
-                    <span
-                      style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: 999,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: done ? t.profit : active ? t.brand : t.surface2,
-                        color: done || active ? t.inverse : t.ink3,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {done ? <Icon name="check" size={11} /> : <span style={{ fontSize: 9, fontWeight: 800 }}>{i + 1}</span>}
-                    </span>
-                    <span style={{ color: active ? t.ink : done ? t.ink2 : t.ink3, fontWeight: active ? 700 : 500 }}>{s.label}</span>
-                  </div>
+                  <span key={s.key} className={cx("stepdot", (done || active) && "on")}>
+                    <i>{done ? <Icon name="check" size={11} /> : i + 1}</i>
+                    {s.label}
+                  </span>
                 );
               })}
             </div>
 
-            <p style={{ margin: 0, color: t.ink4, fontSize: 11.5, lineHeight: 1.5 }}>
-              You can keep this open — it updates as the AI works. Larger files take longer the
-              first time; after that they're cached and re-runs are quick.
-            </p>
+            <Sub>
+              You can keep this open — it updates as the AI works. Larger files take longer the first time;
+              after that they&apos;re cached and re-runs are quick.
+            </Sub>
           </>
         ) : null}
 
         {phase === "done" ? (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: t.profitBg, color: t.profit, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Icon name="check" size={18} />
-              </div>
-              <strong style={{ color: t.ink, fontSize: 16 }}>Review complete</strong>
-            </div>
-            <p style={{ margin: 0, color: t.ink2, fontSize: 13.5, lineHeight: 1.55 }}>
-              The underwriting breakdown has been refreshed{progress && progress.files_total ? ` across all ${progress.files_total} files` : ""}.
-            </p>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button type="button" style={qcBtnPrimary(t)} onClick={() => finish(true)}>View results</button>
-            </div>
-          </>
+          <Callout tone="ok" icon={<Icon name="check" size={18} />}>
+            The underwriting breakdown has been refreshed
+            {progress && progress.files_total ? ` across all ${progress.files_total} files` : ""}.
+          </Callout>
         ) : null}
 
         {phase === "error" ? (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: t.dangerBg, color: t.danger, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Icon name="x" size={17} />
-              </div>
-              <strong style={{ color: t.ink, fontSize: 16 }}>Review didn’t finish</strong>
-            </div>
-            <p style={{ margin: 0, color: t.ink2, fontSize: 13, lineHeight: 1.55 }}>{errorMsg}</p>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button type="button" style={qcBtn(t)} onClick={() => finish(false)}>Close</button>
-              <button type="button" style={qcBtnPrimary(t)} onClick={begin}>Try again</button>
-            </div>
-          </>
+          <Callout tone="bad" icon={<Icon name="x" size={17} />}>
+            {errorMsg}
+          </Callout>
         ) : null}
       </div>
-    </Modal>
+    </Drawer>
   );
 }
 
-function Spinner({ color }: { color: string }) {
-  return (
-    <span
-      style={{
-        width: 18,
-        height: 18,
-        borderRadius: 999,
-        border: `2.5px solid ${color}`,
-        borderTopColor: "transparent",
-        display: "inline-block",
-        animation: "qc-spin 0.7s linear infinite",
-      }}
-    >
-      <style>{"@keyframes qc-spin{to{transform:rotate(360deg)}}"}</style>
-    </span>
-  );
+// The ring itself is `.spinner` now; `.solo` is the standalone (non-in-button)
+// size and the accent tint the old `color` prop was always passed t.brand for.
+function Spinner() {
+  return <span className="spinner solo" />;
 }

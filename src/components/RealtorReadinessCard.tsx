@@ -6,11 +6,25 @@
 // facts, MISSING gaps, and the AI's next-best-action.
 //
 // Mirrored on mobile in /home/ubuntu/QCMobile/src/components/RealtorReadinessCard.tsx.
+//
+// Restyled onto the plain-CSS design system: the card is a `.panel` whose
+// header carries the score and the relationship chip, the readiness bar is
+// `.track`/`.fill`, the intent summary and the next-best-action are
+// `.callout`s, and the two lists sit on `.grid.cols-auto` so they collapse to
+// one column on a narrow rail instead of squeezing to 1fr/1fr. The two
+// colours still written inline are data-derived — see the comments.
 
 import type { RealtorClientProfile } from "@/lib/types";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import {
+  Btn,
+  Callout,
+  CellChip,
+  Panel,
+  StatusLine,
+  Sub,
+  type ChipTone,
+} from "@/components/ds";
 
 interface Props {
   profile: RealtorClientProfile;
@@ -18,7 +32,6 @@ interface Props {
 }
 
 export function RealtorReadinessCard({ profile, onOpenChat }: Props) {
-  const { t } = useTheme();
   const score = profile.readiness_score ?? 0;
   const ctype = profile.client_type;
   const headline =
@@ -33,58 +46,51 @@ export function RealtorReadinessCard({ profile, onOpenChat }: Props) {
   const nextQuestion = profile.next_best_question;
 
   return (
-    <Card pad={16}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-        <SectionLabel>{headline}</SectionLabel>
-        <span style={{
-          fontSize: 13, fontWeight: 800, color: t.ink,
-          fontFeatureSettings: '"tnum"',
-        }}>
-          {score}%
-        </span>
-        <RelationshipPill t={t} stage={profile.relationship_stage} />
-      </div>
-
-      {/* Progress bar */}
-      <div style={{
-        height: 8, borderRadius: 4, background: t.surface2,
-        border: `1px solid ${t.line}`, overflow: "hidden", marginBottom: 12,
-      }}>
-        <div style={{
-          height: "100%", width: `${score}%`,
-          background: score >= 70 ? t.profit : score >= 40 ? t.brand : t.warn,
-          transition: "width 0.3s ease",
-        }} />
+    <Panel
+      title={headline}
+      actions={
+        <>
+          <b className="num">{score}%</b>
+          <RelationshipChip stage={profile.relationship_stage} />
+        </>
+      }
+    >
+      {/* Progress bar. Both the width and the fill tint are read off the
+          score, so they stay inline; `.track`/`.fill` own everything else. */}
+      <div className="track">
+        <div
+          className="fill"
+          style={{
+            width: `${score}%`,
+            background:
+              score >= 70 ? "var(--ok)" : score >= 40 ? "var(--accent)" : "var(--warn)",
+            transition: "width 0.3s ease",
+          }}
+        />
       </div>
 
       {profile.intent_summary && (
-        <div style={{
-          padding: "8px 12px", borderRadius: 8,
-          background: t.brandSoft, color: t.ink2,
-          fontSize: 12.5, lineHeight: 1.45, marginBottom: 12,
-        }}>
+        <Callout tone="acc" className="mt">
           {profile.intent_summary}
-        </div>
+        </Callout>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div className="grid cols-auto mt">
         {/* KNOWN */}
         <div>
-          <div style={{
-            fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
-            textTransform: "uppercase", color: t.ink3, marginBottom: 6,
-          }}>
-            Known
-          </div>
+          <div className="lbl mb">Known</div>
           {known.length === 0 ? (
-            <div style={{ fontSize: 12, color: t.ink3, fontStyle: "italic" }}>
-              Nothing captured yet — talk to Elara about this client to start filling this in.
-            </div>
+            <Sub>
+              <em>Nothing captured yet — talk to Elara about this client to start filling this in.</em>
+            </Sub>
           ) : (
-            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
+            <ul className="grid g4">
               {known.map((line, i) => (
-                <li key={i} style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.45 }}>
-                  <span style={{ color: t.profit, marginRight: 6 }}>✓</span>
+                <li className="sub" key={i}>
+                  {/* Tone is the column's meaning, not the glyph's: a captured
+                      fact is a positive. No chip class fits an inline marker
+                      without turning it into a pill. */}
+                  <span style={{ color: "var(--ok)", marginRight: 6 }}>✓</span>
                   {line}
                 </li>
               ))}
@@ -94,21 +100,15 @@ export function RealtorReadinessCard({ profile, onOpenChat }: Props) {
 
         {/* MISSING */}
         <div>
-          <div style={{
-            fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
-            textTransform: "uppercase", color: t.ink3, marginBottom: 6,
-          }}>
-            Missing
-          </div>
+          <div className="lbl mb">Missing</div>
           {missing.length === 0 ? (
-            <div style={{ fontSize: 12, color: t.profit, fontWeight: 700 }}>
-              All known — ready to advance.
-            </div>
+            <StatusLine tone="ok">All known — ready to advance.</StatusLine>
           ) : (
-            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
+            <ul className="grid g4">
               {missing.map((field) => (
-                <li key={field} style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.45 }}>
-                  <span style={{ color: t.warn, marginRight: 6 }}>•</span>
+                <li className="sub" key={field}>
+                  {/* Same call as the ✓ above: an open gap is a warning. */}
+                  <span style={{ color: "var(--warn)", marginRight: 6 }}>•</span>
                   {prettifyField(field)}
                 </li>
               ))}
@@ -118,46 +118,24 @@ export function RealtorReadinessCard({ profile, onOpenChat }: Props) {
       </div>
 
       {(nextQuestion || nextAction) && (
-        <div style={{
-          marginTop: 14, padding: "10px 12px",
-          borderRadius: 9, border: `1px dashed ${t.line}`,
-          background: t.surface2,
-        }}>
-          <div style={{
-            fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
-            textTransform: "uppercase", color: t.ink3, marginBottom: 4,
-          }}>
-            Next best {nextAction ? "action" : "question"}
-          </div>
-          <div style={{ fontSize: 12.5, color: t.ink, lineHeight: 1.5 }}>
-            {nextAction || nextQuestion}
-          </div>
-        </div>
+        <Callout className="mt">
+          <div className="lbl">Next best {nextAction ? "action" : "question"}</div>
+          <div>{nextAction || nextQuestion}</div>
+        </Callout>
       )}
 
       {onOpenChat && (
-        <button
-          onClick={onOpenChat}
-          style={{
-            marginTop: 12,
-            padding: "8px 12px", borderRadius: 9,
-            background: t.brand, color: t.inverse, border: "none",
-            fontSize: 12.5, fontWeight: 700, cursor: "pointer",
-            display: "inline-flex", alignItems: "center", gap: 6,
-          }}
-        >
+        <Btn variant="pri" className="mt" onClick={onOpenChat}>
           <Icon name="chat" size={12} /> Open AI thread for this client
-        </button>
+        </Btn>
       )}
-    </Card>
+    </Panel>
   );
 }
 
-function RelationshipPill({
-  t,
+function RelationshipChip({
   stage,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   stage: RealtorClientProfile["relationship_stage"];
 }) {
   const labelMap: Record<RealtorClientProfile["relationship_stage"], string> = {
@@ -174,14 +152,8 @@ function RelationshipPill({
   };
   const positive = stage === "active_client" || stage === "finance_ready" || stage === "handoff_to_lending" || stage === "under_contract" || stage === "closed";
   const danger = stage === "lost";
-  return (
-    <Pill
-      bg={danger ? t.dangerBg : positive ? t.profitBg : t.surface2}
-      color={danger ? t.danger : positive ? t.profit : t.ink3}
-    >
-      {labelMap[stage] ?? stage}
-    </Pill>
-  );
+  const tone: ChipTone = danger ? "bad" : positive ? "ok" : "mut";
+  return <CellChip tone={tone}>{labelMap[stage] ?? stage}</CellChip>;
 }
 
 function collectKnown(profile: RealtorClientProfile): string[] {

@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { useTheme } from "./ThemeProvider";
+import { cx } from "@/components/ds";
 import { Icon } from "./Icon";
+
+// Restyled onto the plain-CSS design system (globals.css + app-extras.css).
+// Every export and every prop signature below is UNCHANGED — 200+ files render
+// these — but the chrome now comes from classes rather than from `t.*` reads.
+// Where a value is data-derived (a caller-supplied colour, a size prop, a
+// computed bar width) it stays inline and says so at the site.
 
 // — Card —
 export function Card({
@@ -29,7 +35,9 @@ export function Card({
   return (
     <div
       onClick={onClick}
-      className={["card", className].filter(Boolean).join(" ")}
+      className={cx("card", className)}
+      // `pad` is a caller-supplied override of `.card`'s padding: exactly one
+      // of the two applies, and the inline one wins deliberately.
       style={pad != null ? { padding: pad, ...style } : style}
     >
       {children}
@@ -46,36 +54,12 @@ export function SectionLabel({
   action?: ReactNode;
   style?: CSSProperties;
 }) {
-  const { t } = useTheme();
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "baseline",
-        justifyContent: "space-between",
-        padding: "0 4px",
-        marginBottom: 10,
-        ...style,
-      }}
-    >
-      <div
-        style={{
-          // The app has no heading component; these four primitives are the
-          // only heading-shaped surfaces, so Inter Tight goes here and is not
-          // chased across the ~6,900 bespoke inline styles.
-          fontFamily: "var(--font-inter-tight), var(--font-inter), system-ui, sans-serif",
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: 1.6,
-          textTransform: "uppercase",
-          color: t.ink3,
-        }}
-      >
-        {children}
-      </div>
-      {action && (
-        <div style={{ fontSize: 13, fontWeight: 600, color: t.ink2 }}>{action}</div>
-      )}
+    // `.seclbl` (app-extras) owns the baseline-aligned label/action row.
+    // `style` stays a passthrough because 36 call sites nudge its margins.
+    <div className="seclbl" style={style}>
+      <div className="lbl">{children}</div>
+      {action && <div className="seclbl-a">{action}</div>}
     </div>
   );
 }
@@ -91,23 +75,18 @@ export function Pill({
   bg?: string;
   style?: CSSProperties;
 }) {
-  const { t } = useTheme();
+  // `.cellchip` owns the geometry and deliberately sets neither background nor
+  // colour, so the tone has exactly one owner: the `.c-mut` class by default,
+  // or the caller's data-derived pair. Never both.
+  const tinted = color != null || bg != null;
   return (
     <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 5,
-        padding: "4px 9px",
-        borderRadius: 999,
-        fontSize: 11.5,
-        fontWeight: 600,
-        letterSpacing: 0.2,
-        background: bg ?? t.chip,
-        color: color ?? t.ink2,
-        whiteSpace: "nowrap",
-        ...style,
-      }}
+      className={cx("cellchip", !tinted && "c-mut")}
+      style={
+        tinted
+          ? { background: bg ?? "var(--sunken)", color: color ?? "var(--muted)", ...style }
+          : style
+      }
     >
       {children}
     </span>
@@ -139,6 +118,8 @@ export function Sparkline({
   });
   const path = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
   const area = `${path} L${width},${height} L0,${height} Z`;
+  // Measured geometry: every attribute here is computed from `data`, and the
+  // overflow lets the last-point dot sit proud of the viewBox.
   return (
     <svg width={width} height={height} style={{ overflow: "visible" }}>
       {fill && <path d={area} fill={color} opacity={0.12} />}
@@ -150,66 +131,20 @@ export function Sparkline({
 
 // — VerifiedBadge — petrol "Center of Truth" tint (port of design primitives.jsx)
 export function VerifiedBadge({ kind = "verified" }: { kind?: "verified" | "pending" | "flagged" }) {
-  const { t } = useTheme();
   if (kind === "pending") {
     return (
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 4,
-          padding: "2px 7px",
-          borderRadius: 999,
-          background: t.warnBg,
-          color: t.warn,
-          fontSize: 10,
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: 0.6,
-        }}
-      >
-        <span style={{ width: 5, height: 5, borderRadius: 999, background: t.warn }} />
+      <span className="cellchip caps c-warn">
+        {/* `.cellchip > .repdot` sizes and tints it from the chip. */}
+        <span className="repdot" />
         Pending
       </span>
     );
   }
   if (kind === "flagged") {
-    return (
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 4,
-          padding: "2px 7px",
-          borderRadius: 999,
-          background: t.dangerBg,
-          color: t.danger,
-          fontSize: 10,
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: 0.6,
-        }}
-      >
-        Flagged
-      </span>
-    );
+    return <span className="cellchip caps c-bad">Flagged</span>;
   }
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        padding: "2px 7px",
-        borderRadius: 999,
-        background: t.petrolSoft,
-        color: t.petrol,
-        fontSize: 10,
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: 0.6,
-      }}
-    >
+    <span className="cellchip caps c-pet">
       <Icon name="shieldChk" size={9} stroke={2.5} />
       Verified
     </span>
@@ -228,21 +163,24 @@ export function Avatar({
   size?: number;
   ring?: boolean;
 }) {
-  const { t } = useTheme();
+  // `.avatar` in globals.css is a fixed 30px identity chip for the sidebar
+  // foot. This one is fully parameterised — size drives width, height, radius
+  // and font-size, and `color` is caller-supplied — so the geometry is
+  // data-derived and stays inline. Only the palette moved onto the sheet.
   return (
     <div
       style={{
         width: size,
         height: size,
         borderRadius: size / 2,
-        background: color ?? t.brand,
-        color: t.inverse,
+        background: color ?? "var(--accent)",
+        color: "#fff",
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
         fontWeight: 700,
         fontSize: size * 0.4,
-        boxShadow: ring ? `0 0 0 2px ${t.surface}, 0 0 0 4px ${t.line}` : undefined,
+        boxShadow: ring ? "0 0 0 2px var(--surface), 0 0 0 4px var(--line)" : undefined,
         flexShrink: 0,
       }}
     >
@@ -269,76 +207,38 @@ export function KPI({
   accent?: string;
   icon?: string;
 }) {
-  const { t } = useTheme();
   const positive = delta != null && delta >= 0;
   return (
-    <div
-      style={{
-        background: t.surface,
-        border: `1px solid ${t.line}`,
-        borderRadius: 14,
-        padding: 16,
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: 1.4,
-            textTransform: "uppercase",
-            color: t.ink3,
-          }}
-        >
-          {label}
-        </div>
+    <div className="kpi">
+      <div className="row">
+        <div className="lbl grow">{label}</div>
         {icon && (
-          <div style={{ color: accent || t.ink3, display: "inline-flex" }}>
+          // `accent` is a caller-supplied tint for the corner glyph.
+          <span style={{ color: accent || "var(--muted)", display: "inline-flex" }}>
             <Icon name={icon} size={14} />
-          </div>
-        )}
-      </div>
-      <div
-        style={{
-          fontFamily: "var(--font-inter-tight), var(--font-inter), system-ui, sans-serif",
-          fontSize: 26,
-          fontWeight: 700,
-          color: t.ink,
-          letterSpacing: -0.6,
-          fontFeatureSettings: '"tnum"',
-        }}
-      >
-        {value}
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-        {delta != null && (
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 3,
-              padding: "2px 7px",
-              borderRadius: 6,
-              background: positive ? t.profitBg : t.dangerBg,
-              color: positive ? t.profit : t.danger,
-              fontWeight: 700,
-            }}
-          >
-            <Icon name={positive ? "trend" : "trendDn"} size={11} stroke={2.4} />
-            {(positive ? "+" : "") + delta}
-            {deltaSuffix}
           </span>
         )}
-        {sub && <span style={{ color: t.ink3 }}>{sub}</span>}
       </div>
+      <div className="knum num">{value}</div>
+      {(delta != null || sub) && (
+        <div className="kdelta row">
+          {delta != null && (
+            <span className={cx("cellchip", positive ? "c-ok" : "c-bad")}>
+              <Icon name={positive ? "trend" : "trendDn"} size={11} stroke={2.4} />
+              {(positive ? "+" : "") + delta}
+              {deltaSuffix}
+            </span>
+          )}
+          {sub && <span className="sub">{sub}</span>}
+        </div>
+      )}
     </div>
   );
 }
 
 // — TopButton — header pill button (used in TopBar)
+// Nothing imports this any more — TopBar builds its own header controls — but
+// it is migrated rather than dropped: deleting an export is a separate call.
 export function TopButton({
   icon,
   children,
@@ -352,47 +252,16 @@ export function TopButton({
   active?: boolean;
   badge?: number | null;
 }) {
-  const { t } = useTheme();
   return (
     <button
+      type="button"
       onClick={onClick}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        position: "relative",
-        padding: "8px 12px",
-        borderRadius: 10,
-        background: active ? t.brandSoft : "transparent",
-        color: active ? t.ink : t.ink2,
-        border: `1px solid ${active ? t.line : "transparent"}`,
-        fontSize: 13,
-        fontWeight: 600,
-        cursor: "pointer",
-        fontFamily: "inherit",
-      }}
+      aria-pressed={active}
+      className={cx("btn", active && "tone-acc")}
     >
       {icon && <Icon name={icon} size={16} />}
       {children}
-      {badge != null && badge > 0 && (
-        <span
-          style={{
-            minWidth: 18,
-            height: 18,
-            padding: "0 5px",
-            borderRadius: 999,
-            background: t.danger,
-            color: t.inverse,
-            fontSize: 10,
-            fontWeight: 700,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {badge}
-        </span>
-      )}
+      {badge != null && badge > 0 && <span className="cnt sm">{badge}</span>}
     </button>
   );
 }
@@ -408,34 +277,14 @@ const STAGE_LABELS = [
 ];
 
 export function StageBadge({ stage, label }: { stage: number; label?: string }) {
-  const { t } = useTheme();
-  const map = [
-    { bg: t.chip, fg: t.ink2 },
-    { bg: t.warnBg, fg: t.warn },
-    { bg: t.petrolSoft, fg: t.petrol },
-    { bg: t.brandSoft, fg: t.brand },
-    { bg: t.warnBg, fg: t.warn },
-    { bg: t.profitBg, fg: t.profit },
-  ];
-  const { bg, fg } = map[stage] ?? map[0];
+  // The tone is chosen from the stage number, but it resolves to one of the
+  // sheet's `c-*` classes rather than to a pair of hex values.
+  const tones = ["c-mut", "c-warn", "c-pet", "c-acc", "c-warn", "c-ok"];
+  const tone = tones[stage] ?? tones[0];
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 5,
-        padding: "3px 9px",
-        borderRadius: 999,
-        background: bg,
-        color: fg,
-        fontSize: 11,
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: 0.6,
-        whiteSpace: "nowrap",
-      }}
-    >
-      <span style={{ width: 6, height: 6, borderRadius: 999, background: fg }} />
+    <span className={cx("cellchip", "caps", tone)}>
+      {/* `.cellchip > .repdot` sizes and tints it from the chip. */}
+      <span className="repdot" />
       {label ?? STAGE_LABELS[stage] ?? "—"}
     </span>
   );
@@ -451,18 +300,20 @@ export function StageBar({
   current: number;
   accent?: string;
 }) {
-  const { t } = useTheme();
-  const ac = accent || t.petrol;
+  const ac = accent || "var(--petrol)";
   return (
+    // A segmented progress rail: `.track`/`.fill` are one bar with a computed
+    // width, this is N equal segments, so the track stays bespoke.
     <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
       {Array.from({ length: stages }).map((_, i) => (
         <div
           key={i}
+          // Filled state is derived from `current`.
           style={{
             flex: 1,
             height: 4,
             borderRadius: 2,
-            background: i <= current ? ac : t.line,
+            background: i <= current ? ac : "var(--line)",
           }}
         />
       ))}
@@ -490,18 +341,19 @@ export function Panel({
   // Renders `.panel` / `.panel-h` / `.panel-b`. One flat container with a
   // header hairline, replacing the card-in-card nesting this used to produce.
   return (
-    <div className={["panel", className].filter(Boolean).join(" ")} style={style}>
+    <div className={cx("panel", className)} style={style}>
       {(title || action) && (
         <div className="panel-h">
-          {title && <h3 style={{ fontSize: 14, margin: 0 }}>{title}</h3>}
+          {title && <h3>{title}</h3>}
           {action && (
             <>
-              <span style={{ flex: 1 }} />
+              <span className="sp" />
               {action}
             </>
           )}
         </div>
       )}
+      {/* `pad` is a caller-supplied override of `.panel-b`'s padding. */}
       <div className="panel-b" style={pad != null ? { padding: pad } : undefined}>
         {children}
       </div>
@@ -556,25 +408,13 @@ export function SortableTableHead({
   sort: SortState;
   onSort: (key: string) => void;
 }) {
-  const { t } = useTheme();
   return (
+    // A div pretending to be a <thead>: the column track is built from `cols`,
+    // so it is data-derived and cannot become a class. `.tbl th` is the class
+    // for this look but only applies inside a real <table>, which this is not.
     <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: cols.map((c) => c.w || "1fr").join(" "),
-        gap: 10,
-        padding: "10px 14px",
-        fontSize: 11,
-        fontWeight: 700,
-        letterSpacing: 1.2,
-        textTransform: "uppercase",
-        color: t.ink3,
-        borderBottom: `1px solid ${t.line}`,
-        background: t.surface2,
-        position: "sticky",
-        top: 0,
-        zIndex: 1,
-      }}
+      className="gridhd"
+      style={{ gridTemplateColumns: cols.map((c) => c.w || "1fr").join(" ") }}
     >
       {cols.map((c, i) => {
         const sortable = !!c.key;
@@ -583,37 +423,22 @@ export function SortableTableHead({
         return (
           <button
             key={i}
+            type="button"
             onClick={() => sortable && c.key && onSort(c.key)}
             disabled={!sortable}
+            className={cx("gridhd-c", active && "on")}
+            // Alignment is per-column data.
             style={{
-              all: "unset",
-              cursor: sortable ? "pointer" : "default",
               textAlign: c.align || "left",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
               justifyContent:
                 c.align === "right" ? "flex-end" : c.align === "center" ? "center" : "flex-start",
-              color: active ? t.ink : t.ink3,
-              fontWeight: 700,
-              letterSpacing: 1.2,
-              textTransform: "uppercase",
-              userSelect: "none",
             }}
           >
             {c.label}
             {sortable && (
-              <span
-                style={{
-                  display: "inline-flex",
-                  flexDirection: "column",
-                  lineHeight: 0.6,
-                  fontSize: 9,
-                  opacity: active ? 1 : 0.4,
-                }}
-              >
-                <span style={{ color: dir === "asc" ? t.ink : "currentColor" }}>▲</span>
-                <span style={{ color: dir === "desc" ? t.ink : "currentColor" }}>▼</span>
+              <span className="sortarr" style={{ opacity: active ? 1 : 0.4 }}>
+                <span style={{ color: dir === "asc" ? "var(--ink)" : "currentColor" }}>▲</span>
+                <span style={{ color: dir === "desc" ? "var(--ink)" : "currentColor" }}>▼</span>
               </span>
             )}
           </button>
@@ -634,32 +459,19 @@ export function TableRow({
   onClick?: () => void;
   active?: boolean;
 }) {
-  const { t } = useTheme();
   return (
     <div
       onClick={onClick}
+      className={cx("gridrow", active && "on")}
+      // Column track comes from `cols`; the pointer affordance from `onClick`.
       style={{
-        display: "grid",
         gridTemplateColumns: cols.map((c) => c.w || "1fr").join(" "),
-        gap: 10,
-        padding: "12px 14px",
-        borderBottom: `1px solid ${t.line}`,
         cursor: onClick ? "pointer" : "default",
-        background: active ? t.brandSoft : "transparent",
-        alignItems: "center",
-        fontSize: 13,
       }}
     >
       {values.map((v, i) => (
-        <div
-          key={i}
-          style={{
-            textAlign: cols[i].align || "left",
-            minWidth: 0,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
+        // Per-column alignment is data.
+        <div key={i} className="trunc" style={{ textAlign: cols[i].align || "left" }}>
           {v}
         </div>
       ))}
@@ -679,28 +491,9 @@ export function useToast() {
 }
 
 export function Toast({ msg }: { msg: string | null }) {
-  const { t } = useTheme();
   if (!msg) return null;
   return (
-    <div
-      style={{
-        position: "fixed",
-        bottom: 28,
-        left: "50%",
-        transform: "translateX(-50%)",
-        background: t.ink,
-        color: t.inverse,
-        padding: "10px 16px",
-        borderRadius: 10,
-        fontSize: 13,
-        fontWeight: 600,
-        boxShadow: t.shadowLg,
-        zIndex: 200,
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-      }}
-    >
+    <div className="toast" role="status" aria-live="polite">
       <Icon name="check" size={14} stroke={3} />
       {msg}
     </div>

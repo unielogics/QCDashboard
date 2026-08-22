@@ -214,22 +214,18 @@ function ThreadRow({
     <button
       type="button"
       onClick={onClick}
-      className={cx("pick", active && "on")}
-      style={{ width: "100%", textAlign: "left" }}
+      className={cx("pick", "btnreset", active && "on")}
     >
-      <span style={{ flex: 1, minWidth: 0 }}>
+      <span className="grow">
+        {/* Bespoke: title and date on one line that must not wrap — `.row`
+            wraps, which would drop the date under the deal id. */}
         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* Data-derived: channel colour, or danger when unread. */}
           <span className="repdot" style={{ background: dot }} />
           <span
-            style={{
-              fontSize: 13,
-              fontWeight: unread ? 800 : 700,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              minWidth: 0,
-              flex: 1,
-            }}
+            className="trunc"
+            // `.trunc` owns the ellipsis; the weight is read state.
+            style={{ fontWeight: unread ? 800 : 700, flex: 1 }}
           >
             {title}
           </span>
@@ -241,6 +237,9 @@ function ThreadRow({
         </span>
         <span
           className="sub"
+          // Bespoke: a two-line clamp. `.trunc` is the ONE-line ellipsis and
+          // a preview that gets one line is a preview that says nothing. The
+          // italic is data — it marks a thread that has not started.
           style={{
             display: "-webkit-box",
             WebkitLineClamp: 2,
@@ -330,12 +329,11 @@ function OperatorMessagesView() {
               key={l.id}
               type="button"
               onClick={() => setActiveLoan(l.id)}
-              className={cx("pick", activeLoan === l.id && "on")}
-              style={{ width: "100%", textAlign: "left" }}
+              className={cx("pick", "btnreset", activeLoan === l.id && "on")}
             >
-              <span style={{ flex: 1, minWidth: 0 }}>
+              <span className="grow">
                 <span className="lbl" style={{ display: "block" }}>{l.deal_id}</span>
-                <span style={{ display: "block", fontSize: 13, fontWeight: 700, marginTop: 2 }}>
+                <span className="trunc" style={{ display: "block", fontWeight: 700, marginTop: 2 }}>
                   {l.address}
                 </span>
               </span>
@@ -413,6 +411,9 @@ function OperatorMessagesView() {
               onKeyDown={onKey}
               placeholder={activeLoan ? "Type a message…" : "Select a thread to start typing"}
               disabled={!activeLoan}
+              // Data-derived: the composer dims until a thread is picked.
+              // `.field` carries no disabled state and one input in the whole
+              // app needs one, which is not a class.
               style={{ opacity: activeLoan ? 1 : 0.5 }}
             />
             <Btn

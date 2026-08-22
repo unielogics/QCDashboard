@@ -189,9 +189,9 @@ export default function VendorBucketsPage() {
               >
                 {/* Bespoke: two stacked lines that each truncate. `.pick` is a
                     centred row, so the stack lives in its own child. */}
-                <span style={{ display: "grid", gap: 2, minWidth: 0, flex: 1, textAlign: "left" }}>
-                  <b style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{bucket.name}</b>
-                  <span className="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span className="grow" style={{ display: "grid", gap: 2, textAlign: "left" }}>
+                  <b className="trunc">{bucket.name}</b>
+                  <span className="sub trunc">
                     {bucket.client_name || "No client"} | {bucket.uploaded_file_count ?? 0} files
                   </span>
                 </span>
@@ -248,7 +248,7 @@ export default function VendorBucketsPage() {
                         <Td>{formatDate(file.created_at)}</Td>
                         <Td align="r">{typeof file.size_bytes === "number" ? formatSize(file.size_bytes) : "Unknown size"}</Td>
                         <Td align="r">
-                          <div className="row" style={{ justifyContent: "flex-end" }}>
+                          <div className="row end">
                             {file.preview_url ? (
                               <Btn size="sm" onClick={() => setReviewFile(file)}>
                                 <Icon name="eye" size={13} />

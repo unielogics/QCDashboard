@@ -14,9 +14,15 @@
 //      the operator wants to attach without matching a slot. Lands as
 //      a Document with is_other=true; the scanner still runs and
 //      proposes a slot via the chat routing flow.
+//
+// Restyled onto the plain-CSS design system. The hand-rolled overlay
+// became `Drawer`, which adds Escape-to-close, focus return and a body
+// scroll lock; the JS mouseenter/mouseleave hover swap on each slot row
+// is now `.pick:hover`.
 
 import { useRef, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { Btn, Callout, CellChip, StatusLine, Sub, type ChipTone } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import { useUploadDocument } from "@/hooks/useApi";
 import type { Document } from "@/lib/types";
@@ -29,7 +35,6 @@ interface Props {
 }
 
 export function UploadOnBehalfModal({ open, onClose, loanId, docs }: Props) {
-  const { t } = useTheme();
   const upload = useUploadDocument();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   // Document we're currently uploading TO. null = "upload as new".
@@ -82,145 +87,67 @@ export function UploadOnBehalfModal({ open, onClose, loanId, docs }: Props) {
   if (!open) return null;
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 80,
-        background: "rgba(0,0,0,0.32)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-      }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Upload on behalf of the client"
+      width="md"
+      bodyClass="grid"
     >
-      <div style={{
-        width: "min(620px, 96vw)",
-        maxHeight: "86vh",
-        background: t.surface,
-        borderRadius: 14,
-        border: `1px solid ${t.line}`,
-        boxShadow: "0 24px 48px rgba(0,0,0,0.22)",
-        display: "flex",
-        flexDirection: "column",
-      }}>
-        <header style={{
-          display: "flex", alignItems: "center", gap: 10,
-          padding: "14px 18px",
-          borderBottom: `1px solid ${t.line}`,
-        }}>
-          <Icon name="doc" size={14} />
-          <span style={{ fontSize: 14, fontWeight: 900, color: t.ink }}>
-            Upload on behalf of the client
-          </span>
-          <div style={{ flex: 1 }} />
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              all: "unset", cursor: "pointer",
-              padding: 6, borderRadius: 6,
-              color: t.ink3, fontSize: 18, fontWeight: 900, lineHeight: 1,
-            }}
-          >×</button>
-        </header>
+      <Callout tone="acc" icon={<Icon name="ai" size={13} stroke={2.2} />}>
+        <strong>AI analyzes every upload.</strong> Whichever slot you pick (or &quot;upload as new&quot;),
+        the scanner verifies the file matches the expected content + posts notes to the loan chat.
+      </Callout>
 
-        <div style={{
-          padding: "10px 18px",
-          background: t.brandSoft,
-          color: t.brand,
-          fontSize: 12, fontWeight: 700, lineHeight: 1.5,
-          borderBottom: `1px solid ${t.line}`,
-          display: "flex", alignItems: "flex-start", gap: 8,
-        }}>
-          <Icon name="ai" size={13} stroke={2.2} style={{ marginTop: 1 }} />
-          <span>
-            <strong>AI analyzes every upload.</strong> Whichever slot you pick (or "upload as new"),
-            the scanner verifies the file matches the expected content + posts notes to the loan chat.
-          </span>
-        </div>
-
-        <div style={{ overflow: "auto", padding: 18, flex: 1, minHeight: 0 }}>
-          <SectionLabel>Pick a slot to fulfill</SectionLabel>
-          {openSlots.length === 0 ? (
-            <div style={{
-              padding: 14, borderRadius: 9,
-              background: t.surface2, color: t.ink3,
-              fontSize: 12.5, fontWeight: 700,
-              border: `1px dashed ${t.line}`,
-              textAlign: "center",
-            }}>
-              No open slots — every requested document has been received. Use "Upload as new" below.
+      <div>
+        <div className="lbl">Pick a slot to fulfill</div>
+        {openSlots.length === 0 ? (
+          <div className="hintbox mt">
+            <div className="grow">
+              No open slots — every requested document has been received. Use &quot;Upload as new&quot; below.
             </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-              {openSlots.map((d) => (
-                <SlotRow
-                  key={d.id}
-                  doc={d}
-                  disabled={busy}
-                  onPick={() => triggerPicker(d.id)}
-                />
-              ))}
-            </div>
-          )}
-
-          <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px solid ${t.line}` }}>
-            <SectionLabel>Off-checklist</SectionLabel>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => triggerPicker(null)}
-              style={{
-                marginTop: 8,
-                width: "100%",
-                display: "flex", alignItems: "center", gap: 10,
-                padding: 12, borderRadius: 10,
-                background: t.surface,
-                border: `1px dashed ${t.lineStrong}`,
-                color: t.ink,
-                fontSize: 13, fontWeight: 800,
-                cursor: busy ? "wait" : "pointer",
-                textAlign: "left",
-                fontFamily: "inherit",
-              }}
-            >
-              <Icon name="plus" size={14} />
-              <span style={{ flex: 1 }}>Upload as new (not on checklist)</span>
-              <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>
-                AI will propose a slot
-              </span>
-            </button>
           </div>
-
-          {feedback ? (
-            <div style={{
-              marginTop: 14,
-              padding: 10, borderRadius: 9,
-              background: feedback.kind === "ok" ? t.profitBg : t.dangerBg,
-              color: feedback.kind === "ok" ? t.profit : t.danger,
-              fontSize: 12, fontWeight: 800,
-            }}>
-              {feedback.text}
-            </div>
-          ) : null}
-          {busy ? (
-            <div style={{ marginTop: 12, fontSize: 12, color: t.ink3, fontWeight: 700, textAlign: "center" }}>
-              Uploading…
-            </div>
-          ) : null}
-        </div>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          style={{ display: "none" }}
-          onChange={(e) => onFile(e.target.files?.[0] ?? null)}
-        />
+        ) : (
+          <div className="picklist mt">
+            {openSlots.map((d) => (
+              <SlotRow
+                key={d.id}
+                doc={d}
+                disabled={busy}
+                onPick={() => triggerPicker(d.id)}
+              />
+            ))}
+          </div>
+        )}
       </div>
-    </div>
+
+      <div style={{ paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+        <div className="lbl mb">Off-checklist</div>
+        <Btn
+          className="ctrl-block"
+          disabled={busy}
+          onClick={() => triggerPicker(null)}
+        >
+          <Icon name="plus" size={14} />
+          <span className="grow" style={{ textAlign: "left" }}>Upload as new (not on checklist)</span>
+          <Sub>AI will propose a slot</Sub>
+        </Btn>
+      </div>
+
+      {feedback ? (
+        <StatusLine tone={feedback.kind === "ok" ? "ok" : "bad"}>{feedback.text}</StatusLine>
+      ) : null}
+      {busy ? <Sub>Uploading…</Sub> : null}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        // Functional, not decorative: the picker is opened programmatically
+        // and the control itself must never be laid out.
+        style={{ display: "none" }}
+        onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+      />
+    </Drawer>
   );
 }
 
@@ -232,101 +159,55 @@ function SlotRow({
   disabled: boolean;
   onPick: () => void;
 }) {
-  const { t } = useTheme();
   const scanLabel = scanBadge(doc.ai_scan_status);
   return (
     <button
       type="button"
+      className="pick"
       onClick={onPick}
       disabled={disabled}
-      style={{
-        all: "unset",
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "10px 12px",
-        borderRadius: 10,
-        border: `1px solid ${t.line}`,
-        background: t.surface,
-        cursor: disabled ? "wait" : "pointer",
-        fontFamily: "inherit",
-      }}
-      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = t.surface2; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = t.surface; }}
+      // State-derived, and deliberately overrides `.pick`'s pointer: an
+      // upload is in flight and this row cannot be picked right now.
+      style={disabled ? { cursor: "wait" } : undefined}
     >
-      <Icon name="doc" size={14} style={{ color: t.ink3 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 800, color: t.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {doc.name}
-        </div>
-        <div style={{ fontSize: 11, color: t.ink3 }}>
+      <Icon name="doc" size={14} />
+      <div className="grow">
+        <div className="trunc" style={{ fontWeight: 700 }}>{doc.name}</div>
+        <div className="sub">
           {doc.category ?? "uncategorized"}
           {doc.checklist_key ? ` · ${doc.checklist_key}` : doc.is_other ? " · custom" : ""}
         </div>
       </div>
       {scanLabel ? (
-        <span style={{
-          fontSize: 9.5, fontWeight: 900,
-          padding: "2px 6px", borderRadius: 4,
-          background: scanLabel.bg(t), color: scanLabel.fg(t),
-          letterSpacing: 0.3, textTransform: "uppercase",
-        }}>
-          {scanLabel.label}
-        </span>
+        <CellChip className="caps" tone={scanLabel.tone}>{scanLabel.label}</CellChip>
       ) : null}
-      <span style={{
-        fontSize: 11, fontWeight: 800,
-        padding: "3px 8px", borderRadius: 6,
-        background: statusBg(doc.status, t), color: statusFg(doc.status, t),
-        textTransform: "uppercase", letterSpacing: 0.3,
-      }}>
-        {doc.status}
-      </span>
-      <Icon name="arrowR" size={12} style={{ color: t.ink3 }} />
+      <CellChip className="caps" tone={statusTone(doc.status)}>{doc.status}</CellChip>
+      <Icon name="arrowR" size={12} />
     </button>
   );
 }
 
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  const { t } = useTheme();
-  return (
-    <div style={{
-      fontSize: 10.5, fontWeight: 900, letterSpacing: 1.0,
-      textTransform: "uppercase", color: t.ink3,
-    }}>
-      {children}
-    </div>
-  );
-}
-
-
-function scanBadge(status: string | undefined | null): { label: string; bg: (t: ReturnType<typeof useTheme>["t"]) => string; fg: (t: ReturnType<typeof useTheme>["t"]) => string } | null {
+function scanBadge(status: string | undefined | null): { label: string; tone: ChipTone } | null {
   if (!status || status === "unscanned") return null;
   switch (status) {
     case "queued":
     case "scanning":
-      return { label: "AI scanning", bg: (t) => t.brandSoft, fg: (t) => t.brand };
+      return { label: "AI scanning", tone: "acc" };
     case "verified":
-      return { label: "AI verified", bg: (t) => t.profitBg, fg: (t) => t.profit };
+      return { label: "AI verified", tone: "ok" };
     case "flagged":
-      return { label: "AI flagged", bg: (t) => t.dangerBg, fg: (t) => t.danger };
+      return { label: "AI flagged", tone: "bad" };
     case "failed":
-      return { label: "Elara failed", bg: (t) => t.warnBg, fg: (t) => t.warn };
+      return { label: "Elara failed", tone: "warn" };
     default:
       return null;
   }
 }
 
-function statusBg(s: string, t: ReturnType<typeof useTheme>["t"]) {
-  if (s === "verified") return t.profitBg;
-  if (s === "received") return t.brandSoft;
-  if (s === "flagged") return t.dangerBg;
-  return t.warnBg;
-}
-function statusFg(s: string, t: ReturnType<typeof useTheme>["t"]) {
-  if (s === "verified") return t.profit;
-  if (s === "received") return t.brand;
-  if (s === "flagged") return t.danger;
-  return t.warn;
+function statusTone(s: string): ChipTone {
+  if (s === "verified") return "ok";
+  if (s === "received") return "acc";
+  if (s === "flagged") return "bad";
+  return "warn";
 }

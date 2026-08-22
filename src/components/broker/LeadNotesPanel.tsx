@@ -7,8 +7,7 @@
 // Never visible to the client.
 
 import { useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { qcBtnPrimary } from "@/components/design-system/buttons";
+import { Btn, StatusLine, Textarea } from "@/components/ds";
 
 export type LeadNote = {
   id: string;
@@ -39,7 +38,6 @@ export function LeadNotesPanel({
   placeholder?: string;
   submitLabel?: string;
 }) {
-  const { t } = useTheme();
   const [draft, setDraft] = useState("");
 
   async function submit() {
@@ -50,57 +48,70 @@ export function LeadNotesPanel({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%", border: `1px solid ${t.line}`, borderRadius: 14, background: t.surface2, overflow: "hidden" }}>
-      <div style={{ padding: "11px 14px", borderBottom: `1px solid ${t.line}` }}>
-        <strong style={{ color: t.ink, fontSize: 13 }}>{title}</strong>
-        <span style={{ display: "block", color: t.ink3, fontSize: 11, marginTop: 2 }}>
-          {subtitle}
-        </span>
+    // `.panel` is already a flex column that clips its own corners; the only
+    // thing it cannot know is that this one fills the height its parent hands
+    // it (a modal pane, or the 360px slide-over on the Lead Cockpit) and
+    // scrolls the message list rather than the page.
+    <div className="panel" style={{ height: "100%" }}>
+      {/* Hand-rolled `.panel-h` rather than <Panel title sub>: the subtitle
+          belongs UNDER the title here, not beside it — it is a sentence about
+          who can read the thread, and a flex row wraps it into the actions. */}
+      <div className="panel-h">
+        <div className="grow grid g4">
+          <strong>{title}</strong>
+          <span className="sub">{subtitle}</span>
+        </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Flex and not `.grid g10`, deliberately: this box is taller than its
+          contents, and auto grid rows STRETCH to fill it — two messages in a
+          tall pane would sit half a pane apart. `.thr` is the right shape but
+          caps itself at 56vh, which is correct inside a page and wrong inside
+          a pane that already has a height; this one takes what is left over.
+          `margin: auto` on the empty state still centres in a flex column. */}
+      <div className="panel-b" style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 0, overflowY: "auto" }}>
         {notes.length === 0 ? (
-          <div style={{ color: t.ink3, fontSize: 12.5, textAlign: "center", margin: "auto", maxWidth: 260, lineHeight: 1.5 }}>
+          <div className="thr-empty" style={{ textAlign: "center", margin: "auto", maxWidth: 260 }}>
             {emptyLabel}
           </div>
         ) : (
           notes.map((note) => (
-            <div key={note.id} style={{ border: `1px solid ${t.line}`, borderRadius: 10, padding: "8px 10px", background: t.surface }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11, color: t.ink3 }}>
-                <strong style={{ color: t.ink2 }}>{note.author_name || note.author_role}</strong>
-                <span>{formatNoteDate(note.created_at)}</span>
+            <div key={note.id} className="msg">
+              <div className="msg-h">
+                <span className="msg-who">{note.author_name || note.author_role}</span>
+                <span className="grow" />
+                <span className="msg-when">{formatNoteDate(note.created_at)}</span>
               </div>
-              <p style={{ margin: "4px 0 0", color: t.ink2, fontSize: 12.5, lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{note.content}</p>
+              <div className="msg-b">{note.content}</div>
             </div>
           ))
         )}
       </div>
 
-      <div style={{ padding: "10px 14px", borderTop: `1px solid ${t.line}`, display: "flex", flexDirection: "column", gap: 8 }}>
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          rows={2}
-          placeholder={placeholder}
-          style={{ padding: "9px 11px", borderRadius: 10, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, fontSize: 12.5, outline: "none", resize: "vertical", minHeight: 40, fontFamily: "inherit", lineHeight: 1.4 }}
-        />
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={posting || !draft.trim()}
-            style={{ ...qcBtnPrimary(t), opacity: posting || !draft.trim() ? 0.6 : 1 }}
-          >
-            {posting ? "Sending…" : submitLabel}
-          </button>
+      {/* Bespoke gutter: `.composer` owns the rule, the stack and the spacing
+          above it, but not the horizontal inset of the panel it sits in. */}
+      <div style={{ padding: "0 16px 14px" }}>
+        <div className="composer">
+          <Textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                submit();
+              }
+            }}
+            rows={2}
+            placeholder={placeholder}
+          />
+          {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
+          <div className="composer-row">
+            <span className="grow" />
+            <Btn variant="pri" onClick={submit} disabled={posting || !draft.trim()}>
+              {posting ? "Sending…" : submitLabel}
+            </Btn>
+          </div>
         </div>
-        {error ? <div style={{ color: t.danger, fontSize: 11.5 }}>{error}</div> : null}
       </div>
     </div>
   );

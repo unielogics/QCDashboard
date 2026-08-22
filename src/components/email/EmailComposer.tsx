@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 import { Modal } from "@/components/design-system/Modal";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { useToast, Toast } from "@/components/design-system/primitives";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
+import { Btn, Input, Sub, Textarea } from "@/components/ds";
 import { ApiError } from "@/lib/api";
 
 // Surface a FastAPI 422/400 `detail` (string or [{msg}]) instead of a bare status.
@@ -69,7 +68,6 @@ export function EmailComposer({
   sendLabel?: string;
   onSend: (payload: EmailComposerSend) => Promise<{ ok?: boolean; detail?: string | null } | void>;
 }) {
-  const { t } = useTheme();
   const toast = useToast();
   const [to, setTo] = useState(defaultTo);
   const [cc, setCc] = useState(defaultCc);
@@ -88,24 +86,6 @@ export function EmailComposer({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
-
-  const input: CSSProperties = {
-    background: t.surface,
-    border: `1px solid ${t.line}`,
-    borderRadius: 8,
-    color: t.ink,
-    padding: "8px 10px",
-    fontSize: 13,
-    outline: "none",
-    fontFamily: "inherit",
-  };
-  const label: CSSProperties = {
-    color: t.ink3,
-    fontSize: 11,
-    fontWeight: 800,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  };
 
   async function submit() {
     const toParsed = parseEmails(to);
@@ -142,41 +122,52 @@ export function EmailComposer({
     }
   }
 
+  // Deliberately still the old `Modal` and not `Drawer`. /admin/buckets opens
+  // this composer from INSIDE its bucket detail modal (z-index 300); `.drawer`
+  // sits at 61 and would render behind it.
   return (
     <Modal open={open} onClose={onClose} title={title} icon="mail" size="lg">
-      <div style={{ display: "grid", gap: 12, padding: 16 }}>
-        {helpText ? (
-          <span style={{ color: t.ink3, fontSize: 12, lineHeight: 1.45 }}>{helpText}</span>
-        ) : null}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <div style={{ display: "grid", gap: 6 }}>
-            <label style={label}>To</label>
-            <input
+      {/* Bespoke: Modal hands its children an unpadded box. */}
+      <div className="grid" style={{ padding: 16 }}>
+        {helpText ? <Sub>{helpText}</Sub> : null}
+        <div className="fldgrid two">
+          <label className="grid g4">
+            <span className="lbl">To</span>
+            <Input
               value={to}
               onChange={(e) => setTo(e.target.value)}
               readOnly={toReadonly}
               placeholder="name@company.com"
-              style={{ ...input, width: "100%", opacity: toReadonly ? 0.75 : 1 }}
             />
-          </div>
-          <div style={{ display: "grid", gap: 6 }}>
-            <label style={label}>Cc <span style={{ textTransform: "none", fontWeight: 500 }}>(optional)</span></label>
-            <input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="comma-separated" style={{ ...input, width: "100%" }} />
-          </div>
+          </label>
+          <label className="grid g4">
+            {/* `.lbl` uppercases its whole subtree, so the qualifier is part of
+                the label rather than a differently-cased span inside it. */}
+            <span className="lbl">Cc — optional</span>
+            <Input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="comma-separated" />
+          </label>
         </div>
-        <div style={{ display: "grid", gap: 6 }}>
-          <label style={label}>Subject</label>
-          <input value={subject} maxLength={512} onChange={(e) => setSubject(e.target.value)} placeholder="Email subject line" style={{ ...input, width: "100%" }} />
-        </div>
-        <div style={{ display: "grid", gap: 6 }}>
-          <label style={label}>Body</label>
-          <textarea value={body} maxLength={12000} onChange={(e) => setBody(e.target.value)} placeholder="Write your message" style={{ ...input, width: "100%", minHeight: 220, lineHeight: 1.5, resize: "vertical" }} />
-        </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <button style={qcBtn(t)} onClick={onClose} disabled={busy}>Cancel</button>
-          <button style={qcBtnPrimary(t)} onClick={submit} disabled={busy}>
+        <label className="grid g4">
+          <span className="lbl">Subject</span>
+          <Input value={subject} maxLength={512} onChange={(e) => setSubject(e.target.value)} placeholder="Email subject line" />
+        </label>
+        <label className="grid g4">
+          <span className="lbl">Body</span>
+          {/* Bespoke: the composing area is sized to a real message, not to its
+              content. `textarea.field` already carries resize: vertical. */}
+          <Textarea
+            value={body}
+            maxLength={12000}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="Write your message"
+            style={{ minHeight: 220 }}
+          />
+        </label>
+        <div className="row end">
+          <Btn onClick={onClose} disabled={busy}>Cancel</Btn>
+          <Btn variant="pri" onClick={submit} disabled={busy}>
             {busy ? "Sending…" : sendLabel}
-          </button>
+          </Btn>
         </div>
       </div>
       <Toast msg={toast.msg} />

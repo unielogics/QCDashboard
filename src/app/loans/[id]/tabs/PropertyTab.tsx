@@ -9,18 +9,33 @@
 //
 // All fields editable through the `/loans/{id}/property` endpoint
 // (broker-accessible) — flips into edit mode in place.
+//
+// Styling lives in globals.css / app-extras.css. The two-pane shape is
+// `.withrail` (main surface + sticky rail) and the edit form is `.fldsec` /
+// `.fldgrid`, which is the form grid — `.cg` is the 12-column PAGE grid and is
+// the wrong tool inside a panel.
 
 import { useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, KPI, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { useUpdateProperty } from "@/hooks/useApi";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { parseUSD, parseIntStrict } from "@/lib/formCoerce";
 import { PropertyType, PropertyTypeOptions } from "@/lib/enums.generated";
 import type { Loan } from "@/lib/types";
 import { PropertyMap } from "@/components/property/PropertyMap";
+import {
+  Btn,
+  CellChip,
+  Field,
+  Input,
+  Kpi,
+  KpiRow,
+  Linky,
+  Panel,
+  Select,
+  Textarea,
+  type ChipTone,
+} from "@/components/ds";
 
 const LISTING_STATUS_OPTIONS = [
   { value: "on_market", label: "On market", tone: "watch" },
@@ -30,7 +45,6 @@ const LISTING_STATUS_OPTIONS = [
 ] as const;
 
 export function PropertyTab({ loan, canEdit }: { loan: Loan; canEdit: boolean }) {
-  const { t } = useTheme();
   const update = useUpdateProperty();
   const [editing, setEditing] = useState(false);
   const [featureDraft, setFeatureDraft] = useState("");
@@ -90,10 +104,10 @@ export function PropertyTab({ loan, canEdit }: { loan: Loan; canEdit: boolean })
   const statusBadge = LISTING_STATUS_OPTIONS.find((o) => o.value === loan.listing_status);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.45fr 1fr", gap: 18 }}>
+    <div className="withrail">
       {/* MAIN — listing-style hero + body */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <Card pad={0}>
+      <div className="grid">
+        <Panel noPad>
           <PropertyMap
             address={loan.address}
             city={loan.city ?? null}
@@ -103,98 +117,64 @@ export function PropertyTab({ loan, canEdit }: { loan: Loan; canEdit: boolean })
             onGeocoded={persistGeocode}
             height={260}
           />
-          <div style={{ padding: 18 }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div className="panel-b">
+            <div className="row top">
+              <div className="grow">
+                <div className="row">
                   {statusBadge ? (
-                    <Pill
-                      bg={pillBg(t, statusBadge.tone)}
-                      color={pillColor(t, statusBadge.tone)}
-                    >
-                      {statusBadge.label}
-                    </Pill>
+                    <CellChip tone={listingTone(statusBadge.tone)}>{statusBadge.label}</CellChip>
                   ) : null}
-                  <span style={{ fontSize: 11, fontWeight: 800, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase" }}>
-                    {prettyPropertyType(loan.property_type)}
-                  </span>
+                  <span className="lbl">{prettyPropertyType(loan.property_type)}</span>
                   {loan.unit_count && loan.unit_count > 1 ? (
-                    <span style={{ fontSize: 11, fontWeight: 800, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase" }}>
-                      · {loan.unit_count} units
-                    </span>
+                    <span className="lbl">· {loan.unit_count} units</span>
                   ) : null}
                 </div>
-                <div style={{ marginTop: 6, fontSize: 22, fontWeight: 900, color: t.ink, lineHeight: 1.2 }}>
-                  {loan.address || "Untitled property"}
-                </div>
-                <div style={{ marginTop: 3, fontSize: 13.5, color: t.ink2 }}>
+                <h2>{loan.address || "Untitled property"}</h2>
+                <div className="sub">
                   {[loan.city, loan.state].filter(Boolean).join(", ") || "—"}
                 </div>
               </div>
               {canEdit && !editing && (
-                <button onClick={() => setEditing(true)} style={qcBtn(t)}>
+                <Btn onClick={() => setEditing(true)}>
                   <Icon name="gear" size={12} /> Edit details
-                </button>
+                </Btn>
               )}
             </div>
 
             {/* Stat grid — beds / baths / sqft / lot / built / units */}
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
-              gap: 8,
-              marginTop: 16,
-              padding: 12,
-              borderRadius: 11,
-              background: t.surface2,
-              border: `1px solid ${t.line}`,
-            }}>
-              <Stat label="Beds" value={loan.beds ?? "—"} t={t} />
-              <Stat label="Baths" value={loan.baths ?? "—"} t={t} />
-              <Stat label="Sqft" value={loan.sqft ? loan.sqft.toLocaleString() : "—"} t={t} />
-              <Stat label="Lot" value={loan.lot_size_sqft ? `${loan.lot_size_sqft.toLocaleString()} sf` : "—"} t={t} />
-              <Stat label="Year" value={loan.year_built ?? "—"} t={t} />
-              <Stat label="Zoning" value={loan.zoning ?? "—"} t={t} />
-            </div>
+            <KpiRow className="mt">
+              <Kpi label="Beds" value={loan.beds ?? "—"} prose />
+              <Kpi label="Baths" value={loan.baths ?? "—"} prose />
+              <Kpi label="Sqft" value={loan.sqft ? loan.sqft.toLocaleString() : "—"} prose />
+              <Kpi label="Lot" value={loan.lot_size_sqft ? `${loan.lot_size_sqft.toLocaleString()} sf` : "—"} prose />
+              <Kpi label="Year" value={loan.year_built ?? "—"} prose />
+              <Kpi label="Zoning" value={loan.zoning ?? "—"} prose />
+            </KpiRow>
 
             {/* Description */}
             {!editing ? (
               <>
-                <div style={{ marginTop: 18, fontSize: 11, fontWeight: 900, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
-                  About this property
-                </div>
-                <div style={{
-                  marginTop: 6,
-                  fontSize: 13,
-                  color: loan.description ? t.ink : t.ink3,
-                  lineHeight: 1.55,
-                  whiteSpace: "pre-wrap",
-                }}>
+                <div className="lbl mt">About this property</div>
+                {/* `.pretext` keeps the agent's own line breaks; without it a
+                    multi-paragraph listing narrative collapses to one block. */}
+                <div className={loan.description ? "pretext" : "pretext sub"}>
                   {loan.description || "Agent has not added a description yet. Click 'Edit details' above to write the listing narrative."}
                 </div>
 
                 {loan.highlight_features && loan.highlight_features.length > 0 ? (
                   <>
-                    <div style={{ marginTop: 18, fontSize: 11, fontWeight: 900, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase" }}>
-                      Highlights
-                    </div>
-                    <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    <div className="lbl mt">Highlights</div>
+                    <div className="row">
                       {loan.highlight_features.map((f) => (
-                        <span key={f} style={{
-                          fontSize: 11.5, fontWeight: 800,
-                          padding: "4px 10px", borderRadius: 999,
-                          background: t.brandSoft, color: t.brand,
-                        }}>
-                          {f}
-                        </span>
+                        <CellChip key={f} tone="acc">{f}</CellChip>
                       ))}
                     </div>
                   </>
                 ) : null}
 
                 {(loan.parcel_id || loan.lot_size_sqft) && (
-                  <div style={{ marginTop: 18, fontSize: 11.5, color: t.ink3, lineHeight: 1.6 }}>
-                    {loan.parcel_id ? <span>APN: <strong style={{ color: t.ink2 }}>{loan.parcel_id}</strong></span> : null}
+                  <div className="sub mt">
+                    {loan.parcel_id ? <span>APN: <strong>{loan.parcel_id}</strong></span> : null}
                   </div>
                 )}
               </>
@@ -202,7 +182,6 @@ export function PropertyTab({ loan, canEdit }: { loan: Loan; canEdit: boolean })
               <EditForm
                 draft={draft}
                 setDraft={setDraft}
-                t={t}
                 featureDraft={featureDraft}
                 setFeatureDraft={setFeatureDraft}
                 onCancel={() => setEditing(false)}
@@ -211,32 +190,33 @@ export function PropertyTab({ loan, canEdit }: { loan: Loan; canEdit: boolean })
               />
             )}
           </div>
-        </Card>
+        </Panel>
       </div>
 
       {/* SIDEBAR — valuation + holding costs */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <Card pad={16}>
-          <SectionLabel>Valuation</SectionLabel>
-          <Row t={t} label="As-is value (appraised)" value={loan.ltv ? QC_FMT.usd(Math.round(Number(loan.amount) / Number(loan.ltv))) : "—"} />
-          <Row t={t} label="ARV (after repair)" value={loan.arv ? QC_FMT.usd(Number(loan.arv)) : "—"} />
-          <Row t={t} label="Loan-to-value" value={loan.ltv ? `${(loan.ltv * 100).toFixed(0)}%` : "—"} />
-          {loan.ltc && <Row t={t} label="Loan-to-cost" value={`${(loan.ltc * 100).toFixed(0)}%`} />}
-        </Card>
+      <div className="railcol">
+        <Panel title="Valuation">
+          <KvRow label="As-is value (appraised)" value={loan.ltv ? QC_FMT.usd(Math.round(Number(loan.amount) / Number(loan.ltv))) : "—"} />
+          <KvRow label="ARV (after repair)" value={loan.arv ? QC_FMT.usd(Number(loan.arv)) : "—"} />
+          <KvRow label="Loan-to-value" value={loan.ltv ? `${(loan.ltv * 100).toFixed(0)}%` : "—"} />
+          {loan.ltc && <KvRow label="Loan-to-cost" value={`${(loan.ltc * 100).toFixed(0)}%`} />}
+        </Panel>
 
-        <Card pad={16}>
-          <SectionLabel>Holding costs (annual)</SectionLabel>
-          <KPI label="Property taxes" value={QC_FMT.usd(Number(loan.annual_taxes))} />
-          <KPI label="Insurance" value={QC_FMT.usd(Number(loan.annual_insurance))} />
-          <KPI label="HOA (monthly)" value={QC_FMT.usd(Number(loan.monthly_hoa))} />
-        </Card>
+        <Panel title="Holding costs (annual)">
+          <KpiRow>
+            <Kpi label="Property taxes" value={QC_FMT.usd(Number(loan.annual_taxes))} prose />
+            <Kpi label="Insurance" value={QC_FMT.usd(Number(loan.annual_insurance))} prose />
+            <Kpi label="HOA (monthly)" value={QC_FMT.usd(Number(loan.monthly_hoa))} prose />
+          </KpiRow>
+        </Panel>
 
         {loan.monthly_rent ? (
-          <Card pad={16}>
-            <SectionLabel>Income</SectionLabel>
-            <KPI label="Monthly rent" value={QC_FMT.usd(Number(loan.monthly_rent))} />
-            <KPI label="Annualized" value={QC_FMT.usd(Number(loan.monthly_rent) * 12)} />
-          </Card>
+          <Panel title="Income">
+            <KpiRow>
+              <Kpi label="Monthly rent" value={QC_FMT.usd(Number(loan.monthly_rent))} prose />
+              <Kpi label="Annualized" value={QC_FMT.usd(Number(loan.monthly_rent) * 12)} prose />
+            </KpiRow>
+          </Panel>
         ) : null}
       </div>
     </div>
@@ -272,11 +252,10 @@ function loanToDraft(loan: Loan) {
 
 
 function EditForm({
-  draft, setDraft, t, featureDraft, setFeatureDraft, onCancel, onSave, saving,
+  draft, setDraft, featureDraft, setFeatureDraft, onCancel, onSave, saving,
 }: {
   draft: Draft;
   setDraft: (next: Draft) => void;
-  t: ReturnType<typeof useTheme>["t"];
   featureDraft: string;
   setFeatureDraft: (v: string) => void;
   onCancel: () => void;
@@ -294,138 +273,148 @@ function EditForm({
   };
 
   return (
-    <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 100px", gap: 10 }}>
-        <Field t={t} label="Address">
-          <Input t={t} value={draft.address} onChange={(v) => update({ address: v })} />
+    <div className="fldsec mt">
+      <div
+        className="fldgrid"
+        // Bespoke track: address wants the room, state is a two-character
+        // box. Not a `.fldgrid.three` — those are equal columns.
+        style={{ gridTemplateColumns: "1.5fr 1fr 100px" }}
+      >
+        <Field label="Address">
+          <Input value={draft.address} onChange={(e) => update({ address: e.target.value })} />
         </Field>
-        <Field t={t} label="City">
-          <Input t={t} value={draft.city} onChange={(v) => update({ city: v })} />
+        <Field label="City">
+          <Input value={draft.city} onChange={(e) => update({ city: e.target.value })} />
         </Field>
-        <Field t={t} label="State (2-letter)">
-          <Input t={t} value={draft.state} onChange={(v) => update({ state: v.toUpperCase() })} maxLength={2} />
+        <Field label="State (2-letter)">
+          <Input value={draft.state} onChange={(e) => update({ state: e.target.value.toUpperCase() })} maxLength={2} />
         </Field>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-        <Field t={t} label="Property type">
-          <select
+      <div className="fldgrid three mt">
+        <Field label="Property type">
+          <Select
             value={draft.property_type}
             onChange={(e) => update({ property_type: e.target.value as Loan["property_type"] })}
-            style={inputStyle(t)}
           >
             {PropertyTypeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          </Select>
         </Field>
-        <Field t={t} label="Listing status">
-          <select
+        <Field label="Listing status">
+          <Select
             value={draft.listing_status}
             onChange={(e) => update({ listing_status: e.target.value })}
-            style={inputStyle(t)}
           >
             <option value="">—</option>
             {LISTING_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          </Select>
         </Field>
-        <Field t={t} label="Units">
-          <Input t={t} value={draft.unit_count} onChange={(v) => update({ unit_count: v })} placeholder="1" />
-        </Field>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
-        <Field t={t} label="Beds">
-          <Input t={t} value={draft.beds} onChange={(v) => update({ beds: v })} />
-        </Field>
-        <Field t={t} label="Baths">
-          <Input t={t} value={draft.baths} onChange={(v) => update({ baths: v })} />
-        </Field>
-        <Field t={t} label="Interior sqft">
-          <Input t={t} value={draft.sqft} onChange={(v) => update({ sqft: v })} />
-        </Field>
-        <Field t={t} label="Lot sqft">
-          <Input t={t} value={draft.lot_size_sqft} onChange={(v) => update({ lot_size_sqft: v })} />
+        <Field label="Units">
+          <Input value={draft.unit_count} onChange={(e) => update({ unit_count: e.target.value })} placeholder="1" />
         </Field>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-        <Field t={t} label="Year built">
-          <Input t={t} value={draft.year_built} onChange={(v) => update({ year_built: v })} />
+      <div className="fldgrid four mt">
+        <Field label="Beds">
+          <Input value={draft.beds} onChange={(e) => update({ beds: e.target.value })} />
         </Field>
-        <Field t={t} label="Zoning">
-          <Input t={t} value={draft.zoning} onChange={(v) => update({ zoning: v })} placeholder="R-1 / C-2 / …" />
+        <Field label="Baths">
+          <Input value={draft.baths} onChange={(e) => update({ baths: e.target.value })} />
         </Field>
-        <Field t={t} label="APN / Parcel ID">
-          <Input t={t} value={draft.parcel_id} onChange={(v) => update({ parcel_id: v })} />
+        <Field label="Interior sqft">
+          <Input value={draft.sqft} onChange={(e) => update({ sqft: e.target.value })} />
         </Field>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-        <Field t={t} label="Annual taxes">
-          <Input t={t} value={draft.annual_taxes} onChange={(v) => update({ annual_taxes: v })} prefix="$" />
-        </Field>
-        <Field t={t} label="Annual insurance">
-          <Input t={t} value={draft.annual_insurance} onChange={(v) => update({ annual_insurance: v })} prefix="$" />
-        </Field>
-        <Field t={t} label="Monthly HOA">
-          <Input t={t} value={draft.monthly_hoa} onChange={(v) => update({ monthly_hoa: v })} prefix="$" />
+        <Field label="Lot sqft">
+          <Input value={draft.lot_size_sqft} onChange={(e) => update({ lot_size_sqft: e.target.value })} />
         </Field>
       </div>
 
-      <Field t={t} label="Description (listing narrative)">
-        <textarea
+      <div className="fldgrid three mt">
+        <Field label="Year built">
+          <Input value={draft.year_built} onChange={(e) => update({ year_built: e.target.value })} />
+        </Field>
+        <Field label="Zoning">
+          <Input value={draft.zoning} onChange={(e) => update({ zoning: e.target.value })} placeholder="R-1 / C-2 / …" />
+        </Field>
+        <Field label="APN / Parcel ID">
+          <Input value={draft.parcel_id} onChange={(e) => update({ parcel_id: e.target.value })} />
+        </Field>
+      </div>
+
+      <div className="fldgrid three mt">
+        <Field label="Annual taxes">
+          <MoneyInput value={draft.annual_taxes} onChange={(v) => update({ annual_taxes: v })} />
+        </Field>
+        <Field label="Annual insurance">
+          <MoneyInput value={draft.annual_insurance} onChange={(v) => update({ annual_insurance: v })} />
+        </Field>
+        <Field label="Monthly HOA">
+          <MoneyInput value={draft.monthly_hoa} onChange={(v) => update({ monthly_hoa: v })} />
+        </Field>
+      </div>
+
+      <Field label="Description (listing narrative)" className="mt">
+        <Textarea
           value={draft.description}
           onChange={(e) => update({ description: e.target.value })}
           rows={5}
           placeholder="Tell the funding team what's special about this property — condition, recent updates, comps story, anything material."
-          style={{
-            ...inputStyle(t),
-            resize: "vertical",
-            lineHeight: 1.5,
-            fontFamily: "inherit",
-          }}
         />
       </Field>
 
-      <Field t={t} label="Highlight features (chips)">
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+      <Field label="Highlight features (chips)" className="mt">
+        <div className="row">
           {draft.highlight_features.map((f) => (
-            <span key={f} style={{
-              display: "inline-flex", alignItems: "center", gap: 5,
-              fontSize: 11.5, fontWeight: 800,
-              padding: "4px 10px", borderRadius: 999,
-              background: t.brandSoft, color: t.brand,
-            }}>
+            <CellChip key={f} tone="acc">
               {f}
-              <button
-                type="button"
+              <Linky
+                aria-label={`Remove ${f}`}
                 onClick={() => update({ highlight_features: draft.highlight_features.filter((x) => x !== f) })}
-                style={{ all: "unset", cursor: "pointer", fontSize: 13, fontWeight: 900, lineHeight: 1, color: t.brand }}
-              >×</button>
-            </span>
+              >×</Linky>
+            </CellChip>
           ))}
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div className="row">
           <Input
-            t={t}
+            grow
             value={featureDraft}
-            onChange={setFeatureDraft}
+            onChange={(e) => setFeatureDraft(e.target.value)}
             placeholder="e.g. New roof, ADU potential, Cap rate 7.2%"
-            onSubmit={addFeature}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); addFeature(); }
+            }}
           />
-          <button onClick={addFeature} style={qcBtn(t)}>Add</button>
+          <Btn onClick={addFeature}>Add</Btn>
         </div>
       </Field>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-        <button onClick={onCancel} style={qcBtn(t)}>Cancel</button>
-        <button
-          onClick={onSave}
-          disabled={saving}
-          style={{ ...qcBtnPrimary(t), opacity: saving ? 0.6 : 1, cursor: saving ? "wait" : "pointer" }}
-        >
+      <div className="row end mt">
+        <Btn onClick={onCancel}>Cancel</Btn>
+        <Btn variant="pri" onClick={onSave} disabled={saving}>
           <Icon name="check" size={13} /> {saving ? "Saving…" : "Save property"}
-        </button>
+        </Btn>
       </div>
+    </div>
+  );
+}
+
+
+/** A `.field` carrying a `$` adornment. See `.fieldpre` in app-extras.css. */
+function MoneyInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="fieldpre">
+      <span className="pre">$</span>
+      <Input value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+
+function KvRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="kv">
+      <span>{label}</span>
+      <b className="num">{value}</b>
     </div>
   );
 }
@@ -443,94 +432,15 @@ function prettyPropertyType(p: Loan["property_type"]): string {
 }
 
 
-function pillBg(t: ReturnType<typeof useTheme>["t"], tone: string): string {
+// The listing-status tones. These used to be two switch statements returning a
+// (bg, fg) pair off the theme; they now resolve to the sheet's chip
+// vocabulary, so "closed" is the same green here as a verified doc elsewhere.
+function listingTone(tone: string): ChipTone {
   switch (tone) {
-    case "ready": return t.profitBg;
-    case "watch": return t.warnBg;
-    case "brand": return t.brandSoft;
-    case "muted": return t.surface2;
-    default: return t.surface2;
+    case "ready": return "ok";
+    case "watch": return "warn";
+    case "brand": return "acc";
+    case "muted": return "mut";
+    default: return "mut";
   }
-}
-function pillColor(t: ReturnType<typeof useTheme>["t"], tone: string): string {
-  switch (tone) {
-    case "ready": return t.profit;
-    case "watch": return t.warn;
-    case "brand": return t.brand;
-    case "muted": return t.ink3;
-    default: return t.ink3;
-  }
-}
-
-
-function Stat({ label, value, t }: { label: string; value: React.ReactNode; t: ReturnType<typeof useTheme>["t"] }) {
-  return (
-    <div>
-      <div style={{ fontSize: 10, fontWeight: 800, color: t.ink3, letterSpacing: 0.8, textTransform: "uppercase" }}>
-        {label}
-      </div>
-      <div style={{ marginTop: 2, fontSize: 14, fontWeight: 800, color: t.ink, fontFeatureSettings: '"tnum"' }}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-
-function Field({ t, label, children }: { t: ReturnType<typeof useTheme>["t"]; label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div style={{ fontSize: 10.5, fontWeight: 800, color: t.ink3, letterSpacing: 1.0, textTransform: "uppercase", marginBottom: 6 }}>
-        {label}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-
-function Input({
-  t, value, onChange, prefix, placeholder, maxLength, onSubmit,
-}: {
-  t: ReturnType<typeof useTheme>["t"];
-  value: string;
-  onChange: (v: string) => void;
-  prefix?: string;
-  placeholder?: string;
-  maxLength?: number;
-  onSubmit?: () => void;
-}) {
-  return (
-    <div style={{ position: "relative", display: "flex", alignItems: "center", flex: 1 }}>
-      {prefix && <span style={{ position: "absolute", left: 10, fontSize: 12.5, color: t.ink3, fontWeight: 600 }}>{prefix}</span>}
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        maxLength={maxLength}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && onSubmit) { e.preventDefault(); onSubmit(); }
-        }}
-        style={{ ...inputStyle(t), paddingLeft: prefix ? 22 : 12 }}
-      />
-    </div>
-  );
-}
-
-
-function inputStyle(t: ReturnType<typeof useTheme>["t"]): React.CSSProperties {
-  return {
-    width: "100%", padding: "10px 12px", borderRadius: 9, background: t.surface2,
-    border: `1px solid ${t.line}`, color: t.ink, fontSize: 13, fontFamily: "inherit", outline: "none",
-  };
-}
-
-
-function Row({ t, label, value }: { t: ReturnType<typeof useTheme>["t"]; label: string; value: string }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0" }}>
-      <span style={{ fontSize: 12.5, color: t.ink3, fontWeight: 600 }}>{label}</span>
-      <span style={{ fontSize: 13, fontWeight: 700, color: t.ink, fontFeatureSettings: '"tnum"' }}>{value}</span>
-    </div>
-  );
 }

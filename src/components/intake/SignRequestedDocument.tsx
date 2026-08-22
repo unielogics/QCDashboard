@@ -177,26 +177,29 @@ export function SignRequestedDocument({
   }
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div className="grid g10">
       <div>
-        <div style={{ fontWeight: 700, fontSize: 14 }}>{doc.name}</div>
-        {doc.description ? <div style={{ fontSize: 12.5, color: "#6b7280", marginTop: 2 }}>{doc.description}</div> : null}
+        <b>{doc.name}</b>
+        {doc.description ? <div className="sub">{doc.description}</div> : null}
       </div>
 
       {documentText ? (
-        <div style={{ maxHeight: 160, overflow: "auto", padding: 12, border: "1px solid #d1d5db", borderRadius: 10, fontSize: 12, lineHeight: 1.55, whiteSpace: "pre-wrap", color: "#374151", background: "#f9fafb" }}>
+        // The document being signed. Bounded and scrollable so a long
+        // authorization cannot push the signature and the consent box off the
+        // screen — the caller's page owns the surrounding layout.
+        <div className="docwell" style={{ maxHeight: 160 }}>
           {documentText}
         </div>
       ) : null}
 
       {isCreditAuth ? (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div className="fldgrid two">
           <SignField label={s.legalFirstName} value={firstName} onChange={setFirstName} />
           <SignField label={s.legalLastName} value={lastName} onChange={setLastName} />
           <SignField label={s.dob} value={dob} onChange={setDob} placeholder="YYYY-MM-DD" />
           <SignField label={s.street} value={street} onChange={setStreet} />
           <SignField label={s.city} value={city} onChange={setCity} />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div className="fldgrid two">
             <SignField label={s.state} value={state} onChange={(v) => setState(v.toUpperCase().slice(0, 2))} />
             <SignField label={s.zip} value={zip} onChange={setZip} />
           </div>
@@ -205,28 +208,31 @@ export function SignRequestedDocument({
 
       <SignField label={s.typedName} value={typedName} onChange={setTypedName} />
 
-      <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, color: "#374151", cursor: "pointer" }}>
-        <input type="checkbox" checked={esignConsent} onChange={(e) => setEsignConsent(e.target.checked)} style={{ marginTop: 2 }} />
-        {s.esignConsent}
-      </label>
+      {/* `.consent` — the sheet's disclosure block, at body size on purpose. */}
+      <div className={esignConsent ? "consent on" : "consent"}>
+        <label>
+          <input type="checkbox" checked={esignConsent} onChange={(e) => setEsignConsent(e.target.checked)} />
+          <span className="ctext">{s.esignConsent}</span>
+        </label>
+      </div>
 
-      <div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 6 }}>{s.drawSignature}</div>
+      <div className="fldsec">
+        <div className="lbl">{s.drawSignature}</div>
         <SignaturePad ref={sigPadRef} />
-        <button type="button" onClick={() => sigPadRef.current?.clear()} style={{ marginTop: 8, fontSize: 12, background: "none", border: "1px solid #d1d5db", borderRadius: 8, padding: "6px 10px", cursor: "pointer" }}>
+        <button type="button" onClick={() => sigPadRef.current?.clear()} className="btn sm mt">
           {s.clearSignature}
         </button>
       </div>
 
-      {(formError || error) ? <div style={{ color: "#b42318", fontSize: 12.5 }}>{formError || error}</div> : null}
+      {(formError || error) ? <div className="statusline c-bad">{formError || error}</div> : null}
 
-      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+      <div className="row end">
         {onCancel ? (
-          <button type="button" onClick={onCancel} disabled={busy} style={{ fontSize: 13, padding: "8px 14px", borderRadius: 8, border: "1px solid #d1d5db", background: "none", cursor: "pointer" }}>
+          <button type="button" onClick={onCancel} disabled={busy} className="btn">
             {s.cancel}
           </button>
         ) : null}
-        <button type="button" onClick={submit} disabled={busy} style={{ fontSize: 13, fontWeight: 700, padding: "8px 16px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer" }}>
+        <button type="button" onClick={submit} disabled={busy} className="btn pri">
           {busy ? s.signSubmitting : s.signSubmit}
         </button>
       </div>
@@ -236,14 +242,10 @@ export function SignRequestedDocument({
 
 function SignField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
-    <label style={{ display: "block" }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>{label}</div>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        style={{ width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13 }}
-      />
+    // A real <label> around its control, so the caption is a click target.
+    <label className="grid g4">
+      <span className="lbl">{label}</span>
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="field" />
     </label>
   );
 }

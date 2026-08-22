@@ -39,34 +39,29 @@ export function ToolsDrawer({
     <>
       <div className="navmore" onClick={onClose} aria-hidden="true" />
       <div className="navmore-p" role="dialog" aria-modal="true" aria-label="All tools">
-        <div className="hd" style={{ marginBottom: 14 }}>
-          <h2 style={{ fontSize: 19 }}>All tools</h2>
+        {/* `.hd` ships a 2px bottom margin for a page header sitting straight
+            on top of its content; here it is a dialog title with a grid under
+            it, so `.mb` takes the spacing. */}
+        <div className="hd mb">
+          <h2>All tools</h2>
           <span className="lede">Everything not on your daily desk.</span>
         </div>
 
-        <div style={{ display: "grid", gap: 18 }}>
+        <div className="grid">
           {groups.map((g) => (
             <div key={g.id}>
-              <div className="grp" style={{ padding: "0 0 6px" }}>
-                {g.label}
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(228px, 1fr))",
-                  gap: 6,
-                }}
-              >
+              {/* Was `.grp`, which globals scopes to `.nav .grp` — outside the
+                  nav it styled nothing, and `.app.rail .grp` hid these labels
+                  outright whenever the sidebar was collapsed. `.lbl` is the
+                  same small-caps label and is not sidebar-scoped. */}
+              <div className="lbl toolgrp">{g.label}</div>
+              <div className="grid cols-auto g6">
                 {g.items.map((it) => (
                   <Link key={it.href} href={it.href} className="toollink" onClick={onClose}>
                     <Icon name={it.icon} size={17} />
-                    <span style={{ minWidth: 0 }}>
-                      <b style={{ display: "block", fontWeight: 600 }}>{it.label}</b>
-                      {it.desc && (
-                        <span className="sub" style={{ fontSize: 11.5 }}>
-                          {it.desc}
-                        </span>
-                      )}
+                    <span className="grow">
+                      <b>{it.label}</b>
+                      {it.desc && <span className="sub">{it.desc}</span>}
                     </span>
                   </Link>
                 ))}

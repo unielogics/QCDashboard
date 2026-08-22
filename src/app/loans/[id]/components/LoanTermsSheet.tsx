@@ -1,13 +1,16 @@
 "use client";
 
+// Restyled onto the plain-CSS design system. The only inline values left are
+// the two accents chosen from the numbers themselves — the DSCR band and the
+// two totals the operator is meant to land on.
+//
 // In-page terms-sheet preview. Mirrors the PDF rendered by the backend
 // term_sheet_pdf service — every section the operator will see in the
 // PDF also appears here, driven by the current draft (no save required).
 // The PDF is rendered from saved state, so when there are unsaved edits
 // the TermsTab shows a hint to save before downloading.
 
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { CellChip, KpiRow, Panel } from "@/components/ds";
 import { QC_FMT } from "@/components/design-system/tokens";
 import type { AmortizationStyle, EntityType, ExitStrategy, ExperienceTier, LoanPurpose, LoanType, PrepayPenalty, PropertyType } from "@/lib/enums.generated";
 import { AmortizationStyleOptions, ExitStrategyOptions, EntityTypeOptions, ExperienceTierOptions, LoanPurposeOptions, LoanTypeOptions, PrepayPenaltyOptions, PropertyTypeOptions } from "@/lib/enums.generated";
@@ -73,7 +76,6 @@ export function LoanTermsSheet({
   snapshot: TermsSheetSnapshot;
   unsaved: boolean;
 }) {
-  const { t } = useTheme();
   const r = snapshot;
   const monthlyTax = r.annual_taxes / 12;
   const monthlyIns = r.annual_insurance / 12;
@@ -81,102 +83,98 @@ export function LoanTermsSheet({
   const isIO = r.amortization_style === "interest_only";
 
   return (
-    <Card pad={16}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <SectionLabel>Loan terms sheet (live preview)</SectionLabel>
-        {unsaved ? (
-          <Pill bg={t.warnBg} color={t.warn} style={{ fontWeight: 850 }}>
-            Unsaved edits — save to refresh PDF
-          </Pill>
+    <Panel
+      title="Loan terms sheet (live preview)"
+      actions={
+        unsaved ? (
+          <CellChip tone="warn">Unsaved edits — save to refresh PDF</CellChip>
         ) : (
-          <Pill bg={t.profitBg} color={t.profit} style={{ fontWeight: 850 }}>
-            In sync with saved loan
-          </Pill>
-        )}
-      </div>
+          <CellChip tone="ok">In sync with saved loan</CellChip>
+        )
+      }
+      bodyClass="grid"
+    >
+      <KpiRow>
+        <Hero label="Loan amount" value={QC_FMT.usd(r.loan_amount, 0)} />
+        <Hero label={isIO ? "Monthly interest" : "Monthly P&I"} value={r.monthly_pi != null ? QC_FMT.usd(r.monthly_pi, 0) : "—"} />
+        <Hero label="Final rate" value={r.final_rate != null ? `${(r.final_rate * 100).toFixed(3)}%` : "—"} />
+        <Hero label="Term" value={r.term_months != null ? `${r.term_months} mo` : "—"} />
+      </KpiRow>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 16 }}>
-        <Hero t={t} label="Loan amount" value={QC_FMT.usd(r.loan_amount, 0)} />
-        <Hero t={t} label={isIO ? "Monthly interest" : "Monthly P&I"} value={r.monthly_pi != null ? QC_FMT.usd(r.monthly_pi, 0) : "—"} />
-        <Hero t={t} label="Final rate" value={r.final_rate != null ? `${(r.final_rate * 100).toFixed(3)}%` : "—"} />
-        <Hero t={t} label="Term" value={r.term_months != null ? `${r.term_months} mo` : "—"} />
-      </div>
-
-      <Section t={t} title="Loan structure">
-        <Row t={t} k="Product" v={labelFor(LoanTypeOptions, r.loan_type)} />
-        <Row t={t} k="Purpose" v={labelFor(LoanPurposeOptions, r.purpose)} />
-        <Row t={t} k="Property type" v={labelFor(PropertyTypeOptions, r.property_type)} />
-        <Row t={t} k="Amortization" v={labelFor(AmortizationStyleOptions, r.amortization_style)} />
-        <Row t={t} k="Prepay penalty" v={labelFor(PrepayPenaltyOptions, r.prepay_penalty)} />
+      <Section title="Loan structure">
+        <Row k="Product" v={labelFor(LoanTypeOptions, r.loan_type)} />
+        <Row k="Purpose" v={labelFor(LoanPurposeOptions, r.purpose)} />
+        <Row k="Property type" v={labelFor(PropertyTypeOptions, r.property_type)} />
+        <Row k="Amortization" v={labelFor(AmortizationStyleOptions, r.amortization_style)} />
+        <Row k="Prepay penalty" v={labelFor(PrepayPenaltyOptions, r.prepay_penalty)} />
       </Section>
 
-      <Section t={t} title="Pricing">
-        <Row t={t} k="Base rate" v={r.base_rate != null ? `${(r.base_rate * 100).toFixed(3)}%` : "—"} />
-        <Row t={t} k="Discount points" v={r.discount_points.toFixed(2)} />
-        <Row t={t} k="Origination" v={r.origination_pct != null ? `${(r.origination_pct * 100).toFixed(2)}%` : "—"} />
-        <Row t={t} k="Lender fees" v={r.lender_fees ? QC_FMT.usd(r.lender_fees, 0) : "—"} />
+      <Section title="Pricing">
+        <Row k="Base rate" v={r.base_rate != null ? `${(r.base_rate * 100).toFixed(3)}%` : "—"} />
+        <Row k="Discount points" v={r.discount_points.toFixed(2)} />
+        <Row k="Origination" v={r.origination_pct != null ? `${(r.origination_pct * 100).toFixed(2)}%` : "—"} />
+        <Row k="Lender fees" v={r.lender_fees ? QC_FMT.usd(r.lender_fees, 0) : "—"} />
       </Section>
 
-      <Section t={t} title="Sizing & ratios">
-        <Row t={t} k="ARV / appraised value" v={r.arv ? QC_FMT.usd(r.arv, 0) : "—"} />
-        <Row t={t} k="BRV / purchase price" v={r.brv ? QC_FMT.usd(r.brv, 0) : "—"} />
-        <Row t={t} k="Rehab budget" v={r.rehab_budget ? QC_FMT.usd(r.rehab_budget, 0) : "—"} />
-        <Row t={t} k="LTV" v={r.ltv != null ? `${(r.ltv * 100).toFixed(1)}%` : "—"} />
-        <Row t={t} k="LTC" v={r.ltc != null ? `${(r.ltc * 100).toFixed(1)}%` : "—"} />
-        <Row t={t} k="ARV LTV" v={r.arv_ltv != null ? `${(r.arv_ltv * 100).toFixed(1)}%` : "—"} />
+      <Section title="Sizing & ratios">
+        <Row k="ARV / appraised value" v={r.arv ? QC_FMT.usd(r.arv, 0) : "—"} />
+        <Row k="BRV / purchase price" v={r.brv ? QC_FMT.usd(r.brv, 0) : "—"} />
+        <Row k="Rehab budget" v={r.rehab_budget ? QC_FMT.usd(r.rehab_budget, 0) : "—"} />
+        <Row k="LTV" v={r.ltv != null ? `${(r.ltv * 100).toFixed(1)}%` : "—"} />
+        <Row k="LTC" v={r.ltc != null ? `${(r.ltc * 100).toFixed(1)}%` : "—"} />
+        <Row k="ARV LTV" v={r.arv_ltv != null ? `${(r.arv_ltv * 100).toFixed(1)}%` : "—"} />
       </Section>
 
-      <Section t={t} title="Monthly carry (PITIA)">
-        <Row t={t} k={isIO ? "Interest payment" : "Principal & interest"} v={r.monthly_pi != null ? QC_FMT.usd(r.monthly_pi, 2) : "—"} />
-        <Row t={t} k="Property taxes (monthly)" v={QC_FMT.usd(monthlyTax, 2)} />
-        <Row t={t} k="Insurance (monthly)" v={QC_FMT.usd(monthlyIns, 2)} />
-        <Row t={t} k="HOA (monthly)" v={QC_FMT.usd(r.monthly_hoa, 2)} />
-        <Row t={t} k="Total PITIA" v={QC_FMT.usd(pitia, 2)} accent={t.brand} />
+      <Section title="Monthly carry (PITIA)">
+        <Row k={isIO ? "Interest payment" : "Principal & interest"} v={r.monthly_pi != null ? QC_FMT.usd(r.monthly_pi, 2) : "—"} />
+        <Row k="Property taxes (monthly)" v={QC_FMT.usd(monthlyTax, 2)} />
+        <Row k="Insurance (monthly)" v={QC_FMT.usd(monthlyIns, 2)} />
+        <Row k="HOA (monthly)" v={QC_FMT.usd(r.monthly_hoa, 2)} />
+        <Row k="Total PITIA" v={QC_FMT.usd(pitia, 2)} accent="var(--accent)" />
       </Section>
 
       {(r.monthly_rent || r.dscr != null) ? (
-        <Section t={t} title="Rental income & DSCR">
-          <Row t={t} k="Gross monthly rent" v={r.monthly_rent ? QC_FMT.usd(r.monthly_rent, 0) : "—"} />
-          <Row t={t} k="Vacancy" v={r.vacancy_pct != null ? `${(r.vacancy_pct * 100).toFixed(1)}%` : "—"} />
-          <Row t={t} k="Operating expense ratio" v={r.expense_ratio_pct != null ? `${(r.expense_ratio_pct * 100).toFixed(1)}%` : "—"} />
-          <Row t={t} k="Effective rent" v={r.effective_rent ? QC_FMT.usd(r.effective_rent, 0) : "—"} />
-          <Row t={t} k="Effective PITIA" v={r.effective_pitia ? QC_FMT.usd(r.effective_pitia, 0) : "—"} />
+        <Section title="Rental income & DSCR">
+          <Row k="Gross monthly rent" v={r.monthly_rent ? QC_FMT.usd(r.monthly_rent, 0) : "—"} />
+          <Row k="Vacancy" v={r.vacancy_pct != null ? `${(r.vacancy_pct * 100).toFixed(1)}%` : "—"} />
+          <Row k="Operating expense ratio" v={r.expense_ratio_pct != null ? `${(r.expense_ratio_pct * 100).toFixed(1)}%` : "—"} />
+          <Row k="Effective rent" v={r.effective_rent ? QC_FMT.usd(r.effective_rent, 0) : "—"} />
+          <Row k="Effective PITIA" v={r.effective_pitia ? QC_FMT.usd(r.effective_pitia, 0) : "—"} />
           <Row
-            t={t}
             k="DSCR"
             v={r.dscr != null ? r.dscr.toFixed(2) : "—"}
-            accent={(r.dscr ?? 0) >= 1.25 ? t.profit : (r.dscr ?? 0) >= 1.0 ? t.warn : t.danger}
+            accent={(r.dscr ?? 0) >= 1.25 ? "var(--ok)" : (r.dscr ?? 0) >= 1.0 ? "var(--warn)" : "var(--danger)"}
           />
         </Section>
       ) : null}
 
-      <Section t={t} title="Borrower">
-        <Row t={t} k="Entity" v={labelFor(EntityTypeOptions, r.entity_type)} />
-        <Row t={t} k="Experience" v={labelFor(ExperienceTierOptions, r.experience_tier)} />
-        <Row t={t} k="FICO (UW override)" v={r.fico_override ? String(r.fico_override) : "—"} />
+      <Section title="Borrower">
+        <Row k="Entity" v={labelFor(EntityTypeOptions, r.entity_type)} />
+        <Row k="Experience" v={labelFor(ExperienceTierOptions, r.experience_tier)} />
+        <Row k="FICO (UW override)" v={r.fico_override ? String(r.fico_override) : "—"} />
       </Section>
 
       {(r.construction_holdback_pct || r.draw_count || r.exit_strategy || r.cash_to_borrower || r.seasoning_months || r.property_count) ? (
-        <Section t={t} title="Type-specific terms">
+        <Section title="Type-specific terms">
           {r.construction_holdback_pct != null ? (
-            <Row t={t} k="Construction holdback" v={`${(r.construction_holdback_pct * 100).toFixed(2)}%`} />
+            <Row k="Construction holdback" v={`${(r.construction_holdback_pct * 100).toFixed(2)}%`} />
           ) : null}
-          {r.draw_count != null ? <Row t={t} k="Construction draws" v={String(r.draw_count)} /> : null}
-          {r.exit_strategy ? <Row t={t} k="Exit strategy" v={labelFor(ExitStrategyOptions, r.exit_strategy)} /> : null}
+          {r.draw_count != null ? <Row k="Construction draws" v={String(r.draw_count)} /> : null}
+          {r.exit_strategy ? <Row k="Exit strategy" v={labelFor(ExitStrategyOptions, r.exit_strategy)} /> : null}
           {r.cash_to_borrower != null ? (
-            <Row t={t} k="Cash to borrower" v={QC_FMT.usd(r.cash_to_borrower, 0)} />
+            <Row k="Cash to borrower" v={QC_FMT.usd(r.cash_to_borrower, 0)} />
           ) : null}
-          {r.seasoning_months != null ? <Row t={t} k="Seasoning" v={`${r.seasoning_months} mo`} /> : null}
-          {r.property_count != null ? <Row t={t} k="Property count" v={String(r.property_count)} /> : null}
+          {r.seasoning_months != null ? <Row k="Seasoning" v={`${r.seasoning_months} mo`} /> : null}
+          {r.property_count != null ? <Row k="Property count" v={String(r.property_count)} /> : null}
         </Section>
       ) : null}
 
-      <Section t={t} title="Cash to close">
-        <Row t={t} k="Reserves required" v={r.reserves_required ? QC_FMT.usd(r.reserves_required, 0) : "—"} />
-        <Row t={t} k="HUD total" v={r.hud_total != null ? QC_FMT.usd(r.hud_total, 0) : "—"} />
-        <Row t={t} k="Total cash to close" v={r.total_cash_to_close != null ? QC_FMT.usd(r.total_cash_to_close, 0) : "—"} accent={t.brand} />
+      <Section title="Cash to close">
+        <Row k="Reserves required" v={r.reserves_required ? QC_FMT.usd(r.reserves_required, 0) : "—"} />
+        <Row k="HUD total" v={r.hud_total != null ? QC_FMT.usd(r.hud_total, 0) : "—"} />
+        <Row k="Total cash to close" v={r.total_cash_to_close != null ? QC_FMT.usd(r.total_cash_to_close, 0) : "—"} accent="var(--accent)" />
       </Section>
-    </Card>
+    </Panel>
   );
 }
 
@@ -239,69 +237,54 @@ export function buildTermsSnapshot({
 }
 
 function Hero({
-  t,
   label,
   value,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   value: string;
 }) {
+  // `.kpi` markup rather than the `Kpi` component: the figure is the accent
+  // colour here, and `Kpi` only tones its delta chip. `.kpi .knum` owns
+  // everything but colour.
   return (
-    <div style={{ padding: 12, borderRadius: 12, background: t.brandSoft, border: `1px solid ${t.lineStrong}` }}>
-      <div style={{ fontSize: 10, fontWeight: 900, color: t.ink3, letterSpacing: 1.1, textTransform: "uppercase" }}>
-        {label}
-      </div>
-      <div style={{ marginTop: 4, fontSize: 22, fontWeight: 950, color: t.brand, fontFeatureSettings: '"tnum"' }}>
-        {value}
-      </div>
+    <div className="kpi">
+      <div className="lbl">{label}</div>
+      <div className="knum num" style={{ color: "var(--accent)" }}>{value}</div>
     </div>
   );
 }
 
 function Section({
-  t,
   title,
   children,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   title: string;
   children: React.ReactNode;
 }) {
   return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 10, fontWeight: 900, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 6 }}>
-        {title}
-      </div>
-      <div style={{ border: `1px solid ${t.line}`, borderRadius: 10, overflow: "hidden" }}>{children}</div>
+    <div>
+      <div className="lbl mb">{title}</div>
+      <div className="card">{children}</div>
     </div>
   );
 }
 
 function Row({
-  t,
   k,
   v,
   accent,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   k: string;
   v: string;
   accent?: string;
 }) {
+  // `.kv` is the sheet's label-left / value-right row, hairline included.
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "1fr auto",
-        padding: "8px 12px",
-        borderTop: `1px solid ${t.line}`,
-        fontSize: 12.5,
-        gap: 12,
-      }}
-    >
-      <span style={{ color: t.ink3, fontWeight: 700 }}>{k}</span>
-      <span style={{ color: accent ?? t.ink, fontWeight: 850, fontFeatureSettings: '"tnum"' }}>{v}</span>
+    <div className="kv">
+      <span>{k}</span>
+      {/* Data-derived: an accent marks a figure the operator is meant to land
+          on (the two totals) or a DSCR that has crossed a band. */}
+      <b className="num" style={accent ? { color: accent } : undefined}>{v}</b>
     </div>
   );
 }

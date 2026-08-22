@@ -3,10 +3,23 @@
 // Super Admin → Lending AI Settings → Borrower Follow-Up Cadence
 // Same shape as the agent cadence editor but writes to funding-owned
 // rules. Conditional + draft-first.
+//
+// Styling migrated off the inline token objects onto the plain-CSS design
+// system (globals.css + app-extras.css) via the wrappers in @/components/ds.
+// The rule payloads, the trigger/action catalogs and every mutation are
+// unchanged; only the surface vocabulary moved:
+//   local CadenceNote helper  → Note (`.note` is already the petrol-tinted
+//                               explanatory block, icon tint included)
+//   hand-rolled rule rows     → `.gridrow`, keeping the bespoke
+//                               38px / 1fr / auto track inline (rule 3)
+//   local RuleChip helper     → CellChip + `.caps`
+//   local btn()/input()       → Btn / Input / Select / Textarea
+//   icon plate                → `.botmark.pet`
+// The page no longer sets its own padding or max-width — the shell's
+// `.content` owns both.
 
 import { useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card } from "@/components/design-system/primitives";
+import { Btn, CellChip, Input, Note, Panel, Row, Select, Sub, Textarea } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { AIPreviewPanel } from "@/components/AIPreviewPanel";
@@ -35,15 +48,19 @@ const ACTIONS = [
   { value: "auto_send_reminder", label: "Auto-send reminder (rare — use carefully)" },
 ];
 
+// The rule row's own track: a fixed icon plate, a growing description, and a
+// shrink-to-fit action cluster. Bespoke, so it stays inline (rule 3) while
+// `.gridrow` owns the padding, hairline and alignment.
+const RULE_COLS = "38px minmax(0, 1fr) auto";
+
 export default function FundingCadencePage() {
-  const { t } = useTheme();
   const { data: rules = [], error: cadErr } = useFundingCadenceRules();
   const upsert = useUpsertFundingCadenceRule();
   const del = useDeleteFundingCadenceRule();
   const [draft, setDraft] = useState<Partial<AgentCadenceRule> | null>(null);
 
   return (
-    <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
+    <div className="grid">
       <LendingAIHeader
         title="Borrower Follow-Up Cadence"
         subtitle="Base execution policy for the Lending AI secretary. These rules decide when assigned loan tasks produce drafts, borrower outreach, underwriter tasks, or escalation."
@@ -53,153 +70,129 @@ export default function FundingCadencePage() {
         <AINotDeployedBanner surface="Lending AI" />
       ) : null}
 
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
-        gap: 10,
-        marginBottom: 18,
-      }}>
+      <div className="grid cols-auto">
         <CadenceNote icon="doc" title="Assigned tasks only" body="Default rules fire only after a requirement is assigned to the Lending AI, so global settings do not chase every open item." />
         <CadenceNote icon="cal" title="Due-date aware" body="The cadence engine reads assignment due dates, next-run windows, and max attempts before drafting or sending." />
         <CadenceNote icon="shield" title="Human-safe by default" body="Draft-first stays the default. Auto-send still requires file-level outreach mode, consent, and a rule that explicitly allows it." />
       </div>
 
-      <Card pad={20}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 13, color: t.ink3 }}>{rules.length} rule(s)</div>
-          <button
+      <Panel
+        title="Cadence rules"
+        sub={`${rules.length} rule(s)`}
+        noPad
+        actions={
+          <Btn
+            variant="pri"
+            size="sm"
             onClick={() => setDraft({ trigger_event: "requirement_missing", action_type: "draft_message", approval_required: true, wait_hours: 24, visibility: "borrower", is_active: true, requires_ai_owner: true })}
-            style={{ padding: "6px 12px", fontSize: 12, fontWeight: 600, borderRadius: 6, border: `1px solid ${t.line}`, background: t.petrol, color: "#fff", cursor: "pointer" }}
           >
             + Add rule
-          </button>
-        </div>
+          </Btn>
+        }
+      >
         {rules.map(r => (
-          <div key={r.id} style={{
-            display: "grid",
-            gridTemplateColumns: "28px minmax(0, 1fr) auto",
-            alignItems: "center",
-            gap: 12,
-            padding: "12px 0",
-            borderBottom: `1px solid ${t.line}`,
-          }}>
-            <span style={{
-              width: 28, height: 28, borderRadius: 8,
-              display: "inline-flex", alignItems: "center", justifyContent: "center",
-              color: t.petrol, background: t.surface2,
-            }}>
+          <div key={r.id} className="gridrow" style={{ gridTemplateColumns: RULE_COLS }}>
+            <span className="botmark pet">
               <Icon name={r.requires_ai_owner === false ? "bell" : "spark"} size={15} />
             </span>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, color: t.ink, fontWeight: 700 }}>
-                {TRIGGERS.find(x => x.value === r.trigger_event)?.label || r.trigger_event}
-                {r.applies_to_requirement_key ? <span style={{ color: t.ink3, fontWeight: 400 }}> · {r.applies_to_requirement_key}</span> : null}
+            <div>
+              <div>
+                <b>{TRIGGERS.find(x => x.value === r.trigger_event)?.label || r.trigger_event}</b>
+                {r.applies_to_requirement_key ? <Sub> · {r.applies_to_requirement_key}</Sub> : null}
               </div>
-              <div style={{ fontSize: 12, color: t.ink3, marginTop: 3 }}>
+              <div className="sub">
                 → {ACTIONS.find(x => x.value === r.action_type)?.label || r.action_type}
                 {r.wait_hours > 0 ? `, after ${r.wait_hours}h` : ""}
                 {r.approval_required ? " · awaits approval" : " · auto-sends"}
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <RuleChip t={t}>{r.requires_ai_owner === false ? "Global" : "AI-owned only"}</RuleChip>
-              <RuleChip t={t}>{r.visibility}</RuleChip>
-              <button onClick={() => setDraft(r)} style={btn(t)}>Edit</button>
-              <button onClick={() => del.mutate(r.id)} style={{ ...btn(t), color: "#c14444" }}>Delete</button>
-            </div>
+            <Row>
+              <CellChip className="caps">{r.requires_ai_owner === false ? "Global" : "AI-owned only"}</CellChip>
+              <CellChip className="caps">{r.visibility}</CellChip>
+              <Btn size="sm" onClick={() => setDraft(r)}>Edit</Btn>
+              <Btn size="sm" className="danger" onClick={() => del.mutate(r.id)}>Delete</Btn>
+            </Row>
           </div>
         ))}
+
         {draft ? (
-          <div style={{ padding: 14, marginTop: 12, border: `1px solid ${t.line}`, borderRadius: 8, background: t.surface2, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <select value={draft.trigger_event} onChange={e => setDraft({ ...draft, trigger_event: e.target.value })} style={input(t)}>
-              {TRIGGERS.map(x => <option key={x.value} value={x.value}>{x.label}</option>)}
-            </select>
-            <input placeholder="Requirement key (optional)" value={draft.applies_to_requirement_key || ""} onChange={e => setDraft({ ...draft, applies_to_requirement_key: e.target.value || null })} style={input(t)} />
-            <input type="number" placeholder="Wait hours" value={draft.wait_hours ?? 0} onChange={e => setDraft({ ...draft, wait_hours: parseInt(e.target.value || "0", 10) })} style={input(t)} />
-            <select value={draft.action_type} onChange={e => setDraft({ ...draft, action_type: e.target.value })} style={input(t)}>
-              {ACTIONS.map(x => <option key={x.value} value={x.value}>{x.label}</option>)}
-            </select>
-            <textarea placeholder="Message template" value={draft.message_template || ""} onChange={e => setDraft({ ...draft, message_template: e.target.value || null })} rows={2} style={{ ...input(t), gridColumn: "1 / -1", resize: "vertical" }} />
-            <label style={{ fontSize: 12, color: t.ink, display: "flex", alignItems: "center", gap: 6 }}>
-              <input type="checkbox" checked={!!draft.approval_required} onChange={e => setDraft({ ...draft, approval_required: e.target.checked })} />
-              Require approval (draft-first)
-            </label>
-            <label style={{ fontSize: 12, color: t.ink, display: "flex", alignItems: "center", gap: 6 }}>
-              <input type="checkbox" checked={draft.requires_ai_owner !== false} onChange={e => setDraft({ ...draft, requires_ai_owner: e.target.checked })} />
-              Only run after this requirement is assigned to AI
-            </label>
-            <label style={{ fontSize: 12, color: t.ink, display: "flex", alignItems: "center", gap: 6 }}>
-              <input type="checkbox" checked={draft.is_active !== false} onChange={e => setDraft({ ...draft, is_active: e.target.checked })} />
-              Active
-            </label>
-            <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
-              <button
+          <div className="panel-b">
+            <div className="fldgrid two">
+              <Select
+                aria-label="Trigger event"
+                value={draft.trigger_event}
+                onChange={e => setDraft({ ...draft, trigger_event: e.target.value })}
+              >
+                {TRIGGERS.map(x => <option key={x.value} value={x.value}>{x.label}</option>)}
+              </Select>
+              <Input
+                aria-label="Requirement key"
+                placeholder="Requirement key (optional)"
+                value={draft.applies_to_requirement_key || ""}
+                onChange={e => setDraft({ ...draft, applies_to_requirement_key: e.target.value || null })}
+              />
+              <Input
+                type="number"
+                aria-label="Wait hours"
+                placeholder="Wait hours"
+                value={draft.wait_hours ?? 0}
+                onChange={e => setDraft({ ...draft, wait_hours: parseInt(e.target.value || "0", 10) })}
+              />
+              <Select
+                aria-label="Action type"
+                value={draft.action_type}
+                onChange={e => setDraft({ ...draft, action_type: e.target.value })}
+              >
+                {ACTIONS.map(x => <option key={x.value} value={x.value}>{x.label}</option>)}
+              </Select>
+              <Textarea
+                placeholder="Message template"
+                aria-label="Message template"
+                value={draft.message_template || ""}
+                onChange={e => setDraft({ ...draft, message_template: e.target.value || null })}
+                rows={2}
+                // Bespoke: this one field spans the two-column form row.
+                style={{ gridColumn: "1 / -1" }}
+              />
+              <label className="row">
+                <input type="checkbox" checked={!!draft.approval_required} onChange={e => setDraft({ ...draft, approval_required: e.target.checked })} />
+                Require approval (draft-first)
+              </label>
+              <label className="row">
+                <input type="checkbox" checked={draft.requires_ai_owner !== false} onChange={e => setDraft({ ...draft, requires_ai_owner: e.target.checked })} />
+                Only run after this requirement is assigned to AI
+              </label>
+              <label className="row">
+                <input type="checkbox" checked={draft.is_active !== false} onChange={e => setDraft({ ...draft, is_active: e.target.checked })} />
+                Active
+              </label>
+            </div>
+            <Row className="mt">
+              <Btn
+                variant="pri"
                 onClick={async () => { await upsert.mutateAsync(draft as Parameters<typeof upsert.mutateAsync>[0]); setDraft(null); }}
-                style={{ ...btn(t), background: t.petrol, color: "#fff" }}
               >
                 Save rule
-              </button>
-              <button onClick={() => setDraft(null)} style={btn(t)}>Cancel</button>
-            </div>
+              </Btn>
+              <Btn onClick={() => setDraft(null)}>Cancel</Btn>
+            </Row>
           </div>
         ) : null}
-      </Card>
+      </Panel>
 
-      <div style={{ marginTop: 20 }}>
-        <AIPreviewPanel mode="cadence" />
-      </div>
+      <AIPreviewPanel mode="cadence" />
     </div>
   );
 }
 
 function CadenceNote({ icon, title, body }: { icon: string; title: string; body: string }) {
-  const { t } = useTheme();
   return (
-    <div style={{
-      display: "flex",
-      gap: 10,
-      padding: 12,
-      borderRadius: 8,
-      border: `1px solid ${t.line}`,
-      background: t.surface2,
-    }}>
-      <span style={{ color: t.petrol, display: "inline-flex", paddingTop: 1 }}>
-        <Icon name={icon} size={16} />
-      </span>
+    <Note>
+      <Icon name={icon} size={16} />
       <div>
-        <div style={{ fontSize: 12, fontWeight: 800, color: t.ink, marginBottom: 3 }}>{title}</div>
-        <div style={{ fontSize: 12, color: t.ink3, lineHeight: 1.45 }}>{body}</div>
+        <b>{title}</b>
+        <div className="sub">{body}</div>
       </div>
-    </div>
+    </Note>
   );
-}
-
-function RuleChip({
-  children,
-  t,
-}: {
-  children: React.ReactNode;
-  t: ReturnType<typeof useTheme>["t"];
-}) {
-  return (
-    <span style={{
-      fontSize: 10,
-      fontWeight: 800,
-      padding: "3px 7px",
-      borderRadius: 4,
-      background: t.surface2,
-      color: t.ink3,
-      textTransform: "uppercase",
-      whiteSpace: "nowrap",
-    }}>
-      {children}
-    </span>
-  );
-}
-
-function btn(t: ReturnType<typeof useTheme>["t"]) {
-  return { padding: "4px 8px", fontSize: 11, fontWeight: 600, borderRadius: 6, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, cursor: "pointer" } as const;
-}
-function input(t: ReturnType<typeof useTheme>["t"]) {
-  return { padding: 8, fontSize: 13, fontFamily: "inherit", borderRadius: 6, border: `1px solid ${t.line}`, background: t.surface, color: t.ink, width: "100%" } as const;
 }

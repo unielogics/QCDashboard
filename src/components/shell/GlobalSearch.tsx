@@ -2,14 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useTheme } from "@/components/design-system/ThemeProvider";
 import { Icon } from "@/components/design-system/Icon";
 import { Pill } from "@/components/design-system/primitives";
 import { useUI } from "@/store/ui";
 import { useGlobalSearch } from "@/hooks/useApi";
 
+// The ⌘K palette. Restyled onto `.panel` / `.panel-h` / `.pick` / `.kbd`;
+// the scrim and its top-anchored placement stay inline because a command
+// palette hangs from the top of the viewport, which no class in the sheet
+// describes, and it sits at z-index 100 — deliberately above `.drawer-scrim`
+// (60) so it can be opened from inside a dialog.
+
 export default function GlobalSearch() {
-  const { t } = useTheme();
   const open = useUI((s) => s.searchOpen);
   const setOpen = useUI((s) => s.setSearchOpen);
   const router = useRouter();
@@ -21,53 +25,56 @@ export default function GlobalSearch() {
   if (!open) return null;
 
   return (
-    <div onClick={() => setOpen(false)} style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 100,
-      display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: "10vh",
-    }}>
-      <div onClick={(e) => e.stopPropagation()} style={{
-        width: 720, maxHeight: "70vh", background: t.surface, border: `1px solid ${t.line}`, borderRadius: 14,
-        boxShadow: t.shadowLg, display: "flex", flexDirection: "column", overflow: "hidden",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 14, borderBottom: `1px solid ${t.line}` }}>
-          <Icon name="search" size={16} style={{ color: t.ink3 }} />
+    <div
+      onClick={() => setOpen(false)}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(15,23,32,0.34)", zIndex: 100,
+        display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: "10vh",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="panel cmdk"
+        // The palette's own measurements, not a system step.
+        style={{ width: 720, maxHeight: "70vh" }}
+      >
+        <div className="panel-h">
+          <Icon name="search" size={16} />
           <input
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search loans, clients, documents, messages…"
-            style={{ flex: 1, fontSize: 15, color: t.ink, background: "transparent", border: "none", outline: "none" }}
+            className="grow cmdk-in"
+            aria-label="Search"
           />
-          <button onClick={() => setOpen(false)} style={{ color: t.ink3 }}>
+          <button type="button" onClick={() => setOpen(false)} aria-label="Close search" className="btn sm iconbtn">
             <Icon name="x" size={16} />
           </button>
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
+        <div className="cmdk-b">
           {q.trim().length < 2 && (
-            <div style={{ padding: "32px 24px", color: t.ink3, fontSize: 13, textAlign: "center" }}>
-              <Icon name="search" size={28} style={{ color: t.ink4, marginBottom: 8 }} />
-              <div style={{ fontWeight: 600, color: t.ink2 }}>
-                Type at least 2 characters to search.
-              </div>
-              <div style={{ fontSize: 12, color: t.ink3, marginTop: 4 }}>
+            <div className="cmdk-empty">
+              <Icon name="search" size={28} />
+              <div className="cmdk-empty-t">Type at least 2 characters to search.</div>
+              <div className="sub">
                 Results group by client across loans, documents, messages, events, and AI tasks.
               </div>
             </div>
           )}
           {groups?.length === 0 && q.trim().length >= 2 && (
-            <div style={{ padding: 24, color: t.ink3, fontSize: 13, textAlign: "center" }}>
+            <div className="cmdk-empty sub">
               No matches for &ldquo;{q}&rdquo;.
             </div>
           )}
           {groups?.map((g) => (
-            <div key={g.client_id} style={{ padding: "12px 8px" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.4, textTransform: "uppercase", color: t.ink3, marginBottom: 6 }}>
-                {g.client_name}
-              </div>
+            <div key={g.client_id} className="cmdk-grp">
+              <div className="lbl">{g.client_name}</div>
               {g.items.map((item) => (
                 <button
                   key={item.id}
+                  type="button"
                   onClick={() => {
                     setOpen(false);
                     if (item.kind === "loan") router.push(`/loans/${item.id}`);
@@ -77,18 +84,14 @@ export default function GlobalSearch() {
                     else if (item.kind === "event") router.push("/calendar");
                     else if (item.kind === "aiTask") router.push("/ai-inbox");
                   }}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 10,
-                    width: "100%", padding: "10px 12px", textAlign: "left", borderRadius: 8,
-                    border: "none", background: "transparent", cursor: "pointer",
-                  }}
+                  className="pick cmdk-hit"
                 >
                   <Pill>{item.kind}</Pill>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{item.title}</div>
-                    {item.subtitle && <div style={{ fontSize: 12, color: t.ink3 }}>{item.subtitle}</div>}
+                  <div className="grow">
+                    <div className="cmdk-hit-t">{item.title}</div>
+                    {item.subtitle && <div className="sub">{item.subtitle}</div>}
                   </div>
-                  <Icon name="chevR" size={13} style={{ color: t.ink4 }} />
+                  <Icon name="chevR" size={13} />
                 </button>
               ))}
             </div>
@@ -96,22 +99,11 @@ export default function GlobalSearch() {
         </div>
 
         {/* Footer keyboard hints */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 18,
-            padding: "10px 16px",
-            borderTop: `1px solid ${t.line}`,
-            background: t.surface2,
-            fontSize: 11,
-            color: t.ink3,
-          }}
-        >
-          <KbdHint t={t} keys={["↑", "↓"]} label="Navigate" />
-          <KbdHint t={t} keys={["↵"]} label="Open" />
-          <KbdHint t={t} keys={["Esc"]} label="Close" />
-          <span style={{ marginLeft: "auto", fontStyle: "italic" }}>
+        <div className="row sub cmdk-f">
+          <KbdHint keys={["↑", "↓"]} label="Navigate" />
+          <KbdHint keys={["↵"]} label="Open" />
+          <KbdHint keys={["Esc"]} label="Close" />
+          <span className="cmdk-f-note">
             Searches loans, clients, documents, messages, events, AI tasks
           </span>
         </div>
@@ -120,28 +112,14 @@ export default function GlobalSearch() {
   );
 }
 
-function KbdHint({ t, keys, label }: { t: ReturnType<typeof useTheme>["t"]; keys: string[]; label: string }) {
+function KbdHint({ keys, label }: { keys: string[]; label: string }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <span style={{ display: "inline-flex", gap: 3 }}>
-        {keys.map((k) => (
-          <kbd
-            key={k}
-            style={{
-              padding: "1px 6px",
-              borderRadius: 4,
-              border: `1px solid ${t.line}`,
-              background: t.surface,
-              fontSize: 10,
-              fontWeight: 700,
-              color: t.ink2,
-              fontFamily: "JetBrains Mono, ui-monospace, monospace",
-            }}
-          >
-            {k}
-          </kbd>
-        ))}
-      </span>
+    <span className="row kbdhint">
+      {keys.map((k) => (
+        <kbd key={k} className="kbd">
+          {k}
+        </kbd>
+      ))}
       {label}
     </span>
   );

@@ -7,10 +7,35 @@
 // soft-deleted (is_active=false) by default; the table shows a
 // dimmed row + "Inactive" pill when that flag is off so admins can
 // reactivate without re-creating.
+//
+// Styling migrated off the inline token objects onto the plain-CSS design
+// system (globals.css + app-extras.css) via the wrappers in @/components/ds.
+// The roster query, the sort comparator, the search predicate and every modal
+// hand-off are unchanged; only the surface vocabulary moved:
+//   hand-rolled <table>       → Table / Tr / Td (`.tbl`), inside a Panel
+//   sortable <th onClick>     → a real <button class="gridhd-c"> in the column
+//                               label, so the sort is reachable from the
+//                               keyboard (the old <th onClick> was not)
+//   row <tr onClick>          → kept, PLUS a Linky on the lender name so the
+//                               "open this lender" action is keyboard-reachable
+//   dimmed inactive row       → `.tbl tr.done`, which already owns that opacity
+//   Pill                      → CellChip tone
 
 import { useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
+import {
+  Btn,
+  CellChip,
+  Input,
+  Linky,
+  PageHeader,
+  Panel,
+  Row,
+  Sub,
+  Table,
+  Td,
+  Tr,
+  cx,
+} from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useActiveProfile } from "@/store/role";
 import { Role, LoanTypeOptions } from "@/lib/enums.generated";
@@ -27,7 +52,6 @@ const PRODUCT_LABEL = new Map<string, string>(
 type SortKey = "name" | "products" | "contact" | "active";
 
 export default function LendersAdminPage() {
-  const { t } = useTheme();
   const profile = useActiveProfile();
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("name");
@@ -87,13 +111,9 @@ export default function LendersAdminPage() {
 
   if (profile.role !== Role.SUPER_ADMIN) {
     return (
-      <div style={{ padding: 24 }}>
-        <Card pad={20}>
-          <div style={{ fontSize: 13, color: t.ink2 }}>
-            The Lenders roster is super-admin only.
-          </div>
-        </Card>
-      </div>
+      <Panel title="Super-admin only">
+        <Sub>The Lenders roster is super-admin only.</Sub>
+      </Panel>
     );
   }
 
@@ -106,172 +126,134 @@ export default function LendersAdminPage() {
     }
   };
 
+  const th = (label: string, key: SortKey) => (
+    <button
+      type="button"
+      className={cx("gridhd-c", sortKey === key && "on")}
+      onClick={() => toggleSort(key)}
+      aria-label={`Sort by ${label}`}
+    >
+      {label}
+      {sortKey === key ? (
+        <span className="sortarr" aria-hidden="true">{sortDir === "asc" ? "▲" : "▼"}</span>
+      ) : null}
+    </button>
+  );
+
   return (
-    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 10 }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase", color: t.petrol }}>
-            Super admin
-          </div>
-          <h1 style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 800, color: t.ink, letterSpacing: -0.4 }}>
-            Lenders
-          </h1>
-          <div style={{ fontSize: 12, color: t.ink3, marginTop: 4, lineHeight: 1.5, maxWidth: 720 }}>
-            Roster of lending counter-parties. Adding products here is what makes a lender appear in
-            each loan&apos;s Connect-Lender dropdown — and connecting one is what activates the
-            redaction + outbound-email machinery.
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setCreating(true)}
-          style={{
-            all: "unset",
-            cursor: "pointer",
-            padding: "10px 16px",
-            borderRadius: 10,
-            background: t.petrol,
-            color: "#fff",
-            fontSize: 13,
-            fontWeight: 700,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          <Icon name="plus" size={12} stroke={3} /> New lender
-        </button>
-      </div>
+    <div className="grid">
+      {/* The "Super admin" eyebrow the inline version carried above the title.
+          PageHeader has no eyebrow slot, so it keeps its own line. */}
+      <div><CellChip tone="pet" className="caps">Super admin</CellChip></div>
+      <PageHeader
+        title="Lenders"
+        lede="Roster of lending counter-parties. Adding products here is what makes a lender appear in each loan's Connect-Lender dropdown — and connecting one is what activates the redaction + outbound-email machinery."
+        actions={
+          <Btn variant="pri" onClick={() => setCreating(true)}>
+            <Icon name="plus" size={12} stroke={3} /> New lender
+          </Btn>
+        }
+      />
 
       {/* Connect-Lender health probe — answers 'what is blocking it?' */}
       <ConnectLenderHealthCard />
 
       {/* Search */}
-      <Card pad={10}>
-        <input
+      <Row>
+        <Input
+          grow
+          aria-label="Search lenders"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name, contact, domain, product…"
-          style={{
-            width: "100%",
-            padding: "9px 12px",
-            background: t.surface2,
-            border: `1px solid ${t.line}`,
-            borderRadius: 10,
-            color: t.ink,
-            fontSize: 13,
-            fontFamily: "inherit",
-            outline: "none",
-          }}
         />
-      </Card>
+      </Row>
 
       {/* Table */}
-      <Card pad={0}>
-        {isLoading ? (
-          <div style={{ padding: 18, fontSize: 12.5, color: t.ink3 }}>Loading…</div>
-        ) : visible.length === 0 ? (
-          <div style={{ padding: 18, fontSize: 12.5, color: t.ink3 }}>
+      {isLoading ? (
+        <Panel><Sub>Loading…</Sub></Panel>
+      ) : visible.length === 0 ? (
+        <Panel>
+          <Sub>
             {search ? "No lenders match your search." : "No lenders yet — click ‘New lender’ to add one."}
-          </div>
-        ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: t.surface2 }}>
-                <Th t={t} active={sortKey === "name"} dir={sortDir} onClick={() => toggleSort("name")}>Name</Th>
-                <Th t={t} active={sortKey === "contact"} dir={sortDir} onClick={() => toggleSort("contact")}>Contact</Th>
-                <Th t={t} active={sortKey === "products"} dir={sortDir} onClick={() => toggleSort("products")}>Products</Th>
-                <Th t={t} active={sortKey === "active"} dir={sortDir} onClick={() => toggleSort("active")}>Status</Th>
-                <th style={{ padding: "10px 14px" }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((l) => (
-                <tr
-                  key={l.id}
-                  onClick={() => setEditing(l)}
-                  style={{
-                    cursor: "pointer",
-                    borderTop: `1px solid ${t.line}`,
-                    opacity: l.is_active ? 1 : 0.65,
-                  }}
-                >
-                  <td style={{ padding: "12px 14px", verticalAlign: "top" }}>
-                    <div style={{ fontWeight: 700, color: t.ink }}>{l.name}</div>
-                    {l.email_domain ? (
-                      <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>{l.email_domain}</div>
-                    ) : null}
-                  </td>
-                  <td style={{ padding: "12px 14px", verticalAlign: "top" }}>
-                    {l.contact_name || l.contact_email || l.submission_email ? (
-                      <>
-                        <div style={{ color: t.ink }}>{l.contact_name || "—"}</div>
-                        <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
-                          {l.contact_email || l.submission_email || ""}
-                        </div>
-                      </>
-                    ) : (
-                      <span style={{ color: t.ink4, fontStyle: "italic" }}>none</span>
-                    )}
-                  </td>
-                  <td style={{ padding: "12px 14px", verticalAlign: "top" }}>
-                    {l.products && l.products.length > 0 ? (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        {l.products.map((p) => (
-                          <Pill key={p} bg={t.surface2} color={t.ink2}>
-                            {PRODUCT_LABEL.get(p) ?? p}
-                          </Pill>
-                        ))}
-                      </div>
-                    ) : (
-                      <span style={{ color: t.danger, fontSize: 11.5 }}>
-                        no products — won&apos;t appear in dropdowns
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ padding: "12px 14px", verticalAlign: "top" }}>
-                    {l.is_active ? (
-                      <Pill bg={t.profitBg} color={t.profit}>Active</Pill>
-                    ) : (
-                      <Pill bg={t.surface2} color={t.ink3}>Inactive</Pill>
-                    )}
-                  </td>
-                  <td
-                    style={{
-                      padding: "12px 14px",
-                      verticalAlign: "top",
-                      textAlign: "right",
-                      whiteSpace: "nowrap",
+          </Sub>
+        </Panel>
+      ) : (
+        <Panel noPad>
+          <Table
+            caption="Lender roster"
+            cols={[
+              { label: th("Name", "name") },
+              { label: th("Contact", "contact") },
+              { label: th("Products", "products") },
+              { label: th("Status", "active") },
+              { label: "" },
+            ]}
+          >
+            {visible.map((l) => (
+              <Tr key={l.id} onClick={() => setEditing(l)} className={cx(!l.is_active && "done")}>
+                <Td>
+                  {/* The whole row is clickable with a mouse; this button is
+                      what makes the same action reachable from the keyboard,
+                      which a <tr onClick> never was. */}
+                  <Linky
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditing(l);
                     }}
                   >
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDrilldown(l);
-                      }}
-                      style={{
-                        all: "unset",
-                        cursor: "pointer",
-                        padding: "6px 10px",
-                        borderRadius: 8,
-                        border: `1px solid ${t.line}`,
-                        background: t.surface,
-                        fontSize: 11.5,
-                        fontWeight: 700,
-                        color: t.brand,
-                      }}
-                    >
-                      View loans →
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
+                    {l.name}
+                  </Linky>
+                  {l.email_domain ? <div className="sub">{l.email_domain}</div> : null}
+                </Td>
+                <Td>
+                  {l.contact_name || l.contact_email || l.submission_email ? (
+                    <>
+                      <div>{l.contact_name || "—"}</div>
+                      <div className="sub">{l.contact_email || l.submission_email || ""}</div>
+                    </>
+                  ) : (
+                    <Sub>none</Sub>
+                  )}
+                </Td>
+                <Td>
+                  {l.products && l.products.length > 0 ? (
+                    <Row>
+                      {l.products.map((p) => (
+                        <CellChip key={p}>{PRODUCT_LABEL.get(p) ?? p}</CellChip>
+                      ))}
+                    </Row>
+                  ) : (
+                    // A sentence, not a word — a `.cellchip` here is nowrap
+                    // inside an overflow:hidden panel and would be clipped.
+                    <div className="statusline c-bad">
+                      no products — won&apos;t appear in dropdowns
+                    </div>
+                  )}
+                </Td>
+                <Td>
+                  {l.is_active ? (
+                    <CellChip tone="ok">Active</CellChip>
+                  ) : (
+                    <CellChip>Inactive</CellChip>
+                  )}
+                </Td>
+                <Td align="r">
+                  <Btn
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDrilldown(l);
+                    }}
+                  >
+                    View loans →
+                  </Btn>
+                </Td>
+              </Tr>
+            ))}
+          </Table>
+        </Panel>
+      )}
 
       <LenderEditModal
         open={creating || editing != null}
@@ -284,35 +266,5 @@ export default function LendersAdminPage() {
 
       <LenderLoansDrawer lender={drilldown} onClose={() => setDrilldown(null)} />
     </div>
-  );
-}
-
-interface ThProps {
-  t: ReturnType<typeof useTheme>["t"];
-  active: boolean;
-  dir: "asc" | "desc";
-  onClick: () => void;
-  children: React.ReactNode;
-}
-
-function Th({ t, active, dir, onClick, children }: ThProps) {
-  return (
-    <th
-      onClick={onClick}
-      style={{
-        textAlign: "left",
-        padding: "10px 14px",
-        fontSize: 11,
-        fontWeight: 700,
-        letterSpacing: 1.2,
-        textTransform: "uppercase",
-        color: active ? t.brand : t.ink3,
-        cursor: "pointer",
-        userSelect: "none",
-      }}
-    >
-      {children}
-      {active ? <span style={{ marginLeft: 4 }}>{dir === "asc" ? "▲" : "▼"}</span> : null}
-    </th>
   );
 }

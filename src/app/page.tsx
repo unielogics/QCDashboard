@@ -9,15 +9,17 @@
 //   6. Pipeline at a glance + Today (operator: 5-stage counters; borrower/broker: top-3 loan cards)
 //   7. Portfolio Health (3 stat tiles — for all roles, ported from mobile)
 //   8. Elara + Top brokers (renamed from Top exposures, source swapped)
+//
+// Restyled onto the class design system. The page is now a `.cg` twelve-column
+// grid whose children carry `.s12` / `.s7` / `.s5` / `.s6`, and every state
+// colour that used to be a theme-token lookup is a chip tone or a `.tone-*`
+// surface class. Data flow, role branching and every link target are unchanged.
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, KPI, Pill, SectionLabel, StageBadge } from "@/components/design-system/primitives";
 import { FredChart } from "@/components/FredChart";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import {
   useAITasks,
   useBrokerLeaderboard,
@@ -36,6 +38,24 @@ import { Role } from "@/lib/enums.generated";
 import { CreditPullModal } from "@/components/CreditPullModal";
 import { RateDetailModal } from "@/components/RateDetailModal";
 import { AgentHomeView } from "./components/AgentHomeView";
+import {
+  Btn,
+  CG,
+  Card,
+  CellChip,
+  Kpi,
+  KpiRow,
+  Note,
+  PageHeader,
+  Panel,
+  StatusLine,
+  Table,
+  Td,
+  Tr,
+  cx,
+  type ChipTone,
+  type Col,
+} from "@/components/ds";
 
 const STAGE_KEYS = [
   "prequalified",
@@ -47,8 +67,27 @@ const STAGE_KEYS = [
 ] as const;
 const STAGE_LABELS = ["Prequalified", "Collecting Docs", "Lender Connected", "Processing", "Closing", "Funded"];
 
+// Stage → chip tone. The six-colour ramp the old StageBadge carried
+// (neutral → warn → petrol → accent → warn → ok), expressed in the chip
+// vocabulary instead of hand-mixed fg/bg token pairs. An unknown stage
+// (indexOf → -1) still renders "—", exactly as StageBadge did.
+const STAGE_TONES: ChipTone[] = ["mut", "warn", "pet", "acc", "warn", "ok"];
+
+function StageChip({ stage }: { stage: string }) {
+  const i = (STAGE_KEYS as readonly string[]).indexOf(stage);
+  return <CellChip tone={STAGE_TONES[i] ?? "mut"}>{STAGE_LABELS[i] ?? "—"}</CellChip>;
+}
+
+/**
+ * A KPI delta as a chip. Replaces the old KPI primitive's trend icon + tinted
+ * pill: the sign still carries the direction, and the tone carries good/bad.
+ */
+function deltaChip(v: number | null | undefined, suffix = "%"): { delta?: string; tone: ChipTone } {
+  if (v == null) return { tone: "mut" };
+  return { delta: `${v >= 0 ? "+" : ""}${v}${suffix}`, tone: v >= 0 ? "ok" : "bad" };
+}
+
 export default function DashboardPage() {
-  const { t } = useTheme();
   const router = useRouter();
   const { data: user } = useCurrentUser();
   const { data: loans = [] } = useLoans();
@@ -111,88 +150,65 @@ export default function DashboardPage() {
     return null;
   }
 
+  const closingSoon = loans
+    .filter((l) => l.stage === "closing" || l.stage === "processing")
+    .slice(0, 5);
+
   return (
-    <div
-      style={{
-        padding: 24,
-        display: "flex",
-        flexDirection: "column",
-        gap: 20,
-        maxWidth: 1400,
-        margin: "0 auto",
-      }}
-    >
+    <CG>
       {/* Greeting + header action buttons */}
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16 }}>
-        <div>
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: t.petrol,
-              letterSpacing: 1.6,
-              textTransform: "uppercase",
-            }}
-          >
-            {datelineDate} · {datelineTime} ET
-          </div>
-          <h1 style={{ margin: "4px 0 0", fontSize: 30, fontWeight: 700, letterSpacing: -0.8, color: t.ink }}>
-            {firstName ? `${greeting}, ${firstName}.` : greeting + "."}
-          </h1>
-          <div style={{ fontSize: 14, color: t.ink2, marginTop: 4 }}>
-            {highPriority.length} high-priority items, {todayEvents.length} events today, {inFlight.length} loans in flight.
-          </div>
+      <div className="s12">
+        <div className="lbl">
+          {datelineDate} · {datelineTime} ET
         </div>
-        {!isClient && (
-          <div style={{ display: "flex", gap: 8 }}>
-            <Link href="/pipeline" style={{ ...qcBtn(t), textDecoration: "none" }}>
-              <Icon name="layers" size={14} /> Open Pipeline
-            </Link>
-            <Link href="/ai-inbox" style={{ ...qcBtnPrimary(t), textDecoration: "none" }}>
-              <Icon name="bolt" size={14} /> Review AI Tasks
-            </Link>
-          </div>
-        )}
+        <PageHeader
+          title={firstName ? `${greeting}, ${firstName}.` : greeting + "."}
+          lede={`${highPriority.length} high-priority items, ${todayEvents.length} events today, ${inFlight.length} loans in flight.`}
+          actions={
+            !isClient ? (
+              <>
+                <Link href="/pipeline" className="btn">
+                  <Icon name="layers" size={14} /> Open Pipeline
+                </Link>
+                <Link href="/ai-inbox" className="btn pri">
+                  <Icon name="bolt" size={14} /> Review AI Tasks
+                </Link>
+              </>
+            ) : undefined
+          }
+        />
       </div>
 
       {/* KPI row — operator-only. Borrowers don't need (and shouldn't see)
           firm-wide funded/pipeline/pull-through metrics. */}
       {!isClient && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-          <KPI
+        <KpiRow className="s12">
+          <Kpi
             label="Funded YTD"
             value={report ? QC_FMT.short(report.funded_ytd) : "—"}
-            delta={report?.funded_ytd_delta ?? undefined}
             sub="vs. prior year"
-            icon="dollar"
-            accent={t.profit}
+            {...deltaChip(report?.funded_ytd_delta)}
           />
-          <KPI
+          <Kpi
             label="Pipeline"
             value={report ? QC_FMT.short(report.pipeline_value) : "—"}
             sub={report ? `${report.pipeline_count} loans` : undefined}
-            icon="layers"
           />
-          <KPI
+          <Kpi
             label="Avg close"
             value={report?.avg_close_days ? `${report.avg_close_days}d` : "—"}
-            delta={report?.avg_close_delta ?? undefined}
-            deltaSuffix="d"
             sub="from app to wire"
-            icon="audit"
+            {...deltaChip(report?.avg_close_delta, "d")}
           />
-          <KPI
+          <Kpi
             label="Pull-through"
             value={report?.pull_through != null ? `${(report.pull_through * 100).toFixed(0)}%` : "—"}
-            delta={
-              report?.pull_through_delta != null
-                ? Math.round(report.pull_through_delta * 100)
-                : undefined
-            }
             sub="last 90d"
-            icon="trend"
+            {...deltaChip(
+              report?.pull_through_delta != null ? Math.round(report.pull_through_delta * 100) : null,
+            )}
           />
-        </div>
+        </KpiRow>
       )}
 
       <TodaysOverduePanel tasks={tasks} events={events} loans={loans} isClient={isClient} />
@@ -204,233 +220,107 @@ export default function DashboardPage() {
       {isClient && <ProTermsCard userName={user?.name ?? ""} userEmail={user?.email ?? ""} />}
 
       {/* Pipeline at a glance + Today */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 20 }}>
-        <Card pad={16}>
-          <SectionLabel
-            action={
-              <Link href="/pipeline" style={{ color: t.petrol, fontWeight: 700, fontSize: 12, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                View all <Icon name="arrowR" size={12} />
+      <Panel
+        className="s7"
+        title={isRegionalManager ? "Portfolio pipeline" : showOperatorPipeline ? "Pipeline at a glance" : "Your loans"}
+        actions={
+          <Link href="/pipeline" className="linky">
+            View all <Icon name="arrowR" size={12} />
+          </Link>
+        }
+      >
+        {showOperatorPipeline ? (
+          // Bespoke track: five stage counters always sit five-across, which is
+          // narrower than `.kpis`' 150px auto-fit would allow. `.grid`/`.g10`
+          // own display and gap; only the track is set here.
+          <div className="grid g10" style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
+            {stageCounts.slice(0, 5).map((s, i) => (
+              <Link key={s.stage} href="/pipeline" className="kpi">
+                <div className="lbl">{STAGE_LABELS[i]}</div>
+                <div className="knum num">{s.count}</div>
+                <div className="sub num">{QC_FMT.short(Number(s.value))}</div>
               </Link>
-            }
-          >
-            {isRegionalManager ? "Portfolio pipeline" : showOperatorPipeline ? "Pipeline at a glance" : "Your loans"}
-          </SectionLabel>
+            ))}
+          </div>
+        ) : (
+          // Borrower/broker variant — mobile-style top-3 loan cards
+          <BorrowerPipelineCards loans={loans} />
+        )}
 
-          {showOperatorPipeline ? (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
-              {stageCounts.slice(0, 5).map((s, i) => (
-                <Link
-                  key={s.stage}
-                  href="/pipeline"
-                  style={{
-                    background: t.surface2,
-                    border: `1px solid ${t.line}`,
-                    borderRadius: 10,
-                    padding: 12,
-                    textDecoration: "none",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: t.ink3,
-                      letterSpacing: 1,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {STAGE_LABELS[i]}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 22,
-                      fontWeight: 700,
-                      color: t.ink,
-                      marginTop: 4,
-                      fontFeatureSettings: '"tnum"',
-                    }}
-                  >
-                    {s.count}
-                  </div>
-                  <div style={{ fontSize: 11, color: t.ink3, marginTop: 2, fontFeatureSettings: '"tnum"' }}>
-                    {QC_FMT.short(Number(s.value))}
-                  </div>
+        <div className="lbl mt mb">Closing in next 14 days</div>
+        <Table cols={CLOSING_COLS} caption="Loans closing in the next 14 days">
+          {closingSoon.map((loan) => (
+            // The row is clickable AND the deal id is a real link, so the row
+            // stays reachable by keyboard — a bare <tr onClick> is not.
+            <Tr key={loan.id} onClick={() => router.push(`/loans/${loan.id}`)}>
+              <Td>
+                <Link href={`/loans/${loan.id}`} className="linky num">
+                  {loan.deal_id}
                 </Link>
-              ))}
-            </div>
-          ) : (
-            // Borrower/broker variant — mobile-style top-3 loan cards
-            <BorrowerPipelineCards loans={loans} />
+              </Td>
+              <Td>
+                <b>{loan.address}</b>
+                <div className="sub">{loan.type.replace("_", " ")}</div>
+              </Td>
+              <Td align="r">
+                <b className="num">{QC_FMT.short(Number(loan.amount))}</b>
+              </Td>
+              <Td>
+                <StageChip stage={loan.stage} />
+              </Td>
+              <Td>
+                <span className="sub">
+                  {loan.close_date
+                    ? `Close ${new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+                    : "—"}
+                </span>
+              </Td>
+            </Tr>
+          ))}
+          {inFlight.length === 0 && (
+            <Tr>
+              <Td colSpan={5}>
+                <span className="sub">No loans in flight yet. Create one from the Pipeline page.</span>
+              </Td>
+            </Tr>
           )}
+        </Table>
+      </Panel>
 
-          <div style={{ height: 16 }} />
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: t.ink3,
-              letterSpacing: 1.2,
-              textTransform: "uppercase",
-              marginBottom: 10,
-            }}
-          >
-            Closing in next 14 days
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {loans
-              .filter((l) => l.stage === "closing" || l.stage === "processing")
-              .slice(0, 5)
-              .map((loan) => (
-                <Link
-                  key={loan.id}
-                  href={`/loans/${loan.id}`}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "70px minmax(0, 1fr) 90px 130px 90px 24px",
-                    gap: 12,
-                    alignItems: "center",
-                    padding: "10px 12px",
-                    borderRadius: 9,
-                    border: `1px solid ${t.line}`,
-                    textDecoration: "none",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontFamily: "ui-monospace, SF Mono, monospace",
-                      fontSize: 11,
-                      color: t.ink3,
-                      fontWeight: 700,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {loan.deal_id}
-                  </span>
-                  <div style={{ minWidth: 0, overflow: "hidden" }}>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 700,
-                        color: t.ink,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {loan.address}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: t.ink3,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {loan.type.replace("_", " ")}
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: t.ink,
-                      fontWeight: 700,
-                      fontFeatureSettings: '"tnum"',
-                      whiteSpace: "nowrap",
-                      textAlign: "right",
-                    }}
-                  >
-                    {QC_FMT.short(Number(loan.amount))}
-                  </div>
-                  <StageBadge stage={STAGE_KEYS.indexOf(loan.stage)} />
-                  <div style={{ fontSize: 11.5, color: t.ink2, fontWeight: 600, whiteSpace: "nowrap" }}>
-                    {loan.close_date
-                      ? `Close ${new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-                      : "—"}
-                  </div>
-                  <Icon name="chevR" size={14} style={{ color: t.ink4 }} />
-                </Link>
-              ))}
-            {inFlight.length === 0 && (
-              <div style={{ padding: 16, fontSize: 13, color: t.ink3, textAlign: "center" }}>
-                No loans in flight yet. Create one from the Pipeline page.
+      <Panel
+        className="s5"
+        title="Today"
+        actions={
+          <Link href="/calendar" className="linky">
+            Calendar <Icon name="arrowR" size={12} />
+          </Link>
+        }
+      >
+        {/* Compact rates list — same FRED data as the full "Today's Market
+            Rates" widget above, rendered tighter for the half-width column. */}
+        <TodayRatesGrid />
+
+        <div className="lbl mt mb">On the calendar</div>
+        {todayEvents.length === 0 && <div className="sub">No events scheduled for today.</div>}
+        {todayEvents.slice(0, 6).map((ev) => (
+          <div key={ev.id} className={cx("itemrow", ev.priority === "high" && "flagged")}>
+            <CellChip tone={eventTone(ev.kind)}>
+              {new Date(ev.starts_at).toLocaleTimeString("en-US", {
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })}
+            </CellChip>
+            <div className="grow">
+              <b>{ev.title}</b>
+              <div className="sub">
+                {ev.who ?? "—"}
+                {ev.duration_min ? ` · ${ev.duration_min}m` : ""}
               </div>
-            )}
+            </div>
           </div>
-        </Card>
-
-        <Card pad={16}>
-          <SectionLabel
-            action={
-              <Link href="/calendar" style={{ color: t.petrol, fontWeight: 700, fontSize: 12, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                Calendar <Icon name="arrowR" size={12} />
-              </Link>
-            }
-          >
-            Today
-          </SectionLabel>
-
-          {/* Compact 2x2 rates grid — same FRED data as the full
-              "Today's Market Rates" widget above, rendered tighter
-              for the half-width Today column. */}
-          <TodayRatesGrid />
-
-          <div style={{
-            fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2,
-            textTransform: "uppercase", color: t.ink3,
-            margin: "16px 0 8px 0",
-          }}>
-            On the calendar
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {todayEvents.length === 0 && (
-              <div style={{ fontSize: 12.5, color: t.ink3 }}>No events scheduled for today.</div>
-            )}
-            {todayEvents.slice(0, 6).map((ev) => {
-              const k = ev.kind;
-              const color = k === "closing" ? t.profit : k === "doc" ? t.warn : k === "ai" ? t.petrol : t.brand;
-              const bg = k === "closing" ? t.profitBg : k === "doc" ? t.warnBg : k === "ai" ? t.petrolSoft : t.brandSoft;
-              return (
-                <div
-                  key={ev.id}
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    alignItems: "flex-start",
-                    padding: 10,
-                    borderRadius: 9,
-                    border: `1px solid ${t.line}`,
-                    background: ev.priority === "high" ? bg : "transparent",
-                  }}
-                >
-                  <div
-                    style={{
-                      minWidth: 56,
-                      fontFamily: "ui-monospace, SF Mono, monospace",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color,
-                      fontFeatureSettings: '"tnum"',
-                    }}
-                  >
-                    {new Date(ev.starts_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink, lineHeight: 1.4 }}>{ev.title}</div>
-                    <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>
-                      {ev.who ?? "—"}
-                      {ev.duration_min ? ` · ${ev.duration_min}m` : ""}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      </div>
+        ))}
+      </Panel>
 
       {/* Portfolio Health — borrower-facing only. Operators have their own
           KPI/exposure surfaces (Reports, Top Brokers, Pipeline). */}
@@ -439,77 +329,75 @@ export default function DashboardPage() {
       {/* AI tasks + Top brokers — operator-only. Borrowers don't have an
           AI-task queue and shouldn't see the broker leaderboard. */}
       {!isClient && (
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        <Card pad={16}>
-          <SectionLabel
-            action={
-              <Link href="/ai-inbox" style={{ color: t.petrol, fontWeight: 700, fontSize: 12, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
+        <>
+          <Panel
+            className="s6"
+            title="Elara · pending approval"
+            actions={
+              <Link href="/ai-inbox" className="linky">
                 Queue <Icon name="arrowR" size={12} />
               </Link>
             }
           >
-            Elara · pending approval
-          </SectionLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {tasks.filter((task) => task.status === "pending").slice(0, 3).map((task) => (
-              <Link
-                key={task.id}
-                href="/ai-inbox"
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  padding: 10,
-                  borderRadius: 10,
-                  border: `1px solid ${t.line}`,
-                  background: t.surface2,
-                  textDecoration: "none",
-                }}
-              >
-                <Icon name="bolt" size={14} style={{ color: t.petrol, marginTop: 2 }} />
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-                    <Pill bg={task.priority === "high" ? t.dangerBg : t.chip} color={task.priority === "high" ? t.danger : t.ink2}>
-                      {task.priority}
-                    </Pill>
-                    <Pill>{task.source}</Pill>
+            {tasks
+              .filter((task) => task.status === "pending")
+              .slice(0, 3)
+              .map((task) => (
+                <Link key={task.id} href="/ai-inbox" className="pick">
+                  <Icon name="bolt" size={14} />
+                  <div className="grow">
+                    <div className="row">
+                      <CellChip tone={task.priority === "high" ? "bad" : "mut"}>{task.priority}</CellChip>
+                      <span className="tag">{task.source}</span>
+                    </div>
+                    <div>
+                      <b>{task.title}</b>
+                    </div>
+                    <div className="sub">{task.summary}</div>
                   </div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{task.title}</div>
-                  <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>{task.summary}</div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              ))}
             {tasks.filter((task) => task.status === "pending").length === 0 && (
-              <div style={{ padding: 16, fontSize: 13, color: t.ink3, textAlign: "center" }}>
-                Nothing pending — Elara is caught up.
-              </div>
+              <div className="sub">Nothing pending — Elara is caught up.</div>
             )}
-          </div>
-        </Card>
+          </Panel>
 
-        {isRegionalManager ? <RegionalAgentsPanel /> : <TopBrokersPanel />}
-      </div>
+          {isRegionalManager ? <RegionalAgentsPanel /> : <TopBrokersPanel />}
+        </>
       )}
-    </div>
+    </CG>
   );
 }
 
+const CLOSING_COLS: Col[] = [
+  { label: "Deal", width: 96 },
+  { label: "Property" },
+  { label: "Amount", align: "r" },
+  { label: "Stage" },
+  { label: "Close" },
+];
+
+// Calendar-event kind → chip tone. Same four-way split the inline colour
+// lookup made (closing = profit, doc = warn, ai = petrol, else = brand).
+function eventTone(kind: string): ChipTone {
+  return kind === "closing" ? "ok" : kind === "doc" ? "warn" : kind === "ai" ? "pet" : "acc";
+}
+
 function RegionalAgentsPanel() {
-  const { t } = useTheme();
   return (
-    <Card pad={16}>
-      <SectionLabel
-        action={
-          <Link href="/regional-agents" style={{ color: t.petrol, fontWeight: 700, fontSize: 12, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
-            Agents <Icon name="arrowR" size={12} />
-          </Link>
-        }
-      >
-        Regional portfolio
-      </SectionLabel>
-      <div style={{ fontSize: 13, color: t.ink3, lineHeight: 1.5 }}>
+    <Panel
+      className="s6"
+      title="Regional portfolio"
+      actions={
+        <Link href="/regional-agents" className="linky">
+          Agents <Icon name="arrowR" size={12} />
+        </Link>
+      }
+    >
+      <div className="sub">
         View your assigned agents, invite new agents, and monitor portfolio metrics.
       </div>
-    </Card>
+    </Panel>
   );
 }
 
@@ -538,54 +426,49 @@ const PRODUCT_CARDS: Array<{ id: string; label: string; term: string; sub: strin
   { id: "br", label: "Bridge", term: "24 mo", sub: "75% LTV", series_id: "SOFR" },
 ];
 
-// Compact 2x2 rate grid for the half-width "Today" card.
+// A falling rate is good news and a rising one is bad news, so the delta's
+// sign picks the tone. Data-derived, but expressed as a tone rather than a
+// colour so it stays inside the chip vocabulary.
+function rateDeltaTone(delta: number | null | undefined): ChipTone {
+  if (delta == null || delta === 0) return "mut";
+  return delta < 0 ? "ok" : "bad";
+}
+
+// Compact rate list for the half-width "Today" panel.
 // Reuses the same FRED series the wide widget shows; just a tighter
 // layout (label + estimated rate + delta, no inline chart).
 function TodayRatesGrid() {
-  const { t } = useTheme();
   const { data: series = [] } = useFredSeries();
   const seriesById = new Map(series.map((s) => [s.series_id, s] as const));
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 4 }}>
+    <>
       {PRODUCT_CARDS.map((card) => {
         const s = seriesById.get(card.series_id);
         const estimated = s?.estimated_rate;
         const delta = s?.delta_bps ?? null;
-        const deltaColor = delta == null ? t.ink3 : delta < 0 ? t.profit : delta > 0 ? t.danger : t.ink3;
         return (
-          <Link
-            key={card.id}
-            href="/market-rates"
-            style={{
-              display: "flex", flexDirection: "column", gap: 3,
-              padding: "10px 12px", borderRadius: 10,
-              background: t.surface2, border: `1px solid ${t.line}`,
-              textDecoration: "none",
-            }}
-          >
-            <div style={{ fontSize: 11, fontWeight: 700, color: t.ink, lineHeight: 1.2 }}>
-              {card.label}
+          <Link key={card.id} href="/market-rates" className="itemrow">
+            <div className="grow">
+              <div className="trunc">
+                <b>{card.label}</b>
+              </div>
+              <div className="sub">{card.term}</div>
             </div>
-            <div style={{ fontSize: 9.5, color: t.ink3, lineHeight: 1.2 }}>{card.term}</div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 2 }}>
-              <span style={{ fontSize: 16, fontWeight: 700, color: t.ink, fontFeatureSettings: '"tnum"' }}>
-                {estimated != null ? `${estimated.toFixed(2)}%` : "—"}
-              </span>
-              {delta != null && (
-                <span style={{ fontSize: 10, fontWeight: 700, color: deltaColor, fontFeatureSettings: '"tnum"' }}>
-                  {delta > 0 ? "+" : ""}{delta} bps
-                </span>
-              )}
-            </div>
+            <b className="num">{estimated != null ? `${estimated.toFixed(2)}%` : "—"}</b>
+            {delta != null && (
+              <CellChip tone={rateDeltaTone(delta)}>
+                {delta > 0 ? "+" : ""}
+                {delta} bps
+              </CellChip>
+            )}
           </Link>
         );
       })}
-    </div>
+    </>
   );
 }
 
 function TodaysMarketRates() {
-  const { t } = useTheme();
   const { data: user } = useCurrentUser();
   const { data: series = [], isLoading, error: seriesError } = useFredSeries();
   const refreshFred = useRefreshFred();
@@ -628,99 +511,77 @@ function TodaysMarketRates() {
 
   return (
     <>
-      <Card pad={16}>
-        <SectionLabel
-          action={
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-              {lastUpdated && (
-                <span style={{ fontSize: 11, color: t.ink3 }}>
-                  FRED · updated {new Date(lastUpdated).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                </span>
-              )}
-              {isSuperAdmin && (
-                <button
-                  onClick={() => refreshFred.mutate()}
-                  disabled={refreshFred.isPending}
-                  title="Force a FRED pull now (normally runs via the morning cron)"
-                  style={{
-                    all: "unset",
-                    cursor: refreshFred.isPending ? "wait" : "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    padding: "4px 8px",
-                    borderRadius: 7,
-                    background: t.surface2,
-                    border: `1px solid ${t.line}`,
-                    color: t.ink2,
-                    fontSize: 11,
-                    fontWeight: 700,
-                  }}
-                >
-                  <Icon name="refresh" size={11} />
-                  {refreshFred.isPending ? "Pulling…" : "Refresh"}
-                </button>
-              )}
-              <Link
-                href="/market-rates"
-                style={{
-                  color: t.petrol,
-                  fontWeight: 700,
-                  fontSize: 12,
-                  textDecoration: "none",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
+      <Panel
+        className="s12"
+        title="Today's market rates"
+        actions={
+          <>
+            {lastUpdated && (
+              <span className="sub">
+                FRED · updated{" "}
+                {new Date(lastUpdated).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              </span>
+            )}
+            {isSuperAdmin && (
+              <Btn
+                size="sm"
+                onClick={() => refreshFred.mutate()}
+                disabled={refreshFred.isPending}
+                title="Force a FRED pull now (normally runs via the morning cron)"
               >
-                view all <Icon name="arrowR" size={12} />
-              </Link>
-            </div>
-          }
-        >
-          Today&apos;s market rates
-        </SectionLabel>
-
+                <Icon name="refresh" size={11} />
+                {refreshFred.isPending ? "Pulling…" : "Refresh"}
+              </Btn>
+            )}
+            <Link href="/market-rates" className="linky">
+              view all <Icon name="arrowR" size={12} />
+            </Link>
+          </>
+        }
+      >
         {(isLoading || refreshFred.isPending) && !hasAnyData && !fredNotDeployed && (
-          <div style={{ padding: 14, fontSize: 12.5, color: t.ink3 }}>
+          <div className="sub mb">
             {refreshFred.isPending ? "Pulling latest from FRED…" : "Loading rates…"}
           </div>
         )}
 
         {fredNotDeployed && (
-          <div style={{ padding: 14, fontSize: 12.5, color: t.ink2, background: t.surface2, borderRadius: 9, border: `1px solid ${t.line}` }}>
-            <strong>Market data not yet enabled.</strong> The backend at this environment doesn&apos;t expose
-            <code> /fred/series</code> yet — redeploy <code>qcbackend</code> to pick up the FRED router and
-            run <code>alembic upgrade head</code> for the matching schema.
-          </div>
+          <Note className="mb">
+            <div>
+              <b>Market data not yet enabled.</b> The backend at this environment doesn&apos;t expose
+              <code> /fred/series</code> yet — redeploy <code>qcbackend</code> to pick up the FRED router
+              and run <code>alembic upgrade head</code> for the matching schema.
+            </div>
+          </Note>
         )}
 
         {!fredNotDeployed && !isLoading && !refreshFred.isPending && !hasAnyData && (
-          <div style={{ padding: 14, fontSize: 12.5, color: t.warn, background: t.warnBg, borderRadius: 9 }}>
+          <StatusLine tone="warn" className="mb">
             {isSuperAdmin ? (
               <>
                 No FRED data yet — auto-pull failed. Check that <code>FRED_API_KEY</code> is set on
-                the backend, then click <strong>Refresh</strong> above.
+                the backend, then click <b>Refresh</b> above.
               </>
             ) : (
               <>Market data refreshing — check back shortly.</>
             )}
-          </div>
+          </StatusLine>
         )}
 
         {refreshFred.error && (
-          <div style={{ padding: 10, fontSize: 11.5, color: t.danger, fontWeight: 700 }}>
+          <StatusLine tone="bad" className="mb">
             FRED refresh failed: {refreshFred.error instanceof Error ? refreshFred.error.message : "unknown"}
-          </div>
+          </StatusLine>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+        {/* Bespoke track: the four product cards are a fixed four-across row,
+            not an auto-fit one — they are read as a set. */}
+        <div className="grid g10" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
           {PRODUCT_CARDS.map((card) => {
             const s = seriesById.get(card.series_id);
             return (
               <RateCard
                 key={card.id}
-                t={t}
                 card={card}
                 series={s}
                 onClick={() => setActiveSeries(card.series_id)}
@@ -728,7 +589,7 @@ function TodaysMarketRates() {
             );
           })}
         </div>
-      </Card>
+      </Panel>
       <RateDetailModal
         seriesId={activeSeries}
         productLabel={PRODUCT_CARDS.find((c) => c.series_id === activeSeries)?.label ?? null}
@@ -739,12 +600,10 @@ function TodaysMarketRates() {
 }
 
 function RateCard({
-  t,
   card,
   series,
   onClick,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   card: { id: string; label: string; term: string; sub: string; series_id: string };
   series: FredSeriesSummary | undefined;
   onClick: () => void;
@@ -754,7 +613,6 @@ function RateCard({
   const indexValue = series?.current_value;
   const spreadBps = series?.spread_bps ?? 0;
   const delta = series?.delta_bps ?? null;
-  const deltaColor = delta == null ? t.ink3 : delta < 0 ? t.profit : delta > 0 ? t.danger : t.ink3;
   // Inline chart points. DPRIME (Fix & Flip + Ground Up) publishes
   // weekly so its history_7d window is empty most days — fall back
   // to the most recent valid points from history_30d so the chart
@@ -773,65 +631,38 @@ function RateCard({
     <button
       onClick={onClick}
       aria-label={`${card.label} rate detail`}
-      style={{
-        all: "unset",
-        cursor: "pointer",
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        borderRadius: 12,
-        padding: 14,
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-      }}
+      className="kpi"
+      // Button reset only — `.kpi` owns every visual property here. Same
+      // shape FundingFileTab uses for its clickable `.card`.
+      style={{ width: "100%", textAlign: "left", font: "inherit", cursor: "pointer" }}
     >
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>
-          {card.label} <span style={{ color: t.ink3, fontWeight: 600 }}>· {card.term}</span>
-        </div>
-        <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>{card.sub}</div>
+      <div className="lbl">
+        {card.label} · {card.term}
       </div>
+      <div className="sub">{card.sub}</div>
       {hasEnoughHistory ? (
-        // Wrap so the chart's hover doesn't trigger the card's click on
-        // mouse-up — FredChart's tooltip swallows pointer events but the
-        // chart svg itself is inside the button, so a click anywhere on
-        // the card (including over the chart) still opens the modal.
+        // The chart's hover doesn't trigger the card's click on mouse-up —
+        // FredChart's tooltip swallows pointer events but the chart svg
+        // itself is inside the button, so a click anywhere on the card
+        // (including over the chart) still opens the modal.
         <FredChart data={chartPoints} width={200} height={44} variant="compact" fill />
       ) : (
-        <div style={{ height: 44, fontSize: 11, color: t.ink4, fontStyle: "italic", display: "flex", alignItems: "center" }}>
+        // 44px reserved so a series without history keeps the tile the same
+        // height as its neighbours — measured geometry, matched to the chart.
+        <div className="sub" style={{ height: 44, display: "flex", alignItems: "center" }}>
           {hasData ? "Building chart history…" : "Awaiting first FRED pull"}
         </div>
       )}
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-        <div
-          style={{
-            fontSize: 24,
-            fontWeight: 800,
-            color: t.ink,
-            fontFeatureSettings: '"tnum"',
-            letterSpacing: -0.4,
-          }}
-        >
-          {estimated != null ? estimated.toFixed(3) : "—"}
-          <span style={{ fontSize: 13, fontWeight: 700, color: t.ink3 }}>%</span>
-        </div>
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 800,
-            color: deltaColor,
-            fontFeatureSettings: '"tnum"',
-          }}
-        >
-          {delta == null ? "—" : QC_FMT.bps(delta)}
-        </div>
+      <div className="knum num">
+        {estimated != null ? estimated.toFixed(3) : "—"}
+        <span className="sub">%</span>
       </div>
-      <div style={{ fontSize: 10.5, color: t.ink3, fontFeatureSettings: '"tnum"', display: "flex", alignItems: "center", gap: 4 }}>
-        <span style={{ color: t.ink3 }}>{card.series_id}</span>
-        <span>{indexValue != null ? `${indexValue.toFixed(2)}%` : "—"}</span>
-        <span>+</span>
-        <span>{(spreadBps / 100).toFixed(2)}%</span>
-        <span style={{ color: t.ink4 }}>(spread)</span>
+      <div className="kdelta">
+        <CellChip tone={rateDeltaTone(delta)}>{delta == null ? "—" : QC_FMT.bps(delta)}</CellChip>
+      </div>
+      <div className="sub num">
+        {card.series_id} {indexValue != null ? `${indexValue.toFixed(2)}%` : "—"} +{" "}
+        {(spreadBps / 100).toFixed(2)}% (spread)
       </div>
     </button>
   );
@@ -839,7 +670,6 @@ function RateCard({
 
 // ── Pro Terms Card (clients only) ──────────────────────────────────────────
 function ProTermsCard({ userName, userEmail }: { userName: string; userEmail: string }) {
-  const { t } = useTheme();
   const { data: credit } = useMyCredit();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"first" | "rerun" | "expired">("first");
@@ -848,53 +678,31 @@ function ProTermsCard({ userName, userEmail }: { userName: string; userEmail: st
 
   return (
     <>
-      <Card
-        pad={18}
-        style={{
-          background: unlocked ? t.profitBg : t.dangerBg,
-          borderColor: unlocked ? `${t.profit}40` : `${t.danger}40`,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: unlocked ? t.profit : t.danger,
-              color: "#fff",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <Icon name={unlocked ? "unlock" : "lock"} size={20} stroke={2.4} />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 800,
-                color: unlocked ? t.profit : t.danger,
-                letterSpacing: 0.4,
-                textTransform: "uppercase",
-              }}
-            >
+      {/* The whole surface carries the state — a locked card is scanned, not
+          read, and a badge inside a neutral card makes you read it. */}
+      <Card className={cx("s12", unlocked ? "tone-ok" : "tone-bad")}>
+        <div className="row">
+          <Icon name={unlocked ? "unlock" : "lock"} size={20} stroke={2.4} />
+          <div className="grow">
+            <CellChip tone={unlocked ? "ok" : "bad"}>
               {unlocked ? "Pro Terms Unlocked" : "Pro Terms Locked"}
-            </div>
+            </CellChip>
             {unlocked ? (
-              <div style={{ fontSize: 12, color: t.ink2, marginTop: 1 }}>
+              <div className="sub">
                 {creditTierLabel(credit.fico)} · valid through{" "}
                 {credit.expires_at ? new Date(credit.expires_at).toLocaleDateString() : "—"}
               </div>
             ) : (
-              <div style={{ fontSize: 12, color: t.ink2, marginTop: 1 }}>
+              <div className="sub">
                 One soft pull unlocks all applications for 90 days · no score impact.
               </div>
             )}
           </div>
-          <button
+          {/* Solid danger while locked, not the tint: this is the primary
+              conversion CTA on a borrower's dashboard and was solid-filled
+              before the migration. */}
+          <Btn
+            className={unlocked ? undefined : "pri-bad"}
             onClick={() => {
               const next: "first" | "rerun" | "expired" = credit?.is_expired
                 ? "expired"
@@ -904,19 +712,10 @@ function ProTermsCard({ userName, userEmail }: { userName: string; userEmail: st
               setMode(next);
               setOpen(true);
             }}
-            style={{
-              ...qcBtnPrimary(t),
-              background: unlocked ? t.surface : t.danger,
-              color: unlocked ? t.ink : "#fff",
-              border: unlocked ? `1px solid ${t.line}` : "none",
-              padding: "10px 16px",
-              fontSize: 13,
-              whiteSpace: "nowrap",
-            }}
           >
             <Icon name={unlocked ? "refresh" : "lock"} size={14} />
             {unlocked ? "Re-run pull" : "Unlock Pro Terms · Soft Pull"}
-          </button>
+          </Btn>
         </div>
       </Card>
       <CreditPullModal
@@ -939,57 +738,22 @@ function creditTierLabel(fico: number | null | undefined): string {
 
 // ── Borrower / broker pipeline cards (mobile-style) ──────────────────────
 function BorrowerPipelineCards({ loans }: { loans: Loan[] }) {
-  const { t } = useTheme();
   if (loans.length === 0) {
-    return (
-      <div style={{ padding: 16, fontSize: 13, color: t.ink3, textAlign: "center" }}>
-        No loans yet.
-      </div>
-    );
+    return <div className="sub">No loans yet.</div>;
   }
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+    // Bespoke track: always three across, matching the mobile card row.
+    <div className="grid g10" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
       {loans.slice(0, 3).map((l) => (
-        <Link
-          key={l.id}
-          href={`/loans/${l.id}`}
-          style={{
-            background: t.surface2,
-            border: `1px solid ${t.line}`,
-            borderRadius: 12,
-            padding: 14,
-            textDecoration: "none",
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-            <span
-              style={{
-                fontFamily: "ui-monospace, SF Mono, monospace",
-                fontSize: 11,
-                color: t.ink3,
-                fontWeight: 700,
-              }}
-            >
-              {l.deal_id}
-            </span>
-            <StageBadge stage={STAGE_KEYS.indexOf(l.stage)} />
+        <Link key={l.id} href={`/loans/${l.id}`} className="kpi">
+          <div className="row">
+            <span className="sub num">{l.deal_id}</span>
+            <StageChip stage={l.stage} />
           </div>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: t.ink,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {l.address}
+          <div className="trunc">
+            <b>{l.address}</b>
           </div>
-          <div style={{ fontSize: 12, color: t.ink3 }}>
+          <div className="sub">
             {QC_FMT.short(Number(l.amount))} · {l.type.replace("_", " ")}
           </div>
         </Link>
@@ -1000,7 +764,6 @@ function BorrowerPipelineCards({ loans }: { loans: Loan[] }) {
 
 // ── Portfolio Health ────────────────────────────────────────────────────
 function PortfolioHealth({ loans }: { loans: Loan[] }) {
-  const { t } = useTheme();
   const equityUnlocked = loans.reduce((s, l) => s + Number(l.amount) * 0.3, 0);
   const dscrLoans = loans.filter((l) => l.dscr != null);
   const globalDSCR =
@@ -1009,29 +772,20 @@ function PortfolioHealth({ loans }: { loans: Loan[] }) {
       : null;
   const activeLoans = loans.filter((l) => l.stage !== "funded").length;
   return (
-    <Card pad={16}>
-      <SectionLabel
-        action={
-          <Link
-            href="/vault"
-            style={{
-              color: t.petrol,
-              fontWeight: 700,
-              fontSize: 12,
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-            title="Manage properties, upload HUDs, and review your investor profile"
-          >
-            view all <Icon name="arrowR" size={12} />
-          </Link>
-        }
-      >
-        Portfolio Health
-      </SectionLabel>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+    <Panel
+      className="s12"
+      title="Portfolio Health"
+      actions={
+        <Link
+          href="/vault"
+          className="linky"
+          title="Manage properties, upload HUDs, and review your investor profile"
+        >
+          view all <Icon name="arrowR" size={12} />
+        </Link>
+      }
+    >
+      <KpiRow>
         <Stat label="Equity Unlocked" value={QC_FMT.short(equityUnlocked)} sub="estimated 30% of loan vol." />
         <Stat
           label="Global DSCR"
@@ -1039,53 +793,18 @@ function PortfolioHealth({ loans }: { loans: Loan[] }) {
           sub={dscrLoans.length > 0 ? `avg of ${dscrLoans.length} loans` : "no DSCR data"}
         />
         <Stat label="Active loans" value={String(activeLoans)} sub={`${loans.length - activeLoans} funded`} />
-      </div>
-    </Card>
+      </KpiRow>
+    </Panel>
   );
 }
 
+/** Kept as its own name — it is the borrower-facing stat tile, now a `.kpi`. */
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  const { t } = useTheme();
-  return (
-    <div
-      style={{
-        background: t.surface2,
-        border: `1px solid ${t.line}`,
-        borderRadius: 12,
-        padding: 16,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10.5,
-          fontWeight: 700,
-          color: t.ink3,
-          letterSpacing: 1.2,
-          textTransform: "uppercase",
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 26,
-          fontWeight: 800,
-          color: t.ink,
-          marginTop: 6,
-          fontFeatureSettings: '"tnum"',
-          letterSpacing: -0.4,
-        }}
-      >
-        {value}
-      </div>
-      {sub && <div style={{ fontSize: 11, color: t.ink3, marginTop: 4 }}>{sub}</div>}
-    </div>
-  );
+  return <Kpi label={label} value={value} sub={sub} />;
 }
 
 // ── Top brokers (replaces Top exposures) ─────────────────────────────────
 function TopBrokersPanel() {
-  const { t } = useTheme();
   // Try the leaderboard first (super-admin only). Fall back to /brokers (broader
   // access) so the panel still renders for AE/UW roles. The fallback hook is
   // always wired but we only consume it when the leaderboard 403s.
@@ -1097,90 +816,52 @@ function TopBrokersPanel() {
     .slice(0, 5);
 
   return (
-    <Card pad={16}>
-      <SectionLabel
-        action={
-          <Link
-            href="/rewards"
-            style={{
-              color: t.petrol,
-              fontWeight: 700,
-              fontSize: 12,
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            Leaderboard <Icon name="arrowR" size={12} />
-          </Link>
-        }
-      >
-        Top brokers
-      </SectionLabel>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {sorted.map((b) => {
-          const initials = (b.display_name ?? "?")
-            .split(" ")
-            .map((n) => n[0])
-            .slice(0, 2)
-            .join("");
-          return (
-            <div
-              key={b.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "10px 6px",
-                borderBottom: `1px solid ${t.line}`,
-              }}
-            >
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 999,
-                  background: t.petrol,
-                  color: "#fff",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  flexShrink: 0,
-                }}
-              >
-                {initials}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{b.display_name}</div>
-                <div style={{ fontSize: 11, color: t.ink3 }}>
-                  {b.tier ?? "—"}
-                  {b.funded_count != null ? ` · ${b.funded_count} loans` : ""}
-                  {b.lifetime_points != null ? ` · ${b.lifetime_points.toLocaleString()} pts` : ""}
-                </div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: t.ink, fontFeatureSettings: '"tnum"' }}>
-                  {QC_FMT.short(Number(b.funded_total ?? 0))}
-                </div>
-                <div style={{ fontSize: 10.5, color: t.ink3 }}>funded</div>
+    <Panel
+      className="s6"
+      title="Top brokers"
+      actions={
+        <Link href="/rewards" className="linky">
+          Leaderboard <Icon name="arrowR" size={12} />
+        </Link>
+      }
+    >
+      {sorted.map((b) => {
+        const initials = (b.display_name ?? "?")
+          .split(" ")
+          .map((n) => n[0])
+          .slice(0, 2)
+          .join("");
+        return (
+          <div key={b.id} className="itemrow">
+            <span className="avatar">{initials}</span>
+            <div className="grow">
+              <b>{b.display_name}</b>
+              <div className="sub">
+                {b.tier ?? "—"}
+                {b.funded_count != null ? ` · ${b.funded_count} loans` : ""}
+                {b.lifetime_points != null ? ` · ${b.lifetime_points.toLocaleString()} pts` : ""}
               </div>
             </div>
-          );
-        })}
-        {sorted.length === 0 && (
-          <div style={{ padding: 16, fontSize: 13, color: t.ink3, textAlign: "center" }}>
-            No brokers to show yet.
+            <div className="align-r">
+              <b className="num">{QC_FMT.short(Number(b.funded_total ?? 0))}</b>
+              <div className="sub">funded</div>
+            </div>
           </div>
-        )}
-      </div>
-    </Card>
+        );
+      })}
+      {sorted.length === 0 && <div className="sub">No brokers to show yet.</div>}
+    </Panel>
   );
 }
 
 // ── Today's Overdue panel ────────────────────────────────────────────────
+
+// Urgency → chip tone. Same three-way split the inline `urgencyStyle` helper
+// made (danger / warn / neutral).
+function urgencyTone(u: "overdue" | "today" | "soon"): ChipTone {
+  return u === "overdue" ? "bad" : u === "today" ? "warn" : "mut";
+}
+
 function TodaysOverduePanel({
   tasks,
   events,
@@ -1192,7 +873,6 @@ function TodaysOverduePanel({
   loans: Loan[];
   isClient: boolean;
 }) {
-  const { t } = useTheme();
   const now = Date.now();
   const todayEnd = (() => {
     const d = new Date();
@@ -1282,149 +962,50 @@ function TodaysOverduePanel({
   const overdueCount = items.filter((i) => i.urgency === "overdue").length;
   const todayCount = items.filter((i) => i.urgency === "today").length;
 
-  const urgencyStyle = (u: "overdue" | "today" | "soon") => ({
-    color: u === "overdue" ? t.danger : u === "today" ? t.warn : t.ink2,
-    bg: u === "overdue" ? t.dangerBg : u === "today" ? t.warnBg : t.chip,
-  });
-
   return (
-    <Card pad={16} style={{ background: overdueCount > 0 ? t.dangerBg : t.warnBg, borderColor: overdueCount > 0 ? `${t.danger}40` : `${t.warn}40` }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            background: overdueCount > 0 ? t.danger : t.warn,
-            color: "#fff",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Icon name="bell" size={16} stroke={2.4} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 800,
-              color: overdueCount > 0 ? t.danger : t.warn,
-              letterSpacing: 0.4,
-              textTransform: "uppercase",
-            }}
-          >
-            Needs attention
-          </div>
-          <div style={{ fontSize: 12, color: t.ink2, marginTop: 1 }}>
+    // The card itself carries the worst state on it, so the panel is legible
+    // at a glance rather than only after reading the counts.
+    <Card className={cx("s12", overdueCount > 0 ? "tone-bad" : "tone-warn")}>
+      <div className="row mb">
+        <Icon name="bell" size={16} stroke={2.4} />
+        <div className="grow">
+          <CellChip tone={overdueCount > 0 ? "bad" : "warn"}>Needs attention</CellChip>
+          <div className="sub">
             {overdueCount > 0 && (
               <span>
-                <strong style={{ color: t.danger }}>{overdueCount} overdue</strong> ·{" "}
+                <b>{overdueCount} overdue</b> ·{" "}
               </span>
             )}
             {todayCount > 0 && (
               <span>
-                <strong>{todayCount} due today</strong> ·{" "}
+                <b>{todayCount} due today</b> ·{" "}
               </span>
             )}
             {ranked.length} actionable item{ranked.length > 1 ? "s" : ""} surfaced.
           </div>
         </div>
         {isClient ? (
-          <Link
-            href="/pipeline"
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              background: t.surface,
-              color: t.ink2,
-              border: `1px solid ${t.line}`,
-              fontSize: 12,
-              fontWeight: 700,
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-            }}
-          >
+          <Link href="/pipeline" className="btn sm">
             My Files <Icon name="chevR" size={11} />
           </Link>
         ) : (
-          <Link
-            href="/ai-inbox"
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              background: t.surface,
-              color: t.ink2,
-              border: `1px solid ${t.line}`,
-              fontSize: 12,
-              fontWeight: 700,
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-            }}
-          >
+          <Link href="/ai-inbox" className="btn sm">
             Elara Inbox <Icon name="chevR" size={11} />
           </Link>
         )}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 8 }}>
-        {ranked.map((item) => {
-          const us = urgencyStyle(item.urgency);
-          return (
-            <Link
-              key={item.key}
-              href={item.href}
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 10,
-                padding: "10px 12px",
-                borderRadius: 10,
-                background: t.surface,
-                border: `1px solid ${t.line}`,
-                textDecoration: "none",
-                minWidth: 0,
-              }}
-            >
-              <span
-                style={{
-                  padding: "2px 8px",
-                  borderRadius: 999,
-                  fontSize: 9.5,
-                  fontWeight: 800,
-                  background: us.bg,
-                  color: us.color,
-                  letterSpacing: 0.4,
-                  textTransform: "uppercase",
-                  whiteSpace: "nowrap",
-                  marginTop: 2,
-                }}
-              >
-                {item.urgency}
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 12.5,
-                    fontWeight: 700,
-                    color: t.ink,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {item.label}
-                </div>
-                <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>{item.sub}</div>
-              </div>
-              <Icon name="chevR" size={13} style={{ color: t.ink4, marginTop: 4, flexShrink: 0 }} />
-            </Link>
-          );
-        })}
-      </div>
+      {ranked.map((item) => (
+        <Link key={item.key} href={item.href} className="pick">
+          <CellChip tone={urgencyTone(item.urgency)}>{item.urgency}</CellChip>
+          <div className="grow">
+            <div className="trunc">
+              <b>{item.label}</b>
+            </div>
+            <div className="sub">{item.sub}</div>
+          </div>
+          <Icon name="chevR" size={13} />
+        </Link>
+      ))}
     </Card>
   );
 }

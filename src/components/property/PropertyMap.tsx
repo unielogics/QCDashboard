@@ -17,7 +17,7 @@
 // operator wants pin-dragging or photo overlays.
 
 import { useEffect, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { CellChip } from "@/components/ds";
 
 interface Props {
   address: string;
@@ -41,7 +41,6 @@ const API_KEY = process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY;
 export function PropertyMap({
   address, city, state, latitude, longitude, onGeocoded, width = 720, height = 280, style = "osm-bright",
 }: Props) {
-  const { t } = useTheme();
   const [resolved, setResolved] = useState<{ lat: number; lng: number } | null>(
     latitude != null && longitude != null
       ? { lat: Number(latitude), lng: Number(longitude) }
@@ -91,13 +90,14 @@ export function PropertyMap({
 
   if (status === "missing-key") {
     return (
-      <MapShell t={t} height={height}>
-        <div style={{ textAlign: "center", maxWidth: 360, padding: 20 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, color: t.warn, letterSpacing: 0.6, textTransform: "uppercase", marginBottom: 6 }}>
-            Map disabled
+      <MapShell height={height}>
+        <div className="grid g6">
+          <div>
+            <CellChip tone="warn">Map disabled</CellChip>
           </div>
-          <div style={{ fontSize: 12, color: t.ink2, lineHeight: 1.5 }}>
-            Set <code style={{ background: t.chip, padding: "1px 5px", borderRadius: 3, fontSize: 11 }}>NEXT_PUBLIC_GEOAPIFY_API_KEY</code> in <code>.env.local</code> to enable the property map.
+          <div>
+            Set <code className="tag">NEXT_PUBLIC_GEOAPIFY_API_KEY</code> in <code className="tag">.env.local</code> to
+            enable the property map.
           </div>
         </div>
       </MapShell>
@@ -106,64 +106,49 @@ export function PropertyMap({
 
   if (status === "geocoding") {
     return (
-      <MapShell t={t} height={height}>
-        <span style={{ fontSize: 12, color: t.ink3, fontWeight: 700 }}>Locating…</span>
+      <MapShell height={height}>
+        <span>Locating…</span>
       </MapShell>
     );
   }
 
   if (status === "not-found" || status === "error") {
     return (
-      <MapShell t={t} height={height}>
-        <div style={{ textAlign: "center", padding: 20 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, color: t.ink3 }}>
-            Couldn&apos;t locate this address.
-          </div>
-          <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 4 }}>
+      <MapShell height={height}>
+        <div className="grid g4">
+          <b>Couldn&apos;t locate this address.</b>
+          <span>
             {address}{city ? `, ${city}` : ""}{state ? `, ${state}` : ""}
-          </div>
+          </span>
         </div>
       </MapShell>
     );
   }
 
-  if (!resolved) return <MapShell t={t} height={height}>—</MapShell>;
+  if (!resolved) return <MapShell height={height}>—</MapShell>;
 
   // Geoapify static map. Center on resolved coords with a pin marker.
   const marker = `lonlat:${resolved.lng},${resolved.lat};type:material;color:%23e95c4e;size:large`;
   const src = `https://maps.geoapify.com/v1/staticmap?style=${style}&width=${width}&height=${height}&center=lonlat:${resolved.lng},${resolved.lat}&zoom=15&marker=${marker}&apiKey=${API_KEY}`;
 
   return (
-    <div style={{
-      position: "relative",
-      width: "100%",
-      height,
-      borderRadius: 12,
-      overflow: "hidden",
-      background: t.surface2,
-    }}>
+    // `.mapbox` owns the frame; `height` is a prop the caller measures the
+    // form against, and `position` anchors the overlay link below.
+    <div className="mapbox" style={{ position: "relative", height }}>
       <img
         src={src}
         alt={`Map of ${address}`}
+        // Bespoke: the image fills the frame it was requested at.
         style={{ width: "100%", height: "100%", display: "block", objectFit: "cover" }}
       />
       <a
+        className="btn sm"
         href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${address} ${city ?? ""} ${state ?? ""}`)}`}
         target="_blank"
         rel="noopener noreferrer"
-        style={{
-          position: "absolute",
-          right: 10,
-          bottom: 10,
-          padding: "5px 10px",
-          borderRadius: 7,
-          background: t.surface,
-          color: t.ink,
-          fontSize: 11.5,
-          fontWeight: 800,
-          textDecoration: "none",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-        }}
+        // Bespoke: pinned over the map corner. Nothing in the sheet floats a
+        // control on top of an image.
+        style={{ position: "absolute", right: 10, bottom: 10, boxShadow: "var(--sh2)" }}
       >
         Open in Maps →
       </a>
@@ -172,18 +157,13 @@ export function PropertyMap({
 }
 
 
-function MapShell({ children, t, height }: { children: React.ReactNode; t: ReturnType<typeof useTheme>["t"]; height: number }) {
-  return (
-    <div style={{
-      width: "100%",
-      height,
-      borderRadius: 12,
-      background: `repeating-linear-gradient(135deg, ${t.surface2}, ${t.surface2} 16px, ${t.surface} 16px, ${t.surface} 32px)`,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-    }}>
-      {children}
-    </div>
-  );
+/**
+ * The empty/loading/error frame.
+ *
+ * `.mapbox.empty` exists precisely so this box is the same size as the loaded
+ * map and the form beside it does not jump when an address resolves.
+ */
+function MapShell({ children, height }: { children: React.ReactNode; height: number }) {
+  // `height` is the caller's measurement, matched to the requested map size.
+  return <div className="mapbox empty" style={{ height }}>{children}</div>;
 }

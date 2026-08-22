@@ -3,18 +3,22 @@
 // Per-loan pre-qualification tab. Operator drill-down from the loan
 // detail page — shows the requests scoped to this single loan + the
 // same review modal the firm-wide queue uses.
+//
+// Styling lives in globals.css / app-extras.css. The list is a real
+// `<table class="tbl">` now: the rows used to be `role="button"` divs, and a
+// table row cannot be focused or Enter-activated, so the row's keyboard
+// affordance moved onto a real button on the property cell (the row keeps its
+// click and its right-click). The cursor-anchored menu is `.popmenu.atcursor`.
 
 import { useEffect, useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { QC_FMT } from "@/components/design-system/tokens";
 import { useLoanPrequalRequests } from "@/hooks/useApi";
 import { PrequalReviewModal } from "@/components/PrequalReviewModal";
 import { PREQUAL_LOAN_TYPE_LABELS, type Loan, type PrequalRequest } from "@/lib/types";
+import { CellChip, Linky, Panel, Table, Td, cx, type ChipTone } from "@/components/ds";
 
 export function PrequalTab({ loan }: { loan: Loan }) {
-  const { t } = useTheme();
   const { data: requests = [], isLoading } = useLoanPrequalRequests(loan.id);
   const [selected, setSelected] = useState<PrequalRequest | null>(null);
   const [menu, setMenu] = useState<{ req: PrequalRequest; x: number; y: number } | null>(null);
@@ -61,77 +65,54 @@ export function PrequalTab({ loan }: { loan: Loan }) {
   const pendingCount = requests.filter((r) => r.status === "pending").length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Card pad={20}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
-              Pre-qualification requests for this loan
-            </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: t.ink, marginTop: 4 }}>
-              {requests.length} {requests.length === 1 ? "request" : "requests"}
-              {pendingCount > 0 && (
-                <span style={{ marginLeft: 10 }}>
-                  <Pill bg={t.warnBg} color={t.warn}>{pendingCount} pending</Pill>
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: 12.5, color: t.ink2, marginTop: 6, lineHeight: 1.5, maxWidth: 560 }}>
-              The borrower-submitted pre-qual requests tied to this loan. Click a row
-              to review, override the approved purchase price or loan amount, leave
-              notes the borrower will see, and either approve (PDF rendered) or
-              reject (with reason).
-            </div>
-          </div>
-        </div>
-      </Card>
+    <div className="grid">
+      <Panel
+        title="Pre-qualification requests for this loan"
+        actions={pendingCount > 0 ? <CellChip tone="warn">{pendingCount} pending</CellChip> : undefined}
+      >
+        <h2>{requests.length} {requests.length === 1 ? "request" : "requests"}</h2>
+        <p className="sub">
+          The borrower-submitted pre-qual requests tied to this loan. Click a row
+          to review, override the approved purchase price or loan amount, leave
+          notes the borrower will see, and either approve (PDF rendered) or
+          reject (with reason).
+        </p>
+      </Panel>
 
       {isLoading ? (
-        <Card pad={28}>
-          <div style={{ fontSize: 12.5, color: t.ink3 }}>Loading…</div>
-        </Card>
+        <Panel>
+          <span className="sub">Loading…</span>
+        </Panel>
       ) : requests.length === 0 ? (
-        <Card pad={28}>
-          <div style={{ fontSize: 13, color: t.ink2 }}>
-            No pre-qualification requests on this loan yet.
-          </div>
-        </Card>
+        <Panel>
+          <span className="sub">No pre-qualification requests on this loan yet.</span>
+        </Panel>
       ) : (
-        <Card pad={0}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "120px minmax(0, 2fr) 130px 130px 100px 90px",
-              gap: 10,
-              padding: "12px 16px",
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: 1.2,
-              textTransform: "uppercase",
-              color: t.ink3,
-              borderBottom: `1px solid ${t.line}`,
-              background: t.surface2,
-            }}
+        <Panel noPad>
+          <Table
+            caption="Pre-qualification requests on this loan"
+            cols={[
+              { label: "Status", width: 130 },
+              { label: "Property" },
+              { label: "Requested", width: 130 },
+              { label: "Approved", width: 130 },
+              { label: "LTV", width: 100 },
+              { label: "Closing", width: 100 },
+            ]}
           >
-            <div>Status</div>
-            <div>Property</div>
-            <div>Requested</div>
-            <div>Approved</div>
-            <div>LTV</div>
-            <div>Closing</div>
-          </div>
-          {requests.map((r) => (
-            <Row
-              key={r.id}
-              req={r}
-              onOpen={() => setSelected(r)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setMenu({ req: r, x: e.clientX, y: e.clientY });
-              }}
-            />
-          ))}
-        </Card>
+            {requests.map((r) => (
+              <PrequalRow
+                key={r.id}
+                req={r}
+                onOpen={() => setSelected(r)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMenu({ req: r, x: e.clientX, y: e.clientY });
+                }}
+              />
+            ))}
+          </Table>
+        </Panel>
       )}
 
       <PrequalReviewModal
@@ -142,7 +123,6 @@ export function PrequalTab({ loan }: { loan: Loan }) {
 
       {menu ? (
         <TabContextMenu
-          t={t}
           x={menu.x}
           y={menu.y}
           req={menu.req}
@@ -157,7 +137,6 @@ export function PrequalTab({ loan }: { loan: Loan }) {
 }
 
 function TabContextMenu({
-  t,
   x,
   y,
   req,
@@ -166,7 +145,6 @@ function TabContextMenu({
   onOpenLatest,
   onPrintLatest,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   x: number;
   y: number;
   req: PrequalRequest;
@@ -183,38 +161,26 @@ function TabContextMenu({
   return (
     <div
       role="menu"
+      className="popmenu atcursor"
       onMouseDown={(e) => e.stopPropagation()}
-      style={{
-        position: "fixed",
-        left,
-        top,
-        width: MENU_W,
-        background: t.surface,
-        border: `1px solid ${t.line}`,
-        borderRadius: 10,
-        boxShadow: t.shadowLg,
-        zIndex: 300,
-        padding: 6,
-        display: "flex",
-        flexDirection: "column",
-        gap: 2,
-      }}
+      // Measured geometry: the menu opens where the pointer is, clamped to the
+      // viewport. `.atcursor` hands `left`/`top`/`width` to the caller precisely
+      // so these three can live here and nothing else has to.
+      style={{ left, top, width: MENU_W }}
     >
-      <div style={{ padding: "6px 10px 8px", borderBottom: `1px solid ${t.line}`, marginBottom: 4 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase" }}>
+      <div className="mhd">
+        <div className="lbl">
           {req.quote_number ?? "Pre-qualification"}
-          {(req.version_num ?? 1) > 1 ? <span style={{ color: t.petrol, marginLeft: 6 }}>· v{req.version_num}</span> : null}
+          {(req.version_num ?? 1) > 1 ? <> · v{req.version_num}</> : null}
         </div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: t.ink, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {req.target_property_address}
-        </div>
+        <div className="trunc"><strong>{req.target_property_address}</strong></div>
       </div>
-      <TabMenuItem t={t} icon="docCheck" label={isSuperseded ? "Open this version" : "Open"} onClick={onOpen} />
+      <hr className="hr" />
+      <TabMenuItem icon="docCheck" label={isSuperseded ? "Open this version" : "Open"} onClick={onOpen} />
       {isSuperseded ? (
-        <TabMenuItem t={t} icon="arrowR" label={`Open latest (v${head.version_num})`} onClick={onOpenLatest} />
+        <TabMenuItem icon="arrowR" label={`Open latest (v${head.version_num})`} onClick={onOpenLatest} />
       ) : null}
       <TabMenuItem
-        t={t}
         icon="docCheck"
         label="Print latest letter"
         sublabel={head.pdf_url ? head.quote_number ?? undefined : "no PDF yet"}
@@ -226,14 +192,12 @@ function TabContextMenu({
 }
 
 function TabMenuItem({
-  t,
   icon,
   label,
   sublabel,
   onClick,
   disabled,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   icon: React.ComponentProps<typeof Icon>["name"];
   label: string;
   sublabel?: string;
@@ -242,33 +206,22 @@ function TabMenuItem({
 }) {
   return (
     <button
+      type="button"
       role="menuitem"
+      className="mi"
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
-      style={{
-        all: "unset",
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "8px 10px",
-        borderRadius: 6,
-        fontSize: 13,
-        fontWeight: 600,
-        color: disabled ? t.ink3 : t.ink,
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
-      }}
-      onMouseEnter={(e) => { if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = t.surface2; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
     >
-      <Icon name={icon} size={14} />
-      <span style={{ flex: 1 }}>{label}</span>
-      {sublabel ? <span style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600 }}>{sublabel}</span> : null}
+      <span className="row">
+        <Icon name={icon} size={14} />
+        {label}
+      </span>
+      {sublabel ? <small>{sublabel}</small> : null}
     </button>
   );
 }
 
-function Row({
+function PrequalRow({
   req,
   onOpen,
   onContextMenu,
@@ -277,83 +230,62 @@ function Row({
   onOpen: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }) {
-  const { t } = useTheme();
   const purchase = Number(req.purchase_price);
   const requested = Number(req.requested_loan_amount);
   const approved = req.approved_loan_amount != null ? Number(req.approved_loan_amount) : null;
   const ltv = purchase > 0 ? (requested / purchase) * 100 : 0;
   const isSuperseded = req.superseded_by_id != null;
   const isRevision = (req.version_num ?? 1) > 1;
-  const statusInfo = (() => {
-    if (req.status === "approved") return { label: "Approved", bg: t.profitBg, fg: t.profit };
-    if (req.status === "rejected") return { label: "Rejected", bg: t.dangerBg, fg: t.danger };
-    return { label: "Pending", bg: t.warnBg, fg: t.warn };
-  })();
+  const status: { label: string; tone: ChipTone } =
+    req.status === "approved" ? { label: "Approved", tone: "ok" }
+      : req.status === "rejected" ? { label: "Rejected", tone: "bad" }
+        : { label: "Pending", tone: "warn" };
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    // `.done` dims a superseded row the way `.rung.done` dims a completed
+    // ladder step — it is still openable and still printable, just retired.
+    // The row keeps its click and right-click; the KEYBOARD path is the real
+    // button on the property cell, because a <tr> cannot carry one.
+    <tr
+      className={cx(isSuperseded && "done")}
       onClick={onOpen}
       onContextMenu={onContextMenu}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
-      style={{
-        display: "grid",
-        gridTemplateColumns: "120px minmax(0, 2fr) 130px 130px 100px 90px",
-        gap: 10,
-        padding: "14px 16px",
-        borderBottom: `1px solid ${t.line}`,
-        alignItems: "center",
-        fontSize: 13,
-        color: isSuperseded ? t.ink3 : t.ink,
-        opacity: isSuperseded ? 0.6 : 1,
-        cursor: "pointer",
-        transition: "background 0.12s",
-      }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = t.surface2; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
+      style={{ cursor: "pointer" }}
     >
-      <div>
-        <Pill bg={statusInfo.bg} color={statusInfo.fg}>{statusInfo.label}</Pill>
+      <Td>
+        <CellChip tone={status.tone}>{status.label}</CellChip>
         {isRevision || isSuperseded ? (
-          <div style={{ fontSize: 10, color: t.ink3, fontWeight: 600, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>
+          <div className="row">
             {req.quote_number ? (
-              <span style={{ textDecoration: isSuperseded ? "line-through" : undefined, fontFeatureSettings: '"tnum"' }}>
-                {req.quote_number}
-              </span>
+              isSuperseded
+                ? <s className="sub num">{req.quote_number}</s>
+                : <span className="sub num">{req.quote_number}</span>
             ) : null}
-            {isRevision ? (
-              <span style={{
-                fontSize: 9,
-                fontWeight: 800,
-                color: t.petrol,
-                background: t.petrolSoft,
-                padding: "1px 5px",
-                borderRadius: 4,
-                letterSpacing: 0.4,
-              }}>
-                v{req.version_num}
-              </span>
-            ) : null}
+            {isRevision ? <CellChip tone="pet">v{req.version_num}</CellChip> : null}
           </div>
         ) : null}
-      </div>
-      <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700 }}>
-        {req.target_property_address}
-        <div style={{ fontSize: 10.5, color: t.ink3, fontWeight: 600, marginTop: 2, textTransform: "uppercase", letterSpacing: 0.6 }}>
+      </Td>
+      <Td>
+        <Linky
+          className="trunc"
+          onClick={(e) => { e.stopPropagation(); onOpen(); }}
+        >
+          {req.target_property_address}
+        </Linky>
+        <div className="lbl">
           {PREQUAL_LOAN_TYPE_LABELS[req.loan_type]?.title ?? req.loan_type}
         </div>
-      </div>
-      <div style={{ fontSize: 12, fontFeatureSettings: '"tnum"' }}>{QC_FMT.usd(requested, 0)}</div>
-      <div style={{ fontSize: 12, fontFeatureSettings: '"tnum"' }}>
-        {approved != null ? QC_FMT.usd(approved, 0) : <span style={{ color: t.ink3 }}>—</span>}
-      </div>
-      <div style={{ fontSize: 12, fontFeatureSettings: '"tnum"' }}>{ltv.toFixed(1)}%</div>
-      <div style={{ fontSize: 12, color: t.ink2 }}>
+      </Td>
+      <Td className="num">{QC_FMT.usd(requested, 0)}</Td>
+      <Td className="num">
+        {approved != null ? QC_FMT.usd(approved, 0) : <span className="sub">—</span>}
+      </Td>
+      <Td className="num">{ltv.toFixed(1)}%</Td>
+      <Td>
         {req.expected_closing_date
           ? new Date(req.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-          : <span style={{ color: t.ink4 }}>—</span>}
-      </div>
-    </div>
+          : <span className="sub">—</span>}
+      </Td>
+    </tr>
   );
 }

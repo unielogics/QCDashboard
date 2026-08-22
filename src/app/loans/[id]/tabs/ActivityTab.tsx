@@ -9,11 +9,16 @@
 // the kind. Kinds are grouped into families (loan / document / credit /
 // hud / calendar / ai / instruction / prequal / intake / other) so the
 // feed gets a colored icon + chip rather than a wall of grey pills.
+//
+// Styling lives in globals.css / app-extras.css. Each entry is a `.gridrow`
+// (a grid pretending to be a table — the three-column track is data about this
+// screen and stays inline), the family plate is `.botmark` in the same tone
+// vocabulary the chips use, and the last row's hairline is dropped by
+// `.gridrow:last-child` rather than by an `isLast` prop threaded through.
 
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { fieldLabel, formatFieldValue } from "@/lib/activityFormat";
+import { CellChip, Panel, cx, type ChipTone } from "@/components/ds";
 import type { Activity } from "@/lib/types";
 
 type Family = "loan" | "document" | "credit" | "hud" | "calendar" | "ai" | "instruction" | "prequal" | "intake" | "other";
@@ -21,21 +26,34 @@ type Family = "loan" | "document" | "credit" | "hud" | "calendar" | "ai" | "inst
 type FamilyMeta = {
   icon: string;
   label: string;
-  // Colors are theme-keyed. Picked at render time off useTheme().
-  tone: "petrol" | "profit" | "warn" | "brand" | "danger" | "default";
+  // The tone is the sheet's chip vocabulary, so "AI" is the same blue on the
+  // plate, on the chip and in a table cell. It used to be a private word list
+  // resolved to a (bg, fg) pair off the theme.
+  tone: ChipTone;
 };
 
 const FAMILY_META: Record<Family, FamilyMeta> = {
-  loan:        { icon: "shieldChk", label: "Loan",         tone: "petrol" },
-  document:    { icon: "doc",       label: "Document",     tone: "brand" },
+  loan:        { icon: "shieldChk", label: "Loan",         tone: "pet" },
+  document:    { icon: "doc",       label: "Document",     tone: "acc" },
   credit:      { icon: "cardCheck", label: "Credit",       tone: "warn" },
-  hud:         { icon: "list",      label: "HUD",          tone: "default" },
-  calendar:    { icon: "cal",       label: "Calendar",     tone: "petrol" },
-  ai:          { icon: "spark",     label: "AI",           tone: "brand" },
+  hud:         { icon: "list",      label: "HUD",          tone: "mut" },
+  calendar:    { icon: "cal",       label: "Calendar",     tone: "pet" },
+  ai:          { icon: "spark",     label: "AI",           tone: "acc" },
   instruction: { icon: "edit",      label: "Instruction",  tone: "warn" },
-  prequal:     { icon: "check",     label: "Prequal",      tone: "profit" },
-  intake:      { icon: "clients",   label: "Intake",       tone: "profit" },
-  other:       { icon: "bell",      label: "Event",        tone: "default" },
+  prequal:     { icon: "check",     label: "Prequal",      tone: "ok" },
+  intake:      { icon: "clients",   label: "Intake",       tone: "ok" },
+  other:       { icon: "bell",      label: "Event",        tone: "mut" },
+};
+
+// `.botmark` carries the plate; the tone modifier on it is the short form of
+// the chip tone (`.botmark.acc`, `.botmark.ok`, …), with `mut` meaning the
+// bare sunken plate `.botmark` already is.
+const PLATE_TONE: Partial<Record<ChipTone, string>> = {
+  ok: "ok",
+  warn: "warn",
+  bad: "bad",
+  acc: "acc",
+  pet: "pet",
 };
 
 function familyForKind(kind: string): Family {
@@ -60,10 +78,8 @@ function familyForKind(kind: string): Family {
 
 
 export function ActivityTab({ activity, isLoading }: { activity: Activity[]; isLoading: boolean }) {
-  const { t } = useTheme();
-
-  if (isLoading) return <Card pad={16}><div style={{ fontSize: 13, color: t.ink3 }}>Loading activity…</div></Card>;
-  if (activity.length === 0) return <Card pad={16}><div style={{ fontSize: 13, color: t.ink3 }}>No activity yet for this loan.</div></Card>;
+  if (isLoading) return <Panel><span className="sub">Loading activity…</span></Panel>;
+  if (activity.length === 0) return <Panel><span className="sub">No activity yet for this loan.</span></Panel>;
 
   // Group by date so the feed reads as a timeline. The Activity API
   // already returns rows newest-first; we just inject a date header
@@ -71,96 +87,58 @@ export function ActivityTab({ activity, isLoading }: { activity: Activity[]; isL
   const groups = groupByDay(activity);
 
   return (
-    <Card pad={0}>
-      <div style={{ padding: "12px 16px", borderBottom: `1px solid ${t.line}` }}>
-        <SectionLabel>Full activity log · {activity.length} entries</SectionLabel>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column" }}>
-        {groups.map((group) => (
-          <div key={group.dayKey}>
-            <div style={{
-              padding: "10px 16px",
-              background: t.surface2,
-              fontSize: 11,
-              fontWeight: 800,
-              color: t.ink3,
-              textTransform: "uppercase",
-              letterSpacing: 0.6,
-              borderBottom: `1px solid ${t.line}`,
-            }}>
-              {group.dayLabel}
-            </div>
-            {group.entries.map((e, i) => (
-              <ActivityRow
-                key={e.id}
-                entry={e}
-                isLast={i === group.entries.length - 1}
-                t={t}
-              />
-            ))}
+    <Panel title={`Full activity log · ${activity.length} entries`} noPad>
+      {groups.map((group) => (
+        <div key={group.dayKey}>
+          <div className="gridhd">
+            <span className="lbl">{group.dayLabel}</span>
           </div>
-        ))}
-      </div>
-    </Card>
+          {group.entries.map((e) => (
+            <ActivityRow key={e.id} entry={e} />
+          ))}
+        </div>
+      ))}
+    </Panel>
   );
 }
 
 
-function ActivityRow({
-  entry, isLast, t,
-}: {
-  entry: Activity;
-  isLast: boolean;
-  t: ReturnType<typeof useTheme>["t"];
-}) {
+function ActivityRow({ entry }: { entry: Activity }) {
   const family = familyForKind(entry.kind);
   const meta = FAMILY_META[family];
-  const tone = resolveTone(meta.tone, t);
   const changes = extractChanges(entry.payload);
 
   return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: "36px 130px 1fr",
-      gap: 14,
-      padding: "12px 16px",
-      borderBottom: isLast ? "none" : `1px solid ${t.line}`,
-      alignItems: "flex-start",
-    }}>
-      <div style={{
-        display: "grid", placeItems: "center",
-        width: 32, height: 32, borderRadius: 8,
-        background: tone.bg, color: tone.fg,
-        marginTop: 2,
-      }}>
+    <div
+      className="gridrow top"
+      // Bespoke track: plate, timestamp column, and everything else. This is
+      // data about this screen, not a page grid.
+      style={{ gridTemplateColumns: "38px 130px 1fr" }}
+    >
+      <span className={cx("botmark", PLATE_TONE[meta.tone])}>
         <Icon name={meta.icon} size={15} />
-      </div>
+      </span>
 
-      <div style={{ fontSize: 11.5, color: t.ink3, fontFamily: "ui-monospace, SF Mono, monospace" }}>
-        {formatTime(entry.occurred_at)}
-      </div>
+      <div className="sub mono">{formatTime(entry.occurred_at)}</div>
 
-      <div style={{ minWidth: 0 }}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          <Pill bg={tone.bg} color={tone.fg}>{meta.label}</Pill>
-          <span style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{entry.summary}</span>
+      <div>
+        <div className="row">
+          <CellChip tone={meta.tone}>{meta.label}</CellChip>
+          <strong>{entry.summary}</strong>
         </div>
-        <div style={{ fontSize: 11, color: t.ink3, marginTop: 4 }}>
-          <span style={{ fontFamily: "ui-monospace, SF Mono, monospace" }}>{entry.kind}</span>
-          {entry.actor_label && <span style={{ marginLeft: 8 }}>· {entry.actor_label}</span>}
+        <div className="sub">
+          <span className="mono">{entry.kind}</span>
+          {entry.actor_label && <span> · {entry.actor_label}</span>}
         </div>
 
-        {changes && changes.length > 0 && (
-          <DiffList changes={changes} t={t} />
-        )}
+        {changes && changes.length > 0 && <DiffList changes={changes} />}
 
         {entry.payload && hasNonChangePayload(entry.payload) && (
-          <details style={{ marginTop: 6 }}>
-            <summary style={{ fontSize: 11, color: t.ink3, cursor: "pointer" }}>raw payload</summary>
-            <pre style={{
-              background: t.surface2, padding: 10, borderRadius: 8,
-              fontSize: 11, color: t.ink2, marginTop: 6, overflow: "auto",
-            }}>
+          <details className="mt">
+            <summary className="sub">raw payload</summary>
+            {/* `.docwell` is the bounded, sunken scroller for text that is the
+                record — right for a JSON blob nobody should have to squint at. */}
+            <pre className="docwell mt">
               {JSON.stringify(entry.payload, null, 2)}
             </pre>
           </details>
@@ -172,38 +150,26 @@ function ActivityRow({
 
 
 function DiffList({
-  changes, t,
+  changes,
 }: {
   changes: Array<{ field?: unknown; before?: unknown; after?: unknown }>;
-  t: ReturnType<typeof useTheme>["t"];
 }) {
   // Each change becomes "Base rate: 7.50% → 7.80%". Both the field
   // name and the values run through the shared activityFormat helpers
   // so column-name jargon never reaches the operator.
   return (
-    <div style={{ display: "grid", gap: 4, marginTop: 8 }}>
+    <div className="mt">
       {changes.map((c, idx) => {
         const field = String(c.field ?? "");
         const beforeText = formatFieldValue(field, c.before);
         const afterText = formatFieldValue(field, c.after);
         return (
-          <div key={idx} style={{
-            display: "grid", gridTemplateColumns: "180px 1fr",
-            gap: 10, padding: "6px 10px",
-            background: t.surface2, borderRadius: 8,
-            fontSize: 12,
-          }}>
-            <span style={{ color: t.ink2, fontWeight: 700 }}>
-              {fieldLabel(field)}
-            </span>
-            <span style={{ color: t.ink }}>
-              <span style={{ color: t.ink3, textDecoration: "line-through" }}>
-                {beforeText}
-              </span>
-              <span style={{ margin: "0 8px", color: t.ink3 }}>→</span>
-              <span style={{ color: t.ink, fontWeight: 600 }}>
-                {afterText}
-              </span>
+          <div key={idx} className="kv">
+            <span>{fieldLabel(field)}</span>
+            <span>
+              <s className="sub">{beforeText}</s>
+              <span className="sub"> → </span>
+              <b>{afterText}</b>
             </span>
           </div>
         );
@@ -266,17 +232,4 @@ function hasNonChangePayload(payload: Record<string, unknown>): boolean {
   if (keys.length === 1 && keys[0] === "changes") return false;
   if (keys.length === 2 && keys.includes("changes") && keys.includes("source")) return false;
   return true;
-}
-
-
-function resolveTone(tone: FamilyMeta["tone"], t: ReturnType<typeof useTheme>["t"]): { bg: string; fg: string } {
-  switch (tone) {
-    case "petrol": return { bg: t.petrolSoft, fg: t.petrol };
-    case "profit": return { bg: t.profitBg, fg: t.profit };
-    case "warn":   return { bg: t.warnBg, fg: t.warn };
-    case "brand":  return { bg: t.brandSoft, fg: t.brand };
-    case "danger": return { bg: "#fdecea", fg: "#b42318" };
-    case "default":
-    default:       return { bg: t.surface2, fg: t.ink2 };
-  }
 }

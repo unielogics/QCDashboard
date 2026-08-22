@@ -13,10 +13,13 @@
 //
 // Connected state: shows "Connected: <name>", a CC/BCC summary, and
 // CTAs for "Send package" (opens LenderSendModal) and "Disconnect".
+//
+// Restyled onto the plain-CSS design system. The tab is now a STACK of
+// flat panels rather than one card wrapping three more — the packages
+// panel and the lender thread are siblings, not nested cards.
 
 import { useMemo, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { Btn, CellChip, Linky, Panel, Select, StatusLine, Sub } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import {
   useConnectLender,
@@ -37,7 +40,6 @@ interface Props {
 }
 
 export function LenderConnectCard({ loan }: Props) {
-  const { t } = useTheme();
   const profile = useActiveProfile();
   const isInternal = profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
   const canManageConnection = profile.role === Role.SUPER_ADMIN;
@@ -126,28 +128,20 @@ export function LenderConnectCard({ loan }: Props) {
   }
 
   return (
-    <Card pad={0}>
-      <div
-        style={{
-          padding: "12px 16px",
-          borderBottom: `1px solid ${t.line}`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
+    <div className="grid">
+      <Panel
+        title="Lender connection"
+        actions={
+          connectedLender ? (
+            <CellChip tone="ok">Connected</CellChip>
+          ) : (
+            <CellChip tone="warn">Not connected</CellChip>
+          )
+        }
+        bodyClass="grid"
       >
-        <SectionLabel>Lender connection</SectionLabel>
-        {connectedLender ? (
-          <Pill bg={t.profitBg} color={t.profit}>Connected</Pill>
-        ) : (
-          <Pill bg={t.warnBg} color={t.warn}>Not connected</Pill>
-        )}
-      </div>
-
-      <div style={{ padding: 16 }}>
         {connectedLender ? (
           <ConnectedView
-            t={t}
             lender={connectedLender}
             ccCount={summary.cc}
             bccCount={summary.bcc}
@@ -159,7 +153,6 @@ export function LenderConnectCard({ loan }: Props) {
           />
         ) : editingNotify ? (
           <NotifyForm
-            t={t}
             participants={participants}
             toggles={toggles}
             setToggles={setToggles}
@@ -170,7 +163,6 @@ export function LenderConnectCard({ loan }: Props) {
           />
         ) : (
           <EmptyView
-            t={t}
             matchLoading={matchLoading}
             dropdownLenders={dropdownLenders}
             allLenders={allLenders}
@@ -191,7 +183,7 @@ export function LenderConnectCard({ loan }: Props) {
             error={error}
           />
         )}
-      </div>
+      </Panel>
 
       <LenderSendModal
         open={showSend}
@@ -200,17 +192,12 @@ export function LenderConnectCard({ loan }: Props) {
         primaryLender={connectedLender ?? null}
       />
       <LenderPackagesPanel loan={loan} />
-      {connectedLender ? (
-        <div style={{ padding: "0 16px 16px" }}>
-          <LenderThread loan={loan} lender={connectedLender} />
-        </div>
-      ) : null}
-    </Card>
+      {connectedLender ? <LenderThread loan={loan} lender={connectedLender} /> : null}
+    </div>
   );
 }
 
 interface EmptyViewProps {
-  t: ReturnType<typeof useTheme>["t"];
   matchLoading: boolean;
   dropdownLenders: Lender[];
   allLenders: Lender[];
@@ -226,7 +213,6 @@ interface EmptyViewProps {
 }
 
 function EmptyView({
-  t,
   matchLoading,
   dropdownLenders,
   allLenders,
@@ -241,53 +227,32 @@ function EmptyView({
   error,
 }: EmptyViewProps) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="grid g10">
       {canManageConnection ? (
         <>
-          <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.5 }}>
+          <div>
             Connecting a lender wires this deal to the One-Way Mirror redaction pipeline,
             adds a hide-identity participant row, and promotes stage to LENDER_CONNECTED.
           </div>
           {matchLoading ? (
-            <div style={{ fontSize: 12.5, color: t.ink3 }}>Loading matching lenders…</div>
+            <Sub>Loading matching lenders…</Sub>
           ) : dropdownLenders.length === 0 ? (
-            <div style={{ fontSize: 12.5, color: t.ink3, lineHeight: 1.5 }}>
+            <div className="sub">
               No active lenders {showAll ? "exist" : `service this loan's product yet (${allLenders.length} active overall)`}.
               {!showAll && allLenders.length > 0 ? (
                 <>
                   {" "}
-                  <button
-                    type="button"
-                    onClick={() => setShowAll(true)}
-                    style={{
-                      all: "unset",
-                      cursor: "pointer",
-                      color: t.brand,
-                      textDecoration: "underline",
-                      fontWeight: 700,
-                    }}
-                  >
-                    Show all
-                  </button>
+                  <Linky onClick={() => setShowAll(true)}>Show all</Linky>
                 </>
               ) : null}{" "}
               Or add one in <strong>Admin → Lenders</strong>.
             </div>
           ) : (
             <>
-              <select
+              <Select
+                grow
                 value={pickedLenderId}
                 onChange={(e) => setPickedLenderId(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  background: t.surface2,
-                  border: `1px solid ${t.line}`,
-                  borderRadius: 10,
-                  color: t.ink,
-                  fontSize: 13,
-                  fontFamily: "inherit",
-                }}
               >
                 <option value="">— pick a lender —</option>
                 {dropdownLenders.map((l) => (
@@ -296,85 +261,35 @@ function EmptyView({
                     {l.contact_name ? ` · ${l.contact_name}` : ""}
                   </option>
                 ))}
-              </select>
+              </Select>
               {!showAll && matchingCount < allLenders.length ? (
-                <button
-                  type="button"
-                  onClick={() => setShowAll(true)}
-                  style={{
-                    all: "unset",
-                    cursor: "pointer",
-                    fontSize: 11.5,
-                    color: t.ink3,
-                    textDecoration: "underline",
-                    alignSelf: "flex-start",
-                  }}
-                >
-                  Show all {allLenders.length} lenders (currently filtered to product match)
-                </button>
+                <div>
+                  <Linky onClick={() => setShowAll(true)}>
+                    Show all {allLenders.length} lenders (currently filtered to product match)
+                  </Linky>
+                </div>
               ) : showAll ? (
-                <button
-                  type="button"
-                  onClick={() => setShowAll(false)}
-                  style={{
-                    all: "unset",
-                    cursor: "pointer",
-                    fontSize: 11.5,
-                    color: t.ink3,
-                    textDecoration: "underline",
-                    alignSelf: "flex-start",
-                  }}
-                >
-                  Filter back to product matches
-                </button>
+                <div>
+                  <Linky onClick={() => setShowAll(false)}>Filter back to product matches</Linky>
+                </div>
               ) : null}
             </>
           )}
         </>
       ) : null}
-      {error ? <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill> : null}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={onSend}
-          disabled={allLenders.length === 0}
-          style={{
-            all: "unset",
-            cursor: allLenders.length === 0 ? "not-allowed" : "pointer",
-            padding: "9px 14px",
-            borderRadius: 10,
-            border: `1px solid ${t.line}`,
-            color: allLenders.length === 0 ? t.ink4 : t.petrol,
-            fontSize: 13,
-            fontWeight: 700,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
+      {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
+      <div className="row end">
+        <Btn onClick={onSend} disabled={allLenders.length === 0}>
           <Icon name="shield" size={12} stroke={3} /> Send package
-        </button>
+        </Btn>
         {canManageConnection ? (
-          <button
-            type="button"
+          <Btn
+            variant="pri"
             onClick={onConnect}
             disabled={!pickedLenderId || dropdownLenders.length === 0}
-            style={{
-              all: "unset",
-              cursor: pickedLenderId ? "pointer" : "not-allowed",
-              padding: "9px 16px",
-              borderRadius: 10,
-              background: pickedLenderId ? t.petrol : t.chip,
-              color: pickedLenderId ? "#fff" : t.ink4,
-              fontSize: 13,
-              fontWeight: 700,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
           >
             <Icon name="link" size={12} stroke={3} /> Connect lender
-          </button>
+          </Btn>
         ) : null}
       </div>
     </div>
@@ -382,7 +297,6 @@ function EmptyView({
 }
 
 interface ConnectedViewProps {
-  t: ReturnType<typeof useTheme>["t"];
   lender: Lender;
   ccCount: number;
   bccCount: number;
@@ -394,7 +308,6 @@ interface ConnectedViewProps {
 }
 
 function ConnectedView({
-  t,
   lender,
   ccCount,
   bccCount,
@@ -405,80 +318,34 @@ function ConnectedView({
   canManageConnection,
 }: ConnectedViewProps) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="grid g10">
       <div>
-        <div style={{ fontSize: 14, fontWeight: 800, color: t.ink, letterSpacing: -0.2 }}>
-          {lender.name}
-        </div>
+        <div style={{ fontSize: 14, fontWeight: 800 }}>{lender.name}</div>
         {lender.contact_name || lender.contact_email ? (
-          <div style={{ fontSize: 12, color: t.ink3, marginTop: 2 }}>
+          <Sub>
             {lender.contact_name}
             {lender.contact_email ? ` · ${lender.contact_email}` : ""}
             {lender.contact_phone ? ` · ${lender.contact_phone}` : ""}
-          </div>
+          </Sub>
         ) : null}
         {lender.submission_email ? (
-          <div style={{ fontSize: 11.5, color: t.ink3, marginTop: 2 }}>
-            Submissions → {lender.submission_email}
-          </div>
+          <div className="sub">Submissions → {lender.submission_email}</div>
         ) : null}
       </div>
       {canManageConnection ? (
-        <div style={{ fontSize: 11.5, color: t.ink3 }}>
+        <div className="sub">
           Notify list: {ccCount} CC · {bccCount} BCC.{" "}
-          <button
-            type="button"
-            onClick={onEditNotify}
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              textDecoration: "underline",
-              color: t.brand,
-              fontWeight: 700,
-            }}
-          >
-            Edit
-          </button>
+          <Linky onClick={onEditNotify}>Edit</Linky>
         </div>
       ) : null}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={onSend}
-          style={{
-            all: "unset",
-            cursor: "pointer",
-            padding: "9px 16px",
-            borderRadius: 10,
-            background: t.petrol,
-            color: "#fff",
-            fontSize: 13,
-            fontWeight: 700,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
+      <div className="row">
+        <Btn variant="pri" onClick={onSend}>
           <Icon name="external" size={12} stroke={3} /> Send package
-        </button>
+        </Btn>
         {canManageConnection ? (
-          <button
-            type="button"
-            onClick={onDisconnect}
-            disabled={disconnecting}
-            style={{
-              all: "unset",
-              cursor: disconnecting ? "wait" : "pointer",
-              padding: "9px 14px",
-              borderRadius: 10,
-              border: `1px solid ${t.line}`,
-              fontSize: 12.5,
-              color: t.danger,
-              opacity: disconnecting ? 0.6 : 1,
-            }}
-          >
+          <Btn className="danger" onClick={onDisconnect} disabled={disconnecting}>
             {disconnecting ? "Disconnecting…" : "Disconnect"}
-          </button>
+          </Btn>
         ) : null}
       </div>
     </div>
@@ -486,7 +353,6 @@ function ConnectedView({
 }
 
 interface NotifyFormProps {
-  t: ReturnType<typeof useTheme>["t"];
   participants: LoanParticipant[];
   toggles: Record<string, { cc: boolean; bcc: boolean }>;
   setToggles: (next: Record<string, { cc: boolean; bcc: boolean }>) => void;
@@ -497,7 +363,6 @@ interface NotifyFormProps {
 }
 
 function NotifyForm({
-  t,
   participants,
   toggles,
   setToggles,
@@ -513,19 +378,19 @@ function NotifyForm({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ fontSize: 12.5, color: t.ink2, lineHeight: 1.55 }}>
+    <div className="grid g10">
+      <div>
         Pick which broker / super-admin participants should be looped in on every email
         going to or from this lender. Toggles apply to outbound mail going out via the
         Gmail relay; inbound from the lender always gets redacted before broker view
         regardless.
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div className="grid g6">
         {visible.length === 0 ? (
-          <div style={{ fontSize: 12, color: t.ink3, fontStyle: "italic" }}>
+          <Sub>
             No broker / super-admin participants on this loan yet — add them in the
             participants table below first.
-          </div>
+          </Sub>
         ) : (
           visible.map((p) => {
             const isClient = p.role === "client";
@@ -533,34 +398,21 @@ function NotifyForm({
             return (
               <div
                 key={p.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  padding: 10,
-                  borderRadius: 10,
-                  border: `1px solid ${t.line}`,
-                  background: isClient ? t.surface2 : "transparent",
-                  opacity: isClient ? 0.55 : 1,
-                }}
+                className="itemrow"
+                // A client row is present but untouchable. The dimming is the
+                // state marker; no class owns opacity, so it stays here.
+                style={isClient ? { opacity: 0.55 } : undefined}
               >
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: t.ink }}>
-                    {p.display_name || p.email}
-                  </div>
-                  <div style={{ fontSize: 11, color: t.ink3 }}>
-                    {p.role.replace(/_/g, " ")}
-                  </div>
+                <div className="grow">
+                  <div style={{ fontWeight: 700 }}>{p.display_name || p.email}</div>
+                  <div className="sub">{p.role.replace(/_/g, " ")}</div>
                 </div>
                 {isClient ? (
-                  <span style={{ fontSize: 11, color: t.ink3, fontStyle: "italic" }}>
-                    clients are never CC&apos;d on lender mail
-                  </span>
+                  <Sub>clients are never CC&apos;d on lender mail</Sub>
                 ) : (
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <PillToggle t={t} label="CC" on={v.cc} onClick={() => flip(p.id, "cc")} />
-                    <PillToggle t={t} label="BCC" on={v.bcc} onClick={() => flip(p.id, "bcc")} />
+                  <div className="row">
+                    <PillToggle label="CC" on={v.cc} onClick={() => flip(p.id, "cc")} />
+                    <PillToggle label="BCC" on={v.bcc} onClick={() => flip(p.id, "bcc")} />
                   </div>
                 )}
               </div>
@@ -568,74 +420,32 @@ function NotifyForm({
           })
         )}
       </div>
-      {error ? <Pill bg={t.dangerBg} color={t.danger}>{error}</Pill> : null}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button
-          type="button"
-          onClick={onCancel}
-          style={{
-            all: "unset",
-            cursor: "pointer",
-            padding: "9px 14px",
-            borderRadius: 10,
-            border: `1px solid ${t.line}`,
-            fontSize: 12.5,
-            color: t.ink2,
-          }}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={submitting}
-          style={{
-            all: "unset",
-            cursor: submitting ? "wait" : "pointer",
-            padding: "9px 16px",
-            borderRadius: 10,
-            background: t.petrol,
-            color: "#fff",
-            fontSize: 13,
-            fontWeight: 700,
-            opacity: submitting ? 0.6 : 1,
-          }}
-        >
+      {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
+      <div className="row end">
+        <Btn onClick={onCancel}>Cancel</Btn>
+        <Btn variant="pri" onClick={onSubmit} disabled={submitting}>
           {submitting ? "Saving…" : "Save"}
-        </button>
+        </Btn>
       </div>
     </div>
   );
 }
 
 function PillToggle({
-  t,
   label,
   on,
   onClick,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   on: boolean;
   onClick: () => void;
 }) {
+  // A two-state toggle, not a navigation control — `aria-pressed` is what
+  // tells a screen reader that CC is currently on. `.btn.tone-pet` rather
+  // than a bare `.c-pet`, which `.btn:hover` would out-specify.
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        all: "unset",
-        cursor: "pointer",
-        padding: "5px 10px",
-        borderRadius: 999,
-        border: `1px solid ${on ? t.petrol : t.line}`,
-        background: on ? t.petrolSoft : "transparent",
-        color: on ? t.petrol : t.ink3,
-        fontSize: 11,
-        fontWeight: 700,
-      }}
-    >
+    <Btn size="sm" aria-pressed={on} className={on ? "tone-pet" : undefined} onClick={onClick}>
       {label}
-    </button>
+    </Btn>
   );
 }

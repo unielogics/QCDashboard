@@ -10,8 +10,7 @@
 // backend (PROGRAM_LABELS + _compute_loan_program_fit) needs no matching
 // change here.
 
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill, SectionLabel } from "@/components/design-system/primitives";
+import { CellChip, ItemRow, Panel, Sub } from "@/components/ds";
 import { useLeadProgramFit } from "@/hooks/useApi";
 import type { LeadProgramFitProgram } from "@/lib/types";
 
@@ -33,45 +32,41 @@ const PROGRAM_LABELS: Record<string, string> = {
 };
 
 export function LeadProgramFitPanel({ intakeId }: { intakeId: string }) {
-  const { t } = useTheme();
   const fit = useLeadProgramFit(intakeId);
 
   if (fit.isLoading) {
     return (
-      <Card pad={20}>
-        <SectionLabel>Program fit</SectionLabel>
-        <span style={{ color: t.ink3, fontSize: 13 }}>Loading program fit…</span>
-      </Card>
+      <Panel title="Program fit">
+        <Sub>Loading program fit…</Sub>
+      </Panel>
     );
   }
 
   const data = fit.data;
   if (!data?.computed) {
     return (
-      <Card pad={20}>
-        <SectionLabel>Program fit</SectionLabel>
-        <span style={{ color: t.ink3, fontSize: 13 }}>Not applicable — this screen is dealer-lead only.</span>
-      </Card>
+      <Panel title="Program fit">
+        <Sub>Not applicable — this screen is dealer-lead only.</Sub>
+      </Panel>
     );
   }
 
   const programs = data.programs || {};
 
   return (
-    <Card pad={20}>
-      <SectionLabel>Program fit</SectionLabel>
-      <p style={{ margin: "0 0 12px", color: t.ink2, fontSize: 13, lineHeight: 1.5 }}>
+    <Panel title="Program fit">
+      <p className="sub mb">
         Deterministic screen computed from uploaded evidence and stated facts — not a lending decision. Never
         surfaced to the borrower; confirm with an underwriter before quoting.
       </p>
-      <div style={{ display: "grid", gap: 10 }}>
+      <div className="grid g10">
         {Object.entries(PROGRAM_LABELS).map(([key, label]) => {
           const program = programs[key];
           if (!program) return null;
-          return <ProgramRow key={key} t={t} label={label} subtitle={programSubtitle(key, program)} program={program} />;
+          return <ProgramRow key={key} label={label} subtitle={programSubtitle(key, program)} program={program} />;
         })}
       </div>
-    </Card>
+    </Panel>
   );
 }
 
@@ -100,37 +95,21 @@ function programSubtitle(key: string, program: LeadProgramFitProgram): string {
 }
 
 function ProgramRow({
-  t,
   label,
   subtitle,
   program,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   label: string;
   subtitle: string;
   program: LeadProgramFitProgram | null | undefined;
 }) {
   const eligible = Boolean(program?.eligible);
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: 12,
-        border: `1px solid ${t.line}`,
-        borderRadius: 10,
-        padding: "10px 12px",
-        background: t.surface2,
-      }}
+    <ItemRow
+      right={<CellChip tone={eligible ? "ok" : "mut"}>{eligible ? "Eligible" : "Not yet eligible"}</CellChip>}
     >
-      <div style={{ minWidth: 0 }}>
-        <div style={{ color: t.ink, fontWeight: 700, fontSize: 13 }}>{label}</div>
-        {subtitle ? <div style={{ color: t.ink3, fontSize: 12, marginTop: 2 }}>{subtitle}</div> : null}
-      </div>
-      <Pill bg={eligible ? t.profitBg : t.surface} color={eligible ? t.profit : t.ink3}>
-        {eligible ? "Eligible" : "Not yet eligible"}
-      </Pill>
-    </div>
+      <strong>{label}</strong>
+      {subtitle ? <div className="sub">{subtitle}</div> : null}
+    </ItemRow>
   );
 }

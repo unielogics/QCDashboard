@@ -1,8 +1,7 @@
 "use client";
 
 import { Modal } from "./Modal";
-import { useTheme } from "./ThemeProvider";
-import { qcBtn, qcBtnPrimary, qcBtnDanger } from "./buttons";
+import { cx } from "@/components/ds";
 
 /**
  * Themed replacement for window.confirm. Native confirm dialogs break the
@@ -30,7 +29,6 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onClose: () => void;
 }) {
-  const { t } = useTheme();
   return (
     <Modal
       open={open}
@@ -39,24 +37,29 @@ export function ConfirmDialog({
       title={title}
       icon={tone === "danger" ? "alert" : undefined}
       footer={
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button type="button" style={qcBtn(t)} onClick={onClose} disabled={busy}>
+        <>
+          {/* `.drawer-f` (Modal's footer) already lays these out. The style
+              helpers in ./buttons.ts are superseded here by `.btn`,
+              `.btn.pri` and `.btn.danger`; they stay in place for their
+              other ~249 call sites. */}
+          <button type="button" className="btn" onClick={onClose} disabled={busy}>
             {cancelLabel}
           </button>
           <button
             type="button"
-            style={tone === "danger" ? qcBtnDanger(t) : qcBtnPrimary(t)}
+            className={cx("btn", tone === "danger" ? "danger" : "pri")}
             onClick={onConfirm}
             disabled={busy}
           >
             {busy ? "Working…" : confirmLabel}
           </button>
-        </div>
+        </>
       }
     >
-      {body ? (
-        <p style={{ margin: 0, color: t.ink2, fontSize: 13.5, lineHeight: 1.55, padding: 4 }}>{body}</p>
-      ) : null}
+      {/* Modal's body is unpadded by design, so the prose brings its own.
+          Deliberately NOT `.sub`: that is 12px caption grey, and a confirm
+          prompt is the sentence the decision turns on. */}
+      {body ? <p className="dlg-prose">{body}</p> : null}
     </Modal>
   );
 }

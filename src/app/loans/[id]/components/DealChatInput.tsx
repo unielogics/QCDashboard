@@ -5,12 +5,15 @@
 //   broker      → [Ask Elara, Suggest to Inbox, Instruct Elara]  (no Chat — can't write to client thread)
 //   loan_exec   → same as super_admin minus the pause (acts as broker_question)
 //   client      → just textarea, mode=Chat, hidden when paused
+//
+// Restyled onto the design system. The mode row stays a set of plain buttons
+// with `aria-pressed` rather than a `Seg`: which mode is armed changes what
+// Send DOES, it does not switch which view you are looking at, and a tablist
+// would tell a screen-reader user the page is about to change.
 
 import { useRef, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Pill } from "@/components/design-system/primitives";
+import { Btn, CellChip, Textarea, WarnLine } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtnPrimary } from "@/components/design-system/buttons";
 import { useSendDealChat, useUploadDocument } from "@/hooks/useApi";
 import { DealChatMode, DealChatRole, Role } from "@/lib/enums.generated";
 import type { User } from "@/lib/types";
@@ -45,7 +48,6 @@ const BROKER_MODES: ModeOption[] = [
 ];
 
 export function DealChatInput({ loanId, user, pausedUntil }: Props) {
-  const { t } = useTheme();
   const send = useSendDealChat();
 
   const modeOptions: ModeOption[] =
@@ -113,59 +115,36 @@ export function DealChatInput({ loanId, user, pausedUntil }: Props) {
 
   if (clientLockedOut) {
     return (
-      <div
-        style={{
-          padding: 14,
-          borderRadius: 10,
-          border: `1px solid ${t.warn}40`,
-          background: t.warnBg,
-          color: t.warn,
-          fontSize: 12,
-          fontWeight: 700,
-        }}
-      >
-        Your operator is replying directly. Elara will resume shortly.
-      </div>
+      <WarnLine>Your operator is replying directly. Elara will resume shortly.</WarnLine>
     );
   }
 
   const activeMode = modeOptions.find((m) => m.mode === mode) ?? modeOptions[0];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div className="grid g8">
       {modeOptions.length > 1 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <div className="row">
           {modeOptions.map((opt) => {
             const active = opt.mode === mode;
             return (
-              <button
+              <Btn
                 key={opt.mode}
+                size="sm"
+                variant={active ? "pri" : "default"}
+                aria-pressed={active}
                 onClick={() => setMode(opt.mode)}
                 title={opt.hint}
-                style={{
-                  all: "unset",
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  background: active ? t.ink : t.surface,
-                  color: active ? t.inverse : t.ink2,
-                  border: active ? "none" : `1px solid ${t.lineStrong}`,
-                  fontSize: 12,
-                  fontWeight: 700,
-                }}
               >
                 <Icon name={opt.icon} size={12} />
                 {opt.label}
-              </button>
+              </Btn>
             );
           })}
         </div>
       )}
 
-      <textarea
+      <Textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
         rows={3}
@@ -176,24 +155,13 @@ export function DealChatInput({ loanId, user, pausedUntil }: Props) {
             submit();
           }
         }}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          borderRadius: 10,
-          background: t.surface2,
-          border: `1px solid ${t.line}`,
-          color: t.ink,
-          fontSize: 13,
-          fontFamily: "inherit",
-          outline: "none",
-          resize: "vertical",
-        }}
       />
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div className="composer-row">
         <input
           ref={fileInputRef}
           type="file"
           accept="application/pdf,image/*"
+          // Functional, not decorative: opened programmatically, never laid out.
           style={{ display: "none" }}
           onChange={(e) => {
             const f = e.target.files?.[0];
@@ -201,48 +169,36 @@ export function DealChatInput({ loanId, user, pausedUntil }: Props) {
             if (f) void onPickFile(f);
           }}
         />
-        <button
+        <Btn
+          size="sm"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploadDoc.isPending}
           aria-label="Attach a file"
           title="Attach a file"
-          style={{
-            all: "unset",
-            cursor: uploadDoc.isPending ? "not-allowed" : "pointer",
-            padding: "8px 10px",
-            borderRadius: 8,
-            border: `1px solid ${t.lineStrong}`,
-            color: t.ink2,
-            display: "inline-flex",
-            alignItems: "center",
-            opacity: uploadDoc.isPending ? 0.6 : 1,
-          }}
         >
           <Icon name="paperclip" size={14} />
-        </button>
+        </Btn>
         {staged ? (
-          <Pill bg={t.surface2} color={t.ink2}>
+          <CellChip>
             {staged.name.length > 22 ? staged.name.slice(0, 21) + "…" : staged.name}
-            <span
+            {/* Was a bare <span onClick> — neither focusable nor
+                Enter-activatable. A real button gets it back. */}
+            <button
+              type="button"
+              className="linky"
+              aria-label={`Remove ${staged.name}`}
               onClick={() => setStaged(null)}
-              style={{ marginLeft: 6, cursor: "pointer", fontWeight: 800 }}
             >
               ×
-            </span>
-          </Pill>
+            </button>
+          </CellChip>
         ) : null}
-        <div style={{ flex: 1 }} />
-        {flash ? (
-          <Pill bg={t.profitBg} color={t.profit}>{flash}</Pill>
-        ) : null}
-        <button
-          onClick={submit}
-          disabled={!body.trim() && !staged}
-          style={{ ...qcBtnPrimary(t), opacity: body.trim() || staged ? 1 : 0.5 }}
-        >
+        <div className="grow" />
+        {flash ? <CellChip tone="ok">{flash}</CellChip> : null}
+        <Btn variant="pri" onClick={submit} disabled={!body.trim() && !staged}>
           <Icon name={activeMode.icon} size={13} />
           {send.isPending ? "Sending…" : activeMode.label}
-        </button>
+        </Btn>
       </div>
     </div>
   );

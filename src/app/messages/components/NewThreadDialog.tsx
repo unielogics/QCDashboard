@@ -150,6 +150,8 @@ export function NewThreadDialog({ open, onClose, onThreadReady }: Props) {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search clients by name or email…"
             autoFocus
+            // `.field` has no width of its own; the picker's search box fills
+            // the drawer body.
             style={{ width: "100%" }}
           />
           <div className="mt" style={{ maxHeight: 320, overflowY: "auto" }}>
@@ -164,12 +166,11 @@ export function NewThreadDialog({ open, onClose, onThreadReady }: Props) {
                 <button
                   key={c.id}
                   type="button"
-                  className="pick"
+                  className="pick btnreset"
                   onClick={() => {
                     setPickedClient(c);
                     setStep("loan");
                   }}
-                  style={{ width: "100%", textAlign: "left" }}
                 >
                   <span
                     className="avatar"
@@ -177,9 +178,9 @@ export function NewThreadDialog({ open, onClose, onThreadReady }: Props) {
                   >
                     {c.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}
                   </span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: "block", fontSize: 13, fontWeight: 700 }}>{c.name}</span>
-                    <span className="sub" style={{ display: "block" }}>{c.email ?? "—"}</span>
+                  <span className="grow">
+                    <span className="trunc" style={{ display: "block", fontWeight: 700 }}>{c.name}</span>
+                    <span className="sub trunc" style={{ display: "block" }}>{c.email ?? "—"}</span>
                   </span>
                   <CellChip tone="mut">{`${lc} ${lc === 1 ? "loan" : "loans"}`}</CellChip>
                 </button>
@@ -203,15 +204,14 @@ export function NewThreadDialog({ open, onClose, onThreadReady }: Props) {
                 <button
                   key={l.id}
                   type="button"
-                  className="pick"
+                  className="pick btnreset"
                   onClick={() => {
                     onThreadReady(l.id);
                     onClose();
                   }}
-                  style={{ width: "100%", textAlign: "left" }}
                 >
                   <CellChip tone="acc">{l.deal_id}</CellChip>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700 }}>
+                  <span className="grow trunc" style={{ fontWeight: 700 }}>
                     {l.address}
                   </span>
                   <span className="sub">{l.type.replace("_", " ")}</span>

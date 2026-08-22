@@ -13,9 +13,24 @@
 // Full drag-drop power lives on the post-loan workbench tab. The
 // wizard intentionally uses the simpler toggle surface so agents
 // don't get bogged down mid-deal-creation.
+//
+// ── Design-system migration note ──────────────────────────────────────
+// Restyled onto globals.css/app-extras.css classes. Nothing about what this
+// step DOES changed: the same playbook merge, the same category grouping, the
+// same five outreach modes, the same toggle/preset callbacks, the same counts
+// and the same loading state. Public props are untouched.
+//
+// Two semantic upgrades came with the paint, both of which the old markup was
+// missing rather than deliberately omitting:
+//   · the outreach-mode tiles are `<button aria-pressed>` — they were plain
+//     buttons, so a screen reader announced five identical actions with no way
+//     to tell which one was in force;
+//   · each requirement row is now a real `<label>` + `<input type="checkbox">`
+//     instead of a `<button>` painting a ✓ glyph, so the checked state is
+//     announced and Space toggles it the way a checkbox is expected to.
 
 import { useMemo } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
+import { Btn, CellChip, Panel, cx } from "@/components/ds";
 import { useAgentPlaybook, type PlaybookRequirement } from "@/hooks/useApi";
 import {
   DS_CATEGORY_META,
@@ -23,6 +38,14 @@ import {
   type DSOutreachMode,
   type DSRequirementCategory,
 } from "@/lib/types";
+
+const OUTREACH_MODES: DSOutreachMode[] = [
+  "off",
+  "draft_first",
+  "portal_auto",
+  "portal_email",
+  "portal_email_sms",
+];
 
 export interface WizardSecretaryStepProps {
   side: "buyer" | "seller";
@@ -39,7 +62,6 @@ export function WizardSecretaryStep({
   aiAssignedKeys,
   onChangeAssignments,
 }: WizardSecretaryStepProps) {
-  const { t } = useTheme();
   const { data: playbook } = useAgentPlaybook(side);
 
   // Merge platform + agent overlay rows. Dedup by requirement_key (agent
@@ -83,176 +105,118 @@ export function WizardSecretaryStep({
   const presetClear = () => onChangeAssignments([]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {/* File-level Outreach Mode strip — sticky / impossible to miss */}
-      <div style={{
-        border: `1px solid ${t.lineStrong}`,
-        borderRadius: 14,
-        background: t.surface,
-        padding: "12px 14px",
-        boxShadow: t.shadow,
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 10.5, fontWeight: 900, color: t.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
-              AI Outreach
-            </div>
-            <div style={{ marginTop: 2, fontSize: 13, fontWeight: 800, color: t.ink }}>
-              {DS_OUTREACH_MODE_LABELS[outreachMode].title}
-            </div>
-          </div>
-          <div style={{ fontSize: 11, color: t.ink3, maxWidth: "55%", textAlign: "right" }}>
-            AI can only work tasks you check below. Off = nothing sends, the AI just tracks.
-          </div>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
-          {(["off", "draft_first", "portal_auto", "portal_email", "portal_email_sms"] as DSOutreachMode[]).map((m) => {
+    <div className="grid">
+      {/* File-level Outreach Mode strip — the selected mode is echoed in the
+          panel header so it is readable without scanning the five tiles. */}
+      <Panel title="AI Outreach" sub={DS_OUTREACH_MODE_LABELS[outreachMode].title}>
+        <p className="sub mb">
+          AI can only work tasks you check below. Off = nothing sends, the AI just tracks.
+        </p>
+        <div className="fldgrid five">
+          {OUTREACH_MODES.map((m) => {
             const active = m === outreachMode;
             const meta = DS_OUTREACH_MODE_LABELS[m];
             return (
-              <button
-                key={m}
-                type="button"
-                onClick={() => onChangeOutreachMode(m)}
-                style={{
-                  all: "unset",
-                  cursor: "pointer",
-                  padding: "9px 8px",
-                  borderRadius: 10,
-                  background: active ? t.brandSoft : t.surface2,
-                  border: `1px solid ${active ? t.brand : t.line}`,
-                  color: active ? t.brand : t.ink2,
-                  textAlign: "center",
-                }}
-              >
-                <div style={{ fontSize: 11.5, fontWeight: 900 }}>{meta.title}</div>
-                <div style={{ fontSize: 10, color: active ? t.brand : t.ink3, marginTop: 2 }}>{meta.sub}</div>
-              </button>
+              // Wrapped so `.pick + .pick` (a 7px stacking margin) cannot fire
+              // between grid cells and knock the row out of alignment.
+              <div key={m}>
+                <button
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => onChangeOutreachMode(m)}
+                  className={cx("pick", active && "on")}
+                >
+                  <div className="grow">
+                    <b>{meta.title}</b>
+                    <div className="sub">{meta.sub}</div>
+                  </div>
+                </button>
+              </div>
             );
           })}
         </div>
-      </div>
+      </Panel>
 
       {/* Presets */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        <PresetButton t={t} onClick={presetCommonCollection}>Assign common collection</PresetButton>
-        <PresetButton t={t} onClick={presetBorrowerFacing}>Assign all borrower-facing</PresetButton>
-        <PresetButton t={t} onClick={presetClear} tone="danger">Clear</PresetButton>
-        <div style={{ flex: 1 }} />
-        <div style={{ fontSize: 11.5, color: t.ink3, alignSelf: "center" }}>
+      <div className="row">
+        <PresetButton onClick={presetCommonCollection}>Assign common collection</PresetButton>
+        <PresetButton onClick={presetBorrowerFacing}>Assign all borrower-facing</PresetButton>
+        <PresetButton onClick={presetClear} tone="danger">Clear</PresetButton>
+        <span className="sp" />
+        <span className="sub">
           {aiAssignedKeys.length} of {requirements.length} on AI
-        </div>
+        </span>
       </div>
 
       {/* Category-grouped list with toggles */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="grid g10">
         {byCategory.length === 0 ? (
-          <div style={{ padding: 16, textAlign: "center", color: t.ink3, fontSize: 12, background: t.surface2, borderRadius: 10 }}>
-            Loading your playbook…
+          <div className="hintbox">
+            <span className="sub">Loading your playbook…</span>
           </div>
         ) : null}
         {byCategory.map(([cat, items]) => {
           const meta = DS_CATEGORY_META[cat as DSRequirementCategory];
           return (
-            <section key={cat} style={{ border: `1px solid ${t.line}`, borderRadius: 12, background: t.surface, padding: 12 }}>
-              <div style={{
-                fontSize: 10.5, fontWeight: 900,
-                color: t.ink3, letterSpacing: 1.2, textTransform: "uppercase",
-                marginBottom: 8,
-              }}>
-                {meta?.label ?? cat}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <Panel key={cat} title={meta?.label ?? cat}>
+              <div>
                 {items.map((r) => {
                   const assigned = aiAssignedKeys.includes(r.requirement_key);
                   return (
-                    <button
-                      key={r.requirement_key}
-                      type="button"
-                      onClick={() => toggle(r.requirement_key)}
-                      style={{
-                        all: "unset",
-                        cursor: "pointer",
-                        display: "grid",
-                        gridTemplateColumns: "22px 1fr auto",
-                        gap: 10,
-                        alignItems: "center",
-                        padding: "8px 10px",
-                        borderRadius: 9,
-                        background: assigned ? t.brandSoft : t.surface2,
-                        border: `1px solid ${assigned ? t.brand : t.line}`,
-                      }}
-                    >
-                      <div style={{
-                        width: 18, height: 18, borderRadius: 5,
-                        background: assigned ? t.brand : t.surface,
-                        border: `1.5px solid ${assigned ? t.brand : t.line}`,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        color: t.surface, fontSize: 12, fontWeight: 900,
-                      }}>{assigned ? "✓" : ""}</div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: t.ink }}>{r.label}</div>
-                        {r.objective_text ? (
-                          <div style={{ fontSize: 11, color: t.ink3, marginTop: 2 }}>{r.objective_text}</div>
-                        ) : null}
+                    <label key={r.requirement_key} className={cx("pick", assigned && "on")}>
+                      <input
+                        type="checkbox"
+                        checked={assigned}
+                        onChange={() => toggle(r.requirement_key)}
+                      />
+                      <div className="grow">
+                        <b>{r.label}</b>
+                        {r.objective_text ? <div className="sub">{r.objective_text}</div> : null}
                       </div>
-                      <div style={{ display: "flex", gap: 4 }}>
+                      <span className="row">
                         {r.required_level === "required" ? (
-                          <span style={{ fontSize: 9.5, fontWeight: 900, padding: "2px 5px", borderRadius: 4, background: t.dangerBg, color: t.danger }}>REQ</span>
+                          <CellChip tone="bad">REQ</CellChip>
                         ) : null}
                         {r.required_level === "recommended" ? (
-                          <span style={{ fontSize: 9.5, fontWeight: 900, padding: "2px 5px", borderRadius: 4, background: t.warnBg, color: t.warn }}>REC</span>
+                          <CellChip tone="warn">REC</CellChip>
                         ) : null}
                         {r.link_kind === "docusign" ? (
-                          <span style={{ fontSize: 9.5, fontWeight: 800, padding: "2px 5px", borderRadius: 4, background: t.chip, color: t.ink3 }} title="DocuSign link configured">
+                          <CellChip tone="mut" title="DocuSign link configured">
                             ✍
-                          </span>
+                          </CellChip>
                         ) : null}
-                      </div>
-                    </button>
+                      </span>
+                    </label>
                   );
                 })}
               </div>
-            </section>
+            </Panel>
           );
         })}
       </div>
 
-      <div style={{ fontSize: 11, color: t.ink3, fontStyle: "italic" }}>
-        You can fine-tune each AI-handled task (instructions, channels, cadence) on the deal's AI Workbench tab after creation.
-      </div>
+      <p className="sub">
+        You can fine-tune each AI-handled task (instructions, channels, cadence) on the deal&apos;s
+        AI Workbench tab after creation.
+      </p>
     </div>
   );
 }
 
 function PresetButton({
-  t,
   onClick,
   children,
   tone,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   onClick: () => void;
   children: React.ReactNode;
   tone?: "danger";
 }) {
+  // `.btn.danger` rather than a bare `.c-bad`: `.btn:hover` out-specifies a
+  // tone chip class, so a bare tint vanishes exactly when you point at it.
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        all: "unset",
-        cursor: "pointer",
-        fontSize: 11.5,
-        fontWeight: 700,
-        padding: "7px 11px",
-        borderRadius: 9,
-        background: tone === "danger" ? t.dangerBg : t.surface2,
-        color: tone === "danger" ? t.danger : t.ink2,
-        border: `1px solid ${tone === "danger" ? t.danger : t.line}`,
-      }}
-    >
+    <Btn size="sm" className={tone === "danger" ? "danger" : undefined} onClick={onClick}>
       {children}
-    </button>
+    </Btn>
   );
 }

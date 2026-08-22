@@ -11,10 +11,13 @@
 // Selected attachments render as chips above the composer textarea
 // with an "x" to remove. On submit, the parent passes the chip IDs
 // into the reply payload so the backend can MIME-attach them.
+//
+// Restyled onto the plain-CSS design system; the document picker moved onto
+// `Drawer`, which brings Escape-to-close, focus return and a scroll lock.
 
 import { useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Pill } from "@/components/design-system/primitives";
+import { Btn, CellChip, StatusLine, Sub } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import {
   useDocuments,
@@ -30,7 +33,6 @@ interface Props {
 }
 
 export function LenderThreadAttachmentBar({ loanId, attachments, onChange }: Props) {
-  const { t } = useTheme();
   const upload = useUploadLenderAttachment(loanId);
   const fromDoc = useLenderAttachmentFromDoc();
   const [docPickerOpen, setDocPickerOpen] = useState(false);
@@ -66,23 +68,17 @@ export function LenderThreadAttachmentBar({ loanId, attachments, onChange }: Pro
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+    <div className="grid g8">
+      <div className="row">
+        {/* A <label> wrapping a hidden file input, wearing `.btn`. Kept as a
+            label rather than promoted to a button because the click path is
+            the browser's own; see the note in `problems` about the fact that
+            neither the label nor the display:none input is reachable by
+            keyboard — that is pre-existing and untouched here. */}
         <label
-          style={{
-            cursor: uploading ? "wait" : "pointer",
-            padding: "6px 10px",
-            borderRadius: 8,
-            border: `1px solid ${t.line}`,
-            fontSize: 11.5,
-            fontWeight: 700,
-            color: t.brand,
-            background: t.surface,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            opacity: uploading ? 0.6 : 1,
-          }}
+          className="btn sm"
+          // State-derived: an upload is in flight, so `.btn`'s pointer is wrong.
+          style={uploading ? { cursor: "wait", opacity: 0.6 } : undefined}
         >
           <Icon name="paperclip" size={11} stroke={2.5} />
           {uploading ? "Uploading…" : "Upload from computer"}
@@ -98,40 +94,22 @@ export function LenderThreadAttachmentBar({ loanId, attachments, onChange }: Pro
             style={{ display: "none" }}
           />
         </label>
-        <button
-          type="button"
-          onClick={() => setDocPickerOpen(true)}
-          style={{
-            all: "unset",
-            cursor: "pointer",
-            padding: "6px 10px",
-            borderRadius: 8,
-            border: `1px solid ${t.line}`,
-            fontSize: 11.5,
-            fontWeight: 700,
-            color: t.brand,
-            background: t.surface,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
+        <Btn size="sm" onClick={() => setDocPickerOpen(true)}>
           <Icon name="doc" size={11} stroke={2.5} />
           Pick from loan files
-        </button>
+        </Btn>
         {attachments.length > 0 && (
-          <span style={{ fontSize: 11, color: t.ink3 }}>
+          <Sub>
             {attachments.length} attachment{attachments.length === 1 ? "" : "s"}
-          </span>
+          </Sub>
         )}
       </div>
-      {error && <div style={{ fontSize: 11.5, color: t.danger }}>{error}</div>}
+      {error && <StatusLine tone="bad">{error}</StatusLine>}
       {attachments.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <div className="row">
           {attachments.map((a) => (
             <AttachmentChip
               key={a.attachment_id}
-              t={t}
               attachment={a}
               onRemove={() => removeAt(a.attachment_id)}
             />
@@ -159,65 +137,32 @@ export function LenderThreadAttachmentBar({ loanId, attachments, onChange }: Pro
 }
 
 function AttachmentChip({
-  t,
   attachment,
   onRemove,
 }: {
-  t: ReturnType<typeof useTheme>["t"];
   attachment: LenderAttachmentRef;
   onRemove: () => void;
 }) {
   const isFromDoc = attachment.source === "system_doc_ref";
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "4px 8px",
-        borderRadius: 999,
-        background: isFromDoc ? t.brandSoft : t.surface2,
-        border: `1px solid ${t.line}`,
-        fontSize: 11.5,
-        color: t.ink,
-        maxWidth: 280,
-      }}
+    <CellChip
+      // Tone says where the file came from: a loan document, or an upload.
+      tone={isFromDoc ? "acc" : "mut"}
       title={attachment.filename}
     >
       <Icon name={isFromDoc ? "doc" : "paperclip"} size={10} stroke={2.5} />
-      <span
-        style={{
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          maxWidth: 220,
-        }}
-      >
-        {attachment.filename}
-      </span>
-      {attachment.size_bytes > 0 && (
-        <span style={{ color: t.ink3, fontSize: 10 }}>
-          {formatBytes(attachment.size_bytes)}
-        </span>
-      )}
+      {/* Bespoke measure — a filename chip must not push the composer wide. */}
+      <span className="trunc" style={{ maxWidth: 220 }}>{attachment.filename}</span>
+      {attachment.size_bytes > 0 && <span>{formatBytes(attachment.size_bytes)}</span>}
       <button
         type="button"
+        className="linky"
+        aria-label={`Remove ${attachment.filename}`}
         onClick={onRemove}
-        style={{
-          all: "unset",
-          cursor: "pointer",
-          width: 14,
-          height: 14,
-          borderRadius: 7,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: t.ink3,
-        }}
       >
         <Icon name="close" size={9} stroke={3} />
       </button>
-    </span>
+    </CellChip>
   );
 }
 
@@ -232,7 +177,6 @@ function DocPickerModal({
   onClose: () => void;
   onPicked: (documentId: string) => Promise<void> | void;
 }) {
-  const { t } = useTheme();
   const { data: docs = [], isLoading } = useDocuments(loanId);
   // Only show docs that have actually been uploaded (have s3_key).
   // Skipping is_other? No — those are legitimate files too.
@@ -240,114 +184,22 @@ function DocPickerModal({
 
   if (!open) return null;
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(11, 22, 41, 0.5)",
-        zIndex: 75,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "min(560px, 100%)",
-          maxHeight: "80vh",
-          overflowY: "auto",
-          background: t.surface,
-          borderRadius: 14,
-          padding: 18,
-          border: `1px solid ${t.line}`,
-          boxShadow: "0 12px 40px rgba(11, 22, 41, 0.18)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 12,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 800,
-              letterSpacing: -0.2,
-              color: t.ink,
-            }}
-          >
-            Attach an existing loan file
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              padding: 6,
-              borderRadius: 6,
-              border: `1px solid ${t.line}`,
-              color: t.ink2,
-            }}
-          >
-            <Icon name="close" size={11} stroke={3} />
-          </button>
+    <Drawer open={open} onClose={onClose} title="Attach an existing loan file" width="md">
+      {isLoading ? (
+        <Sub>Loading…</Sub>
+      ) : usable.length === 0 ? (
+        <Sub>No uploaded files on this loan yet.</Sub>
+      ) : (
+        <div className="picklist">
+          {usable.map((d) => (
+            <button key={d.id} type="button" className="pick" onClick={() => onPicked(d.id)}>
+              <span className="grow trunc">{d.name}</span>
+              {d.category && <CellChip>{d.category}</CellChip>}
+            </button>
+          ))}
         </div>
-        {isLoading ? (
-          <div style={{ fontSize: 12, color: t.ink3 }}>Loading…</div>
-        ) : usable.length === 0 ? (
-          <div style={{ fontSize: 12, color: t.ink3 }}>
-            No uploaded files on this loan yet.
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {usable.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                onClick={() => onPicked(d.id)}
-                style={{
-                  all: "unset",
-                  cursor: "pointer",
-                  padding: "9px 11px",
-                  borderRadius: 8,
-                  border: `1px solid ${t.line}`,
-                  background: t.surface,
-                  fontSize: 12.5,
-                  color: t.ink,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <span
-                  style={{
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    flex: 1,
-                  }}
-                >
-                  {d.name}
-                </span>
-                {d.category && (
-                  <Pill bg={t.surface2} color={t.ink3}>
-                    {d.category}
-                  </Pill>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+      )}
+    </Drawer>
   );
 }
 

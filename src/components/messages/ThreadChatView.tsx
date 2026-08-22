@@ -253,14 +253,8 @@ export function ThreadChatView({
           {staged.map((s) => (
             <CellChip key={s.document_id} tone="pet">
               <Icon name="doc" size={12} />
-              <span
-                style={{
-                  maxWidth: 200,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
+              {/* `.trunc` owns the clip; the measure is the only bespoke part. */}
+              <span className="trunc" style={{ maxWidth: 200 }}>
                 {s.name}
               </span>
               <button
@@ -362,14 +356,8 @@ function AttachmentChipDesktop({ attachment }: { attachment: ChatAttachment }) {
   return (
     <CellChip tone={tone}>
       <Icon name="doc" size={12} />
-      <span
-        style={{
-          maxWidth: 220,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
+      {/* `.trunc` owns the clip; the measure is the only bespoke part. */}
+      <span className="trunc" style={{ maxWidth: 220 }}>
         {attachment.name}
       </span>
       <span>{status.toUpperCase()}</span>

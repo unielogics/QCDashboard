@@ -9,13 +9,29 @@
 //
 // Used inside the simulator's My Loans tab AND the borrower view of the
 // loan detail page.
+//
+// Restyled onto the plain-CSS design system: each request is a `.card`, the
+// status pill is a `.cellchip` with the tone vocabulary standing in for the
+// hand-picked bg/fg pairs, the underwriter notes are a `.callout` (which
+// wraps, unlike a chip), the present-and-report flow is a `.callout` nudge
+// with the consequence line as a `.warnline`, and the buttons are `Btn`.
 
 import { useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Card, Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
-import { qcBtn, qcBtnPrimary } from "@/components/design-system/buttons";
 import { QC_FMT } from "@/components/design-system/tokens";
+import {
+  Btn,
+  BtnLink,
+  Callout,
+  CellChip,
+  Panel,
+  StatusLine,
+  Sub,
+  Tag,
+  Textarea,
+  WarnLine,
+  type ChipTone,
+} from "@/components/ds";
 import { useAcceptPrequalOffer, useDeclinePrequalOffer } from "@/hooks/useApi";
 import { PREQUAL_LOAN_TYPE_LABELS, type PrequalRequest } from "@/lib/types";
 
@@ -28,28 +44,24 @@ export function PreQualRequestList({
   isLoading?: boolean;
   emptyState?: React.ReactNode;
 }) {
-  const { t } = useTheme();
-
   if (isLoading) {
     return (
-      <Card pad={20}>
-        <div style={{ fontSize: 12.5, color: t.ink3 }}>Loading requests…</div>
-      </Card>
+      <Panel>
+        <Sub>Loading requests…</Sub>
+      </Panel>
     );
   }
 
   if (requests.length === 0) {
     return (
-      <Card pad={20}>
-        <div style={{ fontSize: 13, color: t.ink2, lineHeight: 1.5 }}>
-          {emptyState ?? "No pre-qualification requests yet."}
-        </div>
-      </Card>
+      <Panel>
+        <div>{emptyState ?? "No pre-qualification requests yet."}</div>
+      </Panel>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div className="grid g10">
       {requests.map((r) => (
         <RequestRow key={r.id} req={r} />
       ))}
@@ -58,7 +70,6 @@ export function PreQualRequestList({
 }
 
 function RequestRow({ req }: { req: PrequalRequest }) {
-  const { t } = useTheme();
   const accept = useAcceptPrequalOffer();
   const decline = useDeclinePrequalOffer();
   const [showOutcome, setShowOutcome] = useState<null | "accept" | "decline">(null);
@@ -67,13 +78,13 @@ function RequestRow({ req }: { req: PrequalRequest }) {
 
   const isSuperseded = req.superseded_by_id != null;
   const isRevision = (req.version_num ?? 1) > 1;
-  const statusInfo = (() => {
-    if (isSuperseded) return { label: "Updated — see latest version", bg: t.surface2, fg: t.ink3, icon: "audit" as const };
-    if (req.status === "approved") return { label: isRevision ? `Ready · v${req.version_num}` : "Ready", bg: t.profitBg, fg: t.profit, icon: "check" as const };
-    if (req.status === "offer_accepted") return { label: req.quote_number ? `Loan opened · ${req.quote_number}` : "Loan opened", bg: t.brandSoft, fg: t.brand, icon: "check" as const };
-    if (req.status === "offer_declined") return { label: "Closed — seller declined", bg: t.surface2, fg: t.ink3, icon: "x" as const };
-    if (req.status === "rejected") return { label: "Returned", bg: t.dangerBg, fg: t.danger, icon: "x" as const };
-    return { label: "Under review", bg: t.warnBg, fg: t.warn, icon: "audit" as const };
+  const statusInfo: { label: string; tone: ChipTone; icon: "audit" | "check" | "x" } = (() => {
+    if (isSuperseded) return { label: "Updated — see latest version", tone: "mut", icon: "audit" as const };
+    if (req.status === "approved") return { label: isRevision ? `Ready · v${req.version_num}` : "Ready", tone: "ok", icon: "check" as const };
+    if (req.status === "offer_accepted") return { label: req.quote_number ? `Loan opened · ${req.quote_number}` : "Loan opened", tone: "acc", icon: "check" as const };
+    if (req.status === "offer_declined") return { label: "Closed — seller declined", tone: "mut", icon: "x" as const };
+    if (req.status === "rejected") return { label: "Returned", tone: "bad", icon: "x" as const };
+    return { label: "Under review", tone: "warn", icon: "audit" as const };
   })();
 
   const requestedAmount = Number(req.requested_loan_amount);
@@ -124,160 +135,122 @@ function RequestRow({ req }: { req: PrequalRequest }) {
   };
 
   return (
-    <Card pad={16}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <Pill bg={statusInfo.bg} color={statusInfo.fg}>
+    <div className="card">
+      {/* Bespoke split: the request body takes whatever is left, the letter
+          button is sized to its own content and must not shrink. Not a
+          twelve-column page grid, so the track stays here. */}
+      <div className="grid" style={{ gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "start" }}>
+        <div className="grid g6">
+          <div className="row">
+            <CellChip tone={statusInfo.tone}>
               <Icon name={statusInfo.icon} size={11} stroke={3} /> {statusInfo.label}
-            </Pill>
-            <Pill>{programLabel}</Pill>
+            </CellChip>
+            <Tag>{programLabel}</Tag>
             {req.borrower_entity ? (
-              <span style={{ fontSize: 11, color: t.ink3 }}>
-                Issued to {req.borrower_entity}
-              </span>
+              <Sub>Issued to {req.borrower_entity}</Sub>
             ) : null}
             {req.expected_closing_date ? (
-              <span style={{ fontSize: 11, color: t.ink3 }}>
+              <Sub>
                 Close {new Date(req.expected_closing_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-              </span>
+              </Sub>
             ) : null}
           </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: t.ink, marginTop: 6, letterSpacing: -0.2 }}>
-            {req.target_property_address}
+          <div>
+            <b>{req.target_property_address}</b>
           </div>
-          <div style={{ fontSize: 12, color: t.ink2, marginTop: 4, fontFeatureSettings: '"tnum"' }}>
-            Requested {QC_FMT.usd(requestedAmount, 0)} {denomConnector} {denomLabel}
+          <div className="row sub">
+            <span>
+              Requested {QC_FMT.usd(requestedAmount, 0)} {denomConnector} {denomLabel}
+            </span>
             {showApproved ? (
-              <span style={{ color: t.profit, fontWeight: 700 }}>
-                {" "}· approved at {QC_FMT.usd(approvedAmount as number, 0)}
-              </span>
+              <CellChip tone="ok">approved at {QC_FMT.usd(approvedAmount as number, 0)}</CellChip>
             ) : null}
           </div>
           {visibleAdminNotes ? (
-            <div
-              style={{
-                marginTop: 10,
-                padding: "8px 12px",
-                borderLeft: `3px solid ${req.status === "rejected" ? t.danger : t.petrol}`,
-                background: t.surface2,
-                fontSize: 12,
-                fontStyle: "italic",
-                color: t.ink2,
-                lineHeight: 1.45,
-              }}
-            >
-              <strong style={{ fontStyle: "normal", color: t.ink }}>Underwriter notes:</strong>{" "}
-              {visibleAdminNotes}
-            </div>
+            <Callout tone={req.status === "rejected" ? "bad" : "acc"}>
+              <strong>Underwriter notes:</strong> <em>{visibleAdminNotes}</em>
+            </Callout>
           ) : null}
 
           {/* Approved → present-and-report flow. Once the borrower
               clicks "Seller accepted offer" we spawn a Loan; "Seller
               declined" closes the request. */}
           {req.status === "approved" ? (
-            <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${t.line}` }}>
-              <div style={{ fontSize: 11.5, color: t.ink3, marginBottom: 8, lineHeight: 1.45 }}>
-                Once you&apos;ve presented this letter to the seller, let us
-                know how it landed:
-              </div>
-              {showOutcome == null ? (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button
-                    onClick={() => setShowOutcome("accept")}
-                    style={qcBtnPrimary(t)}
-                  >
-                    <Icon name="check" size={13} stroke={3} /> Seller accepted offer
-                  </button>
-                  <button
-                    onClick={() => setShowOutcome("decline")}
-                    style={qcBtn(t)}
-                  >
-                    Seller declined / I walked away
-                  </button>
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ fontSize: 12, color: t.ink, fontWeight: 700 }}>
-                    {showOutcome === "accept"
-                      ? "Confirm: seller accepted my offer"
-                      : "Confirm: seller declined / I walked away"}
+            <Callout tone="acc">
+              <div className="grid g8">
+                <Sub>
+                  Once you&apos;ve presented this letter to the seller, let us
+                  know how it landed:
+                </Sub>
+                {showOutcome == null ? (
+                  <div className="row">
+                    <Btn variant="pri" onClick={() => setShowOutcome("accept")}>
+                      <Icon name="check" size={13} stroke={3} /> Seller accepted offer
+                    </Btn>
+                    <Btn onClick={() => setShowOutcome("decline")}>
+                      Seller declined / I walked away
+                    </Btn>
                   </div>
-                  <textarea
-                    value={outcomeNote}
-                    onChange={(e) => setOutcomeNote(e.target.value.slice(0, 500))}
-                    placeholder={
-                      showOutcome === "accept"
-                        ? "Optional — accepted at $X, closing in N weeks…"
-                        : "Optional — what happened?"
-                    }
-                    rows={2}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      background: t.surface2,
-                      border: `1px solid ${t.line}`,
-                      color: t.ink,
-                      fontSize: 12,
-                      fontFamily: "inherit",
-                      outline: "none",
-                      resize: "vertical",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                  {showOutcome === "accept" ? (
-                    <div style={{ fontSize: 11, color: t.petrol, lineHeight: 1.4 }}>
-                      Confirming will create a real loan file in the pipeline
-                      under {req.quote_number ?? "your quote#"}. Your team
-                      starts processing immediately.
+                ) : (
+                  <>
+                    <b>
+                      {showOutcome === "accept"
+                        ? "Confirm: seller accepted my offer"
+                        : "Confirm: seller declined / I walked away"}
+                    </b>
+                    <Textarea
+                      value={outcomeNote}
+                      onChange={(e) => setOutcomeNote(e.target.value.slice(0, 500))}
+                      placeholder={
+                        showOutcome === "accept"
+                          ? "Optional — accepted at $X, closing in N weeks…"
+                          : "Optional — what happened?"
+                      }
+                      rows={2}
+                    />
+                    {showOutcome === "accept" ? (
+                      <WarnLine>
+                        Confirming will create a real loan file in the pipeline
+                        under {req.quote_number ?? "your quote#"}. Your team
+                        starts processing immediately.
+                      </WarnLine>
+                    ) : null}
+                    {outcomeError ? (
+                      <StatusLine tone="bad">{outcomeError}</StatusLine>
+                    ) : null}
+                    <div className="row">
+                      <span className="sp" />
+                      <Btn
+                        onClick={() => { setShowOutcome(null); setOutcomeNote(""); setOutcomeError(null); }}
+                      >
+                        Back
+                      </Btn>
+                      <Btn
+                        variant="pri"
+                        onClick={submitOutcome}
+                        disabled={accept.isPending || decline.isPending}
+                      >
+                        {accept.isPending || decline.isPending ? "Saving…" : "Confirm"}
+                      </Btn>
                     </div>
-                  ) : null}
-                  {outcomeError ? (
-                    <Pill bg={t.dangerBg} color={t.danger}>{outcomeError}</Pill>
-                  ) : null}
-                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                    <button
-                      onClick={() => { setShowOutcome(null); setOutcomeNote(""); setOutcomeError(null); }}
-                      style={qcBtn(t)}
-                    >
-                      Back
-                    </button>
-                    <button
-                      onClick={submitOutcome}
-                      disabled={accept.isPending || decline.isPending}
-                      style={{
-                        ...qcBtnPrimary(t),
-                        opacity: (accept.isPending || decline.isPending) ? 0.5 : 1,
-                      }}
-                    >
-                      {accept.isPending || decline.isPending ? "Saving…" : "Confirm"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
+                  </>
+                )}
+              </div>
+            </Callout>
           ) : null}
         </div>
 
         {(req.status === "approved" || req.status === "offer_accepted") && req.pdf_url ? (
-          <a
+          <BtnLink
+            variant="pri"
             href={req.pdf_url}
             target="_blank"
             rel="noopener noreferrer"
-            style={{
-              ...qcBtnPrimary(t),
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              flexShrink: 0,
-            }}
           >
             <Icon name="docCheck" size={13} /> Download Letter
-          </a>
+          </BtnLink>
         ) : null}
       </div>
-    </Card>
+    </div>
   );
 }

@@ -1,8 +1,8 @@
 "use client";
 
 import type { MouseEvent } from "react";
+import { cx } from "@/components/ds";
 import { Icon } from "./Icon";
-import { useTheme } from "./ThemeProvider";
 
 /**
  * A single square icon action. ~25 files hand-rolled this same
@@ -32,54 +32,29 @@ export function IconButton({
   active?: boolean;
   title?: string;
 }) {
-  const { t } = useTheme();
-  const color = disabled
-    ? t.ink4
-    : tone === "danger"
-      ? t.danger
-      : tone === "brand"
-        ? t.brand
-        : t.ink2;
-  const hoverBg = tone === "danger" ? t.dangerBg : t.surface2;
+  // Tone and state resolve to classes, so hover, focus and the disabled dim
+  // are CSS rather than the four JS handlers that used to mutate style on
+  // mouseenter/leave/focus/blur — those never fired for a keyboard user
+  // arriving by Tab without :focus-visible, and left the button re-painted
+  // after an unmount mid-hover.
+  const toneClass = tone === "danger" ? "danger" : tone === "brand" ? "tone-acc" : undefined;
   return (
     <button
       type="button"
       aria-label={label}
+      aria-pressed={active}
       title={title ?? label}
       disabled={disabled}
       onClick={(e) => {
         e.stopPropagation();
         if (!disabled) onClick(e);
       }}
-      style={{
-        all: "unset",
-        boxSizing: "border-box",
-        cursor: disabled ? "not-allowed" : "pointer",
-        width: 30,
-        height: 30,
-        borderRadius: 8,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color,
-        background: active ? t.surface2 : "transparent",
-        transition: "background 120ms ease",
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled) e.currentTarget.style.background = hoverBg;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = active ? t.surface2 : "transparent";
-      }}
-      onFocus={(e) => {
-        e.currentTarget.style.outline = `2px solid ${t.brand}`;
-        e.currentTarget.style.outlineOffset = "1px";
-      }}
-      onBlur={(e) => {
-        e.currentTarget.style.outline = "none";
-      }}
+      className={cx("btn", "sm", "iconbtn", toneClass, active && "tone-acc")}
     >
-      <Icon name={name} size={size} stroke={2.1} />
+      {/* `.iconbtn svg` pins glyphs to 15px, and a CSS rule beats an SVG
+          width/height ATTRIBUTE — so the public `size` prop has to be an
+          inline style or it would silently stop doing anything. */}
+      <Icon name={name} size={size} stroke={2.1} style={{ width: size, height: size }} />
     </button>
   );
 }

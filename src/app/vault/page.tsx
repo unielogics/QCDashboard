@@ -270,13 +270,10 @@ function DocRow({
       </Td>
       <Td>
         {loan ? (
-          // `.linky` owns colour and weight; only the mono face is inline —
-          // the stylesheet carries no monospace utility.
-          <Link
-            href={`/loans/${loan.id}`}
-            className="linky"
-            style={{ fontFamily: "ui-monospace, SFMono-Regular, monospace" }}
-          >
+          // `.linky` owns colour and weight, `.mono` the machine face a deal
+          // id is set in. Both are classes now — this used to hand-copy the
+          // font stack because `.mono` did not exist yet.
+          <Link href={`/loans/${loan.id}`} className="linky mono">
             {loan.deal_id}
           </Link>
         ) : (
@@ -434,7 +431,9 @@ function UploadDocumentModal({
       bodyClass="grid"
       footer={
         <>
-          <span style={{ flex: 1 }} />
+          {/* `.sp` is the sheet's spacer — the same one `.panel-h` uses to push
+              its actions right. */}
+          <span className="sp" />
           <Btn onClick={onClose}>Cancel</Btn>
           <Btn variant="pri" onClick={submit} disabled={submitDisabled}>
             {upload.isPending ? "Uploading…" : "Upload"}
@@ -564,18 +563,15 @@ function UploadDocumentModal({
 }
 
 /**
- * Tinted status block. `.c-bad` / `.c-ok` own the tint and the text colour;
- * the inline values are box geometry only — the stylesheet's tone classes are
- * pill-shaped chips (`.cellchip`, nowrap) and there is no full-width variant
- * to reach for, and shared files are off-limits.
+ * Tinted status block. This hand-rolled its own box because the sheet had no
+ * full-width variant of the tone chips; `.statusline` is now exactly that — the
+ * `.cellchip` vocabulary in a block that wraps. Kept as a local wrapper rather
+ * than swapped for `StatusLine` from "@/components/ds" only because that one
+ * takes no `role`, and a failure here has to be announced, not just shown.
  */
 function StatusLine({ tone, children }: { tone: ChipTone; children: ReactNode }) {
   return (
-    <div
-      className={`c-${tone}`}
-      style={{ borderRadius: 10, padding: "9px 12px", fontSize: 12.5, fontWeight: 650, lineHeight: 1.45 }}
-      role={tone === "bad" ? "alert" : "status"}
-    >
+    <div className={cx("statusline", `c-${tone}`)} role={tone === "bad" ? "alert" : "status"}>
       {children}
     </div>
   );
@@ -601,15 +597,11 @@ function ChecklistRow({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={cx("pick", active && "on")}
-      // `.pick` owns the box; a <button> still needs to be told to fill its
-      // column and read left. Cursor is only set when the class's `pointer`
-      // would be a lie.
-      style={{
-        width: "100%",
-        textAlign: "left",
-        ...(disabled ? { opacity: 0.55, cursor: "not-allowed" } : null),
-      }}
+      className={cx("pick", "btnreset", active && "on")}
+      // `.btnreset` fills the column and reads left. The dimming is
+      // state-derived, and the cursor override is there because `.pick` says
+      // `pointer` and on a disabled row that is a lie.
+      style={disabled ? { opacity: 0.55, cursor: "not-allowed" } : undefined}
     >
       <span
         style={{
@@ -625,7 +617,7 @@ function ChecklistRow({
       >
         {active ? <Icon name="check" size={11} color="#fff" stroke={3} /> : null}
       </span>
-      <span style={{ flex: 1, minWidth: 0 }}>
+      <span className="grow">
         <b style={{ display: "block", fontWeight: 600 }}>{label}</b>
         {sub ? <span className="sub" style={{ display: "block", marginTop: 2 }}>{sub}</span> : null}
       </span>
@@ -651,11 +643,10 @@ function KindCard({
     <button
       type="button"
       onClick={onClick}
-      className={cx("pick", active && "on")}
-      style={{ width: "100%", textAlign: "left" }}
+      className={cx("pick", "btnreset", active && "on")}
     >
       <Icon name={icon} size={16} />
-      <span style={{ flex: 1, minWidth: 0 }}>
+      <span className="grow">
         <b style={{ display: "block" }}>{title}</b>
         <span className="sub" style={{ display: "block", marginTop: 2 }}>{hint}</span>
       </span>

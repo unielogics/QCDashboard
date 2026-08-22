@@ -72,18 +72,8 @@ export default function AIRail() {
     <aside className="rail">
       {/* Header */}
       <div className="panel-h">
-        <span
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            background: "var(--petrol-100)",
-            color: "var(--petrol)",
-            display: "grid",
-            placeItems: "center",
-            flexShrink: 0,
-          }}
-        >
+        {/* `.botmark` is the sheet's "Elara's mark in a header strip". */}
+        <span className="botmark pet">
           <Icon name="sparkles" size={14} />
         </span>
         <div>
@@ -106,6 +96,7 @@ export default function AIRail() {
           options={TABS.map((tabDef) => ({
             value: tabDef.id,
             label: (
+              // Icon + label + count on one baseline inside a `.seg` button.
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <Icon name={tabDef.icon} size={12} />
                 {tabDef.label}
@@ -193,6 +184,9 @@ export default function AIRail() {
 
       {/* Footer chat input */}
       {tab === "chat" && (
+        // `.composer` is the stacked textarea composer; this rail has a
+        // single-line input, so it uses `.composer-row` alone and brings the
+        // footer rule and padding the full composer would have carried.
         <div className="composer-row" style={{ padding: 12, borderTop: "1px solid var(--line)" }}>
           <Input
             grow
@@ -237,6 +231,7 @@ function ContextSection({ title, children }: { title: string; children: ReactNod
 function ContextItem({ children }: { children: ReactNode }) {
   return (
     <div className="filerow">
+      {/* `.repdot` is geometry only and never claims a colour. */}
       <span className="repdot" style={{ background: "var(--petrol)" }} />
       <span>{children}</span>
     </div>

@@ -172,20 +172,23 @@ export default function InboxPage() {
                 placeholder="Search subject or sender…"
               />
             </div>
-            {/* Hand-rolled .seg rather than <Seg> because these tabs disable
-                while a search is running — a real `disabled` attribute, not a
-                dimmed-but-clickable one. */}
-            <div className="seg" role="tablist" aria-label="Filter threads">
+            {/* Hand-rolled `.seg` rather than <Seg> because these narrow while
+                a search is running — a real `disabled` attribute, not a
+                dimmed-but-clickable one, and <Seg> takes no disabled.
+                role=group + aria-pressed, NOT tablist: this filters the list
+                below, it does not switch which view you are looking at, and a
+                filter announced as a tab tells a screen-reader user the page is
+                about to change when it is not. The dimming is now
+                `.seg button:disabled` in app-extras. */}
+            <div className="seg" role="group" aria-label="Filter threads">
               {FILTERS.map((f) => (
                 <button
                   key={f.value}
                   type="button"
-                  role="tab"
-                  aria-selected={filter === f.value}
+                  aria-pressed={filter === f.value}
                   className={filter === f.value ? "on" : ""}
                   disabled={searching}
                   onClick={() => setFilter(f.value)}
-                  style={searching ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
                 >
                   {f.label}
                 </button>
@@ -228,29 +231,31 @@ export default function InboxPage() {
                   key={th.thread_id}
                   type="button"
                   onClick={() => setSelectedThread(th.thread_id)}
-                  className={cx("pick", active && "on")}
+                  className={cx("pick", "btnreset", active && "on")}
                   aria-current={active}
-                  style={{ width: "100%", textAlign: "left" }}
                 >
-                  <span style={{ flex: 1, minWidth: 0 }}>
+                  <span className="grow">
+                    {/* Bespoke: sender, flags and time on ONE line that must not
+                        wrap — `.row` wraps, which would drop the timestamp
+                        under the name on a narrow list. */}
                     <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {/* Data-derived: an unread thread is marked in the accent. */}
                       {unread && <span className="repdot" style={{ background: "var(--accent)" }} />}
                       <span
+                        className="trunc"
+                        // Weight and ink are read state, not design state.
                         style={{
-                          fontSize: 12.5,
                           fontWeight: unread ? 800 : 600,
                           color: unread ? "var(--ink)" : "var(--ink2)",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
                           flex: 1,
-                          minWidth: 0,
                         }}
                       >
                         {th.last_from ?? "(unknown)"}
                       </span>
                       {th.is_starred && (
-                        <span title="Starred" style={{ color: "var(--warn)", fontSize: 12 }}>
+                        // A bare glyph, not a `.cellchip` — a chip here would
+                        // put a tinted pill around a single star.
+                        <span title="Starred" style={{ color: "var(--warn)" }}>
                           ★
                         </span>
                       )}
@@ -258,16 +263,10 @@ export default function InboxPage() {
                       <span className="msg-when">{fmtTime(th.last_received_at)}</span>
                     </span>
                     <span
-                      style={{
-                        display: "block",
-                        marginTop: 3,
-                        fontSize: 12.5,
-                        fontWeight: unread ? 700 : 500,
-                        color: "var(--ink)",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
+                      className="trunc"
+                      // `.trunc` owns the ellipsis; display and weight are the
+                      // block break and the read state.
+                      style={{ display: "block", marginTop: 3, fontWeight: unread ? 700 : 500 }}
                     >
                       {th.subject || "(no subject)"}
                       {th.message_count > 1 && (
@@ -275,20 +274,11 @@ export default function InboxPage() {
                       )}
                     </span>
                     {th.preview && (
-                      <span
-                        className="sub"
-                        style={{
-                          display: "block",
-                          marginTop: 2,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
+                      <span className="sub trunc" style={{ display: "block", marginTop: 2 }}>
                         {th.preview}
                       </span>
                     )}
-                    <span style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                    <span className="row" style={{ marginTop: 6 }}>
                       {th.loan_id && (
                         <CellChip tone="pet">
                           <Icon name="layers" size={10} /> Loan
@@ -324,7 +314,7 @@ export default function InboxPage() {
             <>
               {/* thread header */}
               <div className="panel-h">
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="grow">
                   <h3>{threadQ.data.subject || "(no subject)"}</h3>
                   <div className="row" style={{ marginTop: 6 }}>
                     {threadQ.data.loan_id && (
@@ -374,18 +364,24 @@ export default function InboxPage() {
               {/* messages — .msg.mine carries the outbound channel, matching the
                   "Sent" chip and the petrol avatar, so a message read out of
                   context still says which side of the mailbox it came from. */}
-              <div className="thr" style={{ paddingLeft: 16, paddingRight: 16, minHeight: 0 }}>
+              {/* `.panel-b` supplies the gutters. `.thr` owns its own padding
+                  shorthand, so overriding one side of it inline would leave two
+                  owners for the same property. */}
+              <div className="panel-b" style={{ minHeight: 0, overflowY: "auto" }}>
+                <div className="thr">
                 {threadQ.data.messages.map((m) => {
                   const outbound = m.direction === "outbound";
                   return (
-                    <div key={m.id} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <div key={m.id} className="row top">
+                      {/* Data-derived: petrol marks mail you sent, accent marks
+                          mail you received — the same pairing as the Sent chip. */}
                       <span
                         className="avatar"
                         style={{ background: outbound ? "var(--petrol)" : "var(--accent)" }}
                       >
                         {initialsOf(m.from_email)}
                       </span>
-                      <div className={cx("msg", outbound && "mine")} style={{ flex: 1, minWidth: 0 }}>
+                      <div className={cx("msg", "grow", outbound && "mine")}>
                         <div className="msg-h">
                           <span className="msg-who">
                             {m.from_email || (outbound ? "You" : "(unknown)")}
@@ -393,10 +389,7 @@ export default function InboxPage() {
                           {outbound && <CellChip tone="pet">Sent</CellChip>}
                           <span className="msg-when">{fmtTime(m.received_at)}</span>
                         </div>
-                        <div
-                          className="sub"
-                          style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-                        >
+                        <div className="sub trunc">
                           to {(m.to_emails ?? []).join(", ") || "—"}
                         </div>
                         <div className="msg-b">
@@ -410,6 +403,7 @@ export default function InboxPage() {
                     </div>
                   );
                 })}
+                </div>
               </div>
 
               {/* reply */}
@@ -425,6 +419,9 @@ export default function InboxPage() {
                   <Btn variant="pri" disabled={replyBusy} onClick={doReply}>
                     {replyBusy ? "Sending…" : "Send reply"}
                   </Btn>
+                  {/* Data-derived: dimmed while the mutation is in flight. NOTE
+                      this is not `disabled` — the button stays clickable, which
+                      is how it shipped. */}
                   <Btn
                     style={markRead.isPending ? { opacity: 0.6 } : undefined}
                     onClick={() => markRead.mutate({ threadId: selectedThread!, isRead: false })}

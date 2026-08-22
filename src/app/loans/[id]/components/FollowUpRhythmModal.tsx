@@ -3,10 +3,13 @@
 // FollowUpRhythmModal — operator-side per-file follow-up config.
 // Opened from Elara header's "Follow-up rhythm" button.
 // PATCHes ClientAIPlan.ai_secretary_settings.follow_up.
+//
+// Restyled onto `Drawer`; the local Escape listener is gone because the
+// dialog carries it, along with focus return and a body scroll lock.
 
 import { useEffect, useState } from "react";
-import { useTheme } from "@/components/design-system/ThemeProvider";
-import { Icon } from "@/components/design-system/Icon";
+import { Btn } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { FollowUpEditor, type FollowUpSettings } from "@/components/FollowUpEditor";
 import { useFundingMetaRules, useUpdateFileSettings } from "@/hooks/useApi";
 
@@ -25,7 +28,6 @@ const SYSTEM_FLOOR: FollowUpSettings = {
 };
 
 export function FollowUpRhythmModal({ open, onClose, loanId, value }: Props) {
-  const { t } = useTheme();
   const updateFileSettings = useUpdateFileSettings(loanId);
   const firmDefaults = useFundingMetaRules("follow_up");
   const [draft, setDraft] = useState<FollowUpSettings>(value ?? {});
@@ -33,13 +35,6 @@ export function FollowUpRhythmModal({ open, onClose, loanId, value }: Props) {
   useEffect(() => {
     if (open) setDraft(value ?? {});
   }, [open, value]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -79,93 +74,33 @@ export function FollowUpRhythmModal({ open, onClose, loanId, value }: Props) {
   };
 
   return (
-    <div
-      style={{
-        position: "fixed", inset: 0,
-        background: "rgba(0,0,0,0.32)", zIndex: 70,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 24,
-      }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div style={{
-        width: "min(720px, 96vw)",
-        maxHeight: "86vh",
-        background: t.surface,
-        borderRadius: 14,
-        border: `1px solid ${t.line}`,
-        boxShadow: "0 24px 48px rgba(0,0,0,0.22)",
-        display: "flex", flexDirection: "column",
-      }}>
-        <header style={{
-          display: "flex", alignItems: "center", gap: 10,
-          padding: "14px 18px",
-          borderBottom: `1px solid ${t.line}`,
-        }}>
-          <Icon name="cal" size={14} />
-          <span style={{ fontSize: 14, fontWeight: 900, color: t.ink }}>AI follow-up rhythm</span>
-          <span style={{ fontSize: 11, color: t.ink3, fontWeight: 700 }}>
-            How often the AI nudges this borrower if the conversation stalls
-          </span>
-          <div style={{ flex: 1 }} />
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              all: "unset", cursor: "pointer",
-              padding: 6, borderRadius: 6,
-              color: t.ink3, fontSize: 18, fontWeight: 900, lineHeight: 1,
-            }}
-          >×</button>
-        </header>
-
-        <div style={{ padding: 16, overflow: "auto", flex: 1, minHeight: 0 }}>
-          <FollowUpEditor
-            value={draft}
-            onChange={setDraft}
-            fallback={fallback}
-            fallbackLabel={usingFirmDefault ? "firm default" : "system floor"}
-            title="Per-file follow-up"
-            subtitle="Overrides the firm default for this loan only. Empty fields fall back to the firm default or the system floor."
-            saving={updateFileSettings.isPending}
-            hasOverride={hasOverride}
-            onReset={reset}
-          />
-        </div>
-
-        <footer style={{
-          display: "flex", gap: 8, justifyContent: "flex-end",
-          padding: "12px 18px",
-          borderTop: `1px solid ${t.line}`,
-        }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: "8px 14px", borderRadius: 8,
-              border: `1px solid ${t.lineStrong}`,
-              background: t.surface, color: t.ink2,
-              fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={updateFileSettings.isPending}
-            style={{
-              padding: "8px 14px", borderRadius: 8,
-              border: "none",
-              background: t.brand, color: t.inverse,
-              fontSize: 12, fontWeight: 900, cursor: "pointer", fontFamily: "inherit",
-            }}
-          >
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="AI follow-up rhythm"
+      sub="How often the AI nudges this borrower if the conversation stalls"
+      width="md"
+      footer={
+        <>
+          <span className="grow" />
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn variant="pri" onClick={save} disabled={updateFileSettings.isPending}>
             {updateFileSettings.isPending ? "Saving…" : "Save rhythm"}
-          </button>
-        </footer>
-      </div>
-    </div>
+          </Btn>
+        </>
+      }
+    >
+      <FollowUpEditor
+        value={draft}
+        onChange={setDraft}
+        fallback={fallback}
+        fallbackLabel={usingFirmDefault ? "firm default" : "system floor"}
+        title="Per-file follow-up"
+        subtitle="Overrides the firm default for this loan only. Empty fields fall back to the firm default or the system floor."
+        saving={updateFileSettings.isPending}
+        hasOverride={hasOverride}
+        onReset={reset}
+      />
+    </Drawer>
   );
 }

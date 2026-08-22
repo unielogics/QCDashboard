@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
-import { useTheme } from "./ThemeProvider";
 import { Icon } from "./Icon";
 
 interface RightPanelProps {
@@ -33,8 +32,6 @@ export function RightPanel({
   ariaLabel,
   children,
 }: RightPanelProps) {
-  const { t } = useTheme();
-
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -50,123 +47,31 @@ export function RightPanel({
       aria-modal="true"
       aria-label={ariaLabel ?? (typeof title === "string" ? title : "Panel")}
       onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(6, 7, 11, 0.32)",
-        backdropFilter: "blur(2px)",
-        zIndex: 200,
-        display: "flex",
-        justifyContent: "flex-end",
-      }}
+      className="sheet-scrim"
     >
+      {/* The slide-in keyframes used to be a <style> tag nested in here, so a
+          global at-rule was re-declared on every mount. It lives in
+          app-extras.css now, alongside the spinner's for the same reason. */}
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{
-          width,
-          height: "100%",
-          background: t.surface,
-          borderLeft: `1px solid ${t.line}`,
-          boxShadow: t.shadowLg,
-          display: "flex",
-          flexDirection: "column",
-          animation: "qc-rightpanel-in 180ms ease-out",
-        }}
+        className="sheet"
+        // Caller-supplied width — the only thing that varies between the seven
+        // panels that render this.
+        style={{ width }}
       >
-        <style>{`
-          @keyframes qc-rightpanel-in {
-            from { transform: translateX(24px); opacity: 0; }
-            to   { transform: translateX(0);    opacity: 1; }
-          }
-        `}</style>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "14px 18px",
-            borderBottom: `1px solid ${t.line}`,
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            {eyebrow && (
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: 1.6,
-                  textTransform: "uppercase",
-                  color: t.petrol,
-                }}
-              >
-                {eyebrow}
-              </div>
-            )}
-            <div
-              style={{
-                fontSize: 16,
-                fontWeight: 800,
-                color: t.ink,
-                marginTop: eyebrow ? 2 : 0,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {title}
-            </div>
+        <div className="panel-h sheet-h">
+          <div className="grow">
+            {eyebrow && <div className="lbl sheet-eyebrow">{eyebrow}</div>}
+            <div className="sheet-t trunc">{title}</div>
           </div>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              all: "unset",
-              cursor: "pointer",
-              width: 30,
-              height: 30,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 8,
-              color: t.ink2,
-              flexShrink: 0,
-            }}
-          >
+          <button type="button" onClick={onClose} aria-label="Close" className="btn sm iconbtn">
             <Icon name="x" size={15} />
           </button>
         </div>
 
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflowY: "auto",
-            padding: 18,
-            display: "flex",
-            flexDirection: "column",
-            gap: 14,
-          }}
-        >
-          {children}
-        </div>
+        <div className="sheet-b">{children}</div>
 
-        {footer && (
-          <div
-            style={{
-              padding: "12px 18px",
-              borderTop: `1px solid ${t.line}`,
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 8,
-              flexShrink: 0,
-              background: t.surface,
-            }}
-          >
-            {footer}
-          </div>
-        )}
+        {footer && <div className="drawer-f sheet-f">{footer}</div>}
       </div>
     </div>
   );
