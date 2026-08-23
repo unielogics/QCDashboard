@@ -81,6 +81,7 @@ for (const [name, route] of [...ROUTES, ...DETAIL_ROUTES]) {
 }
 
 test("All Tools uses the centered catalogue and closes with Escape", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-390", "Mobile uses the persistent bottom navigation instead of the desktop tools catalogue.");
   await openConsolePage(page, "/");
   const allTools = page.getByRole("button", { name: /^All tools/i });
   if (!(await allTools.isVisible())) {
@@ -106,7 +107,8 @@ test("Pipeline primary action opens the shared centered drawer", async ({ page }
   await expect(dialog).toBeHidden();
 });
 
-test("theme control swaps between light and Obsidian without shifting the page", async ({ page }) => {
+test("theme control swaps between light and Obsidian without shifting the page", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-390", "The compact shell does not expose the desktop theme control.");
   await openConsolePage(page, "/");
   const before = await page.locator("main").boundingBox();
   await page.getByRole("button", { name: /Obsidian theme/i }).click();
@@ -126,6 +128,140 @@ test("floating page headers meet the global top bar without a ground gap", async
   expect(edges.topBottom).toBeDefined();
   expect(edges.pageHeaderTop).toBeDefined();
   expect(Math.abs((edges.topBottom ?? 0) - (edges.pageHeaderTop ?? 0))).toBeLessThanOrEqual(1);
+});
+
+test("operator Vault groups bounded loan folders by borrower", async ({ page }, testInfo) => {
+  test.skip(!["desktop-1600", "mobile-390"].includes(testInfo.project.name), "The Vault workspace is exercised at desktop and mobile widths.");
+  const indexRequests: string[] = [];
+  const documentRequests: string[] = [];
+  const loans = [
+    {
+      loan_id: "10000000-0000-0000-0000-000000000001",
+      deal_id: "QC-2026-0101",
+      borrower_id: "20000000-0000-0000-0000-000000000001",
+      borrower_name: "Jordan Rivera",
+      entity_name: "Rivera Property Group LLC",
+      address: "115 Market Street",
+      city: "Newark",
+      state: "NJ",
+      stage: "collecting_docs",
+      documents: 14,
+      requested: 2,
+      pending_review: 3,
+      verified: 8,
+      flagged: 1,
+      updated_at: "2026-08-22T14:00:00Z",
+    },
+    {
+      loan_id: "10000000-0000-0000-0000-000000000002",
+      deal_id: "QC-2026-0098",
+      borrower_id: "20000000-0000-0000-0000-000000000001",
+      borrower_name: "Jordan Rivera",
+      entity_name: "Rivera Newark Holdings LLC",
+      address: "42 Broad Street",
+      city: "Newark",
+      state: "NJ",
+      stage: "prequalified",
+      documents: 6,
+      requested: 0,
+      pending_review: 1,
+      verified: 5,
+      flagged: 0,
+      updated_at: "2026-08-21T14:00:00Z",
+    },
+    {
+      loan_id: "10000000-0000-0000-0000-000000000003",
+      deal_id: "QC-2026-0087",
+      borrower_id: "20000000-0000-0000-0000-000000000002",
+      borrower_name: "Avery Chen",
+      entity_name: null,
+      address: "8 Pine Avenue",
+      city: "Trenton",
+      state: "NJ",
+      stage: "lender_connected",
+      documents: 9,
+      requested: 0,
+      pending_review: 0,
+      verified: 9,
+      flagged: 0,
+      updated_at: "2026-08-20T14:00:00Z",
+    },
+  ];
+  await page.route(/\/documents\/vault(?:\?.*)?$/, async (route) => {
+    indexRequests.push(route.request().url());
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: loans,
+        totals: { borrowers: 2, loan_files: 3, documents: 29, need_attention: 3 },
+        total: 3,
+        limit: 20,
+        offset: 0,
+      }),
+    });
+  });
+  await page.route(/\/documents\/vault\/[^/?]+(?:\?.*)?$/, async (route) => {
+    documentRequests.push(route.request().url());
+    const loanId = new URL(route.request().url()).pathname.split("/").at(-1);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            id: `doc-${loanId}`,
+            loan_id: loanId,
+            name: "Operating Account Statements.pdf",
+            category: "experience",
+            s3_key: "loans/fixture/statement.pdf",
+            status: "verified",
+            requested_on: null,
+            received_on: "2026-08-22",
+            verified_at: "2026-08-22T14:00:00Z",
+            verified_by: "ai",
+            checklist_key: "Bank statements",
+            is_other: false,
+            ai_notes: null,
+            ai_scan_status: "scanned",
+            ai_scan_confidence: 0.98,
+            due_date: null,
+          },
+        ],
+        total: 1,
+        limit: 25,
+        offset: 0,
+      }),
+    });
+  });
+
+  await openConsolePage(page, "/vault");
+  await expect(page.locator(".vault-borrower-row")).toHaveCount(2);
+  await expect(page.getByText("Jordan Rivera", { exact: true })).toBeVisible();
+  await expect(page.getByText("Avery Chen", { exact: true })).toBeVisible();
+  await expect(page.locator(".vault-loan-row")).toHaveCount(3);
+  await expect(page.locator(".vault-loan-row").first()).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Operating Account Statements.pdf", { exact: true })).toBeVisible();
+  expect(indexRequests.some((url) => url.includes("limit=20"))).toBeTruthy();
+  expect(documentRequests.some((url) => url.includes("limit=25"))).toBeTruthy();
+
+  await page.getByText("QC-2026-0098", { exact: true }).click();
+  await expect(page.locator(".vault-loan-row").nth(1)).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => documentRequests.some((url) => url.includes("10000000-0000-0000-0000-000000000002"))).toBeTruthy();
+  await assertStableGeometry(page);
+  await captureReviewImage(page, "vault-borrower-loan-groups", testInfo);
+});
+
+test("client Vault keeps the personal requested and asset sections", async ({ page, context }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "Client role confinement is checked once at the canonical viewport.");
+  await context.addCookies([{ name: "qc_visual_qa_user", value: "marcus@qc.dev", url: BASE_URL }]);
+  await openConsolePage(page, "/vault");
+  await expect(page.getByRole("tab", { name: /^Requested/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /^Experience/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /^Active assets/ })).toBeVisible();
+  await expect(page.getByText("Borrower loan folders", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("With Vault activity", { exact: true })).toHaveCount(0);
+  await assertStableGeometry(page);
 });
 
 test("bucket deep link closes and stays closed", async ({ page }, testInfo) => {
@@ -336,7 +472,8 @@ for (const roleCase of ROLE_CASES) {
     await page.goto(roleCase.route, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle", { timeout: 8_000 }).catch(() => undefined);
     await expect(page.locator("body")).toContainText(roleCase.expected);
-    await expect(page.locator("nav")).not.toContainText(roleCase.forbidden);
+    const navigationText = (await page.locator("nav").allTextContents()).join(" ");
+    expect(navigationText).not.toMatch(roleCase.forbidden);
     await assertStableGeometry(page);
     await captureReviewImage(page, `role-${roleCase.role}`, testInfo);
   });

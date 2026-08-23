@@ -79,6 +79,8 @@ import type {
   DashboardReport,
   Document,
   DocumentUploadInitResponse,
+  VaultDocumentPage,
+  VaultLoanPage,
   EmailDraft,
   EmailDraftDecisionRequest,
   FredRefreshResult,
@@ -6926,6 +6928,55 @@ export function useLinkBucketIntake() {
       if (vars.bucket_id) qc.invalidateQueries({ queryKey: ["bucket", vars.bucket_id] });
       if (vars.intake_id) qc.invalidateQueries({ queryKey: ["ai-underwriter-lead", vars.intake_id] });
     },
+  });
+}
+
+export type VaultSection = "all" | "attention" | "requested" | "experience" | "active_asset";
+
+export function useVaultLoanFiles(
+  params: { search?: string; limit?: number; offset?: number },
+  options?: { enabled?: boolean },
+) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const search = params.search?.trim() ?? "";
+  const limit = params.limit ?? 20;
+  const offset = params.offset ?? 0;
+  return useQuery({
+    queryKey: ["vault-loan-files", search, limit, offset, devUser],
+    queryFn: () => {
+      const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      if (search) qs.set("search", search);
+      return apiCall<VaultLoanPage>(`/documents/vault?${qs.toString()}`);
+    },
+    enabled: options?.enabled ?? true,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useVaultLoanDocuments(
+  loanId: string | null,
+  params: { section?: VaultSection; search?: string; limit?: number; offset?: number },
+) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const section = params.section ?? "all";
+  const search = params.search?.trim() ?? "";
+  const limit = params.limit ?? 25;
+  const offset = params.offset ?? 0;
+  return useQuery({
+    queryKey: ["vault-loan-documents", loanId, section, search, limit, offset, devUser],
+    queryFn: () => {
+      const qs = new URLSearchParams({
+        section,
+        limit: String(limit),
+        offset: String(offset),
+      });
+      if (search) qs.set("search", search);
+      return apiCall<VaultDocumentPage>(`/documents/vault/${loanId}?${qs.toString()}`);
+    },
+    enabled: !!loanId,
+    placeholderData: (previous) => previous,
   });
 }
 

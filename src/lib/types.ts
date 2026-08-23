@@ -273,6 +273,46 @@ export interface Document {
   due_date?: string | null;
 }
 
+export interface VaultTotals {
+  borrowers: number;
+  loan_files: number;
+  documents: number;
+  need_attention: number;
+}
+
+export interface VaultLoanSummary {
+  loan_id: string;
+  deal_id: string;
+  borrower_id: string;
+  borrower_name: string;
+  entity_name: string | null;
+  address: string;
+  city: string | null;
+  state: string | null;
+  stage: string;
+  documents: number;
+  requested: number;
+  pending_review: number;
+  verified: number;
+  flagged: number;
+  updated_at: string;
+}
+
+export interface VaultLoanPage {
+  items: VaultLoanSummary[];
+  totals: VaultTotals;
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface VaultDocumentPage {
+  items: Document[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface Message {
   id: string;
   loan_id: string;
