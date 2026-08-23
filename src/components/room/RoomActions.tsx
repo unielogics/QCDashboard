@@ -41,6 +41,16 @@ type Signable = {
   document_text: string;
 };
 
+type BankConnection = {
+  id: string;
+  institution_name: string | null;
+  accounts_label: string | null;
+  status: string;
+  is_primary_operating: boolean;
+  last_pulled_at: string | null;
+  statement_months: string[];
+};
+
 type Features = {
   business_name: string;
   bank_connect_available: boolean;
@@ -48,6 +58,7 @@ type Features = {
   bank_consent_granted: boolean;
   /** Server-owned wording. Shown verbatim; never edited or echoed back. */
   bank_consent_disclosure: string;
+  bank_connections: BankConnection[];
   signable: Signable[];
   contracts: RoomContract[];
 };
@@ -58,6 +69,7 @@ function BankConnect({
   environment,
   consentGranted: initialConsent,
   disclosure,
+  connections,
   onConnected,
 }: {
   token: string;
@@ -67,6 +79,7 @@ function BankConnect({
   consentGranted: boolean;
   /** The exact wording the server will store against the grant. */
   disclosure: string;
+  connections: BankConnection[];
   onConnected: () => void;
 }) {
   const [linkToken, setLinkToken] = useState<string | null>(null);
@@ -94,6 +107,7 @@ function BankConnect({
             passcode,
             public_token: publicToken,
             institution_name: metadata?.institution?.name ?? null,
+            is_primary_operating: connections.length === 0,
           }),
         });
         if (!res.ok) {
@@ -110,7 +124,7 @@ function BankConnect({
         setLinkToken(null);
       }
     },
-    [token, passcode, onConnected],
+    [token, passcode, onConnected, connections.length],
   );
 
   const { open, ready } = usePlaidLink({
@@ -124,6 +138,34 @@ function BankConnect({
   useEffect(() => {
     if (linkToken && ready) open();
   }, [linkToken, ready, open]);
+
+  useEffect(() => {
+    if (initialConsent) setConsentGranted(true);
+  }, [initialConsent]);
+
+  async function setPrimary(itemId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `${apiBase}/api/v1/dealer-os/public/room/${token}/plaid/${itemId}/primary`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ passcode }),
+        },
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+        throw new Error(body?.detail || "The main operating bank could not be changed.");
+      }
+      onConnected();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The main operating bank could not be changed.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function authorize() {
     setBusy(true);
@@ -178,20 +220,6 @@ function BankConnect({
     }
   }
 
-  if (done) {
-    return (
-      <section className="panel mb">
-        <div className="panel-h">
-          <h2>Bank connection</h2>
-          <CellChip tone="ok">Connected</CellChip>
-        </div>
-        <div className="panel-b">
-          <p className="sub">{done}</p>
-        </div>
-      </section>
-    );
-  }
-
   return (
     <section className="panel mb">
       <div className="panel-h">
@@ -203,6 +231,30 @@ function BankConnect({
           not have to download and upload them yourself. No credentials pass through Qualified
           Commercial, and nothing can be moved or charged.
         </p>
+        {connections.length > 0 ? (
+          <div className="mt" style={{ display: "grid", gap: 8 }}>
+            {connections.map((connection) => (
+              <div key={connection.id} className="filerow">
+                <div className="grow">
+                  <b>{connection.institution_name || "Connected institution"}</b>
+                  <span className="sub" style={{ display: "block", marginTop: 3 }}>
+                    {connection.accounts_label || "Account details syncing"} · {connection.statement_months.length} statement month{connection.statement_months.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <CellChip tone={connection.status === "active" ? "ok" : "warn"}>
+                  {connection.status}
+                </CellChip>
+                {connection.is_primary_operating ? (
+                  <CellChip tone="acc">Main operating bank</CellChip>
+                ) : (
+                  <Btn disabled={busy} onClick={() => setPrimary(connection.id)}>
+                    Make main
+                  </Btn>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : null}
         {environment === "sandbox" ? (
           <WarnLine className="mt">
             Test mode: this connection currently reaches Plaid&apos;s test institutions only.
@@ -258,10 +310,11 @@ function BankConnect({
         ) : (
           <div className="mt">
             <Btn variant="pri" disabled={busy} onClick={start}>
-              {busy ? "Opening…" : "Connect bank securely"}
+              {busy ? "Opening…" : connections.length ? "Connect another bank" : "Connect bank securely"}
             </Btn>
           </div>
         )}
+        {done ? <StatusLine tone="ok" className="mt">{done}</StatusLine> : null}
         {error ? <StatusLine tone="bad" className="mt">{error}</StatusLine> : null}
       </div>
     </section>
@@ -383,7 +436,11 @@ export function RoomActions({
           environment={features.plaid_environment}
           consentGranted={features.bank_consent_granted}
           disclosure={features.bank_consent_disclosure}
-          onConnected={onChanged}
+          connections={features.bank_connections ?? []}
+          onConnected={() => {
+            void load();
+            onChanged();
+          }}
         />
       ) : null}
 
