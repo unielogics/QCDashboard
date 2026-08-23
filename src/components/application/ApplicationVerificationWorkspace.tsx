@@ -1,0 +1,424 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { usePlaidLink } from "react-plaid-link";
+import { Icon } from "@/components/design-system/Icon";
+import { Btn, Callout, CellChip, IconBtn, Input, Row, Sub, cx } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
+import { useAuthedApi } from "@/hooks/useApi";
+import type {
+  ApplicationBankState,
+  ApplicationProfile,
+  ApplicationSourceKind,
+  FileCreditInvite,
+  FileOwner,
+  FileOwnerRequirementState,
+} from "@/lib/applicationProfile";
+
+type OwnerDraft = {
+  key: string;
+  first_name: string;
+  last_name: string;
+  ownership_pct: string;
+  email: string;
+  phone: string;
+  state: "unsaved" | "saving" | "invalid";
+};
+
+const EMPTY_DRAFT = { first_name: "", last_name: "", ownership_pct: "", email: "", phone: "" };
+
+function maskEmail(value: string | null) {
+  if (!value || !value.includes("@")) return "Email missing";
+  const [name, domain] = value.split("@");
+  return `${name.slice(0, 2)}${"•".repeat(Math.max(2, Math.min(6, name.length - 2)))}@${domain}`;
+}
+
+function maskPhone(value: string | null) {
+  const digits = (value ?? "").replace(/\D/g, "");
+  return digits.length >= 4 ? `••• ••• ${digits.slice(-4)}` : "Phone missing";
+}
+
+function creditStatus(owner: FileOwner): { label: string; tone: "ok" | "acc" | "warn" | "bad" | "mut" } {
+  if (owner.credit_complete) return { label: "Completed", tone: "ok" };
+  if (owner.invite_opened_at) return { label: "Opened", tone: "acc" };
+  if (owner.invite_sent_at) return { label: "Sent", tone: "warn" };
+  return { label: "Not sent", tone: "mut" };
+}
+
+function when(value: string | null) {
+  if (!value) return "Never";
+  return new Date(value).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+export function ApplicationVerificationWorkspace({
+  sourceKind,
+  sourceId,
+  mode = "full",
+  onReadyForStep2,
+  onStateChange,
+}: {
+  sourceKind: ApplicationSourceKind;
+  sourceId: string;
+  mode?: "full" | "owners" | "verification";
+  onReadyForStep2?: () => void;
+  onStateChange?: (state: FileOwnerRequirementState) => void;
+}) {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  const [view, setView] = useState<"owners" | "verification">(mode === "verification" ? "verification" : "owners");
+  const profileQuery = useQuery({
+    queryKey: ["application-profile", sourceKind, sourceId],
+    queryFn: () => apiCall<ApplicationProfile>("/application-profiles/resolve", {
+      method: "POST",
+      body: JSON.stringify({ source_kind: sourceKind, source_id: sourceId }),
+    }),
+    enabled: Boolean(sourceId),
+  });
+  const profileId = profileQuery.data?.id ?? "";
+  const owners = useQuery({
+    queryKey: ["application-profile-owners", profileId],
+    queryFn: () => apiCall<FileOwner[]>(`/application-profiles/${profileId}/owners`),
+    enabled: Boolean(profileId),
+  });
+  const verification = useQuery({
+    queryKey: ["application-profile-verification", profileId],
+    queryFn: () => apiCall<FileOwnerRequirementState>(`/application-profiles/${profileId}/verification`),
+    enabled: Boolean(profileId),
+  });
+  const banks = useQuery({
+    queryKey: ["application-profile-banks", profileId],
+    queryFn: () => apiCall<ApplicationBankState>(`/application-profiles/${profileId}/banks`),
+    enabled: Boolean(profileId) && mode !== "owners",
+  });
+  useEffect(() => {
+    if (verification.data) onStateChange?.(verification.data);
+  }, [verification.data, onStateChange]);
+
+  const refresh = async () => {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["application-profile-owners", profileId] }),
+      qc.invalidateQueries({ queryKey: ["application-profile-verification", profileId] }),
+      qc.invalidateQueries({ queryKey: ["application-profile-banks", profileId] }),
+    ]);
+  };
+
+  if (profileQuery.isLoading) return <div className="empty"><span className="spinner solo" />Preparing the application profile...</div>;
+  if (profileQuery.isError || !profileQuery.data) {
+    return <Callout tone="bad" icon={<Icon name="alert" size={17} />}>{profileQuery.error instanceof Error ? profileQuery.error.message : "The application profile could not be opened."}</Callout>;
+  }
+
+  return (
+    <div className="application-verification">
+      {mode === "full" ? (
+        <div className="application-verification-tabs" role="tablist" aria-label="Verification steps">
+          <button type="button" className={view === "owners" ? "on" : undefined} onClick={() => setView("owners")}><span>1</span>Ownership</button>
+          <button type="button" className={view === "verification" ? "on" : undefined} onClick={() => setView("verification")} disabled={!verification.data?.ready_for_step_2}><span>2</span>Credit &amp; banks</button>
+        </div>
+      ) : null}
+      {(mode === "owners" || (mode === "full" && view === "owners")) ? (
+        <OwnershipTable
+          profileId={profileId}
+          owners={owners.data ?? []}
+          state={verification.data}
+          loading={owners.isLoading || verification.isLoading}
+          onRefresh={refresh}
+          onContinue={() => {
+            if (mode === "full") setView("verification");
+            onReadyForStep2?.();
+          }}
+        />
+      ) : null}
+      {(mode === "verification" || (mode === "full" && view === "verification")) ? (
+        <VerificationPanel
+          profileId={profileId}
+          owners={owners.data ?? []}
+          state={verification.data}
+          banks={banks.data}
+          loading={owners.isLoading || verification.isLoading || banks.isLoading}
+          onRefresh={refresh}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContinue }: {
+  profileId: string;
+  owners: FileOwner[];
+  state?: FileOwnerRequirementState;
+  loading: boolean;
+  onRefresh: () => Promise<void>;
+  onContinue: () => void;
+}) {
+  const apiCall = useAuthedApi();
+  const [drafts, setDrafts] = useState<OwnerDraft[]>([]);
+  const [saveStates, setSaveStates] = useState<Record<string, "saving" | "saved" | "invalid">>({});
+  const [error, setError] = useState("");
+
+  const createOwner = useMutation({
+    mutationFn: (draft: OwnerDraft) => apiCall<FileOwner>(`/application-profiles/${profileId}/owners`, {
+      method: "POST",
+      body: JSON.stringify({
+        first_name: draft.first_name.trim(),
+        last_name: draft.last_name.trim(),
+        ownership_pct: Number(draft.ownership_pct),
+        email: draft.email.trim() || null,
+        phone: draft.phone.trim() || null,
+        is_primary: owners.length === 0,
+      }),
+    }),
+    onSuccess: async (_row, draft) => {
+      setDrafts((rows) => rows.filter((row) => row.key !== draft.key));
+      setError("");
+      await onRefresh();
+    },
+    onError: (reason, draft) => {
+      setDrafts((rows) => rows.map((row) => row.key === draft.key ? { ...row, state: "invalid" } : row));
+      setError(reason instanceof Error ? reason.message : "The owner could not be saved.");
+    },
+  });
+  const patchOwner = useMutation({
+    mutationFn: ({ ownerId, body }: { ownerId: string; body: Record<string, unknown> }) => apiCall<FileOwner>(`/application-profiles/${profileId}/owners/${ownerId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+    onMutate: ({ ownerId }) => setSaveStates((current) => ({ ...current, [ownerId]: "saving" })),
+    onSuccess: async (_row, input) => {
+      setSaveStates((current) => ({ ...current, [input.ownerId]: "saved" }));
+      setError("");
+      await onRefresh();
+    },
+    onError: (reason, input) => {
+      setSaveStates((current) => ({ ...current, [input.ownerId]: "invalid" }));
+      setError(reason instanceof Error ? reason.message : "The owner row could not be saved.");
+    },
+  });
+  const deleteOwner = useMutation({
+    mutationFn: (ownerId: string) => apiCall<void>(`/application-profiles/${profileId}/owners/${ownerId}`, { method: "DELETE" }),
+    onSuccess: async () => { setError(""); await onRefresh(); },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "The owner could not be removed."),
+  });
+
+  const serverTotal = state?.ownership_total ?? owners.reduce((sum, owner) => sum + Number(owner.ownership_pct ?? 0), 0);
+  const draftTotal = drafts.reduce((sum, owner) => sum + (Number(owner.ownership_pct) || 0), 0);
+  const total = Math.round((serverTotal + draftTotal) * 100) / 100;
+  const rowsSettled = drafts.length === 0 && !Object.values(saveStates).includes("saving") && !Object.values(saveStates).includes("invalid");
+  const ready = Boolean(state?.ready_for_step_2) && rowsSettled;
+
+  function addOwner() {
+    if (owners.length + drafts.length >= 5) return;
+    setDrafts((rows) => [...rows, { ...EMPTY_DRAFT, key: crypto.randomUUID(), state: "unsaved" }]);
+  }
+
+  function updateDraft(key: string, field: keyof typeof EMPTY_DRAFT, value: string) {
+    setDrafts((rows) => rows.map((row) => row.key === key ? { ...row, [field]: value, state: "unsaved" } : row));
+  }
+
+  function saveDraft(draft: OwnerDraft) {
+    if (draft.state === "saving") return;
+    const pct = Number(draft.ownership_pct);
+    const valid = Boolean(draft.first_name.trim() && draft.last_name.trim() && draft.ownership_pct.trim() && Number.isFinite(pct) && pct >= 0 && pct <= 100);
+    if (!valid) {
+      setDrafts((rows) => rows.map((row) => row.key === draft.key ? { ...row, state: "invalid" } : row));
+      return;
+    }
+    setDrafts((rows) => rows.map((row) => row.key === draft.key ? { ...row, state: "saving" } : row));
+    createOwner.mutate({ ...draft, state: "saving" });
+  }
+
+  function save(owner: FileOwner, field: string, raw: string) {
+    const value = field === "ownership_pct" ? (raw.trim() === "" ? null : Number(raw)) : raw.trim() || null;
+    const previous = field === "ownership_pct" ? owner.ownership_pct : owner[field as keyof FileOwner];
+    if (value === previous) return;
+    patchOwner.mutate({ ownerId: owner.id, body: { [field]: value } });
+  }
+
+  return (
+    <section className="verification-section">
+      <header className="verification-section-head">
+        <div><span className="lbl">Step 1</span><h3>Business ownership</h3><Sub>Every owner remains on the file. Owners at 20.00% or more require separate credit authorization.</Sub></div>
+        <div className={cx("ownership-meter", total === 100 && "complete", total > 100 && "over")}>
+          <strong className="num">{total.toFixed(2)}%</strong>
+          <span>{total < 100 ? `${(100 - total).toFixed(2)}% remaining` : total > 100 ? `${(total - 100).toFixed(2)}% over` : "Fully allocated"}</span>
+        </div>
+        <Btn onClick={addOwner} disabled={owners.length + drafts.length >= 5}><Icon name="plus" size={14} />Add owner</Btn>
+      </header>
+
+      {loading ? <div className="empty"><span className="spinner solo" />Loading ownership...</div> : (
+        <div className="tblwrap ownership-table-wrap">
+          <table className="tbl ownership-table">
+            <thead><tr><th>First name</th><th>Last name</th><th>Ownership %</th><th>Personal email</th><th>Personal phone</th><th>Credit requirement</th><th>Save</th><th aria-label="Actions" /></tr></thead>
+            <tbody>
+              {owners.map((owner) => {
+                const saveState = saveStates[owner.id] ?? "saved";
+                const locked = owner.has_invite || Boolean(owner.credit_pulled_at);
+                return (
+                  <tr key={owner.id}>
+                    <td><Input aria-label={`${owner.full_name} first name`} defaultValue={owner.first_name} onBlur={(event) => save(owner, "first_name", event.target.value)} /></td>
+                    <td><Input aria-label={`${owner.full_name} last name`} defaultValue={owner.last_name} onBlur={(event) => save(owner, "last_name", event.target.value)} /></td>
+                    <td><Input aria-label={`${owner.full_name} ownership percentage`} className="num owner-percent" inputMode="decimal" defaultValue={owner.ownership_pct ?? ""} onBlur={(event) => save(owner, "ownership_pct", event.target.value)} /></td>
+                    <td><Input aria-label={`${owner.full_name} personal email`} type="email" defaultValue={owner.email ?? ""} onBlur={(event) => save(owner, "email", event.target.value)} /></td>
+                    <td><Input aria-label={`${owner.full_name} personal phone`} type="tel" defaultValue={owner.phone ?? ""} onBlur={(event) => save(owner, "phone", event.target.value)} /></td>
+                    <td><CellChip tone={owner.credit_required ? (owner.credit_contact_complete ? "warn" : "bad") : "mut"}>{owner.credit_required ? "iSoftPull required" : "Not required"}</CellChip>{owner.credit_required && !owner.credit_contact_complete ? <small className="owner-row-warning">Email + phone needed</small> : null}</td>
+                    <td><CellChip tone={saveState === "saved" ? "ok" : saveState === "invalid" ? "bad" : "mut"}>{saveState === "saving" ? "Saving..." : saveState === "invalid" ? "Fix row" : "Saved"}</CellChip></td>
+                    <td className="r"><IconBtn aria-label={`Remove ${owner.full_name}`} title={locked ? "Credit activity preserves this owner" : "Remove owner"} disabled={locked || deleteOwner.isPending} onClick={() => deleteOwner.mutate(owner.id)}><Icon name="trash" size={14} /></IconBtn></td>
+                  </tr>
+                );
+              })}
+              {drafts.map((draft) => {
+                const pct = Number(draft.ownership_pct);
+                const required = draft.ownership_pct !== "" && Number.isFinite(pct) && pct >= 20;
+                return (
+                  <tr key={draft.key} className="owner-draft-row">
+                    {(["first_name", "last_name", "ownership_pct", "email", "phone"] as const).map((field) => (
+                      <td key={field}><Input aria-label={`New owner ${field.replace("_", " ")}`} className={field === "ownership_pct" ? "num owner-percent" : undefined} type={field === "email" ? "email" : field === "phone" ? "tel" : "text"} inputMode={field === "ownership_pct" ? "decimal" : undefined} value={draft[field]} onChange={(event) => updateDraft(draft.key, field, event.target.value)} onBlur={() => saveDraft(draft)} /></td>
+                    ))}
+                    <td><CellChip tone={required ? "warn" : "mut"}>{required ? "iSoftPull required" : "Not required"}</CellChip></td>
+                    <td><CellChip tone={draft.state === "invalid" ? "bad" : "mut"}>{draft.state === "saving" ? "Saving..." : draft.state === "invalid" ? "Complete row" : "Unsaved"}</CellChip></td>
+                    <td className="r"><IconBtn aria-label="Remove unsaved owner" title="Remove owner" onClick={() => setDrafts((rows) => rows.filter((row) => row.key !== draft.key))}><Icon name="trash" size={14} /></IconBtn></td>
+                  </tr>
+                );
+              })}
+              {!owners.length && !drafts.length ? <tr><td colSpan={8}><div className="empty">Add every business owner to begin the verification schedule.</div></td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {error ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>{error}</Callout> : null}
+      <footer className="verification-section-footer">
+        <div className="verification-blockers">
+          {state?.blockers.length ? state.blockers.map((blocker) => <span key={blocker}><Icon name="x" size={12} />{blocker}</span>) : <span className="ready"><Icon name="check" size={12} />Ownership is ready for individual verification.</span>}
+        </div>
+        <Btn variant="pri" disabled={!ready} onClick={onContinue}>Continue to Step 2<Icon name="arrowR" size={14} /></Btn>
+      </footer>
+    </section>
+  );
+}
+
+function VerificationPanel({ profileId, owners, state, banks, loading, onRefresh }: {
+  profileId: string;
+  owners: FileOwner[];
+  state?: FileOwnerRequirementState;
+  banks?: ApplicationBankState;
+  loading: boolean;
+  onRefresh: () => Promise<void>;
+}) {
+  const apiCall = useAuthedApi();
+  const requiredOwners = owners.filter((owner) => owner.credit_required);
+  const [links, setLinks] = useState<Record<string, string>>({});
+  const [alsoText, setAlsoText] = useState(false);
+  const [error, setError] = useState("");
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [consenter, setConsenter] = useState("");
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+
+  const invite = useMutation({
+    mutationFn: ({ ownerId }: { ownerId: string }) => apiCall<FileCreditInvite>(`/application-profiles/${profileId}/owners/${ownerId}/credit-invite`, { method: "POST", body: JSON.stringify({ channel: alsoText ? "sms" : "email" }) }),
+    onSuccess: async (result) => {
+      if (result.path) setLinks((current) => ({ ...current, [result.owner_id]: `${window.location.origin}${result.path}` }));
+      setError(result.delivered ? "" : result.detail);
+      await onRefresh();
+    },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "The authorization could not be sent."),
+  });
+  const inviteAll = useMutation({
+    mutationFn: () => apiCall<{ items: FileCreditInvite[] }>(`/application-profiles/${profileId}/owners/credit-invites`, { method: "POST", body: JSON.stringify({ channel: alsoText ? "sms" : "email" }) }),
+    onSuccess: async (result) => {
+      const next: Record<string, string> = {};
+      result.items.forEach((item) => { if (item.path) next[item.owner_id] = `${window.location.origin}${item.path}`; });
+      setLinks((current) => ({ ...current, ...next }));
+      setError("");
+      await onRefresh();
+    },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "The authorizations could not be sent."),
+  });
+  const grantConsent = useMutation({
+    mutationFn: () => apiCall<ApplicationBankState>(`/application-profiles/${profileId}/bank-consent`, { method: "POST", body: JSON.stringify({ granted: true, method: "electronic", consenter_name: consenter.trim() }) }),
+    onSuccess: async () => { setConsentOpen(false); setError(""); await onRefresh(); await requestLink(); },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "Bank consent could not be recorded."),
+  });
+  const requestLink = async () => {
+    try {
+      const result = await apiCall<{ link_token: string }>(`/application-profiles/${profileId}/banks/link-token`, { method: "POST" });
+      setLinkToken(result.link_token);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Plaid could not be opened.");
+    }
+  };
+  const exchange = useMutation({
+    mutationFn: ({ publicToken, institution }: { publicToken: string; institution: string | null }) => apiCall(`/application-profiles/${profileId}/banks/exchange`, { method: "POST", body: JSON.stringify({ public_token: publicToken, institution_name: institution }) }),
+    onSuccess: async () => { setLinkToken(null); setError(""); await onRefresh(); },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "The bank connection could not be saved."),
+  });
+  const { open: openPlaid, ready: plaidReady } = usePlaidLink({
+    token: linkToken,
+    onSuccess: (publicToken, metadata) => {
+      if (publicToken) exchange.mutate({ publicToken, institution: metadata.institution?.name ?? null });
+    },
+    onExit: () => setLinkToken(null),
+  });
+  useEffect(() => { if (linkToken && plaidReady) openPlaid(); }, [linkToken, plaidReady, openPlaid]);
+
+  const bankMutation = useMutation({
+    mutationFn: ({ itemId, action }: { itemId: string; action: "primary" | "refresh" | "disconnect" }) => {
+      if (action === "primary") return apiCall(`/application-profiles/${profileId}/banks/${itemId}`, { method: "PATCH", body: JSON.stringify({ is_primary_operating: true }) });
+      return apiCall(`/application-profiles/${profileId}/banks/${itemId}${action === "refresh" ? "/refresh" : ""}`, { method: action === "disconnect" ? "DELETE" : "POST" });
+    },
+    onSuccess: async () => { setError(""); await onRefresh(); },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "The bank connection could not be updated."),
+  });
+
+  if (loading) return <div className="empty"><span className="spinner solo" />Loading verification...</div>;
+  return (
+    <div className="verification-stack">
+      <section className="verification-section">
+        <header className="verification-section-head">
+          <div><span className="lbl">Step 2</span><h3>Owner iSoftPull authorizations</h3><Sub>Each 20%+ owner receives a private, one-time link tied only to their identity.</Sub></div>
+          <CellChip tone={state?.credit_returned ? "ok" : "warn"}>{state?.completed_credit_owner_count ?? 0} of {state?.required_credit_owner_count ?? 0} completed</CellChip>
+          <Btn variant="pri" disabled={!state?.ready_for_step_2 || !state?.pending_credit_owner_ids.length || inviteAll.isPending} onClick={() => inviteAll.mutate()}><Icon name="send" size={14} />Send all pending</Btn>
+        </header>
+        <div className="credit-owner-grid">
+          {requiredOwners.map((owner) => {
+            const status = creditStatus(owner);
+            const freshLink = links[owner.id];
+            return (
+              <article key={owner.id} className={cx("credit-owner-box", owner.credit_complete && "complete")}>
+                <header><span className="credit-owner-avatar">{owner.first_name.slice(0, 1)}{owner.last_name.slice(0, 1)}</span><div className="grow"><b>{owner.full_name}</b><Sub>{Number(owner.ownership_pct ?? 0).toFixed(2)}% ownership</Sub></div><CellChip tone={status.tone}>{status.label}</CellChip></header>
+                <dl><div><dt>Email</dt><dd>{maskEmail(owner.email)}</dd></div><div><dt>Phone</dt><dd>{maskPhone(owner.phone)}</dd></div><div><dt>Last activity</dt><dd>{when(owner.credit_pulled_at || owner.invite_opened_at || owner.invite_sent_at)}</dd></div>{owner.credit_tier ? <div><dt>Result</dt><dd>{owner.credit_tier}</dd></div> : null}</dl>
+                <footer><Btn disabled={!owner.credit_contact_complete || owner.credit_complete || invite.isPending} onClick={() => invite.mutate({ ownerId: owner.id })}><Icon name="mail" size={13} />{owner.invite_sent_at ? "Resend" : "Send authorization"}</Btn>{freshLink ? <IconBtn aria-label={`Copy ${owner.full_name} secure link`} title="Copy secure link" onClick={() => void navigator.clipboard.writeText(freshLink)}><Icon name="copy" size={14} /></IconBtn> : null}</footer>
+              </article>
+            );
+          })}
+          {!requiredOwners.length ? <div className="empty">No owner currently meets the 20.00% credit threshold.</div> : null}
+        </div>
+        <label className="verification-sms"><input type="checkbox" checked={alsoText} onChange={(event) => setAlsoText(event.target.checked)} />Also send by SMS when the exact owner has transactional consent</label>
+      </section>
+
+      <section className="verification-section">
+        <header className="verification-section-head">
+          <div><span className="lbl">Bank evidence</span><h3>Connected operating accounts</h3><Sub>Connect every institution needed to show complete operating activity. One bank remains primary.</Sub></div>
+          <CellChip tone={state?.bank_linked ? "ok" : "warn"}>{state?.bank_connection_count ?? 0} connected · {state?.bank_statement_months ?? 0} statement months</CellChip>
+          <Btn variant="pri" disabled={!banks?.enabled} onClick={() => banks?.consent_granted ? void requestLink() : setConsentOpen(true)}><Icon name="link" size={14} />Connect another bank</Btn>
+        </header>
+        {!banks?.enabled ? <Callout tone="warn" icon={<Icon name="alert" size={16} />}>Plaid is not configured for this environment.</Callout> : null}
+        <div className="bank-connection-list">
+          {(banks?.items ?? []).filter((item) => item.status !== "removed").map((item) => (
+            <div key={item.id} className="bank-connection-row">
+              <span className="bank-connection-icon"><Icon name="building" size={17} /></span>
+              <div className="grow trunc"><Row><b className="trunc">{item.institution_name || "Connected institution"}</b>{item.is_primary_operating ? <CellChip tone="acc">Primary operating</CellChip> : null}<CellChip tone={item.status === "active" ? "ok" : item.error ? "bad" : "warn"}>{item.status}</CellChip></Row><Sub>{item.accounts_label || "Accounts connected"} · {item.statement_months.length ? `${item.statement_months.length} months available` : "Statements syncing"} · refreshed {when(item.last_pulled_at)}</Sub></div>
+              {!item.is_primary_operating ? <Btn size="sm" onClick={() => bankMutation.mutate({ itemId: item.id, action: "primary" })}>Make primary</Btn> : null}
+              <IconBtn aria-label={`Refresh ${item.institution_name || "bank"}`} title="Refresh statements" onClick={() => bankMutation.mutate({ itemId: item.id, action: "refresh" })}><Icon name="refresh" size={14} /></IconBtn>
+              <IconBtn aria-label={`Disconnect ${item.institution_name || "bank"}`} title="Disconnect bank; retained statements stay in evidence" onClick={() => bankMutation.mutate({ itemId: item.id, action: "disconnect" })}><Icon name="x" size={14} /></IconBtn>
+            </div>
+          ))}
+          {banks?.enabled && !(banks.items ?? []).filter((item) => item.status !== "removed").length ? <div className="empty">No bank accounts connected yet.</div> : null}
+        </div>
+      </section>
+      {error ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>{error}</Callout> : null}
+      <Drawer open={consentOpen} onClose={() => setConsentOpen(false)} title="Authorize bank evidence" sub="Record consent before opening Plaid" width="md" footer={<><span className="sp" /><Btn onClick={() => setConsentOpen(false)}>Cancel</Btn><Btn variant="pri" disabled={!consenter.trim() || grantConsent.isPending} onClick={() => grantConsent.mutate()}>Record consent &amp; continue</Btn></>}>
+        <div className="grid"><Callout tone="acc" icon={<Icon name="shield" size={17} />}>{banks?.disclosure_text || "The applicant authorizes Qualified Commercial to retrieve business bank evidence for underwriting."}</Callout><label className="grid g6"><span className="lbl">Consenter name</span><Input value={consenter} onChange={(event) => setConsenter(event.target.value)} placeholder="Full legal name" /></label></div>
+      </Drawer>
+    </div>
+  );
+}

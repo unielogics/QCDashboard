@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Card, useToast, Toast } from "@/components/design-system/primitives";
 import {
   Btn,
+  Callout,
   CellChip,
   cx,
   Field,
@@ -24,7 +25,7 @@ import {
   WarnLine,
   type ChipTone,
 } from "@/components/ds";
-import { Drawer } from "@/components/ds/Drawer";
+import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { LENDING_INTENTS, MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
@@ -57,10 +58,15 @@ import { WhatsNewButton, WhatsNewRail } from "@/components/admin/WhatsNewRail";
 import { BankerSubmissionModal } from "@/components/admin/BankerSubmissionModal";
 import { useAIReview } from "@/components/admin/AIReviewProvider";
 import { IntakeEvidenceBrowser } from "@/components/admin/IntakeEvidenceBrowser";
+import { ApplicationVerificationWorkspace } from "@/components/application/ApplicationVerificationWorkspace";
+import { ApplicationClassificationPanel } from "@/components/application/ApplicationClassificationPanel";
+import { ApplicationAuditTimeline } from "@/components/application/ApplicationAuditTimeline";
+import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import type { IntakeResponse } from "@/lib/intake";
 import { originTone, verticalTone } from "@/lib/unifiedOperator";
+import type { FileOwnerRequirementState } from "@/lib/applicationProfile";
 
 type LeadRow = {
   id: string;
@@ -330,6 +336,7 @@ export default function AdminAIUnderwriterLeadsPage() {
       setCreateOpen(false);
       await loadLeads(0);
       await openLead(res.intake.id);
+      router.replace(`/admin/ai-underwriter-leads?lead=${res.intake.id}&step=1`, { scroll: false });
     } catch (error) {
       // Duplicate email → backend returns 409 with the existing intake_id; open it.
       if (error instanceof ApiError && error.status === 409) {
@@ -338,6 +345,7 @@ export default function AdminAIUnderwriterLeadsPage() {
           setCreateOpen(false);
           setNotice(detail.message || "A lead already exists for this email — opening it.");
           await openLead(detail.intake_id);
+          router.replace(`/admin/ai-underwriter-leads?lead=${detail.intake_id}&step=1`, { scroll: false });
           return;
         }
       }
@@ -918,8 +926,10 @@ function LeadDetailPanel({
   const [ingestFiles, setIngestFiles] = useState<DriveFile[]>([]);
   const [deletionBusy, setDeletionBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [prototypeView, setPrototypeView] = useState<"underwriter" | "workflow" | "client" | "sources" | "evidence" | "rep" | "audit">("underwriter");
-  const [submissionStep, setSubmissionStep] = useState(2);
+  const [prototypeView, setPrototypeView] = useState<"workspace" | "communications" | "audit">("communications");
+  const [communicationChannel, setCommunicationChannel] = useState<"underwriter" | "client" | "partner" | "internal">("underwriter");
+  const [submissionStep, setSubmissionStep] = useState(1);
+  const [profileVerification, setProfileVerification] = useState<FileOwnerRequirementState | null>(null);
   const [sendReviewOpen, setSendReviewOpen] = useState(false);
   const [contactEditOpen, setContactEditOpen] = useState(false);
   const [contactSaving, setContactSaving] = useState(false);
@@ -948,11 +958,11 @@ function LeadDetailPanel({
     if (!detail) return;
     const rows = detail.artifacts ?? [];
     if (rows.some((item) => item.artifact_type === "lender_packet")) setSubmissionStep(5);
-    else if (rows.some((item) => item.artifact_type === "executive_summary")) setSubmissionStep(4);
-    else if (detail.latest_review?.status === "completed" || detail.intake.status === "reviewed") setSubmissionStep(3);
-    else if (detail.files.length) setSubmissionStep(2);
+    else if (detail.latest_review?.status === "completed" || detail.intake.status === "reviewed") setSubmissionStep(4);
+    else if (detail.files.length) setSubmissionStep(3);
     else setSubmissionStep(1);
-    setPrototypeView("underwriter");
+    setPrototypeView("communications");
+    setCommunicationChannel("underwriter");
     setContactDraft({
       full_name: detail.intake.full_name || "",
       business_name: detail.intake.business_name || "",
@@ -1170,11 +1180,11 @@ function LeadDetailPanel({
   const reviewActive = detail ? rerunning || ["queued", "running"].includes(detail.latest_review?.status || "") : false;
   const sentCount = detail?.email_sends?.filter((send) => !send.ses_error).length ?? 0;
   const workflowSteps: Array<{ id: number; label: string; sub: string; status: "not-started" | "partial" | "complete" }> = [
-    { id: 1, label: "Evidence in", sub: "Buckets, uploads, Drive", status: evidenceComplete ? "complete" : hasEvidence ? "partial" : "not-started" },
-    { id: 2, label: "AI review", sub: "Probability and coverage", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
-    { id: 3, label: "Executive summary", sub: "Underwriter narrative", status: summary ? "complete" : reviewComplete ? "partial" : "not-started" },
-    { id: 4, label: "Lender packet", sub: "Redacted PDF build", status: packet ? "complete" : summary ? "partial" : "not-started" },
-    { id: 5, label: "Ship the package", sub: "Send, then track replies", status: sentCount > 0 ? "complete" : packet ? "partial" : "not-started" },
+    { id: 1, label: "Ownership", sub: "Owners and allocation", status: profileVerification?.ready_for_step_2 ? "complete" : profileVerification?.owner_count ? "partial" : "not-started" },
+    { id: 2, label: "Credit & banks", sub: "iSoftPull and Plaid", status: profileVerification?.unlocked ? "complete" : profileVerification?.ready_for_step_2 || profileVerification?.bank_linked || Boolean(profileVerification?.completed_credit_owner_count) ? "partial" : "not-started" },
+    { id: 3, label: "Evidence", sub: "Rooms, files and blockers", status: evidenceComplete ? "complete" : hasEvidence ? "partial" : "not-started" },
+    { id: 4, label: "AI review", sub: "Probability and coverage", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
+    { id: 5, label: "Package readiness", sub: "Summary, packet and delivery", status: sentCount > 0 ? "complete" : packet || summary ? "partial" : "not-started" },
   ];
 
   const prototypeDetailEnabled = Boolean(workflowSteps.length);
@@ -1193,15 +1203,15 @@ function LeadDetailPanel({
         </div>
         <span className="sp" />
         {detail ? (
-          <Btn variant="pri" onClick={submissionStep === 1 ? onLinkBucketIntake : submissionStep === 2 ? onRerun : submissionStep === 3 ? () => { setBusy("summary"); Promise.resolve(onGenerateSummary()).finally(() => setBusy("")); } : submissionStep === 4 ? () => { setBusy("packet"); Promise.resolve(onGeneratePacket()).finally(() => setBusy("")); } : () => setPrototypeView("workflow")} disabled={busy !== "" || rerunning}>
-            {submissionStep === 1 ? "Attach a bucket" : submissionStep === 2 ? (rerunning ? "Reviewing..." : "Run AI review") : submissionStep === 3 ? "Generate summary" : submissionStep === 4 ? "Build lender packet" : "Open shipment"}
+          <Btn variant="pri" onClick={submissionStep === 3 ? onLinkBucketIntake : submissionStep === 4 ? onRerun : submissionStep === 5 ? () => { setBusy("packet"); Promise.resolve(onGeneratePacket()).finally(() => setBusy("")); } : () => setPrototypeView("workspace")} disabled={busy !== "" || rerunning}>
+            {submissionStep === 3 ? "Attach evidence" : submissionStep === 4 ? (rerunning ? "Reviewing..." : "Run AI review") : submissionStep === 5 ? "Build lender packet" : submissionStep === 2 ? "Open verification" : "Open ownership"}
           </Btn>
         ) : null}
         <PageActionMenu items={[
-          { label: "Open underwriting chat", onSelect: () => setPrototypeView("underwriter"), hidden: !detail },
-          { label: "View client conversation", onSelect: () => setPrototypeView("client"), hidden: !detail },
+          { label: "Open underwriting chat", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("underwriter"); }, hidden: !detail },
+          { label: "View client conversation", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("client"); }, hidden: !detail },
           { label: "Attach another bucket", onSelect: onLinkBucketIntake, hidden: !detail },
-          { label: "Dealer partner messages", onSelect: () => setPrototypeView("rep"), hidden: !detail },
+          { label: "Dealer partner messages", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("partner"); }, hidden: !detail },
           { label: "Delete lead", onSelect: () => setConfirmDeleteOpen(true), tone: "danger", hidden: !detail },
         ]} />
         <IconBtn aria-label="Close" title="Close" onClick={onClose}>
@@ -1213,12 +1223,8 @@ function LeadDetailPanel({
         <>
           <div className="intake-tabs" role="tablist" aria-label="AI intake detail">
             {([
-              ["underwriter", "Underwriter AI"],
-              ["workflow", "Workflow"],
-              ["client", "Client conversation"],
-              ["sources", "Data sources"],
-              ["evidence", "Evidence"],
-              ["rep", "Rep channel"],
+              ["workspace", "File workspace"],
+              ["communications", "Communications"],
               ["audit", "Audit trail"],
             ] as const).map(([id, label]) => (
               <button key={id} type="button" role="tab" aria-selected={prototypeView === id} className={prototypeView === id ? "on" : undefined} onClick={() => setPrototypeView(id)}>{label}</button>
@@ -1227,140 +1233,65 @@ function LeadDetailPanel({
 
           <div className={cx(
             "intake-file-body",
-            prototypeView === "workflow" && "with-sequence",
-            prototypeView === "underwriter" && "is-focus",
+            "with-sequence",
           )}>
-            {prototypeView === "underwriter" ? (
-              cockpitResponse && cockpitAdapter ? (
-                <div className="intake-underwriter-stage">
-                  <LeadCockpit
-                    response={cockpitResponse}
-                    adapter={cockpitAdapter}
-                    variant={detail.intake.variant}
-                    initialMessages={detail.messages}
-                    onResponse={onCockpitResponse}
-                    onRequestRerun={onRerun}
-                  />
+            <aside className="submission-rail">
+              <Panel title="Submission sequence" sub={`Step ${submissionStep} of 5`}>
+                <div className="submission-steps submission-steps-rail">
+                  {workflowSteps.map((step) => (
+                    <button key={step.id} type="button" className={cx("submission-step", `status-${step.status}`, submissionStep === step.id && "on")} onClick={() => { setSubmissionStep(step.id); setPrototypeView("workspace"); }}>
+                      <span>{step.status === "complete" ? <Icon name="check" size={12} /> : step.status === "not-started" ? <Icon name="x" size={11} /> : "-"}</span>
+                      <b>{step.label}</b>
+                      <small>{step.status === "complete" ? "Complete" : step.status === "partial" ? "In progress" : "Not started"} · {step.sub}</small>
+                    </button>
+                  ))}
                 </div>
-              ) : (
-                <div className="empty">Loading the private underwriting conversation...</div>
-              )
-            ) : null}
+              </Panel>
+            </aside>
 
-            {prototypeView === "workflow" ? (
-              <>
-                <aside className="submission-rail">
-                  <Panel title="Submission sequence" sub={`Step ${submissionStep} of 5`}>
-                    <div className="submission-steps submission-steps-rail">
-                      {workflowSteps.map((step) => (
-                        <button key={step.id} type="button" className={cx("submission-step", `status-${step.status}`, submissionStep === step.id && "on")} onClick={() => setSubmissionStep(step.id)}>
-                          <span>{step.status === "complete" ? <Icon name="check" size={12} /> : step.status === "not-started" ? <Icon name="x" size={11} /> : "-"}</span>
-                          <b>{step.label}</b>
-                          <small>{step.status === "complete" ? "Complete" : step.status === "partial" ? "In progress" : "Not started"} · {step.sub}</small>
-                        </button>
-                      ))}
-                    </div>
-                  </Panel>
-                </aside>
-
-                <div className="grid">
-
-                  {submissionStep === 1 ? (
-                    <Panel title="Data sources" actions={<Btn onClick={onLinkBucketIntake}>Attach a bucket</Btn>}>
-                      <p className="sub">Only the buckets and selected files shown here are available to Elara. Source objects remain in their original rooms.</p>
-                      <div className="source-room mt">
-                        <div><CellChip tone="acc">Bucket</CellChip><strong>{detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"}</strong><span className="sub">{detail.files.length} files · primary evidence room</span></div>
-                        <Link href={`/admin/buckets?bucket=${detail.intake.bucket_id}`} className="btn sm">Open bucket</Link>
-                      </div>
-                      <div className="mt">
-                        <IntakeEvidenceBrowser
-                          intakeId={detail.intake.id}
-                          primaryBucketId={detail.intake.bucket_id}
-                          primaryBucketName={detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"}
-                          files={detail.files}
-                        />
-                      </div>
-                    </Panel>
-                  ) : null}
-
-                  {submissionStep === 2 ? (
-                    <Panel title="AI review" actions={<Btn variant="pri" onClick={onRerun} disabled={rerunning}>{rerunning ? "Reviewing..." : "Re-run review"}</Btn>}>
-                      <div className="intake-review-grid">
-                        <div className="kpi"><div className="lbl">Probability</div><div className="knum">{String(result?.probability_status || "Awaiting evidence")}</div></div>
-                        <div className="kpi"><div className="lbl">Evidence</div><div className="knum num">{detail.files.length}</div><div className="sub">files available</div></div>
-                        <div className="kpi"><div className="lbl">Missing</div><div className="knum num">{missing.length}</div><div className="sub">blocking items</div></div>
-                      </div>
-                      <div className="hintbox mt"><div className="lbl">Next best action</div><p>{String(result?.one_next_step || result?.executive_summary || "Run the review after the evidence room is complete.")}</p></div>
-                    </Panel>
-                  ) : null}
-
-                  {submissionStep === 3 ? (
-                    <Panel title="Executive summary" actions={<Btn variant="pri" disabled={busy !== ""} onClick={() => { setBusy("summary"); Promise.resolve(onGenerateSummary()).finally(() => setBusy("")); }}>{busy === "summary" ? "Generating..." : summary ? "Regenerate" : "Generate summary"}</Btn>}>
-                      {summary ? <div className="artifact-preview"><strong>{summary.title}</strong><p>{summary.body_text || String(summary.body_json?.executive_summary || "")}</p><span className="sub">Generated {formatDateTime(summary.created_at)}</span></div> : <div className="empty">No executive summary has been generated.</div>}
-                    </Panel>
-                  ) : null}
-
-                  {submissionStep === 4 ? (
-                    <Panel title="Lender packet" actions={<Btn variant="pri" disabled={busy !== ""} onClick={() => { setBusy("packet"); Promise.resolve(onGeneratePacket()).finally(() => setBusy("")); }}>{busy === "packet" ? "Building..." : packet ? "Rebuild packet" : "Build lender packet"}</Btn>}>
-                      {packet ? <div className="source-room"><div><CellChip tone="ok">Ready</CellChip><strong>{packet.title}</strong><span className="sub">Redacted lender-facing PDF · {formatDateTime(packet.created_at)}</span></div>{packet.download_url ? <a href={packet.download_url} target="_blank" rel="noreferrer" className="btn">Preview PDF</a> : null}</div> : <div className="empty">Build the redacted lender packet after the executive summary is ready.</div>}
-                    </Panel>
-                  ) : null}
-
-                  {submissionStep === 5 ? (
-                    <Panel title="Ship the package" sub="Send from the connected desk mailbox and retain the delivery audit.">
-                      <div className="fldgrid two">
-                        <Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field>
-                        <Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field>
-                      </div>
-                      <Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field>
-                      <Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={6} placeholder="Draft the reviewed submission message" /></Field>
-                      <Row>
-                        <Btn variant="pri" disabled={busy !== ""} onClick={previewEmail}>{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn>
-                        <Btn disabled={!toEmails.trim() || !subject.trim() || !body.trim() || busy !== ""} onClick={() => setSendReviewOpen(true)}>Review and send</Btn>
-                        <Btn onClick={downloadZip} disabled={zipBusy}>{zipBusy ? "Building..." : "Download package"}</Btn>
-                      </Row>
-                    </Panel>
-                  ) : null}
-                </div>
-              </>
-              ) : null}
-
-              {prototypeView === "client" && cockpitAdapter ? (
-                <ClientConversation adapter={cockpitAdapter} clientName={detail.intake.full_name} />
-              ) : null}
-
-              {prototypeView === "sources" ? (
-                <Panel title="Data sources" actions={<Btn onClick={onLinkBucketIntake}>Attach another bucket</Btn>}>
-                  <div className="source-room"><div><CellChip tone="acc">Primary bucket</CellChip><strong>{detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"}</strong><span className="sub">{detail.files.length} files handed to this intake</span></div><Link href={`/admin/buckets?bucket=${detail.intake.bucket_id}`} className="btn">Open bucket</Link></div>
-                  <div className="grid mt">{detail.files.map((file) => <div key={file.id} className="filerow"><span className="sp">{file.zip_entry_path || file.file_name}</span><span className="sub">{formatSize(file.size_bytes)}</span></div>)}</div>
+            <main className="grid intake-file-primary">
+              {prototypeView === "workspace" && submissionStep === 1 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="owners" onReadyForStep2={() => setSubmissionStep(2)} onStateChange={setProfileVerification} /> : null}
+              {prototypeView === "workspace" && submissionStep === 2 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="verification" onStateChange={setProfileVerification} /> : null}
+              {prototypeView === "workspace" && submissionStep === 3 ? (
+                <Panel title="Evidence and data sources" sub="Navigate every accessible file without leaving the intake." actions={<Row><Btn onClick={() => setIngestPickerOpen(true)}>Add from Drive</Btn><Btn variant="pri" onClick={onLinkBucketIntake}>Attach another bucket</Btn></Row>}>
+                  <div className="source-room"><div><CellChip tone="acc">Primary bucket</CellChip><strong>{detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"}</strong><span className="sub">{detail.files.length} primary files · supporting links are counted below</span></div><Link href={`/admin/buckets?bucket=${detail.intake.bucket_id}`} className="btn">Open bucket</Link></div>
+                  <div className="mt"><IntakeEvidenceBrowser intakeId={detail.intake.id} primaryBucketId={detail.intake.bucket_id} primaryBucketName={detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"} files={detail.files} /></div>
+                  <InfoBlock title="Evidence requirements and AI blockers"><div className="grid">{detail.requested_documents.map((doc) => <div key={doc.id} className="itemrow"><CellChip tone={doc.status === "uploaded" ? "ok" : "warn"}>{doc.status}</CellChip><strong className="sp">{doc.name}</strong><span className="sub">{doc.required ? "Required" : "Optional"}</span></div>)}</div><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No blockers listed in the latest review." /></InfoBlock>
                 </Panel>
               ) : null}
-
-              {prototypeView === "evidence" ? (
-                <Panel title="Evidence and blockers" actions={<Btn onClick={() => setIngestPickerOpen(true)}>Add from Drive</Btn>}>
-                  <div className="grid">{detail.requested_documents.map((doc) => <div key={doc.id} className="itemrow"><CellChip tone={doc.status === "uploaded" ? "ok" : "warn"}>{doc.status}</CellChip><strong className="sp">{doc.name}</strong><span className="sub">{doc.required ? "Required" : "Optional"}</span></div>)}</div>
-                  <InfoBlock title="AI blockers"><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No blockers listed in the latest review." /></InfoBlock>
+              {prototypeView === "workspace" && submissionStep === 4 ? (
+                <Panel title="AI review" actions={<Btn variant="pri" onClick={onRerun} disabled={rerunning}>{rerunning ? "Reviewing..." : reviewComplete ? "Re-run review" : "Run AI review"}</Btn>}>
+                  <div className="intake-review-grid"><div className="kpi"><div className="lbl">Probability</div><div className="knum">{String(result?.probability_status || "Awaiting evidence")}</div></div><div className="kpi"><div className="lbl">Evidence</div><div className="knum num">{detail.files.length}</div><div className="sub">primary files available</div></div><div className="kpi"><div className="lbl">Missing</div><div className="knum num">{missing.length}</div><div className="sub">blocking items</div></div></div>
+                  <div className="hintbox mt"><div className="lbl">Next best action</div><p>{String(result?.one_next_step || result?.executive_summary || "Run the review after the evidence room is complete.")}</p></div>
                 </Panel>
               ) : null}
+              {prototypeView === "workspace" && submissionStep === 5 ? (
+                <>
+                  <Panel title="Executive summary" actions={<Btn disabled={busy !== ""} onClick={() => { setBusy("summary"); Promise.resolve(onGenerateSummary()).finally(() => setBusy("")); }}>{busy === "summary" ? "Generating..." : summary ? "Regenerate" : "Generate summary"}</Btn>}>{summary ? <div className="artifact-preview"><strong>{summary.title}</strong><p>{summary.body_text || String(summary.body_json?.executive_summary || "")}</p><span className="sub">Generated {formatDateTime(summary.created_at)}</span></div> : <div className="empty">Generate an underwriter narrative after review.</div>}</Panel>
+                  <Panel title="Lender packet" actions={<Btn variant="pri" disabled={busy !== ""} onClick={() => { setBusy("packet"); Promise.resolve(onGeneratePacket()).finally(() => setBusy("")); }}>{busy === "packet" ? "Building..." : packet ? "Rebuild packet" : "Build lender packet"}</Btn>}>{packet ? <div className="source-room"><div><CellChip tone="ok">Ready</CellChip><strong>{packet.title}</strong><span className="sub">Redacted lender-facing PDF · {formatDateTime(packet.created_at)}</span></div>{packet.download_url ? <a href={packet.download_url} target="_blank" rel="noreferrer" className="btn">Preview PDF</a> : null}</div> : <div className="empty">Build the redacted packet after the executive summary is ready.</div>}</Panel>
+                  <Panel title="Delivery" sub="Send from the connected desk mailbox and retain the audit result."><div className="fldgrid two"><Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field><Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field></div><Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field><Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={6} placeholder="Draft the reviewed submission message" /></Field><Row><Btn variant="pri" disabled={busy !== ""} onClick={previewEmail}>{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn><Btn disabled={!toEmails.trim() || !subject.trim() || !body.trim() || busy !== ""} onClick={() => setSendReviewOpen(true)}>Review and send</Btn><Btn onClick={downloadZip} disabled={zipBusy}>{zipBusy ? "Building..." : "Download package"}</Btn></Row></Panel>
+                </>
+              ) : null}
 
-              {prototypeView === "rep" ? (
-                <div className="intake-review-grid two">
-                  <Panel title="Opened on the rep desk"><Line label="Channel" value={detail.intake.referral_source || "Direct"} /><Line label="Origin" value="AI intake" /><Line label="Opened" value={formatDateTime(detail.intake.created_at)} /></Panel>
-                  <Panel title="Contact"><Line label="Principal" value={detail.intake.full_name} /><Line label="Mobile" value={detail.intake.phone || "-"} /><Line label="Email" value={detail.intake.email} /><Line label="Requested" value={formatMoney(detail.intake.requested_loan_amount)} /></Panel>
-                  <div style={{ gridColumn: "1 / -1" }}><LeadNotesPanel notes={detail.notes ?? []} onPost={postNote} posting={notesPosting} error={notesError} subtitle="Private operator and dealer-partner channel." emptyLabel="No rep-channel messages yet." /></div>
+              {prototypeView === "communications" ? (
+                <div className="intake-communications">
+                  <div className="intake-channel-tabs" role="tablist" aria-label="Intake communication channel">
+                    {([['underwriter', 'Underwriter AI'], ['client', 'Client conversation'], ['partner', 'Partner channel'], ['internal', 'Internal notes']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={communicationChannel === id} className={communicationChannel === id ? "on" : undefined} onClick={() => setCommunicationChannel(id)}>{label}</button>)}
+                  </div>
+                  {communicationChannel === "underwriter" ? (cockpitResponse && cockpitAdapter ? <div className="intake-underwriter-stage"><LeadCockpit response={cockpitResponse} adapter={cockpitAdapter} variant={detail.intake.variant} initialMessages={detail.messages} onResponse={onCockpitResponse} onRequestRerun={onRerun} /></div> : <div className="empty">Loading the private underwriting conversation...</div>) : null}
+                  {communicationChannel === "client" && cockpitAdapter ? <ClientConversation adapter={cockpitAdapter} clientName={detail.intake.full_name} /> : null}
+                  {communicationChannel === "partner" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:partner`} emptyLabel="No dealer-partner messages yet." /> : null}
+                  {communicationChannel === "internal" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:internal`} emptyLabel="No private internal notes yet." /> : null}
                 </div>
               ) : null}
 
               {prototypeView === "audit" ? (
                 <Panel title="Audit trail">
-                  <div className="grid">
-                    {(detail.artifacts ?? []).map((item) => <div key={item.id} className="itemrow"><CellChip tone="acc">Artifact</CellChip><strong className="sp">{item.title}</strong><span className="sub">{formatDateTime(item.created_at)}</span></div>)}
-                    {(detail.email_sends ?? []).map((item) => <div key={item.id} className="itemrow"><CellChip tone={item.ses_error ? "bad" : "ok"}>Email</CellChip><strong className="sp">{item.subject}</strong><span className="sub">{formatDateTime(item.created_at)}</span></div>)}
-                    {!detail.artifacts?.length && !detail.email_sends?.length ? <div className="empty">No generated artifacts or outbound deliveries yet.</div> : null}
-                  </div>
+                  <ApplicationAuditTimeline sourceKind="intake" sourceId={detail.intake.id} />
                 </Panel>
               ) : null}
-            {prototypeView !== "underwriter" ? <aside className="grid">
+            </main>
+            <aside className="grid intake-file-context">
               <Panel
                 title="Contact"
                 actions={
@@ -1379,9 +1310,10 @@ function LeadDetailPanel({
                 <Line label="Source" value={detail.intake.referral_source || "Direct"} />
                 <Line label="Vertical" value={variantLabel(detail.intake.variant)} />
               </Panel>
+              <ApplicationClassificationPanel sourceKind="intake" sourceId={detail.intake.id} />
               <Panel title="Missing and blockers"><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No blockers listed." /></Panel>
               <Panel title="File controls"><Row><Select value={detail.intake.outcome_status} disabled={outcomeBusy} onChange={(event) => changeOutcomeStatus(event.target.value)} aria-label="Outcome status"><option value="submitted">Submitted</option><option value="closed">Closed</option><option value="denied">Denied</option></Select><Select value={detail.intake.preferred_language} disabled={languageBusy} onChange={(event) => changeLanguage(event.target.value)} aria-label="Client language"><option value="en">English</option><option value="es">Español</option></Select></Row></Panel>
-            </aside> : null}
+            </aside>
           </div>
         </>
       )}
@@ -2272,6 +2204,7 @@ function CreateLeadModal({
   const [notifyClient, setNotifyClient] = useState(false);
   const [preferredLanguage, setPreferredLanguage] = useState<"en" | "es">("en");
   const [error, setError] = useState("");
+  const [step, setStep] = useState(1);
 
   const isRE = variant === "real_estate";
   const isMS = variant === "main_street";
@@ -2301,65 +2234,41 @@ function CreateLeadModal({
     });
   }
 
+  function next() {
+    if (step === 1) {
+      if (variant === "main_street" && (!industry || !intent)) { setError("Choose an industry and funding need."); return; }
+      setError(""); setStep(2); return;
+    }
+    if (step === 2) {
+      if (!fullName.trim()) { setError("Client name is required."); return; }
+      if (!email.trim() || !email.includes("@")) { setError("A valid client email is required."); return; }
+      if (!isRE && !businessName.trim()) { setError("Legal business name is required."); return; }
+      setError(""); setStep(3); return;
+    }
+    submit();
+  }
+
   return (
     <Drawer
       open
       onClose={onClose}
       width="md"
-      title="Create AI underwriter lead"
+      title={`Create AI intake · ${step === 1 ? "File type" : step === 2 ? "Client and entity" : "Review"}`}
       bodyClass="grid g10"
       footer={
         <>
-          <Btn onClick={onClose} disabled={creating}>Cancel</Btn>
+          {step > 1 ? <Btn onClick={() => { setError(""); setStep((value) => value - 1); }} disabled={creating}>Back</Btn> : <Btn onClick={onClose} disabled={creating}>Cancel</Btn>}
           <span className="sp" />
-          <Btn variant="pri" onClick={submit} disabled={creating}>
-            {creating ? <><Spinner /> Creating…</> : "Create lead"}
+          <Btn variant="pri" onClick={next} disabled={creating}>
+            {creating ? <><Spinner /> Creating…</> : step === 3 ? "Create file and open Step 1" : "Continue"}
           </Btn>
         </>
       }
     >
-      <p className="sub">
-        Create a lead on behalf of a client and start underwriting now. The client can log in later with this email (they receive a secure code by email).
-      </p>
-
-      <div className="fldgrid two">
-        <Field label="Lead type">
-          <Select value={variant} onChange={(e) => setVariant(e.target.value as LeadVariant)}>
-            <option value="dealer">Dealer</option>
-            <option value="real_estate">Real estate</option>
-            <option value="main_street">Main Street (operating business)</option>
-            <option value="mca_refinance">MCA refinance</option>
-          </Select>
-        </Field>
-        <Field label="Preferred language (client)">
-          <Select value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value as "en" | "es")}>
-            <option value="en">English</option>
-            <option value="es">Español (Spanish)</option>
-          </Select>
-        </Field>
-      </div>
-
-      <div className="fldgrid two">
-        <Field label="Client full name *">
-          <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" />
-        </Field>
-        <Field label="Client email *">
-          <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" />
-        </Field>
-        <Field label="Phone">
-          <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" />
-        </Field>
-        {!isRE ? (
-          <Field label="Business name">
-            <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Dealership / business" />
-          </Field>
-        ) : (
-          <Field label="Investor / entity name">
-            <Input value={investorName} onChange={(e) => setInvestorName(e.target.value)} placeholder="Holdings LLC" />
-          </Field>
-        )}
-      </div>
-
+      <DrawerSteps steps={["File type", "Client and entity", "Review"]} current={step} />
+      {step === 1 ? <>
+        <p className="sub">Start with the file classification. This controls requirements, evidence, and program screening.</p>
+        <div className="fldgrid two"><Field label="Lead type"><Select value={variant} onChange={(e) => setVariant(e.target.value as LeadVariant)}><option value="dealer">Dealer</option><option value="real_estate">Real estate</option><option value="main_street">Main Street (operating business)</option><option value="mca_refinance">MCA refinance</option></Select></Field><Field label="Preferred language"><Select value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value as "en" | "es")}><option value="en">English</option><option value="es">Spanish</option></Select></Field></div>
       {isMS ? (
         <div className="fldgrid two">
           <Field label="Industry *">
@@ -2381,13 +2290,15 @@ function CreateLeadModal({
               ? "These decide the document checklist and which programs get screened, so they are worth getting right at creation."
               : "This is a qualification conversation, not a loan file — no documents will be requested and no fundability verdict is computed."}
           </p>
-          <p className="sub" style={{ gridColumn: "1 / -1" }}>
-            Operating-business leads have no client-facing room yet, so no login link is sent. Work the file from here.
-          </p>
         </div>
-      ) : null}
+      ) : null}</> : null}
 
-      {isRE ? (
+      {step === 2 ? <>
+        <p className="sub">The client and legal entity anchor ownership, private credit links, bank evidence, and the secure room.</p>
+        <div className="fldgrid two"><Field label="Client full name"><Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" /></Field><Field label="Personal email"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" /></Field><Field label="Personal phone"><Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Required for 20%+ owners" /></Field>{!isRE ? <Field label="Legal business name"><Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Business LLC" /></Field> : <Field label="Investor / entity name"><Input value={investorName} onChange={(e) => setInvestorName(e.target.value)} placeholder="Holdings LLC" /></Field>}</div>
+      </> : null}
+
+      {step === 3 && isRE ? (
         <div className="fldgrid two">
           <div style={{ gridColumn: "1 / -1" }}>
             <Field label="Target property address">
@@ -2411,11 +2322,11 @@ function CreateLeadModal({
           </Field>
         </div>
       ) : null}
-
-      <label className={cx("pick", notifyClient && "on")}>
-        <input type="checkbox" checked={notifyClient} onChange={(e) => setNotifyClient(e.target.checked)} />
-        Email the client a secure login/resume link now
-      </label>
+      {step === 3 ? <>
+        <div className="create-intake-review"><div><span>File type</span><b>{variantLabel(variant)}</b></div><div><span>Client</span><b>{fullName || "Not entered"}</b></div><div><span>Entity</span><b>{isRE ? investorName || "Not entered" : businessName || "Not entered"}</b></div><div><span>Primary email</span><b>{email || "Not entered"}</b></div></div>
+        <Callout tone="acc" icon={<Icon name="arrowR" size={16} />}>After creation, the file opens at Step 1 to allocate up to five owners. Credit and bank invitations remain blocked until ownership totals exactly 100.00%.</Callout>
+        <label className={cx("pick", notifyClient && "on")}><input type="checkbox" checked={notifyClient} onChange={(e) => setNotifyClient(e.target.checked)} />Email the client a secure login/resume link now</label>
+      </> : null}
 
       {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
     </Drawer>

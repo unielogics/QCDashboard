@@ -38,6 +38,7 @@ import { ClientLoanChatTab } from "./components/ClientLoanChatTab";
 import { ClientTodoTab } from "./tabs/ClientTodoTab";
 import { LoanChatTab } from "./components/LoanChatTab";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { ApplicationVerificationWorkspace } from "@/components/application/ApplicationVerificationWorkspace";
 
 const INTERNAL_TABS = [
   // Property tab merged into Funding File — property details now sit
@@ -45,6 +46,7 @@ const INTERNAL_TABS = [
   // Underwriting tab also folded into Funding File since the UW
   // sizing + warnings panel is already part of the file-readiness view.
   { id: "file", label: "Funding File", icon: "file" as const },
+  { id: "verification", label: "Verification", icon: "shieldChk" as const },
   { id: "terms", label: "Criteria", icon: "sliders" as const },
   { id: "docs", label: "Documents", icon: "doc" as const },
   { id: "workflow", label: "Conditions", icon: "cal" as const },
@@ -58,6 +60,7 @@ const INTERNAL_TABS = [
 
 const AGENT_TABS = [
   { id: "agent", label: "Client Status", icon: "clients" as const },
+  { id: "verification", label: "Verification", icon: "shieldChk" as const },
   // Broker access to the 4-mode loan chat (Live Chat / Ask Elara /
   // Suggest / Instruct) — same surface super_admin gets, rendered
   // inline as a tab rather than via the slide-out.
@@ -232,6 +235,7 @@ export default function LoanDetailPage() {
       {activeTab === "file" && (
         <FundingFileTab loan={loan} docs={docs} activity={activity} canEdit={canTransitionStage} onOpenTab={openLoanArea} />
       )}
+      {activeTab === "verification" && <ApplicationVerificationWorkspace sourceKind="loan" sourceId={loan.id} />}
       {activeTab === "agent" && <AgentLoanMirror loan={loan} docs={docs} activity={activity} />}
       {activeTab === "messages" && currentUser && (
         <ClientLoanChatTab loanId={loan.id} user={currentUser} />

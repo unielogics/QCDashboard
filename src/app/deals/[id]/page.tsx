@@ -42,9 +42,11 @@ import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { Drawer } from "@/components/ds/Drawer";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import { UnifiedFileWorkspace } from "@/components/operator/UnifiedFileWorkspace";
+import { ApplicationVerificationWorkspace } from "@/components/application/ApplicationVerificationWorkspace";
 
 const TAB_ORDER = [
   { id: "file", label: "File", icon: "layers" as const },
+  { id: "verification", label: "Verification", icon: "shieldChk" as const },
   { id: "property", label: "Property", icon: "home" as const },
   { id: "ai", label: "Elara", icon: "spark" as const },
   { id: "chat", label: "Chat", icon: "chat" as const },
@@ -215,6 +217,7 @@ export default function DealPage() {
 
       {activeTab === "file" && unifiedDetail ? <UnifiedFileWorkspace detail={unifiedDetail} onManageEvidence={() => setLinkOpen(true)} /> : null}
       {activeTab === "file" && !unifiedDetail ? <div className="empty">Loading logical file...</div> : null}
+      {activeTab === "verification" ? <ApplicationVerificationWorkspace sourceKind="deal" sourceId={deal.id} /> : null}
 
       {activeTab === "property" ? (
         <PropertyTab deal={deal} requiredFieldRows={fieldFill.property} />

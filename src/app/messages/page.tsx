@@ -18,6 +18,7 @@ import { ThreadChatView } from "@/components/messages/ThreadChatView";
 import type { AIChatThread, Loan } from "@/lib/types";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
+import { UnifiedMessagesInbox } from "@/components/communications/UnifiedMessagesInbox";
 
 // Per-role attribution for outbound messages. Architecture decision #6 —
 // Agent-side messages should be labeled from the Agent (the Borrower sees
@@ -63,7 +64,7 @@ export default function MessagesPage() {
   if (isClient) {
     return <BorrowerMessagesView />;
   }
-  return <OperatorMessagesView />;
+  return <UnifiedMessagesInbox />;
 }
 
 
