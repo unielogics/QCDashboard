@@ -1012,11 +1012,20 @@ button.pick { width: 100%; text-align: left; }
 }
 
 .settings-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: start; }
+.settings-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 2px 0 4px; }
+.settings-section-head h2 { margin: 0; font-size: 18px; line-height: 1.25; }
+.booking-settings-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 16px; align-items: start; }
+@media (max-width: 1180px) {
+  .booking-settings-workspace { grid-template-columns: 1fr; }
+  .booking-settings-workspace > :last-child { position: static !important; }
+}
 @media (max-width: 760px) {
   .settings-layout { grid-template-columns: 1fr; }
   .settings-layout > .card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .settings-layout > .card > hr { display: none; }
   .settings-layout .pick, .settings-layout .toollink { min-width: 0; }
+  .settings-layout > .card > .lbl { grid-column: 1 / -1; }
+  .settings-section-head { align-items: flex-start; flex-direction: column; }
 }
 
 /* A popover holding a PANEL rather than a list of menu items — the

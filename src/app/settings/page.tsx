@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { Icon } from "@/components/design-system/Icon";
 import { QC_FMT } from "@/lib/fmt";
@@ -66,6 +66,7 @@ import type {
 } from "@/lib/types";
 import { useInitSignatureUpload } from "@/hooks/useApi";
 import { DealAnalyzerSection } from "./DealAnalyzerSection";
+import { BookingPageSettingsSection } from "@/components/settings/BookingPageSettingsSection";
 
 // Doc Checklists + AI Cadence are reachable via deep-link from the
 // Lending AI portal (/admin/lending-ai → Legacy tiles) but no longer
@@ -73,6 +74,7 @@ import { DealAnalyzerSection } from "./DealAnalyzerSection";
 const SECTIONS = [
   { id: "checklists", label: "Doc checklists", icon: "vault" as const, hidden: true },
   { id: "cadence", label: "AI cadence", icon: "ai" as const, hidden: true },
+  { id: "booking", label: "Booking page", icon: "cal" as const, hidden: false },
   { id: "referrals", label: "Referrals", icon: "user" as const, hidden: false },
   { id: "pricing", label: "Pricing", icon: "rates" as const, hidden: false },
   { id: "simulator", label: "Simulator", icon: "calc" as const, hidden: false },
@@ -111,6 +113,7 @@ function defaultChecklist(loanType: string): LoanTypeChecklist {
 
 export default function SettingsPage() {
   const profile = useActiveProfile();
+  const router = useRouter();
   const searchParams = useSearchParams();
   // Deep-link: /settings?section=cadence opens that section directly.
   // Used by /admin/lending-ai legacy tiles to route into the right
@@ -210,6 +213,18 @@ export default function SettingsPage() {
 
   const canEdit = profile.role === Role.SUPER_ADMIN;
 
+  useEffect(() => {
+    const requested = searchParams.get("section");
+    if (requested && SECTIONS.some((item) => item.id === requested) && requested !== section) {
+      setSection(requested as SectionId);
+    }
+  }, [searchParams, section]);
+
+  const selectSection = (next: SectionId) => {
+    setSection(next);
+    router.replace(`/settings?section=${next}`, { scroll: false });
+  };
+
   const flash = (msg: string, isError = false) => {
     setSavedFlash(isError ? null : msg);
     setErrFlash(isError ? msg : null);
@@ -254,7 +269,7 @@ export default function SettingsPage() {
     <div className="grid">
       <PageHeader
         title="Settings"
-        lede={canEdit ? "Super-admin configuration" : "Read-only"}
+        lede={section === "booking" ? "Account scheduling and availability" : canEdit ? "Super-admin configuration" : "Read-only"}
         actions={<>{canEdit && currentSettingsKey ? <Btn variant="pri" onClick={() => handleSaveSection(currentSettingsKey)} disabled={!dirty || update.isPending}><Icon name="check" size={13} /> {update.isPending ? "Saving..." : "Save changes"}</Btn> : null}<PageActionMenu items={[{ label: "Lending AI", href: "/admin/lending-ai" }, { label: "Elara usage and controls", href: "/admin/token-usage" }]} /></>}
       />
       <Row>
@@ -279,6 +294,20 @@ export default function SettingsPage() {
           twelve cockpit columns, so this grid stays inline. */}
       <div className="settings-layout">
         <div className="card">
+          <div className="lbl" style={{ padding: "5px 8px 2px" }}>Account</div>
+          {SECTIONS.filter(s => !s.hidden && s.id === "booking").map((s) => (
+            <button
+              key={s.id}
+              onClick={() => selectSection(s.id)}
+              className={cx("pick", section === s.id && "on")}
+              style={{ width: "100%", textAlign: "left", font: "inherit" }}
+            >
+              <Icon name={s.icon} size={14} />
+              <span className="sp">{s.label}</span>
+            </button>
+          ))}
+          <hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: "6px 4px" }} />
+          <div className="lbl" style={{ padding: "5px 8px 2px" }}>Firm configuration</div>
           {/* Lending AI — the canonical home for AI configuration.
               Routes away (not an in-page section). Sits at the top of
               the sidebar so it's the first thing admins reach for.
@@ -295,10 +324,10 @@ export default function SettingsPage() {
           </Link>
           <hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: "6px 4px" }} />
 
-          {SECTIONS.filter(s => !s.hidden).map((s) => (
+          {SECTIONS.filter(s => !s.hidden && s.id !== "booking").map((s) => (
             <button
               key={s.id}
-              onClick={() => setSection(s.id)}
+              onClick={() => selectSection(s.id)}
               // `.pick` (+ `.on`) is the sheet's selectable row: it owns the
               // frame, the hover and the selected tint. A <button> inherits
               // none of width, alignment or font from it.
@@ -329,6 +358,8 @@ export default function SettingsPage() {
               </div>
             </WarnLine>
           ) : null}
+
+          {section === "booking" && <BookingPageSettingsSection embedded />}
 
           {section === "checklists" && (
             <ChecklistsSection

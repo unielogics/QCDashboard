@@ -131,7 +131,7 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
           { label: "Agreements", href: "/admin/agreements", icon: "docCheck", desc: "Contract templates and status" },
           { label: "Dealer messages", href: "/admin/dealer-messages", icon: "chat", desc: "Partner channel", },
           { label: "Rewards", href: "/rewards", icon: "trophy", desc: "Referral incentives" },
-          { label: "Booking page", href: "/booking-settings", icon: "link", desc: "Your public scheduling link" },
+          { label: "Booking page", href: "/settings?section=booking", icon: "link", desc: "Your public scheduling link" },
         ],
       },
     ],

@@ -6,32 +6,39 @@ import { Icon } from "@/components/design-system/Icon";
 import {
   Btn,
   CellChip,
+  Field,
   IconBtn,
   Input,
   Kpi,
   PageHeader,
   Panel,
   Seg,
+  StatusLine,
   Tag,
   Textarea,
   type ChipTone,
 } from "@/components/ds";
+import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
 import {
   useAITasks,
+  useBookingLink,
   useBookingSettings,
   useCalendar,
   useCalendarActivity,
+  useClients,
   useCurrentUser,
   useDeleteCalendarEvent,
   useDocuments,
   useLoans,
+  useShareBookingInvite,
   useUpdateCalendarEvent,
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
-import type { AITask, CalendarActivityItem, CalendarEvent, Document, Loan, UserBookingSettings } from "@/lib/types";
+import type { AITask, CalendarActivityItem, CalendarEvent, Client, Document, Loan, UserBookingSettings } from "@/lib/types";
 import { EventModal } from "./components/EventModal";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
+import { apiErrorMessage, parseEmails } from "@/components/email/EmailComposer";
 
 type Window = 7 | 30 | 90;
 const WINDOWS: { id: Window; label: string }[] = [
@@ -50,9 +57,13 @@ const DEFAULT_DAY_END_MINUTE = 20 * 60;
 export default function CalendarPage() {
   const [windowDays, setWindowDays] = useState<Window>(7);
   const [createOpen, setCreateOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [nowTs, setNowTs] = useState(() => Date.now());
   const { data: user } = useCurrentUser();
   const isClient = user?.role === Role.CLIENT;
+  const bookingSettingsHref = user?.role === Role.SUPER_ADMIN
+    ? "/settings?section=booking"
+    : "/booking-settings";
   const isRegionalManager = user?.role === Role.REGIONAL_MANAGER;
 
   useEffect(() => {
@@ -80,6 +91,8 @@ export default function CalendarPage() {
   const { data: events = [] } = useCalendar(queryWindow);
   const { data: activity = [] } = useCalendarActivity(activityWindow);
   const { data: bookingSettings } = useBookingSettings();
+  const { data: bookingLink } = useBookingLink();
+  const { data: clients = [] } = useClients();
   const { data: tasks = [] } = useAITasks();
   const { data: docs = [] } = useDocuments();
   const { data: loans = [] } = useLoans();
@@ -142,6 +155,11 @@ export default function CalendarPage() {
               options={WINDOWS.map((w) => ({ value: String(w.id), label: w.label }))}
             />
             {!isClient && (
+              <Btn onClick={() => setShareOpen(true)}>
+                <Icon name="send" size={14} /> Share invite
+              </Btn>
+            )}
+            {!isClient && (
               <Btn variant="pri" onClick={() => setCreateOpen(true)}>
                 <Icon name="plus" size={14} /> New event
               </Btn>
@@ -156,6 +174,17 @@ export default function CalendarPage() {
         }
       />
       {!isClient && <EventModal open={createOpen} onClose={() => setCreateOpen(false)} />}
+      {!isClient && (
+        <BookingInviteDrawer
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          booking={bookingSettings ?? null}
+          canonicalUrl={bookingLink?.url ?? null}
+          hostName={user?.name || user?.email || "Qualified Commercial"}
+          clients={clients}
+          settingsHref={bookingSettingsHref}
+        />
+      )}
 
       <div className="daily-split calendar-split">
         <div className="grid">
@@ -187,7 +216,12 @@ export default function CalendarPage() {
           ) : (
             <>
               <TodosRail todos={todos} windowDays={windowDays} />
-              <CalendarShareCard booking={bookingSettings ?? null} />
+              <CalendarShareCard
+                booking={bookingSettings ?? null}
+                canonicalUrl={bookingLink?.url ?? null}
+                onShare={() => setShareOpen(true)}
+                settingsHref={bookingSettingsHref}
+              />
             </>
           )}
         </div>
@@ -196,76 +230,38 @@ export default function CalendarPage() {
   );
 }
 
-function CalendarShareCard({ booking }: { booking: UserBookingSettings | null }) {
-  const [copied, setCopied] = useState<"url" | "message" | null>(null);
+function CalendarShareCard({
+  booking,
+  canonicalUrl,
+  onShare,
+  settingsHref,
+}: {
+  booking: UserBookingSettings | null;
+  canonicalUrl: string | null;
+  onShare: () => void;
+  settingsHref: string;
+}) {
   const bookingPath = booking?.enabled && booking.slug ? `/book/${booking.slug}` : null;
-  const bookingUrl = bookingPath && typeof window !== "undefined" ? `${window.location.origin}${bookingPath}` : bookingPath;
-  const inviteText = bookingUrl
-    ? `Book a meeting with me here:\n${bookingUrl}`
-    : "";
-
-  const copyText = async (value: string, kind: "url" | "message") => {
-    if (!value) return;
-    await navigator.clipboard.writeText(value);
-    setCopied(kind);
-    window.setTimeout(() => setCopied(null), 1600);
-  };
+  const bookingUrl = canonicalUrl || (
+    bookingPath && typeof window !== "undefined" ? `${window.location.origin}${bookingPath}` : bookingPath
+  );
 
   return (
     <Panel
-      title="Booking link"
-      actions={
-        bookingUrl ? (
-          <IconBtn
-            onClick={() => copyText(bookingUrl, "url")}
-            title="Copy booking link"
-            aria-label="Copy booking link"
-            // Dynamic, state-derived: the button turns green for the ~1.6s the
-            // "copied" flag is up. `.btn` owns the resting colour.
-            style={copied === "url" ? { color: "var(--ok)" } : undefined}
-          >
-            <Icon name={copied === "url" ? "check" : "link"} size={13} />
-          </IconBtn>
-        ) : null
-      }
+      title="Public booking page"
+      actions={<CellChip tone={bookingUrl ? "ok" : "mut"}>{bookingUrl ? "Active" : "Not configured"}</CellChip>}
     >
       {bookingUrl ? (
         <>
           <div className="sub">
-            Copy this page into email, SMS, or chat. Booked calls land on this calendar.
+            Send this page to clients so they can choose an available time. Confirmed bookings land here automatically.
           </div>
           <div className="row mt">
-            <Input
-              grow
-              readOnly
-              value={bookingUrl}
-              onFocus={(event) => event.currentTarget.select()}
-              onClick={(event) => event.currentTarget.select()}
-            />
-            <Btn onClick={() => copyText(bookingUrl, "url")}>
-              <Icon name={copied === "url" ? "check" : "link"} size={12} />
-              {copied === "url" ? "Copied" : "Copy URL"}
-            </Btn>
-          </div>
-          <Textarea
-            className="mt"
-            readOnly
-            value={inviteText}
-            onFocus={(event) => event.currentTarget.select()}
-            onClick={(event) => event.currentTarget.select()}
-            rows={3}
-            style={{ width: "100%", resize: "none" }}
-          />
-          <div className="row mt">
-            <Btn onClick={() => copyText(inviteText, "message")}>
-              <Icon name={copied === "message" ? "check" : "send"} size={12} />
-              {copied === "message" ? "Copied message" : "Copy message"}
+            <Btn variant="pri" onClick={onShare}>
+              <Icon name="send" size={12} /> Share invite
             </Btn>
             <Link href={bookingPath ?? "/calendar"} target="_blank" className="btn">
-              <Icon name="external" size={12} /> Open
-            </Link>
-            <Link href="/booking-settings" className="btn">
-              <Icon name="gear" size={12} /> Configure
+              <Icon name="external" size={12} /> Preview page
             </Link>
           </div>
         </>
@@ -275,7 +271,7 @@ function CalendarShareCard({ booking }: { booking: UserBookingSettings | null })
             Your public booking page is not enabled yet. Configure it once, then the share link will appear here.
           </div>
           <div className="row mt">
-            <Link href="/booking-settings" className="btn pri">
+          <Link href={settingsHref} className="btn pri">
               <Icon name="cal" size={12} /> Configure booking page
             </Link>
           </div>
@@ -283,6 +279,271 @@ function CalendarShareCard({ booking }: { booking: UserBookingSettings | null })
       )}
     </Panel>
   );
+}
+
+type BookingInviteStep = "compose" | "review" | "sent";
+
+function BookingInviteDrawer({
+  open,
+  onClose,
+  booking,
+  canonicalUrl,
+  hostName,
+  clients,
+  settingsHref,
+}: {
+  open: boolean;
+  onClose: () => void;
+  booking: UserBookingSettings | null;
+  canonicalUrl: string | null;
+  hostName: string;
+  clients: Client[];
+  settingsHref: string;
+}) {
+  const share = useShareBookingInvite();
+  const bookingPath = booking?.enabled && booking.slug ? `/book/${booking.slug}` : null;
+  const bookingUrl = canonicalUrl || (
+    bookingPath && typeof window !== "undefined" ? `${window.location.origin}${bookingPath}` : bookingPath
+  );
+  const [step, setStep] = useState<BookingInviteStep>("compose");
+  const [to, setTo] = useState("");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setStep("compose");
+    setTo("");
+    setSubject(`Book a meeting with ${hostName}`);
+    setBody(buildBookingInviteBody(hostName, bookingUrl));
+    setNotice(null);
+    share.reset();
+    // `share` is a mutation object and changes identity between renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, bookingUrl, hostName]);
+
+  const parsed = parseEmails(to);
+  const emailCopy = `Subject: ${subject.trim()}\n\n${body.trim()}`;
+  const mailto = parsed.valid.length > 0
+    ? `mailto:${parsed.valid.join(",")}?subject=${encodeURIComponent(subject.trim())}&body=${encodeURIComponent(body.trim())}`
+    : "";
+
+  const copy = async (value: string, label: string) => {
+    if (!value) return;
+    try {
+      await copyToClipboard(value);
+      setNotice({ tone: "ok", text: `${label} copied.` });
+    } catch {
+      setNotice({ tone: "warn", text: "Copy was blocked by the browser. Select the text and copy it manually." });
+    }
+  };
+
+  const review = () => {
+    if (parsed.invalid.length > 0) {
+      setNotice({ tone: "warn", text: `Fix these email addresses: ${parsed.invalid.join(", ")}` });
+      return;
+    }
+    if (parsed.valid.length === 0) {
+      setNotice({ tone: "warn", text: "Choose a client or enter at least one email address." });
+      return;
+    }
+    if (!subject.trim() || !body.trim()) {
+      setNotice({ tone: "warn", text: "Add a subject and message before reviewing the invite." });
+      return;
+    }
+    setNotice(null);
+    setStep("review");
+  };
+
+  const send = async () => {
+    setNotice(null);
+    try {
+      await share.mutateAsync({
+        to_emails: parsed.valid,
+        subject: subject.trim(),
+        body: body.trim(),
+      });
+      setStep("sent");
+    } catch (error) {
+      setNotice({ tone: "warn", text: apiErrorMessage(error, "The booking invite could not be sent.") });
+    }
+  };
+
+  const pickClientEmail = (value: string) => {
+    setTo(value);
+    const normalized = parseEmails(value).valid[0]?.toLowerCase();
+    const client = clients.find((row) => row.email?.toLowerCase() === normalized);
+    if (client && bookingUrl) setBody(buildBookingInviteBody(hostName, bookingUrl, client.name));
+    setNotice(null);
+  };
+
+  const footer = !bookingUrl ? (
+    <>
+      <Btn onClick={onClose}>Close</Btn>
+      <Link href={settingsHref} className="btn pri" onClick={onClose}>
+        <Icon name="gear" size={13} /> Configure booking page
+      </Link>
+    </>
+  ) : step === "compose" ? (
+    <>
+      <Btn onClick={onClose}>Cancel</Btn>
+      <Btn variant="pri" onClick={review}>
+        Review invite <Icon name="arrowR" size={13} />
+      </Btn>
+    </>
+  ) : step === "review" ? (
+    <>
+      <Btn onClick={() => setStep("compose")} disabled={share.isPending}>Back</Btn>
+      <Btn variant="pri" onClick={send} disabled={share.isPending}>
+        <Icon name="send" size={13} /> {share.isPending ? "Sending..." : "Send booking invite"}
+      </Btn>
+    </>
+  ) : (
+    <>
+      <Btn onClick={() => setStep("compose")}>Send another</Btn>
+      <Btn variant="pri" onClick={onClose}>Done</Btn>
+    </>
+  );
+
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Share booking invite"
+      sub="Let a client choose an available time from your public booking page."
+      width="md"
+      footer={<div className="row end">{footer}</div>}
+      ariaLabel="Share booking invite"
+    >
+      {!bookingUrl ? (
+        <div className="hintbox">
+          <span className="hintbox-i"><Icon name="cal" size={17} /></span>
+          <div>
+            <b>Your public booking page is not active.</b>
+            <div className="sub mt">Set your availability and enable the page before sending an invite.</div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <DrawerSteps steps={["Compose", "Review", "Sent"]} current={step === "compose" ? 1 : step === "review" ? 2 : 3} />
+
+          {step === "compose" ? (
+            <div className="grid">
+              <Field label="Booking page">
+                <div className="row">
+                  <Input grow readOnly value={bookingUrl} onFocus={(event) => event.currentTarget.select()} />
+                  <Btn onClick={() => copy(bookingUrl, "Booking link")}>
+                    <Icon name="copy" size={13} /> Copy link
+                  </Btn>
+                  <Link href={bookingPath ?? "/calendar"} target="_blank" className="btn iconbtn" aria-label="Preview booking page" title="Preview booking page">
+                    <Icon name="external" size={13} />
+                  </Link>
+                </div>
+              </Field>
+
+              <Field label="Client or recipient" hint="Choose a client from the suggestions or enter any valid email address.">
+                <Input
+                  list="calendar-booking-invite-clients"
+                  value={to}
+                  onChange={(event) => pickClientEmail(event.target.value)}
+                  placeholder="name@company.com"
+                  autoComplete="email"
+                />
+                <datalist id="calendar-booking-invite-clients">
+                  {clients.filter((client) => client.email).map((client) => (
+                    <option key={client.id} value={client.email ?? ""}>{client.name}</option>
+                  ))}
+                </datalist>
+              </Field>
+
+              <Field label="Subject">
+                <Input value={subject} maxLength={512} onChange={(event) => setSubject(event.target.value)} />
+              </Field>
+
+              <Field label="Message">
+                <Textarea
+                  value={body}
+                  maxLength={12_000}
+                  onChange={(event) => setBody(event.target.value)}
+                  rows={8}
+                  style={{ resize: "vertical" }}
+                />
+              </Field>
+
+              <div className="row">
+                <Btn onClick={() => copy(emailCopy, "Email text")}>
+                  <Icon name="copy" size={13} /> Copy email
+                </Btn>
+                <a className="btn" href={mailto || undefined} aria-disabled={!mailto || undefined} onClick={(event) => { if (!mailto) event.preventDefault(); }}>
+                  <Icon name="mail" size={13} /> Open email app
+                </a>
+                {typeof navigator !== "undefined" && typeof navigator.share === "function" ? (
+                  <Btn onClick={() => navigator.share({ title: subject, text: body, url: bookingUrl }).catch(() => undefined)}>
+                    <Icon name="send" size={13} /> Share
+                  </Btn>
+                ) : null}
+              </div>
+              {notice ? <StatusLine tone={notice.tone}>{notice.text}</StatusLine> : null}
+            </div>
+          ) : null}
+
+          {step === "review" ? (
+            <div className="grid">
+              <div className="kv"><span>Recipients</span><b>{parsed.valid.join(", ")}</b></div>
+              <div className="kv"><span>Subject</span><b>{subject.trim()}</b></div>
+              <div>
+                <div className="lbl">Message</div>
+                <div className="msg mt"><div className="msg-b" style={{ whiteSpace: "pre-wrap" }}>{body.trim()}</div></div>
+              </div>
+              <div className="warnline">
+                This email leaves immediately through your connected Gmail or the Qualified Commercial email service. It cannot be recalled and the delivery attempt is recorded.
+              </div>
+              {notice ? <StatusLine tone={notice.tone}>{notice.text}</StatusLine> : null}
+            </div>
+          ) : null}
+
+          {step === "sent" ? (
+            <div className="hintbox">
+              <span className="hintbox-i" style={{ color: "var(--ok)" }}><Icon name="check" size={18} /></span>
+              <div>
+                <b>Booking invite sent</b>
+                <div className="sub mt">The invite was sent to {parsed.valid.join(", ")}. Any confirmed appointment will appear on this calendar.</div>
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
+    </Drawer>
+  );
+}
+
+function buildBookingInviteBody(hostName: string, bookingUrl: string | null, recipientName?: string): string {
+  const greeting = recipientName ? `Hi ${recipientName.split(/\s+/)[0]},` : "Hi,";
+  return [
+    greeting,
+    "",
+    `Use my booking page to choose a time that works for you${hostName ? ` to meet with ${hostName}` : ""}.`,
+    bookingUrl ?? "",
+    "",
+    "Once you book, you will receive a calendar confirmation.",
+  ].join("\n");
+}
+
+async function copyToClipboard(value: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("Copy failed");
 }
 
 function TodayTimeline({

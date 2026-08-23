@@ -6672,6 +6672,30 @@ export function useBookingLink() {
   });
 }
 
+export type BookingInviteSharePayload = {
+  to_emails: string[];
+  subject: string;
+  body: string;
+};
+
+export type BookingInviteShareResult = {
+  ok: boolean;
+  detail: string | null;
+  message_id: string | null;
+  booking_url: string;
+};
+
+export function useShareBookingInvite() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (body: BookingInviteSharePayload) =>
+      apiCall<BookingInviteShareResult>("/me/booking-link/share", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
 export type ClientEmailPayload = { subject: string; body: string; cc_emails: string[] };
 export type ClientEmailResult = { ok: boolean; to_email: string; detail?: string | null };
 
