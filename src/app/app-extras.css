@@ -2155,6 +2155,105 @@ a.pick { color: inherit; text-decoration: none; }
   .vault-pager > .sub { width: 100%; }
 }
 
+/* ---------- prequalification review workspace ----------
+   The left side is one underwriting form, not a stack of dashboard cards.
+   Sections are separated by title rules and share one independently scrolling
+   surface while the letter preview and action bar remain in place. */
+.prequal-review-form-scroll {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  background: var(--surface);
+  padding: 0 30px 36px 32px;
+}
+.prequal-review-form-sheet {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+}
+.prequal-form-section {
+  padding: 28px 0 32px;
+  border-bottom: 1px solid var(--line2);
+}
+.prequal-form-section:first-child { padding-top: 24px; }
+.prequal-form-section:last-child { border-bottom: 0; padding-bottom: 12px; }
+.prequal-form-section-head {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  min-width: 0;
+}
+.prequal-form-section-number {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+.prequal-form-section-head h3 {
+  min-width: 0;
+  font-size: 17px;
+  line-height: 1.25;
+  color: var(--ink);
+}
+.prequal-form-section-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.prequal-form-section-body {
+  margin: 18px 0 0 42px;
+  min-width: 0;
+}
+.prequal-form-section-body > .sub:first-child {
+  max-width: 760px;
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.prequal-form-section .cg { row-gap: 18px; }
+.prequal-form-section .field {
+  width: 100%;
+  min-height: 42px;
+  font-size: 14px;
+}
+.prequal-form-section textarea.field {
+  min-height: 92px;
+  line-height: 1.5;
+}
+.prequal-form-section .lbl { display: block; margin-bottom: 7px; }
+.prequal-form-section .row > .lbl { margin-bottom: 0; }
+.prequal-form-section .kpis {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--sunken2);
+  gap: 0;
+}
+.prequal-form-section .kpis > .kpi {
+  min-height: 76px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.prequal-form-section .kpis > .kpi:last-child { border-right: 0; }
+.prequal-form-section.is-reference .prequal-form-section-number,
+.prequal-form-section.is-reference .prequal-form-section-head h3 { color: var(--muted); }
+.prequal-form-section.is-reference .prequal-form-section-body b { font-size: 14px; }
+@media (max-width: 1240px) {
+  .prequal-review-form-scroll { padding-inline: 22px 18px; }
+  .prequal-form-section-body { margin-left: 0; }
+  .prequal-form-section-head { grid-template-columns: 26px minmax(0, 1fr) auto; }
+}
+
 /* ---------- the language gate ----------
    The first screen of /funding-review and /dealer-ai-underwriter: a stranger
    arrives from a marketing link and this is the entire page until they choose.

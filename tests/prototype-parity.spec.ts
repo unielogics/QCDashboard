@@ -130,6 +130,92 @@ test("floating page headers meet the global top bar without a ground gap", async
   expect(Math.abs((edges.topBottom ?? 0) - (edges.pageHeaderTop ?? 0))).toBeLessThanOrEqual(1);
 });
 
+test("prequalification review is one readable independently scrolling form", async ({ page }, testInfo) => {
+  test.skip(
+    !["desktop-1600", "compact-1280"].includes(testInfo.project.name),
+    "The underwriting workspace is checked at its wide and shortest supported desktop sizes.",
+  );
+  const request = {
+    id: "30000000-0000-0000-0000-000000000001",
+    loan_id: null,
+    requester_id: "30000000-0000-0000-0000-000000000002",
+    client_id: "30000000-0000-0000-0000-000000000003",
+    client_name: "Aisha Carter",
+    target_property_address: "149 Pomona Ave, Newark NJ 07112",
+    purchase_price: 120000,
+    requested_loan_amount: 300000,
+    arv_estimate: 525000,
+    sow_items: [
+      { category: "Structural", description: "Roof, framing, and masonry repairs", total_usd: 65000 },
+      { category: "Mechanical", description: "HVAC, electrical, and plumbing systems", total_usd: 54000 },
+      { category: "Interiors", description: "Kitchen, baths, flooring, and finishes", total_usd: 71000 },
+    ],
+    total_construction: 190000,
+    approved_arv: null,
+    approved_total_construction: null,
+    approved_purchase_price: null,
+    approved_loan_amount: null,
+    approved_scenario: null,
+    loan_type: "fix_flip",
+    expected_closing_date: "2026-11-20",
+    borrower_notes: "Rehabilitation includes structural, mechanical, and finish upgrades.",
+    admin_notes: null,
+    borrower_entity: "Pomona Avenue Holdings LLC",
+    status: "pending",
+    quote_number: null,
+    pdf_url: null,
+    reviewed_by: null,
+    reviewed_at: null,
+    created_at: "2026-08-22T16:00:00Z",
+    updated_at: "2026-08-22T16:00:00Z",
+    parent_prequal_request_id: null,
+    superseded_by_id: null,
+    source_analysis_run_id: null,
+    version_num: 1,
+  };
+  await page.route(/\/api\/v1\/admin\/prequal-requests(?:\?.*)?$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([request]) });
+  });
+
+  await openConsolePage(page, "/admin/prequal-requests");
+  await page.locator(".gridrow.act", { hasText: request.target_property_address }).click();
+  const dialog = page.getByRole("dialog", { name: "Review pre-qualification request" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".prequal-form-section")).toHaveCount(5);
+  await expect(dialog.locator(".prequal-review-form-scroll .panel")).toHaveCount(0);
+  await expect(dialog.getByRole("heading", { name: "Offer numbers" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Calculator scenario" })).toBeVisible();
+
+  const form = dialog.locator(".prequal-review-form-scroll");
+  const before = await form.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    overflowY: getComputedStyle(element).overflowY,
+  }));
+  expect(before.scrollHeight).toBeGreaterThan(before.clientHeight);
+  expect(before.overflowY).toBe("auto");
+  await form.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+
+  const after = await page.evaluate(() => {
+    const form = document.querySelector<HTMLElement>(".prequal-review-form-scroll");
+    const preview = document.querySelector<HTMLElement>(".prequal-review-body > :nth-child(2)");
+    const lastSection = document.querySelector<HTMLElement>(".prequal-form-section:last-child");
+    const footer = document.querySelector<HTMLElement>("[role='dialog'] > :last-child");
+    return {
+      formScrollTop: form?.scrollTop ?? 0,
+      previewScrollTop: preview?.scrollTop ?? 0,
+      lastSectionBottom: lastSection?.getBoundingClientRect().bottom ?? 0,
+      footerTop: footer?.getBoundingClientRect().top ?? 0,
+    };
+  });
+  expect(after.formScrollTop).toBeGreaterThan(0);
+  expect(after.previewScrollTop).toBe(0);
+  expect(after.lastSectionBottom).toBeLessThanOrEqual(after.footerTop);
+  await expect(dialog.getByRole("heading", { name: "Borrower’s submission" })).toBeVisible();
+  await assertStableGeometry(page);
+  await captureReviewImage(page, "prequalification-continuous-form", testInfo);
+});
+
 test("operator Vault groups bounded loan folders by borrower", async ({ page }, testInfo) => {
   test.skip(!["desktop-1600", "mobile-390"].includes(testInfo.project.name), "The Vault workspace is exercised at desktop and mobile widths.");
   const indexRequests: string[] = [];
