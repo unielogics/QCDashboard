@@ -943,6 +943,7 @@ function LeadDetailPanel({
   const [prototypeView, setPrototypeView] = useState<"workspace" | "communications" | "audit">("workspace");
   const [communicationChannel, setCommunicationChannel] = useState<"underwriter" | "client" | "partner" | "internal">("underwriter");
   const [submissionStep, setSubmissionStep] = useState(1);
+  const [contextRailOpen, setContextRailOpen] = useState(false);
   const [packageTab, setPackageTab] = useState<"summary" | "package" | "delivery">("summary");
   const headerUploadRef = useRef<HTMLInputElement>(null);
   const [headerUploading, setHeaderUploading] = useState(false);
@@ -988,6 +989,7 @@ function LeadDetailPanel({
     else setSubmissionStep(1);
     setPrototypeView("workspace");
     setCommunicationChannel("underwriter");
+    setContextRailOpen(false);
     setContactDraft({
       full_name: detail.intake.full_name || "",
       business_name: detail.intake.business_name || "",
@@ -1330,6 +1332,7 @@ function LeadDetailPanel({
           <div className={cx(
             "intake-file-body",
             "with-sequence",
+            !contextRailOpen && "context-collapsed",
           )}>
             <aside className="submission-rail">
               <Panel title="Submission sequence" sub={`Step ${submissionStep} of 6`}>
@@ -1391,28 +1394,43 @@ function LeadDetailPanel({
                 </Panel>
               ) : null}
             </main>
-            <aside className="grid intake-file-context">
-              <Panel
-                title="Contact"
-                actions={
-                  <IconBtn onClick={() => setContactEditOpen(true)} aria-label="Edit contact details" title="Edit contact details">
-                    <Icon name="pencil" size={14} />
+            {contextRailOpen ? (
+              <aside className="grid intake-file-context">
+                <div className="context-rail-toolbar">
+                  <span>File details</span>
+                  <IconBtn onClick={() => setContextRailOpen(false)} aria-label="Collapse file details" title="Collapse file details">
+                    <Icon name="chevR" size={15} />
                   </IconBtn>
-                }
-              >
-                <Line label="Legal entity / LLC" value={detail.intake.business_name || "-"} />
-                <Line label="Principal" value={detail.intake.full_name} />
-                <Line label="Email" value={detail.intake.email} />
-                <Line label="Mobile" value={detail.intake.phone || "-"} />
-                <Line label="Requested" value={formatMoney(detail.intake.requested_loan_amount)} />
-                <Line label="Purpose" value={detail.intake.loan_purpose || "-"} />
-                <Line label="Credit" value={detail.intake.estimated_credit_score ? String(detail.intake.estimated_credit_score) : "-"} />
-                <Line label="Source" value={detail.intake.referral_source || "Direct"} />
-                <Line label="Vertical" value={variantLabel(detail.intake.variant)} />
-              </Panel>
-              <ApplicationClassificationPanel sourceKind="intake" sourceId={detail.intake.id} />
-              <Panel title="Missing and blockers"><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No blockers listed." /></Panel>
-            </aside>
+                </div>
+                <Panel
+                  title="Contact"
+                  actions={
+                    <IconBtn onClick={() => setContactEditOpen(true)} aria-label="Edit contact details" title="Edit contact details">
+                      <Icon name="pencil" size={14} />
+                    </IconBtn>
+                  }
+                >
+                  <Line label="Legal entity / LLC" value={detail.intake.business_name || "-"} />
+                  <Line label="Principal" value={detail.intake.full_name} />
+                  <Line label="Email" value={detail.intake.email} />
+                  <Line label="Mobile" value={detail.intake.phone || "-"} />
+                  <Line label="Requested" value={formatMoney(detail.intake.requested_loan_amount)} />
+                  <Line label="Purpose" value={detail.intake.loan_purpose || "-"} />
+                  <Line label="Credit" value={detail.intake.estimated_credit_score ? String(detail.intake.estimated_credit_score) : "-"} />
+                  <Line label="Source" value={detail.intake.referral_source || "Direct"} />
+                  <Line label="Vertical" value={variantLabel(detail.intake.variant)} />
+                </Panel>
+                <ApplicationClassificationPanel sourceKind="intake" sourceId={detail.intake.id} />
+                <Panel title="Missing and blockers"><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No blockers listed." /></Panel>
+              </aside>
+            ) : (
+              <aside className="intake-file-context-collapsed">
+                <button type="button" className="context-rail-expand" onClick={() => setContextRailOpen(true)} aria-label="Expand file details" title="Expand file details">
+                  <Icon name="chevL" size={15} />
+                  <span>Details</span>
+                </button>
+              </aside>
+            )}
           </div>
         </>
       )}

@@ -1141,12 +1141,24 @@ button.pick { width: 100%; text-align: left; }
 .intake-tabs button.on { border-bottom-color: var(--accent); color: var(--ink); }
 .intake-file-body { display: grid; grid-template-columns: minmax(0, 1fr) 286px; gap: 14px; padding: 0 14px 14px; min-height: 0; overflow-y: auto; background: var(--bg); }
 .intake-file-body.with-sequence { grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) 286px; align-items: start; }
+.intake-file-body.with-sequence.context-collapsed { grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) 44px; }
 .intake-file-body.is-focus { grid-template-columns: minmax(0, 1fr); overflow: hidden; }
 .intake-underwriter-stage { min-height: 620px; height: calc(100dvh - 214px); }
 .lead-cockpit { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 14px; min-height: 0; height: 100%; }
 .submission-rail { position: sticky; top: 14px; align-self: start; }
 .intake-file-primary, .intake-file-context { padding-top: 14px; }
 .submission-rail { padding-top: 14px; }
+.intake-file-context { min-width: 0; }
+.context-rail-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
+.context-rail-toolbar > span { color: var(--muted); font-size: 10px; font-weight: 760; text-transform: uppercase; }
+.intake-file-context-collapsed { position: sticky; top: 14px; align-self: start; display: grid; justify-items: center; padding-top: 14px; }
+.context-rail-expand {
+  width: 42px; min-height: 156px; display: grid; grid-template-rows: auto 1fr; place-items: center; gap: 8px;
+  padding: 10px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+  color: var(--muted); box-shadow: var(--sh1); cursor: pointer;
+}
+.context-rail-expand:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-100); }
+.context-rail-expand span { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 10px; font-weight: 760; text-transform: uppercase; }
 .intake-communications { min-width: 0; display: grid; gap: 10px; }
 .intake-channel-tabs { display: flex; align-items: center; gap: 3px; padding: 4px; width: max-content; max-width: 100%; border: 1px solid var(--line); border-radius: var(--r); background: var(--sunken2); overflow-x: auto; }
 .intake-channel-tabs button { min-height: 33px; padding: 0 12px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-size: 11.5px; font-weight: 700; white-space: nowrap; cursor: pointer; }
@@ -1265,11 +1277,15 @@ button.pick { width: 100%; text-align: left; }
 @media (max-width: 640px) { .bank-evidence-stats { grid-template-columns: 1fr; } .bank-evidence-stats > div { border-right: 0; border-bottom: 1px solid var(--line); } .manual-bank-override { grid-template-columns: 1fr; } }
 @media (max-width: 1000px) {
   .intake-file-body, .intake-file-body.with-sequence { grid-template-columns: 1fr; }
+  .intake-file-body.with-sequence.context-collapsed { grid-template-columns: 1fr; }
   .intake-file-body.is-focus { overflow-y: auto; }
   .intake-underwriter-stage { min-height: 0; height: auto; }
   .lead-cockpit { grid-template-columns: minmax(0, 1fr); height: auto; }
   .lead-cockpit > .panel { min-height: 560px; }
-  .submission-rail { position: static; }
+  .submission-rail, .intake-file-context-collapsed { position: static; }
+  .intake-file-context-collapsed { justify-items: stretch; padding-top: 0; }
+  .context-rail-expand { width: 100%; min-height: 42px; grid-template-columns: auto 1fr; grid-template-rows: 1fr; padding: 0 12px; }
+  .context-rail-expand span { writing-mode: initial; transform: none; }
   .submission-steps { grid-template-columns: 1fr; }
   .submission-step b, .submission-step small { white-space: normal; }
 }
