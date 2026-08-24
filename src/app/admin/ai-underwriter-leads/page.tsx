@@ -986,7 +986,11 @@ function LeadDetailPanel({
   const [contextRailOpen, setContextRailOpen] = useState(false);
   const [packageTab, setPackageTab] = useState<"summary" | "package" | "delivery">("summary");
   const headerUploadRef = useRef<HTMLInputElement>(null);
+  const evidenceUploadRef = useRef<HTMLInputElement>(null);
+  const initializedLeadIdRef = useRef<string | null>(null);
   const [headerUploading, setHeaderUploading] = useState(false);
+  const [evidenceDragging, setEvidenceDragging] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("");
   const [profileVerification, setProfileVerification] = useState<FileOwnerRequirementState | null>(null);
   const [sendReviewOpen, setSendReviewOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
@@ -1031,7 +1035,12 @@ function LeadDetailPanel({
   const isRealEstate = detail?.intake.variant === "real_estate_dscr_v1";
 
   useEffect(() => {
-    if (!detail) return;
+    if (!detail) {
+      initializedLeadIdRef.current = null;
+      return;
+    }
+    if (initializedLeadIdRef.current === detail.intake.id) return;
+    initializedLeadIdRef.current = detail.intake.id;
     const rows = detail.artifacts ?? [];
     if (rows.some((item) => item.artifact_type === "lender_packet")) setSubmissionStep(5);
     else if (detail.latest_review?.status === "completed" || detail.intake.status === "reviewed") setSubmissionStep(4);
@@ -1252,13 +1261,16 @@ function LeadDetailPanel({
   async function uploadFromHeader(files: File[]) {
     if (!cockpitAdapter || !files.length) return;
     setHeaderUploading(true);
+    setUploadStatus(`Preparing ${files.length} file${files.length === 1 ? "" : "s"}...`);
     try {
-      for (const file of files) {
+      for (const [index, file] of files.entries()) {
+        setUploadStatus(`Uploading ${index + 1} of ${files.length}: ${file.name}`);
         const init = await cockpitAdapter.uploadInit({ requested_document_id: null, file_name: file.name, content_type: file.type || "application/octet-stream", size_bytes: file.size });
         const response = await fetch(init.upload_url, { method: "PUT", body: file, headers: init.required_headers });
         if (!response.ok) throw new Error(`${file.name} could not be uploaded.`);
         await cockpitAdapter.uploadComplete(init.file_id);
       }
+      setUploadStatus("Refreshing evidence...");
       const response = await cockpitAdapter.reload();
       onCockpitResponse(response);
       setSubmissionStep(2);
@@ -1268,7 +1280,9 @@ function LeadDetailPanel({
       toast.show(error instanceof Error ? error.message : "Upload failed");
     } finally {
       setHeaderUploading(false);
+      setUploadStatus("");
       if (headerUploadRef.current) headerUploadRef.current.value = "";
+      if (evidenceUploadRef.current) evidenceUploadRef.current.value = "";
     }
   }
 
@@ -1416,7 +1430,7 @@ function LeadDetailPanel({
             {submissionStep === 2 ? "Attach evidence" : submissionStep === 5 ? (rerunning ? "Reviewing..." : "Run AI review") : submissionStep === 6 ? "Build lender package" : submissionStep === 4 ? "Open business banking" : submissionStep === 3 ? "Open owner credit" : "Open ownership"}
           </Btn>
         ) : null}
-        <input ref={headerUploadRef} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.zip,image/*" onChange={(event) => void uploadFromHeader(Array.from(event.target.files ?? []))} />
+        <input ref={headerUploadRef} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.zip,.png,.jpg,.jpeg,.webp,.heic" onChange={(event) => void uploadFromHeader(Array.from(event.target.files ?? []))} />
         {detail ? <Btn disabled={headerUploading || !cockpitAdapter} onClick={() => headerUploadRef.current?.click()}><Icon name="upload" size={14} />{headerUploading ? "Uploading..." : "Upload"}</Btn> : null}
         {detail ? <Btn onClick={openDocumentRequest}><Icon name="send" size={14} />Request</Btn> : null}
         {detail ? <Select value={detail.intake.outcome_status} disabled={outcomeBusy} onChange={(event) => changeOutcomeStatus(event.target.value)} aria-label="Outcome status"><option value="submitted">Submitted</option><option value="closed">Closed</option><option value="denied">Denied</option></Select> : null}
@@ -1473,6 +1487,44 @@ function LeadDetailPanel({
               {prototypeView === "workspace" && submissionStep === 2 ? (
                 <Panel title="Evidence and data sources" sub="Navigate every accessible file without leaving the intake." actions={<Row><Btn onClick={() => setIngestPickerOpen(true)}>Add from Drive</Btn><Btn variant="pri" onClick={onLinkBucketIntake}>Attach another bucket</Btn></Row>}>
                   <div className="source-room"><div><CellChip tone="acc">Primary bucket</CellChip><strong>{detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"}</strong><span className="sub">{detail.files.length} primary files · supporting links are counted below</span></div><Link href={`/admin/buckets?bucket=${detail.intake.bucket_id}`} className="btn">Open bucket</Link></div>
+                  <input
+                    ref={evidenceUploadRef}
+                    type="file"
+                    hidden
+                    multiple
+                    aria-label="Upload evidence files"
+                    accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.zip,.png,.jpg,.jpeg,.webp,.heic"
+                    onChange={(event) => void uploadFromHeader(Array.from(event.target.files ?? []))}
+                  />
+                  <button
+                    type="button"
+                    className={cx("intake-evidence-dropzone", evidenceDragging && "dragging")}
+                    disabled={headerUploading || !cockpitAdapter}
+                    onClick={() => evidenceUploadRef.current?.click()}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      if (!headerUploading) setEvidenceDragging(true);
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "copy";
+                    }}
+                    onDragLeave={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setEvidenceDragging(false);
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      setEvidenceDragging(false);
+                      if (!headerUploading) void uploadFromHeader(Array.from(event.dataTransfer.files));
+                    }}
+                  >
+                    <span className="intake-evidence-dropzone-icon"><Icon name="upload" size={21} /></span>
+                    <span className="intake-evidence-dropzone-copy">
+                      <b>{headerUploading ? uploadStatus || "Uploading evidence..." : "Drop evidence files or ZIP archives here"}</b>
+                      <small>{headerUploading ? "Keep this file open while the upload finishes." : "Files are added to the primary bucket. ZIP archives are unpacked and indexed in the background."}</small>
+                    </span>
+                    <span className="intake-evidence-browse-label">{headerUploading ? "Uploading" : "Browse computer"}</span>
+                  </button>
                   <div className="mt"><IntakeEvidenceBrowser intakeId={detail.intake.id} primaryBucketId={detail.intake.bucket_id} primaryBucketName={detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"} files={detail.files} /></div>
                   <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
                   <InfoBlock title="Evidence requirements and AI blockers"><div className="grid">{detail.requested_documents.map((doc) => <div key={doc.id} className="itemrow"><CellChip tone={doc.status === "uploaded" ? "ok" : "warn"}>{doc.status}</CellChip><strong className="sp">{doc.name}</strong><span className="sub">{doc.required ? "Required" : "Optional"}</span></div>)}</div><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No blockers listed in the latest review." /></InfoBlock>

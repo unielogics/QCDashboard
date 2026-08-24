@@ -107,6 +107,7 @@ async function mockAiIntakeBankingWorkspace(page: Page) {
   const intakeId = "20000000-0000-0000-0000-000000000001";
   const profileId = "20000000-0000-0000-0000-000000000002";
   const bucketId = "20000000-0000-0000-0000-000000000003";
+  const uploadedFiles: string[] = [];
   const lead = {
     id: intakeId,
     variant: "dealer_gatekeeper_v1",
@@ -156,6 +157,38 @@ async function mockAiIntakeBankingWorkspace(page: Page) {
   await page.route(new RegExp(`/api/v1/admin/ai-underwriter-leads/${intakeId}$`), async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ intake: lead, requested_documents: [], files: [], latest_review: { status: "completed", result: {} }, messages: [], artifacts: [], email_sends: [], notes: [], upload_url: null, secure_room_pin: null, room_delivery_status: "sent", room_delivery_detail: "Emailed." }) });
   });
+  await page.route(new RegExp(`/api/v1/admin/ai-underwriter-leads/${intakeId}/chat$`), async (route) => {
+    const requestBody = route.request().postDataJSON() as { message?: string };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        token: null,
+        session_token: null,
+        intake: lead,
+        requested_documents: [],
+        files: [],
+        latest_review: { status: "completed", result: {} },
+        messages: [
+          { id: "chat-user", role: "user", content: requestBody.message || "", created_at: "2026-08-24T18:00:00Z" },
+          { id: "chat-assistant", role: "assistant", content: "The response is grounded in the uploaded evidence.", created_at: "2026-08-24T18:00:01Z" },
+        ],
+        assistant_message: "The response is grounded in the uploaded evidence.",
+        widget: null,
+      }),
+    });
+  });
+  await page.route(new RegExp(`/api/v1/admin/ai-underwriter-leads/${intakeId}/files/upload-init$`), async (route) => {
+    const requestBody = route.request().postDataJSON() as { file_name: string };
+    uploadedFiles.push(requestBody.file_name);
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ file_id: `upload-${uploadedFiles.length}`, upload_url: `${BASE_URL}/mock-evidence-upload/${uploadedFiles.length}`, required_headers: {} }) });
+  });
+  await page.route(/\/mock-evidence-upload\/\d+$/, async (route) => {
+    await route.fulfill({ status: 200, body: "" });
+  });
+  await page.route(new RegExp(`/api/v1/admin/ai-underwriter-leads/${intakeId}/files/complete$`), async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+  });
   await page.route(/\/api\/v1\/application-profiles\/resolve$/, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: profileId, intake_id: intakeId, primary_bucket_id: bucketId, vertical: "dealer", owner_storage: "application" }) });
   });
@@ -177,7 +210,7 @@ async function mockAiIntakeBankingWorkspace(page: Page) {
   await page.route(/\/api\/v1\/me\/booking-link$/, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ enabled: false, slug: null, url: null }) });
   });
-  return { intakeId };
+  return { intakeId, uploadedFiles };
 }
 
 for (const [name, route] of [...ROUTES, ...DETAIL_ROUTES]) {
@@ -262,6 +295,49 @@ test("AI intake contact editor accepts uninterrupted typing", async ({ page }) =
   await email.pressSequentially("franco@theceosnetwork.com");
   await expect(email).toHaveValue("franco@theceosnetwork.com");
   await expect(email).toBeFocused();
+});
+
+test("AI intake chat responses preserve the active communications workspace", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "The live chat regression is exercised at the canonical viewport.");
+  const { intakeId } = await mockAiIntakeBankingWorkspace(page);
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("tab", { name: "Communications" }).click();
+  const composer = page.getByLabel("Message the AI underwriter");
+  await composer.fill("Summarize the current evidence");
+  await composer.press("Enter");
+  await expect(page.getByText("The response is grounded in the uploaded evidence.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Communications" })).toHaveAttribute("aria-selected", "true");
+  await expect(composer).toBeVisible();
+  await expect(page.getByText("Business bank evidence", { exact: true })).toBeHidden();
+});
+
+test("AI intake Evidence accepts bulk files and ZIP archives", async ({ page }, testInfo) => {
+  test.skip(!["desktop-1600", "mobile-390"].includes(testInfo.project.name), "The evidence upload workflow is exercised at desktop and mobile widths.");
+  const { intakeId, uploadedFiles } = await mockAiIntakeBankingWorkspace(page);
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: /^Evidence\s/ }).click();
+  const dropzone = page.getByRole("button", { name: /Drop evidence files or ZIP archives here/i });
+  await expect(dropzone).toBeVisible();
+  const input = page.getByLabel("Upload evidence files");
+  await expect(input).toHaveAttribute("multiple", "");
+  await expect(input).toHaveAttribute("accept", /\.zip/);
+  const dataTransfer = await page.evaluateHandle(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(["fixture zip"], "dragged-evidence.zip", { type: "application/zip" }));
+    return transfer;
+  });
+  await dropzone.dispatchEvent("drop", { dataTransfer });
+  await expect.poll(() => uploadedFiles).toEqual(["dragged-evidence.zip"]);
+  await input.setInputFiles([
+    { name: "initial-evidence.zip", mimeType: "application/zip", buffer: Buffer.from("fixture zip") },
+    { name: "business-tax-return.pdf", mimeType: "application/pdf", buffer: Buffer.from("fixture pdf") },
+  ]);
+  await expect(page.getByText("2 files uploaded", { exact: true })).toBeVisible();
+  expect(uploadedFiles).toEqual(["dragged-evidence.zip", "initial-evidence.zip", "business-tax-return.pdf"]);
+  await expect(page.getByRole("tab", { name: "File workspace" })).toHaveAttribute("aria-selected", "true");
+  await expect(dropzone).toBeVisible();
+  await assertStableGeometry(page);
+  await captureReviewImage(page, "ai-intake-evidence-upload", testInfo);
 });
 
 test("theme control swaps between light and Obsidian without shifting the page", async ({ page }, testInfo) => {
