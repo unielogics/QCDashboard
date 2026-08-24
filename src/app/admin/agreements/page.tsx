@@ -38,7 +38,7 @@ type AgreementRow = {
   party_name: string | null;
   party_email: string | null;
   party_company: string | null;
-  party_kind: "user" | "company" | "lead" | "client" | "unknown";
+  party_kind: "user" | "company" | "counterparty" | "lead" | "client" | "unknown";
   company_id: string | null;
   typed_name: string;
   signed_at: string | null;
@@ -66,6 +66,7 @@ const TYPE_FILTERS = [
   { value: "all", label: "All types" },
   { value: "platform_access", label: "Platform Access Agreement" },
   { value: "referral_protection", label: "Referral Protection Agreement" },
+  { value: "mutual_nda_non_circumvention", label: "Mutual NDA / Non-Circumvention" },
   { value: "contract_sba_engagement", label: "SBA Engagement Agreement" },
   { value: "contract_client_engagement", label: "Client Engagement Agreement" },
   { value: "contract_consulting_addendum", label: "Consulting Addendum" },
@@ -131,7 +132,7 @@ export default function AdminAgreementsPage() {
     <div className="grid">
       <PageHeader
         title="Agreements"
-        lede="Every e-signed agreement on the platform in one place -- Platform Access, Referral Protection, client-facing engagement contracts, credit authorizations, and payment pre-authorizations."
+        lede="Every e-signed agreement on the platform in one place -- including Mutual NDA / Non-Circumvention, Platform Access, Referral Protection, client engagement, credit, and payment authorizations."
       />
 
       <Panel>
