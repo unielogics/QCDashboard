@@ -1132,6 +1132,27 @@ button.pick { width: 100%; text-align: left; }
 .cktabs button.on, .cktabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 650; }
 
 /* AI intake file: the prototype's five-step submission workspace. */
+.workspace-hidden,
+.workspace-minimized { display: none !important; }
+.workspace-minimize-glyph { display: block; width: 14px; text-align: center; font-size: 18px; line-height: 1; font-weight: 800; }
+.workspace-minimized-dock {
+  position: fixed; right: 18px; bottom: 18px; z-index: 560;
+  width: min(430px, calc(100vw - 36px)); display: flex; align-items: center; gap: 8px;
+  padding: 9px; border: 1px solid var(--line2); border-radius: 10px;
+  background: var(--surface); box-shadow: var(--sh2);
+}
+.workspace-minimized-summary {
+  min-width: 0; flex: 1; display: flex; align-items: center; gap: 9px;
+  border: 0; background: transparent; color: var(--ink); text-align: left; font: inherit; cursor: pointer;
+}
+.workspace-minimized-summary > span:last-child { min-width: 0; display: grid; gap: 2px; }
+.workspace-minimized-summary b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.workspace-minimized-summary small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10.5px; }
+.workspace-minimized-mark {
+  width: 28px; height: 28px; display: grid; place-items: center; flex-shrink: 0;
+  border: 1px solid var(--line); border-radius: 7px; background: var(--accent-100);
+  color: var(--accent); font-size: 20px; line-height: 1; font-weight: 800;
+}
 .ai-intake-detail-shell { max-width: 1480px; margin: 0 auto; min-height: 0; }
 .intake-file { display: flex; flex-direction: column; min-height: calc(100dvh - 112px); }
 .intake-file-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
@@ -1361,6 +1382,8 @@ button.pick { width: 100%; text-align: left; }
   .bucket-review-navigator { border-right: 0; border-bottom: 1px solid var(--line); }
   .bucket-review-document { padding: 8px; }
   .ai-review-dock { right: 8px; bottom: 8px; width: calc(100vw - 16px); }
+  .workspace-minimized-dock { right: 8px; bottom: 8px; width: calc(100vw - 16px); }
+  .workspace-minimized-summary small { display: none; }
 }
 @media (max-width: 620px) {
   .intake-file-head { align-items: flex-start; flex-wrap: wrap; }

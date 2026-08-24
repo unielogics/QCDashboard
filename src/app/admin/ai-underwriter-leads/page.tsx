@@ -282,6 +282,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [linkLead, setLinkLead] = useState<LinkLead | null>(null);
+  const [leadDetailMinimized, setLeadDetailMinimized] = useState(false);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
@@ -314,6 +315,7 @@ export default function AdminAIUnderwriterLeadsPage() {
 
   async function openLead(id: string) {
     setSelectedId(id);
+    setLeadDetailMinimized(false);
     setDetailLoading(true);
     setNotice("");
     try {
@@ -495,6 +497,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   function closeLead() {
     setSelectedId(null);
     setDetail(null);
+    setLeadDetailMinimized(false);
     // Strip ?lead= so the modal does not auto-reopen from the deep-link effect.
     if (leadParam) router.replace("/admin/ai-underwriter-leads");
     // Reflect any in-modal re-run/uploads in the list.
@@ -675,12 +678,14 @@ export default function AdminAIUnderwriterLeadsPage() {
   if (me && me.role !== Role.SUPER_ADMIN) return null;
 
   const activeLeadId = selectedId;
+  const activeLeadTitle = detail?.intake.business_name || detail?.intake.full_name || "AI intake file";
   const selectedLeadPanel = activeLeadId ? (
     <LeadDetailPanel
       detail={detail}
       loading={detailLoading}
       initialNotesOpen={searchParams.get("notes") === "1"}
       onClose={closeLead}
+      onMinimize={() => setLeadDetailMinimized(true)}
       onExport={() => exportPdf(activeLeadId)}
       onGenerateSummary={() => generateExecutiveSummary(activeLeadId)}
       onGeneratePacket={() => generateLenderPacket(activeLeadId)}
@@ -741,18 +746,9 @@ export default function AdminAIUnderwriterLeadsPage() {
     </>
   );
 
-  if (selectedLeadPanel) {
-    return (
-      <div className="ai-intake-detail-shell">
-        {notice ? <WarnLine>{notice}</WarnLine> : null}
-        {selectedLeadPanel}
-        {leadOverlays}
-      </div>
-    );
-  }
-
   return (
-    <div style={{ height: "calc(100dvh - 105px)", maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: 0, overflow: "hidden" }}>
+    <>
+    <div className={cx("ai-intake-list-shell", selectedLeadPanel && !leadDetailMinimized && "workspace-hidden")} style={{ height: "calc(100dvh - 105px)", maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: 0, overflow: "hidden" }}>
       <div className="ckhead" style={{ flexShrink: 0 }}>
         <div className="ckrow">
           <h1>AI intake</h1>
@@ -844,8 +840,6 @@ export default function AdminAIUnderwriterLeadsPage() {
         }}
       />
 
-      {leadOverlays}
-
       {createOpen ? (
         <CreateLeadModal
           onClose={() => setCreateOpen(false)}
@@ -854,6 +848,29 @@ export default function AdminAIUnderwriterLeadsPage() {
         />
       ) : null}
     </div>
+    {selectedLeadPanel ? (
+      <div className={cx("ai-intake-detail-shell", leadDetailMinimized && "workspace-minimized")} aria-hidden={leadDetailMinimized}>
+        {notice ? <WarnLine>{notice}</WarnLine> : null}
+        {selectedLeadPanel}
+      </div>
+    ) : null}
+    {selectedLeadPanel && leadDetailMinimized ? (
+      <div className="workspace-minimized-dock" role="status" aria-live="polite">
+        <button type="button" className="workspace-minimized-summary" onClick={() => setLeadDetailMinimized(false)}>
+          <span className="workspace-minimized-mark">-</span>
+          <span>
+            <b>{activeLeadTitle}</b>
+            <small>AI intake workspace paused where you left off</small>
+          </span>
+        </button>
+        <Btn size="sm" variant="pri" onClick={() => setLeadDetailMinimized(false)}>Resume</Btn>
+        <IconBtn aria-label="Close minimized intake file" title="Close" onClick={closeLead}>
+          <Icon name="x" size={14} />
+        </IconBtn>
+      </div>
+    ) : null}
+    {leadOverlays}
+    </>
   );
 }
 
@@ -862,6 +879,7 @@ function LeadDetailPanel({
   loading,
   initialNotesOpen = false,
   onClose,
+  onMinimize,
   onExport,
   onGenerateSummary,
   onGeneratePacket,
@@ -887,6 +905,7 @@ function LeadDetailPanel({
   loading: boolean;
   initialNotesOpen?: boolean;
   onClose: () => void;
+  onMinimize: () => void;
   onExport: () => void;
   onGenerateSummary: () => Promise<void> | void;
   onGeneratePacket: () => Promise<void> | void;
@@ -1312,6 +1331,9 @@ function LeadDetailPanel({
           { label: "Dealer partner messages", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("partner"); }, hidden: !detail },
           { label: "Delete lead", onSelect: () => setConfirmDeleteOpen(true), tone: "danger", hidden: !detail },
         ]} />
+        <IconBtn aria-label="Minimize file workspace" title="Minimize" onClick={onMinimize}>
+          <span aria-hidden="true" className="workspace-minimize-glyph">-</span>
+        </IconBtn>
         <IconBtn aria-label="Close" title="Close" onClick={onClose}>
           <Icon name="x" size={16} />
         </IconBtn>

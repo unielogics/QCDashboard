@@ -45,6 +45,8 @@ export function BucketFileReviewPanel({
   loadReview,
   saveAnnotation,
   onClose,
+  onMinimize,
+  minimized = false,
   files = [],
   activeFileId,
   onSelectFile,
@@ -56,6 +58,8 @@ export function BucketFileReviewPanel({
   loadReview: () => Promise<BucketFileReview>;
   saveAnnotation: (payload: DraftRect & { comment: string }) => Promise<BucketFileAnnotation>;
   onClose: () => void;
+  onMinimize?: () => void;
+  minimized?: boolean;
   files?: BucketReviewFile[];
   activeFileId?: string | null;
   onSelectFile?: (fileId: string) => void;
@@ -258,7 +262,7 @@ export function BucketFileReviewPanel({
   }, [currentFileId, filteredFiles]);
 
   return (
-    <div className="bucket-review-shell">
+    <div className={cx("bucket-review-shell", minimized && "workspace-minimized")} aria-hidden={minimized}>
       <section className="bucket-review-workspace">
         {/* `.filehd-b` and not `.panel-h`: this is a file identity block —
             eyebrow, file name, meta on the left, actions on the right — and
@@ -300,6 +304,11 @@ export function BucketFileReviewPanel({
               <Icon name="x" size={14} />
               Delete
             </Btn>
+          ) : null}
+          {onMinimize ? (
+            <IconBtn onClick={onMinimize} aria-label="Minimize review" title="Minimize">
+              <span aria-hidden="true" className="workspace-minimize-glyph">-</span>
+            </IconBtn>
           ) : null}
           <IconBtn onClick={onClose} aria-label="Close review" title="Close review">
             <Icon name="x" size={15} />

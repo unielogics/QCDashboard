@@ -427,6 +427,7 @@ export default function BucketsAdminPage() {
   const [isAdminUploadDragging, setIsAdminUploadDragging] = useState(false);
   const [adminNote, setAdminNote] = useState("");
   const [reviewFile, setReviewFile] = useState<BucketFile | null>(null);
+  const [reviewMinimized, setReviewMinimized] = useState(false);
   const [activityRows, setActivityRows] = useState<Activity[]>([]);
   const [activityTotal, setActivityTotal] = useState(0);
   const [activityOffset, setActivityOffset] = useState(0);
@@ -498,6 +499,7 @@ export default function BucketsAdminPage() {
   function closeBucketDetail() {
     dismissedBucketParamRef.current = detail?.id || bucketParam;
     setReviewFile(null);
+    setReviewMinimized(false);
     setDetail(null);
     setDetailFocus(null);
     if (bucketParam) router.replace("/admin/buckets", { scroll: false });
@@ -1432,6 +1434,7 @@ export default function BucketsAdminPage() {
   async function openFile(file: BucketFile, download = false) {
     if (!detail) return;
     if (!download) {
+      setReviewMinimized(false);
       setReviewFile(file);
       return;
     }
@@ -1458,7 +1461,10 @@ export default function BucketsAdminPage() {
         return next;
       });
       setNotice("File deleted.");
-      setReviewFile((current) => (current?.id === file.id ? null : current));
+      if (reviewFile?.id === file.id) {
+        setReviewMinimized(false);
+        setReviewFile(null);
+      }
       await loadBucket(detail.id);
       await loadBuckets();
     } catch (error) {
@@ -3154,21 +3160,52 @@ export default function BucketsAdminPage() {
       {reviewFile ? (
         <BucketFileReviewPanel
           title="Admin file review"
+          minimized={reviewMinimized}
+          onMinimize={() => setReviewMinimized(true)}
           loadReview={() => loadAdminReview(reviewFile)}
           saveAnnotation={(payload) => saveAdminAnnotation(reviewFile, payload)}
           onDelete={() => {
             const file = reviewFile;
+            setReviewMinimized(false);
             setReviewFile(null);
             deleteFile(file).catch(() => undefined);
           }}
-          onClose={() => setReviewFile(null)}
+          onClose={() => {
+            setReviewMinimized(false);
+            setReviewFile(null);
+          }}
           files={visibleFiles}
           activeFileId={reviewFile.id}
           onSelectFile={(fileId) => {
             const next = visibleFiles.find((file) => file.id === fileId);
-            if (next) setReviewFile(next);
+            if (next) {
+              setReviewMinimized(false);
+              setReviewFile(next);
+            }
           }}
         />
+      ) : null}
+      {reviewFile && reviewMinimized ? (
+        <div className="workspace-minimized-dock" role="status" aria-live="polite">
+          <button type="button" className="workspace-minimized-summary" onClick={() => setReviewMinimized(false)}>
+            <span className="workspace-minimized-mark">-</span>
+            <span>
+              <b>{reviewFile.file_name}</b>
+              <small>{detail?.name ? `${detail.name} bucket review paused` : "Bucket review paused"}</small>
+            </span>
+          </button>
+          <Btn size="sm" variant="pri" onClick={() => setReviewMinimized(false)}>Resume</Btn>
+          <IconBtn
+            aria-label="Close minimized bucket review"
+            title="Close"
+            onClick={() => {
+              setReviewMinimized(false);
+              setReviewFile(null);
+            }}
+          >
+            <Icon name="x" size={14} />
+          </IconBtn>
+        </div>
       ) : null}
       <EmailComposer
         open={emailShare !== null}
