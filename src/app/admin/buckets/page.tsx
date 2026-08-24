@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
@@ -164,6 +164,9 @@ type Template = {
   save_to_library?: boolean;
 };
 type PackageKey = "standard" | "urchoice";
+type BucketDetailSection = "upload" | "tasks" | "notes" | "invites" | "vendors" | "shares" | "activity";
+type BucketFileKind = "all" | "pdf" | "image" | "spreadsheet" | "document" | "other";
+type BucketFileAssignment = "all" | "requested" | "general";
 type UploadInvite = { id: string; recipient_name: string; recipient_email: string; passcode: string };
 type UploadInviteLink = { id: string; name: string; email?: string; url: string; passcode: string };
 type UploadInitResponse = { file_id: string; upload_url: string; required_headers: Record<string, string> };
@@ -275,6 +278,18 @@ const ACTIVITY_ACTION_OPTIONS = [
 ];
 const ACTIVITY_ROLE_OPTIONS = ["super_admin", "uploader", "shared_user", "vendor", "system"];
 const ACTIVITY_TARGET_OPTIONS = ["bucket", "requested_document", "upload_link", "share", "vendor_access", "file", "note", "annotation", "ai_action_item"];
+function closedBucketSections(): Record<BucketDetailSection, boolean> {
+  return {
+    upload: false,
+    tasks: false,
+    notes: false,
+    invites: false,
+    vendors: false,
+    shares: false,
+    activity: false,
+  };
+}
+
 const URCHOICE_DEALER_DOCS: Template[] = [
   { id: "urchoice-formation", name: "Formation", category: "UrChoice Dealer Funding", required: true },
   { id: "urchoice-ein", name: "EIN", category: "UrChoice Dealer Funding", required: true },
@@ -355,6 +370,11 @@ export default function BucketsAdminPage() {
   const [detail, setDetail] = useState<BucketDetail | null>(null);
   const [detailFocus, setDetailFocus] = useState<DetailFocus>(null);
   const [bucketDetailMinimized, setBucketDetailMinimized] = useState(false);
+  const [bucketSectionsOpen, setBucketSectionsOpen] = useState<Record<BucketDetailSection, boolean>>(() => closedBucketSections());
+  const [bucketFileQuery, setBucketFileQuery] = useState("");
+  const [bucketFileKind, setBucketFileKind] = useState<BucketFileKind>("all");
+  const [bucketFileAssignment, setBucketFileAssignment] = useState<BucketFileAssignment>("all");
+  const [bucketFileStatus, setBucketFileStatus] = useState("all");
   const [search, setSearch] = useState("");
   const [bucketView, setBucketView] = useState<"all" | "collecting" | "review" | "complete">("all");
   const [busy, setBusy] = useState(false);
@@ -489,6 +509,11 @@ export default function BucketsAdminPage() {
     setAdminUploadStatus(null);
     setAdminUploadForm(loadAdminUploadDraft(row));
     setAdminUploadDraftStatus(null);
+    setBucketSectionsOpen(closedBucketSections());
+    setBucketFileQuery("");
+    setBucketFileKind("all");
+    setBucketFileAssignment("all");
+    setBucketFileStatus("all");
     await loadBucketActivity(bucketId, 0, filters);
   }
 
@@ -496,6 +521,9 @@ export default function BucketsAdminPage() {
     setDetailFocus(focus);
     setBucketDetailMinimized(false);
     await loadBucket(bucketId);
+    if (focus === "vendors") {
+      setBucketSectionsOpen((current) => ({ ...current, vendors: true }));
+    }
   }
 
   function closeBucketDetail() {
@@ -529,6 +557,7 @@ export default function BucketsAdminPage() {
   function showVendorSettings() {
     setDetailFocus("vendors");
     setSharePopupOpen(false);
+    setBucketSectionsOpen((current) => ({ ...current, vendors: true }));
     window.setTimeout(() => {
       document.getElementById("bucket-vendors-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 0);
@@ -694,6 +723,33 @@ export default function BucketsAdminPage() {
   const selectedCreateDocs = createDocs.filter((doc) => createChecked[doc.id]);
   const selectedShareFileIds = Object.entries(shareFiles).filter(([, selected]) => selected).map(([id]) => id);
   const visibleFiles = useMemo(() => uniqueBucketFiles(detail?.files ?? []), [detail?.files]);
+  const requestedDocNameById = useMemo(() => new Map((detail?.requested_documents ?? []).map((doc) => [doc.id, doc.name])), [detail?.requested_documents]);
+  const bucketFileStatusOptions = useMemo(() => {
+    const statuses = new Set(visibleFiles.map((file) => file.status).filter(Boolean));
+    return Array.from(statuses).sort();
+  }, [visibleFiles]);
+  const filteredBucketFiles = useMemo(() => {
+    const query = bucketFileQuery.trim().toLowerCase();
+    return visibleFiles.filter((file) => {
+      if (bucketFileKind !== "all" && bucketFileKindOf(file) !== bucketFileKind) return false;
+      if (bucketFileAssignment === "requested" && !file.requested_document_id) return false;
+      if (bucketFileAssignment === "general" && file.requested_document_id) return false;
+      if (bucketFileStatus !== "all" && file.status !== bucketFileStatus) return false;
+      if (!query) return true;
+      return [
+        file.file_name,
+        file.content_type,
+        file.status,
+        file.uploaded_by_name,
+        file.uploaded_by_email,
+        requestedDocNameById.get(file.requested_document_id || ""),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [bucketFileAssignment, bucketFileKind, bucketFileQuery, bucketFileStatus, requestedDocNameById, visibleFiles]);
   const activityPage = Math.floor(activityOffset / ACTIVITY_PAGE_SIZE) + 1;
   const activityPageCount = Math.max(1, Math.ceil(activityTotal / ACTIVITY_PAGE_SIZE));
   const canPageActivityBack = Boolean(detail && activityOffset > 0 && !activityLoading);
@@ -1495,7 +1551,21 @@ export default function BucketsAdminPage() {
     setNotice("Copied.");
   }
 
-  const requestedDocNameById = new Map((detail?.requested_documents ?? []).map((doc) => [doc.id, doc.name]));
+  function toggleBucketSection(section: BucketDetailSection) {
+    setBucketSectionsOpen((current) => ({ ...current, [section]: !current[section] }));
+  }
+
+  function bucketSectionActions(section: BucketDetailSection, meta?: ReactNode) {
+    const open = bucketSectionsOpen[section];
+    return (
+      <div className="row">
+        {meta}
+        <IconBtn onClick={() => toggleBucketSection(section)} aria-label={`${open ? "Collapse" : "Expand"} ${section}`} title={open ? "Collapse" : "Expand"}>
+          <Icon name={open ? "chevU" : "chevD"} size={14} />
+        </IconBtn>
+      </div>
+    );
+  }
 
   function renderShareFilePicker(args: {
     selectedIds: string[];
@@ -2455,12 +2525,103 @@ export default function BucketsAdminPage() {
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.35fr) minmax(320px, .65fr)", gap: 12, alignItems: "start" }}>
             <div className="grid">
               <Panel
-                title="Upload on behalf"
+                title="Uploaded documents"
                 actions={
+                  <div className="row">
+                    <span className="tag">{filteredBucketFiles.length} of {visibleFiles.length} shown</span>
+                    <Btn
+                      size="sm"
+                      onClick={() => {
+                        setBucketSectionsOpen((current) => ({ ...current, upload: true }));
+                        window.setTimeout(() => adminFileInputRef.current?.click(), 0);
+                      }}
+                    >
+                      <Icon name="upload" size={13} />
+                      Add files
+                    </Btn>
+                  </div>
+                }
+              >
+                <div className="bucket-file-toolbar">
+                  <div className="fieldwrap">
+                    <Icon name="search" size={14} />
+                    <Input
+                      value={bucketFileQuery}
+                      onChange={(event) => setBucketFileQuery(event.target.value)}
+                      placeholder="Search files, uploader, task..."
+                      aria-label="Search bucket files"
+                    />
+                  </div>
+                  <Select value={bucketFileKind} onChange={(event) => setBucketFileKind(event.target.value as BucketFileKind)} aria-label="Filter file type">
+                    <option value="all">All types</option>
+                    <option value="pdf">PDF</option>
+                    <option value="image">Images</option>
+                    <option value="spreadsheet">Spreadsheets</option>
+                    <option value="document">Documents</option>
+                    <option value="other">Other</option>
+                  </Select>
+                  <Select value={bucketFileAssignment} onChange={(event) => setBucketFileAssignment(event.target.value as BucketFileAssignment)} aria-label="Filter file assignment">
+                    <option value="all">All assignments</option>
+                    <option value="requested">Requested tasks</option>
+                    <option value="general">General uploads</option>
+                  </Select>
+                  <Select value={bucketFileStatus} onChange={(event) => setBucketFileStatus(event.target.value)} aria-label="Filter file status">
+                    <option value="all">All statuses</option>
+                    {bucketFileStatusOptions.map((status) => (
+                      <option key={status} value={status}>{statusLabel(status)}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="bucket-file-list">
+                  {visibleFiles.length === 0 ? (
+                    <EmptyInline icon="file" title="No files uploaded yet" body="Upload files or send an invite; documents will appear here first." />
+                  ) : filteredBucketFiles.length === 0 ? (
+                    <EmptyInline icon="search" title="No files match" body="Adjust the search or filters to show more bucket files." />
+                  ) : filteredBucketFiles.map((file) => (
+                    <div key={file.id} className="itemrow bucket-file-row">
+                      <label className="row grow" style={{ cursor: "pointer" }}>
+                        <input type="checkbox" checked={!!shareFiles[file.id]} onChange={(e) => setShareFiles({ ...shareFiles, [file.id]: e.target.checked })} />
+                        <span className="grow">
+                          <strong className="trunc" style={{ display: "block" }}>{file.file_name}</strong>
+                          <span className="sub">
+                            {requestedDocNameById.get(file.requested_document_id || "") || "General upload"} | {file.uploaded_by_name || "Unknown"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}
+                          </span>
+                        </span>
+                      </label>
+                      <CellChip tone={file.requested_document_id ? "acc" : "mut"}>{file.requested_document_id ? "task" : "general"}</CellChip>
+                      <div className="row">
+                        <Btn size="sm" onClick={() => openFile(file, false)}>
+                          <Icon name="eye" size={13} />
+                          Preview
+                        </Btn>
+                        <Btn size="sm" onClick={() => openFile(file, true)}>
+                          <Icon name="download" size={13} />
+                          Download
+                        </Btn>
+                        <Btn
+                          size="sm"
+                          className="danger"
+                          onClick={() => deleteFile(file).catch(() => undefined)}
+                          disabled={deletingFileId === file.id}
+                        >
+                          <Icon name="x" size={13} />
+                          {deletingFileId === file.id ? "Deleting..." : "Delete"}
+                        </Btn>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+
+              <Panel
+                className={cx(!bucketSectionsOpen.upload && "bucket-panel-collapsed")}
+                title="Upload on behalf"
+                actions={bucketSectionActions(
+                  "upload",
                   <span className="tag">
                     {adminUploadFiles.length} queued{adminUploadDraftStatus ? ` | ${adminUploadDraftStatus === "saving" ? "saving" : "saved"}` : ""}
-                  </span>
-                }
+                  </span>,
+                )}
               >
                 <input ref={adminFileInputRef} type="file" multiple hidden onChange={(event) => event.target.files && addAdminUploadFiles(event.target.files)} />
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto", gap: 8 }}>
@@ -2555,48 +2716,11 @@ export default function BucketsAdminPage() {
                 </div>
               </Panel>
 
-              <Panel title="Files" actions={<span className="tag">{visibleFiles.length} uploaded</span>}>
-                {visibleFiles.length === 0 ? (
-                  <EmptyInline icon="file" title="No files uploaded yet" body="Files uploaded through request links will appear here." />
-                ) : (
-                  <div className="grid g8">
-                    {visibleFiles.map((file) => (
-                      <div key={file.id} className="itemrow">
-                        <label className="row grow" style={{ cursor: "pointer" }}>
-                          <input type="checkbox" checked={!!shareFiles[file.id]} onChange={(e) => setShareFiles({ ...shareFiles, [file.id]: e.target.checked })} />
-                          <span className="grow">
-                            <strong className="trunc" style={{ display: "block" }}>{file.file_name}</strong>
-                            <span className="sub">
-                              {file.uploaded_by_name || "Unknown"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}
-                            </span>
-                          </span>
-                        </label>
-                        <div className="row">
-                          <Btn size="sm" onClick={() => openFile(file, false)}>
-                            <Icon name="eye" size={13} />
-                            Preview
-                          </Btn>
-                          <Btn size="sm" onClick={() => openFile(file, true)}>
-                            <Icon name="download" size={13} />
-                            Download
-                          </Btn>
-                          <Btn
-                            size="sm"
-                            className="danger"
-                            onClick={() => deleteFile(file).catch(() => undefined)}
-                            disabled={deletingFileId === file.id}
-                          >
-                            <Icon name="x" size={13} />
-                            {deletingFileId === file.id ? "Deleting..." : "Delete"}
-                          </Btn>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Panel>
-
-              <Panel title="Tasks" actions={<span className="tag">{detail.requested_documents.length} items</span>}>
+              <Panel
+                className={cx(!bucketSectionsOpen.tasks && "bucket-panel-collapsed")}
+                title="Tasks"
+                actions={bucketSectionActions("tasks", <span className="tag">{detail.requested_documents.length} items</span>)}
+              >
                 <div className="grid g8">
                   {detail.requested_documents.length === 0 ? (
                     <EmptyInline icon="docCheck" title="No requested-file tasks" body="Tasks are created from requested documents." />
@@ -2619,7 +2743,11 @@ export default function BucketsAdminPage() {
             </div>
 
             <div className="grid">
-              <Panel title="Notes">
+              <Panel
+                className={cx(!bucketSectionsOpen.notes && "bucket-panel-collapsed")}
+                title="Notes"
+                actions={bucketSectionActions("notes", <span className="tag">{detail.notes.length} notes</span>)}
+              >
                 <div className="thr">
                   {detail.notes.length === 0 ? (
                     <div className="thr-empty">No notes yet.</div>
@@ -2645,8 +2773,9 @@ export default function BucketsAdminPage() {
               </Panel>
 
               <Panel
+                className={cx(!bucketSectionsOpen.invites && "bucket-panel-collapsed")}
                 title="Client Upload Invites"
-                actions={<span className="tag">{detail.upload_links?.length ?? 0} invites</span>}
+                actions={bucketSectionActions("invites", <span className="tag">{detail.upload_links?.length ?? 0} invites</span>)}
                 bodyClass="grid g8"
               >
                 <div className="sub">For clients or upload parties to add documents. Uses an upload link and access code.</div>
@@ -2729,8 +2858,9 @@ export default function BucketsAdminPage() {
                 }}
               >
                 <Panel
+                  className={cx(!bucketSectionsOpen.vendors && "bucket-panel-collapsed")}
                   title="Vendor Accounts"
-                  actions={<span className="tag">{detail.vendor_access?.length ?? 0} vendors</span>}
+                  actions={bucketSectionActions("vendors", <span className="tag">{detail.vendor_access?.length ?? 0} vendors</span>)}
                   bodyClass="grid g8"
                 >
                   <div className="sub">For recurring vendors who log in and see assigned buckets. This is not the bank share link workflow.</div>
@@ -2938,8 +3068,9 @@ export default function BucketsAdminPage() {
               </div>
 
               <Panel
+                className={cx(!bucketSectionsOpen.shares && "bucket-panel-collapsed")}
                 title="Share Links - No Login"
-                actions={<span className="tag">{detail.shares.length} links</span>}
+                actions={bucketSectionActions("shares", <span className="tag">{detail.shares.length} links</span>)}
                 bodyClass="grid g8"
               >
                 <div className="sub">For banks, lenders, and one-time third parties. Send the secure link plus access code.</div>
@@ -3042,7 +3173,12 @@ export default function BucketsAdminPage() {
                 })}
               </Panel>
 
-              <Panel title="Activity" actions={<span className="tag">{activityTotal} total</span>} bodyClass="grid g8">
+              <Panel
+                className={cx(!bucketSectionsOpen.activity && "bucket-panel-collapsed")}
+                title="Activity"
+                actions={bucketSectionActions("activity", <span className="tag">{activityTotal} total</span>)}
+                bodyClass="grid g8"
+              >
                 <Input
                   value={activityFilters.q}
                   onChange={(event) => updateActivityFilters({ q: event.target.value })}
@@ -3731,6 +3867,16 @@ function uniqueBucketFiles(files: BucketFile[]): BucketFile[] {
       return true;
     })
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+}
+
+function bucketFileKindOf(file: BucketFile): Exclude<BucketFileKind, "all"> {
+  const contentType = file.content_type.toLowerCase();
+  const name = file.file_name.toLowerCase();
+  if (contentType.includes("pdf") || name.endsWith(".pdf")) return "pdf";
+  if (contentType.startsWith("image/") || /\.(png|jpe?g|gif|webp|heic)$/i.test(name)) return "image";
+  if (contentType.includes("spreadsheet") || contentType.includes("excel") || contentType.includes("csv") || /\.(csv|xlsx?|xlsm)$/i.test(name)) return "spreadsheet";
+  if (contentType.includes("word") || contentType.includes("document") || /\.(docx?|rtf|txt)$/i.test(name)) return "document";
+  return "other";
 }
 
 function localFileKey(file: File): string {
