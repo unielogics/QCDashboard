@@ -1314,11 +1314,11 @@ button.pick { width: 100%; text-align: left; }
 
 /* Intake evidence browser: source navigation and document preview remain in
    the workflow surface, so opening a file never creates another modal. */
-.evidence-browser { display: grid; grid-template-columns: minmax(240px, 290px) minmax(0, 1fr); min-height: 520px; max-height: 68vh; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
-.evidence-browser-nav { display: flex; min-height: 0; flex-direction: column; border-right: 1px solid var(--line); background: var(--sunken2); }
+.evidence-browser { display: grid; grid-template-columns: minmax(240px, 290px) minmax(0, 1fr); height: clamp(520px, 68vh, 720px); max-height: 68vh; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.evidence-browser-nav { display: flex; min-height: 0; overflow: hidden; flex-direction: column; border-right: 1px solid var(--line); background: var(--sunken2); }
 .evidence-browser-nav-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--line); }
 .evidence-browser-search { display: grid; gap: 5px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
-.evidence-browser-files { min-height: 0; overflow-y: auto; padding: 6px; }
+.evidence-browser-files { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 6px; }
 .evidence-file-row { width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 9px 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .evidence-file-row:hover { background: var(--surface); border-color: var(--line); }
 .evidence-file-row.on { background: var(--accent-100); border-color: var(--accent-400); }
@@ -1337,10 +1337,10 @@ button.pick { width: 100%; text-align: left; }
 .bucket-review-workspace { width: 100%; height: 100%; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--surface); }
 .bucket-review-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); min-width: 0; min-height: 0; flex: 1; }
 .bucket-review-layout.with-navigator { grid-template-columns: minmax(220px, 270px) minmax(0, 1fr) minmax(240px, 300px); }
-.bucket-review-navigator { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 12px 10px 0; border-right: 1px solid var(--line); background: var(--sunken2); }
+.bucket-review-navigator { min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; padding: 12px 10px 0; border-right: 1px solid var(--line); background: var(--sunken2); }
 .bucket-review-navigator .fieldwrap { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .bucket-review-navigator .fieldwrap .input { min-width: 0; }
-.bucket-review-file-list { min-height: 0; overflow-y: auto; margin: 10px -4px 0; padding: 0 4px 10px; }
+.bucket-review-file-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 10px -4px 0; padding: 0 4px 10px; }
 .bucket-review-file { width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 9px 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .bucket-review-file:hover { background: var(--surface); border-color: var(--line); }
 .bucket-review-file.on { background: var(--accent-100); border-color: var(--accent-400); }
@@ -1376,7 +1376,7 @@ button.pick { width: 100%; text-align: left; }
 
 @media (max-width: 700px) {
   .content.content--wide { --pad-y: 0; }
-  .evidence-browser { grid-template-columns: 1fr; max-height: none; }
+  .evidence-browser { grid-template-columns: 1fr; height: auto; max-height: none; }
   .evidence-browser-nav { max-height: 220px; border-right: 0; border-bottom: 1px solid var(--line); }
   .evidence-browser-preview-head { align-items: flex-start; flex-wrap: wrap; }
   .bucket-review-layout.with-navigator { grid-template-columns: 1fr; grid-template-rows: minmax(140px, 24vh) minmax(0, 1fr); }
