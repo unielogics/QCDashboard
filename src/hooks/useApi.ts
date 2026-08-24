@@ -3545,6 +3545,7 @@ export type ContractAgreementRead = {
   esign_consent: boolean;
   signed_at: string | null;
   certificate_download_url: string | null;
+  email_delivery_status: string | null;
 };
 
 export function useSignPlatformAccess() {
@@ -6669,6 +6670,40 @@ export function useBookingLink() {
   return useQuery({
     queryKey: ["booking-link", devUser],
     queryFn: () => apiCall<{ enabled: boolean; slug: string | null; url: string | null }>("/me/booking-link"),
+  });
+}
+
+export type PublicContractSession = {
+  token: string;
+  expires_at: string;
+};
+
+export function useCreateMutualNdaSession() {
+  return useMutation({
+    mutationFn: (honeypot: string) =>
+      api<PublicContractSession>("/contracts/mutual-nda-non-circumvention/public-session", {
+        method: "POST",
+        body: JSON.stringify({ honeypot }),
+      }),
+  });
+}
+
+export function useSignMutualNda() {
+  return useMutation({
+    mutationFn: (body: {
+      typed_name: string;
+      esign_consent: boolean;
+      signature_data_url: string;
+      field_values: Record<string, unknown>;
+      signer_email: string;
+      public_session_token: string;
+      no_preexisting_relationships: boolean;
+      honeypot?: string;
+    }) =>
+      api<ContractAgreementRead>("/contracts/mutual-nda-non-circumvention/sign", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
   });
 }
 

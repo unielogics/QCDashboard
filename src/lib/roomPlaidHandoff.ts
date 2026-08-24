@@ -18,6 +18,7 @@ export const ROOM_LINK_TOKEN_KEY = "qc.room.plaid.link_token";
 export const ROOM_TOKEN_KEY = "qc.room.plaid.token";
 export const ROOM_PASSCODE_KEY = "qc.room.plaid.passcode";
 export const ROOM_RETURN_KEY = "qc.room.plaid.return";
+export const ROOM_KIND_KEY = "qc.room.plaid.kind";
 
 export function stashRoomHandoff(args: {
   linkToken: string;
@@ -25,24 +26,48 @@ export function stashRoomHandoff(args: {
   passcode: string;
   returnTo: string;
 }) {
+  sessionStorage.setItem(ROOM_KIND_KEY, "dealer_room");
   sessionStorage.setItem(ROOM_LINK_TOKEN_KEY, args.linkToken);
   sessionStorage.setItem(ROOM_TOKEN_KEY, args.token);
   sessionStorage.setItem(ROOM_PASSCODE_KEY, args.passcode);
   sessionStorage.setItem(ROOM_RETURN_KEY, args.returnTo);
 }
 
-export function readRoomHandoff() {
+export function stashApplicationVerificationHandoff(args: {
+  linkToken: string;
+  token: string;
+  returnTo: string;
+}) {
+  sessionStorage.setItem(ROOM_KIND_KEY, "application_verification");
+  sessionStorage.setItem(ROOM_LINK_TOKEN_KEY, args.linkToken);
+  sessionStorage.setItem(ROOM_TOKEN_KEY, args.token);
+  sessionStorage.removeItem(ROOM_PASSCODE_KEY);
+  sessionStorage.setItem(ROOM_RETURN_KEY, args.returnTo);
+}
+
+export function readPlaidHandoff() {
   const linkToken = sessionStorage.getItem(ROOM_LINK_TOKEN_KEY);
   const token = sessionStorage.getItem(ROOM_TOKEN_KEY);
   const passcode = sessionStorage.getItem(ROOM_PASSCODE_KEY);
   const returnTo = sessionStorage.getItem(ROOM_RETURN_KEY);
-  if (!linkToken || !token || !passcode) return null;
-  return { linkToken, token, passcode, returnTo };
+  const kind = sessionStorage.getItem(ROOM_KIND_KEY);
+  if (!linkToken || !token) return null;
+  if (kind === "application_verification") {
+    return { kind, linkToken, token, returnTo } as const;
+  }
+  if (!passcode) return null;
+  return { kind: "dealer_room" as const, linkToken, token, passcode, returnTo };
+}
+
+export function readRoomHandoff() {
+  const handoff = readPlaidHandoff();
+  if (!handoff || handoff.kind !== "dealer_room") return null;
+  return handoff;
 }
 
 /** Clear the handoff, including the passcode. Call on every terminal outcome. */
 export function clearRoomHandoff() {
-  [ROOM_LINK_TOKEN_KEY, ROOM_TOKEN_KEY, ROOM_PASSCODE_KEY, ROOM_RETURN_KEY].forEach((k) =>
+  [ROOM_KIND_KEY, ROOM_LINK_TOKEN_KEY, ROOM_TOKEN_KEY, ROOM_PASSCODE_KEY, ROOM_RETURN_KEY].forEach((k) =>
     sessionStorage.removeItem(k),
   );
 }

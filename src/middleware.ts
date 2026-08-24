@@ -30,6 +30,7 @@ const isPublicPage = createRouteMatcher([
   // the connection. Must match DEALER_OS_PLAID_ROOM_REDIRECT_URI and the
   // Plaid Dashboard's Allowed redirect URIs exactly.
   "/plaid/oauth(.*)",
+  "/application-verification(.*)",
   "/buckets/share(.*)",
   "/buckets/public-share(.*)",
   // agreement.qualifiedcommercial.com portal -- public, unauthenticated,

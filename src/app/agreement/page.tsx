@@ -17,6 +17,11 @@ type Theme = CssVars;
 
 const AGREEMENTS: Array<{ slug: string; title: string; description: string }> = [
   {
+    slug: "mutual-nda-non-circumvention",
+    title: "Mutual Nondisclosure & Non-Circumvention Agreement",
+    description: "For counterparties protecting confidential information, introductions, and disclosed pre-existing relationships.",
+  },
+  {
     slug: "referral-protection",
     title: "Strategic Referral, Capital Advisory and Business Relationship Protection Agreement",
     description: "For referral partner companies establishing or renewing a formal referral relationship with Qualified Commercial.",

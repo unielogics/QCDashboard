@@ -23,7 +23,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePlaidLink } from "react-plaid-link";
-import { clearRoomHandoff, readRoomHandoff } from "@/lib/roomPlaidHandoff";
+import { clearRoomHandoff, readPlaidHandoff } from "@/lib/roomPlaidHandoff";
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
@@ -33,12 +33,16 @@ export default function RoomPlaidOAuthReturn() {
   const [phase, setPhase] = useState<Phase>("resuming");
   const [message, setMessage] = useState<string | null>(null);
   const [linkToken, setLinkToken] = useState<string | null>(null);
-  const [room, setRoom] = useState<{ token: string; passcode: string } | null>(null);
+  const [room, setRoom] = useState<
+    | { kind: "dealer_room"; token: string; passcode: string }
+    | { kind: "application_verification"; token: string }
+    | null
+  >(null);
 
   const [returnTo, setReturnTo] = useState<string | null>(null);
 
   useEffect(() => {
-    const h = readRoomHandoff();
+    const h = readPlaidHandoff();
     if (!h) {
       // No stash means the tab was closed, the session expired, or someone
       // opened this URL directly. There is nothing to resume, and saying so is
@@ -48,7 +52,11 @@ export default function RoomPlaidOAuthReturn() {
       return;
     }
     setLinkToken(h.linkToken);
-    setRoom({ token: h.token, passcode: h.passcode });
+    setRoom(
+      h.kind === "application_verification"
+        ? { kind: h.kind, token: h.token }
+        : { kind: h.kind, token: h.token, passcode: h.passcode },
+    );
     setReturnTo(h.returnTo);
   }, []);
 
@@ -76,15 +84,19 @@ export default function RoomPlaidOAuthReturn() {
       }
       setPhase("exchanging");
       try {
+        const endpoint = room.kind === "application_verification"
+          ? `${apiBase}/api/v1/application-profiles/public/bank-verification/${encodeURIComponent(room.token)}/exchange`
+          : `${apiBase}/api/v1/dealer-os/public/room/${room.token}/plaid/exchange`;
         const res = await fetch(
-          `${apiBase}/api/v1/dealer-os/public/room/${room.token}/plaid/exchange`,
+          endpoint,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              passcode: room.passcode,
+              ...(room.kind === "dealer_room" ? { passcode: room.passcode } : {}),
               public_token: publicToken,
               institution_name: metadata.institution?.name ?? null,
+              is_primary_operating: true,
             }),
           },
         );
