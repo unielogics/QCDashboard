@@ -46,6 +46,10 @@ type BankConnection = {
   institution_name: string | null;
   accounts_label: string | null;
   status: string;
+  environment: string;
+  error: string | null;
+  update_mode_reason: string | null;
+  update_mode_account_selection: boolean;
   is_primary_operating: boolean;
   last_pulled_at: string | null;
   statement_months: string[];
@@ -62,6 +66,13 @@ type Features = {
   signable: Signable[];
   contracts: RoomContract[];
 };
+
+function bankUpdateMessage(connection: BankConnection): string {
+  if (connection.update_mode_reason === "new_accounts_available") return "New business accounts are available to add.";
+  if (connection.update_mode_reason === "pending_expiration") return "This authorization is expiring and needs renewal.";
+  if (connection.update_mode_reason === "pending_disconnect") return "This connection is scheduled to disconnect unless renewed.";
+  return connection.error || "Your bank needs you to confirm or repair this connection.";
+}
 
 function BankConnect({
   token,
@@ -83,6 +94,8 @@ function BankConnect({
   onConnected: () => void;
 }) {
   const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [linkMode, setLinkMode] = useState<"initial" | "update">("initial");
+  const [linkItemId, setLinkItemId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -96,26 +109,35 @@ function BankConnect({
     async (publicToken: string | null, metadata: { institution?: { name?: string } | null }) => {
       // react-plaid-link types the token as nullable; a null here means Link
       // closed without a grant and there is nothing to exchange.
-      if (!publicToken) return;
+      if ((linkMode === "initial" && !publicToken) || (linkMode === "update" && !linkItemId)) return;
       setBusy(true);
       setError(null);
       try {
-        const res = await fetch(`${apiBase}/api/v1/dealer-os/public/room/${token}/plaid/exchange`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            passcode,
-            public_token: publicToken,
-            institution_name: metadata?.institution?.name ?? null,
-            is_primary_operating: connections.length === 0,
-          }),
-        });
+        const res = await fetch(
+          linkMode === "update" && linkItemId
+            ? `${apiBase}/api/v1/dealer-os/public/room/${token}/plaid/${linkItemId}/update-complete`
+            : `${apiBase}/api/v1/dealer-os/public/room/${token}/plaid/exchange`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(
+              linkMode === "update"
+                ? { passcode }
+                : {
+                    passcode,
+                    public_token: publicToken,
+                    institution_name: metadata?.institution?.name ?? null,
+                    is_primary_operating: connections.length === 0,
+                  },
+            ),
+          },
+        );
         if (!res.ok) {
           const body = (await res.json().catch(() => null)) as { detail?: string } | null;
           throw new Error(body?.detail || "The connection could not be completed.");
         }
-        const out = (await res.json()) as { message: string };
-        setDone(out.message);
+        const out = (await res.json()) as { message?: string };
+        setDone(out.message || (linkMode === "update" ? "Bank connection updated." : "Bank connected."));
         onConnected();
       } catch (e) {
         setError(e instanceof Error ? e.message : "The connection could not be completed.");
@@ -124,7 +146,7 @@ function BankConnect({
         setLinkToken(null);
       }
     },
-    [token, passcode, onConnected, connections.length],
+    [token, passcode, onConnected, connections.length, linkItemId, linkMode],
   );
 
   const { open, ready } = usePlaidLink({
@@ -211,10 +233,77 @@ function BankConnect({
         token,
         passcode,
         returnTo: window.location.href,
+        mode: "initial",
       });
+      setLinkMode("initial");
+      setLinkItemId(null);
       setLinkToken(out.link_token);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bank connection is not available right now.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startUpdate(connection: BankConnection) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `${apiBase}/api/v1/dealer-os/public/room/${token}/plaid/${connection.id}/update-link-token`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            passcode,
+            account_selection_enabled: connection.update_mode_account_selection,
+          }),
+        },
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+        throw new Error(body?.detail || "The bank connection could not be updated.");
+      }
+      const out = (await res.json()) as { link_token: string };
+      stashRoomHandoff({
+        linkToken: out.link_token,
+        token,
+        passcode,
+        returnTo: window.location.href,
+        mode: "update",
+        itemId: connection.id,
+      });
+      setLinkMode("update");
+      setLinkItemId(connection.id);
+      setLinkToken(out.link_token);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The bank connection could not be updated.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disconnect(connection: BankConnection) {
+    if (!window.confirm("Disconnect this bank? Previously imported statement evidence will remain on the file.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `${apiBase}/api/v1/dealer-os/public/room/${token}/plaid/${connection.id}`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ passcode }),
+        },
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+        throw new Error(body?.detail || "The bank could not be disconnected.");
+      }
+      setDone("Bank disconnected. Previously imported evidence remains available.");
+      onConnected();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The bank could not be disconnected.");
     } finally {
       setBusy(false);
     }
@@ -240,6 +329,7 @@ function BankConnect({
                   <span className="sub" style={{ display: "block", marginTop: 3 }}>
                     {connection.accounts_label || "Account details syncing"} · {connection.statement_months.length} statement month{connection.statement_months.length === 1 ? "" : "s"}
                   </span>
+                  {connection.update_mode_reason ? <span className="sub" style={{ display: "block", marginTop: 3 }}>{bankUpdateMessage(connection)}</span> : null}
                 </div>
                 <CellChip tone={connection.status === "active" ? "ok" : "warn"}>
                   {connection.status}
@@ -251,6 +341,8 @@ function BankConnect({
                     Make main
                   </Btn>
                 )}
+                {connection.update_mode_reason ? <Btn variant="pri" disabled={busy} onClick={() => startUpdate(connection)}>{connection.update_mode_account_selection ? "Review new accounts" : "Repair connection"}</Btn> : null}
+                <Btn disabled={busy} onClick={() => disconnect(connection)}>Disconnect</Btn>
               </div>
             ))}
           </div>

@@ -34,8 +34,8 @@ export default function RoomPlaidOAuthReturn() {
   const [message, setMessage] = useState<string | null>(null);
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [room, setRoom] = useState<
-    | { kind: "dealer_room"; token: string; passcode: string }
-    | { kind: "application_verification"; token: string }
+    | { kind: "dealer_room"; token: string; passcode: string; mode: "initial" | "update"; itemId: string | null }
+    | { kind: "application_verification"; token: string; mode: "initial" | "update"; itemId: string | null }
     | null
   >(null);
 
@@ -54,8 +54,8 @@ export default function RoomPlaidOAuthReturn() {
     setLinkToken(h.linkToken);
     setRoom(
       h.kind === "application_verification"
-        ? { kind: h.kind, token: h.token }
-        : { kind: h.kind, token: h.token, passcode: h.passcode },
+        ? { kind: h.kind, token: h.token, mode: h.mode, itemId: h.itemId }
+        : { kind: h.kind, token: h.token, passcode: h.passcode, mode: h.mode, itemId: h.itemId },
     );
     setReturnTo(h.returnTo);
   }, []);
@@ -78,26 +78,34 @@ export default function RoomPlaidOAuthReturn() {
     // bank interrupted.
     receivedRedirectUri: typeof window === "undefined" ? undefined : window.location.href,
     onSuccess: async (publicToken, metadata) => {
-      if (!publicToken || !room) {
+      if (!room || (room.mode === "initial" && !publicToken) || (room.mode === "update" && !room.itemId)) {
         finish("The bank returned an incomplete response. Please try connecting again.", false);
         return;
       }
       setPhase("exchanging");
       try {
         const endpoint = room.kind === "application_verification"
-          ? `${apiBase}/api/v1/application-profiles/public/bank-verification/${encodeURIComponent(room.token)}/exchange`
-          : `${apiBase}/api/v1/dealer-os/public/room/${room.token}/plaid/exchange`;
+          ? room.mode === "update"
+            ? `${apiBase}/api/v1/application-profiles/public/bank-verification/${encodeURIComponent(room.token)}/banks/${room.itemId}/update-complete`
+            : `${apiBase}/api/v1/application-profiles/public/bank-verification/${encodeURIComponent(room.token)}/exchange`
+          : room.mode === "update"
+            ? `${apiBase}/api/v1/dealer-os/public/room/${room.token}/plaid/${room.itemId}/update-complete`
+            : `${apiBase}/api/v1/dealer-os/public/room/${room.token}/plaid/exchange`;
         const res = await fetch(
           endpoint,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              ...(room.kind === "dealer_room" ? { passcode: room.passcode } : {}),
-              public_token: publicToken,
-              institution_name: metadata.institution?.name ?? null,
-              is_primary_operating: true,
-            }),
+            body: JSON.stringify(
+              room.mode === "update"
+                ? room.kind === "dealer_room" ? { passcode: room.passcode } : {}
+                : {
+                    ...(room.kind === "dealer_room" ? { passcode: room.passcode } : {}),
+                    public_token: publicToken,
+                    institution_name: metadata.institution?.name ?? null,
+                    is_primary_operating: true,
+                  },
+            ),
           },
         );
         if (!res.ok) throw new Error("That connection could not be saved.");

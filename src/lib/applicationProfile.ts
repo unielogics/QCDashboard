@@ -93,13 +93,26 @@ export type ApplicationBankConnection = {
   institution_name: string | null;
   accounts_label: string | null;
   status: string;
+  environment: string;
   error: string | null;
+  update_mode_reason: string | null;
+  update_mode_account_selection: boolean;
   auto_refresh: boolean;
   is_primary_operating: boolean;
   last_pulled_at: string | null;
   next_refresh_at: string | null;
   statement_months: string[];
   source: "application" | "dealer";
+};
+
+export type PlaidAssetReport = {
+  id: string;
+  status: string;
+  environment: string;
+  days_requested: number;
+  error: string | null;
+  ready_at: string | null;
+  created_at: string;
 };
 
 export type ApplicationBankState = {
@@ -112,6 +125,8 @@ export type ApplicationBankState = {
   manual_override: boolean;
   manual_override_reason: string | null;
   manual_statement_months: string[];
+  assets_enabled: boolean;
+  asset_reports: PlaidAssetReport[];
 };
 
 export type UnifiedAuditEvent = {

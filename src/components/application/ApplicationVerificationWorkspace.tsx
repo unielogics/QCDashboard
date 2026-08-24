@@ -378,6 +378,7 @@ function BankingPanel({ profileId, sourceKind, sourceId, state, banks, loading, 
   const [error, setError] = useState("");
   const [secureLink, setSecureLink] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
+  const [assetReview, setAssetReview] = useState(false);
 
   const invite = useMutation({
     mutationFn: (channel: "email" | "none") => apiCall<{ path: string; token: string | null; delivery_status: string }>(`/application-profiles/${profileId}/bank-invitations`, { method: "POST", body: JSON.stringify({ channel }) }),
@@ -388,6 +389,11 @@ function BankingPanel({ profileId, sourceKind, sourceId, state, banks, loading, 
     mutationFn: () => apiCall<ApplicationBankState>(`/application-profiles/${profileId}/banks/manual-override`, { method: "POST", body: JSON.stringify({ reason: overrideReason.trim() }) }),
     onSuccess: async () => { setOverrideReason(""); setError(""); await onRefresh(); },
     onError: (reason) => setError(reason instanceof Error ? reason.message : "Manual statement evidence could not be approved."),
+  });
+  const createAssetReport = useMutation({
+    mutationFn: () => apiCall(`/application-profiles/${profileId}/asset-reports`, { method: "POST", body: JSON.stringify({ days_requested: 60 }) }),
+    onSuccess: async () => { setAssetReview(false); setError(""); await onRefresh(); },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "The Asset Report could not be requested."),
   });
 
   async function uploadFiles(files: File[]) {
@@ -431,7 +437,9 @@ function BankingPanel({ profileId, sourceKind, sourceId, state, banks, loading, 
     {manualMonths.length ? <div className="bank-coverage-chips">{manualMonths.map((month) => <CellChip key={month} tone="acc">{month}</CellChip>)}</div> : null}
     {manualMonths.length && !banks?.manual_override ? <div className="manual-bank-override"><Input value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} placeholder="Why uploaded statements are sufficient for this file" /><Btn variant="pri" disabled={overrideReason.trim().length < 8 || override.isPending} onClick={() => override.mutate()}><Icon name="check" size={14} />Approve manual evidence</Btn></div> : null}
     {banks?.manual_override ? <Callout tone="acc" icon={<Icon name="check" size={16} />}>Plaid requirement overridden with reviewed statement evidence. {banks.manual_override_reason}</Callout> : null}
-    <div className="bank-connection-list">{connected.map((item) => <div key={item.id} className="bank-connection-row"><span className="bank-connection-icon"><Icon name="building" size={17} /></span><div className="grow trunc"><Row><b className="trunc">{item.institution_name || "Connected institution"}</b>{item.is_primary_operating ? <CellChip tone="acc">Primary operating</CellChip> : null}<CellChip tone={item.status === "active" ? "ok" : item.error ? "bad" : "warn"}>{item.status}</CellChip></Row><Sub>{item.accounts_label || "Accounts connected"} · {item.statement_months.length ? `${item.statement_months.length} months available` : "Statements syncing"} · refreshed {when(item.last_pulled_at)}</Sub></div></div>)}{!connected.length && !manualMonths.length ? <div className="empty">No bank evidence has been received.</div> : null}</div>
+    <div className="bank-connection-list">{connected.map((item) => <div key={item.id} className="bank-connection-row"><span className="bank-connection-icon"><Icon name="building" size={17} /></span><div className="grow trunc"><Row><b className="trunc">{item.institution_name || "Connected institution"}</b>{item.is_primary_operating ? <CellChip tone="acc">Primary operating</CellChip> : null}<CellChip tone={item.status === "active" ? "ok" : item.error ? "bad" : "warn"}>{item.status}</CellChip></Row><Sub>{item.accounts_label || "Accounts connected"} · {item.statement_months.length ? `${item.statement_months.length} months available` : "Statements syncing"} · refreshed {when(item.last_pulled_at)}</Sub>{item.update_mode_reason ? <Sub>Client action needed: {item.update_mode_account_selection ? "review newly available accounts" : item.error || "repair or renew the connection"}. Send the secure bank link as a reminder.</Sub> : null}</div></div>)}{!connected.length && !manualMonths.length ? <div className="empty">No bank evidence has been received.</div> : null}</div>
+    {banks?.assets_enabled ? <div className="manual-bank-override"><div className="grow"><b>Plaid Asset Report</b><Sub>Explicit underwriting report; creation may be billable. It is never generated automatically.</Sub></div>{assetReview ? <><Btn variant="pri" disabled={createAssetReport.isPending} onClick={() => createAssetReport.mutate()}>{createAssetReport.isPending ? "Requesting..." : "Confirm 60-day report"}</Btn><Btn onClick={() => setAssetReview(false)}>Cancel</Btn></> : <Btn disabled={!connected.length} onClick={() => setAssetReview(true)}>Generate report</Btn>}</div> : null}
+    {(banks?.asset_reports ?? []).filter((report) => report.status !== "removed").map((report) => <div key={report.id} className="bank-connection-row"><span className="bank-connection-icon"><Icon name="file" size={17} /></span><div className="grow"><b>Asset Report · {report.days_requested} days</b><Sub>Requested {when(report.created_at)}{report.error ? ` · ${report.error}` : ""}</Sub></div><CellChip tone={report.status === "ready" ? "ok" : report.status === "error" ? "bad" : "acc"}>{report.status}</CellChip></div>)}
     {error ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>{error}</Callout> : null}
   </section>;
 }

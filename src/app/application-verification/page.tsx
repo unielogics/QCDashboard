@@ -14,6 +14,10 @@ type BankConnection = {
   institution_name: string | null;
   accounts_label: string | null;
   status: string;
+  environment: string;
+  error: string | null;
+  update_mode_reason: string | null;
+  update_mode_account_selection: boolean;
   is_primary_operating: boolean;
   last_pulled_at: string | null;
   statement_months: string[];
@@ -27,6 +31,7 @@ type Verification = {
   items: BankConnection[];
   manual_statement_months: string[];
   statement_upload_enabled: boolean;
+  assets_enabled: boolean;
   expires_at: string;
 };
 
@@ -41,7 +46,15 @@ async function publicCall<T>(path: string, init?: RequestInit): Promise<T> {
     const body = (await response.json().catch(() => null)) as { detail?: string } | null;
     throw new Error(body?.detail || "This request could not be completed.");
   }
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+function bankUpdateMessage(item: BankConnection): string {
+  if (item.update_mode_reason === "new_accounts_available") return "New business accounts are available to add.";
+  if (item.update_mode_reason === "pending_expiration") return "This authorization is expiring and needs renewal.";
+  if (item.update_mode_reason === "pending_disconnect") return "This connection is scheduled to disconnect unless renewed.";
+  return item.error || "Your bank needs you to confirm or repair this connection.";
 }
 
 export default function ApplicationVerificationPage() {
@@ -52,6 +65,8 @@ export default function ApplicationVerificationPage() {
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [linkMode, setLinkMode] = useState<"initial" | "update">("initial");
+  const [linkItemId, setLinkItemId] = useState<string | null>(null);
   const [signer, setSigner] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [message, setMessage] = useState("");
@@ -79,21 +94,28 @@ export default function ApplicationVerificationPage() {
 
   const onPlaidSuccess = useCallback(
     async (publicToken: string | null, metadata: { institution?: { name?: string } | null }) => {
-      if (!publicToken || !token) return;
+      if (!token || (linkMode === "initial" && !publicToken) || (linkMode === "update" && !linkItemId)) return;
       setBusy(true);
       setError("");
       try {
-        await publicCall(
-          `/application-profiles/public/bank-verification/${encodeURIComponent(token)}/exchange`,
-          {
-            method: "POST",
-            body: JSON.stringify({
-              public_token: publicToken,
-              institution_name: metadata.institution?.name ?? null,
-              is_primary_operating: !data?.items.length,
-            }),
-          },
-        );
+        if (linkMode === "update" && linkItemId) {
+          await publicCall(
+            `/application-profiles/public/bank-verification/${encodeURIComponent(token)}/banks/${linkItemId}/update-complete`,
+            { method: "POST" },
+          );
+        } else {
+          await publicCall(
+            `/application-profiles/public/bank-verification/${encodeURIComponent(token)}/exchange`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                public_token: publicToken,
+                institution_name: metadata.institution?.name ?? null,
+                is_primary_operating: !data?.items.length,
+              }),
+            },
+          );
+        }
         clearRoomHandoff();
         setLinkToken(null);
         setMessage("Business bank connected. You can add another institution or finish here.");
@@ -104,7 +126,7 @@ export default function ApplicationVerificationPage() {
         setBusy(false);
       }
     },
-    [data?.items.length, load, token],
+    [data?.items.length, linkItemId, linkMode, load, token],
   );
 
   const { open, ready, error: plaidError } = usePlaidLink({
@@ -155,10 +177,60 @@ export default function ApplicationVerificationPage() {
         linkToken: result.link_token,
         token,
         returnTo: window.location.href,
+        mode: "initial",
       });
+      setLinkMode("initial");
+      setLinkItemId(null);
       setLinkToken(result.link_token);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Bank connection could not start.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateBank(item: BankConnection) {
+    if (!token) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await publicCall<{ link_token: string }>(
+        `/application-profiles/public/bank-verification/${encodeURIComponent(token)}/banks/${item.id}/update-link-token`,
+        {
+          method: "POST",
+          body: JSON.stringify({ account_selection_enabled: item.update_mode_account_selection }),
+        },
+      );
+      stashApplicationVerificationHandoff({
+        linkToken: result.link_token,
+        token,
+        returnTo: window.location.href,
+        mode: "update",
+        itemId: item.id,
+      });
+      setLinkMode("update");
+      setLinkItemId(item.id);
+      setLinkToken(result.link_token);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The bank connection could not be updated.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disconnectBank(itemId: string) {
+    if (!token || !window.confirm("Disconnect this bank? Previously imported evidence will remain on the file.")) return;
+    setBusy(true);
+    setError("");
+    try {
+      await publicCall(
+        `/application-profiles/public/bank-verification/${encodeURIComponent(token)}/banks/${itemId}`,
+        { method: "DELETE" },
+      );
+      setMessage("Bank disconnected. Previously imported statements remain available to underwriting.");
+      await load(token);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The bank could not be disconnected.");
     } finally {
       setBusy(false);
     }
@@ -268,8 +340,10 @@ export default function ApplicationVerificationPage() {
               <div className="application-verification-banks">
                 {data.items.map((item) => (
                   <div key={item.id} className="application-verification-bank">
-                    <div><strong>{item.institution_name || "Connected institution"}</strong><span>{item.accounts_label || "Business accounts"} | {item.statement_months.length ? `${item.statement_months.length} statement months` : "Statements syncing"}</span></div>
+                    <div><strong>{item.institution_name || "Connected institution"}</strong><span>{item.accounts_label || "Business accounts"} | {item.statement_months.length ? `${item.statement_months.length} statement months` : "Statements syncing"}</span>{item.update_mode_reason ? <span>{bankUpdateMessage(item)}</span> : null}</div>
+                    {item.update_mode_reason ? <button type="button" disabled={busy} onClick={() => void updateBank(item)}>{item.update_mode_account_selection ? "Review new accounts" : "Repair connection"}</button> : null}
                     {item.is_primary_operating ? <b>Primary operating</b> : <button type="button" disabled={busy} onClick={() => void setPrimary(item.id)}>Make primary</button>}
+                    <button type="button" disabled={busy} onClick={() => void disconnectBank(item.id)}>Disconnect</button>
                   </div>
                 ))}
               </div>
