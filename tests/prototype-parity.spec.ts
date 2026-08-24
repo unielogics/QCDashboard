@@ -130,6 +130,49 @@ test("floating page headers meet the global top bar without a ground gap", async
   expect(Math.abs((edges.topBottom ?? 0) - (edges.pageHeaderTop ?? 0))).toBeLessThanOrEqual(1);
 });
 
+test("secure business banking offers Plaid and statement upload without staff controls", async ({ page }, testInfo) => {
+  const verification = {
+    business_name: "Northstar Logistics LLC",
+    disclosure_version: "2026-08",
+    disclosure_text: "I authorize Qualified Commercial to retrieve business account statements for underwriting and verification.",
+    consent_granted: true,
+    items: [
+      {
+        id: "50000000-0000-0000-0000-000000000001",
+        institution_name: "Example Business Bank",
+        accounts_label: "Operating checking ending 4021",
+        status: "active",
+        is_primary_operating: true,
+        last_pulled_at: "2026-08-24T14:00:00Z",
+        statement_months: ["2026-05", "2026-06", "2026-07"],
+      },
+    ],
+    manual_statement_months: ["2026-05", "2026-06", "2026-07"],
+    statement_upload_enabled: true,
+    expires_at: "2026-08-31T14:00:00Z",
+  };
+  await page.route(/\/api\/v1\/application-profiles\/public\/bank-verification\/bank\.visual(?:\/.*)?$/, async (route) => {
+    if (route.request().url().endsWith("/files/upload-init")) {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ file_id: "60000000-0000-0000-0000-000000000001", upload_url: `${BASE_URL}/mock-statement-upload`, required_headers: { "Content-Type": "application/pdf" } }) });
+      return;
+    }
+    if (route.request().url().endsWith("/files/complete")) {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: "60000000-0000-0000-0000-000000000001", bucket_id: "70000000-0000-0000-0000-000000000001", file_name: "bank-statement.pdf", content_type: "application/pdf", size_bytes: 12, status: "uploaded", created_at: "2026-08-24T14:00:00Z", updated_at: "2026-08-24T14:00:00Z" }) });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(verification) });
+  });
+  await page.route(`${BASE_URL}/mock-statement-upload`, async (route) => route.fulfill({ status: 200, body: "" }));
+
+  await page.goto("/application-verification#t=bank.visual", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Northstar Logistics LLC" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect another business bank" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Drop business bank statements here/ })).toBeVisible();
+  await expect(page.getByText("Primary operating")).toBeVisible();
+  await assertStableGeometry(page);
+  await captureReviewImage(page, "secure-bank-verification", testInfo);
+});
+
 test("prequalification review is one readable independently scrolling form", async ({ page }, testInfo) => {
   test.skip(
     !["desktop-1600", "compact-1280"].includes(testInfo.project.name),

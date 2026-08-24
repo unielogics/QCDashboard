@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -60,13 +60,15 @@ import { useAIReview } from "@/components/admin/AIReviewProvider";
 import { IntakeEvidenceBrowser } from "@/components/admin/IntakeEvidenceBrowser";
 import { ApplicationVerificationWorkspace } from "@/components/application/ApplicationVerificationWorkspace";
 import { ApplicationClassificationPanel } from "@/components/application/ApplicationClassificationPanel";
+import { ApplicationIntelligencePanel } from "@/components/application/ApplicationIntelligencePanel";
+import { ExtractedFactsReview } from "@/components/application/ExtractedFactsReview";
 import { ApplicationAuditTimeline } from "@/components/application/ApplicationAuditTimeline";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import type { IntakeResponse } from "@/lib/intake";
 import { originTone, verticalTone } from "@/lib/unifiedOperator";
-import type { FileOwnerRequirementState } from "@/lib/applicationProfile";
+import type { ApplicationProfile, FileOwnerRequirementState } from "@/lib/applicationProfile";
 
 type LeadRow = {
   id: string;
@@ -324,7 +326,7 @@ export default function AdminAIUnderwriterLeadsPage() {
     }
   }
 
-  async function createLead(payload: CreateLeadPayload) {
+  async function createLead(payload: CreateLeadPayload, evidenceFiles: File[]) {
     setCreating(true);
     setNotice("");
     try {
@@ -333,7 +335,18 @@ export default function AdminAIUnderwriterLeadsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      const profile = await call<ApplicationProfile>("/application-profiles/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_kind: "intake", source_id: res.intake.id }) });
+      await call(`/application-profiles/${profile.id}/draft`, { method: "POST" });
+      let uploaded = 0;
+      for (const file of evidenceFiles) {
+        const init = await call<{ file_id: string; upload_url: string; required_headers: Record<string, string> }>(`/admin/ai-underwriter-leads/${res.intake.id}/files/upload-init`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requested_document_id: null, file_name: file.name, content_type: file.type || "application/octet-stream", size_bytes: file.size }) });
+        const upload = await fetch(init.upload_url, { method: "PUT", headers: init.required_headers, body: file });
+        if (!upload.ok) throw new Error(`${file.name} could not be uploaded. The draft was preserved.`);
+        await call(`/admin/ai-underwriter-leads/${res.intake.id}/files/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file_id: init.file_id }) });
+        uploaded += 1;
+      }
       setCreateOpen(false);
+      if (uploaded) setNotice(`${uploaded} evidence file${uploaded === 1 ? "" : "s"} uploaded. Extraction continues in the background.`);
       await loadLeads(0);
       await openLead(res.intake.id);
       router.replace(`/admin/ai-underwriter-leads?lead=${res.intake.id}&step=1`, { scroll: false });
@@ -896,6 +909,7 @@ function LeadDetailPanel({
   onConfirmDeletion: (confirmName: string) => Promise<void>;
 }) {
   const toast = useToast();
+  const { getToken } = useAuth();
   const bookingLink = useBookingLink();
   const [activeTab, setActiveTab] = useState<"conversation" | "workspace">("conversation");
   const [workspaceSub, setWorkspaceSub] = useState<"overview" | "documents" | "client" | "credit" | "contracts" | "package">("overview");
@@ -926,11 +940,22 @@ function LeadDetailPanel({
   const [ingestFiles, setIngestFiles] = useState<DriveFile[]>([]);
   const [deletionBusy, setDeletionBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [prototypeView, setPrototypeView] = useState<"workspace" | "communications" | "audit">("communications");
+  const [prototypeView, setPrototypeView] = useState<"workspace" | "communications" | "audit">("workspace");
   const [communicationChannel, setCommunicationChannel] = useState<"underwriter" | "client" | "partner" | "internal">("underwriter");
   const [submissionStep, setSubmissionStep] = useState(1);
+  const [packageTab, setPackageTab] = useState<"summary" | "package" | "delivery">("summary");
+  const headerUploadRef = useRef<HTMLInputElement>(null);
+  const [headerUploading, setHeaderUploading] = useState(false);
   const [profileVerification, setProfileVerification] = useState<FileOwnerRequirementState | null>(null);
   const [sendReviewOpen, setSendReviewOpen] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [requestSaving, setRequestSaving] = useState(false);
+  const [requestDraft, setRequestDraft] = useState({
+    name: "",
+    category: "Business documents",
+    description: "",
+    allow_multiple_files: false,
+  });
   const [contactEditOpen, setContactEditOpen] = useState(false);
   const [contactSaving, setContactSaving] = useState(false);
   const [contactDraft, setContactDraft] = useState({
@@ -961,7 +986,7 @@ function LeadDetailPanel({
     else if (detail.latest_review?.status === "completed" || detail.intake.status === "reviewed") setSubmissionStep(4);
     else if (detail.files.length) setSubmissionStep(3);
     else setSubmissionStep(1);
-    setPrototypeView("communications");
+    setPrototypeView("workspace");
     setCommunicationChannel("underwriter");
     setContactDraft({
       full_name: detail.intake.full_name || "",
@@ -1172,6 +1197,71 @@ function LeadDetailPanel({
     }
   }
 
+  async function uploadFromHeader(files: File[]) {
+    if (!cockpitAdapter || !files.length) return;
+    setHeaderUploading(true);
+    try {
+      for (const file of files) {
+        const init = await cockpitAdapter.uploadInit({ requested_document_id: null, file_name: file.name, content_type: file.type || "application/octet-stream", size_bytes: file.size });
+        const response = await fetch(init.upload_url, { method: "PUT", body: file, headers: init.required_headers });
+        if (!response.ok) throw new Error(`${file.name} could not be uploaded.`);
+        await cockpitAdapter.uploadComplete(init.file_id);
+      }
+      const response = await cockpitAdapter.reload();
+      onCockpitResponse(response);
+      setSubmissionStep(2);
+      setPrototypeView("workspace");
+      toast.show(`${files.length} file${files.length === 1 ? "" : "s"} uploaded`);
+    } catch (error) {
+      toast.show(error instanceof Error ? error.message : "Upload failed");
+    } finally {
+      setHeaderUploading(false);
+      if (headerUploadRef.current) headerUploadRef.current.value = "";
+    }
+  }
+
+  function openDocumentRequest() {
+    const nextMissing = missing.find((row) => String(row.title || "").trim());
+    setRequestDraft({
+      name: String(nextMissing?.title || ""),
+      category: "Business documents",
+      description: String(nextMissing?.detail || ""),
+      allow_multiple_files: false,
+    });
+    setRequestOpen(true);
+  }
+
+  async function createDocumentRequest() {
+    if (!detail || requestDraft.name.trim().length < 2) return;
+    setRequestSaving(true);
+    try {
+      const authToken = await getToken();
+      await api(`/buckets/admin/${detail.intake.bucket_id}/requested-documents`, {
+        method: "POST",
+        authToken: authToken ?? undefined,
+        body: JSON.stringify({
+          name: requestDraft.name.trim(),
+          category: requestDraft.category.trim() || null,
+          description: requestDraft.description.trim() || null,
+          required: true,
+          allow_multiple_files: requestDraft.allow_multiple_files,
+          is_custom: true,
+          save_to_library: false,
+          requires_signature: false,
+        }),
+      });
+      if (cockpitAdapter) onCockpitResponse(await cockpitAdapter.reload());
+      setRequestOpen(false);
+      setSubmissionStep(2);
+      setPrototypeView("workspace");
+      toast.show(`Requested ${requestDraft.name.trim()}`);
+    } catch (reason) {
+      toast.show(apiErrorMessage(reason, "The document request could not be created."));
+    } finally {
+      setRequestSaving(false);
+    }
+  }
+
   const requiredDocs = detail?.requested_documents.filter((document) => document.required) ?? [];
   const requiredUploaded = requiredDocs.filter((document) => document.status === "uploaded").length;
   const hasEvidence = Boolean(detail?.files.length);
@@ -1180,11 +1270,12 @@ function LeadDetailPanel({
   const reviewActive = detail ? rerunning || ["queued", "running"].includes(detail.latest_review?.status || "") : false;
   const sentCount = detail?.email_sends?.filter((send) => !send.ses_error).length ?? 0;
   const workflowSteps: Array<{ id: number; label: string; sub: string; status: "not-started" | "partial" | "complete" }> = [
-    { id: 1, label: "Ownership", sub: "Owners and allocation", status: profileVerification?.ready_for_step_2 ? "complete" : profileVerification?.owner_count ? "partial" : "not-started" },
-    { id: 2, label: "Credit & banks", sub: "iSoftPull and Plaid", status: profileVerification?.unlocked ? "complete" : profileVerification?.ready_for_step_2 || profileVerification?.bank_linked || Boolean(profileVerification?.completed_credit_owner_count) ? "partial" : "not-started" },
-    { id: 3, label: "Evidence", sub: "Rooms, files and blockers", status: evidenceComplete ? "complete" : hasEvidence ? "partial" : "not-started" },
-    { id: 4, label: "AI review", sub: "Probability and coverage", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
-    { id: 5, label: "Package readiness", sub: "Summary, packet and delivery", status: sentCount > 0 ? "complete" : packet || summary ? "partial" : "not-started" },
+    { id: 1, label: "Profile & ownership", sub: "Identity, owners and allocation", status: profileVerification?.ready_for_step_2 ? "complete" : profileVerification?.owner_count ? "partial" : "not-started" },
+    { id: 2, label: "Evidence", sub: "Rooms, files and extraction", status: evidenceComplete ? "complete" : hasEvidence ? "partial" : "not-started" },
+    { id: 3, label: "Owner credit", sub: "Individual 20%+ iSoftPulls", status: profileVerification?.owner_credit_complete ? "complete" : profileVerification?.completed_credit_owner_count || profileVerification?.ready_for_step_2 ? "partial" : "not-started" },
+    { id: 4, label: "Business banking", sub: "Client Plaid or statement evidence", status: profileVerification?.business_banking_complete ? "complete" : profileVerification?.bank_connection_count || profileVerification?.bank_statement_months ? "partial" : "not-started" },
+    { id: 5, label: "AI review", sub: "Probability, coverage and DSCR", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
+    { id: 6, label: "Package readiness", sub: "Summary, package and delivery", status: sentCount > 0 ? "complete" : packet || summary ? "partial" : "not-started" },
   ];
 
   const prototypeDetailEnabled = Boolean(workflowSteps.length);
@@ -1203,10 +1294,15 @@ function LeadDetailPanel({
         </div>
         <span className="sp" />
         {detail ? (
-          <Btn variant="pri" onClick={submissionStep === 3 ? onLinkBucketIntake : submissionStep === 4 ? onRerun : submissionStep === 5 ? () => { setBusy("packet"); Promise.resolve(onGeneratePacket()).finally(() => setBusy("")); } : () => setPrototypeView("workspace")} disabled={busy !== "" || rerunning}>
-            {submissionStep === 3 ? "Attach evidence" : submissionStep === 4 ? (rerunning ? "Reviewing..." : "Run AI review") : submissionStep === 5 ? "Build lender packet" : submissionStep === 2 ? "Open verification" : "Open ownership"}
+          <Btn variant="pri" onClick={submissionStep === 2 ? onLinkBucketIntake : submissionStep === 5 ? onRerun : submissionStep === 6 ? () => { setPackageTab("package"); setBusy("packet"); Promise.resolve(onGeneratePacket()).finally(() => setBusy("")); } : () => setPrototypeView("workspace")} disabled={busy !== "" || rerunning}>
+            {submissionStep === 2 ? "Attach evidence" : submissionStep === 5 ? (rerunning ? "Reviewing..." : "Run AI review") : submissionStep === 6 ? "Build lender package" : submissionStep === 4 ? "Open business banking" : submissionStep === 3 ? "Open owner credit" : "Open ownership"}
           </Btn>
         ) : null}
+        <input ref={headerUploadRef} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.zip,image/*" onChange={(event) => void uploadFromHeader(Array.from(event.target.files ?? []))} />
+        {detail ? <Btn disabled={headerUploading || !cockpitAdapter} onClick={() => headerUploadRef.current?.click()}><Icon name="upload" size={14} />{headerUploading ? "Uploading..." : "Upload"}</Btn> : null}
+        {detail ? <Btn onClick={openDocumentRequest}><Icon name="send" size={14} />Request</Btn> : null}
+        {detail ? <Select value={detail.intake.outcome_status} disabled={outcomeBusy} onChange={(event) => changeOutcomeStatus(event.target.value)} aria-label="Outcome status"><option value="submitted">Submitted</option><option value="closed">Closed</option><option value="denied">Denied</option></Select> : null}
+        {detail ? <Select value={detail.intake.preferred_language} disabled={languageBusy} onChange={(event) => changeLanguage(event.target.value)} aria-label="Client language"><option value="en">English</option><option value="es">Español</option></Select> : null}
         <PageActionMenu items={[
           { label: "Open underwriting chat", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("underwriter"); }, hidden: !detail },
           { label: "View client conversation", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("client"); }, hidden: !detail },
@@ -1236,7 +1332,7 @@ function LeadDetailPanel({
             "with-sequence",
           )}>
             <aside className="submission-rail">
-              <Panel title="Submission sequence" sub={`Step ${submissionStep} of 5`}>
+              <Panel title="Submission sequence" sub={`Step ${submissionStep} of 6`}>
                 <div className="submission-steps submission-steps-rail">
                   {workflowSteps.map((step) => (
                     <button key={step.id} type="button" className={cx("submission-step", `status-${step.status}`, submissionStep === step.id && "on")} onClick={() => { setSubmissionStep(step.id); setPrototypeView("workspace"); }}>
@@ -1251,26 +1347,30 @@ function LeadDetailPanel({
 
             <main className="grid intake-file-primary">
               {prototypeView === "workspace" && submissionStep === 1 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="owners" onReadyForStep2={() => setSubmissionStep(2)} onStateChange={setProfileVerification} /> : null}
-              {prototypeView === "workspace" && submissionStep === 2 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="verification" onStateChange={setProfileVerification} /> : null}
-              {prototypeView === "workspace" && submissionStep === 3 ? (
+              {prototypeView === "workspace" && submissionStep === 2 ? (
                 <Panel title="Evidence and data sources" sub="Navigate every accessible file without leaving the intake." actions={<Row><Btn onClick={() => setIngestPickerOpen(true)}>Add from Drive</Btn><Btn variant="pri" onClick={onLinkBucketIntake}>Attach another bucket</Btn></Row>}>
                   <div className="source-room"><div><CellChip tone="acc">Primary bucket</CellChip><strong>{detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"}</strong><span className="sub">{detail.files.length} primary files · supporting links are counted below</span></div><Link href={`/admin/buckets?bucket=${detail.intake.bucket_id}`} className="btn">Open bucket</Link></div>
                   <div className="mt"><IntakeEvidenceBrowser intakeId={detail.intake.id} primaryBucketId={detail.intake.bucket_id} primaryBucketName={detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"} files={detail.files} /></div>
+                  <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
                   <InfoBlock title="Evidence requirements and AI blockers"><div className="grid">{detail.requested_documents.map((doc) => <div key={doc.id} className="itemrow"><CellChip tone={doc.status === "uploaded" ? "ok" : "warn"}>{doc.status}</CellChip><strong className="sp">{doc.name}</strong><span className="sub">{doc.required ? "Required" : "Optional"}</span></div>)}</div><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No blockers listed in the latest review." /></InfoBlock>
                 </Panel>
               ) : null}
-              {prototypeView === "workspace" && submissionStep === 4 ? (
+              {prototypeView === "workspace" && submissionStep === 3 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="credit" onStateChange={setProfileVerification} /> : null}
+              {prototypeView === "workspace" && submissionStep === 4 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="banking" onStateChange={setProfileVerification} /> : null}
+              {prototypeView === "workspace" && submissionStep === 5 ? (
                 <Panel title="AI review" actions={<Btn variant="pri" onClick={onRerun} disabled={rerunning}>{rerunning ? "Reviewing..." : reviewComplete ? "Re-run review" : "Run AI review"}</Btn>}>
                   <div className="intake-review-grid"><div className="kpi"><div className="lbl">Probability</div><div className="knum prose">{String(result?.probability_status || "Awaiting evidence")}</div></div><div className="kpi"><div className="lbl">Evidence</div><div className="knum num">{detail.files.length}</div><div className="sub">primary files available</div></div><div className="kpi"><div className="lbl">Missing</div><div className="knum num">{missing.length}</div><div className="sub">blocking items</div></div></div>
                   <div className="hintbox mt"><div className="lbl">Next best action</div><p>{String(result?.one_next_step || result?.executive_summary || "Run the review after the evidence room is complete.")}</p></div>
+                  <ApplicationIntelligencePanel sourceKind="intake" sourceId={detail.intake.id} onAction={() => setSubmissionStep(2)} />
                 </Panel>
               ) : null}
-              {prototypeView === "workspace" && submissionStep === 5 ? (
-                <>
-                  <Panel title="Executive summary" actions={<Btn disabled={busy !== ""} onClick={() => { setBusy("summary"); Promise.resolve(onGenerateSummary()).finally(() => setBusy("")); }}>{busy === "summary" ? "Generating..." : summary ? "Regenerate" : "Generate summary"}</Btn>}>{summary ? <div className="artifact-preview"><strong>{summary.title}</strong><p>{summary.body_text || String(summary.body_json?.executive_summary || "")}</p><span className="sub">Generated {formatDateTime(summary.created_at)}</span></div> : <div className="empty">Generate an underwriter narrative after review.</div>}</Panel>
-                  <Panel title="Lender packet" actions={<Btn variant="pri" disabled={busy !== ""} onClick={() => { setBusy("packet"); Promise.resolve(onGeneratePacket()).finally(() => setBusy("")); }}>{busy === "packet" ? "Building..." : packet ? "Rebuild packet" : "Build lender packet"}</Btn>}>{packet ? <div className="source-room"><div><CellChip tone="ok">Ready</CellChip><strong>{packet.title}</strong><span className="sub">Redacted lender-facing PDF · {formatDateTime(packet.created_at)}</span></div>{packet.download_url ? <a href={packet.download_url} target="_blank" rel="noreferrer" className="btn">Preview PDF</a> : null}</div> : <div className="empty">Build the redacted packet after the executive summary is ready.</div>}</Panel>
-                  <Panel title="Delivery" sub="Send from the connected desk mailbox and retain the audit result."><div className="fldgrid two"><Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field><Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field></div><Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field><Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={6} placeholder="Draft the reviewed submission message" /></Field><Row><Btn variant="pri" disabled={busy !== ""} onClick={previewEmail}>{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn><Btn disabled={!toEmails.trim() || !subject.trim() || !body.trim() || busy !== ""} onClick={() => setSendReviewOpen(true)}>Review and send</Btn><Btn onClick={downloadZip} disabled={zipBusy}>{zipBusy ? "Building..." : "Download package"}</Btn></Row></Panel>
-                </>
+              {prototypeView === "workspace" && submissionStep === 6 ? (
+                <Panel title="Package readiness" sub="Prepare, review, and deliver one lender-facing package." actions={packageTab === "summary" ? <Btn disabled={busy !== ""} onClick={() => { setBusy("summary"); Promise.resolve(onGenerateSummary()).finally(() => setBusy("")); }}>{busy === "summary" ? "Generating..." : summary ? "Regenerate summary" : "Generate summary"}</Btn> : packageTab === "package" ? <Btn variant="pri" disabled={busy !== "" || !summary} onClick={() => { setBusy("packet"); Promise.resolve(onGeneratePacket()).finally(() => setBusy("")); }}>{busy === "packet" ? "Building..." : packet ? "Rebuild package" : "Build lender package"}</Btn> : <Btn variant="pri" disabled={busy !== ""} onClick={previewEmail}>{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn>}>
+                  <div className="package-readiness-tabs" role="tablist" aria-label="Package readiness sections">{([['summary', 'Executive summary'], ['package', 'Lender package'], ['delivery', 'Delivery']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={packageTab === id} className={packageTab === id ? "on" : undefined} onClick={() => setPackageTab(id)}><span>{id === "summary" ? summary ? <Icon name="check" size={12} /> : "1" : id === "package" ? packet ? <Icon name="check" size={12} /> : "2" : sentCount ? <Icon name="check" size={12} /> : "3"}</span>{label}</button>)}</div>
+                  {packageTab === "summary" ? summary ? <div className="artifact-preview"><strong>{summary.title}</strong><p>{summary.body_text || String(summary.body_json?.executive_summary || "")}</p><span className="sub">Generated {formatDateTime(summary.created_at)}</span></div> : <div className="empty">Generate an underwriter narrative after the AI review is complete.</div> : null}
+                  {packageTab === "package" ? packet ? <div className="source-room"><div><CellChip tone="ok">Ready</CellChip><strong>{packet.title}</strong><span className="sub">Redacted lender-facing PDF · {formatDateTime(packet.created_at)}</span></div>{packet.download_url ? <a href={packet.download_url} target="_blank" rel="noreferrer" className="btn">Preview PDF</a> : null}</div> : <div className="empty">Build the lender package after the executive summary is ready.</div> : null}
+                  {packageTab === "delivery" ? <div className="package-delivery"><div className="fldgrid two"><Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field><Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field></div><Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field><Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={7} placeholder="Draft the reviewed submission message" /></Field><Row><Btn disabled={!toEmails.trim() || !subject.trim() || !body.trim() || !packet || busy !== ""} onClick={() => setSendReviewOpen(true)}>Review and send</Btn><Btn onClick={downloadZip} disabled={zipBusy}>{zipBusy ? "Building..." : "Download package"}</Btn></Row></div> : null}
+                </Panel>
               ) : null}
 
               {prototypeView === "communications" ? (
@@ -1312,7 +1412,6 @@ function LeadDetailPanel({
               </Panel>
               <ApplicationClassificationPanel sourceKind="intake" sourceId={detail.intake.id} />
               <Panel title="Missing and blockers"><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No blockers listed." /></Panel>
-              <Panel title="File controls"><Row><Select value={detail.intake.outcome_status} disabled={outcomeBusy} onChange={(event) => changeOutcomeStatus(event.target.value)} aria-label="Outcome status"><option value="submitted">Submitted</option><option value="closed">Closed</option><option value="denied">Denied</option></Select><Select value={detail.intake.preferred_language} disabled={languageBusy} onChange={(event) => changeLanguage(event.target.value)} aria-label="Client language"><option value="en">English</option><option value="es">Español</option></Select></Row></Panel>
             </aside>
           </div>
         </>
@@ -1339,6 +1438,23 @@ function LeadDetailPanel({
           <Field label="Estimated credit"><Input aria-label="Estimated credit" type="number" min="300" max="850" value={contactDraft.estimated_credit_score} onChange={(event) => setContactDraft({ ...contactDraft, estimated_credit_score: event.target.value })} /></Field>
           <Field label="Loan purpose"><Input aria-label="Loan purpose" value={contactDraft.loan_purpose} onChange={(event) => setContactDraft({ ...contactDraft, loan_purpose: event.target.value })} /></Field>
           <Field label="Referral source"><Input aria-label="Referral source" value={contactDraft.referral_source} onChange={(event) => setContactDraft({ ...contactDraft, referral_source: event.target.value })} /></Field>
+        </div>
+      </Drawer>
+      <Drawer
+        open={requestOpen}
+        onClose={() => setRequestOpen(false)}
+        title="Request missing evidence"
+        sub="Add a required item to the client room. The request is recorded in the bucket audit trail."
+        width="md"
+        closeOnBackdrop={!requestSaving}
+        footer={<><span className="sp" /><Btn onClick={() => setRequestOpen(false)} disabled={requestSaving}>Cancel</Btn><Btn variant="pri" onClick={() => void createDocumentRequest()} disabled={requestSaving || requestDraft.name.trim().length < 2}>{requestSaving ? "Creating..." : "Create request"}</Btn></>}
+      >
+        <div className="grid g12">
+          <Field label="Document or information needed"><Input autoFocus value={requestDraft.name} onChange={(event) => setRequestDraft({ ...requestDraft, name: event.target.value })} placeholder="Current year profit and loss statement" /></Field>
+          <Field label="Category"><Select value={requestDraft.category} onChange={(event) => setRequestDraft({ ...requestDraft, category: event.target.value })}><option>Business documents</option><option>Bank statements</option><option>Tax returns</option><option>Ownership</option><option>Collateral</option><option>Debts</option><option>Personal financials</option><option>Other</option></Select></Field>
+          <Field label="Client instructions"><Textarea value={requestDraft.description} onChange={(event) => setRequestDraft({ ...requestDraft, description: event.target.value })} placeholder="Describe the period, entity, and pages needed." /></Field>
+          <label className="verification-sms"><input type="checkbox" checked={requestDraft.allow_multiple_files} onChange={(event) => setRequestDraft({ ...requestDraft, allow_multiple_files: event.target.checked })} />Allow multiple files for this request</label>
+          <Callout tone="warn" icon={<Icon name="alert" size={15} />}>This changes the client checklist immediately. Review the title and instructions before creating it.</Callout>
         </div>
       </Drawer>
     </div>
@@ -2184,7 +2300,7 @@ function CreateLeadModal({
   creating,
 }: {
   onClose: () => void;
-  onCreate: (payload: CreateLeadPayload) => void | Promise<void>;
+  onCreate: (payload: CreateLeadPayload, evidenceFiles: File[]) => void | Promise<void>;
   creating: boolean;
 }) {
   const [variant, setVariant] = useState<LeadVariant>("dealer");
@@ -2205,6 +2321,9 @@ function CreateLeadModal({
   const [preferredLanguage, setPreferredLanguage] = useState<"en" | "es">("en");
   const [error, setError] = useState("");
   const [step, setStep] = useState(1);
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const evidencePicker = useRef<HTMLInputElement>(null);
 
   const isRE = variant === "real_estate";
   const isMS = variant === "main_street";
@@ -2231,7 +2350,7 @@ function CreateLeadModal({
       intent: isMS ? intent : undefined,
       notify_client: notifyClient,
       preferred_language: preferredLanguage,
-    });
+    }, evidenceFiles);
   }
 
   function next() {
@@ -2245,6 +2364,7 @@ function CreateLeadModal({
       if (!isRE && !businessName.trim()) { setError("Legal business name is required."); return; }
       setError(""); setStep(3); return;
     }
+    if (step === 3) { setError(""); setStep(4); return; }
     submit();
   }
 
@@ -2253,19 +2373,19 @@ function CreateLeadModal({
       open
       onClose={onClose}
       width="md"
-      title={`Create AI intake · ${step === 1 ? "File type" : step === 2 ? "Client and entity" : "Review"}`}
+      title={`Create AI intake · ${step === 1 ? "File type" : step === 2 ? "Client and entity" : step === 3 ? "Evidence" : "Review"}`}
       bodyClass="grid g10"
       footer={
         <>
           {step > 1 ? <Btn onClick={() => { setError(""); setStep((value) => value - 1); }} disabled={creating}>Back</Btn> : <Btn onClick={onClose} disabled={creating}>Cancel</Btn>}
           <span className="sp" />
           <Btn variant="pri" onClick={next} disabled={creating}>
-            {creating ? <><Spinner /> Creating…</> : step === 3 ? "Create file and open Step 1" : "Continue"}
+            {creating ? <><Spinner /> Creating draft and uploading…</> : step === 4 ? "Create draft and open Step 1" : "Continue"}
           </Btn>
         </>
       }
     >
-      <DrawerSteps steps={["File type", "Client and entity", "Review"]} current={step} />
+      <DrawerSteps steps={["File type", "Client and entity", "Evidence", "Review"]} current={step} />
       {step === 1 ? <>
         <p className="sub">Start with the file classification. This controls requirements, evidence, and program screening.</p>
         <div className="fldgrid two"><Field label="Lead type"><Select value={variant} onChange={(e) => setVariant(e.target.value as LeadVariant)}><option value="dealer">Dealer</option><option value="real_estate">Real estate</option><option value="main_street">Main Street (operating business)</option><option value="mca_refinance">MCA refinance</option></Select></Field><Field label="Preferred language"><Select value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value as "en" | "es")}><option value="en">English</option><option value="es">Spanish</option></Select></Field></div>
@@ -2323,8 +2443,14 @@ function CreateLeadModal({
         </div>
       ) : null}
       {step === 3 ? <>
+        <input ref={evidencePicker} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.zip,image/*" onChange={(event) => setEvidenceFiles(Array.from(event.target.files ?? []))} />
+        <button type="button" className={cx("create-evidence-dropzone", dragging && "dragging")} onClick={() => evidencePicker.current?.click()} onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); setEvidenceFiles((rows) => [...rows, ...Array.from(event.dataTransfer.files)]); }}><Icon name="upload" size={24} /><b>Drop initial evidence here or click to browse</b><span>Upload multiple files or a ZIP. The draft opens immediately after creation while extraction continues in the background.</span></button>
+        {evidenceFiles.length ? <div className="create-evidence-files">{evidenceFiles.map((file, index) => <div key={`${file.name}-${file.size}-${index}`}><Icon name="file" size={14} /><span className="grow trunc"><b className="trunc">{file.name}</b><small>{formatSize(file.size)}</small></span><IconBtn aria-label={`Remove ${file.name}`} title="Remove file" onClick={() => setEvidenceFiles((rows) => rows.filter((_, rowIndex) => rowIndex !== index))}><Icon name="x" size={13} /></IconBtn></div>)}</div> : <Callout tone="mut">Evidence is optional during creation and can be uploaded later from the file header.</Callout>}
+      </> : null}
+      {step === 4 ? <>
         <div className="create-intake-review"><div><span>File type</span><b>{variantLabel(variant)}</b></div><div><span>Client</span><b>{fullName || "Not entered"}</b></div><div><span>Entity</span><b>{isRE ? investorName || "Not entered" : businessName || "Not entered"}</b></div><div><span>Primary email</span><b>{email || "Not entered"}</b></div></div>
-        <Callout tone="acc" icon={<Icon name="arrowR" size={16} />}>After creation, the file opens at Step 1 to allocate up to five owners. Credit and bank invitations remain blocked until ownership totals exactly 100.00%.</Callout>
+        <Callout tone="acc" icon={<Icon name="arrowR" size={16} />}>The file opens at Step 1 for ownership. Uploaded evidence is analyzed independently; owner credit and LLC banking each retain their own readiness state.</Callout>
+        <div className="line"><span className="sub">Initial evidence</span><strong>{evidenceFiles.length ? `${evidenceFiles.length} file${evidenceFiles.length === 1 ? "" : "s"}` : "None yet"}</strong></div>
         <label className={cx("pick", notifyClient && "on")}><input type="checkbox" checked={notifyClient} onChange={(e) => setNotifyClient(e.target.checked)} />Email the client a secure login/resume link now</label>
       </> : null}
 

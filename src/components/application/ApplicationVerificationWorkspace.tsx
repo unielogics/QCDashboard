@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { usePlaidLink } from "react-plaid-link";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, Callout, CellChip, IconBtn, Input, Row, Sub, cx } from "@/components/ds";
-import { Drawer } from "@/components/ds/Drawer";
 import { useAuthedApi } from "@/hooks/useApi";
 import type {
   ApplicationBankState,
@@ -60,13 +58,14 @@ export function ApplicationVerificationWorkspace({
 }: {
   sourceKind: ApplicationSourceKind;
   sourceId: string;
-  mode?: "full" | "owners" | "verification";
+  mode?: "full" | "owners" | "credit" | "banking" | "verification";
   onReadyForStep2?: () => void;
   onStateChange?: (state: FileOwnerRequirementState) => void;
 }) {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
-  const [view, setView] = useState<"owners" | "verification">(mode === "verification" ? "verification" : "owners");
+  const initialView = mode === "banking" ? "banking" : mode === "credit" || mode === "verification" ? "credit" : "owners";
+  const [view, setView] = useState<"owners" | "credit" | "banking">(initialView);
   const profileQuery = useQuery({
     queryKey: ["application-profile", sourceKind, sourceId],
     queryFn: () => apiCall<ApplicationProfile>("/application-profiles/resolve", {
@@ -89,7 +88,7 @@ export function ApplicationVerificationWorkspace({
   const banks = useQuery({
     queryKey: ["application-profile-banks", profileId],
     queryFn: () => apiCall<ApplicationBankState>(`/application-profiles/${profileId}/banks`),
-    enabled: Boolean(profileId) && mode !== "owners",
+    enabled: Boolean(profileId) && mode !== "owners" && mode !== "credit",
   });
   useEffect(() => {
     if (verification.data) onStateChange?.(verification.data);
@@ -113,7 +112,8 @@ export function ApplicationVerificationWorkspace({
       {mode === "full" ? (
         <div className="application-verification-tabs" role="tablist" aria-label="Verification steps">
           <button type="button" className={view === "owners" ? "on" : undefined} onClick={() => setView("owners")}><span>1</span>Ownership</button>
-          <button type="button" className={view === "verification" ? "on" : undefined} onClick={() => setView("verification")} disabled={!verification.data?.ready_for_step_2}><span>2</span>Credit &amp; banks</button>
+          <button type="button" className={view === "credit" ? "on" : undefined} onClick={() => setView("credit")} disabled={!verification.data?.ready_for_step_2}><span>2</span>Owner credit</button>
+          <button type="button" className={view === "banking" ? "on" : undefined} onClick={() => setView("banking")}><span>3</span>Business banking</button>
         </div>
       ) : null}
       {(mode === "owners" || (mode === "full" && view === "owners")) ? (
@@ -124,21 +124,21 @@ export function ApplicationVerificationWorkspace({
           loading={owners.isLoading || verification.isLoading}
           onRefresh={refresh}
           onContinue={() => {
-            if (mode === "full") setView("verification");
+            if (mode === "full") setView("credit");
             onReadyForStep2?.();
           }}
         />
       ) : null}
-      {(mode === "verification" || (mode === "full" && view === "verification")) ? (
-        <VerificationPanel
+      {(mode === "credit" || mode === "verification" || (mode === "full" && view === "credit")) ? (
+        <CreditPanel
           profileId={profileId}
           owners={owners.data ?? []}
           state={verification.data}
-          banks={banks.data}
-          loading={owners.isLoading || verification.isLoading || banks.isLoading}
+          loading={owners.isLoading || verification.isLoading}
           onRefresh={refresh}
         />
       ) : null}
+      {(mode === "banking" || (mode === "full" && view === "banking")) ? <BankingPanel profileId={profileId} sourceKind={sourceKind} sourceId={sourceId} state={verification.data} banks={banks.data} loading={verification.isLoading || banks.isLoading} onRefresh={refresh} /> : null}
     </div>
   );
 }
@@ -288,19 +288,18 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
       {error ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>{error}</Callout> : null}
       <footer className="verification-section-footer">
         <div className="verification-blockers">
-          {state?.blockers.length ? state.blockers.map((blocker) => <span key={blocker}><Icon name="x" size={12} />{blocker}</span>) : <span className="ready"><Icon name="check" size={12} />Ownership is ready for individual verification.</span>}
+          {state?.ownership_blockers.length ? state.ownership_blockers.map((blocker) => <span key={blocker}><Icon name="x" size={12} />{blocker}</span>) : <span className="ready"><Icon name="check" size={12} />Ownership is ready. Evidence can be collected next.</span>}
         </div>
-        <Btn variant="pri" disabled={!ready} onClick={onContinue}>Continue to Step 2<Icon name="arrowR" size={14} /></Btn>
+        <Btn variant="pri" disabled={!ready} onClick={onContinue}>Continue to evidence<Icon name="arrowR" size={14} /></Btn>
       </footer>
     </section>
   );
 }
 
-function VerificationPanel({ profileId, owners, state, banks, loading, onRefresh }: {
+function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
   profileId: string;
   owners: FileOwner[];
   state?: FileOwnerRequirementState;
-  banks?: ApplicationBankState;
   loading: boolean;
   onRefresh: () => Promise<void>;
 }) {
@@ -309,9 +308,6 @@ function VerificationPanel({ profileId, owners, state, banks, loading, onRefresh
   const [links, setLinks] = useState<Record<string, string>>({});
   const [alsoText, setAlsoText] = useState(false);
   const [error, setError] = useState("");
-  const [consentOpen, setConsentOpen] = useState(false);
-  const [consenter, setConsenter] = useState("");
-  const [linkToken, setLinkToken] = useState<string | null>(null);
 
   const invite = useMutation({
     mutationFn: ({ ownerId }: { ownerId: string }) => apiCall<FileCreditInvite>(`/application-profiles/${profileId}/owners/${ownerId}/credit-invite`, { method: "POST", body: JSON.stringify({ channel: alsoText ? "sms" : "email" }) }),
@@ -333,48 +329,13 @@ function VerificationPanel({ profileId, owners, state, banks, loading, onRefresh
     },
     onError: (reason) => setError(reason instanceof Error ? reason.message : "The authorizations could not be sent."),
   });
-  const grantConsent = useMutation({
-    mutationFn: () => apiCall<ApplicationBankState>(`/application-profiles/${profileId}/bank-consent`, { method: "POST", body: JSON.stringify({ granted: true, method: "electronic", consenter_name: consenter.trim() }) }),
-    onSuccess: async () => { setConsentOpen(false); setError(""); await onRefresh(); await requestLink(); },
-    onError: (reason) => setError(reason instanceof Error ? reason.message : "Bank consent could not be recorded."),
-  });
-  const requestLink = async () => {
-    try {
-      const result = await apiCall<{ link_token: string }>(`/application-profiles/${profileId}/banks/link-token`, { method: "POST" });
-      setLinkToken(result.link_token);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Plaid could not be opened.");
-    }
-  };
-  const exchange = useMutation({
-    mutationFn: ({ publicToken, institution }: { publicToken: string; institution: string | null }) => apiCall(`/application-profiles/${profileId}/banks/exchange`, { method: "POST", body: JSON.stringify({ public_token: publicToken, institution_name: institution }) }),
-    onSuccess: async () => { setLinkToken(null); setError(""); await onRefresh(); },
-    onError: (reason) => setError(reason instanceof Error ? reason.message : "The bank connection could not be saved."),
-  });
-  const { open: openPlaid, ready: plaidReady } = usePlaidLink({
-    token: linkToken,
-    onSuccess: (publicToken, metadata) => {
-      if (publicToken) exchange.mutate({ publicToken, institution: metadata.institution?.name ?? null });
-    },
-    onExit: () => setLinkToken(null),
-  });
-  useEffect(() => { if (linkToken && plaidReady) openPlaid(); }, [linkToken, plaidReady, openPlaid]);
-
-  const bankMutation = useMutation({
-    mutationFn: ({ itemId, action }: { itemId: string; action: "primary" | "refresh" | "disconnect" }) => {
-      if (action === "primary") return apiCall(`/application-profiles/${profileId}/banks/${itemId}`, { method: "PATCH", body: JSON.stringify({ is_primary_operating: true }) });
-      return apiCall(`/application-profiles/${profileId}/banks/${itemId}${action === "refresh" ? "/refresh" : ""}`, { method: action === "disconnect" ? "DELETE" : "POST" });
-    },
-    onSuccess: async () => { setError(""); await onRefresh(); },
-    onError: (reason) => setError(reason instanceof Error ? reason.message : "The bank connection could not be updated."),
-  });
 
   if (loading) return <div className="empty"><span className="spinner solo" />Loading verification...</div>;
   return (
     <div className="verification-stack">
       <section className="verification-section">
         <header className="verification-section-head">
-          <div><span className="lbl">Step 2</span><h3>Owner iSoftPull authorizations</h3><Sub>Each 20%+ owner receives a private, one-time link tied only to their identity.</Sub></div>
+          <div><span className="lbl">Step 3</span><h3>Owner iSoftPull authorizations</h3><Sub>Each 20%+ owner receives a private, one-time link tied only to their identity.</Sub></div>
           <CellChip tone={state?.credit_returned ? "ok" : "warn"}>{state?.completed_credit_owner_count ?? 0} of {state?.required_credit_owner_count ?? 0} completed</CellChip>
           <Btn variant="pri" disabled={!state?.ready_for_step_2 || !state?.pending_credit_owner_ids.length || inviteAll.isPending} onClick={() => inviteAll.mutate()}><Icon name="send" size={14} />Send all pending</Btn>
         </header>
@@ -395,30 +356,82 @@ function VerificationPanel({ profileId, owners, state, banks, loading, onRefresh
         <label className="verification-sms"><input type="checkbox" checked={alsoText} onChange={(event) => setAlsoText(event.target.checked)} />Also send by SMS when the exact owner has transactional consent</label>
       </section>
 
-      <section className="verification-section">
-        <header className="verification-section-head">
-          <div><span className="lbl">Bank evidence</span><h3>Connected operating accounts</h3><Sub>Connect every institution needed to show complete operating activity. One bank remains primary.</Sub></div>
-          <CellChip tone={state?.bank_linked ? "ok" : "warn"}>{state?.bank_connection_count ?? 0} connected · {state?.bank_statement_months ?? 0} statement months</CellChip>
-          <Btn variant="pri" disabled={!banks?.enabled} onClick={() => banks?.consent_granted ? void requestLink() : setConsentOpen(true)}><Icon name="link" size={14} />Connect another bank</Btn>
-        </header>
-        {!banks?.enabled ? <Callout tone="warn" icon={<Icon name="alert" size={16} />}>Plaid is not configured for this environment.</Callout> : null}
-        <div className="bank-connection-list">
-          {(banks?.items ?? []).filter((item) => item.status !== "removed").map((item) => (
-            <div key={item.id} className="bank-connection-row">
-              <span className="bank-connection-icon"><Icon name="building" size={17} /></span>
-              <div className="grow trunc"><Row><b className="trunc">{item.institution_name || "Connected institution"}</b>{item.is_primary_operating ? <CellChip tone="acc">Primary operating</CellChip> : null}<CellChip tone={item.status === "active" ? "ok" : item.error ? "bad" : "warn"}>{item.status}</CellChip></Row><Sub>{item.accounts_label || "Accounts connected"} · {item.statement_months.length ? `${item.statement_months.length} months available` : "Statements syncing"} · refreshed {when(item.last_pulled_at)}</Sub></div>
-              {!item.is_primary_operating ? <Btn size="sm" onClick={() => bankMutation.mutate({ itemId: item.id, action: "primary" })}>Make primary</Btn> : null}
-              <IconBtn aria-label={`Refresh ${item.institution_name || "bank"}`} title="Refresh statements" onClick={() => bankMutation.mutate({ itemId: item.id, action: "refresh" })}><Icon name="refresh" size={14} /></IconBtn>
-              <IconBtn aria-label={`Disconnect ${item.institution_name || "bank"}`} title="Disconnect bank; retained statements stay in evidence" onClick={() => bankMutation.mutate({ itemId: item.id, action: "disconnect" })}><Icon name="x" size={14} /></IconBtn>
-            </div>
-          ))}
-          {banks?.enabled && !(banks.items ?? []).filter((item) => item.status !== "removed").length ? <div className="empty">No bank accounts connected yet.</div> : null}
-        </div>
-      </section>
       {error ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>{error}</Callout> : null}
-      <Drawer open={consentOpen} onClose={() => setConsentOpen(false)} title="Authorize bank evidence" sub="Record consent before opening Plaid" width="md" footer={<><span className="sp" /><Btn onClick={() => setConsentOpen(false)}>Cancel</Btn><Btn variant="pri" disabled={!consenter.trim() || grantConsent.isPending} onClick={() => grantConsent.mutate()}>Record consent &amp; continue</Btn></>}>
-        <div className="grid"><Callout tone="acc" icon={<Icon name="shield" size={17} />}>{banks?.disclosure_text || "The applicant authorizes Qualified Commercial to retrieve business bank evidence for underwriting."}</Callout><label className="grid g6"><span className="lbl">Consenter name</span><Input value={consenter} onChange={(event) => setConsenter(event.target.value)} placeholder="Full legal name" /></label></div>
-      </Drawer>
     </div>
   );
+}
+
+function BankingPanel({ profileId, sourceKind, sourceId, state, banks, loading, onRefresh }: {
+  profileId: string;
+  sourceKind: ApplicationSourceKind;
+  sourceId: string;
+  state?: FileOwnerRequirementState;
+  banks?: ApplicationBankState;
+  loading: boolean;
+  onRefresh: () => Promise<void>;
+}) {
+  const apiCall = useAuthedApi();
+  const picker = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadState, setUploadState] = useState("");
+  const [error, setError] = useState("");
+  const [secureLink, setSecureLink] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
+
+  const invite = useMutation({
+    mutationFn: (channel: "email" | "none") => apiCall<{ path: string; token: string | null; delivery_status: string }>(`/application-profiles/${profileId}/bank-invitations`, { method: "POST", body: JSON.stringify({ channel }) }),
+    onSuccess: (result) => { setSecureLink(`${window.location.origin}${result.path}`); setError(result.delivery_status === "failed" ? "The secure link was created but delivery failed." : ""); },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "The bank request could not be sent."),
+  });
+  const override = useMutation({
+    mutationFn: () => apiCall<ApplicationBankState>(`/application-profiles/${profileId}/banks/manual-override`, { method: "POST", body: JSON.stringify({ reason: overrideReason.trim() }) }),
+    onSuccess: async () => { setOverrideReason(""); setError(""); await onRefresh(); },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "Manual statement evidence could not be approved."),
+  });
+
+  async function uploadFiles(files: File[]) {
+    if (sourceKind !== "intake" || !files.length) return;
+    setUploading(true); setError("");
+    let uploaded = 0;
+    try {
+      for (const file of files) {
+        setUploadState(`Uploading ${file.name} · ${uploaded + 1} of ${files.length}`);
+        const init = await apiCall<{ file_id: string; upload_url: string; required_headers: Record<string, string> }>(`/admin/ai-underwriter-leads/${sourceId}/files/upload-init`, { method: "POST", body: JSON.stringify({ requested_document_id: null, file_name: file.name, content_type: file.type || "application/octet-stream", size_bytes: file.size }) });
+        const response = await fetch(init.upload_url, { method: "PUT", body: file, headers: init.required_headers });
+        if (!response.ok) throw new Error(`${file.name} could not be uploaded.`);
+        await apiCall(`/admin/ai-underwriter-leads/${sourceId}/files/complete`, { method: "POST", body: JSON.stringify({ file_id: init.file_id }) });
+        uploaded += 1;
+      }
+      setUploadState(`${uploaded} statement file${uploaded === 1 ? "" : "s"} uploaded and queued for extraction.`);
+      await onRefresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Bank statements could not be uploaded.");
+    } finally {
+      setUploading(false); setDragging(false);
+      if (picker.current) picker.current.value = "";
+    }
+  }
+
+  if (loading) return <div className="empty"><span className="spinner solo" />Loading business banking...</div>;
+  const connected = (banks?.items ?? []).filter((item) => item.status !== "removed");
+  const manualMonths = banks?.manual_statement_months ?? [];
+  return <section className="verification-section bank-evidence-workspace">
+    <header className="verification-section-head">
+      <div><span className="lbl">Step 4</span><h3>Business bank evidence</h3><Sub>The client connects LLC accounts from their secure link. Staff may upload supplied statements and approve them as the evidence source.</Sub></div>
+      <CellChip tone={state?.business_banking_complete ? "ok" : "warn"}>{state?.business_banking_complete ? "Complete" : "Awaiting applicant"}</CellChip>
+    </header>
+    <div className="bank-evidence-stats"><div><span>Connected institutions</span><b className="num">{connected.length}</b></div><div><span>Evidence source</span><b>{banks?.manual_override ? "Uploaded statements" : connected.length ? "Plaid" : "-"}</b></div><div><span>Statement coverage</span><b className="num">{state?.bank_statement_months || "-"}</b></div></div>
+    <Row><Btn variant="pri" disabled={invite.isPending} onClick={() => invite.mutate("email")}><Icon name="send" size={14} />{secureLink ? "Resend bank request" : "Send bank connection request"}</Btn><Btn disabled={invite.isPending} onClick={() => invite.mutate("none")}><Icon name="link" size={14} />Create secure link</Btn>{secureLink ? <IconBtn aria-label="Copy secure bank link" title="Copy secure bank link" onClick={() => void navigator.clipboard.writeText(secureLink)}><Icon name="copy" size={14} /></IconBtn> : null}</Row>
+    <input ref={picker} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.zip,image/*" onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))} />
+    <button type="button" className={cx("bank-statement-dropzone", dragging && "dragging")} disabled={uploading || sourceKind !== "intake"} onClick={() => picker.current?.click()} onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); void uploadFiles(Array.from(event.dataTransfer.files)); }}>
+      <Icon name="upload" size={22} /><b>{uploading ? uploadState : "Drop bank statements here or click to browse"}</b><span>Files are stored in the primary bucket and sent through the same extraction and statement-coverage pipeline.</span>
+    </button>
+    {uploadState && !uploading ? <Callout tone="acc">{uploadState}</Callout> : null}
+    {manualMonths.length ? <div className="bank-coverage-chips">{manualMonths.map((month) => <CellChip key={month} tone="acc">{month}</CellChip>)}</div> : null}
+    {manualMonths.length && !banks?.manual_override ? <div className="manual-bank-override"><Input value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} placeholder="Why uploaded statements are sufficient for this file" /><Btn variant="pri" disabled={overrideReason.trim().length < 8 || override.isPending} onClick={() => override.mutate()}><Icon name="check" size={14} />Approve manual evidence</Btn></div> : null}
+    {banks?.manual_override ? <Callout tone="acc" icon={<Icon name="check" size={16} />}>Plaid requirement overridden with reviewed statement evidence. {banks.manual_override_reason}</Callout> : null}
+    <div className="bank-connection-list">{connected.map((item) => <div key={item.id} className="bank-connection-row"><span className="bank-connection-icon"><Icon name="building" size={17} /></span><div className="grow trunc"><Row><b className="trunc">{item.institution_name || "Connected institution"}</b>{item.is_primary_operating ? <CellChip tone="acc">Primary operating</CellChip> : null}<CellChip tone={item.status === "active" ? "ok" : item.error ? "bad" : "warn"}>{item.status}</CellChip></Row><Sub>{item.accounts_label || "Accounts connected"} · {item.statement_months.length ? `${item.statement_months.length} months available` : "Statements syncing"} · refreshed {when(item.last_pulled_at)}</Sub></div></div>)}{!connected.length && !manualMonths.length ? <div className="empty">No bank evidence has been received.</div> : null}</div>
+    {error ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>{error}</Callout> : null}
+  </section>;
 }

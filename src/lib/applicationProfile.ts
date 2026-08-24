@@ -12,11 +12,22 @@ export type ApplicationProfile = {
   funding_category: string | null;
   entity_type: string | null;
   industry: string | null;
+  subindustry: string | null;
   naics_code: string | null;
   naics_label: string | null;
   custom_industry: string | null;
+  industry_entry_id: string | null;
+  subindustry_entry_id: string | null;
+  activity_entry_id: string | null;
+  taxonomy_version: string;
+  classification_provenance: Record<string, unknown> | null;
   classification_revision: number;
   backfill_needs_review: boolean;
+  is_draft: boolean;
+  draft_finalized_at: string | null;
+  extraction_reviewed_at: string | null;
+  bank_verification_override_at: string | null;
+  bank_verification_override_reason: string | null;
   owner_storage: "application" | "dealer";
 };
 
@@ -56,8 +67,14 @@ export type FileOwnerRequirementState = {
   bank_connection_count: number;
   bank_statement_months: number;
   credit_returned: boolean;
+  owner_credit_complete: boolean;
+  business_banking_complete: boolean;
+  evidence_complete: boolean;
   ready_for_step_2: boolean;
   unlocked: boolean;
+  ownership_blockers: string[];
+  credit_blockers: string[];
+  banking_blockers: string[];
   blockers: string[];
 };
 
@@ -92,6 +109,9 @@ export type ApplicationBankState = {
   disclosure_version: string;
   disclosure_text: string;
   items: ApplicationBankConnection[];
+  manual_override: boolean;
+  manual_override_reason: string | null;
+  manual_statement_months: string[];
 };
 
 export type UnifiedAuditEvent = {
@@ -107,8 +127,28 @@ export type UnifiedAuditEvent = {
 
 export type ClassificationPatch = Pick<
   ApplicationProfile,
-  "vertical" | "funding_category" | "entity_type" | "industry" | "naics_code" | "naics_label" | "custom_industry"
+  "vertical" | "funding_category" | "entity_type" | "industry" | "subindustry" | "naics_code" | "naics_label" | "custom_industry" | "industry_entry_id" | "subindustry_entry_id" | "activity_entry_id"
 >;
+
+export type TaxonomyEntry = {
+  id: string;
+  level: 2 | 3 | 6;
+  code: string | null;
+  label: string;
+  parent_id: string | null;
+  source: string;
+  taxonomy_version: string;
+  status: "official" | "approved" | "pending" | "rejected" | "merged";
+  aliases: string[];
+  originating_profile_id: string | null;
+  canonical_entry_id: string | null;
+};
+
+export type TaxonomySearch = { items: TaxonomyEntry[]; total: number; page: number; page_size: number };
+export type FundingCategory = { id: string; vertical: string; slug: string; label: string; status: string; is_system: boolean };
+export type ExtractedFact = { id: string; field_key: string; value: { value?: unknown }; normalized_value: string | null; confidence: number | null; source_file_id: string | null; status: string; extraction_method: string; created_at: string };
+export type ApplicationDraftAnalysisStatus = { profile_id: string; uploaded_file_count: number; analyzed_file_count: number; processing_file_count: number; failed_file_count: number; suggested_fact_count: number; reviewed_fact_count: number; can_finalize: boolean };
+export type ApplicationIntelligence = { profile_id: string; metrics: Array<{ key: string; label: string; applicable: boolean; value: string | number | null; unit: string | null; status: "ready" | "needs_evidence" | "not_applicable"; confidence: number | null; period: string | null; source: string | null; action: string | null }>; dscr_inputs: Record<string, unknown> };
 
 export type ClassificationPreview = {
   profile_id: string;
