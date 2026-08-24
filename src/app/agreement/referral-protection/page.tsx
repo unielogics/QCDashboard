@@ -661,17 +661,12 @@ type Theme = CssVars;
 
 const page = (): CSSProperties => ({ minHeight: "100vh", background: V.bg, color: V.ink, padding: 24, fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" });
 const shell: CSSProperties = { maxWidth: 760, margin: "6vh auto 60px", display: "grid", gap: 18 };
-// Full-viewport layout for the review step: the page itself is exactly the
-// viewport height with no outer scroll, and the shell is a flex column
-// (min-height:0 required so the inner reading pane can actually shrink/
-// scroll instead of pushing the page taller) so the long document scrolls
-// WITHIN a bounded area that fills the desktop window. reviewBody splits
-// into a wide reading pane + a narrower sticky sign sidebar on desktop
-// widths (see signSidebar's media query below), collapsing to a stacked
-// column on narrow viewports.
-const reviewPage = (): CSSProperties => ({ ...page(), height: "100vh", minHeight: "100vh", overflow: "hidden", display: "flex", flexDirection: "column" });
-const reviewShell: CSSProperties = { maxWidth: "min(1600px, 97vw)", width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: 14, flex: 1, minHeight: 0, paddingBottom: 16 };
-const reviewBody: CSSProperties = { display: "flex", gap: 16, flex: 1, minHeight: 0, flexWrap: "wrap" };
+// The legal document owns the page scroll. Keeping a second bounded scroller
+// here made long agreements difficult to read on both desktop and mobile and
+// prevented the browser from reaching the signature section reliably.
+const reviewPage = (): CSSProperties => ({ ...page(), minHeight: "100vh", overflow: "visible" });
+const reviewShell: CSSProperties = { maxWidth: 1100, width: "100%", margin: "0 auto 80px", display: "grid", gap: 14 };
+const reviewBody: CSSProperties = { display: "grid", gap: 16, minWidth: 0 };
 const brandHeader: CSSProperties = { display: "flex", alignItems: "center", gap: 10 };
 const brand = (): CSSProperties => ({ color: V.petrol, fontSize: 12, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase" });
 const brandName = (): CSSProperties => ({ color: V.ink, fontSize: 15, fontWeight: 900, lineHeight: 1.2 });
@@ -681,9 +676,9 @@ const versionLine = (): CSSProperties => ({ margin: "4px 0 0", color: V.ink3, fo
 // Wider, flatter "reading pane" -- no boxed card treatment, just a page-
 // like surface, so the document reads like a real document rather than a
 // narrow column stretched onto a monitor.
-const docCardFull = (): CSSProperties => ({ border: `1px solid ${V.line}`, borderRadius: 14, background: V.surface, flex: "3 1 620px", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", padding: "16px clamp(16px, 4vw, 56px)" });
-const docScrollFull: CSSProperties = { flex: 1, minHeight: 0, overflowY: "auto", display: "grid", gap: "0.7em", paddingRight: 6 };
-const signSidebar = (): CSSProperties => ({ flex: "1 1 300px", minWidth: 280, maxWidth: 420, display: "grid", gap: 12, alignContent: "start", border: `1px solid ${V.line}`, borderRadius: 14, background: V.surface2, padding: 18, position: "sticky", top: 0, maxHeight: "100%", overflowY: "auto" });
+const docCardFull = (): CSSProperties => ({ border: `1px solid ${V.line}`, borderRadius: 14, background: V.surface, minWidth: 0, padding: "16px clamp(16px, 4vw, 56px)" });
+const docScrollFull: CSSProperties = { minWidth: 0, overflow: "visible", display: "grid", gap: "0.7em" };
+const signSidebar = (): CSSProperties => ({ minWidth: 0, display: "grid", gap: 12, alignContent: "start", border: `1px solid ${V.line}`, borderRadius: 14, background: V.surface2, padding: 18, position: "sticky", bottom: 12, zIndex: 10, boxShadow: "0 14px 38px rgba(15, 23, 42, 0.16)" });
 const noticeBox = (): CSSProperties => ({ margin: "0 0 1em", color: V.warn, fontSize: "0.85em", lineHeight: 1.5, fontWeight: 700, border: `1px solid ${V.warn}`, borderRadius: 8, padding: "0.7em 0.8em", background: V.warnBg });
 const docHeading = (): CSSProperties => ({ fontWeight: 900, fontSize: "0.95em", color: V.ink, marginTop: "1.5em", marginBottom: "0.5em", letterSpacing: 0.3, borderBottom: `1px solid ${V.line}`, paddingBottom: "0.4em" });
 const docPara = (): CSSProperties => ({ margin: "0 0 0.5em", color: V.ink2, fontSize: "0.85em", lineHeight: 1.6 });
