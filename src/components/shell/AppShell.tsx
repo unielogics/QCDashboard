@@ -32,6 +32,19 @@ export default function AppShell({
   isAgreementPortal?: boolean;
 }) {
   const pathname = usePathname();
+  const isBareRoute = computeBareRoute(pathname, { isAgreementPortal });
+
+  // Public token/session routes must not initialize authenticated console
+  // queries or global keyboard handlers. Apart from avoiding needless 401s,
+  // this isolates legal signing from failures in operator-shell behavior.
+  if (isBareRoute) {
+    return <div className="bareshell">{children}</div>;
+  }
+
+  return <AuthenticatedAppShell pathname={pathname ?? ""}>{children}</AuthenticatedAppShell>;
+}
+
+function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pathname: string }) {
   const router = useRouter();
   const aiOpen = useUI((s) => s.aiOpen);
   const setAiOpen = useUI((s) => s.setAiOpen);
@@ -91,10 +104,6 @@ export default function AppShell({
   // Reference sidebarCollapsed to keep the dependency tracked (drives
   // the sidebar's transition, not the grid).
 
-  // Which routes skip the app chrome — see lib/shellRoutes.ts for why each
-  // prefix is on the list.
-  const isBareRoute = computeBareRoute(pathname, { isAgreementPortal });
-
   // A session that still owes a required task — setting up two-step
   // verification, for instance — reports isSignedIn === false, because
   // @clerk/backend treats a `pending` session as signed out by default. Clerk
@@ -104,10 +113,10 @@ export default function AppShell({
   const isAccountRoute = pathname.startsWith("/account");
 
   useEffect(() => {
-    if (!isBareRoute && !isAccountRoute && authLoaded && isSignedIn === false) {
+    if (!isAccountRoute && authLoaded && isSignedIn === false) {
       window.location.assign(SIGN_IN_URL);
     }
-  }, [authLoaded, isBareRoute, isAccountRoute, isSignedIn]);
+  }, [authLoaded, isAccountRoute, isSignedIn]);
 
   // Ongoing confinement, past the one-time Platform Access signature gate
   // below: a signed dealer partner has no book-of-business (see
@@ -122,16 +131,12 @@ export default function AppShell({
   const isDealerPartnerConfinedRoute =
     pathname.startsWith("/broker") || pathname.startsWith("/profile");
   const isDealerPartnerOutOfBounds =
-    !isBareRoute && user?.role === Role.DEALER_PARTNER && !isDealerPartnerConfinedRoute;
+    user?.role === Role.DEALER_PARTNER && !isDealerPartnerConfinedRoute;
   useEffect(() => {
     if (isDealerPartnerOutOfBounds) {
       router.replace("/broker/ai-underwriter-leads");
     }
   }, [isDealerPartnerOutOfBounds, router]);
-
-  if (isBareRoute) {
-    return <div className="bareshell">{children}</div>;
-  }
 
   if (!authLoaded || isSignedIn === false) {
     return <div className="bareshell" />;

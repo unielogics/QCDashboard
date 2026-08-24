@@ -78,7 +78,7 @@ export function ToolsDrawer({
 export function useToolsHotkey(onOpen: () => void) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") {
+      if ((e.metaKey || e.ctrlKey) && typeof e.key === "string" && e.key.toLowerCase() === "j") {
         e.preventDefault();
         onOpen();
       }
