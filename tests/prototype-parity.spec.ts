@@ -443,6 +443,16 @@ test("intake evidence, contact editing, and review controls share the file works
   await contactDrawer.getByRole("button", { name: "Cancel" }).click();
 
   await intakeFile.getByRole("button", { name: /AI review/i }).first().click();
+  const probabilityMetric = intakeFile.locator(".intake-review-grid .knum.prose").first();
+  await expect(probabilityMetric).toBeVisible();
+  const probabilityContained = await probabilityMetric.evaluate((element) => {
+    const tile = element.closest(".kpi");
+    if (!(tile instanceof HTMLElement)) return false;
+    const valueRect = element.getBoundingClientRect();
+    const tileRect = tile.getBoundingClientRect();
+    return valueRect.left >= tileRect.left && valueRect.right <= tileRect.right + 1;
+  });
+  expect(probabilityContained).toBe(true);
   await intakeFile.getByRole("button", { name: /Run AI review/i }).first().click();
   const reviewDrawer = page.getByRole("dialog", { name: "Run AI review" });
   await expect(reviewDrawer).toContainText("continue working anywhere in the console");

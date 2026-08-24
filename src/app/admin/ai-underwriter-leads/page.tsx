@@ -1261,7 +1261,7 @@ function LeadDetailPanel({
               ) : null}
               {prototypeView === "workspace" && submissionStep === 4 ? (
                 <Panel title="AI review" actions={<Btn variant="pri" onClick={onRerun} disabled={rerunning}>{rerunning ? "Reviewing..." : reviewComplete ? "Re-run review" : "Run AI review"}</Btn>}>
-                  <div className="intake-review-grid"><div className="kpi"><div className="lbl">Probability</div><div className="knum">{String(result?.probability_status || "Awaiting evidence")}</div></div><div className="kpi"><div className="lbl">Evidence</div><div className="knum num">{detail.files.length}</div><div className="sub">primary files available</div></div><div className="kpi"><div className="lbl">Missing</div><div className="knum num">{missing.length}</div><div className="sub">blocking items</div></div></div>
+                  <div className="intake-review-grid"><div className="kpi"><div className="lbl">Probability</div><div className="knum prose">{String(result?.probability_status || "Awaiting evidence")}</div></div><div className="kpi"><div className="lbl">Evidence</div><div className="knum num">{detail.files.length}</div><div className="sub">primary files available</div></div><div className="kpi"><div className="lbl">Missing</div><div className="knum num">{missing.length}</div><div className="sub">blocking items</div></div></div>
                   <div className="hintbox mt"><div className="lbl">Next best action</div><p>{String(result?.one_next_step || result?.executive_summary || "Run the review after the evidence room is complete.")}</p></div>
                 </Panel>
               ) : null}

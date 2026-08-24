@@ -488,7 +488,7 @@
 /* A KPI whose value is a sentence rather than a figure. `.knum` is
    white-space: nowrap and 26px, which is correct for "$1.2M" and overflows
    the tile for "Auto-approve under $50k". */
-.kpi .knum.prose { white-space: normal; font-size: 15px; line-height: 1.3; font-weight: 620; }
+.kpi .knum.prose { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; font-size: 15px; line-height: 1.3; font-weight: 620; }
 
 /* ---------- two utilities the home dashboard needed eight times over ----------
 

@@ -300,7 +300,7 @@ function BankConnect({
               {/* `.btn:disabled` carries the dimmed state the inline opacity did. */}
               <Btn
                 variant="pri"
-                disabled={!agreed || !signer.trim() || busy}
+                disabled={!agreed || signer.trim().length < 2 || busy}
                 onClick={authorize}
               >
                 {busy ? "Recording…" : "Authorize and continue"}
