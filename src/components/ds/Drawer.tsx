@@ -63,8 +63,12 @@ export function Drawer({
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
   const restoreTo = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  // Parent forms commonly pass an inline close handler. Keep the focus-lock
+  // effect stable while still invoking the latest handler.
+  onCloseRef.current = onClose;
 
-  const close = useCallback(() => onClose(), [onClose]);
+  const close = useCallback(() => onCloseRef.current(), []);
 
   useEffect(() => {
     if (!open) return;

@@ -72,6 +72,114 @@ async function captureReviewImage(page: Page, name: string, testInfo: TestInfo) 
   await page.screenshot({ path: join(output, `${name}.png`), animations: "disabled" });
 }
 
+async function mockEmptyOperatorPipeline(page: Page) {
+  await page.route(/\/api\/v1\/auth\/me$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "10000000-0000-0000-0000-000000000001",
+        clerk_id: "visual-qa",
+        email: "franco@qualifiedcommercial.com",
+        name: "Visual QA",
+        role: "super_admin",
+      }),
+    });
+  });
+  await page.route(/\/api\/v1\/operator-files(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [],
+        rollup: { total: 0, promoted: 0, working: 0, needs_attention: 0, real_estate: 0, main_street: 0, dealer: 0, mca: 0 },
+        limit: 500,
+        filters: { vertical: "all", origin: "all", q: null },
+      }),
+    });
+  });
+  await page.route(/\/api\/v1\/settings$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+  });
+}
+
+async function mockAiIntakeBankingWorkspace(page: Page) {
+  const intakeId = "20000000-0000-0000-0000-000000000001";
+  const profileId = "20000000-0000-0000-0000-000000000002";
+  const bucketId = "20000000-0000-0000-0000-000000000003";
+  const lead = {
+    id: intakeId,
+    variant: "dealer_gatekeeper_v1",
+    bucket_id: bucketId,
+    bucket_name: "UnieLogics secure room",
+    full_name: "Jonathan Franco",
+    email: "franco@theceosnetwork.com",
+    phone: "9735550188",
+    business_name: "UnieLogics",
+    referral_source: "Direct",
+    opened_by_name: "House desk",
+    opened_by_role: "Super admin",
+    status: "reviewed",
+    outcome_status: "submitted",
+    preferred_language: "en",
+    probability_status: "Promising but needs one clarification",
+    confidence: "medium",
+    one_next_step: "Complete business banking",
+    latest_review_status: "completed",
+    booking_recommended: false,
+    call_booked: false,
+    file_count: 6,
+    missing_required_count: 1,
+    requested_loan_amount: 1000000,
+    estimated_credit_score: null,
+    created_at: "2026-08-24T16:00:00Z",
+    updated_at: "2026-08-24T17:30:00Z",
+    last_message_at: null,
+    delete_requested_at: null,
+    unseen_activity_count: 0,
+    delete_requested_by: null,
+    loan_purpose: "Working capital",
+    referral_source_detail: null,
+    asset_rows: null,
+    result_snapshot: {},
+  };
+
+  await page.route(/\/api\/v1\/auth\/me$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: "10000000-0000-0000-0000-000000000001", clerk_id: "visual-qa", email: "franco@qualifiedcommercial.com", name: "Visual QA", role: "super_admin" }) });
+  });
+  await page.route(/\/api\/v1\/operator-files(?:\?.*)?$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], rollup: { total: 0, promoted: 0, working: 0, needs_attention: 0, real_estate: 0, main_street: 0, dealer: 0, mca: 0 }, limit: 500, filters: { vertical: "all", origin: "all", q: null } }) });
+  });
+  await page.route(/\/api\/v1\/admin\/ai-underwriter-leads\?.*$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [lead], total: 1, limit: 25, offset: 0 }) });
+  });
+  await page.route(new RegExp(`/api/v1/admin/ai-underwriter-leads/${intakeId}$`), async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ intake: lead, requested_documents: [], files: [], latest_review: { status: "completed", result: {} }, messages: [], artifacts: [], email_sends: [], notes: [], upload_url: null, secure_room_pin: null, room_delivery_status: "sent", room_delivery_detail: "Emailed." }) });
+  });
+  await page.route(/\/api\/v1\/application-profiles\/resolve$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: profileId, intake_id: intakeId, primary_bucket_id: bucketId, vertical: "dealer", owner_storage: "application" }) });
+  });
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/owners$`), async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/verification$`), async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ownership_total: 100, ownership_complete: true, owner_contact_complete: true, owner_count: 1, required_credit_owner_count: 1, completed_credit_owner_count: 0, pending_credit_owner_ids: [], missing_credit_contact_owner_ids: [], bank_linked: false, bank_connection_count: 0, bank_statement_months: 6, credit_returned: false, owner_credit_complete: false, business_banking_complete: false, evidence_complete: true, ready_for_step_2: true, unlocked: false, ownership_blockers: [], credit_blockers: [], banking_blockers: ["Business banking is pending"], blockers: [] }) });
+  });
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/banks$`), async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ enabled: true, environment: "production", consent_granted: false, disclosure_version: "2026-08", disclosure_text: "", items: [], manual_override: false, manual_override_reason: null, manual_statement_months: ["2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07"], assets_enabled: true, asset_reports: [] }) });
+  });
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/room/deliveries$`), async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
+      { id: "30000000-0000-0000-0000-000000000001", action_kind: "business_banking_reminder", channel: "none", recipient_masked: "fr***@theceosnetwork.com", status: "created", detail: "Created without sending", provider_accepted: false, created_at: "2026-08-24T17:29:04Z" },
+      { id: "30000000-0000-0000-0000-000000000002", action_kind: "business_banking_reminder", channel: "email", recipient_masked: "fr***@theceosnetwork.com", status: "sent", detail: "Emailed.", provider_accepted: true, created_at: "2026-08-24T17:28:07Z" },
+    ]) });
+  });
+  await page.route(/\/api\/v1\/me\/booking-link$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ enabled: false, slug: null, url: null }) });
+  });
+  return { intakeId };
+}
+
 for (const [name, route] of [...ROUTES, ...DETAIL_ROUTES]) {
   test(`${name} keeps the prototype page geometry`, async ({ page }, testInfo) => {
     await openConsolePage(page, route);
@@ -105,6 +213,55 @@ test("Pipeline primary action opens the shared centered drawer", async ({ page }
   await captureReviewImage(page, "overlay-new-file", testInfo);
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
+});
+
+test("shared drawer inputs retain focus through controlled rerenders", async ({ page }) => {
+  await mockEmptyOperatorPipeline(page);
+  await openConsolePage(page, "/pipeline");
+  await page.getByRole("button", { name: /New file/i }).click();
+  const dialog = page.getByRole("dialog", { name: "Smart Intake — new file" });
+  const name = dialog.getByPlaceholder("Marcus Holloway");
+  await name.pressSequentially("Jonathan Franco");
+  await expect(name).toHaveValue("Jonathan Franco");
+  await expect(name).toBeFocused();
+});
+
+test("AI intake banking separates actions from persisted delivery status", async ({ page }, testInfo) => {
+  const { intakeId } = await mockAiIntakeBankingWorkspace(page);
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("Accepted by email provider")).toBeVisible();
+  await expect(page.getByText(/room link was created later.*without sending/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Resend bank request" })).toBeVisible();
+
+  const geometry = await page.locator(".bank-evidence-workspace").evaluate((section) => {
+    const toolbar = section.querySelector<HTMLElement>(".bank-request-toolbar")!;
+    const status = section.querySelector<HTMLElement>(".bank-delivery-strip")!;
+    const tabs = section.querySelector<HTMLElement>(".bank-workspace-tabs")!;
+    const toolbarBox = toolbar.getBoundingClientRect();
+    const statusBox = status.getBoundingClientRect();
+    const tabsBox = tabs.getBoundingClientRect();
+    return {
+      sectionOverflow: section.scrollWidth - section.clientWidth,
+      toolbarOverlapsStatus: toolbarBox.bottom > statusBox.top + 1,
+      statusOverlapsTabs: statusBox.bottom > tabsBox.top + 1,
+    };
+  });
+  expect(geometry.sectionOverflow).toBeLessThanOrEqual(1);
+  expect(geometry.toolbarOverlapsStatus).toBe(false);
+  expect(geometry.statusOverlapsTabs).toBe(false);
+  await captureReviewImage(page, "ai-intake-bank-delivery-status", testInfo);
+});
+
+test("AI intake contact editor accepts uninterrupted typing", async ({ page }) => {
+  const { intakeId } = await mockAiIntakeBankingWorkspace(page);
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Expand file details" }).click();
+  await page.getByRole("button", { name: "Edit contact details" }).click();
+  const email = page.getByRole("dialog", { name: "Edit contact and entity" }).getByLabel("Email");
+  await email.press("ControlOrMeta+A");
+  await email.pressSequentially("franco@theceosnetwork.com");
+  await expect(email).toHaveValue("franco@theceosnetwork.com");
+  await expect(email).toBeFocused();
 });
 
 test("theme control swaps between light and Obsidian without shifting the page", async ({ page }, testInfo) => {

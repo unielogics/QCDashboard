@@ -186,8 +186,17 @@
 .request-delivery-results > div { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 6px; }
 .request-delivery-results b, .request-delivery-results span { overflow-wrap: anywhere; }
 .request-delivery-icon { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px; border-radius: 999px; background: var(--surface-2); }
-.bank-request-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.bank-workspace-tabs { display: flex; gap: 2px; margin-top: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.bank-request-toolbar { display: grid; grid-template-columns: minmax(240px, 1fr) auto; align-items: center; gap: 16px; min-width: 0; padding: 13px 16px; border-bottom: 1px solid var(--line); }
+.bank-request-toolbar > div:first-child { min-width: 0; display: grid; gap: 3px; }
+.bank-request-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; min-width: 0; }
+.bank-delivery-result { padding: 12px 16px 0; }
+.bank-delivery-strip { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 11px; min-width: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--sunken2); }
+.bank-delivery-strip > div { min-width: 0; display: grid; gap: 3px; }
+.bank-delivery-strip b, .bank-delivery-strip .sub { overflow-wrap: anywhere; }
+.bank-delivery-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--sunken); color: var(--muted); }
+.bank-delivery-icon.accepted { background: var(--ok-tint); color: var(--ok); }
+.bank-delivery-icon.failed { background: var(--danger-tint); color: var(--danger); }
+.bank-workspace-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); overflow-x: auto; }
 .bank-workspace-tabs button { min-height: 40px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font: inherit; font-weight: 700; white-space: nowrap; cursor: pointer; }
 .bank-workspace-tabs button.on { border-bottom-color: var(--accent); color: var(--accent); }
 .bank-statements-workspace, .bank-assets-workspace { display: grid; gap: 12px; min-width: 0; }
@@ -1462,6 +1471,7 @@ button.pick { width: 100%; text-align: left; }
 .extracted-facts-review article small { grid-column: 2; color: var(--muted); font-size: 10px; }
 @media (max-width: 640px) { .extracted-facts-review article { grid-template-columns: 1fr; } .extracted-facts-review article > div { grid-template-columns: 1fr; } .extracted-facts-review article small { grid-column: 1; } }
 @media (max-width: 640px) { .bank-evidence-stats { grid-template-columns: 1fr; } .bank-evidence-stats > div { border-right: 0; border-bottom: 1px solid var(--line); } .manual-bank-override { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .bank-request-toolbar { grid-template-columns: 1fr; align-items: stretch; } .bank-request-actions { display: grid; grid-template-columns: 1fr; } .bank-request-actions .btn { width: 100%; } .bank-delivery-strip { grid-template-columns: 34px minmax(0, 1fr); } .bank-delivery-strip > .cellchip { grid-column: 2; justify-self: start; } }
 @media (max-width: 1000px) {
   .intake-file-body, .intake-file-body.with-sequence { grid-template-columns: 1fr; }
   .intake-file-body.with-sequence.context-collapsed { grid-template-columns: 1fr; }

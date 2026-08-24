@@ -12,6 +12,8 @@ import type {
   FileCreditInvite,
   FileOwner,
   FileOwnerRequirementState,
+  RoomDeliveryReceipt,
+  RoomRequestResult,
 } from "@/lib/applicationProfile";
 
 type OwnerDraft = {
@@ -377,17 +379,23 @@ function BankingPanel({ profileId, sourceKind, sourceId, state, banks, loading, 
   const [uploadState, setUploadState] = useState("");
   const [error, setError] = useState("");
   const [secureLink, setSecureLink] = useState("");
-  const [deliveryMessage, setDeliveryMessage] = useState("");
+  const [deliveryResult, setDeliveryResult] = useState<RoomRequestResult | null>(null);
   const [bankTab, setBankTab] = useState<"connections" | "statements" | "assets">("connections");
   const [overrideReason, setOverrideReason] = useState("");
   const [assetReview, setAssetReview] = useState(false);
+  const deliveries = useQuery({
+    queryKey: ["application-room-deliveries", profileId],
+    queryFn: () => apiCall<RoomDeliveryReceipt[]>(`/application-profiles/${profileId}/room/deliveries`),
+    enabled: Boolean(profileId),
+  });
 
   const invite = useMutation({
-    mutationFn: (channel: "email" | "none") => apiCall<{ room_url: string; overall_status: string; deliveries: Array<{ detail?: string | null }> }>(`/application-profiles/${profileId}/room/reminders`, { method: "POST", body: JSON.stringify({ purpose: "business_banking", email_room_link: channel === "email", sms_reminder: false }) }),
+    mutationFn: (channel: "email" | "none") => apiCall<RoomRequestResult>(`/application-profiles/${profileId}/room/reminders`, { method: "POST", body: JSON.stringify({ purpose: "business_banking", email_room_link: channel === "email", sms_reminder: false }) }),
     onSuccess: (result) => {
       setSecureLink(result.room_url);
-      setDeliveryMessage(result.deliveries.map((row) => row.detail).filter(Boolean).join(" ") || (result.overall_status === "created" ? "Secure room link created without sending." : "Bank request sent."));
+      setDeliveryResult(result);
       setError(result.overall_status === "failed" ? "The secure room remains active, but email delivery failed." : "");
+      void deliveries.refetch();
     },
     onError: (reason) => setError(reason instanceof Error ? reason.message : "The bank request could not be sent."),
   });
@@ -428,14 +436,26 @@ function BankingPanel({ profileId, sourceKind, sourceId, state, banks, loading, 
   if (loading) return <div className="empty"><span className="spinner solo" />Loading business banking...</div>;
   const connected = (banks?.items ?? []).filter((item) => item.status !== "removed");
   const manualMonths = banks?.manual_statement_months ?? [];
+  const bankDeliveries = (deliveries.data ?? []).filter((receipt) => receipt.action_kind === "business_banking_reminder");
+  const latestActivity = bankDeliveries[0];
+  const latestEmail = bankDeliveries.find((receipt) => receipt.channel === "email");
+  const laterUnsentActivity = latestActivity?.channel === "none" && latestEmail && new Date(latestActivity.created_at).getTime() > new Date(latestEmail.created_at).getTime();
   return <section className="verification-section bank-evidence-workspace">
     <header className="verification-section-head">
       <div><span className="lbl">Step 4</span><h3>Business bank evidence</h3><Sub>The client connects LLC accounts from their secure link. Staff may upload supplied statements and approve them as the evidence source.</Sub></div>
       <CellChip tone={state?.business_banking_complete ? "ok" : "warn"}>{state?.business_banking_complete ? "Complete" : "Awaiting applicant"}</CellChip>
     </header>
     <div className="bank-evidence-stats"><div><span>Connected institutions</span><b className="num">{connected.length}</b></div><div><span>Evidence source</span><b>{banks?.manual_override ? "Uploaded statements" : connected.length ? "Plaid" : "-"}</b></div><div><span>Statement coverage</span><b className="num">{state?.bank_statement_months || "-"}</b></div></div>
-    <div className="bank-request-actions"><Btn variant="pri" disabled={invite.isPending} onClick={() => invite.mutate("email")}><Icon name="send" size={14} />{secureLink ? "Resend bank request" : "Send bank request"}</Btn><Btn disabled={invite.isPending} onClick={() => invite.mutate("none")}><Icon name="link" size={14} />Create room link</Btn>{secureLink ? <IconBtn aria-label="Copy secure bank link" title="Copy secure bank link" onClick={() => void navigator.clipboard.writeText(secureLink)}><Icon name="copy" size={14} /></IconBtn> : null}</div>
-    {deliveryMessage ? <Callout tone={error ? "warn" : "ok"} icon={<Icon name={error ? "alert" : "check"} size={16} />}>{deliveryMessage}</Callout> : null}
+    <div className="bank-request-toolbar">
+      <div><b>Client bank request</b><Sub>Email the secure room to the client, or create the link for separate delivery. The PIN is shared separately.</Sub></div>
+      <div className="bank-request-actions"><Btn variant="pri" disabled={invite.isPending} onClick={() => invite.mutate("email")}><Icon name="send" size={14} />{latestEmail ? "Resend bank request" : "Send bank request"}</Btn><Btn disabled={invite.isPending} onClick={() => secureLink ? void navigator.clipboard.writeText(secureLink) : invite.mutate("none")}><Icon name={secureLink ? "copy" : "link"} size={14} />{secureLink ? "Copy room link" : "Create room link"}</Btn></div>
+    </div>
+    {deliveryResult ? <div className="bank-delivery-result"><Callout tone={deliveryResult.overall_status === "success" ? "ok" : deliveryResult.overall_status === "created" ? "mut" : deliveryResult.overall_status === "partial" ? "warn" : "bad"} icon={<Icon name={deliveryResult.overall_status === "success" ? "check" : deliveryResult.overall_status === "created" ? "link" : "alert"} size={16} />}>{deliveryResult.overall_status === "created" ? "Room link created. No email or SMS was sent." : deliveryResult.deliveries.map((row) => row.detail).filter(Boolean).join(" ") || "The bank request was processed."}</Callout></div> : null}
+    <div className="bank-delivery-strip" aria-live="polite">
+      <span className={cx("bank-delivery-icon", latestEmail?.provider_accepted ? "accepted" : latestEmail ? "failed" : "idle")}><Icon name={latestEmail?.provider_accepted ? "check" : latestEmail ? "alert" : "mail"} size={15} /></span>
+      <div><span className="lbl">Latest email</span>{deliveries.isLoading ? <b>Checking delivery history...</b> : latestEmail ? <><b>{latestEmail.provider_accepted ? "Accepted by email provider" : latestEmail.status === "failed" ? "Email delivery failed" : latestEmail.status}</b><Sub>{latestEmail.recipient_masked || "Recipient unavailable"} · {when(latestEmail.created_at)}. {latestEmail.provider_accepted ? "Provider acceptance confirms handoff, not inbox delivery." : latestEmail.detail || "No provider acceptance was recorded."}</Sub>{laterUnsentActivity ? <Sub>A room link was created later at {when(latestActivity.created_at)} without sending another message.</Sub> : null}</> : <><b>No email request recorded</b><Sub>Create or send the secure room when the client is ready.</Sub></>}</div>
+      {latestEmail ? <CellChip tone={latestEmail.provider_accepted ? "ok" : "bad"}>{latestEmail.provider_accepted ? "Provider accepted" : latestEmail.status}</CellChip> : null}
+    </div>
     <div className="bank-workspace-tabs" role="tablist" aria-label="Business banking workspace"><button type="button" className={bankTab === "connections" ? "on" : undefined} onClick={() => setBankTab("connections")}>Connections</button><button type="button" className={bankTab === "statements" ? "on" : undefined} onClick={() => setBankTab("statements")}>Uploaded statements</button><button type="button" className={bankTab === "assets" ? "on" : undefined} onClick={() => setBankTab("assets")}>Asset reports</button></div>
     {bankTab === "connections" ? <div className="bank-connection-list">{connected.map((item) => <div key={item.id} className="bank-connection-row"><span className="bank-connection-icon"><Icon name="building" size={17} /></span><div className="grow trunc"><Row><b className="trunc">{item.institution_name || "Connected institution"}</b>{item.is_primary_operating ? <CellChip tone="acc">Primary operating</CellChip> : null}<CellChip tone={item.status === "active" ? "ok" : item.error ? "bad" : "warn"}>{item.status}</CellChip></Row><Sub>{item.accounts_label || "Accounts connected"} · {item.statement_months.length ? `${item.statement_months.length} months available` : "Statements syncing"} · refreshed {when(item.last_pulled_at)}</Sub>{item.update_mode_reason ? <Sub>Client action needed: {item.update_mode_account_selection ? "review newly available accounts" : item.error || "repair or renew the connection"}. Send the room link as a reminder.</Sub> : null}</div></div>)}{!connected.length ? <div className="empty">No bank connection has been authorized. The client completes this from their own device in the secure room.</div> : null}</div> : null}
     {bankTab === "statements" ? <div className="bank-statements-workspace"><input ref={picker} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.zip,image/*" onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))} /><button type="button" className={cx("bank-statement-dropzone", dragging && "dragging")} disabled={uploading || sourceKind !== "intake"} onClick={() => picker.current?.click()} onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); void uploadFiles(Array.from(event.dataTransfer.files)); }}><Icon name="upload" size={22} /><b>{uploading ? uploadState : "Drop bank statements here or click to browse"}</b><span>Files are stored in the primary bucket and sent through extraction and statement coverage.</span></button>{uploadState && !uploading ? <Callout tone="acc">{uploadState}</Callout> : null}{manualMonths.length ? <div className="bank-coverage-chips">{manualMonths.map((month) => <CellChip key={month} tone="acc">{month}</CellChip>)}</div> : <div className="empty">No uploaded statement periods have been identified.</div>}{manualMonths.length && !banks?.manual_override ? <div className="manual-bank-override"><Input value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} placeholder="Why uploaded statements are sufficient for this file" /><Btn variant="pri" disabled={overrideReason.trim().length < 8 || override.isPending} onClick={() => override.mutate()}><Icon name="check" size={14} />Approve evidence</Btn></div> : null}{banks?.manual_override ? <Callout tone="acc" icon={<Icon name="check" size={16} />}>Plaid requirement overridden with reviewed statement evidence. {banks.manual_override_reason}</Callout> : null}</div> : null}

@@ -129,6 +129,23 @@ export type ApplicationBankState = {
   asset_reports: PlaidAssetReport[];
 };
 
+export type RoomDeliveryReceipt = {
+  id: string;
+  action_kind: string;
+  channel: "email" | "sms" | "none" | string;
+  recipient_masked: string | null;
+  status: string;
+  detail: string | null;
+  provider_accepted: boolean;
+  created_at: string;
+};
+
+export type RoomRequestResult = {
+  room_url: string;
+  overall_status: "created" | "success" | "partial" | "failed";
+  deliveries: RoomDeliveryReceipt[];
+};
+
 export type UnifiedAuditEvent = {
   id: string;
   occurred_at: string;
