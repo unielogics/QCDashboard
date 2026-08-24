@@ -45,6 +45,15 @@ export function stashRoomHandoff(args: HandoffArgs & { passcode: string }) {
   stashMode(args);
 }
 
+export function stashApplicationRoomHandoff(args: HandoffArgs & { passcode: string }) {
+  sessionStorage.setItem(ROOM_KIND_KEY, "application_room");
+  sessionStorage.setItem(ROOM_LINK_TOKEN_KEY, args.linkToken);
+  sessionStorage.setItem(ROOM_TOKEN_KEY, args.token);
+  sessionStorage.setItem(ROOM_PASSCODE_KEY, args.passcode);
+  sessionStorage.setItem(ROOM_RETURN_KEY, args.returnTo);
+  stashMode(args);
+}
+
 export function stashApplicationVerificationHandoff(args: HandoffArgs) {
   sessionStorage.setItem(ROOM_KIND_KEY, "application_verification");
   sessionStorage.setItem(ROOM_LINK_TOKEN_KEY, args.linkToken);
@@ -65,6 +74,9 @@ export function readPlaidHandoff() {
   if (!linkToken || !token) return null;
   if (kind === "application_verification") {
     return { kind, linkToken, token, returnTo, mode, itemId } as const;
+  }
+  if (kind === "application_room" && passcode) {
+    return { kind, linkToken, token, passcode, returnTo, mode, itemId } as const;
   }
   if (!passcode) return null;
   return { kind: "dealer_room" as const, linkToken, token, passcode, returnTo, mode, itemId };

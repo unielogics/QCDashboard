@@ -152,6 +152,10 @@ type LeadDetail = {
   artifacts?: Artifact[];
   email_sends?: EmailSend[];
   notes?: LeadNote[];
+  upload_url?: string | null;
+  secure_room_pin?: string | null;
+  room_delivery_status?: string | null;
+  room_delivery_detail?: string | null;
 };
 
 type Artifact = {
@@ -230,6 +234,23 @@ type LeadContactUpdate = {
   requested_loan_amount?: number | null;
   estimated_credit_score?: number | null;
   referral_source?: string | null;
+};
+
+type RoomDeliveryReceipt = {
+  id: string;
+  channel: string;
+  recipient_masked?: string | null;
+  status: string;
+  detail?: string | null;
+  provider_accepted: boolean;
+  created_at: string;
+};
+
+type RoomRequestResult = {
+  requested_document_id?: string | null;
+  room_url: string;
+  overall_status: "created" | "success" | "partial" | "failed";
+  deliveries: RoomDeliveryReceipt[];
 };
 
 const PROBABILITY_FILTERS = [
@@ -328,7 +349,7 @@ export default function AdminAIUnderwriterLeadsPage() {
     }
   }
 
-  async function createLead(payload: CreateLeadPayload, evidenceFiles: File[]) {
+  async function createLead(payload: CreateLeadPayload, evidenceFiles: File[]): Promise<LeadDetail | undefined> {
     setCreating(true);
     setNotice("");
     try {
@@ -347,11 +368,11 @@ export default function AdminAIUnderwriterLeadsPage() {
         await call(`/admin/ai-underwriter-leads/${res.intake.id}/files/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file_id: init.file_id }) });
         uploaded += 1;
       }
-      setCreateOpen(false);
       if (uploaded) setNotice(`${uploaded} evidence file${uploaded === 1 ? "" : "s"} uploaded. Extraction continues in the background.`);
       await loadLeads(0);
       await openLead(res.intake.id);
       router.replace(`/admin/ai-underwriter-leads?lead=${res.intake.id}&step=1`, { scroll: false });
+      return res;
     } catch (error) {
       // Duplicate email → backend returns 409 with the existing intake_id; open it.
       if (error instanceof ApiError && error.status === 409) {
@@ -970,11 +991,21 @@ function LeadDetailPanel({
   const [sendReviewOpen, setSendReviewOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestSaving, setRequestSaving] = useState(false);
+  const [requestResult, setRequestResult] = useState<RoomRequestResult | null>(null);
+  const [rotatePinOpen, setRotatePinOpen] = useState(false);
+  const [rotatePinSaving, setRotatePinSaving] = useState(false);
+  const [rotatePinDone, setRotatePinDone] = useState(false);
+  const [rotatePin, setRotatePin] = useState("");
+  const [rotatePinConfirm, setRotatePinConfirm] = useState("");
   const [requestDraft, setRequestDraft] = useState({
     name: "",
     category: "Business documents",
     description: "",
     allow_multiple_files: false,
+    recipient_email: "",
+    recipient_phone: "",
+    email_room_link: true,
+    sms_reminder: false,
   });
   const [contactEditOpen, setContactEditOpen] = useState(false);
   const [contactSaving, setContactSaving] = useState(false);
@@ -1248,7 +1279,12 @@ function LeadDetailPanel({
       category: "Business documents",
       description: String(nextMissing?.detail || ""),
       allow_multiple_files: false,
+      recipient_email: detail?.intake.email || "",
+      recipient_phone: detail?.intake.phone || "",
+      email_room_link: true,
+      sms_reminder: false,
     });
+    setRequestResult(null);
     setRequestOpen(true);
   }
 
@@ -1257,29 +1293,90 @@ function LeadDetailPanel({
     setRequestSaving(true);
     try {
       const authToken = await getToken();
-      await api(`/buckets/admin/${detail.intake.bucket_id}/requested-documents`, {
+      const profile = await api<ApplicationProfile>("/application-profiles/resolve", {
+        method: "POST",
+        authToken: authToken ?? undefined,
+        body: JSON.stringify({ source_kind: "intake", source_id: detail.intake.id }),
+      });
+      const result = await api<RoomRequestResult>(`/application-profiles/${profile.id}/room/requests`, {
         method: "POST",
         authToken: authToken ?? undefined,
         body: JSON.stringify({
           name: requestDraft.name.trim(),
           category: requestDraft.category.trim() || null,
-          description: requestDraft.description.trim() || null,
-          required: true,
+          instructions: requestDraft.description.trim() || null,
           allow_multiple_files: requestDraft.allow_multiple_files,
-          is_custom: true,
-          save_to_library: false,
-          requires_signature: false,
+          recipient_email: requestDraft.recipient_email.trim() || null,
+          recipient_phone: requestDraft.recipient_phone.trim() || null,
+          email_room_link: requestDraft.email_room_link,
+          sms_reminder: requestDraft.sms_reminder,
         }),
       });
       if (cockpitAdapter) onCockpitResponse(await cockpitAdapter.reload());
-      setRequestOpen(false);
+      setRequestResult(result);
       setSubmissionStep(2);
       setPrototypeView("workspace");
-      toast.show(`Requested ${requestDraft.name.trim()}`);
+      toast.show(result.overall_status === "success" ? `Request created and delivered` : result.overall_status === "partial" ? "Request created; one delivery channel failed" : result.overall_status === "failed" ? "Request created; delivery failed" : "Request created without sending");
     } catch (reason) {
       toast.show(apiErrorMessage(reason, "The document request could not be created."));
     } finally {
       setRequestSaving(false);
+    }
+  }
+
+  async function retryRequestDelivery() {
+    if (!detail || !requestResult) return;
+    const retryEmail = requestResult.deliveries.some((receipt) => receipt.channel === "email" && !receipt.provider_accepted);
+    const retrySms = requestResult.deliveries.some((receipt) => receipt.channel === "sms" && !receipt.provider_accepted);
+    if (!retryEmail && !retrySms) return;
+    setRequestSaving(true);
+    try {
+      const authToken = await getToken();
+      const profile = await api<ApplicationProfile>("/application-profiles/resolve", {
+        method: "POST",
+        authToken: authToken ?? undefined,
+        body: JSON.stringify({ source_kind: "intake", source_id: detail.intake.id }),
+      });
+      const retry = await api<RoomRequestResult>(`/application-profiles/${profile.id}/room/reminders`, {
+        method: "POST",
+        authToken: authToken ?? undefined,
+        body: JSON.stringify({
+          purpose: "documents",
+          recipient_email: requestDraft.recipient_email.trim() || null,
+          recipient_phone: requestDraft.recipient_phone.trim() || null,
+          email_room_link: retryEmail,
+          sms_reminder: retrySms,
+        }),
+      });
+      setRequestResult({ ...retry, requested_document_id: requestResult.requested_document_id });
+      toast.show(retry.overall_status === "success" ? "Failed delivery retried successfully" : retry.overall_status === "partial" ? "One retry channel is still failing" : "Delivery retry was not accepted");
+    } catch (reason) {
+      toast.show(apiErrorMessage(reason, "The failed delivery could not be retried."));
+    } finally {
+      setRequestSaving(false);
+    }
+  }
+
+  function openRotatePin() {
+    setRotatePin("");
+    setRotatePinConfirm("");
+    setRotatePinDone(false);
+    setRotatePinOpen(true);
+  }
+
+  async function rotateApplicationRoomPin() {
+    if (!detail || !/^\d{6}$/.test(rotatePin) || rotatePin !== rotatePinConfirm) return;
+    setRotatePinSaving(true);
+    try {
+      const authToken = await getToken();
+      const profile = await api<ApplicationProfile>("/application-profiles/resolve", { method: "POST", authToken: authToken ?? undefined, body: JSON.stringify({ source_kind: "intake", source_id: detail.intake.id }) });
+      await api(`/application-profiles/${profile.id}/room/pin/rotate`, { method: "POST", authToken: authToken ?? undefined, body: JSON.stringify({ secure_room_pin: rotatePin }) });
+      setRotatePinDone(true);
+      toast.show("Application-room PIN rotated. The previous PIN no longer works.");
+    } catch (reason) {
+      toast.show(apiErrorMessage(reason, "The room PIN could not be rotated."));
+    } finally {
+      setRotatePinSaving(false);
     }
   }
 
@@ -1328,6 +1425,7 @@ function LeadDetailPanel({
           { label: "Open underwriting chat", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("underwriter"); }, hidden: !detail },
           { label: "View client conversation", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("client"); }, hidden: !detail },
           { label: "Attach another bucket", onSelect: onLinkBucketIntake, hidden: !detail },
+          { label: "Rotate room PIN", onSelect: openRotatePin, hidden: !detail },
           { label: "Dealer partner messages", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("partner"); }, hidden: !detail },
           { label: "Delete lead", onSelect: () => setConfirmDeleteOpen(true), tone: "danger", hidden: !detail },
         ]} />
@@ -1487,15 +1585,39 @@ function LeadDetailPanel({
         sub="Add a required item to the client room. The request is recorded in the bucket audit trail."
         width="md"
         closeOnBackdrop={!requestSaving}
-        footer={<><span className="sp" /><Btn onClick={() => setRequestOpen(false)} disabled={requestSaving}>Cancel</Btn><Btn variant="pri" onClick={() => void createDocumentRequest()} disabled={requestSaving || requestDraft.name.trim().length < 2}>{requestSaving ? "Creating..." : "Create request"}</Btn></>}
+        footer={requestResult ? <><span className="sp" /><Btn variant="pri" onClick={() => setRequestOpen(false)}>Done</Btn></> : <><span className="sp" /><Btn onClick={() => setRequestOpen(false)} disabled={requestSaving}>Cancel</Btn><Btn variant="pri" onClick={() => void createDocumentRequest()} disabled={requestSaving || requestDraft.name.trim().length < 2}>{requestSaving ? "Creating..." : "Create request"}</Btn></>}
       >
-        <div className="grid g12">
+        {requestResult ? <div className="grid g12">
+          <Callout tone={requestResult.overall_status === "success" ? "ok" : requestResult.overall_status === "failed" ? "bad" : "warn"} icon={<Icon name={requestResult.overall_status === "success" ? "check" : "alert"} size={16} />}>
+            {requestResult.overall_status === "success" ? "The request was created and the provider accepted every selected delivery." : requestResult.overall_status === "partial" ? "The request was created, but one selected channel did not send." : requestResult.overall_status === "failed" ? "The request is in the room, but delivery was not accepted." : "The request is in the room and was not sent."}
+          </Callout>
+          <div className="request-delivery-results">{requestResult.deliveries.map((receipt) => <div key={receipt.id}><span className="request-delivery-icon"><Icon name={receipt.provider_accepted ? "check" : receipt.channel === "none" ? "link" : "alert"} size={14} /></span><div className="grow"><b>{receipt.channel === "none" ? "Created without sending" : receipt.channel.toUpperCase()} {receipt.recipient_masked ? `· ${receipt.recipient_masked}` : ""}</b><span className="sub">{receipt.detail || receipt.status} · {formatDateTime(receipt.created_at)}</span></div><CellChip tone={receipt.provider_accepted ? "ok" : receipt.channel === "none" ? "mut" : "bad"}>{receipt.status}</CellChip></div>)}</div>
+          <Row><Btn onClick={() => void navigator.clipboard.writeText(requestResult.room_url)}><Icon name="copy" size={14} />Copy room link</Btn>{requestResult.deliveries.some((receipt) => receipt.channel !== "none" && !receipt.provider_accepted) ? <Btn onClick={() => void retryRequestDelivery()} disabled={requestSaving}><Icon name="refresh" size={14} />{requestSaving ? "Retrying..." : "Retry failed delivery"}</Btn> : null}</Row>
+          <Callout tone="warn">The room PIN is never included in this email. Share it separately.</Callout>
+        </div> : <div className="grid g12">
           <Field label="Document or information needed"><Input autoFocus value={requestDraft.name} onChange={(event) => setRequestDraft({ ...requestDraft, name: event.target.value })} placeholder="Current year profit and loss statement" /></Field>
           <Field label="Category"><Select value={requestDraft.category} onChange={(event) => setRequestDraft({ ...requestDraft, category: event.target.value })}><option>Business documents</option><option>Bank statements</option><option>Tax returns</option><option>Ownership</option><option>Collateral</option><option>Debts</option><option>Personal financials</option><option>Other</option></Select></Field>
           <Field label="Client instructions"><Textarea value={requestDraft.description} onChange={(event) => setRequestDraft({ ...requestDraft, description: event.target.value })} placeholder="Describe the period, entity, and pages needed." /></Field>
           <label className="verification-sms"><input type="checkbox" checked={requestDraft.allow_multiple_files} onChange={(event) => setRequestDraft({ ...requestDraft, allow_multiple_files: event.target.checked })} />Allow multiple files for this request</label>
+          <div className="fldgrid two"><Field label="Recipient email"><Input type="email" value={requestDraft.recipient_email} onChange={(event) => setRequestDraft({ ...requestDraft, recipient_email: event.target.value })} /></Field><Field label="Recipient phone"><Input type="tel" value={requestDraft.recipient_phone} onChange={(event) => setRequestDraft({ ...requestDraft, recipient_phone: event.target.value })} /></Field></div>
+          <div className="request-channel-options">
+            <label className={cx("pick", requestDraft.email_room_link && "on")}><input type="checkbox" checked={requestDraft.email_room_link} onChange={(event) => setRequestDraft({ ...requestDraft, email_room_link: event.target.checked })} />Email room link</label>
+            <label className={cx("pick", requestDraft.sms_reminder && "on")}><input type="checkbox" checked={requestDraft.sms_reminder} onChange={(event) => setRequestDraft({ ...requestDraft, sms_reminder: event.target.checked })} />SMS reminder when consent exists</label>
+            <label className={cx("pick", !requestDraft.email_room_link && !requestDraft.sms_reminder && "on")}><input type="radio" checked={!requestDraft.email_room_link && !requestDraft.sms_reminder} onChange={() => setRequestDraft({ ...requestDraft, email_room_link: false, sms_reminder: false })} />Create without sending</label>
+          </div>
           <Callout tone="warn" icon={<Icon name="alert" size={15} />}>This changes the client checklist immediately. Review the title and instructions before creating it.</Callout>
-        </div>
+        </div>}
+      </Drawer>
+      <Drawer
+        open={rotatePinOpen}
+        onClose={() => setRotatePinOpen(false)}
+        title={rotatePinDone ? "Room PIN rotated" : "Review before running"}
+        sub={rotatePinDone ? "The previous PIN was invalidated immediately." : "Rotate the secure application-room PIN."}
+        width="md"
+        closeOnBackdrop={!rotatePinSaving}
+        footer={<><span className="sp" />{rotatePinDone ? <Btn variant="pri" onClick={() => setRotatePinOpen(false)}>Done</Btn> : <><Btn onClick={() => setRotatePinOpen(false)} disabled={rotatePinSaving}>Cancel</Btn><Btn variant="pri" onClick={() => void rotateApplicationRoomPin()} disabled={rotatePinSaving || !/^\d{6}$/.test(rotatePin) || rotatePin !== rotatePinConfirm}>{rotatePinSaving ? "Rotating..." : "Rotate room PIN"}</Btn></>}</>}
+      >
+        {rotatePinDone ? <div className="grid g12"><Callout tone="ok" icon={<Icon name="check" size={16} />}>The new PIN is active. Share it separately from the room link.</Callout><div className="secure-room-created-grid"><div><span className="lbl">New room PIN</span><b className="secure-room-pin num">{rotatePin}</b><Btn onClick={() => void navigator.clipboard.writeText(rotatePin)}><Icon name="copy" size={14} />Copy PIN</Btn></div></div></div> : <div className="grid g12"><Callout tone="warn" icon={<Icon name="alert" size={16} />}>This immediately invalidates the current PIN. Existing room URLs remain valid, but the client must use the new PIN.</Callout><div className="fldgrid two"><Field label="New six-digit PIN"><Input value={rotatePin} onChange={(event) => setRotatePin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" /></Field><Field label="Confirm PIN"><Input value={rotatePinConfirm} onChange={(event) => setRotatePinConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" /></Field></div><div className="review-effects"><div><span>Actor</span><b>Current operator</b></div><div><span>Execution</span><b>Immediately</b></div><div><span>Reversible</span><b>Rotate again</b></div></div></div>}
       </Drawer>
     </div>
   );
@@ -2332,6 +2454,7 @@ type CreateLeadPayload = {
   intent?: string;
   notify_client: boolean;
   preferred_language: "en" | "es";
+  secure_room_pin: string;
 };
 
 function CreateLeadModal({
@@ -2340,7 +2463,7 @@ function CreateLeadModal({
   creating,
 }: {
   onClose: () => void;
-  onCreate: (payload: CreateLeadPayload, evidenceFiles: File[]) => void | Promise<void>;
+  onCreate: (payload: CreateLeadPayload, evidenceFiles: File[]) => Promise<LeadDetail | undefined>;
   creating: boolean;
 }) {
   const [variant, setVariant] = useState<LeadVariant>("dealer");
@@ -2363,17 +2486,20 @@ function CreateLeadModal({
   const [step, setStep] = useState(1);
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [roomPin, setRoomPin] = useState("");
+  const [roomPinConfirm, setRoomPinConfirm] = useState("");
+  const [created, setCreated] = useState<LeadDetail | null>(null);
   const evidencePicker = useRef<HTMLInputElement>(null);
 
   const isRE = variant === "real_estate";
   const isMS = variant === "main_street";
   const num = (s: string) => (s.trim() === "" ? undefined : Number(s));
 
-  function submit() {
+  async function submit() {
     if (!fullName.trim()) { setError("Client name is required."); return; }
     if (!email.trim() || !email.includes("@")) { setError("A valid client email is required."); return; }
     setError("");
-    onCreate({
+    const result = await onCreate({
       variant,
       full_name: fullName.trim(),
       email: email.trim(),
@@ -2390,12 +2516,16 @@ function CreateLeadModal({
       intent: isMS ? intent : undefined,
       notify_client: notifyClient,
       preferred_language: preferredLanguage,
+      secure_room_pin: roomPin,
     }, evidenceFiles);
+    if (result) setCreated(result);
   }
 
   function next() {
     if (step === 1) {
       if (variant === "main_street" && (!industry || !intent)) { setError("Choose an industry and funding need."); return; }
+      if (!/^\d{6}$/.test(roomPin)) { setError("Create a six-digit room PIN."); return; }
+      if (roomPin !== roomPinConfirm) { setError("The room PIN entries do not match."); return; }
       setError(""); setStep(2); return;
     }
     if (step === 2) {
@@ -2405,7 +2535,33 @@ function CreateLeadModal({
       setError(""); setStep(3); return;
     }
     if (step === 3) { setError(""); setStep(4); return; }
-    submit();
+    void submit();
+  }
+
+  if (created) {
+    const roomUrl = created.upload_url || "";
+    const sent = created.room_delivery_status === "sent";
+    return (
+      <Drawer
+        open
+        onClose={onClose}
+        width="md"
+        title="Application room created"
+        sub="The intake is open at Step 1. Share the room link and PIN through separate channels."
+        footer={<><span className="sp" /><Btn variant="pri" onClick={onClose}>Continue to Step 1</Btn></>}
+      >
+        <div className="grid g12">
+          <Callout tone={sent ? "ok" : created.room_delivery_status === "failed" ? "bad" : "acc"} icon={<Icon name={sent ? "check" : "alert"} size={16} />}>
+            {created.room_delivery_detail || (sent ? "The room link was accepted by the email provider." : "The room was created without sending.")}
+          </Callout>
+          <div className="secure-room-created-grid">
+            <div><span className="lbl">Room URL</span><b className="trunc">{roomUrl || "Unavailable"}</b><Btn disabled={!roomUrl} onClick={() => void navigator.clipboard.writeText(roomUrl)}><Icon name="copy" size={14} />Copy link</Btn></div>
+            <div><span className="lbl">Room PIN</span><b className="secure-room-pin num">{roomPin}</b><Btn onClick={() => void navigator.clipboard.writeText(roomPin)}><Icon name="copy" size={14} />Copy PIN</Btn></div>
+          </div>
+          <Callout tone="warn">Do not place the PIN in the room-link email. Read it to the client or send it separately through an approved channel.</Callout>
+        </div>
+      </Drawer>
+    );
   }
 
   return (
@@ -2452,6 +2608,11 @@ function CreateLeadModal({
           </p>
         </div>
       ) : null}</> : null}
+      {step === 1 ? <div className="fldgrid two">
+        <Field label="Six-digit room PIN"><Input value={roomPin} onChange={(event) => setRoomPin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" placeholder="000000" /></Field>
+        <Field label="Confirm room PIN"><Input value={roomPinConfirm} onChange={(event) => setRoomPinConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" placeholder="000000" /></Field>
+        <p className="sub" style={{ gridColumn: "1 / -1" }}>The client enters this PIN in the application room. It cannot be recovered after creation; staff can rotate it later.</p>
+      </div> : null}
 
       {step === 2 ? <>
         <p className="sub">The client and legal entity anchor ownership, private credit links, bank evidence, and the secure room.</p>
@@ -2491,7 +2652,7 @@ function CreateLeadModal({
         <div className="create-intake-review"><div><span>File type</span><b>{variantLabel(variant)}</b></div><div><span>Client</span><b>{fullName || "Not entered"}</b></div><div><span>Entity</span><b>{isRE ? investorName || "Not entered" : businessName || "Not entered"}</b></div><div><span>Primary email</span><b>{email || "Not entered"}</b></div></div>
         <Callout tone="acc" icon={<Icon name="arrowR" size={16} />}>The file opens at Step 1 for ownership. Uploaded evidence is analyzed independently; owner credit and LLC banking each retain their own readiness state.</Callout>
         <div className="line"><span className="sub">Initial evidence</span><strong>{evidenceFiles.length ? `${evidenceFiles.length} file${evidenceFiles.length === 1 ? "" : "s"}` : "None yet"}</strong></div>
-        <label className={cx("pick", notifyClient && "on")}><input type="checkbox" checked={notifyClient} onChange={(e) => setNotifyClient(e.target.checked)} />Email the client a secure login/resume link now</label>
+        <label className={cx("pick", notifyClient && "on")}><input type="checkbox" checked={notifyClient} onChange={(e) => setNotifyClient(e.target.checked)} />Email the secure application-room link now</label>
       </> : null}
 
       {error ? <StatusLine tone="bad">{error}</StatusLine> : null}

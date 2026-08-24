@@ -34,7 +34,7 @@ export default function RoomPlaidOAuthReturn() {
   const [message, setMessage] = useState<string | null>(null);
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [room, setRoom] = useState<
-    | { kind: "dealer_room"; token: string; passcode: string; mode: "initial" | "update"; itemId: string | null }
+    | { kind: "dealer_room" | "application_room"; token: string; passcode: string; mode: "initial" | "update"; itemId: string | null }
     | { kind: "application_verification"; token: string; mode: "initial" | "update"; itemId: string | null }
     | null
   >(null);
@@ -88,9 +88,13 @@ export default function RoomPlaidOAuthReturn() {
           ? room.mode === "update"
             ? `${apiBase}/api/v1/application-profiles/public/bank-verification/${encodeURIComponent(room.token)}/banks/${room.itemId}/update-complete`
             : `${apiBase}/api/v1/application-profiles/public/bank-verification/${encodeURIComponent(room.token)}/exchange`
-          : room.mode === "update"
-            ? `${apiBase}/api/v1/dealer-os/public/room/${room.token}/plaid/${room.itemId}/update-complete`
-            : `${apiBase}/api/v1/dealer-os/public/room/${room.token}/plaid/exchange`;
+          : room.kind === "application_room"
+            ? room.mode === "update"
+              ? `${apiBase}/api/v1/application-profiles/public/room/${room.token}/plaid/${room.itemId}/update-complete`
+              : `${apiBase}/api/v1/application-profiles/public/room/${room.token}/plaid/exchange`
+            : room.mode === "update"
+              ? `${apiBase}/api/v1/dealer-os/public/room/${room.token}/plaid/${room.itemId}/update-complete`
+              : `${apiBase}/api/v1/dealer-os/public/room/${room.token}/plaid/exchange`;
         const res = await fetch(
           endpoint,
           {
@@ -98,9 +102,9 @@ export default function RoomPlaidOAuthReturn() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(
               room.mode === "update"
-                ? room.kind === "dealer_room" ? { passcode: room.passcode } : {}
+                ? room.kind === "application_verification" ? {} : { passcode: room.passcode }
                 : {
-                    ...(room.kind === "dealer_room" ? { passcode: room.passcode } : {}),
+                    ...(room.kind === "application_verification" ? {} : { passcode: room.passcode }),
                     public_token: publicToken,
                     institution_name: metadata.institution?.name ?? null,
                     is_primary_operating: true,
