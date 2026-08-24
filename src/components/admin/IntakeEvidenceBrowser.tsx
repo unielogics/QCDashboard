@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { Btn, CellChip, cx, IconBtn, Sub } from "@/components/ds";
+import { Btn, CellChip, cx, IconBtn, Input, Sub } from "@/components/ds";
 import { useAuthedApi, useBucketIntakeLinkOptions, useBucketIntakeLinks } from "@/hooks/useApi";
 import type { OperatorBucketFile } from "@/lib/unifiedOperator";
 import type { BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
@@ -40,9 +40,11 @@ export function IntakeEvidenceBrowser({
   const [linkedFiles, setLinkedFiles] = useState<EvidenceFile[]>([]);
   const [linkedLoading, setLinkedLoading] = useState(false);
   const [selectedKey, setSelectedKey] = useState("");
+  const [fileQuery, setFileQuery] = useState("");
   const [review, setReview] = useState<BucketFileReview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const fileRowRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const primaryRoomName = primaryBucketName || "Primary bucket";
 
   const primaryFiles = useMemo<EvidenceFile[]>(() => files.map((file) => ({
@@ -77,7 +79,12 @@ export function IntakeEvidenceBrowser({
   }, [apiCall, links.data, options.data?.buckets, primaryBucketId]);
 
   const allFiles = useMemo(() => [...primaryFiles, ...linkedFiles], [primaryFiles, linkedFiles]);
-  const selected = allFiles.find((file) => evidenceKey(file) === selectedKey) ?? allFiles[0] ?? null;
+  const filteredFiles = useMemo(() => {
+    const query = normalizeSearch(fileQuery);
+    if (!query) return allFiles;
+    return allFiles.filter((file) => evidenceSearchText(file).includes(query));
+  }, [allFiles, fileQuery]);
+  const selected = filteredFiles.find((file) => evidenceKey(file) === selectedKey) ?? filteredFiles[0] ?? null;
 
   useEffect(() => {
     if (!selected) {
@@ -97,12 +104,17 @@ export function IntakeEvidenceBrowser({
     return () => { cancelled = true; };
   }, [apiCall, selected, selectedKey]);
 
-  const selectedIndex = selected ? allFiles.findIndex((file) => evidenceKey(file) === evidenceKey(selected)) : -1;
+  useEffect(() => {
+    if (!selected) return;
+    fileRowRefs.current[evidenceKey(selected)]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [selected]);
+
+  const selectedIndex = selected ? filteredFiles.findIndex((file) => evidenceKey(file) === evidenceKey(selected)) : -1;
 
   function move(offset: number) {
-    if (!allFiles.length) return;
-    const next = Math.max(0, Math.min(allFiles.length - 1, selectedIndex + offset));
-    setSelectedKey(evidenceKey(allFiles[next]));
+    if (!filteredFiles.length) return;
+    const next = Math.max(0, Math.min(filteredFiles.length - 1, selectedIndex + offset));
+    setSelectedKey(evidenceKey(filteredFiles[next]));
   }
 
   if (!allFiles.length && !linkedLoading) {
@@ -116,11 +128,19 @@ export function IntakeEvidenceBrowser({
           <div><b>Bucket evidence</b><Sub>{allFiles.length} files across {new Set(allFiles.map((file) => file.bucketId)).size} source rooms</Sub></div>
           {linkedLoading ? <span className="spinner" /> : null}
         </div>
+        <div className="evidence-browser-search">
+          <div className="fieldwrap">
+            <Icon name="search" size={14} />
+            <Input value={fileQuery} onChange={(event) => setFileQuery(event.target.value)} placeholder="Find a file" aria-label="Find evidence file" />
+          </div>
+          {fileQuery.trim() ? <Sub>{filteredFiles.length} match{filteredFiles.length === 1 ? "" : "es"}</Sub> : null}
+        </div>
         <div className="evidence-browser-files">
-          {allFiles.map((file) => (
+          {filteredFiles.map((file) => (
             <button
               type="button"
               key={evidenceKey(file)}
+              ref={(node) => { fileRowRefs.current[evidenceKey(file)] = node; }}
               className={cx("evidence-file-row", selected && evidenceKey(file) === evidenceKey(selected) && "on")}
               onClick={() => setSelectedKey(evidenceKey(file))}
             >
@@ -129,6 +149,7 @@ export function IntakeEvidenceBrowser({
               <CellChip tone={file.relationship === "primary" ? "acc" : "pet"}>{file.relationship}</CellChip>
             </button>
           ))}
+          {!filteredFiles.length ? <div className="empty">No files match this search.</div> : null}
         </div>
       </aside>
       <section className="evidence-browser-preview">
@@ -139,8 +160,8 @@ export function IntakeEvidenceBrowser({
           </div>
           <div className="row">
             <IconBtn onClick={() => move(-1)} disabled={selectedIndex <= 0} aria-label="Previous file" title="Previous file"><Icon name="chevL" size={14} /></IconBtn>
-            <span className="sub num">{selectedIndex + 1}/{allFiles.length}</span>
-            <IconBtn onClick={() => move(1)} disabled={selectedIndex < 0 || selectedIndex >= allFiles.length - 1} aria-label="Next file" title="Next file"><Icon name="chevR" size={14} /></IconBtn>
+            <span className="sub num">{selectedIndex >= 0 ? selectedIndex + 1 : 0}/{filteredFiles.length}</span>
+            <IconBtn onClick={() => move(1)} disabled={selectedIndex < 0 || selectedIndex >= filteredFiles.length - 1} aria-label="Next file" title="Next file"><Icon name="chevR" size={14} /></IconBtn>
             {review?.preview_url ? <a className="btn sm" href={review.preview_url} target="_blank" rel="noreferrer"><Icon name="external" size={13} />Open original</a> : null}
           </div>
         </header>
@@ -175,6 +196,21 @@ function EvidencePreview({ review }: { review: BucketFileReview }) {
 
 function evidenceKey(file: Pick<EvidenceFile, "bucketId" | "id">) {
   return `${file.bucketId}:${file.id}`;
+}
+
+function normalizeSearch(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function evidenceSearchText(file: EvidenceFile) {
+  return normalizeSearch([
+    file.file_name,
+    file.zip_entry_path,
+    file.bucketName,
+    file.relationship,
+    file.content_type,
+    file.status,
+  ].filter(Boolean).join(" "));
 }
 
 function formatSize(value: number) {

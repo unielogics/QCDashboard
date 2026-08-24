@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, BtnLink, Callout, cx, Empty, IconBtn, Input, Panel, StatusLine, Sub, Textarea } from "@/components/ds";
 
@@ -63,6 +63,7 @@ export function BucketFileReviewPanel({
   const imageStageRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const pageStageRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const fileRowRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const dragStartRef = useRef<DragStart | null>(null);
   const [review, setReview] = useState<BucketFileReview | null>(null);
   const [status, setStatus] = useState("Loading file...");
@@ -237,8 +238,24 @@ export function BucketFileReviewPanel({
   const annotationHelp = canAnnotate(fileType)
     ? "Drag over an area of the PDF or image, then add your review note."
     : "Area comments are available for PDF and image previews.";
-  const filteredFiles = files.filter((file) => file.file_name.toLowerCase().includes(fileQuery.trim().toLowerCase()));
+  const filteredFiles = useMemo(() => {
+    const query = normalizeSearch(fileQuery);
+    if (!query) return files;
+    return files.filter((file) => bucketFileSearchText(file).includes(query));
+  }, [files, fileQuery]);
   const currentFileId = activeFileId || review?.file.id || "";
+
+  useEffect(() => {
+    const query = fileQuery.trim();
+    if (!query || !filteredFiles.length || !onSelectFile) return;
+    if (filteredFiles.some((file) => file.id === currentFileId)) return;
+    onSelectFile(filteredFiles[0].id);
+  }, [currentFileId, fileQuery, filteredFiles, onSelectFile]);
+
+  useEffect(() => {
+    if (!currentFileId) return;
+    fileRowRefs.current[currentFileId]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [currentFileId, filteredFiles]);
 
   return (
     <div className="bucket-review-shell">
@@ -297,12 +314,14 @@ export function BucketFileReviewPanel({
               <div className="grid g8">
                 <div><b>Bucket files</b><Sub>{files.length} available</Sub></div>
                 <div className="fieldwrap"><Icon name="search" size={14} /><Input value={fileQuery} onChange={(event) => setFileQuery(event.target.value)} placeholder="Find a file" aria-label="Find a bucket file" /></div>
+                {fileQuery.trim() ? <Sub>{filteredFiles.length} match{filteredFiles.length === 1 ? "" : "es"} · first match opens automatically</Sub> : null}
               </div>
               <div className="bucket-review-file-list">
                 {filteredFiles.map((file) => (
                   <button
                     type="button"
                     key={file.id}
+                    ref={(node) => { fileRowRefs.current[file.id] = node; }}
                     className={cx("bucket-review-file", currentFileId === file.id && "on")}
                     onClick={() => onSelectFile?.(file.id)}
                   >
@@ -704,6 +723,20 @@ function fileTypeLabel(type: ReviewFileType): string {
   if (type === "text") return "Text document";
   if (type === "spreadsheet") return "Spreadsheet";
   return "File";
+}
+
+function normalizeSearch(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function bucketFileSearchText(file: BucketReviewFile) {
+  const type = reviewFileType(file.content_type, file.file_name);
+  return normalizeSearch([
+    file.file_name,
+    file.content_type,
+    fileTypeLabel(type),
+    file.created_at,
+  ].filter(Boolean).join(" "));
 }
 
 function canAnnotate(type: ReviewFileType) {
