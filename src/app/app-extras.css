@@ -1141,6 +1141,7 @@ button.pick { width: 100%; text-align: left; }
   padding: 9px; border: 1px solid var(--line2); border-radius: 10px;
   background: var(--surface); box-shadow: var(--sh2);
 }
+.workspace-minimized-dock--raised { bottom: 82px; }
 .workspace-minimized-summary {
   min-width: 0; flex: 1; display: flex; align-items: center; gap: 9px;
   border: 0; background: transparent; color: var(--ink); text-align: left; font: inherit; cursor: pointer;
@@ -1383,6 +1384,7 @@ button.pick { width: 100%; text-align: left; }
   .bucket-review-document { padding: 8px; }
   .ai-review-dock { right: 8px; bottom: 8px; width: calc(100vw - 16px); }
   .workspace-minimized-dock { right: 8px; bottom: 8px; width: calc(100vw - 16px); }
+  .workspace-minimized-dock--raised { bottom: 72px; }
   .workspace-minimized-summary small { display: none; }
 }
 @media (max-width: 620px) {

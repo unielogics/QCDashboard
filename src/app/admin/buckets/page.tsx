@@ -354,6 +354,7 @@ export default function BucketsAdminPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [detail, setDetail] = useState<BucketDetail | null>(null);
   const [detailFocus, setDetailFocus] = useState<DetailFocus>(null);
+  const [bucketDetailMinimized, setBucketDetailMinimized] = useState(false);
   const [search, setSearch] = useState("");
   const [bucketView, setBucketView] = useState<"all" | "collecting" | "review" | "complete">("all");
   const [busy, setBusy] = useState(false);
@@ -493,6 +494,7 @@ export default function BucketsAdminPage() {
 
   async function openBucket(bucketId: string, focus: DetailFocus = null) {
     setDetailFocus(focus);
+    setBucketDetailMinimized(false);
     await loadBucket(bucketId);
   }
 
@@ -500,6 +502,7 @@ export default function BucketsAdminPage() {
     dismissedBucketParamRef.current = detail?.id || bucketParam;
     setReviewFile(null);
     setReviewMinimized(false);
+    setBucketDetailMinimized(false);
     setDetail(null);
     setDetailFocus(null);
     if (bucketParam) router.replace("/admin/buckets", { scroll: false });
@@ -2136,7 +2139,7 @@ export default function BucketsAdminPage() {
         )}
       </Drawer>
 
-      {detail ? (
+      {detail && !bucketDetailMinimized ? (
         <ModalFrame
           title={detail.name}
           subtitle={`${detail.client_name || "No client"} | ${detail.purpose || "No purpose"} | ${detail.bucket_type || "Bucket"}`}
@@ -2170,6 +2173,9 @@ export default function BucketsAdminPage() {
                 <Icon name="link" size={16} />
                 Link intake
               </Btn>
+              <IconBtn aria-label="Minimize bucket workspace" title="Minimize" onClick={() => setBucketDetailMinimized(true)}>
+                <span aria-hidden="true" className="workspace-minimize-glyph">-</span>
+              </IconBtn>
               <div ref={shareMenuRef} className="popwrap">
                 <Btn
                   size="sm"
@@ -3149,6 +3155,21 @@ export default function BucketsAdminPage() {
             </div>
           </div>
         </ModalFrame>
+      ) : null}
+      {detail && bucketDetailMinimized ? (
+        <div className={cx("workspace-minimized-dock", reviewFile && reviewMinimized && "workspace-minimized-dock--raised")} role="status" aria-live="polite">
+          <button type="button" className="workspace-minimized-summary" onClick={() => setBucketDetailMinimized(false)}>
+            <span className="workspace-minimized-mark">-</span>
+            <span>
+              <b>{detail.name}</b>
+              <small>{detail.client_name ? `${detail.client_name} bucket workspace paused` : "Bucket workspace paused where you left off"}</small>
+            </span>
+          </button>
+          <Btn size="sm" variant="pri" onClick={() => setBucketDetailMinimized(false)}>Resume</Btn>
+          <IconBtn aria-label="Close minimized bucket workspace" title="Close" onClick={closeBucketDetail}>
+            <Icon name="x" size={14} />
+          </IconBtn>
+        </div>
       ) : null}
       <BucketIntakeLinkDrawer
         open={linkBucket !== null}
