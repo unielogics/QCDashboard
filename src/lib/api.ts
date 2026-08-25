@@ -35,7 +35,13 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
   if (!res.ok) {
     let body: unknown = null;
     try { body = await res.json(); } catch { /* ignore */ }
-    throw new ApiError(res.status, `${res.status} ${res.statusText}`, body);
+    const detail = body && typeof body === "object" && "detail" in body
+      ? (body as { detail?: unknown }).detail
+      : null;
+    const message = typeof detail === "string" && detail.trim()
+      ? detail
+      : `${res.status} ${res.statusText}`;
+    throw new ApiError(res.status, message, body);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

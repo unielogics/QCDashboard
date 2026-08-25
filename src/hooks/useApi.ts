@@ -200,8 +200,7 @@ export function isAINotDeployed(err: unknown): boolean {
  * backend isn't deployed yet.
  */
 function aiQueryRetry(failureCount: number, err: unknown): boolean {
-  if (err instanceof ApiError && err.status === 404) return false;
-  if (err instanceof ApiError && err.status === 403) return false;
+  if (err instanceof ApiError && err.status >= 400 && err.status < 500 && ![408, 429].includes(err.status)) return false;
   return failureCount < 1;
 }
 

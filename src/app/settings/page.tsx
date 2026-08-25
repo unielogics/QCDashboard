@@ -1064,8 +1064,8 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
     const payload: ProviderSettingsUpdate = {
       property_analysis_ai_enabled: aiEnabled,
       property_intelligence_cache_ttl_hours: ttlHours,
-      address_provider: addressProvider,
     };
+    if (!data || addressProvider !== data.address_provider) payload.address_provider = addressProvider;
     if (rentcastKey.trim()) payload.rentcast_api_key = rentcastKey.trim();
     if (googleServerKey.trim()) payload.google_server_api_key = googleServerKey.trim();
     if (googleBrowserKey.trim()) payload.google_maps_browser_key = googleBrowserKey.trim();
