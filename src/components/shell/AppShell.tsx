@@ -68,7 +68,7 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
     }
     setTheme(readPersistedTheme());
   }, [setSidebarCollapsed, setTheme]);
-  const { data: user } = useCurrentUser();
+  const { data: user, isLoading: userLoading, isError: userError } = useCurrentUser();
   // Flush any pending sign-up consent (from localStorage) into the
   // /legal/accept audit table once the user resolves.
   useRecordPendingConsent();
@@ -140,6 +140,25 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
 
   if (!authLoaded || isSignedIn === false) {
     return <div className="bareshell" />;
+  }
+
+  // Do not render role-specific chrome until /auth/me has resolved. The
+  // least-privileged fallback is correct for legacy hooks, but showing the
+  // client sidebar here makes a real super-admin look scoped while the account
+  // lookup is still pending or failed.
+  if (userLoading || !user) {
+    return (
+      <div className="bareshell">
+        {userError ? (
+          <div style={{ maxWidth: 520, margin: "18vh auto", padding: 24, textAlign: "center" }}>
+            <h1 style={{ fontSize: 22, margin: "0 0 8px" }}>Account access could not be loaded</h1>
+            <p style={{ color: "var(--muted)", margin: 0 }}>
+              Sign in again so the console can verify your role before opening any file data.
+            </p>
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   // Hard block: a dealer partner with no signed Platform Access Agreement
