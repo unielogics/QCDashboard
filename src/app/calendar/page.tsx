@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
+import { ContextMenu, useContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import {
   Btn,
   CellChip,
@@ -32,13 +34,16 @@ import {
   useLoans,
   useShareBookingInvite,
   useUpdateCalendarEvent,
+  useAuthedApi,
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
+import { outcomeLabel, type RepAppointment } from "@/lib/repAppointments";
 import type { AITask, CalendarActivityItem, CalendarEvent, Client, Document, Loan, UserBookingSettings } from "@/lib/types";
 import { EventModal } from "./components/EventModal";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { apiErrorMessage, parseEmails } from "@/components/email/EmailComposer";
+import { ManagedAppointmentDrawer, type ManagedAppointmentMode } from "./components/ManagedAppointmentDrawer";
 
 type Window = 7 | 30 | 90;
 const WINDOWS: { id: Window; label: string }[] = [
@@ -58,13 +63,19 @@ export default function CalendarPage() {
   const [windowDays, setWindowDays] = useState<Window>(7);
   const [createOpen, setCreateOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [includeCancelled, setIncludeCancelled] = useState(false);
+  const [managedAction, setManagedAction] = useState<{ appointment: RepAppointment; mode: ManagedAppointmentMode } | null>(null);
   const [nowTs, setNowTs] = useState(() => Date.now());
+  const apiCall = useAuthedApi();
+  const appointmentMenu = useContextMenu<RepAppointment>();
   const { data: user } = useCurrentUser();
   const isClient = user?.role === Role.CLIENT;
   const bookingSettingsHref = user?.role === Role.SUPER_ADMIN
     ? "/settings?section=booking"
     : "/booking-settings";
   const isRegionalManager = user?.role === Role.REGIONAL_MANAGER;
+  const canManageTeamAppointments = user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC;
+  const canSetAppointmentOutcome = user?.role === Role.SUPER_ADMIN;
 
   useEffect(() => {
     const id = window.setInterval(() => setNowTs(Date.now()), 30_000);
@@ -96,6 +107,21 @@ export default function CalendarPage() {
   const { data: tasks = [] } = useAITasks();
   const { data: docs = [] } = useDocuments();
   const { data: loans = [] } = useLoans();
+  const { data: repAppointments = [] } = useQuery({
+    queryKey: ["rep-appointments-admin", queryWindow.from, queryWindow.to, includeCancelled],
+    queryFn: () => apiCall<RepAppointment[]>(
+      `/dealer-os/appointments?from=${encodeURIComponent(queryWindow.from)}&to=${encodeURIComponent(queryWindow.to)}&include_cancelled=${includeCancelled ? "true" : "false"}&limit=500`,
+    ),
+    enabled: canManageTeamAppointments,
+  });
+
+  const appointmentByCalendarEvent = useMemo(() => {
+    const rows = new Map<string, RepAppointment>();
+    for (const appointment of repAppointments) {
+      if (appointment.calendar_event_id) rows.set(appointment.calendar_event_id, appointment);
+    }
+    return rows;
+  }, [repAppointments]);
 
   const now = nowTs;
   const horizon = now + windowDays * DAY_MS;
@@ -154,6 +180,15 @@ export default function CalendarPage() {
               as="filter"
               options={WINDOWS.map((w) => ({ value: String(w.id), label: w.label }))}
             />
+            {canManageTeamAppointments ? (
+              <Btn
+                onClick={() => setIncludeCancelled((current) => !current)}
+                aria-pressed={includeCancelled}
+              >
+                <Icon name={includeCancelled ? "eyeOff" : "eye"} size={14} />
+                {includeCancelled ? "Hide cancelled" : "Include cancelled"}
+              </Btn>
+            ) : null}
             {!isClient && (
               <Btn onClick={() => setShareOpen(true)}>
                 <Icon name="send" size={14} /> Share invite
@@ -191,7 +226,15 @@ export default function CalendarPage() {
           <Panel title="Today" sub={new Date(nowTs).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}>
             <div className="grid">
               {todayEvents.length ? todayEvents.map((ev) => (
-                <CompactEventRow key={ev.id} ev={ev} canCancel={canCancelEvents} canDelete={canDeleteEvents} />
+                <CompactEventRow
+                  key={ev.id}
+                  ev={ev}
+                  appointment={appointmentByCalendarEvent.get(ev.id) ?? null}
+                  canCancel={canCancelEvents}
+                  canDelete={canDeleteEvents}
+                  onManage={(event, appointment) => appointmentMenu.open(event, appointment)}
+                  onOpenAppointment={(appointment) => setManagedAction({ appointment, mode: "details" })}
+                />
               )) : <div className="sub">Nothing scheduled today.</div>}
             </div>
           </Panel>
@@ -202,7 +245,15 @@ export default function CalendarPage() {
                 <div key={day} className="grid">
                   <div className="lbl">{formatDayHeader(day)}</div>
                   {byUpcomingDay[day].map((ev) => (
-                    <CompactEventRow key={ev.id} ev={ev} canCancel={canCancelEvents} canDelete={canDeleteEvents} />
+                    <CompactEventRow
+                      key={ev.id}
+                      ev={ev}
+                      appointment={appointmentByCalendarEvent.get(ev.id) ?? null}
+                      canCancel={canCancelEvents}
+                      canDelete={canDeleteEvents}
+                      onManage={(event, appointment) => appointmentMenu.open(event, appointment)}
+                      onOpenAppointment={(appointment) => setManagedAction({ appointment, mode: "details" })}
+                    />
                   ))}
                 </div>
               )) : <div className="sub">No upcoming events in this window.</div>}
@@ -226,6 +277,26 @@ export default function CalendarPage() {
           )}
         </div>
       </div>
+      <ContextMenu
+        state={appointmentMenu.state}
+        onClose={appointmentMenu.close}
+        items={(appointment): ContextMenuItem[] => [
+          { label: "Open details", icon: "eye", onSelect: () => setManagedAction({ appointment, mode: "details" }) },
+          { label: "Join meeting", icon: "external", disabled: !appointment.join_url, onSelect: () => window.open(appointment.join_url ?? "", "_blank", "noopener,noreferrer") },
+          { label: "Edit", icon: "pencil", disabled: appointment.status === "cancelled", onSelect: () => setManagedAction({ appointment, mode: "edit" }) },
+          { label: "Reschedule", icon: "cal", disabled: appointment.status === "cancelled", onSelect: () => setManagedAction({ appointment, mode: "reschedule" }) },
+          ...(canSetAppointmentOutcome ? [{ label: "Set outcome", icon: "flag", disabled: appointment.status === "cancelled", onSelect: () => setManagedAction({ appointment, mode: "outcome" }) }] : []),
+          { label: "Cancel and archive", icon: "x", tone: "danger", disabled: appointment.status === "cancelled", onSelect: () => setManagedAction({ appointment, mode: "cancel" }) },
+        ]}
+      />
+      {managedAction ? (
+        <ManagedAppointmentDrawer
+          appointment={managedAction.appointment}
+          mode={managedAction.mode}
+          canSetOutcome={canSetAppointmentOutcome}
+          onClose={() => setManagedAction(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -797,11 +868,25 @@ function TimelineEventBlock({
   );
 }
 
-function CompactEventRow({ ev, canCancel, canDelete }: { ev: CalendarEvent; canCancel: boolean; canDelete: boolean }) {
+function CompactEventRow({
+  ev,
+  appointment,
+  canCancel,
+  canDelete,
+  onManage,
+  onOpenAppointment,
+}: {
+  ev: CalendarEvent;
+  appointment: RepAppointment | null;
+  canCancel: boolean;
+  canDelete: boolean;
+  onManage: (event: MouseEvent, appointment: RepAppointment) => void;
+  onOpenAppointment: (appointment: RepAppointment) => void;
+}) {
   const update = useUpdateCalendarEvent();
   const remove = useDeleteCalendarEvent();
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const state = eventTone(ev);
+  const state = eventTone(ev, appointment?.outcome ?? null);
   const isDone = ev.status === "done";
   const isCancelled = ev.status === "cancelled";
 
@@ -826,9 +911,15 @@ function CompactEventRow({ ev, canCancel, canDelete }: { ev: CalendarEvent; canC
     <Link
       href={eventHref(ev)}
       onClick={(e) => {
+        if (appointment) {
+          e.preventDefault();
+          onOpenAppointment(appointment);
+          return;
+        }
         if (isDocumentDue(ev) && !isDone && !isCancelled) return;
         onToggleDone(e);
       }}
+      onContextMenu={appointment ? (event) => onManage(event, appointment) : undefined}
       className="row"
       style={{
         padding: 10,
@@ -861,13 +952,25 @@ function CompactEventRow({ ev, canCancel, canDelete }: { ev: CalendarEvent; canC
           {ev.duration_min ? <> · {ev.duration_min}m</> : null}
         </div>
       </div>
-      <CellChip tone="mut">{ev.kind}</CellChip>
-      {canCancel && !isCancelled ? (
+      <CellChip tone="mut">{appointment?.outcome ? outcomeLabel(appointment.outcome) : ev.kind}</CellChip>
+      {appointment ? (
+        <IconBtn
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onManage(event, appointment);
+          }}
+          title="Appointment actions"
+          aria-label="Appointment actions"
+        >
+          <Icon name="dots" size={14} />
+        </IconBtn>
+      ) : canCancel && !isCancelled ? (
         <Btn size="sm" onClick={onCancel} title="Cancel event" aria-label="Cancel event">
           Cancel
         </Btn>
       ) : null}
-      {canDelete ? (
+      {!appointment && canDelete ? (
         <IconBtn onClick={onDelete} title="Delete event" aria-label="Delete event">
           <Icon name="x" size={12} />
         </IconBtn>
@@ -1099,11 +1202,14 @@ function clusterOverlaps<T extends { startMinute: number; endMinute: number }>(i
 
 /** Tone of an event block. The colours are the same values the theme shim
  *  returned, read straight off globals.css instead. */
-function eventTone(ev: CalendarEvent): { fg: string; bg: string; label: string } {
+function eventTone(ev: CalendarEvent, outcome: RepAppointment["outcome"] = null): { fg: string; bg: string; label: string } {
   const isDone = ev.status === "done";
   const isCancelled = ev.status === "cancelled";
   const isOverdue = !isDone && !isCancelled && new Date(ev.starts_at).getTime() < Date.now();
   if (isCancelled) return { fg: "var(--muted)", bg: "var(--sunken)", label: "CANCELLED" };
+  if (outcome === "converted") return { fg: "var(--ok)", bg: "var(--ok-tint)", label: "CONVERTED" };
+  if (outcome === "not_converted") return { fg: "var(--danger)", bg: "var(--danger-tint)", label: "NOT CONVERTED" };
+  if (outcome === "did_not_show") return { fg: "var(--warn)", bg: "var(--warn-tint)", label: "DID NOT SHOW" };
   if (isDone) return { fg: "var(--ok)", bg: "var(--ok-tint)", label: "DONE" };
   if (isOverdue) return { fg: "var(--danger)", bg: "var(--danger-tint)", label: "OVERDUE" };
   return { fg: "var(--warn)", bg: "var(--warn-tint)", label: "" };

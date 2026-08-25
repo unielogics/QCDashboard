@@ -102,21 +102,16 @@ export default function TopBar() {
         <span className="themebtn-l">{theme === "dark" ? "Light" : "Obsidian"}</span>
       </button>
 
-      {/* Funding ⇄ Audit system switcher — operators only. Both apps share
-          the same Clerk application, so one sign-in works on app. and
-          audit.qualifiedcommercial.com (Dealer Capital OS). */}
+      {/* Console switcher — operators keep the same authenticated account
+          while moving between Funding, Field Desk, and Audit. */}
       {(user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC) && (
-        <a
-          href="https://audit.qualifiedcommercial.com"
-          title="Open Dealer Capital OS (audit.qualifiedcommercial.com) — same login"
-          className="chip"
-        >
-          Funding{" "}
-          {/* Two accents inside one chip: `.chip` owns its own colour and
-              nothing owns these, so the pair stays inline. */}
-          <span style={{ color: "var(--faint)" }}>⇄</span>{" "}
-          <span style={{ color: "var(--accent)" }}>Audit</span>
-        </a>
+        <div className="chip" aria-label="Console switcher">
+          <b>Funding</b>
+          <span style={{ color: "var(--faint)" }}>·</span>
+          <a href="https://rep.qualifiedcommercial.com" title="Open Field Desk under the same account" style={{ color: "var(--accent)", textDecoration: "none" }}>Field Desk</a>
+          <span style={{ color: "var(--faint)" }}>·</span>
+          <a href="https://audit.qualifiedcommercial.com" title="Open Audit under the same account" style={{ color: "var(--accent)", textDecoration: "none" }}>Audit</a>
+        </div>
       )}
 
       {/* Notifications */}
