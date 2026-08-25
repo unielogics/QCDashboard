@@ -2362,6 +2362,9 @@ export type AnalysisSource = "deal_analyzer" | "simulator" | "loan_recalc";
 export interface ProviderSettingsRead {
   rentcast_configured: boolean;
   google_server_configured: boolean;
+  geoapify_configured: boolean;
+  address_provider: "google" | "geoapify";
+  address_provider_ready: boolean;
   google_maps_browser_key_configured: boolean;
   google_maps_ios_key_configured: boolean;
   google_maps_android_key_configured: boolean;
@@ -2372,6 +2375,7 @@ export interface ProviderSettingsRead {
   google_maps_ios_key: string | null;
   google_maps_android_key: string | null;
   google_maps_mobile_key: string | null;
+  geoapify_api_key: string | null;
   property_analysis_ai_enabled: boolean;
   property_intelligence_cache_ttl_hours: number;
 }
@@ -2383,6 +2387,8 @@ export interface ProviderSettingsUpdate {
   google_maps_ios_key?: string | null;
   google_maps_android_key?: string | null;
   google_maps_mobile_key?: string | null;
+  geoapify_api_key?: string | null;
+  address_provider?: "google" | "geoapify" | null;
   property_analysis_ai_enabled?: boolean | null;
   property_intelligence_cache_ttl_hours?: number | null;
 }
@@ -2401,11 +2407,14 @@ export interface AddressSuggestion {
   place_id: string;
   text: string;
   secondary_text: string | null;
+  provider: "google" | "geoapify";
 }
 
 export interface AddressResolveResponse {
   address: AddressParts;
   google_place: Record<string, unknown> | null;
+  provider: "google" | "geoapify";
+  provider_place: Record<string, unknown> | null;
 }
 
 export interface PropertyIntelligenceSnapshot {

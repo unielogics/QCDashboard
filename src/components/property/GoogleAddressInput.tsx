@@ -53,7 +53,7 @@ export function GoogleAddressInput({
   onChange,
   onResolved,
   label = "Property address",
-  helperText = "Start typing to search Google. If the property does not appear, enter the split address manually.",
+  helperText = "Start typing to search verified address data. If the property does not appear, enter the split address manually.",
   disabled = false,
   showZip = true,
 }: {
@@ -101,11 +101,11 @@ export function GoogleAddressInput({
   };
 
   const selectSuggestion = async (placeId: string, fallbackText: string) => {
-    const resolved = await resolveAddress.mutateAsync({ place_id: placeId, session_token: sessionToken });
+    const resolved = await resolveAddress.mutateAsync({ place_id: placeId, address: fallbackText, session_token: sessionToken });
     const next = normalize(resolved.address);
     const formatted = formatAddressParts(next, fallbackText);
     onChange({ ...next, full: next.full || formatted });
-    onResolved?.({ ...next, full: next.full || formatted }, resolved.google_place);
+    onResolved?.({ ...next, full: next.full || formatted }, resolved.provider_place);
     setQuery(formatted);
     setManualOpen(true);
     setMenuOpen(false);
@@ -124,7 +124,7 @@ export function GoogleAddressInput({
     !suggestions.isFetching &&
     !suggestions.data?.length;
 
-  const resolvedByGoogle = Boolean(value?.latitude && value?.longitude);
+  const resolvedByProvider = Boolean(value?.latitude && value?.longitude);
 
   return (
     <div className="grid g8">
@@ -180,19 +180,19 @@ export function GoogleAddressInput({
             <div className="popmenu" style={{ left: 0 }}>
               <button type="button" className="mi" onMouseDown={(e) => e.preventDefault()} onClick={openManual}>
                 <b>Enter address manually</b>
-                <small>No Google match. Use manual entry for this property.</small>
+                <small>No address match. Use manual entry for this property.</small>
               </button>
             </div>
           ) : null}
         </div>
       </label>
       <div className="row">
-        <CellChip tone={resolvedByGoogle ? "ok" : "mut"}>
-          {resolvedByGoogle
-            ? "Google address resolved"
+        <CellChip tone={resolvedByProvider ? "ok" : "mut"}>
+          {resolvedByProvider
+            ? "Address resolved"
             : hasSplitAddress(value)
               ? "Manual address"
-              : "Search Google or enter manually"}
+              : "Search or enter manually"}
         </CellChip>
         {!manualOpen ? <Linky onClick={openManual}>Manual entry</Linky> : null}
       </div>
