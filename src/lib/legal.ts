@@ -11,12 +11,12 @@
 //      accepted — the AppShell will re-prompt them (future work) when
 //      version > their latest accepted row from /legal/acceptance.
 //
-// v1.0 (Effective 2026-05-19) is the first deploy of the finalized
-// post-counsel prose. Approved by Jonathan Franco, Executive Partner.
+// v1.1 (Effective 2026-08-25) adds explicit, separate SMS enrollment and
+// mobile-data non-sharing terms for carrier registration.
 
-export const TERMS_VERSION = "2026-05-19";
-export const PRIVACY_VERSION = "2026-05-19";
-export const DISCLOSURE_VERSION = "2026-05-19";
+export const TERMS_VERSION = "2026-08-25";
+export const PRIVACY_VERSION = "2026-08-25";
+export const DISCLOSURE_VERSION = "2026-08-25";
 
 // Short legal entity name surfaced in UI strings (consent checkbox label, etc.)
 export const COMPANY_NAME = "Qualified Commercial LLC";
@@ -36,14 +36,14 @@ export interface LegalDocument {
 }
 
 // ---------------------------------------------------------------------------
-// Privacy Policy and Financial Privacy Notice — v1.0 (Effective 2026-05-19)
+// Privacy Policy and Financial Privacy Notice — v1.1 (Effective 2026-08-25)
 // ---------------------------------------------------------------------------
 
 export const PRIVACY_POLICY: LegalDocument = {
   title: "Privacy Policy and Financial Privacy Notice",
-  effectiveDate: "May 19, 2026",
+  effectiveDate: "August 25, 2026",
   preamble:
-    'Qualified Commercial LLC ("Qualified Commercial", "we", "us", or "our") — a New Jersey limited liability company. Mailing address: 14 53rd St #408N, Brooklyn, NY 11232. Contact: support@qualifiedcommercial.com. Version 1.0, approved by Jonathan Franco, Executive Partner.',
+    'Qualified Commercial LLC ("Qualified Commercial", "we", "us", or "our") — a New Jersey limited liability company. Mailing address: 14 53rd St #408N, Brooklyn, NY 11232. Contact: support@qualifiedcommercial.com. Version 1.1, approved by Jonathan Franco, Executive Partner.',
   sections: [
     {
       heading: "Plain-English Summary",
@@ -122,8 +122,10 @@ export const PRIVACY_POLICY: LegalDocument = {
     {
       heading: "7. Communications, SMS, Email, and Push Notifications",
       paragraphs: [
-        "When a user signs up, creates an account, provides a phone number, initiates a funding file, is invited by an authorized realtor/broker/agent, or otherwise uses the platform, the user agrees to receive account-related and funding-file-related communications by email, SMS/text message, phone, mobile push notification, and in-app message. These may include login/security messages, document requests, signature requests, file status updates, lender package updates, missing information alerts, AI workflow messages, and service notices.",
-        "Text messages may be sent using Twilio or another messaging provider. Message frequency varies. Message and data rates may apply. A user can opt out of nonessential SMS by replying STOP where supported, and can request help by replying HELP where supported. Opting out may limit our ability to provide time-sensitive account, funding, or document communications. Separate consent may be requested for marketing/promotional text messages where required.",
+        "We send two distinct kinds of text message and treat them as two distinct permissions. Customer Care messages relate to an account or funding file, including appointment reminders, secure links, bank-connection requests, document and signature requests, status updates, and security alerts. Promotional messages include program announcements, rate updates, and offers. Agreeing to one does not agree you to the other.",
+        "Providing a mobile number, creating an account, accepting an invitation, starting a funding file, or using the platform does not by itself enroll anyone in text messages. We send text messages only after the owner of the number gives separate, affirmative consent through an unchecked control for the applicable program. SMS consent is optional and is not a condition of purchase, applying for funding, receiving funding, or using the platform; required communications can continue by email.",
+        "Message frequency varies according to account and funding-file activity. Message and data rates may apply. Reply STOP to unsubscribe and HELP for help, or email support@qualifiedcommercial.com. Text messages may be delivered by Twilio, AWS End User Messaging, or another provider acting only on our behalf.",
+        "No mobile information, phone number, SMS opt-in data, or SMS consent is sold, rented, or shared with third parties or affiliates for their own marketing or promotional purposes. Mobile information is disclosed only to service providers that deliver and support the messaging program, and only for that operational purpose.",
         "Users may unsubscribe from marketing emails using the unsubscribe link or by contacting us. Transactional and account-related emails may continue as necessary. Mobile push notifications may be controlled through device or app settings.",
       ],
     },
@@ -160,10 +162,10 @@ export const PRIVACY_POLICY: LegalDocument = {
         "Access or correction requests may be sent to support@qualifiedcommercial.com.",
         "Users may request deletion of certain account information, subject to legal, security, transactional, funding, audit, lender, regulatory, and record-retention requirements.",
         "Users may opt out of marketing emails through unsubscribe links where provided.",
-        "Users may opt out of nonessential SMS messages by replying STOP where supported.",
+        "Users may opt out of any SMS program at any time by replying STOP. Opting out of SMS does not close a funding file; required communications can continue by email.",
         "Users may control mobile push notifications through device or app settings.",
         "Users may manage cookies and retargeting through browser/device settings and ad platform preference tools.",
-        "Withdrawal of consent may prevent us from continuing a funding file, communicating about documents, submitting a package to lenders, or providing certain platform features.",
+        "Withdrawal of a required non-SMS authorization may prevent us from continuing a funding file, submitting a package to lenders, or providing the feature covered by that authorization.",
       ],
     },
     {
@@ -193,9 +195,9 @@ export const PRIVACY_POLICY: LegalDocument = {
 // version until reviewed and this TODO is removed.
 export const PRIVACY_POLICY_ES: LegalDocument = {
   title: "Política de Privacidad y Aviso de Privacidad Financiera",
-  effectiveDate: "19 de mayo de 2026",
+  effectiveDate: "25 de agosto de 2026",
   preamble:
-    'Qualified Commercial LLC ("Qualified Commercial", "nosotros" o "nuestro") — una sociedad de responsabilidad limitada de Nueva Jersey. Dirección postal: 14 53rd St #408N, Brooklyn, NY 11232. Contacto: support@qualifiedcommercial.com. Versión 1.0, aprobada por Jonathan Franco, Socio Ejecutivo.',
+    'Qualified Commercial LLC ("Qualified Commercial", "nosotros" o "nuestro") — una sociedad de responsabilidad limitada de Nueva Jersey. Dirección postal: 14 53rd St #408N, Brooklyn, NY 11232. Contacto: support@qualifiedcommercial.com. Versión 1.1, aprobada por Jonathan Franco, Socio Ejecutivo.',
   sections: [
     {
       heading: "Resumen en lenguaje sencillo",
@@ -274,8 +276,10 @@ export const PRIVACY_POLICY_ES: LegalDocument = {
     {
       heading: "7. Comunicaciones, SMS, correo electrónico y notificaciones push",
       paragraphs: [
-        "Cuando un usuario se registra, crea una cuenta, proporciona un número de teléfono, inicia un expediente de financiamiento, es invitado por un agente inmobiliario/corredor/agente autorizado, o de otro modo usa la plataforma, el usuario acepta recibir comunicaciones relacionadas con la cuenta y el expediente de financiamiento por correo electrónico, SMS/mensaje de texto, teléfono, notificación push móvil y mensaje dentro de la aplicación. Estas pueden incluir mensajes de inicio de sesión/seguridad, solicitudes de documentos, solicitudes de firma, actualizaciones del estado del expediente, actualizaciones del paquete para el prestamista, alertas de información faltante, mensajes del flujo de trabajo de IA y avisos de servicio.",
-        "Los mensajes de texto pueden enviarse usando Twilio u otro proveedor de mensajería. La frecuencia de los mensajes varía. Pueden aplicarse tarifas de mensajes y datos. Un usuario puede optar por no recibir SMS no esenciales respondiendo STOP donde esté disponible, y puede solicitar ayuda respondiendo HELP donde esté disponible. Optar por no participar puede limitar nuestra capacidad de proporcionar comunicaciones oportunas sobre la cuenta, el financiamiento o los documentos. Puede solicitarse un consentimiento separado para mensajes de texto de mercadotecnia/promocionales cuando la ley lo requiera.",
+        "Enviamos dos tipos distintos de mensajes de texto y los tratamos como permisos independientes. Los mensajes de Atención al Cliente se relacionan con una cuenta o expediente de financiamiento e incluyen recordatorios de citas, enlaces seguros, solicitudes de conexión bancaria, documentos y firmas, actualizaciones de estado y alertas de seguridad. Los mensajes promocionales incluyen anuncios de programas, actualizaciones de tasas y ofertas. Aceptar uno no significa aceptar el otro.",
+        "Proporcionar un número móvil, crear una cuenta, aceptar una invitación, iniciar un expediente de financiamiento o usar la plataforma no inscribe por sí solo a nadie en mensajes de texto. Enviamos mensajes únicamente después de que el propietario del número otorgue un consentimiento afirmativo y separado mediante un control sin marcar para el programa correspondiente. El consentimiento SMS es opcional y no es condición de compra, solicitud o recepción de financiamiento, ni del uso de la plataforma; las comunicaciones necesarias pueden continuar por correo electrónico.",
+        "La frecuencia varía según la actividad de la cuenta y del expediente. Pueden aplicarse tarifas de mensajes y datos. Responda STOP para cancelar y HELP para obtener ayuda, o escriba a support@qualifiedcommercial.com. Los mensajes pueden ser entregados por Twilio, AWS End User Messaging u otro proveedor que actúe únicamente en nuestro nombre.",
+        "Ninguna información móvil, número de teléfono, dato de suscripción SMS o consentimiento SMS se vende, alquila o comparte con terceros o afiliados para sus propios fines de mercadotecnia o promoción. La información móvil se divulga únicamente a proveedores que entregan y apoyan el programa de mensajería, y solo para ese propósito operativo.",
         "Los usuarios pueden cancelar la suscripción a correos de mercadotecnia usando el enlace de cancelación o contactándonos. Los correos transaccionales y relacionados con la cuenta pueden continuar según sea necesario. Las notificaciones push móviles pueden controlarse a través de la configuración del dispositivo o la aplicación.",
       ],
     },
@@ -312,10 +316,10 @@ export const PRIVACY_POLICY_ES: LegalDocument = {
         "Las solicitudes de acceso o corrección pueden enviarse a support@qualifiedcommercial.com.",
         "Los usuarios pueden solicitar la eliminación de cierta información de la cuenta, sujeto a requisitos legales, de seguridad, transaccionales, de financiamiento, de auditoría, del prestamista, regulatorios y de retención de registros.",
         "Los usuarios pueden optar por no recibir correos de mercadotecnia a través de enlaces de cancelación donde se proporcionen.",
-        "Los usuarios pueden optar por no recibir mensajes SMS no esenciales respondiendo STOP donde esté disponible.",
+        "Los usuarios pueden cancelar cualquier programa SMS en cualquier momento respondiendo STOP. Cancelar SMS no cierra un expediente de financiamiento; las comunicaciones necesarias pueden continuar por correo electrónico.",
         "Los usuarios pueden controlar las notificaciones push móviles a través de la configuración del dispositivo o la aplicación.",
         "Los usuarios pueden gestionar las cookies y el remarketing a través de la configuración del navegador/dispositivo y las herramientas de preferencias de las plataformas de anuncios.",
-        "El retiro del consentimiento puede impedirnos continuar un expediente de financiamiento, comunicarnos sobre documentos, enviar un paquete a prestamistas o proporcionar ciertas funciones de la plataforma.",
+        "Retirar una autorización obligatoria que no sea de SMS puede impedirnos continuar un expediente, enviar un paquete a prestamistas o proporcionar la función cubierta por esa autorización.",
       ],
     },
     {
@@ -340,14 +344,14 @@ export const PRIVACY_POLICY_ES: LegalDocument = {
 };
 
 // ---------------------------------------------------------------------------
-// Terms and Conditions — v1.0 (Effective 2026-05-19)
+// Terms and Conditions — v1.1 (Effective 2026-08-25)
 // ---------------------------------------------------------------------------
 
 export const TERMS_AND_CONDITIONS: LegalDocument = {
   title: "Terms and Conditions",
-  effectiveDate: "May 19, 2026",
+  effectiveDate: "August 25, 2026",
   preamble:
-    "Qualified Commercial LLC — formed in New Jersey. Mailing address: 14 53rd St #408N, Brooklyn, NY 11232. Contact: support@qualifiedcommercial.com. Version 1.0, approved by Jonathan Franco, Executive Partner. These Terms contain limitations of liability, user responsibility requirements, electronic communication consent, AI limitations, payment authorization terms, service availability limits, arbitration, and class action waiver provisions. Please read them carefully before using the platform.",
+    "Qualified Commercial LLC — formed in New Jersey. Mailing address: 14 53rd St #408N, Brooklyn, NY 11232. Contact: support@qualifiedcommercial.com. Version 1.1, approved by Jonathan Franco, Executive Partner. These Terms contain limitations of liability, user responsibility requirements, electronic communication consent, AI limitations, payment authorization terms, service availability limits, arbitration, and class action waiver provisions. Please read them carefully before using the platform.",
   sections: [
     {
       heading: "1. Acceptance of Terms",
@@ -395,10 +399,12 @@ export const TERMS_AND_CONDITIONS: LegalDocument = {
       ],
     },
     {
-      heading: "7. Communications Consent",
+      heading: "7. Qualified Commercial Customer Care SMS Program",
       paragraphs: [
-        "By signing up, providing contact information, initiating or participating in a funding file, accepting an invitation, or using the platform, users consent to receive account-related and funding-file-related communications from QualifiedCommercial and its service providers by email, SMS/text message, phone, mobile push notification, in-app message, and similar channels. Communications may include document requests, missing information reminders, e-signature requests, file updates, AI workflow messages, account alerts, security messages, lender package notices, and service notices.",
-        "SMS/text messages may be sent through Twilio or similar providers. Message frequency varies. Message and data rates may apply. Users may reply STOP to opt out where supported and HELP for help where supported. Opting out may affect the ability to receive time-sensitive file updates. Marketing/promotional messages may require separate consent where required by law.",
+        "The Qualified Commercial Customer Care SMS Program sends appointment confirmations and reminders, secure access and verification links, bank-connection requests, document and signature requests, missing-item notices, file and lender-package status updates, account security alerts, and support replies. Promotional messages belong to a separate marketing program with separate consent.",
+        "Providing a mobile number, creating an account, accepting an invitation, starting a funding file, or using the platform does not enroll a person in SMS. We enroll a number only after its owner gives separate, affirmative consent through an unchecked control for the applicable program. SMS consent is optional and is not a condition of purchase, applying for funding, receiving funding, or using the platform.",
+        "Message frequency varies according to account and funding-file activity. Message and data rates may apply. Reply STOP to unsubscribe and HELP for help, or contact support@qualifiedcommercial.com. Text messages may be delivered by Twilio, AWS End User Messaging, or another provider acting only on our behalf. Required file communications can continue by email.",
+        "No mobile information, phone number, SMS opt-in data, or SMS consent is sold, rented, or shared with third parties or affiliates for their own marketing or promotional purposes. Mobile information is disclosed only to service providers that deliver and support the messaging program, and only for that operational purpose.",
       ],
     },
     {
@@ -498,9 +504,9 @@ export const TERMS_AND_CONDITIONS: LegalDocument = {
 // to the English version until reviewed and this TODO is removed.
 export const TERMS_AND_CONDITIONS_ES: LegalDocument = {
   title: "Términos y Condiciones",
-  effectiveDate: "19 de mayo de 2026",
+  effectiveDate: "25 de agosto de 2026",
   preamble:
-    "Qualified Commercial LLC — formada en Nueva Jersey. Dirección postal: 14 53rd St #408N, Brooklyn, NY 11232. Contacto: support@qualifiedcommercial.com. Versión 1.0, aprobada por Jonathan Franco, Socio Ejecutivo. Estos Términos contienen limitaciones de responsabilidad, requisitos de responsabilidad del usuario, consentimiento de comunicación electrónica, limitaciones de IA, términos de autorización de pago, límites de disponibilidad del servicio, arbitraje y disposiciones de renuncia a acciones colectivas. Por favor léalos cuidadosamente antes de usar la plataforma.",
+    "Qualified Commercial LLC — formada en Nueva Jersey. Dirección postal: 14 53rd St #408N, Brooklyn, NY 11232. Contacto: support@qualifiedcommercial.com. Versión 1.1, aprobada por Jonathan Franco, Socio Ejecutivo. Estos Términos contienen limitaciones de responsabilidad, requisitos de responsabilidad del usuario, consentimiento de comunicación electrónica, limitaciones de IA, términos de autorización de pago, límites de disponibilidad del servicio, arbitraje y disposiciones de renuncia a acciones colectivas. Por favor léalos cuidadosamente antes de usar la plataforma.",
   sections: [
     {
       heading: "1. Aceptación de los Términos",
@@ -548,10 +554,12 @@ export const TERMS_AND_CONDITIONS_ES: LegalDocument = {
       ],
     },
     {
-      heading: "7. Consentimiento de comunicaciones",
+      heading: "7. Programa SMS de Atención al Cliente de Qualified Commercial",
       paragraphs: [
-        "Al registrarse, proporcionar información de contacto, iniciar o participar en un expediente de financiamiento, aceptar una invitación o usar la plataforma, los usuarios consienten recibir comunicaciones relacionadas con la cuenta y el expediente de financiamiento de QualifiedCommercial y sus proveedores de servicios por correo electrónico, SMS/mensaje de texto, teléfono, notificación push móvil, mensaje dentro de la aplicación y canales similares. Las comunicaciones pueden incluir solicitudes de documentos, recordatorios de información faltante, solicitudes de firma electrónica, actualizaciones del expediente, mensajes del flujo de trabajo de IA, alertas de cuenta, mensajes de seguridad, avisos del paquete para el prestamista y avisos de servicio.",
-        "Los mensajes SMS/de texto pueden enviarse a través de Twilio o proveedores similares. La frecuencia de los mensajes varía. Pueden aplicarse tarifas de mensajes y datos. Los usuarios pueden responder STOP para optar por no participar donde esté disponible y HELP para obtener ayuda donde esté disponible. Optar por no participar puede afectar la capacidad de recibir actualizaciones oportunas del expediente. Los mensajes de mercadotecnia/promocionales pueden requerir un consentimiento separado cuando la ley lo requiera.",
+        "El Programa SMS de Atención al Cliente de Qualified Commercial envía confirmaciones y recordatorios de citas, enlaces seguros de acceso y verificación, solicitudes de conexión bancaria, documentos y firmas, avisos de elementos faltantes, actualizaciones del expediente y del paquete para el prestamista, alertas de seguridad y respuestas de soporte. Los mensajes promocionales pertenecen a un programa de mercadotecnia separado con consentimiento independiente.",
+        "Proporcionar un número móvil, crear una cuenta, aceptar una invitación, iniciar un expediente de financiamiento o usar la plataforma no inscribe a una persona en SMS. Inscribimos un número únicamente después de que su propietario otorgue un consentimiento afirmativo y separado mediante un control sin marcar para el programa correspondiente. El consentimiento SMS es opcional y no es condición de compra, solicitud o recepción de financiamiento, ni del uso de la plataforma.",
+        "La frecuencia varía según la actividad de la cuenta y del expediente. Pueden aplicarse tarifas de mensajes y datos. Responda STOP para cancelar y HELP para obtener ayuda, o escriba a support@qualifiedcommercial.com. Los mensajes pueden ser entregados por Twilio, AWS End User Messaging u otro proveedor que actúe únicamente en nuestro nombre. Las comunicaciones necesarias del expediente pueden continuar por correo electrónico.",
+        "Ninguna información móvil, número de teléfono, dato de suscripción SMS o consentimiento SMS se vende, alquila o comparte con terceros o afiliados para sus propios fines de mercadotecnia o promoción. La información móvil se divulga únicamente a proveedores que entregan y apoyan el programa de mensajería, y solo para ese propósito operativo.",
       ],
     },
     {
@@ -646,14 +654,14 @@ export const TERMS_AND_CONDITIONS_ES: LegalDocument = {
 };
 
 // ---------------------------------------------------------------------------
-// Funding, AI, Communications, and Platform Disclosure — v1.0 (2026-05-19)
+// Funding, AI, Communications, and Platform Disclosure — v1.1 (2026-08-25)
 // ---------------------------------------------------------------------------
 
 export const FUNDING_AI_DISCLOSURE: LegalDocument = {
   title: "Funding, AI, Communications, and Platform Disclosure",
-  effectiveDate: "May 19, 2026",
+  effectiveDate: "August 25, 2026",
   preamble:
-    "Qualified Commercial LLC — formed in New Jersey. Mailing address: 14 53rd St #408N, Brooklyn, NY 11232. Contact: support@qualifiedcommercial.com. Version 1.0, approved by Jonathan Franco, Executive Partner. This disclosure explains important limitations and consents related to funding projections, AI underwriting support, internal file audits, lender package submission, communications, e-signatures, payment authorization, advertising, data security, downtime, and post-closing servicing.",
+    "Qualified Commercial LLC — formed in New Jersey. Mailing address: 14 53rd St #408N, Brooklyn, NY 11232. Contact: support@qualifiedcommercial.com. Version 1.1, approved by Jonathan Franco, Executive Partner. This disclosure explains important limitations and consents related to funding projections, AI underwriting support, internal file audits, lender package submission, communications, e-signatures, payment authorization, advertising, data security, downtime, and post-closing servicing.",
   sections: [
     {
       heading: "1. QualifiedCommercial Is a Technology and Funding Workflow Platform",
@@ -697,10 +705,12 @@ export const FUNDING_AI_DISCLOSURE: LegalDocument = {
       ],
     },
     {
-      heading: "7. Communications Consent",
+      heading: "7. Communications Consent and Customer Care SMS",
       paragraphs: [
-        "By signing up, creating an account, accepting an invitation, providing a phone number, starting a file, participating in a file, or using the platform, the user consents to receive account-related and funding-file-related emails, SMS/text messages, phone calls, mobile push notifications, in-app messages, and similar communications from QualifiedCommercial and its service providers.",
-        "Messages may relate to account access, identity verification, file updates, document requests, signature requests, missing items, payment authorization, AI workflow tasks, lender package status, reminders, security, service announcements, and support. SMS/text messages may be sent through Twilio or another provider. Message frequency varies. Message and data rates may apply. Reply STOP to opt out where supported and HELP for help where supported. Opting out may prevent timely file processing or reduce platform functionality.",
+        "Creating an account, accepting an invitation, providing a phone number, starting or participating in a file, or using the platform authorizes account-related communications by email, in-app message, and similar non-SMS channels as permitted by law. None of those actions, by itself, enrolls a user in SMS/text messages.",
+        "The Qualified Commercial Customer Care SMS Program sends appointment reminders, secure access and verification links, bank-connection requests, document and signature requests, missing-item notices, file and lender-package status updates, security alerts, and support replies. We send these texts only after the owner of the number gives separate, affirmative consent through an unchecked Customer Care SMS control. Promotional texts require a different unchecked marketing consent control.",
+        "SMS consent is optional and is not a condition of purchase, applying for funding, receiving funding, or using the platform. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe and HELP for help, or email support@qualifiedcommercial.com. Text messages may be delivered by Twilio, AWS End User Messaging, or another provider acting only on our behalf.",
+        "No mobile information, phone number, SMS opt-in data, or SMS consent is sold, rented, or shared with third parties or affiliates for their own marketing or promotional purposes. Mobile information is disclosed only to service providers that deliver and support the messaging program, and only for that operational purpose.",
       ],
     },
     {
@@ -756,9 +766,9 @@ export const FUNDING_AI_DISCLOSURE: LegalDocument = {
 // this TODO is removed.
 export const FUNDING_AI_DISCLOSURE_ES: LegalDocument = {
   title: "Divulgación de Financiamiento, IA, Comunicaciones y Plataforma",
-  effectiveDate: "19 de mayo de 2026",
+  effectiveDate: "25 de agosto de 2026",
   preamble:
-    "Qualified Commercial LLC — formada en Nueva Jersey. Dirección postal: 14 53rd St #408N, Brooklyn, NY 11232. Contacto: support@qualifiedcommercial.com. Versión 1.0, aprobada por Jonathan Franco, Socio Ejecutivo. Esta divulgación explica limitaciones y consentimientos importantes relacionados con proyecciones de financiamiento, apoyo de suscripción con IA, auditorías internas de expedientes, envío de paquetes para prestamistas, comunicaciones, firmas electrónicas, autorización de pago, publicidad, seguridad de datos, tiempo de inactividad y servicio posterior al cierre.",
+    "Qualified Commercial LLC — formada en Nueva Jersey. Dirección postal: 14 53rd St #408N, Brooklyn, NY 11232. Contacto: support@qualifiedcommercial.com. Versión 1.1, aprobada por Jonathan Franco, Socio Ejecutivo. Esta divulgación explica limitaciones y consentimientos importantes relacionados con proyecciones de financiamiento, apoyo de suscripción con IA, auditorías internas de expedientes, envío de paquetes para prestamistas, comunicaciones, firmas electrónicas, autorización de pago, publicidad, seguridad de datos, tiempo de inactividad y servicio posterior al cierre.",
   sections: [
     {
       heading: "1. QualifiedCommercial es una plataforma tecnológica y de flujo de trabajo de financiamiento",
@@ -802,10 +812,12 @@ export const FUNDING_AI_DISCLOSURE_ES: LegalDocument = {
       ],
     },
     {
-      heading: "7. Consentimiento de comunicaciones",
+      heading: "7. Consentimiento de comunicaciones y SMS de Atención al Cliente",
       paragraphs: [
-        "Al registrarse, crear una cuenta, aceptar una invitación, proporcionar un número de teléfono, iniciar un expediente, participar en un expediente o usar la plataforma, el usuario consiente recibir correos electrónicos, mensajes SMS/de texto, llamadas telefónicas, notificaciones push móviles, mensajes dentro de la aplicación y comunicaciones similares relacionadas con la cuenta y el expediente de financiamiento de QualifiedCommercial y sus proveedores de servicios.",
-        "Los mensajes pueden relacionarse con acceso a la cuenta, verificación de identidad, actualizaciones del expediente, solicitudes de documentos, solicitudes de firma, elementos faltantes, autorización de pago, tareas del flujo de trabajo de IA, estado del paquete para el prestamista, recordatorios, seguridad, anuncios de servicio y soporte. Los mensajes SMS/de texto pueden enviarse a través de Twilio u otro proveedor. La frecuencia de los mensajes varía. Pueden aplicarse tarifas de mensajes y datos. Responda STOP para optar por no participar donde esté disponible y HELP para obtener ayuda donde esté disponible. Optar por no participar puede impedir el procesamiento oportuno del expediente o reducir la funcionalidad de la plataforma.",
+        "Crear una cuenta, aceptar una invitación, proporcionar un número de teléfono, iniciar o participar en un expediente, o usar la plataforma autoriza las comunicaciones relacionadas con la cuenta por correo electrónico, mensajes dentro de la aplicación y canales similares que no sean SMS, según lo permita la ley. Ninguna de esas acciones, por sí sola, inscribe a un usuario en mensajes SMS/de texto.",
+        "El Programa SMS de Atención al Cliente de Qualified Commercial envía recordatorios de citas, enlaces seguros de acceso y verificación, solicitudes de conexión bancaria, documentos y firmas, avisos de elementos faltantes, actualizaciones del expediente y del paquete para el prestamista, alertas de seguridad y respuestas de soporte. Enviamos estos mensajes únicamente después de que el propietario del número otorgue un consentimiento afirmativo y separado mediante un control sin marcar. Los mensajes promocionales requieren otro control de mercadotecnia sin marcar.",
+        "El consentimiento SMS es opcional y no es condición de compra, solicitud o recepción de financiamiento, ni del uso de la plataforma. La frecuencia varía. Pueden aplicarse tarifas de mensajes y datos. Responda STOP para cancelar y HELP para obtener ayuda, o escriba a support@qualifiedcommercial.com. Los mensajes pueden ser entregados por Twilio, AWS End User Messaging u otro proveedor que actúe únicamente en nuestro nombre.",
+        "Ninguna información móvil, número de teléfono, dato de suscripción SMS o consentimiento SMS se vende, alquila o comparte con terceros o afiliados para sus propios fines de mercadotecnia o promoción. La información móvil se divulga únicamente a proveedores que entregan y apoyan el programa de mensajería, y solo para ese propósito operativo.",
       ],
     },
     {
