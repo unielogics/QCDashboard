@@ -8,6 +8,8 @@ import { Btn, CG, CellChip, Input, PageHeader, Panel, Row, Select, StatusLine, T
 import {
   useBookingSettings,
   useCurrentUser,
+  useGoogleConnection,
+  useStartGoogleOAuth,
   useUpdateBookingSettings,
   useUploadBookingAsset,
 } from "@/hooks/useApi";
@@ -33,7 +35,16 @@ function defaultBookingSettings(): UserBookingSettings {
     intro: null,
     primary_color: "#1b4b9e",
     background_color: "#ffffff",
-    duration_min: 30,
+    duration_min: 20,
+    buffer_before_min: 5,
+    buffer_after_min: 5,
+    confirmation_email_enabled: true,
+    confirmation_sms_enabled: true,
+    reminder_email_enabled: true,
+    reminder_email_minutes_before: 1440,
+    reminder_sms_enabled: true,
+    reminder_sms_minutes_before: 120,
+    google_meet_enabled: true,
     timezone: "America/New_York",
     available_days: [1, 2, 3, 4, 5],
     start_time: "09:00",
@@ -53,6 +64,8 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
   const update = useUpdateBookingSettings();
   const uploadLogo = useUploadBookingAsset("logo");
   const uploadProfile = useUploadBookingAsset("profile-photo");
+  const google = useGoogleConnection();
+  const startGoogle = useStartGoogleOAuth();
   const [draft, setDraft] = useState<UserBookingSettings | null>(null);
   const [originalJson, setOriginalJson] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -132,6 +145,16 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
     setFeedback("Public URL copied.");
   };
 
+  const connectCalendar = async () => {
+    setFeedback(null);
+    try {
+      const { auth_url } = await startGoogle.mutateAsync("calendar");
+      window.location.href = auth_url;
+    } catch (e) {
+      setFeedback(e instanceof Error ? e.message : "Could not start Google Calendar connection.");
+    }
+  };
+
   if (settingsQ.isLoading || !draft) {
     return <div className="sub">Loading booking settings...</div>;
   }
@@ -197,7 +220,7 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
                 </Field>
                 <Field label="Meeting length">
                   <Select value={draft.duration_min} onChange={(e) => patch({ duration_min: Number(e.target.value) })}>
-                    {[15, 30, 45, 60, 90].map((m) => <option key={m} value={m}>{m} min</option>)}
+                    {[15, 20, 30, 45, 60, 90].map((m) => <option key={m} value={m}>{m} min</option>)}
                   </Select>
                 </Field>
               </div>
@@ -275,6 +298,108 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
               </Row>
             </div>
           </Panel>
+
+          {user?.role === "super_admin" ? (
+            <Panel title="Team calendar controls">
+              <div className="grid">
+                <StatusLine tone="ok">
+                  Field Desk bookings use this primary super-admin calendar. Agent identity,
+                  program, requested amount and property/business address are written into each
+                  calendar event.
+                </StatusLine>
+                <CG>
+                  <Field label="Buffer before" className="s6">
+                    <Select value={draft.buffer_before_min} onChange={(e) => patch({ buffer_before_min: Number(e.target.value) })}>
+                      {[0, 5, 10, 15, 20, 30].map((m) => <option key={m} value={m}>{m} min</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="Buffer after" className="s6">
+                    <Select value={draft.buffer_after_min} onChange={(e) => patch({ buffer_after_min: Number(e.target.value) })}>
+                      {[0, 5, 10, 15, 20, 30].map((m) => <option key={m} value={m}>{m} min</option>)}
+                    </Select>
+                  </Field>
+                </CG>
+                <ToggleRow
+                  label="Create Google Meet"
+                  description="Create meetings on the connected primary Google Calendar and include the Meet link in confirmations."
+                  checked={draft.google_meet_enabled}
+                  onChange={(google_meet_enabled) => patch({ google_meet_enabled })}
+                />
+                <div className="filerow">
+                  <div className="sp">
+                    <b>Primary Google account</b>
+                    <div className="sub">
+                      {google.data?.calendar_connected
+                        ? `Connected to ${google.data.google_email || "Google Calendar"}`
+                        : "Connect Franco's personal Google account to put every rep booking on that calendar and create Google Meet links."}
+                    </div>
+                  </div>
+                  <CellChip tone={google.data?.calendar_connected ? "ok" : "warn"}>
+                    {google.data?.calendar_connected ? "Connected" : "Action required"}
+                  </CellChip>
+                  {!google.data?.calendar_connected ? (
+                    <Btn size="sm" onClick={() => void connectCalendar()} disabled={startGoogle.isPending}>
+                      {startGoogle.isPending ? "Opening..." : "Connect"}
+                    </Btn>
+                  ) : null}
+                </div>
+                <ToggleRow
+                  label="Email confirmations"
+                  description="Send a calendar invitation immediately after a client books."
+                  checked={draft.confirmation_email_enabled}
+                  onChange={(confirmation_email_enabled) => patch({ confirmation_email_enabled })}
+                />
+                <ToggleRow
+                  label="SMS confirmations"
+                  description="Send only when the exact client number has affirmative transactional SMS consent."
+                  checked={draft.confirmation_sms_enabled}
+                  onChange={(confirmation_sms_enabled) => patch({ confirmation_sms_enabled })}
+                />
+                <CG>
+                  <div className="s6">
+                    <ToggleRow
+                      label="Email reminder"
+                      description="Send before the meeting using the interval below."
+                      checked={draft.reminder_email_enabled}
+                      onChange={(reminder_email_enabled) => patch({ reminder_email_enabled })}
+                    />
+                    <Field label="Email reminder timing">
+                      <Select
+                        disabled={!draft.reminder_email_enabled}
+                        value={draft.reminder_email_minutes_before}
+                        onChange={(e) => patch({ reminder_email_minutes_before: Number(e.target.value) })}
+                      >
+                        <option value={60}>1 hour before</option>
+                        <option value={120}>2 hours before</option>
+                        <option value={1440}>24 hours before</option>
+                        <option value={2880}>48 hours before</option>
+                      </Select>
+                    </Field>
+                  </div>
+                  <div className="s6">
+                    <ToggleRow
+                      label="SMS reminder"
+                      description="Consent-gated transactional reminder."
+                      checked={draft.reminder_sms_enabled}
+                      onChange={(reminder_sms_enabled) => patch({ reminder_sms_enabled })}
+                    />
+                    <Field label="SMS reminder timing">
+                      <Select
+                        disabled={!draft.reminder_sms_enabled}
+                        value={draft.reminder_sms_minutes_before}
+                        onChange={(e) => patch({ reminder_sms_minutes_before: Number(e.target.value) })}
+                      >
+                        <option value={30}>30 minutes before</option>
+                        <option value={60}>1 hour before</option>
+                        <option value={120}>2 hours before</option>
+                        <option value={1440}>24 hours before</option>
+                      </Select>
+                    </Field>
+                  </div>
+                </CG>
+              </div>
+            </Panel>
+          ) : null}
         </div>
 
         <BookingPreview settings={draft} hostName={user?.name || "Qualified Commercial"} logoUrl={logoUrl} profileUrl={profileUrl} />

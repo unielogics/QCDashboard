@@ -61,6 +61,7 @@ interface BookingForm {
   email: string;
   phone: string;
   notes: string;
+  transactional_sms_consent: boolean;
 }
 
 /**
@@ -88,7 +89,13 @@ export default function PublicBookingPage() {
   const [profile, setProfile] = useState<PublicBookingProfile | null>(null);
   const [selected, setSelected] = useState<PublicBookingSlot | null>(null);
   const [dayIndex, setDayIndex] = useState(0);
-  const [form, setForm] = useState<BookingForm>({ full_name: "", email: "", phone: "", notes: "" });
+  const [form, setForm] = useState<BookingForm>({
+    full_name: "",
+    email: "",
+    phone: "",
+    notes: "",
+    transactional_sms_consent: false,
+  });
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "submitting" | "success">("loading");
   const [error, setError] = useState<string | null>(null);
   const detailsRef = useRef<HTMLDivElement | null>(null);
@@ -468,6 +475,22 @@ export default function PublicBookingPage() {
                     autoComplete="tel"
                   />
                 </Field>
+                {form.phone.trim() && (
+                  <label className="itemrow" style={{ alignItems: "flex-start", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={form.transactional_sms_consent}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, transactional_sms_consent: e.target.checked }))
+                      }
+                      style={{ marginTop: 3 }}
+                    />
+                    <span className="sub" style={{ lineHeight: 1.55 }}>
+                      Text me this confirmation and appointment reminders. Message and data rates may apply.
+                      Reply STOP to opt out.
+                    </span>
+                  </label>
+                )}
                 <Field label="What would you like to cover?">
                   <Textarea
                     // `.field` owns the box and the `.grid` label above stretches
@@ -507,7 +530,7 @@ export default function PublicBookingPage() {
                 </button>
 
                 <p className="sub" style={{ margin: 0, lineHeight: 1.55 }}>
-                  You will get a calendar invitation by email. No account needed.
+                  You will get a calendar invitation by email{form.transactional_sms_consent ? " and reminders by text" : ""}. No account needed.
                 </p>
               </form>
             </Panel>

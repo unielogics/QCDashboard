@@ -1063,6 +1063,15 @@ export interface UserBookingSettings {
   primary_color: string;
   background_color: string;
   duration_min: number;
+  buffer_before_min: number;
+  buffer_after_min: number;
+  confirmation_email_enabled: boolean;
+  confirmation_sms_enabled: boolean;
+  reminder_email_enabled: boolean;
+  reminder_email_minutes_before: number;
+  reminder_sms_enabled: boolean;
+  reminder_sms_minutes_before: number;
+  google_meet_enabled: boolean;
   timezone: string;
   available_days: number[];
   start_time: string;

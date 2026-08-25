@@ -915,7 +915,7 @@ function ConnectionsSection() {
   const connected = Boolean(data?.connected);
   const services: Array<{ key: string; label: string; desc: string; on: boolean }> = [
     { key: "gmail", label: "Gmail", desc: "Send loan & lender emails from your own address.", on: Boolean(data?.gmail_connected) },
-    { key: "calendar", label: "Google Calendar", desc: "Two-way sync with your calendar (coming soon).", on: Boolean(data?.calendar_connected) },
+    { key: "calendar", label: "Google Calendar", desc: "Two-way sync plus Google Meet creation for client bookings.", on: Boolean(data?.calendar_connected) },
     { key: "drive", label: "Google Drive", desc: "Attach Drive files to emails & share with the AI (coming soon).", on: Boolean(data?.drive_connected) },
   ];
 
