@@ -27,6 +27,7 @@ import {
 } from "@/components/ds";
 import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { AddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { LENDING_INTENTS, MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
 import { Icon } from "@/components/design-system/Icon";
@@ -2674,9 +2675,11 @@ function CreateLeadModal({
       {step === 3 && isRE ? (
         <div className="fldgrid two">
           <div style={{ gridColumn: "1 / -1" }}>
-            <Field label="Target property address">
-              <Input value={propertyAddress} onChange={(e) => setPropertyAddress(e.target.value)} placeholder="123 Main St, City ST" />
-            </Field>
+            <AddressInput
+              label="Target property address"
+              value={propertyAddress ? { full: propertyAddress } : null}
+              onChange={(next) => setPropertyAddress(formatAddressParts(next))}
+            />
           </div>
           <Field label="Transaction type">
             <Input value={transactionType} onChange={(e) => setTransactionType(e.target.value)} placeholder="purchase / refinance / cash-out" />

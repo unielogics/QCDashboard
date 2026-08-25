@@ -30,6 +30,7 @@ import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import { useMyClient, useUpdateMyClient } from "@/hooks/useApi";
 import { QC_FMT } from "@/lib/fmt";
+import { AddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 
 interface Props {
   open: boolean;
@@ -153,13 +154,16 @@ export function InvestorProfileDialog({ open, onClose }: Props) {
                   placeholder="Charlotte, NC"
                 />
               </Field>
-              <Field label="Mailing address" className="s12">
-                <Input
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="123 Main St, Apt 4"
+              <div className="s12">
+                <AddressInput
+                  label="Mailing address"
+                  value={address ? { full: address, city } : null}
+                  onChange={(next) => {
+                    setAddress(formatAddressParts(next));
+                    if (next.city) setCity(next.city);
+                  }}
                 />
-              </Field>
+              </div>
             </CG>
           </Panel>
 

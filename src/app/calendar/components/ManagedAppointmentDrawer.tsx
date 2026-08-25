@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Btn, CellChip, Field, Input, Panel, Select, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
+import { AddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import { useAuthedApi } from "@/hooks/useApi";
 import { outcomeLabel, type RepAppointment, type RepAppointmentOutcome } from "@/lib/repAppointments";
 
@@ -224,7 +225,7 @@ export function ManagedAppointmentDrawer({
             <Field label="Program"><Input value={program} onChange={(event) => setProgram(event.target.value)} /></Field>
             <Field label="Requested amount"><Input value={amount} onChange={(event) => setAmount(event.target.value)} /></Field>
           </div>
-          <div className="grid mt"><Field label="Full address"><Input value={address} onChange={(event) => setAddress(event.target.value)} /></Field><Field label="Notes"><Textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} /></Field><Field label="Join link"><Input type="url" value={joinUrl} onChange={(event) => setJoinUrl(event.target.value)} /></Field></div>
+          <div className="grid mt"><AddressInput label="Full address" value={address ? { full: address } : null} onChange={(next) => setAddress(formatAddressParts(next))} /><Field label="Notes"><Textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} /></Field><Field label="Join link"><Input type="url" value={joinUrl} onChange={(event) => setJoinUrl(event.target.value)} /></Field></div>
         </Panel>
         {update.isError ? <StatusError text={errorText(update.error)} /> : null}
       </div>

@@ -23,6 +23,7 @@ import { parseUSD, parseIntStrict } from "@/lib/formCoerce";
 import { PropertyType, PropertyTypeOptions } from "@/lib/enums.generated";
 import type { Loan } from "@/lib/types";
 import { PropertyMap } from "@/components/property/PropertyMap";
+import { AddressInput } from "@/components/property/GoogleAddressInput";
 import {
   Btn,
   CellChip,
@@ -274,22 +275,14 @@ function EditForm({
 
   return (
     <div className="fldsec mt">
-      <div
-        className="fldgrid"
-        // Bespoke track: address wants the room, state is a two-character
-        // box. Not a `.fldgrid.three` — those are equal columns.
-        style={{ gridTemplateColumns: "1.5fr 1fr 100px" }}
-      >
-        <Field label="Address">
-          <Input value={draft.address} onChange={(e) => update({ address: e.target.value })} />
-        </Field>
-        <Field label="City">
-          <Input value={draft.city} onChange={(e) => update({ city: e.target.value })} />
-        </Field>
-        <Field label="State (2-letter)">
-          <Input value={draft.state} onChange={(e) => update({ state: e.target.value.toUpperCase() })} maxLength={2} />
-        </Field>
-      </div>
+      <AddressInput
+        value={{ street: draft.address, city: draft.city, state: draft.state }}
+        onChange={(next) => update({
+          address: next.street ?? "",
+          city: next.city ?? "",
+          state: next.state ?? "",
+        })}
+      />
 
       <div className="fldgrid three mt">
         <Field label="Property type">

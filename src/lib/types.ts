@@ -2358,6 +2358,7 @@ export interface PrequalSellerOutcome {
 
 export type AnalysisProduct = "dscr_purchase" | "dscr_refi" | "fix_flip";
 export type AnalysisSource = "deal_analyzer" | "simulator" | "loan_recalc";
+export type AddressProvider = "google" | "geoapify";
 
 export interface ProviderSettingsRead {
   rentcast_configured: boolean;
@@ -2365,29 +2366,14 @@ export interface ProviderSettingsRead {
   geoapify_configured: boolean;
   address_provider: "google" | "geoapify";
   address_provider_ready: boolean;
-  google_maps_browser_key_configured: boolean;
-  google_maps_ios_key_configured: boolean;
-  google_maps_android_key_configured: boolean;
-  google_maps_mobile_key_configured: boolean;
+  address_credentials_source: "environment";
   rentcast_api_key: string | null;
-  google_server_api_key: string | null;
-  google_maps_browser_key: string | null;
-  google_maps_ios_key: string | null;
-  google_maps_android_key: string | null;
-  google_maps_mobile_key: string | null;
-  geoapify_api_key: string | null;
   property_analysis_ai_enabled: boolean;
   property_intelligence_cache_ttl_hours: number;
 }
 
 export interface ProviderSettingsUpdate {
   rentcast_api_key?: string | null;
-  google_server_api_key?: string | null;
-  google_maps_browser_key?: string | null;
-  google_maps_ios_key?: string | null;
-  google_maps_android_key?: string | null;
-  google_maps_mobile_key?: string | null;
-  geoapify_api_key?: string | null;
   address_provider?: "google" | "geoapify" | null;
   property_analysis_ai_enabled?: boolean | null;
   property_intelligence_cache_ttl_hours?: number | null;
@@ -2395,25 +2381,29 @@ export interface ProviderSettingsUpdate {
 
 export interface AddressParts {
   street?: string | null;
+  line2?: string | null;
   city?: string | null;
   state?: string | null;
   zip?: string | null;
+  country_code?: string | null;
   full?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  provider?: AddressProvider | "manual" | null;
+  provider_place?: Record<string, unknown> | null;
 }
 
 export interface AddressSuggestion {
   place_id: string;
   text: string;
   secondary_text: string | null;
-  provider: "google" | "geoapify";
+  provider: AddressProvider;
 }
 
 export interface AddressResolveResponse {
   address: AddressParts;
   google_place: Record<string, unknown> | null;
-  provider: "google" | "geoapify";
+  provider: AddressProvider;
   provider_place: Record<string, unknown> | null;
 }
 

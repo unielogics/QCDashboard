@@ -5,6 +5,7 @@ import { AgreementPageStyles } from "@/components/agreements/AgreementPageStyles
 import { DisclosureRowsEditor, type DisclosureRow } from "@/components/DisclosureRowsEditor";
 import { QCMark } from "@/components/QCMark";
 import { SignaturePad, type SignaturePadHandle } from "@/components/design-system/SignaturePad";
+import { AddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import { type ContractDocument, type ContractSection, useContractPreview, useRenderContract, useSignReferralProtection } from "@/hooks/useApi";
 import { ContractType } from "@/lib/enums.generated";
 
@@ -183,13 +184,19 @@ export default function ReferralProtectionSignPage() {
               <Field label="Entity type" invalid={touched && !form.companyEntityType.trim()}><select value={form.companyEntityType} onChange={(event) => update("companyEntityType", event.target.value)}><option value="">Select entity type</option><option>Limited liability company</option><option>Corporation</option><option>Partnership</option><option>Sole proprietorship</option><option>Individual</option><option>Other</option></select></Field>
               <Field label="State of formation" invalid={touched && !form.companyStateOfFormation.trim()}><input value={form.companyStateOfFormation} onChange={(event) => update("companyStateOfFormation", event.target.value)} placeholder="New Jersey" /></Field>
             </div>
-            <Field label="Principal place of business" invalid={touched && !form.companyAddress.trim()}><input value={form.companyAddress} onChange={(event) => update("companyAddress", event.target.value)} placeholder="Street, city, state, ZIP" /></Field>
+              <AddressInput label="Principal place of business" value={form.companyAddress ? { full: form.companyAddress } : null} onChange={(next) => update("companyAddress", formatAddressParts(next))} />
             <div className="nda-divider" /><h3>Notice contact</h3>
             <div className="nda-grid two">
               <Field label="Attention" invalid={touched && !form.noticeAttn.trim()}><input value={form.noticeAttn} onChange={(event) => update("noticeAttn", event.target.value)} placeholder="Contact name or department" /></Field>
               <Field label="Notice email" invalid={touched && !form.noticeEmail.trim()}><input type="email" value={form.noticeEmail} onChange={(event) => update("noticeEmail", event.target.value)} placeholder="name@company.com" /></Field>
-              <Field label="Address line 1" invalid={touched && !form.noticeAddressLine1.trim()}><input value={form.noticeAddressLine1} onChange={(event) => update("noticeAddressLine1", event.target.value)} /></Field>
-              <Field label="Address line 2" invalid={touched && !form.noticeAddressLine2.trim()}><input value={form.noticeAddressLine2} onChange={(event) => update("noticeAddressLine2", event.target.value)} placeholder="City, state, ZIP" /></Field>
+              <AddressInput
+                label="Notice address"
+                value={{ street: form.noticeAddressLine1, city: form.noticeAddressLine2 }}
+                onChange={(next) => {
+                  update("noticeAddressLine1", next.street ?? "");
+                  update("noticeAddressLine2", [next.city, next.state, next.zip].filter(Boolean).join(" "));
+                }}
+              />
               <Field label="Counsel copy (optional)"><input value={form.noticeCounselCopy} onChange={(event) => update("noticeCounselCopy", event.target.value)} placeholder="Counsel name and email, if applicable" /></Field>
             </div>
             <div className="nda-divider" /><h3>Authorized signer and Schedule A certifying officer</h3>

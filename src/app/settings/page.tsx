@@ -52,6 +52,7 @@ import { Role } from "@/lib/enums.generated";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { parseIntStrict } from "@/lib/formCoerce";
 import { InviteMemberDialog } from "@/components/InviteMemberDialog";
+import { AddressInput } from "@/components/property/GoogleAddressInput";
 import type {
   AICadenceSettings,
   AppSettingsData,
@@ -1029,11 +1030,6 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
   const { data, isLoading, error } = useProviderSettings();
   const update = useUpdateProviderSettings();
   const [rentcastKey, setRentcastKey] = useState("");
-  const [googleServerKey, setGoogleServerKey] = useState("");
-  const [googleBrowserKey, setGoogleBrowserKey] = useState("");
-  const [googleIosKey, setGoogleIosKey] = useState("");
-  const [googleAndroidKey, setGoogleAndroidKey] = useState("");
-  const [geoapifyKey, setGeoapifyKey] = useState("");
   const [addressProvider, setAddressProvider] = useState<"google" | "geoapify">("google");
   const [aiEnabled, setAiEnabled] = useState(true);
   const [ttlHours, setTtlHours] = useState(24);
@@ -1048,11 +1044,6 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
 
   const dirty =
     rentcastKey.trim() ||
-    googleServerKey.trim() ||
-    googleBrowserKey.trim() ||
-    googleIosKey.trim() ||
-    googleAndroidKey.trim() ||
-    geoapifyKey.trim() ||
     (data && (
       aiEnabled !== data.property_analysis_ai_enabled ||
       ttlHours !== data.property_intelligence_cache_ttl_hours ||
@@ -1067,19 +1058,9 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
     };
     if (!data || addressProvider !== data.address_provider) payload.address_provider = addressProvider;
     if (rentcastKey.trim()) payload.rentcast_api_key = rentcastKey.trim();
-    if (googleServerKey.trim()) payload.google_server_api_key = googleServerKey.trim();
-    if (googleBrowserKey.trim()) payload.google_maps_browser_key = googleBrowserKey.trim();
-    if (googleIosKey.trim()) payload.google_maps_ios_key = googleIosKey.trim();
-    if (googleAndroidKey.trim()) payload.google_maps_android_key = googleAndroidKey.trim();
-    if (geoapifyKey.trim()) payload.geoapify_api_key = geoapifyKey.trim();
     try {
       await update.mutateAsync(payload);
       setRentcastKey("");
-      setGoogleServerKey("");
-      setGoogleBrowserKey("");
-      setGoogleIosKey("");
-      setGoogleAndroidKey("");
-      setGeoapifyKey("");
       setFlash({ kind: "ok", msg: "Provider settings saved." });
     } catch (e) {
       setFlash({ kind: "err", msg: e instanceof Error ? e.message : "Save failed." });
@@ -1107,21 +1088,24 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
             <StatusPill label="Google Places/Geocoding" ok={!!data?.google_server_configured} />
             <StatusPill label="Geoapify" ok={!!data?.geoapify_configured} />
             <StatusPill label={`${data?.address_provider === "geoapify" ? "Geoapify" : "Google"} active`} ok={!!data?.address_provider_ready} />
-            <StatusPill label="Google Maps web" ok={!!data?.google_maps_browser_key_configured} />
-            <StatusPill label="Google Maps iOS" ok={!!data?.google_maps_ios_key_configured} />
-            <StatusPill label="Google Maps Android" ok={!!data?.google_maps_android_key_configured} />
           </div>
 
           <div className="sub mt">
-            Address search uses exactly the selected provider. Keys are stored encrypted; leave a key blank to keep its saved value.
+            Address search uses exactly the selected provider. Address credentials are configured only in the backend environment and are never sent to this browser.
           </div>
 
           <Field label="Address autocomplete and resolution provider">
             <Select value={addressProvider} onChange={(event) => setAddressProvider(event.target.value as "google" | "geoapify")} disabled={!canEdit}>
-              <option value="geoapify">Geoapify (recommended)</option>
-              <option value="google">Google Places / Geocoding</option>
+              <option value="geoapify" disabled={!data?.geoapify_configured}>Geoapify{data?.geoapify_configured ? "" : " · backend key missing"}</option>
+              <option value="google" disabled={!data?.google_server_configured}>Google Places / Geocoding{data?.google_server_configured ? "" : " · backend key missing"}</option>
             </Select>
           </Field>
+
+          {!data?.address_provider_ready ? (
+            <StatusLine kind="warn">
+              The selected provider is unavailable. Configure its backend environment key before selecting it.
+            </StatusLine>
+          ) : null}
 
           {/* 1fr 1fr — a genuine 6 + 6 of the cockpit grid. */}
           <div className="cg mt">
@@ -1135,56 +1119,14 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
               onChange={setRentcastKey}
               disabled={!canEdit}
             />
-            <SecretField
-              className="s6"
-              label="Geoapify server API key"
-              helper="Used by the backend for U.S. address autocomplete and structured address resolution when Geoapify is selected. Restrict the key to Geoapify Geocoding and Place Details APIs plus production backend traffic."
-              configured={!!data?.geoapify_configured}
-              savedValue={data?.geoapify_api_key ?? null}
-              value={geoapifyKey}
-              onChange={setGeoapifyKey}
-              disabled={!canEdit}
-            />
-            <SecretField
-              className="s6"
-              label="Google Places and Geocoding key"
-              helper="Used by the API for address autocomplete, place lookup, and geocoding."
-              configured={!!data?.google_server_configured}
-              savedValue={data?.google_server_api_key ?? null}
-              value={googleServerKey}
-              onChange={setGoogleServerKey}
-              disabled={!canEdit}
-            />
-            <SecretField
-              className="s6"
-              label="Google Maps web key"
-              helper="Used by the desktop web app for browser-based map and address features."
-              configured={!!data?.google_maps_browser_key_configured}
-              savedValue={data?.google_maps_browser_key ?? null}
-              value={googleBrowserKey}
-              onChange={setGoogleBrowserKey}
-              disabled={!canEdit}
-            />
-            <SecretField
-              className="s6"
-              label="Google Maps iOS key"
-              helper="Use an iOS apps restriction with bundle ID com.qualifiedcommercial.mobile. Restrict APIs to Maps SDK for iOS and Places SDK for iOS if used."
-              configured={!!data?.google_maps_ios_key_configured}
-              savedValue={data?.google_maps_ios_key ?? null}
-              value={googleIosKey}
-              onChange={setGoogleIosKey}
-              disabled={!canEdit}
-            />
-            <SecretField
-              className="s6"
-              label="Google Maps Android key"
-              helper="Use an Android apps restriction with package com.qualifiedcommercial.mobile and the app signing SHA-1 fingerprint. Restrict APIs to Maps SDK for Android and Places SDK for Android if used."
-              configured={!!data?.google_maps_android_key_configured}
-              savedValue={data?.google_maps_android_key ?? null}
-              value={googleAndroidKey}
-              onChange={setGoogleAndroidKey}
-              disabled={!canEdit}
-            />
+            <div className="s6 panel pad">
+              <b>Address provider credentials</b>
+              <div className="sub mt6">Managed by backend deployment environment.</div>
+              <div className="row mt">
+                <StatusPill label="Geoapify" ok={!!data?.geoapify_configured} />
+                <StatusPill label="Google" ok={!!data?.google_server_configured} />
+              </div>
+            </div>
           </div>
 
           <div className="mt">
@@ -1795,19 +1737,14 @@ function LetterheadSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
       {/* Office address (3 lines, top-right block on the letter) */}
       <Lbl className="mt">Office address (top-right of the letterhead)</Lbl>
       <div className="grid mt">
-        <Input
-          type="text"
-          value={lh.office_address_line_1}
-          onChange={(e) => set({ office_address_line_1: e.target.value })}
+        <AddressInput
+          label="Office address"
+          value={{ street: lh.office_address_line_1, city: lh.office_address_line_2 }}
           disabled={!canEdit}
-          placeholder="123 Financial Way, Suite 400"
-        />
-        <Input
-          type="text"
-          value={lh.office_address_line_2}
-          onChange={(e) => set({ office_address_line_2: e.target.value })}
-          disabled={!canEdit}
-          placeholder="Garfield, NJ 07026"
+          onChange={(next) => {
+            set({ office_address_line_1: next.street ?? "" });
+            set({ office_address_line_2: [next.city, next.state, next.zip].filter(Boolean).join(" ") });
+          }}
         />
         <Input
           type="text"

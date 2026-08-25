@@ -3274,31 +3274,37 @@ export function useUpdateProviderSettings() {
   });
 }
 
-export function useAddressAutocomplete(input: string, sessionToken?: string | null) {
+export function useAddressAutocomplete(input: string, sessionToken?: string | null, publicAccess = false) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
   const q = input.trim();
   return useQuery({
-    queryKey: ["property-intelligence", "address-autocomplete", q, sessionToken ?? null, devUser],
+    queryKey: ["property-intelligence", "address-autocomplete", q, sessionToken ?? null, publicAccess, devUser],
     queryFn: () =>
-      apiCall<AddressSuggestion[]>("/property-intelligence/address/autocomplete", {
+      (publicAccess ? api : apiCall)<AddressSuggestion[]>(
+        publicAccess ? "/public/address/autocomplete" : "/property-intelligence/address/autocomplete",
+        {
         method: "POST",
         body: JSON.stringify({ input: q, session_token: sessionToken ?? null }),
-      }),
+        },
+      ),
     enabled: q.length >= 2,
     staleTime: 5 * 60 * 1000,
     retry: aiQueryRetry,
   });
 }
 
-export function useResolveAddress() {
+export function useResolveAddress(publicAccess = false) {
   const apiCall = useAuthedApi();
   return useMutation({
     mutationFn: (payload: { place_id?: string | null; address?: string | null; session_token?: string | null }) =>
-      apiCall<AddressResolveResponse>("/property-intelligence/address/resolve", {
+      (publicAccess ? api : apiCall)<AddressResolveResponse>(
+        publicAccess ? "/public/address/resolve" : "/property-intelligence/address/resolve",
+        {
         method: "POST",
         body: JSON.stringify(payload),
-      }),
+        },
+      ),
   });
 }
 
