@@ -6591,6 +6591,8 @@ export function useTokenUsageAttribution(from?: string, to?: string) {
 // ── Google connections (per-user Gmail/Calendar/Drive) ──────────────────────
 export type GoogleConnectionStatus = {
   connected: boolean;
+  oauth_configured: boolean;
+  oauth_configuration_message?: string | null;
   google_email?: string | null;
   gmail_connected: boolean;
   calendar_connected: boolean;

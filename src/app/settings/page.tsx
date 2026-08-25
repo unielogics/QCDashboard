@@ -928,6 +928,14 @@ function ConnectionsSection() {
 
       {flash ? <div className="note">{flash}</div> : null}
 
+      {data?.oauth_configured === false ? (
+        <div className="mt">
+          <StatusLine kind="warn">
+            {data.oauth_configuration_message || "Google OAuth setup is required before accounts can connect."}
+          </StatusLine>
+        </div>
+      ) : null}
+
       {isLoading ? (
         <div className="sub mt">Loading connection status…</div>
       ) : error ? (
@@ -945,8 +953,8 @@ function ConnectionsSection() {
                 {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
               </Btn>
             ) : (
-              <Btn variant="pri" onClick={() => connect("gmail")} disabled={startOAuth.isPending}>
-                {startOAuth.isPending ? "Opening Google…" : "Connect Google"}
+              <Btn variant="pri" onClick={() => connect("gmail")} disabled={startOAuth.isPending || data?.oauth_configured === false}>
+                {data?.oauth_configured === false ? "Setup required" : startOAuth.isPending ? "Opening Google…" : "Connect Google"}
               </Btn>
             )}
           </div>
@@ -961,7 +969,7 @@ function ConnectionsSection() {
                 </div>
                 <CellChip tone={s.on ? "ok" : "mut"}>{s.on ? "On" : "Off"}</CellChip>
                 {connected && !s.on ? (
-                  <Btn size="sm" onClick={() => connect(s.key)} disabled={startOAuth.isPending}>Enable</Btn>
+                  <Btn size="sm" onClick={() => connect(s.key)} disabled={startOAuth.isPending || data?.oauth_configured === false}>Enable</Btn>
                 ) : null}
               </div>
             ))}

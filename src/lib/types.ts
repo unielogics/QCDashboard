@@ -1069,8 +1069,10 @@ export interface UserBookingSettings {
   confirmation_sms_enabled: boolean;
   reminder_email_enabled: boolean;
   reminder_email_minutes_before: number;
+  reminder_email_minutes: number[];
   reminder_sms_enabled: boolean;
   reminder_sms_minutes_before: number;
+  reminder_sms_minutes: number[];
   google_meet_enabled: boolean;
   timezone: string;
   available_days: number[];

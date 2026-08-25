@@ -25,6 +25,19 @@ const WEEKDAYS = [
   { id: 6, label: "Sat" },
 ];
 
+const REMINDER_TIMES = [
+  { value: 15, label: "15 minutes before" },
+  { value: 30, label: "30 minutes before" },
+  { value: 60, label: "1 hour before" },
+  { value: 120, label: "2 hours before" },
+  { value: 240, label: "4 hours before" },
+  { value: 720, label: "12 hours before" },
+  { value: 1440, label: "24 hours before" },
+  { value: 2880, label: "48 hours before" },
+  { value: 4320, label: "3 days before" },
+  { value: 10080, label: "1 week before" },
+];
+
 function defaultBookingSettings(): UserBookingSettings {
   return {
     id: "",
@@ -42,8 +55,10 @@ function defaultBookingSettings(): UserBookingSettings {
     confirmation_sms_enabled: true,
     reminder_email_enabled: true,
     reminder_email_minutes_before: 1440,
+    reminder_email_minutes: [1440],
     reminder_sms_enabled: true,
     reminder_sms_minutes_before: 120,
+    reminder_sms_minutes: [120],
     google_meet_enabled: true,
     timezone: "America/New_York",
     available_days: [1, 2, 3, 4, 5],
@@ -143,6 +158,30 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
     if (!draft?.slug) return;
     await navigator.clipboard.writeText(publicUrl);
     setFeedback("Public URL copied.");
+  };
+
+  const reminderValues = (channel: "email" | "sms") => {
+    if (!draft) return [];
+    const values = channel === "email" ? draft.reminder_email_minutes : draft.reminder_sms_minutes;
+    const fallback = channel === "email" ? draft.reminder_email_minutes_before : draft.reminder_sms_minutes_before;
+    return values?.length ? values : [fallback];
+  };
+
+  const setReminderValues = (channel: "email" | "sms", values: number[]) => {
+    const normalized = Array.from(new Set(values)).sort((a, b) => b - a);
+    if (channel === "email") {
+      patch({ reminder_email_minutes: normalized, reminder_email_minutes_before: normalized[0] ?? 1440 });
+    } else {
+      patch({ reminder_sms_minutes: normalized, reminder_sms_minutes_before: normalized[0] ?? 120 });
+    }
+  };
+
+  const addReminder = (channel: "email" | "sms") => {
+    const current = reminderValues(channel);
+    const preferred = channel === "email" ? [2880, 1440, 120, 60, 30] : [1440, 120, 60, 30, 15];
+    const next = preferred.find((value) => !current.includes(value))
+      ?? REMINDER_TIMES.find((option) => !current.includes(option.value))?.value;
+    if (next) setReminderValues(channel, [...current, next]);
   };
 
   const connectCalendar = async () => {
@@ -331,72 +370,83 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
                     <div className="sub">
                       {google.data?.calendar_connected
                         ? `Connected to ${google.data.google_email || "Google Calendar"}`
-                        : "Connect Franco's personal Google account to put every rep booking on that calendar and create Google Meet links."}
+                        : google.data?.oauth_configured === false
+                          ? google.data.oauth_configuration_message || "Google OAuth is not configured in production."
+                          : "Connect Franco's personal Google account to put every rep booking on that calendar and create Google Meet links."}
                     </div>
                   </div>
                   <CellChip tone={google.data?.calendar_connected ? "ok" : "warn"}>
                     {google.data?.calendar_connected ? "Connected" : "Action required"}
                   </CellChip>
                   {!google.data?.calendar_connected ? (
-                    <Btn size="sm" onClick={() => void connectCalendar()} disabled={startGoogle.isPending}>
-                      {startGoogle.isPending ? "Opening..." : "Connect"}
+                    <Btn size="sm" onClick={() => void connectCalendar()} disabled={startGoogle.isPending || google.data?.oauth_configured === false}>
+                      {google.data?.oauth_configured === false ? "Setup required" : startGoogle.isPending ? "Opening..." : "Connect"}
                     </Btn>
                   ) : null}
                 </div>
-                <ToggleRow
-                  label="Email confirmations"
-                  description="Send a calendar invitation immediately after a client books."
-                  checked={draft.confirmation_email_enabled}
-                  onChange={(confirmation_email_enabled) => patch({ confirmation_email_enabled })}
-                />
-                <ToggleRow
-                  label="SMS confirmations"
-                  description="Send only when the exact client number has affirmative transactional SMS consent."
-                  checked={draft.confirmation_sms_enabled}
-                  onChange={(confirmation_sms_enabled) => patch({ confirmation_sms_enabled })}
-                />
-                <CG>
-                  <div className="s6">
-                    <ToggleRow
-                      label="Email reminder"
-                      description="Send before the meeting using the interval below."
-                      checked={draft.reminder_email_enabled}
-                      onChange={(reminder_email_enabled) => patch({ reminder_email_enabled })}
-                    />
-                    <Field label="Email reminder timing">
-                      <Select
-                        disabled={!draft.reminder_email_enabled}
-                        value={draft.reminder_email_minutes_before}
-                        onChange={(e) => patch({ reminder_email_minutes_before: Number(e.target.value) })}
-                      >
-                        <option value={60}>1 hour before</option>
-                        <option value={120}>2 hours before</option>
-                        <option value={1440}>24 hours before</option>
-                        <option value={2880}>48 hours before</option>
-                      </Select>
-                    </Field>
+                <div className="grid" style={{ gap: 14, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
+                  <div>
+                    <h3 style={{ margin: 0 }}>Booking confirmations</h3>
+                    <div className="sub" style={{ marginTop: 4 }}>Sent immediately after a meeting is booked.</div>
                   </div>
-                  <div className="s6">
-                    <ToggleRow
-                      label="SMS reminder"
-                      description="Consent-gated transactional reminder."
-                      checked={draft.reminder_sms_enabled}
-                      onChange={(reminder_sms_enabled) => patch({ reminder_sms_enabled })}
-                    />
-                    <Field label="SMS reminder timing">
-                      <Select
-                        disabled={!draft.reminder_sms_enabled}
-                        value={draft.reminder_sms_minutes_before}
-                        onChange={(e) => patch({ reminder_sms_minutes_before: Number(e.target.value) })}
-                      >
-                        <option value={30}>30 minutes before</option>
-                        <option value={60}>1 hour before</option>
-                        <option value={120}>2 hours before</option>
-                        <option value={1440}>24 hours before</option>
-                      </Select>
-                    </Field>
+                  <CG>
+                    <div className="s6">
+                      <ToggleRow
+                        label="Email confirmation"
+                        description="Send the calendar invitation and meeting details."
+                        checked={draft.confirmation_email_enabled}
+                        onChange={(confirmation_email_enabled) => patch({ confirmation_email_enabled })}
+                      />
+                    </div>
+                    <div className="s6">
+                      <ToggleRow
+                        label="SMS confirmation"
+                        description="Only sent with affirmative transactional SMS consent."
+                        checked={draft.confirmation_sms_enabled}
+                        onChange={(confirmation_sms_enabled) => patch({ confirmation_sms_enabled })}
+                      />
+                    </div>
+                  </CG>
+                </div>
+
+                <div className="grid" style={{ gap: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+                  <div>
+                    <h3 style={{ margin: 0 }}>Reminder schedule</h3>
+                    <div className="sub" style={{ marginTop: 4 }}>Add up to five independent reminders for each delivery channel.</div>
                   </div>
-                </CG>
+                  <CG>
+                    <ReminderSchedule
+                      className="s6"
+                      channel="Email"
+                      description="Delivered to the booking email address."
+                      enabled={draft.reminder_email_enabled}
+                      values={reminderValues("email")}
+                      onToggle={(reminder_email_enabled) => patch({ reminder_email_enabled })}
+                      onAdd={() => addReminder("email")}
+                      onChange={(index, value) => {
+                        const next = [...reminderValues("email")];
+                        next[index] = value;
+                        setReminderValues("email", next);
+                      }}
+                      onRemove={(index) => setReminderValues("email", reminderValues("email").filter((_, rowIndex) => rowIndex !== index))}
+                    />
+                    <ReminderSchedule
+                      className="s6"
+                      channel="SMS"
+                      description="Consent-gated and delivered to the booking phone number."
+                      enabled={draft.reminder_sms_enabled}
+                      values={reminderValues("sms")}
+                      onToggle={(reminder_sms_enabled) => patch({ reminder_sms_enabled })}
+                      onAdd={() => addReminder("sms")}
+                      onChange={(index, value) => {
+                        const next = [...reminderValues("sms")];
+                        next[index] = value;
+                        setReminderValues("sms", next);
+                      }}
+                      onRemove={(index) => setReminderValues("sms", reminderValues("sms").filter((_, rowIndex) => rowIndex !== index))}
+                    />
+                  </CG>
+                </div>
               </div>
             </Panel>
           ) : null}
@@ -521,6 +571,72 @@ function Field({ label, children, className }: { label: string; children: ReactN
       <span className="lbl">{label}</span>
       {children}
     </label>
+  );
+}
+
+function ReminderSchedule({
+  channel,
+  description,
+  enabled,
+  values,
+  onToggle,
+  onAdd,
+  onChange,
+  onRemove,
+  className,
+}: {
+  channel: "Email" | "SMS";
+  description: string;
+  enabled: boolean;
+  values: number[];
+  onToggle: (enabled: boolean) => void;
+  onAdd: () => void;
+  onChange: (index: number, value: number) => void;
+  onRemove: (index: number) => void;
+  className?: string;
+}) {
+  return (
+    <section className={className} style={{ minWidth: 0, padding: 16, border: "1px solid var(--line)", borderRadius: 8 }}>
+      <div className="grid" style={{ gap: 14 }}>
+        <ToggleRow
+          label={`${channel} reminders`}
+          description={description}
+          checked={enabled}
+          onChange={onToggle}
+        />
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <Btn type="button" size="sm" onClick={onAdd} disabled={!enabled || values.length >= 5}>
+            <Icon name="plus" size={13} /> Add reminder
+          </Btn>
+        </div>
+        <div className="grid" style={{ gap: 9, opacity: enabled ? 1 : 0.55 }}>
+          {values.map((value, index) => (
+            <div key={`${channel}-${index}`} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 38px", gap: 8, alignItems: "end" }}>
+              <Field label={`${channel} reminder ${index + 1}`}>
+                <Select disabled={!enabled} value={value} onChange={(event) => onChange(index, Number(event.target.value))}>
+                  {REMINDER_TIMES.map((option) => (
+                    <option key={option.value} value={option.value} disabled={values.includes(option.value) && option.value !== value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Btn
+                type="button"
+                size="sm"
+                aria-label={`Remove ${channel.toLowerCase()} reminder ${index + 1}`}
+                title={values.length === 1 ? "Keep at least one reminder time" : "Remove reminder"}
+                disabled={!enabled || values.length === 1}
+                onClick={() => onRemove(index)}
+                style={{ width: 38, height: 38, padding: 0 }}
+              >
+                <Icon name="trash" size={14} />
+              </Btn>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
