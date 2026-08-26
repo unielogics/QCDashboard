@@ -29,7 +29,7 @@
 .drawer-h { padding: 22px 68px 20px 26px; border-bottom: 1px solid var(--line); display: flex; align-items: flex-start; gap: 12px; }
 .drawer-h-main { flex: 1; min-width: 0; }
 .drawer-h-actions { flex: 0 0 auto; }
-.drawer-b { padding: 24px 26px; overflow-y: auto; flex: 1; }
+.drawer-b { padding: 24px 26px; overflow-y: auto; flex: 1; min-height: 0; }
 .drawer-f { padding: 16px 26px; border-top: 1px solid var(--line); display: flex; gap: 10px; align-items: center; background: var(--sunken2); }
 .drawer-x {
   position: absolute; top: 18px; right: 18px; width: 34px; height: 34px;

@@ -1980,6 +1980,34 @@ export default function BucketsAdminPage() {
         // the whole form — including upload access codes that have already been
         // generated and cannot be re-derived. Close it deliberately.
         closeOnBackdrop={false}
+        bodyStyle={{ minHeight: 0, alignContent: "start" }}
+        footer={
+          createResult ? (
+            <>
+              <span className="sp" />
+              <Btn onClick={() => copyText(createResult.links.map((link) => `${link.name}: ${link.url}\nAccess code: ${link.passcode}`).join("\n\n"))}>Copy all</Btn>
+              <Btn variant="pri" onClick={() => setCreateOpen(false)}>Done</Btn>
+            </>
+          ) : (
+            <>
+              <span className="sp" />
+              <Btn onClick={() => setCreateOpen(false)} disabled={busy}>Cancel</Btn>
+              <Btn variant="pri" style={{ minWidth: 142, justifyContent: "center" }} onClick={createBucketWorkflow} disabled={busy || !bucketForm.name.trim()}>
+                {busy ? (
+                  <>
+                    <Icon name="refresh" size={14} />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="plus" size={14} />
+                    Create bucket
+                  </>
+                )}
+              </Btn>
+            </>
+          )
+        }
       >
         {createResult ? (
           <>
@@ -2002,10 +2030,6 @@ export default function BucketsAdminPage() {
                 ))}
               </div>
             </Panel>
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <Btn onClick={() => copyText(createResult.links.map((link) => `${link.name}: ${link.url}\nAccess code: ${link.passcode}`).join("\n\n"))}>Copy all</Btn>
-              <Btn variant="pri" onClick={() => setCreateOpen(false)}>Done</Btn>
-            </div>
           </>
         ) : (
           <>
@@ -2188,23 +2212,6 @@ export default function BucketsAdminPage() {
                 Upload links are created after the bucket is created. Leave this blank if you only want to set up the bucket for now.
               </div>
             </Panel>
-
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <Btn onClick={() => setCreateOpen(false)} disabled={busy}>Cancel</Btn>
-              <Btn variant="pri" style={{ minWidth: 142, justifyContent: "center" }} onClick={createBucketWorkflow} disabled={busy || !bucketForm.name.trim()}>
-                {busy ? (
-                  <>
-                    <Icon name="refresh" size={14} />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <Icon name="plus" size={14} />
-                    Create bucket
-                  </>
-                )}
-              </Btn>
-            </div>
           </>
         )}
       </Drawer>
