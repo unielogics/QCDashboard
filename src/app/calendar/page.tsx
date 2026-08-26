@@ -37,7 +37,12 @@ import {
   useAuthedApi,
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
-import { outcomeLabel, type RepAppointment } from "@/lib/repAppointments";
+import {
+  appointmentRsvpLabel,
+  appointmentRsvpTone,
+  outcomeLabel,
+  type RepAppointment,
+} from "@/lib/repAppointments";
 import type { AITask, CalendarActivityItem, CalendarEvent, Client, Document, Loan, UserBookingSettings } from "@/lib/types";
 import { EventModal } from "./components/EventModal";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
@@ -886,7 +891,7 @@ function CompactEventRow({
   const update = useUpdateCalendarEvent();
   const remove = useDeleteCalendarEvent();
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const state = eventTone(ev, appointment?.outcome ?? null);
+  const state = eventTone(ev, appointment?.outcome ?? null, appointment ?? null);
   const isDone = ev.status === "done";
   const isCancelled = ev.status === "cancelled";
 
@@ -952,7 +957,9 @@ function CompactEventRow({
           {ev.duration_min ? <> · {ev.duration_min}m</> : null}
         </div>
       </div>
-      <CellChip tone="mut">{appointment?.outcome ? outcomeLabel(appointment.outcome) : ev.kind}</CellChip>
+      <CellChip tone={appointment?.outcome ? "mut" : appointment ? appointmentRsvpTone(appointment) : "mut"}>
+        {appointment?.outcome ? outcomeLabel(appointment.outcome) : appointment ? appointmentRsvpLabel(appointment) : ev.kind}
+      </CellChip>
       {appointment ? (
         <IconBtn
           onClick={(event) => {
@@ -1202,7 +1209,11 @@ function clusterOverlaps<T extends { startMinute: number; endMinute: number }>(i
 
 /** Tone of an event block. The colours are the same values the theme shim
  *  returned, read straight off globals.css instead. */
-function eventTone(ev: CalendarEvent, outcome: RepAppointment["outcome"] = null): { fg: string; bg: string; label: string } {
+function eventTone(
+  ev: CalendarEvent,
+  outcome: RepAppointment["outcome"] = null,
+  appointment: RepAppointment | null = null,
+): { fg: string; bg: string; label: string } {
   const isDone = ev.status === "done";
   const isCancelled = ev.status === "cancelled";
   const isOverdue = !isDone && !isCancelled && new Date(ev.starts_at).getTime() < Date.now();
@@ -1211,6 +1222,11 @@ function eventTone(ev: CalendarEvent, outcome: RepAppointment["outcome"] = null)
   if (outcome === "not_converted") return { fg: "var(--danger)", bg: "var(--danger-tint)", label: "NOT CONVERTED" };
   if (outcome === "did_not_show") return { fg: "var(--warn)", bg: "var(--warn-tint)", label: "DID NOT SHOW" };
   if (isDone) return { fg: "var(--ok)", bg: "var(--ok-tint)", label: "DONE" };
+  if (appointment?.client_rsvp_status === "accepted") return { fg: "var(--ok)", bg: "var(--ok-tint)", label: "CONFIRMED" };
+  if (appointment?.client_rsvp_status === "tentative") return { fg: "var(--accent)", bg: "var(--accent-100)", label: "TENTATIVE" };
+  if (appointment?.client_rsvp_status === "declined") return { fg: "var(--danger)", bg: "var(--danger-tint)", label: "DECLINED" };
+  if (appointment?.client_rsvp_status === "unknown") return { fg: "var(--muted)", bg: "var(--sunken)", label: "CONFIRMATION UNKNOWN" };
+  if (appointment?.client_rsvp_status === "needs_action") return { fg: "var(--warn)", bg: "var(--warn-tint)", label: "AWAITING RESPONSE" };
   if (isOverdue) return { fg: "var(--danger)", bg: "var(--danger-tint)", label: "OVERDUE" };
   return { fg: "var(--warn)", bg: "var(--warn-tint)", label: "" };
 }

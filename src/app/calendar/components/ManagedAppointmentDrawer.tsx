@@ -6,8 +6,15 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Btn, CellChip, Field, Input, Panel, Select, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { AddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
+import { ProgramSelect } from "@/components/calendar/ProgramSelect";
 import { useAuthedApi } from "@/hooks/useApi";
-import { outcomeLabel, type RepAppointment, type RepAppointmentOutcome } from "@/lib/repAppointments";
+import {
+  appointmentRsvpLabel,
+  appointmentRsvpTone,
+  outcomeLabel,
+  type RepAppointment,
+  type RepAppointmentOutcome,
+} from "@/lib/repAppointments";
 
 export type ManagedAppointmentMode = "details" | "edit" | "reschedule" | "outcome" | "cancel";
 
@@ -46,6 +53,7 @@ export function ManagedAppointmentDrawer({
   const [email, setEmail] = useState(appointment?.invitee_email ?? "");
   const [phone, setPhone] = useState(appointment?.invitee_phone ?? "");
   const [company, setCompany] = useState(appointment?.company ?? "");
+  const [programKey, setProgramKey] = useState(appointment?.program_key ?? "general_funding_discussion");
   const [program, setProgram] = useState(appointment?.program_name ?? "");
   const [amount, setAmount] = useState(appointment?.requested_amount ?? "");
   const [address, setAddress] = useState(appointment?.full_address ?? "");
@@ -70,6 +78,7 @@ export function ManagedAppointmentDrawer({
     setEmail(appointment.invitee_email ?? "");
     setPhone(appointment.invitee_phone ?? "");
     setCompany(appointment.company ?? "");
+    setProgramKey(appointment.program_key ?? "general_funding_discussion");
     setProgram(appointment.program_name ?? "");
     setAmount(appointment.requested_amount ?? "");
     setAddress(appointment.full_address ?? "");
@@ -98,7 +107,8 @@ export function ManagedAppointmentDrawer({
       body: JSON.stringify({
         title: title.trim(), kind, starts_at: new Date(startsAt).toISOString(), duration_min: Number(duration), timezone,
         invitee_name: name.trim(), invitee_email: email.trim() || null, invitee_phone: phone.trim() || null,
-        company: company.trim() || null, program_name: program.trim() || null, requested_amount: amount.trim() || null,
+        company: company.trim() || null, program_key: programKey, program_name: program.trim() || null,
+        requested_amount: amount.trim() || null,
         full_address: address.trim() || null, notes: notes.trim() || null, join_url: joinUrl.trim() || null,
         reopen_outcome: outcomeWillReopen ? confirmOutcomeReopen : false,
       }),
@@ -136,6 +146,7 @@ export function ManagedAppointmentDrawer({
   if (mode === "details") {
     const statuses = [
       ["Google", appointment.google_sync_status], ["Email confirmation", appointment.confirmation_email_status],
+      ["Client RSVP", appointmentRsvpLabel(appointment)],
       ["Email reminder", appointment.email_reminder_status], ["SMS confirmation", appointment.confirmation_sms_status],
       ["SMS reminder", appointment.sms_reminder_status],
       ["Rep notification", appointment.rep_notification_status],
@@ -144,7 +155,7 @@ export function ManagedAppointmentDrawer({
     return (
       <Drawer open onClose={onClose} title="Appointment details" sub={`${new Date(appointment.starts_at).toLocaleString()} · ${appointment.duration_min} minutes`} width="lg">
         <div className="grid">
-          <Panel title={appointment.title} actions={<CellChip tone={appointment.status === "cancelled" ? "bad" : "ok"}>{appointment.status}</CellChip>}>
+          <Panel title={appointment.title} actions={<CellChip tone={appointmentRsvpTone(appointment)}>{appointmentRsvpLabel(appointment)}</CellChip>}>
             <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))" }}>
               <Detail label="Client" value={appointment.invitee_name} />
               <Detail label="Contact" value={[appointment.invitee_email, appointment.invitee_phone].filter(Boolean).join(" · ")} />
@@ -222,7 +233,7 @@ export function ManagedAppointmentDrawer({
             <Field label="Email"><Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
             <Field label="Phone"><Input type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} /></Field>
             <Field label="Company"><Input value={company} onChange={(event) => setCompany(event.target.value)} /></Field>
-            <Field label="Program"><Input value={program} onChange={(event) => setProgram(event.target.value)} /></Field>
+            <Field label="Program"><ProgramSelect programKey={programKey} programName={program} onChange={(next) => { setProgramKey(next.key); setProgram(next.name); }} /></Field>
             <Field label="Requested amount"><Input value={amount} onChange={(event) => setAmount(event.target.value)} /></Field>
           </div>
           <div className="grid mt"><AddressInput label="Full address" value={address ? { full: address } : null} onChange={(next) => setAddress(formatAddressParts(next))} /><Field label="Notes"><Textarea rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} /></Field><Field label="Join link"><Input type="url" value={joinUrl} onChange={(event) => setJoinUrl(event.target.value)} /></Field></div>
