@@ -279,6 +279,10 @@ const VARIANT_FILTERS = [
 
 const LIMIT = 25;
 
+function presentContact(value?: string | null): string {
+  return value?.trim() || "Not provided";
+}
+
 export default function AdminAIUnderwriterLeadsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -800,7 +804,7 @@ export default function AdminAIUnderwriterLeadsPage() {
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search name, email, dealership"
+            placeholder="Search name, owner, email, phone, dealership"
             aria-label="Search leads"
           />
           <Select value={statusFilter} onChange={(event) => { setOffset(0); setStatusFilter(event.target.value); }} aria-label="Status">
@@ -819,13 +823,21 @@ export default function AdminAIUnderwriterLeadsPage() {
         <div className="panel" style={{ minHeight: 0 }}>
           <div className="tblwrap" style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
             <table className="tbl">
-              <thead><tr><th>File</th><th>Opened by</th><th>Referral</th><th>Vertical</th><th>Probability</th><th>Status</th><th>Evidence</th><th>Missing</th><th className="r" /></tr></thead>
+              <thead><tr><th>File</th><th>Contact</th><th>Opened by</th><th>Referral</th><th>Vertical</th><th>Probability</th><th>Status</th><th>Evidence</th><th>Missing</th><th className="r" /></tr></thead>
               <tbody>
-                {loading ? <tr><td colSpan={9}><div className="empty">Loading AI intake...</div></td></tr> : rows.map((row) => {
+                {loading ? <tr><td colSpan={10}><div className="empty">Loading AI intake...</div></td></tr> : rows.map((row) => {
                   const unified = unifiedByIntake.get(row.id);
                   return (
                     <tr key={row.id} onClick={() => openLead(row.id)} className={selectedId === row.id ? "tone-acc" : undefined}>
-                      <td><button type="button" className="linky" onClick={() => openLead(row.id)}>{row.business_name || row.full_name}</button><div className="sub num">{unified?.ref || row.id.slice(0, 8)}</div></td>
+                      <td className="lead-file-cell">
+                        <button type="button" className="linky" onClick={() => openLead(row.id)}>{row.business_name || row.full_name}</button>
+                        <div className="sub num">{unified?.ref || row.id.slice(0, 8)}</div>
+                        {row.business_name ? <div className="sub">Owner: {row.full_name}</div> : null}
+                      </td>
+                      <td className="lead-contact-cell">
+                        <div className="lead-contact-line">{presentContact(row.email)}</div>
+                        <div className="lead-contact-line sub">{presentContact(row.phone)}</div>
+                      </td>
                       <td><CellChip tone={unified ? originTone(unified.origin) : "mut"}>{row.opened_by_name || unified?.rep_name || unified?.origin_label || "House desk"}</CellChip><div className="sub">{row.opened_by_role || unified?.case_ref || "Internal"}</div></td>
                       <td className="sub">{row.referral_source || unified?.dealer_name || "Direct"}</td>
                       <td><CellChip tone={unified ? verticalTone(unified.vertical) : "acc"}>{unified?.vertical_label || variantLabel(row.variant)}</CellChip></td>
@@ -837,7 +849,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                     </tr>
                   );
                 })}
-                {!loading && !rows.length ? <tr><td colSpan={9}><div className="empty">No AI intake files match these filters.</div></td></tr> : null}
+                {!loading && !rows.length ? <tr><td colSpan={10}><div className="empty">No AI intake files match these filters.</div></td></tr> : null}
               </tbody>
             </table>
           </div>

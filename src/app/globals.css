@@ -215,6 +215,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .tbl td { padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .tbl tr:hover td { background: var(--sunken2); }
 .tbl .r { text-align: right; }
+.lead-file-cell,
+.lead-contact-cell { min-width: 150px; max-width: 240px; }
+.lead-contact-line { overflow-wrap: anywhere; line-height: 1.35; }
 .cellchip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 99px; font-size: 10.8px; font-weight: 750; white-space: nowrap; }
 .c-ok { background: var(--ok-tint); color: var(--ok); }
 .c-warn { background: var(--warn-tint); color: var(--warn); }
