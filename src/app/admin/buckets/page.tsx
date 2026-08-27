@@ -168,6 +168,13 @@ type BucketDetailSection = "upload" | "tasks" | "notes" | "invites" | "vendors" 
 type BucketFileKind = "all" | "pdf" | "image" | "spreadsheet" | "document" | "other";
 type BucketFileAssignment = "all" | "requested" | "general";
 type BucketFileSort = "newest" | "oldest";
+type BucketEditForm = {
+  name: string;
+  client_name: string;
+  purpose: string;
+  bucket_type: string;
+  description: string;
+};
 type UploadInvite = { id: string; recipient_name: string; recipient_email: string; passcode: string };
 type UploadInviteLink = { id: string; name: string; email?: string; url: string; passcode: string };
 type UploadInitResponse = { file_id: string; upload_url: string; required_headers: Record<string, string> };
@@ -354,6 +361,26 @@ function emptyVendorAccessDraft(): VendorAccessDraft {
   };
 }
 
+function emptyBucketEditForm(): BucketEditForm {
+  return {
+    name: "",
+    client_name: "",
+    purpose: "",
+    bucket_type: "",
+    description: "",
+  };
+}
+
+function bucketEditFormFrom(bucket: Bucket): BucketEditForm {
+  return {
+    name: bucket.name || "",
+    client_name: bucket.client_name || "",
+    purpose: bucket.purpose || "",
+    bucket_type: bucket.bucket_type || "",
+    description: bucket.description || "",
+  };
+}
+
 export default function BucketsAdminPage() {
   const confirmAction = useConfirmAction();
   const router = useRouter();
@@ -371,6 +398,10 @@ export default function BucketsAdminPage() {
   const [detail, setDetail] = useState<BucketDetail | null>(null);
   const [detailFocus, setDetailFocus] = useState<DetailFocus>(null);
   const [bucketDetailMinimized, setBucketDetailMinimized] = useState(false);
+  const [editBucketOpen, setEditBucketOpen] = useState(false);
+  const [editBucketForm, setEditBucketForm] = useState<BucketEditForm>(() => emptyBucketEditForm());
+  const [editBucketSaving, setEditBucketSaving] = useState(false);
+  const [editBucketError, setEditBucketError] = useState<string | null>(null);
   const [bucketSectionsOpen, setBucketSectionsOpen] = useState<Record<BucketDetailSection, boolean>>(() => closedBucketSections());
   const [bucketFileQuery, setBucketFileQuery] = useState("");
   const [bucketFileKind, setBucketFileKind] = useState<BucketFileKind>("all");
@@ -534,9 +565,50 @@ export default function BucketsAdminPage() {
     setReviewFile(null);
     setReviewMinimized(false);
     setBucketDetailMinimized(false);
+    setEditBucketOpen(false);
+    setEditBucketError(null);
     setDetail(null);
     setDetailFocus(null);
     if (bucketParam) router.replace("/admin/buckets", { scroll: false });
+  }
+
+  function openBucketEdit(bucket: BucketDetail) {
+    setEditBucketForm(bucketEditFormFrom(bucket));
+    setEditBucketError(null);
+    setEditBucketOpen(true);
+  }
+
+  async function saveBucketEdit() {
+    if (!detail) return;
+    const name = editBucketForm.name.trim();
+    if (!name) {
+      setEditBucketError("Bucket name is required.");
+      return;
+    }
+    setEditBucketSaving(true);
+    setEditBucketError(null);
+    try {
+      const updated = await call<BucketDetail>(`/buckets/admin/${detail.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name,
+          client_name: editBucketForm.client_name.trim() || null,
+          purpose: editBucketForm.purpose.trim() || null,
+          bucket_type: editBucketForm.bucket_type.trim() || null,
+          description: editBucketForm.description.trim() || null,
+        }),
+      });
+      setDetail(updated);
+      setBuckets((rows) => rows.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)));
+      setActivityRows(updated.activity ?? []);
+      setActivityTotal(updated.activity?.length ?? 0);
+      setEditBucketOpen(false);
+      setNotice("Bucket details updated.");
+    } catch (error) {
+      setEditBucketError(readableError(error));
+    } finally {
+      setEditBucketSaving(false);
+    }
   }
 
   async function openVendorAssignment(bucketId: string) {
@@ -2225,7 +2297,18 @@ export default function BucketsAdminPage() {
 
       {detail && !bucketDetailMinimized ? (
         <ModalFrame
-          title={detail.name}
+          title={
+            <span className="bucket-detail-title">
+              <span className="trunc">{detail.name}</span>
+              <IconBtn
+                onClick={() => openBucketEdit(detail)}
+                aria-label="Edit bucket details"
+                title="Rename bucket"
+              >
+                <Icon name="pencil" size={14} />
+              </IconBtn>
+            </span>
+          }
           subtitle={`${detail.client_name || "No client"} | ${detail.purpose || "No purpose"} | ${detail.bucket_type || "Bucket"}`}
           onClose={closeBucketDetail}
           action={
@@ -2257,9 +2340,6 @@ export default function BucketsAdminPage() {
                 <Icon name="link" size={16} />
                 Link intake
               </Btn>
-              <IconBtn aria-label="Minimize bucket workspace" title="Minimize" onClick={() => setBucketDetailMinimized(true)}>
-                <span aria-hidden="true" className="workspace-minimize-glyph">-</span>
-              </IconBtn>
               <div ref={shareMenuRef} className="popwrap">
                 <Btn
                   size="sm"
@@ -2531,6 +2611,9 @@ export default function BucketsAdminPage() {
                   </div>
                 ) : null}
               </div>
+              <IconBtn aria-label="Minimize bucket workspace" title="Minimize" onClick={() => setBucketDetailMinimized(true)}>
+                <span aria-hidden="true" className="workspace-minimize-glyph">-</span>
+              </IconBtn>
             </div>
           }
         >
@@ -3314,6 +3397,80 @@ export default function BucketsAdminPage() {
           </div>
         </ModalFrame>
       ) : null}
+      {detail ? (
+        <Drawer
+          open={editBucketOpen}
+          onClose={() => {
+            if (editBucketSaving) return;
+            setEditBucketOpen(false);
+            setEditBucketError(null);
+          }}
+          title="Edit bucket details"
+          sub="Rename the evidence room without changing the linked AI intake or source file."
+          width="md"
+          closeOnBackdrop={!editBucketSaving}
+          footer={(
+            <>
+              <Btn
+                onClick={() => {
+                  setEditBucketOpen(false);
+                  setEditBucketError(null);
+                }}
+                disabled={editBucketSaving}
+              >
+                Cancel
+              </Btn>
+              <span className="sp" />
+              <Btn variant="pri" onClick={() => saveBucketEdit().catch((error) => setEditBucketError(readableError(error)))} disabled={editBucketSaving}>
+                {editBucketSaving ? "Saving..." : "Save bucket"}
+              </Btn>
+            </>
+          )}
+        >
+          <div className="grid g12">
+            {editBucketError ? <div className="warnline">{editBucketError}</div> : null}
+            <Field label="Bucket name" req>
+              <Input
+                value={editBucketForm.name}
+                onChange={(event) => setEditBucketForm((form) => ({ ...form, name: event.target.value }))}
+                placeholder="Bucket name"
+                autoFocus
+              />
+            </Field>
+            <div className="fldgrid two">
+              <Field label="Client / borrower label">
+                <Input
+                  value={editBucketForm.client_name}
+                  onChange={(event) => setEditBucketForm((form) => ({ ...form, client_name: event.target.value }))}
+                  placeholder="Client or borrower"
+                />
+              </Field>
+              <Field label="Bucket type">
+                <Input
+                  value={editBucketForm.bucket_type}
+                  onChange={(event) => setEditBucketForm((form) => ({ ...form, bucket_type: event.target.value }))}
+                  placeholder="Loan File"
+                />
+              </Field>
+            </div>
+            <Field label="Purpose">
+              <Input
+                value={editBucketForm.purpose}
+                onChange={(event) => setEditBucketForm((form) => ({ ...form, purpose: event.target.value }))}
+                placeholder="Evidence, underwriting, bank package..."
+              />
+            </Field>
+            <Field label="Description">
+              <Textarea
+                rows={4}
+                value={editBucketForm.description}
+                onChange={(event) => setEditBucketForm((form) => ({ ...form, description: event.target.value }))}
+                placeholder="Internal context for this bucket"
+              />
+            </Field>
+          </div>
+        </Drawer>
+      ) : null}
       {detail && bucketDetailMinimized ? (
         <div className={cx("workspace-minimized-dock", reviewFile && reviewMinimized && "workspace-minimized-dock--raised")} role="status" aria-live="polite">
           <button type="button" className="workspace-minimized-summary" onClick={() => setBucketDetailMinimized(false)}>
@@ -3791,7 +3948,7 @@ function ModalFrame({
   children,
   onClose,
 }: {
-  title: string;
+  title: ReactNode;
   subtitle?: string;
   action?: React.ReactNode;
   children: React.ReactNode;
