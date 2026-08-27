@@ -752,8 +752,8 @@ export default function BucketsAdminPage() {
         .toLowerCase()
         .includes(query);
     }).sort((a, b) => {
-      const aTime = new Date(a.created_at).getTime();
-      const bTime = new Date(b.created_at).getTime();
+      const aTime = uploadTimestamp(a);
+      const bTime = uploadTimestamp(b);
       return bucketFileSort === "newest" ? bTime - aTime : aTime - bTime;
     });
   }, [bucketFileAssignment, bucketFileKind, bucketFileQuery, bucketFileSort, bucketFileStatus, requestedDocNameById, visibleFiles]);
@@ -2541,8 +2541,16 @@ export default function BucketsAdminPage() {
               <Panel
                 title="Uploaded documents"
                 actions={
-                  <div className="row">
+                  <div className="row bucket-file-panel-actions">
                     <span className="tag">{filteredBucketFiles.length} of {visibleFiles.length} shown</span>
+                    <Select
+                      value={bucketFileSort}
+                      onChange={(event) => setBucketFileSort(event.target.value as BucketFileSort)}
+                      aria-label="Sort uploaded documents by upload time"
+                    >
+                      <option value="newest">Newest upload first</option>
+                      <option value="oldest">Oldest upload first</option>
+                    </Select>
                     <Btn
                       size="sm"
                       onClick={() => {
@@ -2585,10 +2593,6 @@ export default function BucketsAdminPage() {
                       <option key={status} value={status}>{statusLabel(status)}</option>
                     ))}
                   </Select>
-                  <Select value={bucketFileSort} onChange={(event) => setBucketFileSort(event.target.value as BucketFileSort)} aria-label="Sort uploaded documents">
-                    <option value="newest">Newest upload first</option>
-                    <option value="oldest">Oldest upload first</option>
-                  </Select>
                 </div>
                 <div className="bucket-file-list">
                   {visibleFiles.length === 0 ? (
@@ -2602,7 +2606,7 @@ export default function BucketsAdminPage() {
                         <span className="grow">
                           <strong className="trunc" style={{ display: "block" }}>{file.file_name}</strong>
                           <span className="sub">
-                            {requestedDocNameById.get(file.requested_document_id || "") || "General upload"} | {file.uploaded_by_name || "Unknown"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}
+                            {requestedDocNameById.get(file.requested_document_id || "") || "General upload"} | {file.uploaded_by_name || "Unknown"} | {formatSize(file.size_bytes)} | Uploaded {formatDateTime(file.created_at)}
                           </span>
                         </span>
                       </label>
@@ -3884,6 +3888,11 @@ function uniqueBucketFiles(files: BucketFile[]): BucketFile[] {
       seen.add(key);
       return true;
     });
+}
+
+function uploadTimestamp(file: BucketFile): number {
+  const parsed = new Date(file.created_at).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function bucketFileKindOf(file: BucketFile): Exclude<BucketFileKind, "all"> {
