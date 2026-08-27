@@ -68,8 +68,8 @@ import { UnifiedThreadConversation } from "@/components/communications/UnifiedTh
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import type { IntakeResponse } from "@/lib/intake";
-import { originTone, verticalTone } from "@/lib/unifiedOperator";
-import type { ApplicationProfile, FileOwnerRequirementState } from "@/lib/applicationProfile";
+import { PIPELINE_LIFECYCLE, originTone, underwritingStatusLabel, verticalTone, type UnderwritingLifecycleStatus } from "@/lib/unifiedOperator";
+import type { ApplicationProfile, ApplicationUnderwritingPatch, ApplicationUnderwritingState, FileOwnerRequirementState } from "@/lib/applicationProfile";
 
 type LeadRow = {
   id: string;
@@ -157,6 +157,16 @@ type LeadDetail = {
   secure_room_pin?: string | null;
   room_delivery_status?: string | null;
   room_delivery_detail?: string | null;
+};
+
+type UnderwritingDraft = {
+  underwriting_status: UnderwritingLifecycleStatus;
+  approved_amount: string;
+  term_sheet_amount: string;
+  current_dscr: string;
+  target_dscr: string;
+  approved_dscr: string;
+  reviewer_notes: string;
 };
 
 type Artifact = {
@@ -281,6 +291,38 @@ const LIMIT = 25;
 
 function presentContact(value?: string | null): string {
   return value?.trim() || "Not provided";
+}
+
+function emptyUnderwritingDraft(): UnderwritingDraft {
+  return {
+    underwriting_status: "submitted",
+    approved_amount: "",
+    term_sheet_amount: "",
+    current_dscr: "",
+    target_dscr: "",
+    approved_dscr: "",
+    reviewer_notes: "",
+  };
+}
+
+function underwritingDraftFromState(state: ApplicationUnderwritingState | null): UnderwritingDraft {
+  if (!state) return emptyUnderwritingDraft();
+  return {
+    underwriting_status: state.underwriting_status,
+    approved_amount: state.approved_amount == null ? "" : String(state.approved_amount),
+    term_sheet_amount: state.term_sheet_amount == null ? "" : String(state.term_sheet_amount),
+    current_dscr: state.current_dscr == null ? "" : String(state.current_dscr),
+    target_dscr: state.target_dscr == null ? "" : String(state.target_dscr),
+    approved_dscr: state.approved_dscr == null ? "" : String(state.approved_dscr),
+    reviewer_notes: state.reviewer_notes || "",
+  };
+}
+
+function numberOrNull(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export default function AdminAIUnderwriterLeadsPage() {
@@ -964,6 +1006,8 @@ function LeadDetailPanel({
   const toast = useToast();
   const { getToken } = useAuth();
   const bookingLink = useBookingLink();
+  const { data: currentUser } = useCurrentUser();
+  const canUnderwrite = currentUser?.role === Role.SUPER_ADMIN || currentUser?.role === Role.LOAN_EXEC;
   const [activeTab, setActiveTab] = useState<"conversation" | "workspace">("conversation");
   const [workspaceSub, setWorkspaceSub] = useState<"overview" | "documents" | "client" | "credit" | "contracts" | "package">("overview");
   const [subject, setSubject] = useState("");
@@ -993,7 +1037,7 @@ function LeadDetailPanel({
   const [ingestFiles, setIngestFiles] = useState<DriveFile[]>([]);
   const [deletionBusy, setDeletionBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [prototypeView, setPrototypeView] = useState<"workspace" | "communications" | "audit">("workspace");
+  const [prototypeView, setPrototypeView] = useState<"workspace" | "communications" | "underwriting" | "audit">("workspace");
   const [communicationChannel, setCommunicationChannel] = useState<"underwriter" | "client" | "partner" | "internal">("underwriter");
   const [submissionStep, setSubmissionStep] = useState(1);
   const [contextRailOpen, setContextRailOpen] = useState(false);
@@ -1005,6 +1049,11 @@ function LeadDetailPanel({
   const [evidenceDragging, setEvidenceDragging] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
   const [profileVerification, setProfileVerification] = useState<FileOwnerRequirementState | null>(null);
+  const [underwriting, setUnderwriting] = useState<ApplicationUnderwritingState | null>(null);
+  const [underwritingDraft, setUnderwritingDraft] = useState<UnderwritingDraft>(() => emptyUnderwritingDraft());
+  const [underwritingLoading, setUnderwritingLoading] = useState(false);
+  const [underwritingSaving, setUnderwritingSaving] = useState(false);
+  const [underwritingError, setUnderwritingError] = useState<string | null>(null);
   const [sendReviewOpen, setSendReviewOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestSaving, setRequestSaving] = useState(false);
@@ -1046,6 +1095,103 @@ function LeadDetailPanel({
   const packet = artifacts.find((artifact) => artifact.artifact_type === "lender_packet");
   const prequalification = artifacts.find((artifact) => artifact.artifact_type === "prequalification");
   const isRealEstate = detail?.intake.variant === "real_estate_dscr_v1";
+
+  async function loadUnderwritingState() {
+    if (!detail || !canUnderwrite) {
+      setUnderwriting(null);
+      setUnderwritingDraft(emptyUnderwritingDraft());
+      return;
+    }
+    setUnderwritingLoading(true);
+    setUnderwritingError(null);
+    try {
+      const authToken = await getToken();
+      const profile = await api<ApplicationProfile>("/application-profiles/resolve", {
+        method: "POST",
+        authToken: authToken ?? undefined,
+        body: JSON.stringify({ source_kind: "intake", source_id: detail.intake.id }),
+      });
+      const state = await api<ApplicationUnderwritingState>(`/application-profiles/${profile.id}/underwriting`, {
+        authToken: authToken ?? undefined,
+      });
+      setUnderwriting(state);
+      setUnderwritingDraft(underwritingDraftFromState(state));
+    } catch (reason) {
+      setUnderwritingError(apiErrorMessage(reason, "Underwriting state could not be loaded."));
+    } finally {
+      setUnderwritingLoading(false);
+    }
+  }
+
+  async function saveUnderwritingPatch(patch: ApplicationUnderwritingPatch) {
+    if (!detail || !canUnderwrite) return;
+    setUnderwritingSaving(true);
+    setUnderwritingError(null);
+    try {
+      const authToken = await getToken();
+      let profileId = underwriting?.profile_id;
+      if (!profileId) {
+        const profile = await api<ApplicationProfile>("/application-profiles/resolve", {
+          method: "POST",
+          authToken: authToken ?? undefined,
+          body: JSON.stringify({ source_kind: "intake", source_id: detail.intake.id }),
+        });
+        profileId = profile.id;
+      }
+      const statusChanged = patch.underwriting_status && patch.underwriting_status !== underwriting?.underwriting_status;
+      if (statusChanged) {
+        await api(`/operator-files/intake/${detail.intake.id}/pipeline-move`, {
+          method: "POST",
+          authToken: authToken ?? undefined,
+          body: JSON.stringify({
+            target_status: patch.underwriting_status,
+            expected_status: underwriting?.underwriting_status ?? "submitted",
+            note: patch.reviewer_notes || undefined,
+          }),
+        });
+      }
+      const remainingPatch = { ...patch };
+      if (statusChanged) delete remainingPatch.underwriting_status;
+      const updated = Object.keys(remainingPatch).length
+        ? await api<ApplicationUnderwritingState>(`/application-profiles/${profileId}/underwriting`, {
+            method: "PATCH",
+            authToken: authToken ?? undefined,
+            body: JSON.stringify(remainingPatch),
+          })
+        : await api<ApplicationUnderwritingState>(`/application-profiles/${profileId}/underwriting`, {
+            authToken: authToken ?? undefined,
+          });
+      setUnderwriting(updated);
+      setUnderwritingDraft(underwritingDraftFromState(updated));
+      toast.show(statusChanged ? "Pipeline status updated." : "Underwriting fields saved.");
+    } catch (reason) {
+      setUnderwritingError(apiErrorMessage(reason, "Underwriting could not be saved."));
+      toast.show(apiErrorMessage(reason, "Underwriting could not be saved."));
+    } finally {
+      setUnderwritingSaving(false);
+    }
+  }
+
+  function saveUnderwritingDraft() {
+    void saveUnderwritingPatch({
+      underwriting_status: underwritingDraft.underwriting_status,
+      approved_amount: numberOrNull(underwritingDraft.approved_amount),
+      term_sheet_amount: numberOrNull(underwritingDraft.term_sheet_amount),
+      current_dscr: numberOrNull(underwritingDraft.current_dscr),
+      target_dscr: numberOrNull(underwritingDraft.target_dscr),
+      approved_dscr: numberOrNull(underwritingDraft.approved_dscr),
+      reviewer_notes: underwritingDraft.reviewer_notes.trim() || null,
+    });
+  }
+
+  function changeUnderwritingStatus(statusValue: UnderwritingLifecycleStatus) {
+    setUnderwritingDraft((current) => ({ ...current, underwriting_status: statusValue }));
+    void saveUnderwritingPatch({ underwriting_status: statusValue, reviewer_notes: underwritingDraft.reviewer_notes.trim() || null });
+  }
+
+  useEffect(() => {
+    void loadUnderwritingState();
+  }, [detail?.intake.id, canUnderwrite]);
 
   useEffect(() => {
     if (!detail) {
@@ -1446,7 +1592,18 @@ function LeadDetailPanel({
         <input ref={headerUploadRef} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.zip,.png,.jpg,.jpeg,.webp,.heic" onChange={(event) => void uploadFromHeader(Array.from(event.target.files ?? []))} />
         {detail ? <Btn disabled={headerUploading || !cockpitAdapter} onClick={() => headerUploadRef.current?.click()}><Icon name="upload" size={14} />{headerUploading ? "Uploading..." : "Upload"}</Btn> : null}
         {detail ? <Btn onClick={openDocumentRequest}><Icon name="send" size={14} />Request</Btn> : null}
-        {detail ? <Select value={detail.intake.outcome_status} disabled={outcomeBusy} onChange={(event) => changeOutcomeStatus(event.target.value)} aria-label="Outcome status"><option value="submitted">Submitted</option><option value="closed">Closed</option><option value="denied">Denied</option></Select> : null}
+        {detail && canUnderwrite ? (
+          <Select
+            value={underwritingDraft.underwriting_status}
+            disabled={underwritingLoading || underwritingSaving}
+            onChange={(event) => changeUnderwritingStatus(event.target.value as UnderwritingLifecycleStatus)}
+            aria-label="Underwriting lifecycle status"
+          >
+            {PIPELINE_LIFECYCLE.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+          </Select>
+        ) : detail ? (
+          <Select value={detail.intake.outcome_status} disabled={outcomeBusy} onChange={(event) => changeOutcomeStatus(event.target.value)} aria-label="Outcome status"><option value="submitted">Submitted</option><option value="closed">Closed</option><option value="denied">Denied</option></Select>
+        ) : null}
         {detail ? <Select value={detail.intake.preferred_language} disabled={languageBusy} onChange={(event) => changeLanguage(event.target.value)} aria-label="Client language"><option value="en">English</option><option value="es">Español</option></Select> : null}
         <PageActionMenu items={[
           { label: "Open underwriting chat", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("underwriter"); }, hidden: !detail },
@@ -1467,12 +1624,13 @@ function LeadDetailPanel({
       {loading || !detail ? <div className="empty">Loading intake file...</div> : (
         <>
           <div className="intake-tabs" role="tablist" aria-label="AI intake detail">
-            {([
+            {[
               ["workspace", "File workspace"],
+              ...(canUnderwrite ? [["underwriting", "Underwriting"] as const] : []),
               ["communications", "Communications"],
               ["audit", "Audit trail"],
-            ] as const).map(([id, label]) => (
-              <button key={id} type="button" role="tab" aria-selected={prototypeView === id} className={prototypeView === id ? "on" : undefined} onClick={() => setPrototypeView(id)}>{label}</button>
+            ].map(([id, label]) => (
+              <button key={id} type="button" role="tab" aria-selected={prototypeView === id} className={prototypeView === id ? "on" : undefined} onClick={() => setPrototypeView(id as typeof prototypeView)}>{label}</button>
             ))}
           </div>
 
@@ -1558,6 +1716,64 @@ function LeadDetailPanel({
                   {packageTab === "summary" ? summary ? <div className="artifact-preview"><strong>{summary.title}</strong><p>{summary.body_text || String(summary.body_json?.executive_summary || "")}</p><span className="sub">Generated {formatDateTime(summary.created_at)}</span></div> : <div className="empty">Generate an underwriter narrative after the AI review is complete.</div> : null}
                   {packageTab === "package" ? packet ? <div className="source-room"><div><CellChip tone="ok">Ready</CellChip><strong>{packet.title}</strong><span className="sub">Redacted lender-facing PDF · {formatDateTime(packet.created_at)}</span></div>{packet.download_url ? <a href={packet.download_url} target="_blank" rel="noreferrer" className="btn">Preview PDF</a> : null}</div> : <div className="empty">Build the lender package after the executive summary is ready.</div> : null}
                   {packageTab === "delivery" ? <div className="package-delivery"><div className="fldgrid two"><Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field><Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field></div><Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field><Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={7} placeholder="Draft the reviewed submission message" /></Field><Row><Btn disabled={!toEmails.trim() || !subject.trim() || !body.trim() || !packet || busy !== ""} onClick={() => setSendReviewOpen(true)}>Review and send</Btn><Btn onClick={downloadZip} disabled={zipBusy}>{zipBusy ? "Building..." : "Download package"}</Btn></Row></div> : null}
+                </Panel>
+              ) : null}
+
+              {prototypeView === "underwriting" && canUnderwrite ? (
+                <Panel
+                  title="Underwriting"
+                  sub="Control the file lifecycle, approved amounts, DSCR overrides, and close outcome."
+                  actions={<Row>{underwriting?.loan_id ? <Link href={`/loans/${underwriting.loan_id}`} className="btn">Open funding file</Link> : <Btn onClick={() => changeUnderwritingStatus("in_underwriting")} disabled={underwritingSaving}>Create funding file</Btn>}<Btn variant="pri" onClick={saveUnderwritingDraft} disabled={underwritingLoading || underwritingSaving}>{underwritingSaving ? "Saving..." : "Save underwriting"}</Btn></Row>}
+                >
+                  {underwritingError ? <WarnLine>{underwritingError}</WarnLine> : null}
+                  {underwritingLoading ? <div className="empty">Loading underwriting controls...</div> : (
+                    <div className="underwriting-workspace">
+                      <div className="underwriting-status-strip">
+                        <div>
+                          <span className="lbl">Current lifecycle</span>
+                          <b>{underwritingStatusLabel(underwritingDraft.underwriting_status)}</b>
+                          <span className="sub">{underwriting?.loan_id ? "Linked to a funding loan." : "No funding loan has been created yet."}</span>
+                        </div>
+                        <div>
+                          <span className="lbl">Last update</span>
+                          <b>{underwriting?.updated_at ? formatDateTime(underwriting.updated_at) : "No saved update"}</b>
+                          <span className="sub">Actor and effects are recorded in audit.</span>
+                        </div>
+                      </div>
+                      <div className="fldgrid three">
+                        <Field label="Lifecycle status">
+                          <Select value={underwritingDraft.underwriting_status} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, underwriting_status: event.target.value as UnderwritingLifecycleStatus })}>
+                            {PIPELINE_LIFECYCLE.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+                          </Select>
+                        </Field>
+                        <Field label="Approved amount">
+                          <Input inputMode="decimal" value={underwritingDraft.approved_amount} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, approved_amount: event.target.value })} placeholder="0.00" />
+                        </Field>
+                        <Field label="Term-sheet amount">
+                          <Input inputMode="decimal" value={underwritingDraft.term_sheet_amount} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, term_sheet_amount: event.target.value })} placeholder="0.00" />
+                        </Field>
+                        <Field label="Current DSCR">
+                          <Input inputMode="decimal" value={underwritingDraft.current_dscr} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, current_dscr: event.target.value })} placeholder="1.00" />
+                        </Field>
+                        <Field label="Target DSCR">
+                          <Input inputMode="decimal" value={underwritingDraft.target_dscr} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, target_dscr: event.target.value })} placeholder="1.25" />
+                        </Field>
+                        <Field label="Approved DSCR">
+                          <Input inputMode="decimal" value={underwritingDraft.approved_dscr} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, approved_dscr: event.target.value })} placeholder="1.25" />
+                        </Field>
+                      </div>
+                      <Field label="Reviewer notes">
+                        <Textarea rows={6} value={underwritingDraft.reviewer_notes} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, reviewer_notes: event.target.value })} placeholder="Record underwriting conditions, exceptions, committee notes, or close reason." />
+                      </Field>
+                      <div className="underwriting-close-actions">
+                        <Btn onClick={() => changeUnderwritingStatus("term_sheet_provided")} disabled={underwritingSaving}>Term sheet provided</Btn>
+                        <Btn onClick={() => changeUnderwritingStatus("approved")} disabled={underwritingSaving}>Approved</Btn>
+                        <Btn onClick={() => changeUnderwritingStatus("closed_won")} disabled={underwritingSaving}>Closed / funded</Btn>
+                        <Btn onClick={() => changeUnderwritingStatus("closed_lost")} disabled={underwritingSaving}>Closed lost</Btn>
+                        <Btn className="danger" onClick={() => changeUnderwritingStatus("denied")} disabled={underwritingSaving}>Denied</Btn>
+                      </div>
+                    </div>
+                  )}
                 </Panel>
               ) : null}
 

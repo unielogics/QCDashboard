@@ -155,6 +155,8 @@ import type {
   BucketIntakeLinkRead,
   BucketIntakeLinkResult,
   OperatorBucketFile,
+  PipelineMoveRequest,
+  PipelineMoveResult,
   UnifiedActionDefinition,
   UnifiedFileDetail,
   UnifiedFilePage,
@@ -6970,6 +6972,30 @@ export function useUnifiedOperatorFile(
     enabled: Boolean(sourceKind && sourceId),
     staleTime: 15 * 1000,
     retry: aiQueryRetry,
+  });
+}
+
+export function useMoveOperatorPipelineFile() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sourceKind, sourceId, body }: { sourceKind: UnifiedSourceKind; sourceId: string; body: PipelineMoveRequest }) =>
+      apiCall<PipelineMoveResult>(`/operator-files/${sourceKind}/${sourceId}/pipeline-move`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["operator-files", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-file", devUser] });
+      qc.invalidateQueries({ queryKey: ["application-profile"] });
+      qc.invalidateQueries({ queryKey: ["ai-underwriter-leads"] });
+      qc.invalidateQueries({ queryKey: ["lead-funnel"] });
+      qc.invalidateQueries({ queryKey: ["loans"] });
+      if (vars.sourceKind === "intake") {
+        qc.invalidateQueries({ queryKey: ["ai-underwriter-lead", vars.sourceId] });
+      }
+    },
   });
 }
 

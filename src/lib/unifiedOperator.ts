@@ -5,6 +5,15 @@ export type UnifiedOrigin = "console" | "agent" | "rep" | "dealer" | "ai_intake"
 export type UnifiedSourceKind = "deal" | "loan" | "intake" | "bucket" | "dealer";
 export type UnifiedStageFamily = "working" | "funding";
 export type UnifiedTone = ChipTone;
+export type UnderwritingLifecycleStatus =
+  | "submitted"
+  | "collecting_docs"
+  | "in_underwriting"
+  | "term_sheet_provided"
+  | "approved"
+  | "closed_won"
+  | "closed_lost"
+  | "denied";
 
 export type UnifiedStage = {
   key: string;
@@ -47,6 +56,12 @@ export type UnifiedFileRow = {
   coverage: string;
   stage_tone?: UnifiedTone;
   normalized_stage?: string;
+  pipeline_status?: UnderwritingLifecycleStatus | null;
+  underwriting_status?: UnderwritingLifecycleStatus | null;
+  approved_amount?: number | null;
+  approved_dscr?: number | null;
+  can_move_pipeline?: boolean;
+  allowed_transitions?: UnderwritingLifecycleStatus[];
   working_stage?: UnifiedStage | null;
   funding_stage?: UnifiedStage | null;
   program_tags: string[];
@@ -213,6 +228,23 @@ export type BucketIntakeLinkOptions = {
   intakes: BucketIntakeLinkOption[];
 };
 
+export type PipelineMoveRequest = {
+  target_status: UnderwritingLifecycleStatus;
+  expected_status?: UnderwritingLifecycleStatus | null;
+  note?: string;
+};
+
+export type PipelineMoveResult = {
+  source_kind: UnifiedSourceKind;
+  source_id: string;
+  profile_id: string;
+  underwriting_status: UnderwritingLifecycleStatus;
+  loan_id: string | null;
+  loan_stage: string | null;
+  created_loan: boolean;
+  audit_id: string | null;
+};
+
 export type OperatorBucketFile = {
   id: string;
   file_name: string;
@@ -269,6 +301,23 @@ export const ORIGIN_OPTIONS: Array<{ value: UnifiedOrigin | "all"; label: string
   { value: "dealer", label: "Dealer" },
   { value: "ai_intake", label: "AI intake" },
 ];
+
+export const PIPELINE_LIFECYCLE: Array<{ key: UnderwritingLifecycleStatus; label: string; sub: string; open: boolean }> = [
+  { key: "submitted", label: "Submitted", sub: "Opened or awaiting first review", open: true },
+  { key: "collecting_docs", label: "Collecting docs", sub: "Evidence and client items", open: true },
+  { key: "in_underwriting", label: "In underwriting", sub: "Underwriter actively reviewing", open: true },
+  { key: "term_sheet_provided", label: "Term sheet provided", sub: "Terms shared or ready", open: true },
+  { key: "approved", label: "Approved", sub: "Clear to close", open: true },
+  { key: "closed_won", label: "Closed / funded", sub: "Finished files", open: true },
+  { key: "closed_lost", label: "Closed lost", sub: "Not moving forward", open: false },
+  { key: "denied", label: "Denied", sub: "Declined by underwriting", open: false },
+];
+
+export const OPEN_PIPELINE_LIFECYCLE = PIPELINE_LIFECYCLE.filter((status) => status.open);
+
+export function underwritingStatusLabel(status: UnderwritingLifecycleStatus | null | undefined): string {
+  return PIPELINE_LIFECYCLE.find((item) => item.key === status)?.label ?? "Submitted";
+}
 
 export const WORKING_LADDERS: Record<UnifiedVertical, Array<{ key: string; label: string }>> = {
   real_estate: [

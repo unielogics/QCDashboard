@@ -297,13 +297,17 @@
 }
 .kcard + .kcard { margin-top: 8px; }
 .kcard:hover { box-shadow: var(--sh2); }
+.kcol.drop-over { border-color: var(--accent-400); background: var(--accent-100); }
+.dragging .kcard { opacity: .58; box-shadow: none; }
 
 /* Exact two-band pipeline geometry from the operator-console artifact. */
 .board2 { display: flex; gap: 14px; overflow-x: auto; align-items: stretch; padding-bottom: 10px; }
+.board2.lifecycle-board .bandgrp { min-width: 0; }
 .bandgrp { display: flex; flex-direction: column; gap: 9px; flex-shrink: 0; }
 .bandhd { font-size: 9.6px; letter-spacing: 0; text-transform: uppercase; font-weight: 750; color: var(--muted); padding-left: 2px; }
 .bandgrp .cols { display: flex; gap: 10px; align-items: start; }
 .board2 .kcol { width: 196px; flex-shrink: 0; }
+.board2.lifecycle-board .kcol { width: clamp(190px, 15vw, 230px); min-height: 155px; }
 .gatecol { flex-shrink: 0; width: 62px; display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 22px 0 12px; }
 .gatecol .ln { flex: 1; width: 1px; background: var(--line2); }
 .gatecol .tx { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 9.6px; letter-spacing: 0; text-transform: uppercase; font-weight: 750; white-space: nowrap; color: var(--accent); }
@@ -1456,6 +1460,13 @@ button.pick { width: 100%; text-align: left; }
 .package-readiness-tabs button > span { width: 21px; height: 21px; display: grid; place-items: center; border-radius: 50%; background: var(--sunken); font-size: 10px; }
 .package-readiness-tabs button.on > span { background: var(--accent-100); color: var(--accent); }
 .package-delivery { display: grid; gap: 12px; }
+.underwriting-workspace { display: grid; gap: 14px; min-width: 0; }
+.underwriting-status-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--sunken2); }
+.underwriting-status-strip > div { min-width: 0; display: grid; gap: 3px; padding: 12px 14px; border-right: 1px solid var(--line); }
+.underwriting-status-strip > div:last-child { border-right: 0; }
+.underwriting-status-strip b { overflow-wrap: anywhere; }
+.underwriting-close-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 2px; }
+.underwriting-close-actions .danger { color: var(--danger); border-color: rgba(185, 28, 28, .25); }
 .live-intelligence { display: grid; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 .live-intelligence > header { display: flex; align-items: center; gap: 10px; }
 .live-intelligence > header > div { min-width: 0; flex: 1; }
@@ -1480,6 +1491,7 @@ button.pick { width: 100%; text-align: left; }
 .extracted-facts-review article small { grid-column: 2; color: var(--muted); font-size: 10px; }
 @media (max-width: 640px) { .extracted-facts-review article { grid-template-columns: 1fr; } .extracted-facts-review article > div { grid-template-columns: 1fr; } .extracted-facts-review article small { grid-column: 1; } }
 @media (max-width: 640px) { .intake-evidence-dropzone { grid-template-columns: 34px minmax(0, 1fr); padding: 13px; } .intake-evidence-dropzone-icon { width: 34px; height: 34px; } .intake-evidence-browse-label { grid-column: 2; width: max-content; min-width: 0; } }
+@media (max-width: 760px) { .underwriting-status-strip { grid-template-columns: 1fr; } .underwriting-status-strip > div { border-right: 0; border-bottom: 1px solid var(--line); } .underwriting-status-strip > div:last-child { border-bottom: 0; } }
 @media (max-width: 640px) { .bank-evidence-stats { grid-template-columns: 1fr; } .bank-evidence-stats > div { border-right: 0; border-bottom: 1px solid var(--line); } .manual-bank-override { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .bank-request-toolbar { grid-template-columns: 1fr; align-items: stretch; } .bank-request-actions { display: grid; grid-template-columns: 1fr; } .bank-request-actions .btn { width: 100%; } .bank-delivery-strip { grid-template-columns: 34px minmax(0, 1fr); } .bank-delivery-strip > .cellchip { grid-column: 2; justify-self: start; } }
 @media (max-width: 1000px) {
@@ -1534,7 +1546,7 @@ button.pick { width: 100%; text-align: left; }
 .bucket-review-comments { min-width: 0; min-height: 0; border-left: 1px solid var(--line); background: var(--surface); overflow-y: auto; padding: 14px; align-content: start; }
 .bucket-panel-collapsed .panel-b { display: none; }
 .bucket-panel-collapsed .panel-h { border-bottom: 0; }
-.bucket-file-toolbar { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(130px, .32fr) minmax(150px, .38fr) minmax(140px, .34fr); gap: 8px; margin-bottom: 10px; }
+.bucket-file-toolbar { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(118px, .28fr) minmax(140px, .34fr) minmax(130px, .3fr) minmax(158px, .36fr); gap: 8px; margin-bottom: 10px; }
 .bucket-file-toolbar .fieldwrap { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--muted); }
 .bucket-file-toolbar .fieldwrap .field { min-width: 0; }
 .bucket-file-list { display: grid; gap: 8px; max-height: min(58vh, 720px); overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }

@@ -167,6 +167,7 @@ type PackageKey = "standard" | "urchoice";
 type BucketDetailSection = "upload" | "tasks" | "notes" | "invites" | "vendors" | "shares" | "activity";
 type BucketFileKind = "all" | "pdf" | "image" | "spreadsheet" | "document" | "other";
 type BucketFileAssignment = "all" | "requested" | "general";
+type BucketFileSort = "newest" | "oldest";
 type UploadInvite = { id: string; recipient_name: string; recipient_email: string; passcode: string };
 type UploadInviteLink = { id: string; name: string; email?: string; url: string; passcode: string };
 type UploadInitResponse = { file_id: string; upload_url: string; required_headers: Record<string, string> };
@@ -375,6 +376,7 @@ export default function BucketsAdminPage() {
   const [bucketFileKind, setBucketFileKind] = useState<BucketFileKind>("all");
   const [bucketFileAssignment, setBucketFileAssignment] = useState<BucketFileAssignment>("all");
   const [bucketFileStatus, setBucketFileStatus] = useState("all");
+  const [bucketFileSort, setBucketFileSort] = useState<BucketFileSort>("newest");
   const [search, setSearch] = useState("");
   const [bucketView, setBucketView] = useState<"all" | "collecting" | "review" | "complete">("all");
   const [busy, setBusy] = useState(false);
@@ -514,6 +516,7 @@ export default function BucketsAdminPage() {
     setBucketFileKind("all");
     setBucketFileAssignment("all");
     setBucketFileStatus("all");
+    setBucketFileSort("newest");
     await loadBucketActivity(bucketId, 0, filters);
   }
 
@@ -748,8 +751,12 @@ export default function BucketsAdminPage() {
         .join(" ")
         .toLowerCase()
         .includes(query);
+    }).sort((a, b) => {
+      const aTime = new Date(a.created_at).getTime();
+      const bTime = new Date(b.created_at).getTime();
+      return bucketFileSort === "newest" ? bTime - aTime : aTime - bTime;
     });
-  }, [bucketFileAssignment, bucketFileKind, bucketFileQuery, bucketFileStatus, requestedDocNameById, visibleFiles]);
+  }, [bucketFileAssignment, bucketFileKind, bucketFileQuery, bucketFileSort, bucketFileStatus, requestedDocNameById, visibleFiles]);
   const activityPage = Math.floor(activityOffset / ACTIVITY_PAGE_SIZE) + 1;
   const activityPageCount = Math.max(1, Math.ceil(activityTotal / ACTIVITY_PAGE_SIZE));
   const canPageActivityBack = Boolean(detail && activityOffset > 0 && !activityLoading);
@@ -2578,6 +2585,10 @@ export default function BucketsAdminPage() {
                       <option key={status} value={status}>{statusLabel(status)}</option>
                     ))}
                   </Select>
+                  <Select value={bucketFileSort} onChange={(event) => setBucketFileSort(event.target.value as BucketFileSort)} aria-label="Sort uploaded documents">
+                    <option value="newest">Newest upload first</option>
+                    <option value="oldest">Oldest upload first</option>
+                  </Select>
                 </div>
                 <div className="bucket-file-list">
                   {visibleFiles.length === 0 ? (
@@ -3872,8 +3883,7 @@ function uniqueBucketFiles(files: BucketFile[]): BucketFile[] {
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
-    })
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    });
 }
 
 function bucketFileKindOf(file: BucketFile): Exclude<BucketFileKind, "all"> {

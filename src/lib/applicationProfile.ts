@@ -1,4 +1,13 @@
 export type ApplicationSourceKind = "deal" | "loan" | "intake" | "dealer";
+export type UnderwritingLifecycleStatus =
+  | "submitted"
+  | "collecting_docs"
+  | "in_underwriting"
+  | "term_sheet_provided"
+  | "approved"
+  | "closed_won"
+  | "closed_lost"
+  | "denied";
 
 export type ApplicationProfile = {
   id: string;
@@ -28,8 +37,46 @@ export type ApplicationProfile = {
   extraction_reviewed_at: string | null;
   bank_verification_override_at: string | null;
   bank_verification_override_reason: string | null;
+  underwriting_status: UnderwritingLifecycleStatus;
+  underwriting_approved_amount: number | null;
+  underwriting_term_sheet_amount: number | null;
+  underwriting_current_dscr: number | null;
+  underwriting_target_dscr: number | null;
+  underwriting_approved_dscr: number | null;
+  underwriting_close_outcome: string | null;
+  underwriting_notes: string | null;
+  underwriting_updated_by_user_id: string | null;
+  underwriting_updated_at: string | null;
   owner_storage: "application" | "dealer";
 };
+
+export type ApplicationUnderwritingState = {
+  profile_id: string;
+  source_kind: ApplicationSourceKind | null;
+  source_id: string | null;
+  loan_id: string | null;
+  underwriting_status: UnderwritingLifecycleStatus;
+  approved_amount: number | null;
+  term_sheet_amount: number | null;
+  current_dscr: number | null;
+  target_dscr: number | null;
+  approved_dscr: number | null;
+  close_outcome: string | null;
+  reviewer_notes: string | null;
+  updated_by_user_id: string | null;
+  updated_at: string | null;
+};
+
+export type ApplicationUnderwritingPatch = Partial<{
+  underwriting_status: UnderwritingLifecycleStatus;
+  approved_amount: number | null;
+  term_sheet_amount: number | null;
+  current_dscr: number | null;
+  target_dscr: number | null;
+  approved_dscr: number | null;
+  close_outcome: string | null;
+  reviewer_notes: string | null;
+}>;
 
 export type FileOwner = {
   id: string;

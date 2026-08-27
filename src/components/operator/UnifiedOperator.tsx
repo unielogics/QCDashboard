@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { useAIReview } from "@/components/admin/AIReviewProvider";
@@ -28,19 +30,19 @@ import {
   useUpdateBucketIntakeLink,
 } from "@/hooks/useApi";
 import {
-  FUNDING_LADDER,
+  OPEN_PIPELINE_LIFECYCLE,
   ORIGIN_OPTIONS,
   VERTICAL_OPTIONS,
-  WORKING_LADDERS,
   documentPackFor,
   formatUnifiedAmount,
   operatorFileHref,
   originTone,
+  underwritingStatusLabel,
   verticalTone,
   type BucketIntakeLinkPayload,
+  type UnderwritingLifecycleStatus,
   type UnifiedFileRow,
   type UnifiedOrigin,
-  type UnifiedStage,
   type UnifiedVertical,
 } from "@/lib/unifiedOperator";
 
@@ -50,15 +52,15 @@ export type UnifiedFilterState = {
   q: string;
 };
 
-const NORMALIZED_WORKING = [
-  { key: "new", label: "New", sub: "Opened, not yet worked" },
-  { key: "qualifying", label: "Qualifying", sub: "Verification in progress" },
-  { key: "verified", label: "Verified", sub: "Authorizations back" },
-  { key: "ready", label: "Ready for funding", sub: "Awaiting handoff" },
-];
+function lifecycleStatus(row: UnifiedFileRow): UnderwritingLifecycleStatus {
+  return row.pipeline_status ?? row.underwriting_status ?? "submitted";
+}
 
-function activeStage(row: UnifiedFileRow): UnifiedStage {
-  return row.funding_stage ?? row.working_stage ?? row.stage;
+function lifecycleProgress(row: UnifiedFileRow): number {
+  const status = lifecycleStatus(row);
+  if (status === "closed_won" || status === "closed_lost" || status === "denied") return 100;
+  const index = OPEN_PIPELINE_LIFECYCLE.findIndex((item) => item.key === status);
+  return index >= 0 ? Math.round(((index + 1) / OPEN_PIPELINE_LIFECYCLE.length) * 100) : 0;
 }
 
 export function UnifiedFileTags({ row, compact = false }: { row: UnifiedFileRow; compact?: boolean }) {
@@ -74,12 +76,12 @@ export function UnifiedFileTags({ row, compact = false }: { row: UnifiedFileRow;
 }
 
 export function UnifiedStageMeter({ row }: { row: UnifiedFileRow }) {
-  const stage = activeStage(row);
-  const progress = stage.total ? Math.round((stage.index / stage.total) * 100) : 0;
+  const status = lifecycleStatus(row);
+  const progress = lifecycleProgress(row);
   return (
     <div style={{ minWidth: 110 }}>
       <div className="row split" style={{ gap: 8 }}>
-        <span className="sub trunc">{stage.label}</span>
+        <span className="sub trunc">{underwritingStatusLabel(status)}</span>
         <b className="num">{progress}%</b>
       </div>
       <div className="track" style={{ marginTop: 5 }}><div className="fill" style={{ width: `${progress}%` }} /></div>
@@ -198,9 +200,9 @@ export function UnifiedFilesTable({
 }
 
 export function UnifiedFileSummaryCard({ row, onLinkBucketIntake }: { row: UnifiedFileRow; onLinkBucketIntake?: (row: UnifiedFileRow) => void }) {
-  const stage = activeStage(row);
+  const status = lifecycleStatus(row);
   return (
-    <div className="kcard" style={{ cursor: "default" }}>
+    <div className="kcard" style={{ cursor: row.can_move_pipeline ? "grab" : "default" }}>
       <div className="row" style={{ gap: 5, marginBottom: 4 }}>
         <UnifiedFileTags row={row} compact />
         <span className="sp" />
@@ -208,7 +210,7 @@ export function UnifiedFileSummaryCard({ row, onLinkBucketIntake }: { row: Unifi
       </div>
       <Link href={operatorFileHref(row)} className="linkreset">
         <div className="trunc" style={{ fontSize: 12.8, fontWeight: 640 }}>{row.title || row.label}</div>
-        <div className="sub num trunc" style={{ fontSize: 10.5, marginTop: 1 }}>{row.ref || row.id} · {stage.label}</div>
+        <div className="sub num trunc" style={{ fontSize: 10.5, marginTop: 1 }}>{row.ref || row.id} · {underwritingStatusLabel(status)}</div>
         <div className="row split" style={{ marginTop: 8 }}>
           <b className="num" style={{ fontSize: 12.5 }}>{formatUnifiedAmount(row.amount)}</b>
           <CellChip tone={row.health_tone}>{row.health}</CellChip>
@@ -218,54 +220,95 @@ export function UnifiedFileSummaryCard({ row, onLinkBucketIntake }: { row: Unifi
   );
 }
 
-function normalizedWorkingIndex(row: UnifiedFileRow): number {
-  const stage = row.working_stage;
-  if (!stage) return 0;
-  if (row.vertical === "real_estate") return Math.min(3, Math.max(0, stage.index - 1));
-  if (stage.index <= 1) return 0;
-  if (stage.index === 2) return 1;
-  if (stage.index === 3) return 2;
-  return 3;
-}
-
-export function UnifiedKanbanBoard({ rows, vertical, onLinkBucketIntake }: { rows: UnifiedFileRow[]; vertical: UnifiedVertical | "all"; onLinkBucketIntake?: (row: UnifiedFileRow) => void }) {
-  const workingRows = rows.filter((row) => !row.funding_stage);
-  const fundingRows = rows.filter((row) => Boolean(row.funding_stage));
-  const workingColumns = vertical === "all"
-    ? NORMALIZED_WORKING.map((column, index) => ({ ...column, rows: workingRows.filter((row) => normalizedWorkingIndex(row) === index) }))
-    : WORKING_LADDERS[vertical].map((stage) => ({ ...stage, sub: stage.label, rows: workingRows.filter((row) => row.working_stage?.key === stage.key) }));
-  const fundingColumns = FUNDING_LADDER.map((stage) => ({
-    ...stage,
-    rows: fundingRows.filter((row) => row.funding_stage?.key === stage.key),
+export function UnifiedKanbanBoard({
+  rows,
+  vertical,
+  onLinkBucketIntake,
+  onMove,
+}: {
+  rows: UnifiedFileRow[];
+  vertical: UnifiedVertical | "all";
+  onLinkBucketIntake?: (row: UnifiedFileRow) => void;
+  onMove?: (row: UnifiedFileRow, targetStatus: UnderwritingLifecycleStatus) => void;
+}) {
+  const [activeRow, setActiveRow] = useState<UnifiedFileRow | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
+  const visibleRows = rows.filter((row) => OPEN_PIPELINE_LIFECYCLE.some((status) => status.key === lifecycleStatus(row)));
+  const columns = OPEN_PIPELINE_LIFECYCLE.map((status) => ({
+    ...status,
+    rows: visibleRows.filter((row) => lifecycleStatus(row) === status.key),
   }));
+  const handleDragStart = (event: DragStartEvent) => {
+    const row = rows.find((item) => item.id === event.active.id);
+    setActiveRow(row ?? null);
+  };
+  const handleDragEnd = (event: DragEndEvent) => {
+    const row = rows.find((item) => item.id === event.active.id);
+    const targetStatus = event.over?.id as UnderwritingLifecycleStatus | undefined;
+    setActiveRow(null);
+    if (!row || !targetStatus || targetStatus === lifecycleStatus(row) || !row.can_move_pipeline) return;
+    if (row.allowed_transitions?.length && !row.allowed_transitions.includes(targetStatus)) return;
+    onMove?.(row, targetStatus);
+  };
   return (
-    <div className="board2">
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragCancel={() => setActiveRow(null)} onDragEnd={handleDragEnd}>
+      <div className="board2 lifecycle-board">
       <div className="bandgrp">
-        <div className="bandhd">{vertical === "real_estate" ? "Relationship sequence" : vertical === "all" ? "Working the file · normalized" : "Application sequence"}</div>
+        <div className="bandhd">{vertical === "all" ? "Unified underwriting lifecycle" : `${VERTICAL_OPTIONS.find((item) => item.value === vertical)?.label ?? "File"} lifecycle`}</div>
         <div className="cols">
-          {workingColumns.map((column) => <BoardColumn key={column.key} label={column.label} sub={column.sub} rows={column.rows} onLinkBucketIntake={onLinkBucketIntake} />)}
+          {columns.map((column) => (
+            <BoardColumn
+              key={column.key}
+              id={column.key}
+              label={column.label}
+              sub={column.rows.length ? formatUnifiedAmount(column.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0)) : column.sub}
+              rows={column.rows}
+              onLinkBucketIntake={onLinkBucketIntake}
+            />
+          ))}
         </div>
       </div>
-      <div className="gatecol"><span className="ln" /><span className="tx" style={{ color: "var(--accent)" }}>Ready for funding</span><span className="ln" /></div>
-      <div className="bandgrp">
-        <div className="bandhd">Funding the file · identical for every vertical</div>
-        <div className="cols">
-          {fundingColumns.map((column) => <BoardColumn key={column.key} label={column.label} sub={column.rows.length ? formatUnifiedAmount(column.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0)) : "—"} rows={column.rows} onLinkBucketIntake={onLinkBucketIntake} />)}
-        </div>
+      </div>
+      <DragOverlay>
+        {activeRow ? <div style={{ width: 220 }}><UnifiedFileSummaryCard row={activeRow} onLinkBucketIntake={onLinkBucketIntake} /></div> : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+function BoardColumn({ id, label, sub, rows, onLinkBucketIntake }: { id: UnderwritingLifecycleStatus; label: string; sub: string; rows: UnifiedFileRow[]; onLinkBucketIntake?: (row: UnifiedFileRow) => void }) {
+  const { isOver, setNodeRef } = useDroppable({ id });
+  return (
+    <div ref={setNodeRef} className={`kcol${isOver ? " drop-over" : ""}`}>
+      <div className="row split" style={{ marginBottom: 4 }}><span className="lbl" style={{ fontSize: 9.6 }}>{label}</span><span className="tag num">{rows.length}</span></div>
+      <div className="sub trunc" style={{ fontSize: 10.5, marginBottom: 9 }}>{sub}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {rows.map((row) => <DraggableFileSummaryCard key={row.id} row={row} onLinkBucketIntake={onLinkBucketIntake} />)}
+        {!rows.length ? <div className="sub" style={{ fontSize: 11, padding: "10px 2px", textAlign: "center", opacity: 0.7 }}>Nothing here</div> : null}
       </div>
     </div>
   );
 }
 
-function BoardColumn({ label, sub, rows, onLinkBucketIntake }: { label: string; sub: string; rows: UnifiedFileRow[]; onLinkBucketIntake?: (row: UnifiedFileRow) => void }) {
+function DraggableFileSummaryCard({ row, onLinkBucketIntake }: { row: UnifiedFileRow; onLinkBucketIntake?: (row: UnifiedFileRow) => void }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: row.id,
+    data: { row },
+    disabled: !row.can_move_pipeline,
+  });
   return (
-    <div className="kcol">
-      <div className="row split" style={{ marginBottom: 4 }}><span className="lbl" style={{ fontSize: 9.6 }}>{label}</span><span className="tag num">{rows.length}</span></div>
-      <div className="sub trunc" style={{ fontSize: 10.5, marginBottom: 9 }}>{sub}</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {rows.map((row) => <UnifiedFileSummaryCard key={row.id} row={row} onLinkBucketIntake={onLinkBucketIntake} />)}
-        {!rows.length ? <div className="sub" style={{ fontSize: 11, padding: "10px 2px", textAlign: "center", opacity: 0.7 }}>Nothing here</div> : null}
-      </div>
+    <div
+      ref={setNodeRef}
+      className={isDragging ? "dragging" : undefined}
+      style={{ transform: CSS.Transform.toString(transform) }}
+      title={row.can_move_pipeline ? `Drag to change status. Current status: ${underwritingStatusLabel(lifecycleStatus(row))}` : "Open file"}
+      {...attributes}
+      {...listeners}
+    >
+      <UnifiedFileSummaryCard row={row} onLinkBucketIntake={onLinkBucketIntake} />
     </div>
   );
 }
