@@ -2720,3 +2720,24 @@ a.pick { color: inherit; text-decoration: none; }
 .extracted-facts-review > footer { display: flex; align-items: center; gap: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 .extracted-facts-review > footer .sub { flex: 1; }
 @media (max-width: 640px) { .extracted-facts-review > footer { align-items: stretch; flex-direction: column; } }
+
+/* Multi-document application envelope in the secure client room. */
+.envelopeSigner .panel-b { display: grid; gap: 16px; }
+.envelopeProgress { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.envelopeProgress > button { min-width: 0; min-height: 52px; display: grid; grid-template-columns: 27px minmax(0, 1fr); align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
+.envelopeProgress > button > span { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 50%; background: var(--sunken2); color: var(--muted); font-size: 11px; font-weight: 850; }
+.envelopeProgress > button b { min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
+.envelopeProgress > button.on { border-color: var(--accent); background: var(--accent-100); }
+.envelopeProgress > button.done > span { background: var(--ok-tint); color: var(--ok); }
+.envelopeDocumentReview { min-width: 0; }
+.envelopeDocumentReview iframe { width: 100%; height: min(68vh, 860px); min-height: 520px; border: 1px solid var(--line); border-radius: 7px; background: white; }
+.envelopeSignatureBlock { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
+.signatureCaptureButton { min-height: 48px; border: 1px dashed var(--accent); border-radius: 8px; background: var(--surface); color: var(--accent); font: 800 13px var(--fb); cursor: pointer; }
+.signatureCaptureButton:hover { background: var(--accent-100); }
+.signaturePreview { height: 92px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 7px; background: white; overflow: hidden; }
+.signaturePreview img { max-width: 100%; max-height: 82px; object-fit: contain; }
+@media (max-width: 700px) {
+  .envelopeProgress { grid-template-columns: 1fr; }
+  .envelopeDocumentReview iframe { min-height: 62vh; }
+  .envelopeSignatureBlock { padding: 14px; }
+}

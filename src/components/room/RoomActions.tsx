@@ -31,6 +31,7 @@ import {
   type SignRequestedDocumentPayload,
 } from "@/components/intake/SignRequestedDocument";
 import { ContractSigner, type RoomContract } from "@/components/room/ContractSigner";
+import { EnvelopeSigner, type RoomEnvelope } from "@/components/room/EnvelopeSigner";
 
 type Signable = {
   id: string;
@@ -65,6 +66,7 @@ type Features = {
   bank_connections: BankConnection[];
   signable: Signable[];
   contracts: RoomContract[];
+  envelopes: RoomEnvelope[];
 };
 type RoomKind = "dealer" | "application";
 
@@ -446,6 +448,7 @@ export function RoomActions({
   const [roomKind, setRoomKind] = useState<RoomKind>("dealer");
   const [signing, setSigning] = useState<Signable | null>(null);
   const [signingContract, setSigningContract] = useState<RoomContract | null>(null);
+  const [signingEnvelope, setSigningEnvelope] = useState<RoomEnvelope | null>(null);
   const [signBusy, setSignBusy] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
 
@@ -488,6 +491,7 @@ export function RoomActions({
         bank_connections: state.banking.items,
         signable: state.signable ?? [],
         contracts: [],
+        envelopes: [],
       });
     } catch {
       /* capabilities are additive; failure to load them is not a room failure */
@@ -530,9 +534,32 @@ export function RoomActions({
   const signed = features.signable.filter((d) => d.signed);
   const contractsPending = (features.contracts ?? []).filter((c) => c.status === "out_for_signature");
   const contractsSigned = (features.contracts ?? []).filter((c) => c.status === "executed");
+  const envelopesPending = (features.envelopes ?? []).filter((envelope) => envelope.status === "out_for_signature");
+  const envelopesSigned = (features.envelopes ?? []).filter((envelope) => envelope.status === "executed");
 
   return (
     <>
+      {signingEnvelope ? (
+        <EnvelopeSigner
+          token={token}
+          passcode={passcode}
+          initialEnvelope={signingEnvelope}
+          onClose={() => setSigningEnvelope(null)}
+          onDone={() => { void load(); onChanged(); }}
+        />
+      ) : null}
+
+      {(view === "all" || view === "agreements") && !signingEnvelope && (envelopesPending.length > 0 || envelopesSigned.length > 0) ? (
+        <section className="panel mb">
+          <div className="panel-h"><h2>Application package</h2></div>
+          <div className="panel-b">
+            <p className="sub mb">Review every required program form in sequence. You will draw one signature and affirm that it applies to the complete listed package.</p>
+            {envelopesPending.map((envelope) => <div key={envelope.id} className="filerow"><b className="grow">{envelope.title}</b><CellChip tone="warn">{envelope.documents.length} document{envelope.documents.length === 1 ? "" : "s"}</CellChip><Btn variant="pri" onClick={() => setSigningEnvelope(envelope)}>Review package</Btn></div>)}
+            {envelopesSigned.map((envelope) => <div key={envelope.id} className="filerow"><b className="grow">{envelope.title}</b><CellChip tone="ok">Signed</CellChip>{envelope.bundle_download_url && <a className="btn" href={envelope.bundle_download_url} download>Download</a>}</div>)}
+          </div>
+        </section>
+      ) : null}
+
       {signingContract ? (
         <ContractSigner
           token={token}
@@ -623,7 +650,7 @@ export function RoomActions({
         </section>
       ) : null}
 
-      {view === "agreements" && !signing && !signingContract && pending.length === 0 && signed.length === 0 && contractsPending.length === 0 && contractsSigned.length === 0 ? (
+      {view === "agreements" && !signing && !signingContract && !signingEnvelope && pending.length === 0 && signed.length === 0 && contractsPending.length === 0 && contractsSigned.length === 0 && envelopesPending.length === 0 && envelopesSigned.length === 0 ? (
         <div className="application-room-empty">There are no agreements waiting for signature.</div>
       ) : null}
 

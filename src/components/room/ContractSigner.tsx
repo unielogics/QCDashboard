@@ -46,7 +46,7 @@ type ContractSignResult = {
 // has to look like the same pen as the drawn one.
 const INK = "#14265c";
 
-function LandscapePad({
+export function LandscapePad({
   onUse,
   onCancel,
 }: {
