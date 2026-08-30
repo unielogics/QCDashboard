@@ -1237,6 +1237,8 @@ export interface SignatureUploadInitResponse {
 }
 
 // ── Users (Team) ───────────────────────────────────────────────────────────
+export type OperatorAccountAccessType = "funding" | "field_desk" | "audit";
+
 export interface UserRow {
   id: string;
   email: string;
@@ -1245,7 +1247,13 @@ export interface UserRow {
   referral_partner_company_id: string | null;
   referral_partner_company_name: string | null;
   company_agreement_signed: boolean | null;
+  account_types: OperatorAccountAccessType[];
   created_at: string | null;
+}
+
+export interface SignedReferralCompany {
+  id: string;
+  name: string;
 }
 
 export interface PortfolioMetrics {

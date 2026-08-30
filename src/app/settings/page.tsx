@@ -46,6 +46,7 @@ import {
   useUpdateSettings,
   useUpdateUserRole,
   useUsers,
+  useSignedReferralCompanies,
 } from "@/hooks/useApi";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
@@ -64,6 +65,7 @@ import type {
   ReferralSettings,
   SecuritySettings,
   SimulatorSettings,
+  OperatorAccountAccessType,
 } from "@/lib/types";
 import { useInitSignatureUpload } from "@/hooks/useApi";
 import { DealAnalyzerSection } from "./DealAnalyzerSection";
@@ -1246,8 +1248,22 @@ const ASSIGNABLE_ROLES: { value: Role; label: string }[] = [
   { value: Role.REGIONAL_MANAGER, label: "Regional Manager" },
   { value: Role.LOAN_EXEC, label: "Underwriter" },
   { value: Role.DEALER_PARTNER, label: "Dealer Partner" },
+  { value: Role.FIELD_REP, label: "Field Rep" },
   { value: Role.SUPER_ADMIN, label: "Super Admin" },
 ];
+
+const ACCOUNT_TYPE_OPTIONS: Array<{ value: OperatorAccountAccessType; label: string }> = [
+  { value: "funding", label: "Funding" },
+  { value: "field_desk", label: "Field Desk" },
+  { value: "audit", label: "Audit" },
+];
+
+function roleAccountTypes(role: Role): Set<OperatorAccountAccessType> {
+  if (role === Role.SUPER_ADMIN || role === Role.LOAN_EXEC) return new Set(["funding", "field_desk", "audit"]);
+  if (role === Role.BROKER || role === Role.REGIONAL_MANAGER) return new Set(["funding"]);
+  if (role === Role.FIELD_REP) return new Set(["field_desk"]);
+  return new Set();
+}
 
 function RegionalManagersSection({ canEdit }: { canEdit: boolean }) {
   const { data: managers = [], isLoading, error } = useRegionalManagers();
@@ -1418,6 +1434,7 @@ function RegionalMetrics({ metrics }: { metrics: import("@/lib/types").Portfolio
 
 function TeamSection({ canEdit }: { canEdit: boolean }) {
   const { data: users, isLoading, error } = useUsers();
+  const { data: signedCompanies = [] } = useSignedReferralCompanies();
   const { data: me } = useCurrentUser();
   const updateRole = useUpdateUserRole();
   const deleteUser = useDeleteUser();
@@ -1453,6 +1470,12 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
     deleteUser.mutate({ userId });
     setConfirmRevoke(null);
   };
+  const toggleAccountType = (userId: string, current: OperatorAccountAccessType[], product: OperatorAccountAccessType) => {
+    const next = current.includes(product)
+      ? current.filter((value) => value !== product)
+      : [...current, product];
+    updateRole.mutate({ userId, account_types: next });
+  };
 
   return (
     <>
@@ -1483,6 +1506,7 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
               { label: "Name" },
               { label: "Email" },
               { label: "Role", width: 160 },
+              { label: "Account access", width: 190 },
               { label: "Company / Agreement" },
               { label: "Joined", width: 110 },
               { label: "" },
@@ -1509,18 +1533,41 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
                     </Select>
                   </Td>
                   <Td>
-                    {u.referral_partner_company_name ? (
-                      <>
-                        {u.referral_partner_company_name}{" "}
-                        {u.company_agreement_signed ? (
-                          <CellChip tone="ok">Signed</CellChip>
-                        ) : (
-                          <CellChip tone="bad">No agreement</CellChip>
-                        )}
-                      </>
-                    ) : (
-                      <span className="sub">—</span>
-                    )}
+                    <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                      {ACCOUNT_TYPE_OPTIONS.map((option) => {
+                        const inherited = roleAccountTypes(u.role).has(option.value);
+                        const active = u.account_types.includes(option.value);
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={cx("cellchip", active ? "c-acc" : "c-mut")}
+                            aria-pressed={active}
+                            title={inherited ? `${option.label} is included by the primary role` : `${active ? "Remove" : "Add"} ${option.label} access`}
+                            disabled={inherited || updateRole.isPending}
+                            onClick={() => toggleAccountType(u.id, u.account_types, option.value)}
+                            style={{ border: 0, cursor: inherited ? "default" : "pointer" }}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Td>
+                  <Td>
+                    <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                      <Select
+                        aria-label={`Signed company for ${u.name}`}
+                        value={u.referral_partner_company_id ?? ""}
+                        disabled={updateRole.isPending}
+                        onChange={(event) => updateRole.mutate({ userId: u.id, referral_partner_company_id: event.target.value || null })}
+                        style={{ minWidth: 170, maxWidth: 260 }}
+                      >
+                        <option value="">No linked company</option>
+                        {signedCompanies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+                      </Select>
+                      {u.referral_partner_company_id && <CellChip tone="ok">Signed</CellChip>}
+                    </div>
                   </Td>
                   <Td>
                     {u.created_at ? new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
