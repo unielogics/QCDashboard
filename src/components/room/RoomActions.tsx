@@ -146,7 +146,12 @@ function BankConnect({
           throw new Error(body?.detail || "The connection could not be completed.");
         }
         const out = (await res.json()) as { message?: string };
-        setDone(out.message || (linkMode === "update" ? "Bank connection updated." : "Bank connected."));
+        setDone(
+          out.message ||
+            (linkMode === "update"
+              ? "Accounts updated. Verified bank evidence is refreshing now."
+              : "Bank connected. Verified bank evidence is refreshing now."),
+        );
         onConnected();
       } catch (e) {
         setError(e instanceof Error ? e.message : "The connection could not be completed.");
@@ -245,6 +250,7 @@ function BankConnect({
         passcode,
         returnTo: window.location.href,
         mode: "initial",
+        isPrimaryOperating: connections.length === 0,
       } as const;
       if (roomKind === "application") stashApplicationRoomHandoff(handoff);
       else stashRoomHandoff(handoff);
@@ -258,7 +264,7 @@ function BankConnect({
     }
   }
 
-  async function startUpdate(connection: BankConnection) {
+  async function startUpdate(connection: BankConnection, accountSelectionEnabled: boolean) {
     setBusy(true);
     setError(null);
     try {
@@ -271,7 +277,8 @@ function BankConnect({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             passcode,
-            account_selection_enabled: connection.update_mode_account_selection,
+            account_selection_enabled:
+              accountSelectionEnabled || connection.update_mode_account_selection,
           }),
         },
       );
@@ -331,18 +338,19 @@ function BankConnect({
   return (
     <section className="panel mb">
       <div className="panel-h">
-        <h2>Connect your bank</h2>
+        <h2>Connect business accounts</h2>
       </div>
       <div className="panel-b">
         <p className="sub">
-          A read-only connection through Plaid retrieves your bank statements directly, so you do
-          not have to download and upload them yourself. No credentials pass through Qualified
-          Commercial, and nothing can be moved or charged.
+          Connect every business operating account you want considered. Plaid provides read-only
+          balances and transaction history, and Qualified Commercial combines all connected banks
+          into one verified evidence view. No credentials pass through Qualified Commercial, and
+          nothing can be moved or charged.
         </p>
         {connections.length > 0 ? (
           <div className="mt" style={{ display: "grid", gap: 8 }}>
             {connections.map((connection) => (
-              <div key={connection.id} className="filerow">
+              <div key={connection.id} className="filerow room-bank-row">
                 <div className="grow">
                   <b>{connection.institution_name || "Connected institution"}</b>
                   <span className="sub" style={{ display: "block", marginTop: 3 }}>
@@ -360,7 +368,18 @@ function BankConnect({
                     Make main
                   </Btn>
                 )}
-                {connection.update_mode_reason ? <Btn variant="pri" disabled={busy} onClick={() => startUpdate(connection)}>{connection.update_mode_account_selection ? "Review new accounts" : "Repair connection"}</Btn> : null}
+                {connection.update_mode_reason && !connection.update_mode_account_selection ? (
+                  <Btn variant="pri" disabled={busy} onClick={() => startUpdate(connection, false)}>
+                    Repair connection
+                  </Btn>
+                ) : null}
+                <Btn
+                  variant={connection.update_mode_account_selection ? "pri" : undefined}
+                  disabled={busy}
+                  onClick={() => startUpdate(connection, true)}
+                >
+                  {connection.update_mode_account_selection ? "Review new accounts" : "Add accounts"}
+                </Btn>
                 <Btn disabled={busy} onClick={() => disconnect(connection)}>Disconnect</Btn>
               </div>
             ))}
@@ -421,7 +440,7 @@ function BankConnect({
         ) : (
           <div className="mt">
             <Btn variant="pri" disabled={busy} onClick={start}>
-              {busy ? "Opening…" : connections.length ? "Connect another bank" : "Connect bank securely"}
+              {busy ? "Opening…" : connections.length ? "Add another institution" : "Connect bank securely"}
             </Btn>
           </div>
         )}

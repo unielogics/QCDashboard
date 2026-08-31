@@ -176,6 +176,8 @@
 .application-room .panel-h h2, .application-room .panel-b b { color: var(--room-text); }
 .application-room .sub { color: var(--room-muted); }
 .application-room .filerow { border-color: var(--room-line); background: var(--room-surface-2); }
+.application-room .room-bank-row { flex-wrap: wrap; padding: 12px; border: 1px solid var(--room-line); border-radius: 7px; }
+.application-room .room-bank-row .grow { min-width: min(100%, 260px); }
 .application-room .input { background: var(--room-surface); color: var(--room-text); border-color: var(--room-line); }
 
 .secure-room-created-grid { display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 12px; }
@@ -2684,7 +2686,7 @@ a.pick { color: inherit; text-decoration: none; }
 .application-verification-bank strong, .application-verification-bank span { overflow-wrap: anywhere; }
 .application-verification-bank span { color: var(--muted); font-size: 11.5px; }
 .application-verification-bank b { color: var(--ok); font-size: 10.5px; white-space: nowrap; }
-.application-verification-bank button { border: 1px solid var(--line2); background: var(--surface); border-radius: 6px; padding: 6px 9px; color: var(--accent); font: 700 11px var(--fb); cursor: pointer; }
+.application-verification-bank button { min-height: 40px; border: 1px solid var(--line2); background: var(--surface); border-radius: 6px; padding: 8px 11px; color: var(--accent); font: 700 11px var(--fb); cursor: pointer; }
 .application-verification-dropzone { width: 100%; min-height: 190px; margin-top: 18px; padding: 24px; display: grid; place-items: center; align-content: center; gap: 5px; border: 1px dashed var(--accent-400); border-radius: 8px; background: var(--accent-100); color: var(--ink); cursor: pointer; text-align: center; font-family: var(--fb); }
 .application-verification-dropzone.dragging { border-style: solid; background: var(--accent-200); }
 .application-verification-dropzone strong { font-size: 14px; }
@@ -2707,6 +2709,8 @@ a.pick { color: inherit; text-decoration: none; }
   .application-verification-intro h1 { font-size: 25px; }
   .application-verification-grid { grid-template-columns: 1fr; padding: 0 16px; }
   .application-verification-section { padding: 18px; }
+  .application-verification-bank { flex-wrap: wrap; }
+  .application-verification-bank > div { flex-basis: 100%; }
   .application-verification-alert { margin-inline: 16px; }
   .application-verification-footer { margin-inline: 16px; flex-direction: column; gap: 6px; }
 }

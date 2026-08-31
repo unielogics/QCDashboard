@@ -118,7 +118,11 @@ export default function ApplicationVerificationPage() {
         }
         clearRoomHandoff();
         setLinkToken(null);
-        setMessage("Business bank connected. You can add another institution or finish here.");
+        setMessage(
+          linkMode === "update"
+            ? "Accounts updated. Verified bank evidence is refreshing now."
+            : "Business bank connected. You can add another institution, add accounts, or finish here.",
+        );
         await load(token);
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "The bank connection could not be saved.");
@@ -178,6 +182,7 @@ export default function ApplicationVerificationPage() {
         token,
         returnTo: window.location.href,
         mode: "initial",
+        isPrimaryOperating: !data?.items.length,
       });
       setLinkMode("initial");
       setLinkItemId(null);
@@ -189,7 +194,7 @@ export default function ApplicationVerificationPage() {
     }
   }
 
-  async function updateBank(item: BankConnection) {
+  async function updateBank(item: BankConnection, accountSelectionEnabled: boolean) {
     if (!token) return;
     setBusy(true);
     setError("");
@@ -198,7 +203,10 @@ export default function ApplicationVerificationPage() {
         `/application-profiles/public/bank-verification/${encodeURIComponent(token)}/banks/${item.id}/update-link-token`,
         {
           method: "POST",
-          body: JSON.stringify({ account_selection_enabled: item.update_mode_account_selection }),
+          body: JSON.stringify({
+            account_selection_enabled:
+              accountSelectionEnabled || item.update_mode_account_selection,
+          }),
         },
       );
       stashApplicationVerificationHandoff({
@@ -318,7 +326,7 @@ export default function ApplicationVerificationPage() {
       <section className="application-verification-intro">
         <span className="lbl">Business bank evidence</span>
         <h1>{data.business_name}</h1>
-        <p>Choose either method below. Connect the LLC operating accounts securely, or upload the business bank statements already available to you.</p>
+        <p>Connect every business operating account you want considered. You can add another institution or add accounts from a bank already connected. Qualified Commercial combines them into one verified evidence view.</p>
       </section>
 
       {error ? <div className="application-verification-alert error" role="alert">{error}</div> : null}
@@ -336,12 +344,13 @@ export default function ApplicationVerificationPage() {
             </div>
           ) : (
             <>
-              <button type="button" className="application-verification-primary" disabled={busy} onClick={() => void connectBank()}>{data.items.length ? "Connect another business bank" : "Connect business bank"}</button>
+              <button type="button" className="application-verification-primary" disabled={busy} onClick={() => void connectBank()}>{data.items.length ? "Add another institution" : "Connect business bank"}</button>
               <div className="application-verification-banks">
                 {data.items.map((item) => (
                   <div key={item.id} className="application-verification-bank">
                     <div><strong>{item.institution_name || "Connected institution"}</strong><span>{item.accounts_label || "Business accounts"} | {item.statement_months.length ? `${item.statement_months.length} statement months` : "Statements syncing"}</span>{item.update_mode_reason ? <span>{bankUpdateMessage(item)}</span> : null}</div>
-                    {item.update_mode_reason ? <button type="button" disabled={busy} onClick={() => void updateBank(item)}>{item.update_mode_account_selection ? "Review new accounts" : "Repair connection"}</button> : null}
+                    {item.update_mode_reason && !item.update_mode_account_selection ? <button type="button" disabled={busy} onClick={() => void updateBank(item, false)}>Repair connection</button> : null}
+                    <button type="button" disabled={busy} onClick={() => void updateBank(item, true)}>{item.update_mode_account_selection ? "Review new accounts" : "Add accounts"}</button>
                     {item.is_primary_operating ? <b>Primary operating</b> : <button type="button" disabled={busy} onClick={() => void setPrimary(item.id)}>Make primary</button>}
                     <button type="button" disabled={busy} onClick={() => void disconnectBank(item.id)}>Disconnect</button>
                   </div>

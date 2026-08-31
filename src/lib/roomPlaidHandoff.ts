@@ -21,6 +21,7 @@ export const ROOM_RETURN_KEY = "qc.room.plaid.return";
 export const ROOM_KIND_KEY = "qc.room.plaid.kind";
 export const ROOM_MODE_KEY = "qc.room.plaid.mode";
 export const ROOM_ITEM_KEY = "qc.room.plaid.item";
+export const ROOM_PRIMARY_KEY = "qc.room.plaid.primary";
 
 type HandoffArgs = {
   linkToken: string;
@@ -28,12 +29,15 @@ type HandoffArgs = {
   returnTo: string;
   mode?: "initial" | "update";
   itemId?: string;
+  isPrimaryOperating?: boolean;
 };
 
 function stashMode(args: HandoffArgs) {
   sessionStorage.setItem(ROOM_MODE_KEY, args.mode ?? "initial");
   if (args.itemId) sessionStorage.setItem(ROOM_ITEM_KEY, args.itemId);
   else sessionStorage.removeItem(ROOM_ITEM_KEY);
+  if (args.mode === "update") sessionStorage.removeItem(ROOM_PRIMARY_KEY);
+  else sessionStorage.setItem(ROOM_PRIMARY_KEY, String(args.isPrimaryOperating ?? true));
 }
 
 export function stashRoomHandoff(args: HandoffArgs & { passcode: string }) {
@@ -71,15 +75,16 @@ export function readPlaidHandoff() {
   const kind = sessionStorage.getItem(ROOM_KIND_KEY);
   const mode: "initial" | "update" = sessionStorage.getItem(ROOM_MODE_KEY) === "update" ? "update" : "initial";
   const itemId = sessionStorage.getItem(ROOM_ITEM_KEY);
+  const isPrimaryOperating = sessionStorage.getItem(ROOM_PRIMARY_KEY) !== "false";
   if (!linkToken || !token) return null;
   if (kind === "application_verification") {
-    return { kind, linkToken, token, returnTo, mode, itemId } as const;
+    return { kind, linkToken, token, returnTo, mode, itemId, isPrimaryOperating } as const;
   }
   if (kind === "application_room" && passcode) {
-    return { kind, linkToken, token, passcode, returnTo, mode, itemId } as const;
+    return { kind, linkToken, token, passcode, returnTo, mode, itemId, isPrimaryOperating } as const;
   }
   if (!passcode) return null;
-  return { kind: "dealer_room" as const, linkToken, token, passcode, returnTo, mode, itemId };
+  return { kind: "dealer_room" as const, linkToken, token, passcode, returnTo, mode, itemId, isPrimaryOperating };
 }
 
 export function readRoomHandoff() {
@@ -90,7 +95,7 @@ export function readRoomHandoff() {
 
 /** Clear the handoff, including the passcode. Call on every terminal outcome. */
 export function clearRoomHandoff() {
-  [ROOM_KIND_KEY, ROOM_LINK_TOKEN_KEY, ROOM_TOKEN_KEY, ROOM_PASSCODE_KEY, ROOM_RETURN_KEY, ROOM_MODE_KEY, ROOM_ITEM_KEY].forEach((k) =>
+  [ROOM_KIND_KEY, ROOM_LINK_TOKEN_KEY, ROOM_TOKEN_KEY, ROOM_PASSCODE_KEY, ROOM_RETURN_KEY, ROOM_MODE_KEY, ROOM_ITEM_KEY, ROOM_PRIMARY_KEY].forEach((k) =>
     sessionStorage.removeItem(k),
   );
 }
