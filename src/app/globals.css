@@ -381,10 +381,26 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .bubble-status { text-transform: capitalize; }
 .bubble-status.delivered { color: var(--ok); }
 .bubble-status.failed, .bubble-status.blocked { color: var(--bad); font-weight: 700; }
+.thread-back { display: none; }
 @media (max-width: 820px) {
-  .global-inbox { grid-template-columns: 1fr; overflow-y: auto; }
-  .global-inbox-rail { max-height: 46vh; border-right: 0; border-bottom: 1px solid var(--line); }
-  .global-inbox-thread { min-height: 520px; }
+  /* Master -> detail, not two stacked panes. Both at once left a sliver of
+     each; a phone shows the list, then the conversation, with a way back. */
+  .global-inbox { grid-template-columns: 1fr; min-height: 0; }
+  .global-inbox-rail { max-height: none; border-right: 0; border-bottom: 0; }
+  .global-inbox-thread { padding: 0; }
+  .global-messages-page.m-list .global-inbox-thread { display: none; }
+  .global-messages-page.m-thread .global-inbox-rail { display: none; }
+  .thread-back {
+    display: flex; align-items: center; gap: 6px; width: 100%;
+    /* 44px: this is a thumb, outdoors. */
+    min-height: 44px; padding: 10px 14px;
+    border: 0; border-bottom: 1px solid var(--line);
+    background: var(--surface); color: var(--accent);
+    font-size: 13.5px; font-weight: 640; cursor: pointer;
+  }
+  .global-thread-row, .contact-thread-row { min-height: 44px; }
+  .bubble-row { max-width: 85%; }
+  .unified-thread-composer { position: sticky; bottom: 0; background: var(--surface); }
 }
 /* Documents hub: hero dropzone */
 .dropzone { border: 1.5px dashed var(--line2); border-radius: var(--r); background: var(--surface); padding: clamp(24px, 4vw, 46px) 20px; text-align: center; cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease; }

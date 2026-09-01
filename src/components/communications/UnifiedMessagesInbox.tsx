@@ -55,6 +55,12 @@ export function UnifiedMessagesInbox() {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
+  /**
+   * Phone layout only: which of the two screens is showing. Derived from the
+   * same activeThreadId the desktop pane uses — a second source of truth for
+   * "what is open" would drift the moment either one changed.
+   */
+  const [mobileView, setMobileView] = useState<"list" | "thread">("list");
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ limit: "120" });
@@ -87,13 +93,22 @@ export function UnifiedMessagesInbox() {
   }, [contacts.data?.items, openKey, activeThreadId]);
 
   const toggle = (key: string, latestThreadId: string) => {
+    const contact = contacts.data?.items.find((c) => c.key === key);
+    // One conversation: nothing to expand, so open it. Several: expand the
+    // picker and let them choose rather than guessing which they meant.
+    if ((contact?.threads.length ?? 0) <= 1) {
+      setOpenKey(key);
+      setActiveThreadId(latestThreadId);
+      setMobileView("thread");
+      return;
+    }
     if (openKey === key) { setOpenKey(null); return; }
     setOpenKey(key);
     setActiveThreadId(latestThreadId);
   };
 
   return (
-    <div className="global-messages-page">
+    <div className={cx("global-messages-page", `m-${mobileView}`)}>
       <PageHeader
         title="Messages"
         lede="Every person you talk to — in-system chat, email, and SMS — grouped by contact, newest first."
@@ -145,7 +160,7 @@ export function UnifiedMessagesInbox() {
                           type="button"
                           role="listitem"
                           className={cx("contact-thread-row", activeThreadId === thread.id && "on")}
-                          onClick={() => setActiveThreadId(thread.id)}
+                          onClick={() => { setActiveThreadId(thread.id); setMobileView("thread"); }}
                         >
                           <CellChip tone={channelTone(thread.channel)}>{sourceLabel(thread)}</CellChip>
                           <span className="grow trunc">
@@ -164,6 +179,10 @@ export function UnifiedMessagesInbox() {
           </div>
         </aside>
         <section className="global-inbox-thread">
+          {/* Phone only: the way back to the list. */}
+          <button type="button" className="thread-back" onClick={() => setMobileView("list")}>
+            <Icon name="chevL" size={15} /> All messages
+          </button>
           {activeThreadId ? <UnifiedThreadConversation threadId={activeThreadId} /> : <div className="empty global-inbox-empty"><Icon name="chat" size={28} /><b>Select a contact</b><span>Expand a contact to see every conversation with them — chat, email, and SMS.</span></div>}
         </section>
       </div>
