@@ -172,6 +172,8 @@ export type ApplicationBankState = {
   manual_override: boolean;
   manual_override_reason: string | null;
   manual_statement_months: string[];
+  manual_statement_file_count: number;
+  manual_statement_pending_count: number;
   assets_enabled: boolean;
   asset_reports: PlaidAssetReport[];
 };

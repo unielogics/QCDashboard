@@ -30,6 +30,8 @@ type Verification = {
   consent_granted: boolean;
   items: BankConnection[];
   manual_statement_months: string[];
+  manual_statement_file_count: number;
+  manual_statement_pending_count: number;
   statement_upload_enabled: boolean;
   assets_enabled: boolean;
   expires_at: string;

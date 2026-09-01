@@ -1706,7 +1706,7 @@ function LeadDetailPanel({
                   </button>
                   <div className="mt"><IntakeEvidenceBrowser intakeId={detail.intake.id} primaryBucketId={detail.intake.bucket_id} primaryBucketName={detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"} files={detail.files} /></div>
                   <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
-                  <InfoBlock title="Evidence requirements and AI blockers"><div className="grid">{detail.requested_documents.map((doc) => <div key={doc.id} className="itemrow"><CellChip tone={doc.status === "uploaded" ? "ok" : "warn"}>{doc.status}</CellChip><strong className="sp">{doc.name}</strong><span className="sub">{doc.required ? "Required" : "Optional"}</span></div>)}</div><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No blockers listed in the latest review." /></InfoBlock>
+                  <InfoBlock title="Evidence requirements and AI blockers"><div className="grid">{detail.requested_documents.map((doc) => <div key={doc.id} className="itemrow"><CellChip tone={doc.status === "uploaded" ? "ok" : "warn"}>{doc.status}</CellChip><strong className="sp">{doc.name}</strong><span className="sub">{doc.required ? "Required" : "Optional"}</span></div>)}</div><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty={detail.latest_review ? "No blockers listed in the latest review." : "AI review has not run yet. The checklist status above still applies."} /></InfoBlock>
                 </Panel>
               ) : null}
               {prototypeView === "workspace" && submissionStep === 3 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="credit" onStateChange={setProfileVerification} /> : null}
@@ -1830,7 +1830,7 @@ function LeadDetailPanel({
                   <Line label="Vertical" value={variantLabel(detail.intake.variant)} />
                 </Panel>
                 <ApplicationClassificationPanel sourceKind="intake" sourceId={detail.intake.id} />
-                <Panel title="Missing and blockers"><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty="No blockers listed." /></Panel>
+                <Panel title="Missing and blockers"><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty={detail.latest_review ? "No blockers listed in the latest review." : "AI review has not run yet."} /></Panel>
               </aside>
             ) : (
               <aside className="intake-file-context-collapsed">
