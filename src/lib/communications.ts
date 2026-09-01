@@ -3,6 +3,7 @@ export type UnifiedCommunicationThread = {
   title: string;
   participant_name: string | null;
   participant_email: string | null;
+  participant_phone: string | null;
   participant_type: string;
   source_kind: string;
   source_id: string;
@@ -45,5 +46,27 @@ export type UnifiedCommunicationThreadPage = {
   offset: number;
   totals_by_participant: Record<string, number>;
   totals_by_channel: Record<string, number>;
+  unread_total: number;
+};
+
+export type UnifiedContactGroup = {
+  key: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  channels: string[];
+  sources: string[];
+  unread_total: number;
+  message_total: number;
+  latest_thread_id: string;
+  latest_snippet: string | null;
+  latest_channel: string;
+  latest_at: string;
+  threads: UnifiedCommunicationThread[];
+};
+
+export type UnifiedContactPage = {
+  items: UnifiedContactGroup[];
+  total: number;
   unread_total: number;
 };
