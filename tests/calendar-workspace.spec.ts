@@ -14,27 +14,6 @@ test.beforeEach(async ({ context, page }) => {
   await mockCalendarApis(page);
 });
 
-test("appointment click opens the CRM workspace with join-call and notes actions", async ({ page }) => {
-  await page.goto("/calendar", { waitUntil: "domcontentloaded" });
-  await expect(page.getByText("Program intro: Robert", { exact: true })).toBeVisible();
-
-  await page.getByText("Program intro: Robert", { exact: true }).click();
-
-  const dialog = page.getByRole("dialog", { name: /Appointment workspace for Robert/ });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("link", { name: "Join meeting" })).toHaveAttribute("href", "https://meet.google.com/abc-defg-hij");
-  await expect(dialog.getByRole("tab", { name: /Overview/ })).toBeVisible();
-  await expect(dialog.getByRole("tab", { name: /CRM/ })).toBeVisible();
-  await expect(dialog.getByRole("tab", { name: /Application/ })).toBeVisible();
-  await expect(dialog.getByRole("tab", { name: /Delivery/ })).toBeVisible();
-
-  await dialog.getByRole("tab", { name: /CRM/ }).click();
-  await expect(dialog.getByLabel("Internal note")).toBeVisible();
-  await dialog.getByLabel("Internal note").fill("Reviewed requested amount and next steps.");
-  await expect(dialog.getByRole("button", { name: "Add note" })).toBeEnabled();
-  await assertNoHorizontalOverflow(page, ".appointment-workspace");
-});
-
 test("booking settings add a recurring break to selected weekdays", async ({ page }) => {
   await page.goto("/settings?section=booking", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Blocked times" })).toBeVisible();

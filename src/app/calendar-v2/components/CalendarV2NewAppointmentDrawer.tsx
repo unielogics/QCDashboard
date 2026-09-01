@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
-import { Btn, CellChip, Field, Input, Panel, Select, StatusLine, Textarea } from "@/components/ds";
+import { Btn, Field, Input, Panel, Select, StatusLine, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { apiErrorMessage } from "@/components/email/EmailComposer";
 import { useAuthedApi } from "@/hooks/useApi";
 import type { AppointmentFileOption, RepAppointment } from "@/lib/repAppointments";
+import { CalendarFileCombobox } from "./CalendarFileCombobox";
 
 const APPOINTMENT_TYPES = [
   ["intro_call", "Intro call"],
@@ -48,7 +48,6 @@ export function CalendarV2NewAppointmentDrawer({
   const [location, setLocation] = useState("");
   const [joinUrl, setJoinUrl] = useState("");
   const [reason, setReason] = useState("");
-  const [fileQuery, setFileQuery] = useState("");
   const [selectedFile, setSelectedFile] = useState<AppointmentFileOption | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,20 +70,10 @@ export function CalendarV2NewAppointmentDrawer({
     setLocation("");
     setJoinUrl("");
     setReason("");
-    setFileQuery("");
     setSelectedFile(null);
     setSaving(false);
     setError(null);
   }, [initialDate, open]);
-
-  const fileOptions = useQuery({
-    queryKey: ["calendar-v2-file-options", fileQuery],
-    queryFn: () => apiCall<{ items: AppointmentFileOption[] }>(
-      `/dealer-os/calendar/file-options?q=${encodeURIComponent(fileQuery)}&limit=12`,
-    ),
-    enabled: open && fileQuery.trim().length >= 2,
-    staleTime: 15_000,
-  });
 
   const canSave = useMemo(
     () => Boolean(name.trim() && startsAt && (email.trim() || phone.trim())),
@@ -204,28 +193,14 @@ export function CalendarV2NewAppointmentDrawer({
         </Panel>
 
         <Panel title="Attach an existing file" sub="Optional. Search is scoped to files you are authorized to access.">
-          <Field label="Search by person, company, email, phone, QC reference, or file ID">
-            <Input value={fileQuery} onChange={(event) => setFileQuery(event.target.value)} placeholder="Start typing to find an exact file" />
+          <Field label="Existing AI Intake or Funding file">
+            <CalendarFileCombobox
+              value={selectedFile}
+              onChange={setSelectedFile}
+              enabled={open}
+              placeholder="Choose or search by person, company, contact, QC reference, or file ID"
+            />
           </Field>
-          {selectedFile ? (
-            <div className="calendar-v2-selected-file">
-              <div><strong>{selectedFile.label}</strong><span>{selectedFile.subtitle}</span></div>
-              <CellChip tone="acc">{selectedFile.kind === "intake" ? "AI Intake" : "Funding Loan"}</CellChip>
-              <Btn size="sm" onClick={() => setSelectedFile(null)}>Remove</Btn>
-            </div>
-          ) : null}
-          {!selectedFile && fileQuery.trim().length >= 2 ? (
-            <div className="calendar-v2-file-results">
-              {fileOptions.isLoading ? <div className="sub">Searching authorized files...</div> : null}
-              {fileOptions.data?.items.map((item) => (
-                <button key={`${item.kind}:${item.id}`} type="button" onClick={() => setSelectedFile(item)}>
-                  <span><strong>{item.label}</strong><small>{item.subtitle}</small></span>
-                  <CellChip tone={item.kind === "intake" ? "acc" : "pet"}>{item.kind === "intake" ? "AI Intake" : item.status}</CellChip>
-                </button>
-              ))}
-              {fileOptions.data && fileOptions.data.items.length === 0 ? <div className="sub">No authorized files match that search.</div> : null}
-            </div>
-          ) : null}
         </Panel>
         {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
       </div>

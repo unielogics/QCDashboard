@@ -16,6 +16,7 @@ export function SearchableCombobox({
   value,
   options,
   placeholder,
+  ariaLabel,
   loading,
   disabled,
   allowAdd,
@@ -27,6 +28,7 @@ export function SearchableCombobox({
   value: ComboboxOption | null;
   options: ComboboxOption[];
   placeholder?: string;
+  ariaLabel?: string;
   loading?: boolean;
   disabled?: boolean;
   allowAdd?: boolean;
@@ -76,6 +78,7 @@ export function SearchableCombobox({
           aria-controls={`${id}-list`}
           aria-activedescendant={open && rowCount ? `${id}-option-${Math.min(active, rowCount - 1)}` : undefined}
           autoComplete="off"
+          aria-label={ariaLabel}
           disabled={disabled}
           placeholder={placeholder}
           value={query}

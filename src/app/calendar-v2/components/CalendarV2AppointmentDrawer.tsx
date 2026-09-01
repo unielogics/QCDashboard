@@ -8,6 +8,7 @@ import { Btn, CellChip, Field, Input, Panel, Select, StatusLine, Textarea } from
 import { Drawer } from "@/components/ds/Drawer";
 import { apiErrorMessage } from "@/components/email/EmailComposer";
 import { useAuthedApi } from "@/hooks/useApi";
+import { CalendarFileCombobox } from "./CalendarFileCombobox";
 import {
   appointmentCrmLabel,
   appointmentRsvpLabel,
@@ -277,7 +278,6 @@ function OutcomeTab({
   const [notifyClient, setNotifyClient] = useState(false);
   const [applyBookingData, setApplyBookingData] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  const [fileQuery, setFileQuery] = useState("");
   const [existingFile, setExistingFile] = useState<AppointmentFileOption | null>(null);
   const [documents, setDocuments] = useState<string[]>([]);
   const [result, setResult] = useState<ApplyAppointmentOutcomeResult | null>(null);
@@ -285,12 +285,6 @@ function OutcomeTab({
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const selected = outcomes.find((item) => item.id === selectedId) ?? null;
   const effects = new Set(selected?.effects ?? []);
-  const fileOptions = useQuery({
-    queryKey: ["calendar-v2-appointment-file-options", workspace.appointment.id, fileQuery],
-    queryFn: () => apiCall<{ items: AppointmentFileOption[] }>(`/dealer-os/appointments/${workspace.appointment.id}/file-options?q=${encodeURIComponent(fileQuery)}&limit=12`),
-    enabled: fileAction === "link_existing" && fileQuery.trim().length >= 2,
-  });
-
   useEffect(() => {
     if (!selected && outcomes.length) setSelectedId(outcomes[0].id);
   }, [outcomes, selected]);
@@ -354,7 +348,7 @@ function OutcomeTab({
             {effects.has("file_action") ? (
               <>
                 <Field label="File action" req>
-                  <Select value={fileAction} onChange={(event) => { setFileAction(event.target.value as AppointmentFileAction); setExistingFile(null); }}>
+                  <Select aria-label="File action" value={fileAction} onChange={(event) => { setFileAction(event.target.value as AppointmentFileAction); setExistingFile(null); }}>
                     <option value="none">Choose an action</option>
                     {(workspace.application || workspace.funding_file) ? <option value="update_linked">Update linked file</option> : null}
                     <option value="link_existing">Link an existing file</option>
@@ -364,9 +358,11 @@ function OutcomeTab({
                 </Field>
                 {fileAction === "link_existing" ? (
                   <div className="calendar-v2-file-picker">
-                    <Input value={fileQuery} onChange={(event) => setFileQuery(event.target.value)} placeholder="Search exact authorized files" />
-                    {existingFile ? <div className="calendar-v2-selected-file"><div><strong>{existingFile.label}</strong><span>{existingFile.subtitle}</span></div><CellChip tone="acc">Selected</CellChip><Btn size="sm" onClick={() => setExistingFile(null)}>Change</Btn></div> : null}
-                    {!existingFile ? fileOptions.data?.items.map((item) => <button key={`${item.kind}:${item.id}`} type="button" onClick={() => setExistingFile(item)}><span><strong>{item.label}</strong><small>{item.subtitle}</small></span><CellChip tone={item.kind === "intake" ? "acc" : "pet"}>{item.kind}</CellChip></button>) : null}
+                    <CalendarFileCombobox
+                      appointmentId={workspace.appointment.id}
+                      value={existingFile}
+                      onChange={setExistingFile}
+                    />
                   </div>
                 ) : null}
                 {fileAction === "create_ai_intake" ? (
@@ -408,21 +404,15 @@ function OutcomeTab({
 }
 
 function FileTab({ workspace, apiCall, refresh, onOutcome }: { workspace: AppointmentWorkspace; apiCall: ReturnType<typeof useAuthedApi>; refresh: () => Promise<void>; onOutcome: () => void }) {
-  const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<AppointmentFileOption | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const options = useQuery({
-    queryKey: ["calendar-v2-file-tab-options", workspace.appointment.id, query],
-    queryFn: () => apiCall<{ items: AppointmentFileOption[] }>(`/dealer-os/appointments/${workspace.appointment.id}/file-options?q=${encodeURIComponent(query)}&limit=15`),
-    enabled: query.trim().length >= 2,
-  });
   const link = useMutation({
     mutationFn: () => apiCall(`/dealer-os/appointments/${workspace.appointment.id}/file-link`, {
       method: "PATCH",
       body: JSON.stringify({ kind: selected?.kind, file_id: selected?.id, confirm }),
     }),
-    onSuccess: async () => { setSelected(null); setConfirm(false); setQuery(""); await refresh(); },
+    onSuccess: async () => { setSelected(null); setConfirm(false); await refresh(); },
     onError: (nextError) => setError(apiErrorMessage(nextError, "The file could not be linked.")),
   });
   const appointment = workspace.appointment;
@@ -457,10 +447,12 @@ function FileTab({ workspace, apiCall, refresh, onOutcome }: { workspace: Appoin
         <Btn variant="pri" onClick={onOutcome}>Review file action in Outcome</Btn>
       </Panel>
       <Panel title="Link a different existing file" sub="Search results are permission scoped; selecting a result never fuzzy-merges records.">
-        <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search person, company, email, phone, QC reference, or ID" />
-        <div className="calendar-v2-file-results">
-          {options.data?.items.map((item) => <button key={`${item.kind}:${item.id}`} type="button" className={selected?.id === item.id ? "on" : ""} onClick={() => { setSelected(item); setConfirm(false); }}><span><strong>{item.label}</strong><small>{item.subtitle}</small></span><CellChip tone={item.kind === "intake" ? "acc" : "pet"}>{item.kind === "intake" ? "AI Intake" : item.status}</CellChip></button>)}
-        </div>
+        <CalendarFileCombobox
+          appointmentId={workspace.appointment.id}
+          value={selected}
+          onChange={(item) => { setSelected(item); setConfirm(false); }}
+          placeholder="Choose or search by person, company, contact, QC reference, or file ID"
+        />
         {selected ? <label className="calendar-v2-confirm"><input type="checkbox" checked={confirm} onChange={(event) => setConfirm(event.target.checked)} /><span><strong>Confirm exact file link</strong><small>{selected.label} · {selected.subtitle}</small></span></label> : null}
         <div className="row mt"><Btn variant="pri" onClick={() => link.mutate()} disabled={!selected || !confirm || link.isPending}><Icon name="link" size={14} />{link.isPending ? "Linking..." : "Link selected file"}</Btn></div>
         {error ? <StatusLine tone="bad">{error}</StatusLine> : null}

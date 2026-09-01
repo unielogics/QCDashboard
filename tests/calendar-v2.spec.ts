@@ -16,7 +16,7 @@ test.beforeEach(async ({ context, page }) => {
 });
 
 test("renders month, week, and list views with appointment-first controls", async ({ page }) => {
-  await page.goto("/calendar-v2", { waitUntil: "domcontentloaded" });
+  await page.goto("/calendar", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
   await expect(page.getByText("Program intro: Robert", { exact: true })).toBeVisible();
   await expect(page.getByText("1 appointments", { exact: true })).toBeVisible();
@@ -32,7 +32,7 @@ test("renders month, week, and list views with appointment-first controls", asyn
 });
 
 test("opens the full-screen CRM, joins the call, and records notes", async ({ page }) => {
-  await page.goto(`/calendar-v2?appointment=${APPOINTMENT_ID}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`/calendar?appointment=${APPOINTMENT_ID}`, { waitUntil: "domcontentloaded" });
   const dialog = page.getByRole("dialog", { name: "Program intro: Robert" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("link", { name: "Join meeting" })).toHaveAttribute("href", "https://meet.google.com/abc-defg-hij");
@@ -50,7 +50,7 @@ test("opens the full-screen CRM, joins the call, and records notes", async ({ pa
 });
 
 test("edits recurring breaks and one-date exceptions from Calendar V2 settings", async ({ page }) => {
-  await page.goto("/calendar-v2", { waitUntil: "domcontentloaded" });
+  await page.goto("/calendar", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Calendar settings" });
   await expect(dialog).toBeVisible();
@@ -65,7 +65,7 @@ test("edits recurring breaks and one-date exceptions from Calendar V2 settings",
 
 test("dragging an appointment sends a reviewed reschedule and keeps the event on success", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile-390", "Touch users reschedule from the Edit tab; pointer drag is validated at desktop widths.");
-  await page.goto("/calendar-v2", { waitUntil: "domcontentloaded" });
+  await page.goto("/calendar", { waitUntil: "domcontentloaded" });
   const event = page.locator(".fc-daygrid-event").filter({ hasText: "Program intro: Robert" }).first();
   await expect(event).toBeVisible();
   const box = await event.boundingBox();
@@ -93,6 +93,32 @@ test("dragging an appointment sends a reviewed reschedule and keeps the event on
   expect(payload.starts_at).toBeTruthy();
   expect(payload.duration_min).toBe(30);
   await expect(page.getByText("Appointment updated and calendar synchronization completed.")).toBeVisible();
+});
+
+test("lists and filters authorized AI Intake and Funding files in the outcome dropdown", async ({ page }) => {
+  await page.goto(`/calendar?appointment=${APPOINTMENT_ID}`, { waitUntil: "domcontentloaded" });
+  const dialog = page.getByRole("dialog", { name: "Program intro: Robert" });
+  await dialog.getByRole("button", { name: "Outcome", exact: true }).click();
+  await dialog.getByLabel("File action").selectOption("link_existing");
+
+  const picker = dialog.getByPlaceholder("Choose or search authorized files");
+  await picker.click();
+  await expect(dialog.getByText("Venture Auto Sales", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Blue Moon Funding", { exact: true })).toBeVisible();
+
+  const filteredRequest = page.waitForRequest((request) => (
+    request.url().includes(`/dealer-os/appointments/${APPOINTMENT_ID}/file-options`)
+      && request.url().includes("q=venture")
+  ));
+  await picker.fill("venture");
+  await filteredRequest;
+  await dialog.getByText("Venture Auto Sales", { exact: true }).click();
+  await expect(picker).toHaveValue("Venture Auto Sales");
+});
+
+test("keeps the Calendar V2 preview URL as a compatibility alias", async ({ page }) => {
+  await page.goto("/calendar-v2", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
 });
 
 async function mockCalendarV2Apis(page: Page) {
@@ -277,7 +303,28 @@ async function mockCalendarV2Apis(page: Page) {
     } else if (path === "/me/booking-settings") {
       body = request.method() === "PATCH" ? { ...bookingSettings, ...(request.postDataJSON() as object) } : bookingSettings;
     } else if (path.endsWith("/file-options") || path === "/dealer-os/calendar/file-options") {
-      body = { items: [] };
+      const options = [
+        {
+          kind: "intake",
+          id: "70000000-0000-0000-0000-000000000001",
+          label: "Venture Auto Sales",
+          subtitle: "Omar Alghzali · omar@example.com",
+          status: "submitted",
+          href: "/admin/ai-underwriter-leads?lead=70000000-0000-0000-0000-000000000001",
+        },
+        {
+          kind: "loan",
+          id: "80000000-0000-0000-0000-000000000001",
+          label: "Blue Moon Funding",
+          subtitle: "QC-2026-100 · robert@example.com",
+          status: "underwriting",
+          href: "/loans/80000000-0000-0000-0000-000000000001",
+        },
+      ];
+      const query = (url.searchParams.get("q") || "").toLocaleLowerCase();
+      body = {
+        items: options.filter((item) => !query || `${item.label} ${item.subtitle}`.toLocaleLowerCase().includes(query)),
+      };
     } else if (path === "/contracts/platform-access/status") {
       body = { required: false };
     } else if (["/clients", "/ai-tasks", "/documents", "/loans"].includes(path)) {

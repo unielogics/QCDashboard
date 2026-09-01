@@ -72,7 +72,6 @@ const COMMS: NavGroup = {
     { label: "Messages", href: "/messages", icon: "chat" },
     { label: "Inbox", href: "/inbox", icon: "mail", requires: "gmail" },
     { label: "Calendar", href: "/calendar", icon: "cal" },
-    { label: "Calendar V2", href: "/calendar-v2", icon: "cal" },
   ],
 };
 
@@ -337,7 +336,7 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
         label: "My desk",
         items: [
           { label: "Dashboard", href: "/", icon: "home", match: "exact" },
-          { label: "Calendar V2", href: "/calendar-v2", icon: "cal" },
+          { label: "Calendar", href: "/calendar", icon: "cal" },
           { label: "Messages", href: "/messages", icon: "chat" },
           { label: "Profile", href: "/profile", icon: "user" },
         ],
