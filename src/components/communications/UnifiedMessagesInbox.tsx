@@ -19,6 +19,7 @@ import { Btn, CellChip, Input, PageHeader, Select, cx } from "@/components/ds";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { useAuthedApi } from "@/hooks/useApi";
 import type { UnifiedCommunicationThread, UnifiedContactPage } from "@/lib/communications";
+import { NewMessageDrawer } from "./NewMessageDrawer";
 import { UnifiedThreadConversation } from "./UnifiedThreadConversation";
 
 const CHANNEL_OPTIONS = [
@@ -53,6 +54,7 @@ export function UnifiedMessagesInbox() {
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ limit: "120" });
@@ -95,7 +97,7 @@ export function UnifiedMessagesInbox() {
       <PageHeader
         title="Messages"
         lede="Every person you talk to — in-system chat, email, and SMS — grouped by contact, newest first."
-        actions={<PageActionMenu label="Message actions" items={[{ label: "Open Elara queue", href: "/ai-inbox" }, { label: "Open AI intake", href: "/admin/ai-underwriter-leads" }, { label: "Open dealer messages", href: "/admin/dealer-messages" }]} />}
+        actions={<div className="row"><Btn variant="pri" onClick={() => setComposeOpen(true)}><Icon name="plus" size={14} /> New message</Btn><PageActionMenu label="Message actions" items={[{ label: "Open Elara queue", href: "/ai-inbox" }, { label: "Open AI intake", href: "/admin/ai-underwriter-leads" }, { label: "Open dealer messages", href: "/admin/dealer-messages" }]} /></div>}
         meta={<div className="row"><CellChip tone="acc">{contacts.data?.total ?? 0} contacts</CellChip><CellChip tone={(contacts.data?.unread_total ?? 0) ? "warn" : "mut"}>{contacts.data?.unread_total ?? 0} unread</CellChip></div>}
       />
       <div className="global-inbox">
@@ -160,6 +162,17 @@ export function UnifiedMessagesInbox() {
           {activeThreadId ? <UnifiedThreadConversation threadId={activeThreadId} /> : <div className="empty global-inbox-empty"><Icon name="chat" size={28} /><b>Select a contact</b><span>Expand a contact to see every conversation with them — chat, email, and SMS.</span></div>}
         </section>
       </div>
+      <NewMessageDrawer
+        open={composeOpen}
+        onClose={() => setComposeOpen(false)}
+        onSent={(threadId) => {
+          if (threadId) {
+            // Let the refreshed contact list resolve which contact owns it.
+            setActiveThreadId(threadId);
+            setOpenKey(null);
+          }
+        }}
+      />
     </div>
   );
 }

@@ -70,3 +70,20 @@ export type UnifiedContactPage = {
   total: number;
   unread_total: number;
 };
+
+export type ComposeRecipient = {
+  kind: "client" | "intake" | "dealer";
+  id: string;
+  name: string;
+  label: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
+export type ComposeChannelResult = { channel: string; ok: boolean; detail: string };
+
+export type UnifiedComposeResult = {
+  ok: boolean;
+  results: ComposeChannelResult[];
+  thread_id: string | null;
+};
