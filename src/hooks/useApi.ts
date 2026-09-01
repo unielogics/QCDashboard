@@ -6904,6 +6904,40 @@ export function useClientActivity(clientId: string | null | undefined) {
   });
 }
 
+export type SmsMessageRow = {
+  id: string;
+  direction: "outbound" | "inbound";
+  phone_e164: string;
+  body: string | null;
+  provider: string;
+  provider_message_id: string;
+  status: "queued" | "sent" | "delivered" | "failed" | "blocked" | "received";
+  detail: string;
+  context: string;
+  client_id: string | null;
+  client_name: string | null;
+  delivered_at: string | null;
+  created_at: string;
+};
+
+/** A client's SMS thread from the sms_messages ledger — both directions,
+ * refused sends included, newest first. */
+export function useClientSms(clientId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["clientSms", clientId, devUser],
+    queryFn: () =>
+      apiCall<{ messages: SmsMessageRow[]; next_before: string | null }>(
+        `/sms/messages?client_id=${clientId}&limit=100`,
+      )
+        .then((r) => r.messages)
+        .catch(() => [] as SmsMessageRow[]),
+    enabled: !!clientId,
+    retry: aiQueryRetry,
+  });
+}
+
 export function useMarkThreadRead() {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
