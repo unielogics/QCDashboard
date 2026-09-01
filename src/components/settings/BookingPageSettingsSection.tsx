@@ -4,6 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
 import { withAlpha } from "@/lib/color";
 import { Icon } from "@/components/design-system/Icon";
+import {
+  activeScheduleDays,
+  AdvanceBookingWindowControls,
+  scheduleBounds,
+  WeeklyScheduleEditor,
+} from "@/components/calendar/BookingAvailabilityControls";
 import { Btn, CG, CellChip, Input, PageHeader, Panel, Row, Select, StatusLine, Textarea, cx } from "@/components/ds";
 import {
   useBookingSettings,
@@ -13,7 +19,7 @@ import {
   useUpdateBookingSettings,
   useUploadBookingAsset,
 } from "@/hooks/useApi";
-import type { BookingBlockedInterval, UserBookingSettings } from "@/lib/types";
+import type { BookingBlockedInterval, BookingDaySchedule, UserBookingSettings } from "@/lib/types";
 
 const WEEKDAYS = [
   { id: 0, label: "Sun" },
@@ -62,6 +68,18 @@ function defaultBookingSettings(): UserBookingSettings {
     google_meet_enabled: true,
     timezone: "America/New_York",
     available_days: [1, 2, 3, 4, 5],
+    weekly_schedule: [
+      { weekday: 0, intervals: [] },
+      { weekday: 1, intervals: [{ start_time: "09:00", end_time: "17:00" }] },
+      { weekday: 2, intervals: [{ start_time: "09:00", end_time: "17:00" }] },
+      { weekday: 3, intervals: [{ start_time: "09:00", end_time: "17:00" }] },
+      { weekday: 4, intervals: [{ start_time: "09:00", end_time: "17:00" }] },
+      { weekday: 5, intervals: [{ start_time: "09:00", end_time: "17:00" }] },
+      { weekday: 6, intervals: [] },
+    ],
+    advance_booking_window_enabled: false,
+    minimum_notice_days: 2,
+    maximum_advance_days: 5,
     blocked_intervals: [],
     booking_questions: {},
     no_show_follow_up_enabled: true,
@@ -117,12 +135,13 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
     setDraft((current) => (current ? { ...current, ...next } : current));
   };
 
-  const toggleDay = (day: number) => {
+  const setSchedule = (weeklySchedule: BookingDaySchedule[]) => {
     if (!draft) return;
-    const days = new Set(draft.available_days);
-    if (days.has(day)) days.delete(day);
-    else days.add(day);
-    patch({ available_days: Array.from(days).sort((a, b) => a - b) });
+    patch({
+      weekly_schedule: weeklySchedule,
+      available_days: activeScheduleDays(weeklySchedule),
+      ...scheduleBounds(weeklySchedule, draft.start_time, draft.end_time),
+    });
   };
 
   const onSave = async () => {
@@ -203,6 +222,9 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
     return <div className="sub">Loading booking settings...</div>;
   }
 
+  const invalidWindow = draft.advance_booking_window_enabled
+    && draft.maximum_advance_days < draft.minimum_notice_days;
+
   const actions = (
     <>
       {draft.slug ? (
@@ -210,7 +232,7 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
           <Icon name="external" size={13} /> Preview page
         </Link>
       ) : null}
-      <Btn variant="pri" onClick={onSave} disabled={!dirty || update.isPending}>
+      <Btn variant="pri" onClick={onSave} disabled={!dirty || update.isPending || invalidWindow}>
         <Icon name="check" size={14} /> {update.isPending ? "Saving..." : "Save changes"}
       </Btn>
     </>
@@ -321,30 +343,17 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
 
           <Panel title="Availability">
             <div className="grid">
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 140px", gap: 10 }}>
-                <Field label="Timezone"><Input value={draft.timezone} onChange={(e) => patch({ timezone: e.target.value || "America/New_York" })} /></Field>
-                <Field label="Start"><Input type="time" value={draft.start_time} onChange={(e) => patch({ start_time: e.target.value || "09:00" })} /></Field>
-                <Field label="End"><Input type="time" value={draft.end_time} onChange={(e) => patch({ end_time: e.target.value || "17:00" })} /></Field>
-              </div>
-              {/* `.seg` shrink-wraps only inside a flex parent; as a bare grid
-                  item its track would stretch the full column. */}
-              <Row>
-                <div className="seg">
-                  {WEEKDAYS.map((day) => {
-                    const active = draft.available_days.includes(day.id);
-                    return (
-                      <button key={day.id} type="button" className={active ? "on" : ""} onClick={() => toggleDay(day.id)}>
-                        {day.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </Row>
+              <Field label="Timezone"><Input value={draft.timezone} onChange={(e) => patch({ timezone: e.target.value || "America/New_York" })} /></Field>
+              <WeeklyScheduleEditor
+                value={draft.weekly_schedule}
+                defaultStart={draft.start_time}
+                defaultEnd={draft.end_time}
+                durationMin={draft.duration_min}
+                onChange={setSchedule}
+              />
               <BlockedTimeEditor
                 intervals={(draft.blocked_intervals ?? []).filter((interval) => interval.weekday != null)}
-                availableDays={draft.available_days}
-                scheduleStart={draft.start_time}
-                scheduleEnd={draft.end_time}
+                weeklySchedule={draft.weekly_schedule}
                 onChange={(blocked_intervals) => patch({
                   blocked_intervals: [
                     ...blocked_intervals,
@@ -364,6 +373,12 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
                   program, requested amount and property/business address are written into each
                   calendar event.
                 </StatusLine>
+                <AdvanceBookingWindowControls
+                  enabled={draft.advance_booking_window_enabled}
+                  minimumDays={draft.minimum_notice_days}
+                  maximumDays={draft.maximum_advance_days}
+                  onChange={patch}
+                />
                 <CG>
                   <Field label="Buffer before" className="s6">
                     <Select value={draft.buffer_before_min} onChange={(e) => patch({ buffer_before_min: Number(e.target.value) })}>
@@ -487,19 +502,16 @@ function FeedbackLine({ ok, children }: { ok: boolean; children: ReactNode }) {
 
 function BlockedTimeEditor({
   intervals,
-  availableDays,
-  scheduleStart,
-  scheduleEnd,
+  weeklySchedule,
   onChange,
   onError,
 }: {
   intervals: BookingBlockedInterval[];
-  availableDays: number[];
-  scheduleStart: string;
-  scheduleEnd: string;
+  weeklySchedule: BookingDaySchedule[];
   onChange: (intervals: BookingBlockedInterval[]) => void;
   onError: (message: string | null) => void;
 }) {
+  const availableDays = useMemo(() => activeScheduleDays(weeklySchedule), [weeklySchedule]);
   const [selectedDays, setSelectedDays] = useState<number[]>(() => [...availableDays]);
   const [newStart, setNewStart] = useState("14:00");
   const [newEnd, setNewEnd] = useState("16:00");
@@ -524,14 +536,20 @@ function BlockedTimeEditor({
     }
     const start = timeToMinutes(newStart);
     const end = timeToMinutes(newEnd);
-    const scheduleStartMinutes = timeToMinutes(scheduleStart);
-    const scheduleEndMinutes = timeToMinutes(scheduleEnd);
     if (start === null || end === null || end <= start) {
       onError("Blocked time must end after it starts.");
       return;
     }
-    if (scheduleStartMinutes === null || scheduleEndMinutes === null || start < scheduleStartMinutes || end > scheduleEndMinutes) {
-      onError(`Blocked times must stay within ${formatClock(scheduleStart)}–${formatClock(scheduleEnd)}.`);
+    const outsideDay = selectedDays.find((weekday) => {
+      const day = weeklySchedule.find((item) => item.weekday === weekday);
+      return !day?.intervals.some((range) => {
+        const rangeStart = timeToMinutes(range.start_time);
+        const rangeEnd = timeToMinutes(range.end_time);
+        return rangeStart !== null && rangeEnd !== null && start >= rangeStart && end <= rangeEnd;
+      });
+    });
+    if (outsideDay !== undefined) {
+      onError(`Blocked time must stay inside one ${weekdayName(outsideDay)} schedule range.`);
       return;
     }
     const conflictDay = selectedDays.find((weekday) => intervals.some((interval) => (
@@ -655,15 +673,6 @@ function timeToMinutes(value: string): number | null {
   const minute = Number(match[2]);
   if (hour > 23 || minute > 59) return null;
   return hour * 60 + minute;
-}
-
-function formatClock(value: string): string {
-  const minutes = timeToMinutes(value);
-  if (minutes === null) return value;
-  const hour = Math.floor(minutes / 60);
-  const minute = minutes % 60;
-  const suffix = hour >= 12 ? "PM" : "AM";
-  return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${suffix}`;
 }
 
 function weekdayName(weekday: number): string {

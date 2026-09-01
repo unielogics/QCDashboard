@@ -1144,6 +1144,16 @@ export interface BookingBlockedInterval {
   label: string | null;
 }
 
+export interface BookingTimeRange {
+  start_time: string;
+  end_time: string;
+}
+
+export interface BookingDaySchedule {
+  weekday: number;
+  intervals: BookingTimeRange[];
+}
+
 export interface UserBookingSettings {
   id: string;
   user_id: string;
@@ -1167,6 +1177,10 @@ export interface UserBookingSettings {
   google_meet_enabled: boolean;
   timezone: string;
   available_days: number[];
+  weekly_schedule: BookingDaySchedule[];
+  advance_booking_window_enabled: boolean;
+  minimum_notice_days: number;
+  maximum_advance_days: number;
   blocked_intervals: BookingBlockedInterval[];
   booking_questions: Record<string, boolean>;
   no_show_follow_up_enabled: boolean;

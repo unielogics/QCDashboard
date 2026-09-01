@@ -3,10 +3,16 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
+import {
+  activeScheduleDays,
+  AdvanceBookingWindowControls,
+  scheduleBounds,
+  WeeklyScheduleEditor,
+} from "@/components/calendar/BookingAvailabilityControls";
 import { Btn, CellChip, Field, Input, Panel, Select, StatusLine, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { apiErrorMessage } from "@/components/email/EmailComposer";
-import { useAuthedApi, useBookingSettings, useUpdateBookingSettings } from "@/hooks/useApi";
+import { useAuthedApi, useBookingSettings, useCurrentUser, useUpdateBookingSettings } from "@/hooks/useApi";
 import { appointmentCrmLabel, type AppointmentOutcomeDefinition, type AppointmentOutcomeEffect } from "@/lib/repAppointments";
 import type { BookingBlockedInterval, UserBookingSettings } from "@/lib/types";
 
@@ -122,6 +128,7 @@ function OutcomeEditor({ item, onPatch, onMove }: { item: AppointmentOutcomeDefi
 }
 
 function BookingSettingsForm({ tab }: { tab: Exclude<SettingsTab, "outcomes"> }) {
+  const currentUser = useCurrentUser();
   const booking = useBookingSettings();
   const update = useUpdateBookingSettings();
   const [draft, setDraft] = useState<UserBookingSettings | null>(null);
@@ -133,6 +140,17 @@ function BookingSettingsForm({ tab }: { tab: Exclude<SettingsTab, "outcomes"> })
     try { await update.mutateAsync(draft); } catch (nextError) { setError(apiErrorMessage(nextError, "Calendar settings could not be saved.")); }
   };
   const set = <K extends keyof UserBookingSettings>(key: K, value: UserBookingSettings[K]) => setDraft((current) => current ? { ...current, [key]: value } : current);
+  const setSchedule = (weeklySchedule: UserBookingSettings["weekly_schedule"]) => {
+    const bounds = scheduleBounds(weeklySchedule, draft.start_time, draft.end_time);
+    setDraft((current) => current ? {
+      ...current,
+      weekly_schedule: weeklySchedule,
+      available_days: activeScheduleDays(weeklySchedule),
+      ...bounds,
+    } : current);
+  };
+  const invalidWindow = draft.advance_booking_window_enabled
+    && draft.maximum_advance_days < draft.minimum_notice_days;
   const recurring = draft.blocked_intervals.filter((row) => row.weekday != null);
   const exceptions = draft.blocked_intervals.filter((row) => row.on_date);
   const replaceBlock = (index: number, next: BookingBlockedInterval, dated: boolean) => {
@@ -149,11 +167,19 @@ function BookingSettingsForm({ tab }: { tab: Exclude<SettingsTab, "outcomes"> })
     <div className="calendar-v2-settings-stack">
       {tab === "hours" ? <>
         <div><h3>Hours and blocked periods</h3><p className="sub">The same rules prevent public bookings, manual creation, drag, and resize conflicts.</p></div>
-        <Panel title="Working hours">
-          <div className="calendar-v2-form-grid"><Field label="Timezone"><Input value={draft.timezone} onChange={(event) => set("timezone", event.target.value)} /></Field><Field label="Start"><Input type="time" value={draft.start_time} onChange={(event) => set("start_time", event.target.value)} /></Field><Field label="End"><Input type="time" value={draft.end_time} onChange={(event) => set("end_time", event.target.value)} /></Field><Field label="Default duration"><Select value={draft.duration_min} onChange={(event) => set("duration_min", Number(event.target.value))}>{[15,20,30,45,60,90].map((value) => <option key={value} value={value}>{value} minutes</option>)}</Select></Field><Field label="Buffer before"><Select value={draft.buffer_before_min} onChange={(event) => set("buffer_before_min", Number(event.target.value))}>{[0,5,10,15,30].map((value) => <option key={value} value={value}>{value} minutes</option>)}</Select></Field><Field label="Buffer after"><Select value={draft.buffer_after_min} onChange={(event) => set("buffer_after_min", Number(event.target.value))}>{[0,5,10,15,30].map((value) => <option key={value} value={value}>{value} minutes</option>)}</Select></Field></div>
-          <div className="calendar-v2-weekdays">{WEEKDAYS.map(([day, label]) => <button key={day} type="button" className={draft.available_days.includes(day) ? "on" : ""} onClick={() => set("available_days", draft.available_days.includes(day) ? draft.available_days.filter((value) => value !== day) : [...draft.available_days, day].sort())}>{label}</button>)}</div>
+        <Panel title="Meeting defaults">
+          <div className="calendar-v2-form-grid"><Field label="Timezone"><Input value={draft.timezone} onChange={(event) => set("timezone", event.target.value)} /></Field><Field label="Default duration"><Select value={draft.duration_min} onChange={(event) => set("duration_min", Number(event.target.value))}>{[15,20,30,45,60,90].map((value) => <option key={value} value={value}>{value} minutes</option>)}</Select></Field><Field label="Buffer before"><Select value={draft.buffer_before_min} onChange={(event) => set("buffer_before_min", Number(event.target.value))}>{[0,5,10,15,30].map((value) => <option key={value} value={value}>{value} minutes</option>)}</Select></Field><Field label="Buffer after"><Select value={draft.buffer_after_min} onChange={(event) => set("buffer_after_min", Number(event.target.value))}>{[0,5,10,15,30].map((value) => <option key={value} value={value}>{value} minutes</option>)}</Select></Field></div>
         </Panel>
-        <Panel title="Recurring weekday breaks" actions={<Btn size="sm" onClick={() => set("blocked_intervals", [...draft.blocked_intervals, { weekday: 1, on_date: null, start_time: "14:00", end_time: "16:00", label: "Break" }])}><Icon name="plus" size={13} />Add break</Btn>}>
+        <Panel title="Weekly schedule">
+          <WeeklyScheduleEditor
+            value={draft.weekly_schedule}
+            defaultStart={draft.start_time}
+            defaultEnd={draft.end_time}
+            durationMin={draft.duration_min}
+            onChange={setSchedule}
+          />
+        </Panel>
+        <Panel title="Recurring weekday breaks" actions={<Btn size="sm" onClick={() => set("blocked_intervals", [...draft.blocked_intervals, defaultRecurringBreak(draft)])}><Icon name="plus" size={13} />Add break</Btn>}>
           <div className="calendar-v2-block-list">{recurring.map((row, index) => <div key={`${row.weekday}-${index}`}><Select value={row.weekday ?? 1} onChange={(event) => replaceBlock(index, { ...row, weekday: Number(event.target.value), on_date: null }, false)}>{WEEKDAYS.map(([day,label]) => <option key={day} value={day}>{label}</option>)}</Select><Input type="time" value={row.start_time} onChange={(event) => replaceBlock(index, { ...row, start_time: event.target.value }, false)} /><span>to</span><Input type="time" value={row.end_time} onChange={(event) => replaceBlock(index, { ...row, end_time: event.target.value }, false)} /><Input value={row.label ?? ""} onChange={(event) => replaceBlock(index, { ...row, label: event.target.value || null }, false)} placeholder="Break label" /><Btn size="sm" aria-label="Remove break" onClick={() => removeBlock(index, false)}><Icon name="trash" size={13} /></Btn></div>)}</div>
         </Panel>
         <Panel title="One-date exceptions" actions={<Btn size="sm" onClick={() => set("blocked_intervals", [...draft.blocked_intervals, { weekday: null, on_date: new Date().toISOString().slice(0, 10), start_time: "09:00", end_time: "17:00", label: "Unavailable" }])}><Icon name="plus" size={13} />Add exception</Btn>}>
@@ -171,6 +197,16 @@ function BookingSettingsForm({ tab }: { tab: Exclude<SettingsTab, "outcomes"> })
         <Panel title="Requested booking fields">
           <div className="calendar-v2-check-grid">{Object.entries({ business_name: "Business name", phone: "Phone", requested_amount: "Requested amount", bank_statement: "Bank statement prompt" }).map(([key,label]) => <label key={key} className="calendar-v2-check"><input type="checkbox" checked={Boolean(draft.booking_questions[key])} onChange={(event) => set("booking_questions", { ...draft.booking_questions, [key]: event.target.checked })} />{label}</label>)}</div>
         </Panel>
+        {currentUser.data?.role === "super_admin" ? (
+          <Panel title="Field Desk booking window">
+            <AdvanceBookingWindowControls
+              enabled={draft.advance_booking_window_enabled}
+              minimumDays={draft.minimum_notice_days}
+              maximumDays={draft.maximum_advance_days}
+              onChange={(patch) => setDraft((current) => current ? { ...current, ...patch } : current)}
+            />
+          </Panel>
+        ) : null}
       </> : null}
       {tab === "reminders" ? <>
         <div><h3>Confirmations and reminders</h3><p className="sub">Client delivery state is visible inside each appointment workspace.</p></div>
@@ -186,10 +222,43 @@ function BookingSettingsForm({ tab }: { tab: Exclude<SettingsTab, "outcomes"> })
           <Field label="Missing outcome reminder"><Select value={draft.missing_outcome_reminder_hours} onChange={(event) => set("missing_outcome_reminder_hours", Number(event.target.value))}>{[4,12,24,48,72].map((value) => <option key={value} value={value}>{value} hours after meeting</option>)}</Select></Field>
         </Panel>
       </> : null}
-      <div className="calendar-v2-settings-save"><Btn variant="pri" onClick={save} disabled={update.isPending}><Icon name="check" size={14} />{update.isPending ? "Saving..." : "Save calendar settings"}</Btn>{update.isSuccess ? <CellChip tone="ok">Saved</CellChip> : null}</div>
+      <div className="calendar-v2-settings-save"><Btn variant="pri" onClick={save} disabled={update.isPending || invalidWindow}><Icon name="check" size={14} />{update.isPending ? "Saving..." : "Save calendar settings"}</Btn>{update.isSuccess ? <CellChip tone="ok">Saved</CellChip> : null}</div>
       {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
     </div>
   );
+}
+
+function defaultRecurringBreak(settings: UserBookingSettings): BookingBlockedInterval {
+  const schedule = settings.weekly_schedule ?? [];
+  const day = schedule.find((item) => item.intervals.length)?.weekday ?? 1;
+  const range = schedule.find((item) => item.weekday === day)?.intervals[0];
+  const rangeStart = range ? clockMinutes(range.start_time) : null;
+  const rangeEnd = range ? clockMinutes(range.end_time) : null;
+  const preferredStart = 14 * 60;
+  const preferredEnd = 16 * 60;
+  const start = rangeStart !== null && rangeEnd !== null && preferredStart >= rangeStart && preferredEnd <= rangeEnd
+    ? preferredStart
+    : rangeStart ?? preferredStart;
+  const end = rangeEnd !== null ? Math.min(rangeEnd, start + 60) : preferredEnd;
+  return {
+    weekday: day,
+    on_date: null,
+    start_time: clockValue(start),
+    end_time: clockValue(Math.max(start + 1, end)),
+    label: "Break",
+  };
+}
+
+function clockMinutes(value: string): number | null {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  return hour <= 23 && minute <= 59 ? hour * 60 + minute : null;
+}
+
+function clockValue(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
 
 function ToggleRow({ label, detail, checked, onChange }: { label: string; detail: string; checked: boolean; onChange: (value: boolean) => void }) {
