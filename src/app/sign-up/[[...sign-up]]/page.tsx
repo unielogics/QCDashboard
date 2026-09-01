@@ -2,7 +2,7 @@
 
 import { SignUp, useAuth } from "@clerk/nextjs";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AuthMarketingShell } from "@/components/auth/AuthMarketingShell";
 import { CLERK_APPEARANCE } from "@/components/auth/clerkAppearance";
@@ -12,6 +12,7 @@ import {
   PRIVACY_VERSION,
   TERMS_VERSION,
 } from "@/lib/legal";
+import { PENDING_SIGNUP_ATTRIBUTION_KEY } from "@/hooks/useRecordPendingSignupAttribution";
 
 // localStorage key used to bridge "user accepted at signup time" → the
 // post-signup auto-record effect (in app/providers.tsx via
@@ -21,6 +22,7 @@ const PENDING_CONSENT_KEY = "qc.pendingLegalConsent";
 export default function SignUpPage() {
   const { isLoaded, isSignedIn } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [accepted, setAccepted] = useState(false);
 
   useEffect(() => {
@@ -28,6 +30,26 @@ export default function SignUpPage() {
       router.replace("/");
     }
   }, [isLoaded, isSignedIn, router]);
+
+  useEffect(() => {
+    if (!isLoaded || isSignedIn) return;
+    if (searchParams.get("role") === "partner") {
+      window.localStorage.removeItem(PENDING_SIGNUP_ATTRIBUTION_KEY);
+      return;
+    }
+    let referrer: URL | null = null;
+    try { referrer = document.referrer ? new URL(document.referrer) : null; } catch { referrer = null; }
+    const page = searchParams.get("page")
+      ?? (referrer?.hostname.endsWith("qualifiedcommercial.com") ? `${referrer.pathname}${referrer.search}` : undefined);
+    window.localStorage.setItem(PENDING_SIGNUP_ATTRIBUTION_KEY, JSON.stringify({
+      source: searchParams.get("source") ?? "public_site",
+      page,
+      program: searchParams.get("program") ?? referrer?.searchParams.get("program") ?? undefined,
+      vertical: searchParams.get("vertical") ?? referrer?.searchParams.get("vertical") ?? undefined,
+      campaign: searchParams.get("campaign") ?? referrer?.searchParams.get("utm_campaign") ?? undefined,
+      cta: searchParams.get("cta") ?? undefined,
+    }));
+  }, [isLoaded, isSignedIn, searchParams]);
 
   // When the user checks the box, capture acceptance to localStorage
   // with a UTC timestamp + the document versions. The post-signup hook

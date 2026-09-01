@@ -5,7 +5,16 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import { useActiveProfile } from "@/store/role";
-import type { NotificationList, User , LeadDscrPotentialResponse, WhatsNewResponse } from "@/lib/types";
+import type {
+  AccessMutationResult,
+  ClientAccessDetail,
+  ClientAccessDirectoryResponse,
+  NotificationList,
+  ProductAccountType,
+  User,
+  LeadDscrPotentialResponse,
+  WhatsNewResponse,
+} from "@/lib/types";
 import type {
   Activity,
   AIChatRequest,
@@ -6972,6 +6981,143 @@ export function useUnifiedOperatorFile(
     enabled: Boolean(sourceKind && sourceId),
     staleTime: 15 * 1000,
     retry: aiQueryRetry,
+  });
+}
+
+export function useRecordSignupAttribution() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (body: {
+      source: string;
+      page?: string;
+      program?: string;
+      vertical?: string;
+      campaign?: string;
+      cta?: string;
+    }) => apiCall<{ recorded: boolean }>("/auth/signup-attribution", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  });
+}
+
+export type ClientAccessFilters = {
+  q?: string;
+  source?: string;
+  login_state?: string;
+  account_type?: string;
+  page?: number;
+  page_size?: number;
+};
+
+export function useClientAccessDirectory(
+  filters: ClientAccessFilters = {},
+  options: { enabled?: boolean } = {},
+) {
+  const apiCall = useAuthedApi();
+  const params = new URLSearchParams();
+  if (filters.q) params.set("q", filters.q);
+  if (filters.source && filters.source !== "all") params.set("source", filters.source);
+  if (filters.login_state && filters.login_state !== "all") params.set("login_state", filters.login_state);
+  if (filters.account_type && filters.account_type !== "all") params.set("account_type", filters.account_type);
+  params.set("page", String(filters.page ?? 1));
+  params.set("page_size", String(filters.page_size ?? 50));
+  const query = params.toString();
+  return useQuery({
+    queryKey: ["client-access", filters],
+    queryFn: () => apiCall<ClientAccessDirectoryResponse>(`/admin/client-access?${query}`),
+    enabled: options.enabled ?? true,
+  });
+}
+
+export function useClientAccessDetail(
+  subjectKind: "client" | "intake" | "user" | null,
+  subjectId: string | null,
+) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["client-access-detail", subjectKind, subjectId],
+    queryFn: () => apiCall<ClientAccessDetail>(`/admin/client-access/subjects/${subjectKind}/${subjectId}`),
+    enabled: !!subjectKind && !!subjectId,
+  });
+}
+
+type ClientAccessInviteBody = {
+  subject_kind: "client" | "intake";
+  subject_id: string;
+  email: string;
+  name?: string;
+  account_types: ProductAccountType[];
+  audit_profile_ids: string[];
+  reason: string;
+};
+
+export function useInviteClientAccess() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ClientAccessInviteBody) =>
+      apiCall<AccessMutationResult>("/admin/client-access/invite", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["client-access"] });
+      qc.invalidateQueries({ queryKey: ["client-access-detail"] });
+    },
+  });
+}
+
+export function useUpdateClientAccess() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, ...body }: {
+      userId: string;
+      account_types: ProductAccountType[];
+      account_status: "active" | "suspended";
+      audit_profile_ids: string[];
+      reason: string;
+    }) => apiCall<AccessMutationResult>(`/admin/client-access/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["client-access"] });
+      qc.invalidateQueries({ queryKey: ["client-access-detail"] });
+    },
+  });
+}
+
+export function useResendClientInvite() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, reason }: { userId: string; reason: string }) =>
+      apiCall<AccessMutationResult>(`/admin/client-access/users/${userId}/resend-invite`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["client-access"] });
+      qc.invalidateQueries({ queryKey: ["client-access-detail"] });
+    },
+  });
+}
+
+export function useRevokeClientSessions() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, reason }: { userId: string; reason: string }) =>
+      apiCall<AccessMutationResult>(`/admin/client-access/users/${userId}/revoke-sessions`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["client-access"] });
+      qc.invalidateQueries({ queryKey: ["client-access-detail"] });
+    },
   });
 }
 

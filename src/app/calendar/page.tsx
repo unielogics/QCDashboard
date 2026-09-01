@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
@@ -41,6 +42,7 @@ import {
   appointmentRsvpLabel,
   appointmentRsvpTone,
   outcomeLabel,
+  type AppointmentWorkspace,
   type RepAppointment,
 } from "@/lib/repAppointments";
 import type { AITask, CalendarActivityItem, CalendarEvent, Client, Document, Loan, UserBookingSettings } from "@/lib/types";
@@ -65,6 +67,10 @@ const DEFAULT_DAY_START_MINUTE = 8 * 60;
 const DEFAULT_DAY_END_MINUTE = 20 * 60;
 
 export default function CalendarPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const appointmentDeepLinkId = searchParams.get("appointment");
+  const openedDeepLinkRef = useRef<string | null>(null);
   const [windowDays, setWindowDays] = useState<Window>(7);
   const [createOpen, setCreateOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -80,6 +86,7 @@ export default function CalendarPage() {
     : "/booking-settings";
   const isRegionalManager = user?.role === Role.REGIONAL_MANAGER;
   const canManageTeamAppointments = user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC;
+  const canViewManagedAppointments = canManageTeamAppointments || user?.role === Role.FIELD_REP;
   const canSetAppointmentOutcome = user?.role === Role.SUPER_ADMIN;
 
   useEffect(() => {
@@ -117,8 +124,36 @@ export default function CalendarPage() {
     queryFn: () => apiCall<RepAppointment[]>(
       `/dealer-os/appointments?from=${encodeURIComponent(queryWindow.from)}&to=${encodeURIComponent(queryWindow.to)}&include_cancelled=${includeCancelled ? "true" : "false"}&limit=500`,
     ),
-    enabled: canManageTeamAppointments,
+    enabled: canViewManagedAppointments,
   });
+  const { data: deepLinkedWorkspace } = useQuery({
+    queryKey: ["appointment-workspace-deep-link", appointmentDeepLinkId],
+    queryFn: () => apiCall<AppointmentWorkspace>(`/dealer-os/appointments/${appointmentDeepLinkId}/workspace`),
+    enabled: Boolean(appointmentDeepLinkId && canViewManagedAppointments),
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!appointmentDeepLinkId) {
+      openedDeepLinkRef.current = null;
+      return;
+    }
+    if (!deepLinkedWorkspace || openedDeepLinkRef.current === appointmentDeepLinkId) return;
+    openedDeepLinkRef.current = appointmentDeepLinkId;
+    const startsAt = new Date(deepLinkedWorkspace.appointment.starts_at).getTime();
+    const daysAway = Math.ceil(Math.max(0, startsAt - Date.now()) / DAY_MS);
+    if (daysAway > 30) setWindowDays(90);
+    else if (daysAway > 7) setWindowDays(30);
+    setManagedAction({ appointment: deepLinkedWorkspace.appointment, mode: "details" });
+  }, [appointmentDeepLinkId, deepLinkedWorkspace]);
+
+  const closeManagedAppointment = () => {
+    setManagedAction(null);
+    if (!appointmentDeepLinkId) return;
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("appointment");
+    router.replace(next.size ? `/calendar?${next.toString()}` : "/calendar", { scroll: false });
+  };
 
   const appointmentByCalendarEvent = useMemo(() => {
     const rows = new Map<string, RepAppointment>();
@@ -299,7 +334,8 @@ export default function CalendarPage() {
           appointment={managedAction.appointment}
           mode={managedAction.mode}
           canSetOutcome={canSetAppointmentOutcome}
-          onClose={() => setManagedAction(null)}
+          onModeChange={(mode) => setManagedAction((current) => current ? { ...current, mode } : null)}
+          onClose={closeManagedAppointment}
         />
       ) : null}
     </div>

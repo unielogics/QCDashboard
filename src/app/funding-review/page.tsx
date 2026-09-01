@@ -10,6 +10,7 @@ import { LanguagePickerScreen } from "@/components/intake/LanguagePickerScreen";
 import { CHART_COPY } from "@/components/intake/IntelligenceCharts";
 import { AddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import { realEstateCopy, getStoredLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
+import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
 
 type RequestedDoc = {
   id: string;
@@ -418,6 +419,7 @@ export default function DealerAIUnderwriterPage() {
           terms_version: TERMS_VERSION,
           privacy_version: PRIVACY_VERSION,
           preferred_language: language ?? "en",
+          ...readPublicIntakeAttribution(),
         }),
       });
       applyResponse(payload, payload.token ?? "", true);

@@ -12,6 +12,7 @@ import { useUI, readPersistedSidebar, readPersistedTheme } from "@/store/ui";
 import { isBareRoute as computeBareRoute } from "@/lib/shellRoutes";
 import { useCurrentUser, useContractStatus } from "@/hooks/useApi";
 import { useRecordPendingConsent } from "@/hooks/useRecordPendingConsent";
+import { useRecordPendingSignupAttribution } from "@/hooks/useRecordPendingSignupAttribution";
 import { SIGN_IN_URL } from "@/lib/appUrl";
 import { _setActiveProfileFromUser } from "@/store/role";
 import { isPrimaryShortcut } from "@/lib/platformShortcuts";
@@ -72,6 +73,7 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
   // Flush any pending sign-up consent (from localStorage) into the
   // /legal/accept audit table once the user resolves.
   useRecordPendingConsent();
+  useRecordPendingSignupAttribution();
   // Hard-gates Role.DEALER_PARTNER access until the Platform Access
   // Agreement is signed. Fetched for every authenticated user (cheap,
   // `required` is false for everyone else) rather than only brokers, so the
@@ -132,11 +134,20 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
     pathname.startsWith("/broker") || pathname.startsWith("/profile");
   const isDealerPartnerOutOfBounds =
     user?.role === Role.DEALER_PARTNER && !isDealerPartnerConfinedRoute;
+  const isAuditOnlyClient = !!user
+    && (user.role === Role.CLIENT || user.role === Role.DEALER)
+    && user.can_access_audit
+    && !user.can_access_funding;
   useEffect(() => {
     if (isDealerPartnerOutOfBounds) {
       router.replace("/broker/ai-underwriter-leads");
     }
   }, [isDealerPartnerOutOfBounds, router]);
+  useEffect(() => {
+    if (isAuditOnlyClient) {
+      window.location.replace("https://audit.qualifiedcommercial.com");
+    }
+  }, [isAuditOnlyClient]);
 
   if (!authLoaded || isSignedIn === false) {
     return <div className="bareshell" />;
@@ -159,6 +170,21 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
         ) : null}
       </div>
     );
+  }
+
+  if (user.account_status === "suspended") {
+    return (
+      <div className="bareshell">
+        <div style={{ maxWidth: 520, margin: "18vh auto", padding: 24, textAlign: "center" }}>
+          <h1 style={{ fontSize: 22, margin: "0 0 8px" }}>Account suspended</h1>
+          <p style={{ color: "var(--muted)", margin: 0 }}>Contact your administrator to restore this login.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAuditOnlyClient) {
+    return <div className="bareshell" />;
   }
 
   // Hard block: a dealer partner with no signed Platform Access Agreement

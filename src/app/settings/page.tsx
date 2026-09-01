@@ -68,6 +68,7 @@ import type {
 import { useInitSignatureUpload } from "@/hooks/useApi";
 import { DealAnalyzerSection } from "./DealAnalyzerSection";
 import { BookingPageSettingsSection } from "@/components/settings/BookingPageSettingsSection";
+import { ClientAccessSection } from "@/components/settings/ClientAccessSection";
 
 // Doc Checklists + AI Cadence are reachable via deep-link from the
 // Lending AI portal (/admin/lending-ai → Legacy tiles) but no longer
@@ -76,6 +77,7 @@ const SECTIONS = [
   { id: "checklists", label: "Doc checklists", icon: "vault" as const, hidden: true },
   { id: "cadence", label: "AI cadence", icon: "ai" as const, hidden: true },
   { id: "booking", label: "Booking page", icon: "cal" as const, hidden: false },
+  { id: "client_access", label: "Client access", icon: "shield" as const, hidden: false },
   { id: "referrals", label: "Referrals", icon: "user" as const, hidden: false },
   { id: "pricing", label: "Pricing", icon: "rates" as const, hidden: false },
   { id: "simulator", label: "Simulator", icon: "calc" as const, hidden: false },
@@ -325,7 +327,7 @@ export default function SettingsPage() {
           </Link>
           <hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: "6px 4px" }} />
 
-          {SECTIONS.filter(s => !s.hidden && s.id !== "booking").map((s) => (
+          {SECTIONS.filter(s => !s.hidden && s.id !== "booking" && (s.id !== "client_access" || canEdit)).map((s) => (
             <button
               key={s.id}
               onClick={() => selectSection(s.id)}
@@ -361,6 +363,8 @@ export default function SettingsPage() {
           ) : null}
 
           {section === "booking" && <BookingPageSettingsSection embedded />}
+          {section === "client_access" && canEdit ? <ClientAccessSection initialClientId={searchParams.get("client_id")} /> : null}
+          {section === "client_access" && !canEdit ? <WarnLine>Super-admin access is required to manage client logins.</WarnLine> : null}
 
           {section === "checklists" && (
             <ChecklistsSection

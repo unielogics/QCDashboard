@@ -72,6 +72,7 @@ const COMMS: NavGroup = {
     { label: "Messages", href: "/messages", icon: "chat" },
     { label: "Inbox", href: "/inbox", icon: "mail", requires: "gmail" },
     { label: "Calendar", href: "/calendar", icon: "cal" },
+    { label: "Calendar V2", href: "/calendar-v2", icon: "cal" },
   ],
 };
 
@@ -156,6 +157,7 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
         id: "uw",
         label: "Underwriting",
         items: [
+          { label: "AI intake", href: "/admin/ai-underwriter-leads", icon: "spark" },
           { label: "Vault", href: "/vault", icon: "vault" },
           { label: "Prequalifications", href: "/admin/prequal-requests", icon: "docCheck" },
         ],
@@ -324,6 +326,25 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
     ],
     tools: [],
     scopeNote: "You can see the leads you referred and the programs available to you.",
+  },
+
+  [Role.FIELD_REP]: {
+    shellLabel: "Field desk",
+    roleLabel: "Field representative",
+    groups: [
+      {
+        id: "desk",
+        label: "My desk",
+        items: [
+          { label: "Dashboard", href: "/", icon: "home", match: "exact" },
+          { label: "Calendar V2", href: "/calendar-v2", icon: "cal" },
+          { label: "Messages", href: "/messages", icon: "chat" },
+          { label: "Profile", href: "/profile", icon: "user" },
+        ],
+      },
+    ],
+    tools: [],
+    scopeNote: "You can manage only appointments and files assigned to you.",
   },
 };
 

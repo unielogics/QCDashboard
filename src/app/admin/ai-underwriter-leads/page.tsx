@@ -333,6 +333,8 @@ export default function AdminAIUnderwriterLeadsPage() {
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const { data: unifiedFiles } = useUnifiedOperatorFiles({ limit: 500 });
   const leadParam = searchParams.get("lead");
+  const isIntakeOperator = me?.role === Role.SUPER_ADMIN || me?.role === Role.LOAN_EXEC;
+  const canGovern = me?.role === Role.SUPER_ADMIN;
   const [rows, setRows] = useState<LeadRow[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -712,20 +714,20 @@ export default function AdminAIUnderwriterLeadsPage() {
   }
 
   useEffect(() => {
-    if (!meLoading && me && me.role !== Role.SUPER_ADMIN) router.replace("/");
-  }, [meLoading, me, router]);
+    if (!meLoading && me && !isIntakeOperator) router.replace("/");
+  }, [isIntakeOperator, meLoading, me, router]);
 
   useEffect(() => {
-    if (me?.role === Role.SUPER_ADMIN) loadLeads(0).catch(() => undefined);
+    if (isIntakeOperator) loadLeads(0).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me?.role, statusFilter, variantFilter, probabilityFilter, submittedQuery]);
+  }, [isIntakeOperator, statusFilter, variantFilter, probabilityFilter, submittedQuery]);
 
   useEffect(() => {
-    if (me?.role === Role.SUPER_ADMIN && leadParam && leadParam !== selectedId) {
+    if (isIntakeOperator && leadParam && leadParam !== selectedId) {
       openLead(leadParam).catch(() => undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me?.role, leadParam]);
+  }, [isIntakeOperator, leadParam]);
 
   const counts = useMemo(() => ({
     total,
@@ -743,7 +745,7 @@ export default function AdminAIUnderwriterLeadsPage() {
     setSubmittedQuery(query);
   }
 
-  if (me && me.role !== Role.SUPER_ADMIN) return null;
+  if (me && !isIntakeOperator) return null;
 
   const activeLeadId = selectedId;
   const activeLeadTitle = detail?.intake.business_name || detail?.intake.full_name || "AI intake file";
@@ -752,6 +754,8 @@ export default function AdminAIUnderwriterLeadsPage() {
       detail={detail}
       loading={detailLoading}
       initialNotesOpen={searchParams.get("notes") === "1"}
+      initialView={searchParams.get("view") === "underwriting" ? "underwriting" : "workspace"}
+      canGovern={canGovern}
       onClose={closeLead}
       onMinimize={() => setLeadDetailMinimized(true)}
       onExport={() => exportPdf(activeLeadId)}
@@ -823,7 +827,7 @@ export default function AdminAIUnderwriterLeadsPage() {
           <CellChip tone="mut">{counts.total} files</CellChip>
           <span className="sp" />
           <span className="sub">Every file on the board, seen from Elara&apos;s side. Same records, same refs.</span>
-          <Btn variant="pri" size="sm" onClick={() => setCreateOpen(true)}><Icon name="plus" size={13} /> Create intake</Btn>
+          {canGovern ? <Btn variant="pri" size="sm" onClick={() => setCreateOpen(true)}><Icon name="plus" size={13} /> Create intake</Btn> : null}
           <PageActionMenu label="AI intake actions" items={[
             { label: "What changed", onSelect: () => setWhatsNewOpen(true) },
             { label: "Open document buckets", href: "/admin/buckets" },
@@ -916,7 +920,7 @@ export default function AdminAIUnderwriterLeadsPage() {
         }}
       />
 
-      {createOpen ? (
+      {createOpen && canGovern ? (
         <CreateLeadModal
           onClose={() => setCreateOpen(false)}
           onCreate={createLead}
@@ -954,6 +958,8 @@ function LeadDetailPanel({
   detail,
   loading,
   initialNotesOpen = false,
+  initialView = "workspace",
+  canGovern,
   onClose,
   onMinimize,
   onExport,
@@ -980,6 +986,8 @@ function LeadDetailPanel({
   detail: LeadDetail | null;
   loading: boolean;
   initialNotesOpen?: boolean;
+  initialView?: "workspace" | "underwriting";
+  canGovern: boolean;
   onClose: () => void;
   onMinimize: () => void;
   onExport: () => void;
@@ -1037,7 +1045,7 @@ function LeadDetailPanel({
   const [ingestFiles, setIngestFiles] = useState<DriveFile[]>([]);
   const [deletionBusy, setDeletionBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [prototypeView, setPrototypeView] = useState<"workspace" | "communications" | "underwriting" | "audit">("workspace");
+  const [prototypeView, setPrototypeView] = useState<"workspace" | "communications" | "underwriting" | "audit">(initialView);
   const [communicationChannel, setCommunicationChannel] = useState<"underwriter" | "client" | "partner" | "internal">("underwriter");
   const [submissionStep, setSubmissionStep] = useState(1);
   const [contextRailOpen, setContextRailOpen] = useState(false);
@@ -1205,7 +1213,7 @@ function LeadDetailPanel({
     else if (detail.latest_review?.status === "completed" || detail.intake.status === "reviewed") setSubmissionStep(4);
     else if (detail.files.length) setSubmissionStep(3);
     else setSubmissionStep(1);
-    setPrototypeView("workspace");
+    setPrototypeView(initialView === "underwriting" && canUnderwrite ? "underwriting" : "workspace");
     setCommunicationChannel("underwriter");
     setContextRailOpen(false);
     setContactDraft({
@@ -1218,7 +1226,7 @@ function LeadDetailPanel({
       estimated_credit_score: detail.intake.estimated_credit_score == null ? "" : String(detail.intake.estimated_credit_score),
       referral_source: detail.intake.referral_source || "",
     });
-  }, [detail]);
+  }, [detail, initialView, canUnderwrite]);
 
   async function saveContact() {
     if (!contactDraft.full_name.trim() || !contactDraft.email.trim()) {
@@ -1611,7 +1619,7 @@ function LeadDetailPanel({
           { label: "Attach another bucket", onSelect: onLinkBucketIntake, hidden: !detail },
           { label: "Rotate room PIN", onSelect: openRotatePin, hidden: !detail },
           { label: "Dealer partner messages", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("partner"); }, hidden: !detail },
-          { label: "Delete lead", onSelect: () => setConfirmDeleteOpen(true), tone: "danger", hidden: !detail },
+          { label: "Delete lead", onSelect: () => setConfirmDeleteOpen(true), tone: "danger", hidden: !detail || !canGovern },
         ]} />
         <IconBtn aria-label="Minimize file workspace" title="Minimize" onClick={onMinimize}>
           <span aria-hidden="true" className="workspace-minimize-glyph">-</span>
@@ -1838,7 +1846,7 @@ function LeadDetailPanel({
 
       <Toast msg={toast.msg} />
       <DriveFilePicker open={ingestPickerOpen} mode="ingest" busy={busy === "ingest"} maxSelect={50} onClose={() => setIngestPickerOpen(false)} selectedIds={ingestFiles.map((file) => file.id)} onPick={(file) => setIngestFiles((current) => current.some((item) => item.id === file.id) ? current : [...current, file])} onUnpick={(id) => setIngestFiles((current) => current.filter((file) => file.id !== id))} onConfirm={runIngest} />
-      {detail ? <ConfirmDeleteLeadModal open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} expectedName={detail.intake.business_name || detail.intake.full_name} onConfirm={async (name) => { await onConfirmDeletion(name); setConfirmDeleteOpen(false); }} /> : null}
+      {detail && canGovern ? <ConfirmDeleteLeadModal open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} expectedName={detail.intake.business_name || detail.intake.full_name} onConfirm={async (name) => { await onConfirmDeletion(name); setConfirmDeleteOpen(false); }} /> : null}
       <ConfirmDialog open={sendReviewOpen} onClose={() => setSendReviewOpen(false)} title={`Send lender package to ${toEmails || "recipient"}`} body="This sends the reviewed message and selected package from the connected desk mailbox and records the delivery result." confirmLabel="Send package" busy={busy === "send"} onConfirm={() => { void sendEmail().then(() => setSendReviewOpen(false)); }} />
       <Drawer
         open={contactEditOpen}
@@ -1952,8 +1960,8 @@ function LeadDetailPanel({
             Partner requested delete
           </CellChip>
         ) : null}
-        <Btn className="danger" disabled={deletionBusy} onClick={() => setConfirmDeleteOpen(true)}>Delete lead</Btn>
-        {detail?.intake.delete_requested_at ? (
+        {canGovern ? <Btn className="danger" disabled={deletionBusy} onClick={() => setConfirmDeleteOpen(true)}>Delete lead</Btn> : null}
+        {canGovern && detail?.intake.delete_requested_at ? (
           <Btn disabled={deletionBusy} onClick={handleCancelDeletionRequest}>Keep</Btn>
         ) : null}
         <IconBtn aria-label="Close" title="Close" onClick={onClose}>
@@ -2430,7 +2438,7 @@ function LeadDetailPanel({
           intakeId={detail.intake.id}
         />
       ) : null}
-      {detail ? (
+      {detail && canGovern ? (
         <ConfirmDeleteLeadModal
           open={confirmDeleteOpen}
           onClose={() => setConfirmDeleteOpen(false)}

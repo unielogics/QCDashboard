@@ -18,6 +18,7 @@ import { Icon } from "@/components/design-system/Icon";
 import {
   useBrokers,
   useClientPaymentAuthorizationSummaries,
+  useClientAccessDirectory,
   useClients,
   useCurrentUser,
   useLoans,
@@ -26,7 +27,7 @@ import {
 } from "@/hooks/useApi";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
 import { Role } from "@/lib/enums.generated";
-import type { Broker, Client, ClientStage, PaymentAuthorizationClientSummaryRead } from "@/lib/types";
+import type { Broker, Client, ClientAccessDirectoryRow, ClientStage, PaymentAuthorizationClientSummaryRead } from "@/lib/types";
 import { QC_FMT } from "@/lib/fmt";
 import { AgentLeadModal } from "@/app/pipeline/components/AgentLeadModal";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
@@ -132,10 +133,23 @@ export default function ClientsPage() {
   const [intakeOpen, setIntakeOpen] = useState(false);
 
   const canCreate = user?.role !== Role.CLIENT;
+  const isSuperAdmin = user?.role === Role.SUPER_ADMIN;
   // Only super_admin / loan_exec see the Agent column + assign picker.
   // Brokers operate within their own scope; clients are read-only.
   const isInternal = user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC;
   const { data: authRows = [] } = useClientPaymentAuthorizationSummaries({ enabled: isInternal });
+  const { data: accessDirectory } = useClientAccessDirectory(
+    { page_size: 200 },
+    { enabled: isSuperAdmin },
+  );
+
+  const accessByClient = useMemo(() => {
+    const map = new Map<string, NonNullable<typeof accessDirectory>["items"][number]>();
+    for (const row of accessDirectory?.items ?? []) {
+      if (row.client_id) map.set(row.client_id, row);
+    }
+    return map;
+  }, [accessDirectory]);
 
   const authByClient = useMemo(() => {
     const map = new Map<string, PaymentAuthorizationClientSummaryRead>();
@@ -207,7 +221,10 @@ export default function ClientsPage() {
   const { sort, onSort, compare } = useSort("exposure", "desc");
   const sorted = useMemo(() => [...filtered].sort(compare), [filtered, compare]);
 
-  const cols: Col[] = CLIENT_COLS.map((c) => ({
+  const visibleClientCols: ClientCol[] = isSuperAdmin
+    ? [...CLIENT_COLS.slice(0, 5), { label: "Access", width: 176 }, ...CLIENT_COLS.slice(5)]
+    : CLIENT_COLS;
+  const cols: Col[] = visibleClientCols.map((c) => ({
     label: <SortLabel label={c.label} colKey={c.key} sortKey={sort.key} dir={sort.dir} onSort={onSort} />,
     align: c.align,
     width: c.width,
@@ -265,6 +282,20 @@ export default function ClientsPage() {
               </Td>
               <Td><CellChip tone={STAGE_TONE[c._stage]}>{STAGE_LABEL[c._stage]}</CellChip></Td>
               <Td><BillingAuthPill row={authByClient.get(c.id) ?? null} /></Td>
+              {isSuperAdmin ? (
+                <Td>
+                  <button
+                    type="button"
+                    className="linky"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      window.location.href = `/settings?section=client_access&client_id=${c.id}`;
+                    }}
+                  >
+                    <ClientAccessPill row={accessByClient.get(c.id) ?? null} />
+                  </button>
+                </Td>
+              ) : null}
               <Td>{isInternal ? <AssignBrokerCell client={c} /> : <span className="sub">{c.broker_name || "My desk"}</span>}</Td>
               <Td align="r">
                 <span className="num">{c.fico ?? "—"}</span>
@@ -279,7 +310,7 @@ export default function ClientsPage() {
           ))}
           {sorted.length === 0 && (
             <tr>
-              <td colSpan={CLIENT_COLS.length} style={{ textAlign: "center", padding: 24 }}>
+              <td colSpan={visibleClientCols.length} style={{ textAlign: "center", padding: 24 }}>
                 <span className="sub">
                   {search || stageFilter !== "all"
                     ? "No clients match the current filters."
@@ -456,4 +487,15 @@ function BillingAuthPill({ row }: { row: PaymentAuthorizationClientSummaryRead |
       {label}
     </span>
   );
+}
+
+function ClientAccessPill({ row }: { row: ClientAccessDirectoryRow | null }) {
+  if (!row) return <CellChip tone="mut">No login</CellChip>;
+  const products = row.account_types.map((item) => item === "funding" ? "Funding" : "Audit");
+  const tone: ChipTone = row.login_state === "suspended" || row.login_state === "invite_failed"
+    ? "bad"
+    : row.login_state === "active"
+      ? "ok"
+      : "warn";
+  return <CellChip tone={tone}>{products.length ? products.join(" + ") : "No access"}</CellChip>;
 }

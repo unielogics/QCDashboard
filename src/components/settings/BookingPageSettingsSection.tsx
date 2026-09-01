@@ -13,7 +13,7 @@ import {
   useUpdateBookingSettings,
   useUploadBookingAsset,
 } from "@/hooks/useApi";
-import type { UserBookingSettings } from "@/lib/types";
+import type { BookingBlockedInterval, UserBookingSettings } from "@/lib/types";
 
 const WEEKDAYS = [
   { id: 0, label: "Sun" },
@@ -62,6 +62,11 @@ function defaultBookingSettings(): UserBookingSettings {
     google_meet_enabled: true,
     timezone: "America/New_York",
     available_days: [1, 2, 3, 4, 5],
+    blocked_intervals: [],
+    booking_questions: {},
+    no_show_follow_up_enabled: true,
+    morning_digest_enabled: false,
+    missing_outcome_reminder_hours: 24,
     start_time: "09:00",
     end_time: "17:00",
     logo_s3_key: null,
@@ -335,6 +340,19 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
                   })}
                 </div>
               </Row>
+              <BlockedTimeEditor
+                intervals={(draft.blocked_intervals ?? []).filter((interval) => interval.weekday != null)}
+                availableDays={draft.available_days}
+                scheduleStart={draft.start_time}
+                scheduleEnd={draft.end_time}
+                onChange={(blocked_intervals) => patch({
+                  blocked_intervals: [
+                    ...blocked_intervals,
+                    ...(draft.blocked_intervals ?? []).filter((interval) => interval.on_date),
+                  ],
+                })}
+                onError={setFeedback}
+              />
             </div>
           </Panel>
 
@@ -465,6 +483,195 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
  */
 function FeedbackLine({ ok, children }: { ok: boolean; children: ReactNode }) {
   return <StatusLine tone={ok ? "ok" : "warn"}>{children}</StatusLine>;
+}
+
+function BlockedTimeEditor({
+  intervals,
+  availableDays,
+  scheduleStart,
+  scheduleEnd,
+  onChange,
+  onError,
+}: {
+  intervals: BookingBlockedInterval[];
+  availableDays: number[];
+  scheduleStart: string;
+  scheduleEnd: string;
+  onChange: (intervals: BookingBlockedInterval[]) => void;
+  onError: (message: string | null) => void;
+}) {
+  const [selectedDays, setSelectedDays] = useState<number[]>(() => [...availableDays]);
+  const [newStart, setNewStart] = useState("14:00");
+  const [newEnd, setNewEnd] = useState("16:00");
+  const [newLabel, setNewLabel] = useState("Break");
+
+  useEffect(() => {
+    setSelectedDays([...availableDays]);
+  }, [availableDays]);
+
+  const toggleBlockedDay = (weekday: number) => {
+    setSelectedDays((current) => (
+      current.includes(weekday)
+        ? current.filter((day) => day !== weekday)
+        : [...current, weekday].sort((a, b) => a - b)
+    ));
+  };
+
+  const addBlockedTime = () => {
+    if (!selectedDays.length) {
+      onError("Select at least one day for the blocked time.");
+      return;
+    }
+    const start = timeToMinutes(newStart);
+    const end = timeToMinutes(newEnd);
+    const scheduleStartMinutes = timeToMinutes(scheduleStart);
+    const scheduleEndMinutes = timeToMinutes(scheduleEnd);
+    if (start === null || end === null || end <= start) {
+      onError("Blocked time must end after it starts.");
+      return;
+    }
+    if (scheduleStartMinutes === null || scheduleEndMinutes === null || start < scheduleStartMinutes || end > scheduleEndMinutes) {
+      onError(`Blocked times must stay within ${formatClock(scheduleStart)}–${formatClock(scheduleEnd)}.`);
+      return;
+    }
+    const conflictDay = selectedDays.find((weekday) => intervals.some((interval) => (
+      interval.weekday === weekday
+      && start < (timeToMinutes(interval.end_time) ?? 0)
+      && end > (timeToMinutes(interval.start_time) ?? 0)
+    )));
+    if (conflictDay !== undefined) {
+      onError(`${weekdayName(conflictDay)} already has a blocked time that overlaps this range.`);
+      return;
+    }
+
+    const additions = selectedDays.map((weekday) => ({
+      weekday,
+      start_time: newStart,
+      end_time: newEnd,
+      label: newLabel.trim() || null,
+    }));
+    onChange([...intervals, ...additions].sort(compareBlockedIntervals));
+    onError(null);
+  };
+
+  const updateInterval = (index: number, patch: Partial<BookingBlockedInterval>) => {
+    onChange(intervals.map((interval, rowIndex) => (
+      rowIndex === index ? { ...interval, ...patch } : interval
+    )));
+  };
+
+  return (
+    <section className="booking-block-editor" aria-labelledby="booking-blocked-times-title">
+      <div className="booking-block-editor-head">
+        <div>
+          <h3 id="booking-blocked-times-title">Blocked times</h3>
+          <div className="sub">Recurring breaks are removed from public and team booking availability.</div>
+        </div>
+        <CellChip tone={intervals.length ? "warn" : "mut"}>{intervals.length} scheduled</CellChip>
+      </div>
+
+      <div className="booking-block-compose">
+        <Field label="Apply on" className="booking-block-days">
+          <div className="seg" aria-label="Days for new blocked time">
+            {WEEKDAYS.map((day) => (
+              <button
+                key={day.id}
+                type="button"
+                className={selectedDays.includes(day.id) ? "on" : ""}
+                aria-pressed={selectedDays.includes(day.id)}
+                onClick={() => toggleBlockedDay(day.id)}
+              >
+                {day.label}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Start">
+          <Input type="time" value={newStart} onChange={(event) => setNewStart(event.target.value)} />
+        </Field>
+        <Field label="End">
+          <Input type="time" value={newEnd} onChange={(event) => setNewEnd(event.target.value)} />
+        </Field>
+        <Field label="Label">
+          <Input value={newLabel} maxLength={80} placeholder="Break" onChange={(event) => setNewLabel(event.target.value)} />
+        </Field>
+        <Btn type="button" onClick={addBlockedTime} disabled={!selectedDays.length}>
+          <Icon name="plus" size={13} /> Add blocked time
+        </Btn>
+      </div>
+
+      {intervals.length ? (
+        <div className="booking-block-list">
+          {intervals.map((interval, index) => (
+            <div className="booking-block-row" key={index}>
+              <div className="booking-block-day-label">
+                <b>{weekdayName(interval.weekday ?? 0)}</b>
+                {!availableDays.includes(interval.weekday ?? 0) ? <span className="sub">Inactive day</span> : null}
+              </div>
+              <Field label="Start">
+                <Input
+                  type="time"
+                  value={interval.start_time}
+                  onChange={(event) => updateInterval(index, { start_time: event.target.value })}
+                />
+              </Field>
+              <Field label="End">
+                <Input
+                  type="time"
+                  value={interval.end_time}
+                  onChange={(event) => updateInterval(index, { end_time: event.target.value })}
+                />
+              </Field>
+              <Field label="Label">
+                <Input
+                  value={interval.label ?? ""}
+                  maxLength={80}
+                  placeholder="Blocked"
+                  onChange={(event) => updateInterval(index, { label: event.target.value || null })}
+                />
+              </Field>
+              <Btn
+                type="button"
+                aria-label={`Remove ${weekdayName(interval.weekday ?? 0)} blocked time`}
+                title="Remove blocked time"
+                onClick={() => onChange(intervals.filter((_, rowIndex) => rowIndex !== index))}
+              >
+                <Icon name="trash" size={14} />
+              </Btn>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="sub">No recurring breaks are configured.</div>
+      )}
+    </section>
+  );
+}
+
+function timeToMinutes(value: string): number | null {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+function formatClock(value: string): string {
+  const minutes = timeToMinutes(value);
+  if (minutes === null) return value;
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  const suffix = hour >= 12 ? "PM" : "AM";
+  return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+function weekdayName(weekday: number): string {
+  return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][weekday] ?? "Day";
+}
+
+function compareBlockedIntervals(left: BookingBlockedInterval, right: BookingBlockedInterval): number {
+  return (left.weekday ?? 7) - (right.weekday ?? 7) || left.start_time.localeCompare(right.start_time);
 }
 
 function BookingPreview({ settings, hostName, logoUrl, profileUrl }: { settings: UserBookingSettings; hostName: string; logoUrl: string | null; profileUrl: string | null }) {

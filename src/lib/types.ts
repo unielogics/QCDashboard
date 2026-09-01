@@ -5,10 +5,14 @@ import type { LoanStage, LoanType, LoanPurpose, PropertyType, Role, AITaskPriori
 
 export interface User {
   id: string;
-  clerk_id: string;
+  clerk_id: string | null;
   email: string;
   name: string;
   role: Role;
+  account_types: ProductAccountType[];
+  account_status: "active" | "suspended";
+  can_access_funding: boolean;
+  can_access_audit: boolean;
   // Only ever set for Role.DEALER_PARTNER; drives the AppShell NDA gate.
   nda_signed_at?: string | null;
 }
@@ -271,6 +275,85 @@ export interface Document {
   ai_scan_status?: "unscanned" | "queued" | "scanning" | "verified" | "flagged" | "failed" | string;
   ai_scan_confidence?: number | null;
   due_date?: string | null;
+}
+
+export type ProductAccountType = "funding" | "audit";
+export type ClientLoginState = "no_login" | "invited" | "active" | "suspended" | "invite_failed";
+
+export interface ClientAccessDirectoryRow {
+  subject_kind: "client" | "intake" | "user";
+  subject_id: string;
+  client_id: string | null;
+  user_id: string | null;
+  client_name: string;
+  businesses: string[];
+  email: string | null;
+  phone: string | null;
+  origin: string;
+  login_state: ClientLoginState;
+  account_types: ProductAccountType[];
+  account_status: string | null;
+  file_count: number;
+  last_active_at: string | null;
+  status: string;
+}
+
+export interface ClientAccessDirectoryResponse {
+  items: ClientAccessDirectoryRow[];
+  total: number;
+  page: number;
+  page_size: number;
+  sources: string[];
+}
+
+export interface ProductEntitlement {
+  product: ProductAccountType;
+  enabled: boolean;
+  granted_at: string | null;
+  revoked_at: string | null;
+  reason: string | null;
+}
+
+export interface AuditBusinessScope {
+  profile_id: string;
+  dealer_id: string | null;
+  business_name: string;
+  vertical: string;
+  source_kind: string;
+  source_id: string | null;
+  bucket_id: string | null;
+  enabled_for_user: boolean;
+}
+
+export interface ClientAccessHistoryItem {
+  id: string;
+  action: string;
+  reason: string | null;
+  actor_user_id: string | null;
+  before_state: Record<string, unknown> | null;
+  after_state: Record<string, unknown> | null;
+  request_metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface ClientAccessDetail {
+  subject: ClientAccessDirectoryRow;
+  entitlements: ProductEntitlement[];
+  audit_scopes: AuditBusinessScope[];
+  invitation_status: string | null;
+  invitation_error: string | null;
+  access_history: ClientAccessHistoryItem[];
+}
+
+export interface AccessMutationResult {
+  user_id: string;
+  account_types: ProductAccountType[];
+  account_status: string;
+  login_state: ClientLoginState;
+  invitation_sent: boolean;
+  clerk_synced: boolean;
+  sessions_revoked: boolean;
+  audit_scope_ids: string[];
 }
 
 export interface VaultTotals {
@@ -1053,6 +1136,14 @@ export interface AgentBookingSettings {
   end_time: string;
 }
 
+export interface BookingBlockedInterval {
+  weekday?: number | null;
+  on_date?: string | null;
+  start_time: string;
+  end_time: string;
+  label: string | null;
+}
+
 export interface UserBookingSettings {
   id: string;
   user_id: string;
@@ -1076,6 +1167,11 @@ export interface UserBookingSettings {
   google_meet_enabled: boolean;
   timezone: string;
   available_days: number[];
+  blocked_intervals: BookingBlockedInterval[];
+  booking_questions: Record<string, boolean>;
+  no_show_follow_up_enabled: boolean;
+  morning_digest_enabled: boolean;
+  missing_outcome_reminder_hours: number;
   start_time: string;
   end_time: string;
   logo_s3_key: string | null;
@@ -1247,6 +1343,7 @@ export interface UserRow {
   company_agreement_signed: boolean | null;
   created_at: string | null;
 }
+
 
 export interface PortfolioMetrics {
   agent_count: number;

@@ -28,7 +28,7 @@ import {
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
-import { useBrokers, useClient, useClientActivity, useClientPaymentAuthorizationStatus, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useSendIntakeLink, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
+import { useBrokers, useClient, useClientAccessDirectory, useClientActivity, useClientPaymentAuthorizationStatus, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useSendIntakeLink, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
 import { EmailsBreadcrumbTab } from "@/components/email/EmailsBreadcrumbTab";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
@@ -49,7 +49,12 @@ export default function ClientDetailPage() {
   const profile = useActiveProfile();
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
+  const canManageAccess = profile.role === "super_admin";
   const { data: client } = useClient(id);
+  const { data: accessDirectory } = useClientAccessDirectory(
+    { q: id, page_size: 10 },
+    { enabled: canManageAccess },
+  );
   const { data: loans = [] } = useLoans();
   const { data: credit } = useCurrentCredit(id);
   const { data: creditSummary, isLoading: summaryLoading } = useCreditSummary(credit?.id);
@@ -128,6 +133,7 @@ export default function ClientDetailPage() {
 
   const clientLoans = loans.filter((l) => l.client_id === client.id);
   const exposure = clientLoans.reduce((s, l) => s + Number(l.amount), 0);
+  const accessRow = accessDirectory?.items.find((row) => row.client_id === client.id);
 
   // Any loan is chat-able — broker may want post-funding follow-up too.
   const chatLoans = clientLoans;
@@ -204,6 +210,16 @@ export default function ClientDetailPage() {
             <div className="sub">{client.email ?? "—"} · {client.phone ?? "—"} · {client.city ?? "—"}</div>
           </div>
           <Tag>{client.tier}</Tag>
+          {accessRow?.account_types.map((product) => (
+            <CellChip tone={product === "funding" ? "acc" : "ok"} key={product}>
+              {product === "funding" ? "Funding" : "Audit"}
+            </CellChip>
+          ))}
+          {canManageAccess ? (
+            <Link href={`/settings?section=client_access&client_id=${client.id}`} className="btn">
+              <Icon name="shield" size={12} /> Manage access
+            </Link>
+          ) : null}
           {canEdit && (
             <Btn
               onClick={() => void onSendIntakeLink()}
