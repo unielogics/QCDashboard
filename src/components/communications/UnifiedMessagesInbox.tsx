@@ -130,9 +130,14 @@ export function UnifiedMessagesInbox() {
                         {contact.unread_total ? <CellChip tone="warn">{contact.unread_total} new</CellChip> : null}
                       </span>
                     </span>
-                    <span className="contact-caret"><Icon name={open ? "chevU" : "chevD"} size={14} /></span>
+                    {contact.threads.length > 1 ? (
+                      <span className="contact-caret"><Icon name={open ? "chevU" : "chevD"} size={14} /></span>
+                    ) : null}
                   </button>
-                  {open ? (
+                  {/* A single conversation needs no picker — the contact row
+                      already selected it, and listing it again just repeats
+                      the person's name back at them. */}
+                  {open && contact.threads.length > 1 ? (
                     <div className="contact-threads" role="list">
                       {contact.threads.map((thread) => (
                         <button
