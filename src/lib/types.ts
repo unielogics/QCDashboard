@@ -1174,6 +1174,8 @@ export interface UserBookingSettings {
   reminder_sms_enabled: boolean;
   reminder_sms_minutes_before: number;
   reminder_sms_minutes: number[];
+  /** What each SMS reminder says, keyed by minutes-before. Blank = default. */
+  reminder_sms_messages: Record<string, string>;
   google_meet_enabled: boolean;
   timezone: string;
   available_days: number[];

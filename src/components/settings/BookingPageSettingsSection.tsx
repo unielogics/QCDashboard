@@ -65,6 +65,7 @@ function defaultBookingSettings(): UserBookingSettings {
     reminder_sms_enabled: true,
     reminder_sms_minutes_before: 120,
     reminder_sms_minutes: [120],
+    reminder_sms_messages: {},
     google_meet_enabled: true,
     timezone: "America/New_York",
     available_days: [1, 2, 3, 4, 5],
@@ -196,8 +197,49 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
     if (channel === "email") {
       patch({ reminder_email_minutes: normalized, reminder_email_minutes_before: normalized[0] ?? 1440 });
     } else {
-      patch({ reminder_sms_minutes: normalized, reminder_sms_minutes_before: normalized[0] ?? 120 });
+      // Messages are keyed by minutes, so a removed reminder leaves its text
+      // behind. Drop it here rather than letting it reappear if that timing is
+      // added back later; the backend prunes orphans too.
+      const kept = new Set(normalized.map(String));
+      const messages = Object.fromEntries(
+        Object.entries(draft?.reminder_sms_messages ?? {}).filter(([key]) => kept.has(key)),
+      );
+      patch({
+        reminder_sms_minutes: normalized,
+        reminder_sms_minutes_before: normalized[0] ?? 120,
+        reminder_sms_messages: messages,
+      });
     }
+  };
+
+  /** Retime a reminder without losing what it says. */
+  const retimeSmsReminder = (index: number, value: number) => {
+    const current = reminderValues("sms");
+    const previous = current[index];
+    const next = [...current];
+    next[index] = value;
+    const messages = { ...(draft?.reminder_sms_messages ?? {}) };
+    const carried = messages[String(previous)];
+    if (carried !== undefined) {
+      delete messages[String(previous)];
+      messages[String(value)] = carried;
+    }
+    const normalized = Array.from(new Set(next)).sort((a, b) => b - a);
+    const kept = new Set(normalized.map(String));
+    patch({
+      reminder_sms_minutes: normalized,
+      reminder_sms_minutes_before: normalized[0] ?? 120,
+      reminder_sms_messages: Object.fromEntries(
+        Object.entries(messages).filter(([key]) => kept.has(key)),
+      ),
+    });
+  };
+
+  const setSmsReminderMessage = (minutes: number, message: string) => {
+    const messages = { ...(draft?.reminder_sms_messages ?? {}) };
+    if (message.trim()) messages[String(minutes)] = message;
+    else delete messages[String(minutes)];
+    patch({ reminder_sms_messages: messages });
   };
 
   const addReminder = (channel: "email" | "sms") => {
@@ -471,12 +513,10 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
                       values={reminderValues("sms")}
                       onToggle={(reminder_sms_enabled) => patch({ reminder_sms_enabled })}
                       onAdd={() => addReminder("sms")}
-                      onChange={(index, value) => {
-                        const next = [...reminderValues("sms")];
-                        next[index] = value;
-                        setReminderValues("sms", next);
-                      }}
+                      onChange={retimeSmsReminder}
                       onRemove={(index) => setReminderValues("sms", reminderValues("sms").filter((_, rowIndex) => rowIndex !== index))}
+                      messages={draft.reminder_sms_messages ?? {}}
+                      onMessageChange={setSmsReminderMessage}
                     />
                   </CG>
                 </div>
@@ -800,6 +840,8 @@ function ReminderSchedule({
   onChange,
   onRemove,
   className,
+  messages,
+  onMessageChange,
 }: {
   channel: "Email" | "SMS";
   description: string;
@@ -810,6 +852,9 @@ function ReminderSchedule({
   onChange: (index: number, value: number) => void;
   onRemove: (index: number) => void;
   className?: string;
+  /** Per-reminder text, keyed by minutes-before. SMS only; email has none. */
+  messages?: Record<string, string>;
+  onMessageChange?: (minutes: number, message: string) => void;
 }) {
   return (
     <section className={className} style={{ minWidth: 0, padding: 16, border: "1px solid var(--line)", borderRadius: 8 }}>
@@ -848,6 +893,27 @@ function ReminderSchedule({
               >
                 <Icon name="trash" size={14} />
               </Btn>
+              {onMessageChange ? (
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <Field label="Message">
+                    <Textarea
+                      disabled={!enabled}
+                      rows={2}
+                      maxLength={400}
+                      value={messages?.[String(value)] ?? ""}
+                      placeholder="Qualified Commercial reminder: your meeting, {time}."
+                      onChange={(event) => onMessageChange(value, event.target.value)}
+                      style={{ resize: "vertical" }}
+                    />
+                  </Field>
+                  <span className="sub" style={{ display: "block", marginTop: 4 }}>
+                    Leave blank for the standard reminder. Use{" "}
+                    <code>{"{time}"}</code>, <code>{"{name}"}</code>, <code>{"{rep}"}</code>,{" "}
+                    <code>{"{join_link}"}</code>. &ldquo;Reply STOP to opt out.&rdquo; is added
+                    automatically.
+                  </span>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
