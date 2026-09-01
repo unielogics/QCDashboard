@@ -34,8 +34,8 @@ export default function RoomPlaidOAuthReturn() {
   const [message, setMessage] = useState<string | null>(null);
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [room, setRoom] = useState<
-    | { kind: "dealer_room" | "application_room"; token: string; passcode: string; mode: "initial" | "update"; itemId: string | null }
-    | { kind: "application_verification"; token: string; mode: "initial" | "update"; itemId: string | null }
+    | { kind: "dealer_room" | "application_room"; token: string; passcode: string; mode: "initial" | "update"; itemId: string | null; isPrimaryOperating: boolean }
+    | { kind: "application_verification"; token: string; mode: "initial" | "update"; itemId: string | null; isPrimaryOperating: boolean }
     | null
   >(null);
 
@@ -54,8 +54,8 @@ export default function RoomPlaidOAuthReturn() {
     setLinkToken(h.linkToken);
     setRoom(
       h.kind === "application_verification"
-        ? { kind: h.kind, token: h.token, mode: h.mode, itemId: h.itemId }
-        : { kind: h.kind, token: h.token, passcode: h.passcode, mode: h.mode, itemId: h.itemId },
+        ? { kind: h.kind, token: h.token, mode: h.mode, itemId: h.itemId, isPrimaryOperating: h.isPrimaryOperating }
+        : { kind: h.kind, token: h.token, passcode: h.passcode, mode: h.mode, itemId: h.itemId, isPrimaryOperating: h.isPrimaryOperating },
     );
     setReturnTo(h.returnTo);
   }, []);
@@ -107,7 +107,7 @@ export default function RoomPlaidOAuthReturn() {
                     ...(room.kind === "application_verification" ? {} : { passcode: room.passcode }),
                     public_token: publicToken,
                     institution_name: metadata.institution?.name ?? null,
-                    is_primary_operating: true,
+                    is_primary_operating: room.isPrimaryOperating,
                   },
             ),
           },

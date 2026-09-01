@@ -1213,12 +1213,20 @@ export function useUsers() {
   });
 }
 
+export function useSignedReferralCompanies() {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["signed-referral-companies"],
+    queryFn: () => apiCall<import("@/lib/types").SignedReferralCompany[]>("/users/referral-companies/signed"),
+  });
+}
+
 export function useInviteUser() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["users"]
-    mutationFn: (body: { email: string; name: string; role: Role; company_name?: string }) =>
+    mutationFn: (body: { email: string; name: string; role: Role; company_name?: string; referral_partner_company_id?: string; account_types?: import("@/lib/types").OperatorAccountAccessType[] }) =>
       apiCall<UserRow>("/users", {
         method: "POST",
         body: JSON.stringify(body),
@@ -1232,7 +1240,7 @@ export function useUpdateUserRole() {
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["users"]
-    mutationFn: ({ userId, ...patch }: { userId: string; role?: Role; name?: string; company_name?: string }) =>
+    mutationFn: ({ userId, ...patch }: { userId: string; role?: Role; name?: string; company_name?: string; referral_partner_company_id?: string | null; account_types?: import("@/lib/types").OperatorAccountAccessType[] }) =>
       apiCall<UserRow>(`/users/${userId}`, {
         method: "PATCH",
         body: JSON.stringify(patch),

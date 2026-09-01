@@ -399,11 +399,80 @@ test("secure business banking offers Plaid and statement upload without staff co
 
   await page.goto("/application-verification#t=bank.visual", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Northstar Logistics LLC" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Connect another business bank" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add another institution" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add accounts" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Drop business bank statements here/ })).toBeVisible();
   await expect(page.getByText("Primary operating")).toBeVisible();
   await assertStableGeometry(page);
   await captureReviewImage(page, "secure-bank-verification", testInfo);
+});
+
+test("application room lets the client add institutions and accounts", async ({ page }, testInfo) => {
+  const roomToken = "room.visual";
+  const session = {
+    bucket: { name: "Northstar Logistics LLC", purpose: "Prepared for bank verification" },
+    recipient_name: "Avery Morgan",
+    recipient_email: "avery@example.com",
+    allow_notes: true,
+    requested_documents: [],
+    files: [],
+  };
+  const features = {
+    business_name: "Northstar Logistics LLC",
+    bank_connect_available: true,
+    plaid_environment: "production",
+    bank_consent_granted: true,
+    bank_consent_disclosure: "Authorized for verified business bank evidence.",
+    bank_connections: [
+      {
+        id: "50000000-0000-0000-0000-000000000001",
+        institution_name: "Example Business Bank",
+        accounts_label: "Operating checking ending 4021",
+        status: "active",
+        environment: "production",
+        error: null,
+        update_mode_reason: null,
+        update_mode_account_selection: false,
+        is_primary_operating: true,
+        last_pulled_at: "2026-08-24T14:00:00Z",
+        statement_months: ["2026-05", "2026-06", "2026-07"],
+      },
+    ],
+    signable: [],
+    contracts: [],
+    envelopes: [],
+  };
+
+  await page.route(new RegExp(`/api/v1/buckets/request/${roomToken.replace(".", "\\.")}(?:/access)?$`), async (route) => {
+    if (route.request().url().endsWith("/access")) {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(session) });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        bucket: session.bucket,
+        recipient_name: session.recipient_name,
+        recipient_email: session.recipient_email,
+        requires_passcode: true,
+        status: "active",
+      }),
+    });
+  });
+  await page.route(new RegExp(`/api/v1/dealer-os/public/room/${roomToken.replace(".", "\\.")}/features$`), async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(features) });
+  });
+
+  await page.goto(`/buckets/request/${roomToken}?tab=banking`, { waitUntil: "domcontentloaded" });
+  await page.getByLabel("Room PIN").fill("176646");
+  await page.getByRole("button", { name: "Open application room" }).click();
+  await expect(page.getByRole("heading", { name: "Business banking" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add another institution" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add accounts" })).toBeVisible();
+  await expect(page.getByText("Main operating bank")).toBeVisible();
+  await assertStableGeometry(page);
+  await captureReviewImage(page, "application-room-multiple-banks", testInfo);
 });
 
 test("prequalification review is one readable independently scrolling form", async ({ page }, testInfo) => {

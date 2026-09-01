@@ -9,7 +9,7 @@ export interface User {
   email: string;
   name: string;
   role: Role;
-  account_types: ProductAccountType[];
+  account_types: Array<ProductAccountType | "field_desk">;
   account_status: "active" | "suspended";
   can_access_funding: boolean;
   can_access_audit: boolean;
@@ -1333,6 +1333,8 @@ export interface SignatureUploadInitResponse {
 }
 
 // ── Users (Team) ───────────────────────────────────────────────────────────
+export type OperatorAccountAccessType = "funding" | "field_desk" | "audit";
+
 export interface UserRow {
   id: string;
   email: string;
@@ -1341,9 +1343,14 @@ export interface UserRow {
   referral_partner_company_id: string | null;
   referral_partner_company_name: string | null;
   company_agreement_signed: boolean | null;
+  account_types: OperatorAccountAccessType[];
   created_at: string | null;
 }
 
+export interface SignedReferralCompany {
+  id: string;
+  name: string;
+}
 
 export interface PortfolioMetrics {
   agent_count: number;
