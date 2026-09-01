@@ -27,8 +27,9 @@ import {
 } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
-import { useBrokers, useClient, useClientActivity, useClientPaymentAuthorizationStatus, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useSendIntakeLink, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
+import { useBrokers, useClient, useClientActivity, useClientPaymentAuthorizationStatus, useClientSms, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useSendIntakeLink, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
 import { EmailsBreadcrumbTab } from "@/components/email/EmailsBreadcrumbTab";
+import { SmsThreadTab } from "@/components/sms/SmsThreadTab";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { RealtorReadinessCard } from "@/components/RealtorReadinessCard";
@@ -61,6 +62,7 @@ export default function ClientDetailPage() {
   const { data: engagement = [] } = useEngagement(id);
   // Tracked-email breadcrumbs (email.tracked) for this client — metadata only.
   const { data: clientActivity = [], isLoading: clientActivityLoading } = useClientActivity(id);
+  const { data: smsThread = [], isLoading: smsLoading } = useClientSms(id);
   const updateClient = useUpdateClient();
   const requestPrequal = useRequestPrequalification();
   const sendIntakeLink = useSendIntakeLink();
@@ -477,6 +479,12 @@ export default function ClientDetailPage() {
           rows={clientActivity.map((a) => ({ id: a.id, kind: a.kind, summary: a.summary, payload: a.payload, occurredAt: a.created_at }))}
           isLoading={clientActivityLoading}
         />
+      )}
+
+      {/* SMS thread — the client's text history from the sms_messages ledger:
+          both directions, delivery states, refused sends with their reason. */}
+      {profile.role !== "client" && (
+        <SmsThreadTab rows={smsThread} isLoading={smsLoading} />
       )}
 
       {/* Next Best Actions stub — populated by the shared Deal Intelligence
