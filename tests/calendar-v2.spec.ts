@@ -277,7 +277,7 @@ async function mockCalendarV2Apis(page: Page) {
           { key: "signing", label: "Signing", count: 0 },
           { key: "lender_call", label: "Lender call", count: 0 },
         ],
-        capabilities: { can_create: true, can_manage_all: true, can_drag: true, can_create_funding_loan: true },
+        capabilities: { can_create: true, can_manage_all: true, can_drag: true, can_create_funding_loan: true, can_manage_appointment_crm: true, can_apply_outcomes: true, can_manage_outcome_catalog: true },
       };
     } else if (path === `/dealer-os/appointments/${APPOINTMENT_ID}/workspace`) {
       body = {
@@ -286,7 +286,7 @@ async function mockCalendarV2Apis(page: Page) {
         application: null,
         funding_file: null,
         application_candidates: [],
-        capabilities: { can_edit: true, can_add_notes: true, can_manage_crm: true, can_start_application: true, can_retry_delivery: true, can_manage_outcomes: true, can_link_files: true, can_create_funding_loan: true },
+        capabilities: { can_edit: true, can_add_notes: true, can_manage_crm: true, can_start_application: true, can_retry_delivery: true, can_manage_outcomes: true, can_manage_outcome_catalog: true, can_link_files: true, can_create_funding_loan: true },
       };
     } else if (path === `/dealer-os/appointments/${APPOINTMENT_ID}/notes` && request.method() === "POST") {
       const payload = request.postDataJSON() as { body: string };
@@ -299,7 +299,7 @@ async function mockCalendarV2Apis(page: Page) {
       if (payload.duration_min) appointment.duration_min = payload.duration_min;
       body = appointment;
     } else if (path === "/calendar/outcomes") {
-      body = [{ id: OUTCOME_ID, owner_user_id: USER_ID, name: "Qualified", description: "Create or update the client file.", color: "green", target_crm_status: "converted", effects: ["log_activity", "file_action"], active: true, sort_order: 0, created_at: updatedAt, updated_at: updatedAt }];
+      body = [{ id: OUTCOME_ID, owner_user_id: null, scope: "shared", name: "Qualified", description: "Create or update the client file.", color: "green", target_crm_status: "converted", effects: ["log_activity", "file_action"], active: true, sort_order: 0, created_at: updatedAt, updated_at: updatedAt }];
     } else if (path === "/me/booking-settings") {
       body = request.method() === "PATCH" ? { ...bookingSettings, ...(request.postDataJSON() as object) } : bookingSettings;
     } else if (path.endsWith("/file-options") || path === "/dealer-os/calendar/file-options") {

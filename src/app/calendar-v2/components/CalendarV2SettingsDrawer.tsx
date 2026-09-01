@@ -31,16 +31,30 @@ const EFFECTS: Array<[AppointmentOutcomeEffect, string]> = [
   ["close_enquiry", "Close enquiry"],
 ];
 
-export function CalendarV2SettingsDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [tab, setTab] = useState<SettingsTab>("outcomes");
+export function CalendarV2SettingsDrawer({
+  open,
+  canManageOutcomeCatalog,
+  onClose,
+}: {
+  open: boolean;
+  canManageOutcomeCatalog: boolean;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<SettingsTab>(canManageOutcomeCatalog ? "outcomes" : "hours");
+  const tabs: SettingsTab[] = canManageOutcomeCatalog
+    ? ["outcomes", "hours", "booking", "reminders"]
+    : ["hours", "booking", "reminders"];
+  useEffect(() => {
+    if (!canManageOutcomeCatalog && tab === "outcomes") setTab("hours");
+  }, [canManageOutcomeCatalog, tab]);
   return (
-    <Drawer open={open} onClose={onClose} title="Calendar settings" sub="Personal outcomes, availability, booking behavior, and reminders." width="xl" bodyClass="calendar-v2-settings-body">
+    <Drawer open={open} onClose={onClose} title="Calendar settings" sub="Shared outcomes, availability, booking behavior, and reminders." width="xl" bodyClass="calendar-v2-settings-body">
       <div className="calendar-v2-settings">
         <nav className="calendar-v2-settings-nav" aria-label="Calendar settings">
-          {(["outcomes", "hours", "booking", "reminders"] as SettingsTab[]).map((value) => <button key={value} type="button" className={tab === value ? "on" : ""} onClick={() => setTab(value)}><Icon name={value === "outcomes" ? "flag" : value === "hours" ? "cal" : value === "booking" ? "link" : "bell"} size={16} />{value[0].toUpperCase() + value.slice(1)}</button>)}
+          {tabs.map((value) => <button key={value} type="button" className={tab === value ? "on" : ""} onClick={() => setTab(value)}><Icon name={value === "outcomes" ? "flag" : value === "hours" ? "cal" : value === "booking" ? "link" : "bell"} size={16} />{value[0].toUpperCase() + value.slice(1)}</button>)}
         </nav>
         <div className="calendar-v2-settings-main">
-          {tab === "outcomes" ? <OutcomesSettings /> : null}
+          {tab === "outcomes" && canManageOutcomeCatalog ? <OutcomesSettings /> : null}
           {tab === "hours" ? <BookingSettingsForm tab="hours" /> : null}
           {tab === "booking" ? <BookingSettingsForm tab="booking" /> : null}
           {tab === "reminders" ? <BookingSettingsForm tab="reminders" /> : null}
@@ -270,5 +284,5 @@ function CrmStatusOptions() {
 }
 
 function ColorOptions() {
-  return <>{["blue","green","amber","red","gray","teal"].map((color) => <option key={color} value={color}>{color[0].toUpperCase() + color.slice(1)}</option>)}</>;
+  return <>{["blue","green","amber","red","violet","gray"].map((color) => <option key={color} value={color}>{color[0].toUpperCase() + color.slice(1)}</option>)}</>;
 }

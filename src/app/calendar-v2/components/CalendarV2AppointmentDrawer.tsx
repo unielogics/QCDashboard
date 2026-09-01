@@ -91,7 +91,23 @@ export function CalendarV2AppointmentDrawer({
   const outcomes = useQuery({
     queryKey: ["calendar-v2-outcomes"],
     queryFn: () => apiCall<AppointmentOutcomeDefinition[]>("/calendar/outcomes"),
+    enabled: Boolean(workspace.data?.capabilities.can_manage_outcomes),
   });
+  const visibleTabs = useMemo<WorkspaceTab[]>(() => {
+    const capabilities = workspace.data?.capabilities;
+    if (!capabilities) return ["overview"];
+    return [
+      "overview",
+      capabilities.can_add_notes ? "notes" : null,
+      capabilities.can_manage_outcomes ? "outcome" : null,
+      capabilities.can_link_files || capabilities.can_start_application ? "file" : null,
+      capabilities.can_edit ? "edit" : null,
+    ].filter((value): value is WorkspaceTab => value !== null);
+  }, [workspace.data?.capabilities]);
+
+  useEffect(() => {
+    if (!visibleTabs.includes(tab)) setTab("overview");
+  }, [tab, visibleTabs]);
 
   const refresh = async () => {
     await Promise.all([
@@ -127,7 +143,7 @@ export function CalendarV2AppointmentDrawer({
       {workspace.data ? (
         <div className="calendar-v2-workspace">
           <nav className="calendar-v2-workspace-tabs" aria-label="Appointment workspace">
-            {(Object.keys(TAB_LABELS) as WorkspaceTab[]).map((value) => (
+            {visibleTabs.map((value) => (
               <button key={value} type="button" className={tab === value ? "on" : ""} onClick={() => setTab(value)}>
                 {TAB_LABELS[value]}
               </button>
@@ -135,8 +151,8 @@ export function CalendarV2AppointmentDrawer({
           </nav>
           <main className="calendar-v2-workspace-main">
             {tab === "overview" ? <OverviewTab workspace={workspace.data} onTab={setTab} /> : null}
-            {tab === "notes" ? <NotesTab workspace={workspace.data} apiCall={apiCall} refresh={refresh} /> : null}
-            {tab === "outcome" ? (
+            {tab === "notes" && workspace.data.capabilities.can_add_notes ? <NotesTab workspace={workspace.data} apiCall={apiCall} refresh={refresh} /> : null}
+            {tab === "outcome" && workspace.data.capabilities.can_manage_outcomes ? (
               <OutcomeTab
                 workspace={workspace.data}
                 outcomes={outcomes.data ?? []}
@@ -145,10 +161,10 @@ export function CalendarV2AppointmentDrawer({
                 onOpenFile={() => setTab("file")}
               />
             ) : null}
-            {tab === "file" ? (
+            {tab === "file" && (workspace.data.capabilities.can_link_files || workspace.data.capabilities.can_start_application) ? (
               <FileTab workspace={workspace.data} apiCall={apiCall} refresh={refresh} onOutcome={() => setTab("outcome")} />
             ) : null}
-            {tab === "edit" ? <EditTab workspace={workspace.data} apiCall={apiCall} refresh={refresh} onClose={onClose} /> : null}
+            {tab === "edit" && workspace.data.capabilities.can_edit ? <EditTab workspace={workspace.data} apiCall={apiCall} refresh={refresh} onClose={onClose} /> : null}
           </main>
         </div>
       ) : null}
@@ -178,7 +194,7 @@ function OverviewTab({ workspace, onTab }: { workspace: AppointmentWorkspace; on
         <Panel title="Booking notes">
           <p className="calendar-v2-prose">{appointment.notes || "No preparation notes were captured with the booking."}</p>
         </Panel>
-        <Panel title="Recent relationship activity" actions={<Btn size="sm" onClick={() => onTab("notes")}>Open notes</Btn>}>
+        <Panel title="Recent relationship activity" actions={workspace.capabilities.can_add_notes ? <Btn size="sm" onClick={() => onTab("notes")}>Open notes</Btn> : null}>
           <ActivityList rows={recent} empty="No activity has been logged yet." />
         </Panel>
       </section>
@@ -193,7 +209,7 @@ function OverviewTab({ workspace, onTab }: { workspace: AppointmentWorkspace; on
           </div>
           {appointment.delivery_error ? <StatusLine tone="bad">{appointment.delivery_error}</StatusLine> : null}
         </Panel>
-        <Panel title="File readiness" actions={<Btn size="sm" onClick={() => onTab("file")}>Manage file</Btn>}>
+        <Panel title="File readiness" actions={workspace.capabilities.can_link_files || workspace.capabilities.can_start_application ? <Btn size="sm" onClick={() => onTab("file")}>Manage file</Btn> : null}>
           {workspace.application ? (
             <div className="calendar-v2-linked-summary">
               <CellChip tone="acc">AI Intake</CellChip>

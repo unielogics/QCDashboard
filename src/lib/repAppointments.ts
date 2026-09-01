@@ -137,6 +137,7 @@ export interface AppointmentWorkspace {
     can_start_application: boolean;
     can_retry_delivery: boolean;
     can_manage_outcomes: boolean;
+    can_manage_outcome_catalog: boolean;
     can_link_files: boolean;
     can_create_funding_loan: boolean;
   };
@@ -188,6 +189,9 @@ export interface CalendarWorkspace {
     can_manage_all: boolean;
     can_drag: boolean;
     can_create_funding_loan: boolean;
+    can_manage_appointment_crm: boolean;
+    can_apply_outcomes: boolean;
+    can_manage_outcome_catalog: boolean;
   };
 }
 
@@ -201,7 +205,8 @@ export type AppointmentOutcomeEffect =
 
 export interface AppointmentOutcomeDefinition {
   id: string;
-  owner_user_id: string;
+  owner_user_id: string | null;
+  scope: "personal" | "shared";
   name: string;
   description: string | null;
   color: string;

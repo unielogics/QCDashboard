@@ -91,7 +91,7 @@ export default function CalendarV2Page() {
   const pushedAppointmentRef = useRef(false);
   const { data: user, isLoading: userLoading } = useCurrentUser();
   const appointmentId = searchParams.get("appointment");
-  const allowed = user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC || user?.role === Role.FIELD_REP;
+  const allowed = user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC;
 
   const [view, setView] = useState<CalendarView>("dayGridMonth");
   const [title, setTitle] = useState("");
@@ -271,7 +271,7 @@ export default function CalendarV2Page() {
       <div className="calendar-v2-state">
         <Icon name="lock" size={24} />
         <h1>Operator calendar access required</h1>
-        <p>Calendar is available to super admins, underwriters, and assigned field representatives.</p>
+        <p>Appointment CRM is available to super admins and underwriters.</p>
       </div>
     );
   }
@@ -412,7 +412,11 @@ export default function CalendarV2Page() {
         onClose={() => setNewAppointmentOpen(false)}
         onCreated={onCreated}
       />
-      <CalendarV2SettingsDrawer open={settingsOpen} onClose={() => { setSettingsOpen(false); void refreshWorkspace(); }} />
+      <CalendarV2SettingsDrawer
+        open={settingsOpen}
+        canManageOutcomeCatalog={Boolean(workspace.data?.capabilities.can_manage_outcome_catalog)}
+        onClose={() => { setSettingsOpen(false); void refreshWorkspace(); }}
+      />
       {appointmentId ? (
         <CalendarV2AppointmentDrawer
           appointmentId={appointmentId}
